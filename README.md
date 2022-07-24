@@ -4,7 +4,7 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
 
 ## Development
 ### Requirements
-- [Python 3.9](https://www.python.org/)
+- [Python 3.10](https://www.python.org/)
 - [Pipenv](https://pipenv.pypa.io/)
 - MySQL
 
@@ -45,11 +45,30 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
      - `<your-domain>/slack/oauth_redirect`
    - Event Request URL (Features -> Event Subscriptions)
      - `<your-domain>/slack/events`
+   - Interactivity Request URL (Features -> Interactivity & Shortcuts)
+     - `<your-domain>/slack/events`
+   - Slash Commands (Features -> Slash Commands)
+     - Point all your request URLS to `<your-domain>/slack/events`
 
 6. Install your Slack App to Slack Workspace with the URL `/slack/install`, e.g. `<your-domain>/slack/install`.
 
    You can share this URL or embed it in a link on a web page for anyone to install (must have public distribution enabled, Settings -> Manage Distribution). **Make sure the app is secure before making it available to the public.**
 
 ### Troubleshooting
+#### **ModuleNotFoundError: No module named '...'**
+This means that some Python modules (dependencies) are not installed. To fix this, install the dependencies by running
 
-Coming soon.
+```bash
+$ pipenv install
+```
+
+This will create a virtual enviroment and install the dependencies from `Pipfile`.
+
+#### **[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate**
+If you are using macOS and installed Python directly from https://www.python.org, you may get an error like this when installing the app to Slack:
+
+```
+ssl.SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:997)
+```
+
+To fix this, install the SSL certificates by running the script at `/Applications/Python\ 3.10/Install\ Certificates.command` (or just double clicking the `Install Certificates.command` file in the `Applications/Python 3.10` directory), then restart the app.
