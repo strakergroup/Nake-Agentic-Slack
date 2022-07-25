@@ -9,6 +9,7 @@ slack-bolt = "*"
 sqlalchemy = "*"
 mysqlclient = "*"
 aiohttp = "*"
+cryptography = "*"
 
 [dev-packages]
 autopep8 = "*"
