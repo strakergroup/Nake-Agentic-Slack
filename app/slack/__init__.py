@@ -59,14 +59,15 @@ async def home_opened(client, event, body, say):
     history = await client.conversations_history(channel=event.get('channel'), limit=1)
     if not history.get('messages'):
         await say(
-            blocks=onboarding_block(event.get('user'), body.get('team_id'), body.get('api_app_id')),
+            blocks=onboarding_block(event.get('user'), body.get('team_id'), body.get('api_app_id'), event.get('channel')),
             text='The Straker RAY App has been sucessfully installed in your Slack workspace! :tada:'
         )
 
 @app.command('/ray')
 async def ray_command(ack, say, command):
     await ack()
-    await say('Ray command')
+    command_text = command.get('text', '')
+    await say(f'Ray command ({command_text})')
     # command['channel_id']
     # command['user_id']
     # command['team_id']
