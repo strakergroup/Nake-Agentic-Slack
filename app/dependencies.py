@@ -40,6 +40,7 @@ class SlackRayAuth:
                 FROM slack_deltaray_link
                 WHERE member_uuid = :client_id
                 AND is_active = 1
+                AND is_revoked = 0
                 ORDER BY id DESC
             """).bindparams(client_id=self.client_id)
             result = conn.execute(sql)

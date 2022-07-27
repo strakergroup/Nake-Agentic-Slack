@@ -26,6 +26,7 @@ def get_ray_client_id(user_id: str, team_id: str, app_id: str) -> str:
             AND slack_team_id = :team_id
             AND slack_app_id = :app_id
             AND is_active = 1
+            AND is_revoked = 0
         """).bindparams(user_id=user_id, team_id=team_id, app_id=app_id)
         result = conn.execute(sql)
         row = result.first()
