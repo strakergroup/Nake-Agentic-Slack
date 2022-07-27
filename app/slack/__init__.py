@@ -1,4 +1,5 @@
-from .listeners import app, slack_handler
+from .app import app
+from .listeners import slack_handler
 
 __all__ = [
     'app',
