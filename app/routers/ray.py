@@ -22,6 +22,7 @@ async def ray_events(
     auth: SlackRayAuth = Depends()
 ):
     """Receives and responds to an event from the RAY platform."""
+    # TODO: loop every account and check is subscribed.
     app.client.token = auth.slack_accounts[0].bot_token
     message = f'{event.message} ({event.event})'
     if event.job_id:

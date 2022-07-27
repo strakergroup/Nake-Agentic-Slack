@@ -1,8 +1,35 @@
 import time
 import json
 from urllib.parse import urlencode
+from sqlalchemy import text
 from .encryption import encrypt_aes, decrypt_aes
 from ...config import straker_config
+from ...database import engine
+
+
+def get_ray_client_id(user_id: str, team_id: str, app_id: str) -> str:
+    """Gets the RAY client id linked to the Slack account if an active link
+    exists, otherwise return the empty string.
+
+    Args:
+        user_id (str): The ID of the user.
+        team_id (str): The ID of the team.
+        app_id (str): The ID of the Slack app.
+
+    Returns:
+        str: The client id or the empty string if the account is not linked.
+    """
+    with engine.connect() as conn:
+        sql = text("""
+            SELECT member_uuid FROM slack_deltaray_link
+            WHERE slack_user_id = :user_id
+            AND slack_team_id = :team_id
+            AND slack_app_id = :app_id
+            AND is_active = 1
+        """).bindparams(user_id=user_id, team_id=team_id, app_id=app_id)
+        result = conn.execute(sql)
+        row = result.first()
+    return row[0] if row else ''
 
 
 def encrpyt_slack_integration_token(

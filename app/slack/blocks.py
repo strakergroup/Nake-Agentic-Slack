@@ -36,13 +36,40 @@ def onboarding_block(user_id: str, team_id: str, app_id: str, channel_id: str):
     ]
 
 
+def login_block(user_id: str, team_id: str, app_id: str, channel_id: str):
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "Connect your DeltaRay account"
+            }
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Connect DeltaRay account"
+                    },
+                    "style": "primary",
+                    "url": get_slack_deltaray_integration_url(user_id, team_id, app_id, channel_id),
+                    "action_id": "login"
+                }
+            ]
+        }
+    ]
+
+
 def successful_login_block(user_id: str, ray_username: str):
     return [
         {
-			"type": "section",
-			"text": {
-				"type": "mrkdwn",
-				"text": f"Login was successful! <@{user_id}> is now connected with <{straker_config.deltaray_domain}|{ray_username}>."
-			}
-		}
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"Login was successful! <@{user_id}> is now connected with <{straker_config.deltaray_domain}|{ray_username}>."
+            }
+        }
     ]
