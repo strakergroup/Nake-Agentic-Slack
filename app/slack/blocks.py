@@ -69,7 +69,71 @@ def successful_login_block(user_id: str, ray_username: str):
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"Login was successful! <@{user_id}> is now connected with <{straker_config.deltaray_domain}|{ray_username}>."
+                "text": f":white_check_mark: Login was successful! <@{user_id}> is now connected with <{straker_config.deltaray_domain}|{ray_username}>."
             }
-        }
+        },
+		{
+			"type": "divider"
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "*Here are some things to get you started*"
+			}
+		},
+		{
+			"type": "section",
+			"fields": [
+				{
+					"type": "mrkdwn",
+					"text": "Check your job status"
+				},
+				{
+					"type": "mrkdwn",
+					"text": "`/ray [TJ number]`"
+				},
+                {
+					"type": "mrkdwn",
+					"text": "Create a new job"
+				},
+				{
+					"type": "mrkdwn",
+					"text": "`/ray new`"
+				},
+				{
+					"type": "mrkdwn",
+					"text": ":bell: Configure job notifications"
+				},
+				{
+					"type": "mrkdwn",
+					"text": "`/ray notifications`"
+				}
+			]
+		},
+		{
+			"type": "divider"
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "*More*"
+			}
+		},
+		{
+			"type": "actions",
+			"elements": [
+				{
+					"type": "button",
+					"text": {
+						"type": "plain_text",
+						"text": ":open_file_folder: Straker Help Site",
+						"emoji": True
+					},
+					"url": "https://help.strakertranslations.com/hc/en-us",
+                    "action_id": "link"
+				}
+			]
+		}
     ]

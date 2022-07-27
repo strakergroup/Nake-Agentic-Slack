@@ -71,5 +71,11 @@ async def login(ack):
     await ack()
 
 
+@app.action('link')
+async def login(ack):
+    """Simple link button action. No additional actions required."""
+    await ack()
+
+
 # FastAPI will use this to handle Slack API requests.
 slack_handler = AsyncSlackRequestHandler(app)
