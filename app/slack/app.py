@@ -6,7 +6,7 @@ from slack_bolt.oauth.async_oauth_settings import AsyncOAuthSettings
 from slack_bolt.oauth.async_callback_options import DefaultAsyncCallbackOptions, AsyncSuccessArgs
 from .installation_store import AsyncSQLAlchemyInstallationStore
 from .state_store import AsyncSQLAlchemyOAuthStateStore
-from .templates.blocks import onboarding_block
+from .templates.messages import OnboardingMessage
 from ..database import engine
 
 
@@ -55,15 +55,16 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
     async def _success_handler(self, args: AsyncSuccessArgs) -> BoltResponse:
         # Send onboarding message to the user who installed the app.
         app.client.token = args.installation.bot_token
+        message = OnboardingMessage(
+            args.installation.user_id,
+            args.installation.team_id,
+            args.installation.app_id,
+            args.installation.user_id,
+        )
         await app.client.chat_postMessage(
             channel=args.installation.user_id,
-            blocks=onboarding_block(
-                args.installation.user_id,
-                args.installation.team_id,
-                args.installation.app_id,
-                args.installation.user_id,
-            ),
-            text='The Straker RAY App has been sucessfully installed in your Slack workspace! :tada:'
+            blocks=message.blocks,
+            text=message.text
         )
         return await super()._success_handler(args)
 

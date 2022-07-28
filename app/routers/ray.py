@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Form, status
 from pydantic import BaseModel
 from ..dependencies import SlackRayAuth
 from ..slack import app
-from ..slack.templates.blocks import successful_login_block
+from ..slack.templates.messages import SuccessfulLoginMessage
 
 
 router = APIRouter(tags=['ray'])
@@ -53,9 +53,10 @@ async def connect(
     account = accounts[0]
 
     app.client.token = account.bot_token
+    message = SuccessfulLoginMessage(account.user_id, username)
     await app.client.chat_postEphemeral(
         channel=channel_id,
         user=account.user_id,
-        blocks=successful_login_block(account.user_id, username),
-        text='Login was successful!',
+        blocks=message.blocks,
+        text=message.text,
     )

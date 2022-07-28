@@ -4,7 +4,7 @@ See https://slack.dev/bolt-python/concepts#listener-middleware.
 """
 
 from .auth.connector import get_ray_client, get_app_id
-from .templates.blocks import login_block
+from .templates.messages import LoginMessage
 
 
 async def load_ray_client(context, body, next) -> None:
@@ -19,13 +19,15 @@ async def load_ray_client(context, body, next) -> None:
         context['team_id'],
         app_id,
     )
+
+    message = LoginMessage(
+        context['user_id'],
+        context['team_id'],
+        app_id,
+        context.get('channel_id', context['user_id']),
+    )
     context['login_prompt'] = {
-        'blocks': login_block(
-            context['user_id'],
-            context['team_id'],
-            app_id,
-            context.get('channel_id', context['user_id']),
-        ),
-        'text': 'Connect your DeltaRay account',
+        'blocks': message.blocks,
+        'text': message.text,
     }
     await next()

@@ -6,8 +6,7 @@ import logging
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from .app import app
 from .middleware import load_ray_client
-from .templates.text import whoami_text
-from .templates.blocks import onboarding_block
+from .templates.messages import OnboardingMessage, WhoamiMessage
 from .templates.modals import new_job_modal
 
 # logging.basicConfig(level=logging.INFO)
@@ -29,9 +28,10 @@ async def home_opened(client, event, body, say):
     # TODO also onboard if the user hasn't opened in a long time and the account is not connected
     history = await client.conversations_history(channel=event.get('channel'), limit=1)
     if not history.get('messages'):
+        message = OnboardingMessage(event.get('user'), body['team_id'], body['api_app_id'], event.get('channel'))
         await say(
-            blocks=onboarding_block(event.get('user'), body.get('team_id'), body.get('api_app_id'), event.get('channel')),
-            text='The Straker RAY App has been sucessfully installed in your Slack workspace! :tada:'
+            blocks=message.blocks,
+            text=message.text
         )
 
 
@@ -56,7 +56,7 @@ async def ray_command(ack, say, respond, command, context, client):
     if context['ray_client']:
         match command.get('text', '').split(' '):
             case ['whoami']:
-                await respond(whoami_text(context["ray_client"]["username"]))
+                await respond(WhoamiMessage(context["ray_client"]["username"]).text)
             case ['login' | 'signin' | 'connect']:
                 await respond(
                     blocks=context['login_prompt']['blocks'],
