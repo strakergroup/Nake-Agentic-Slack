@@ -1,5 +1,5 @@
-from ..config import straker_config
-from ..slack.auth import get_slack_deltaray_integration_url
+from ...config import straker_config
+from ..auth import get_slack_deltaray_integration_url
 
 
 def onboarding_block(user_id: str, team_id: str, app_id: str, channel_id: str):

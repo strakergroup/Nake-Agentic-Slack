@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Form, status
 from pydantic import BaseModel
 from ..dependencies import SlackRayAuth
 from ..slack import app
-from ..slack.blocks import successful_login_block
+from ..slack.templates.blocks import successful_login_block
 
 
 router = APIRouter(tags=['ray'])

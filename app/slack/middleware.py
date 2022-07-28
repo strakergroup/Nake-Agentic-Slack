@@ -3,16 +3,29 @@
 See https://slack.dev/bolt-python/concepts#listener-middleware.
 """
 
-from .auth.connector import get_ray_client_id
+from .auth.connector import get_ray_client, get_app_id
+from .templates.blocks import login_block
 
 
-async def get_client_id(context, body, next):
-    """Gets and saves the DeltaRay client id of the Slack user if the
-    accounts are connected.
+async def load_ray_client(context, body, next) -> None:
+    """Gets and saves the DeltaRay client information of the Slack user to
+    the context if the accounts are connected. Also add a `login_prompt` dict
+    to the context containing the blocks and text to be sent to the user asking
+    them to connect their DeltaRay account.
     """
-    context['client_id'] = get_ray_client_id(
+    app_id = body.get('api_app_id', get_app_id(context['bot_token'], context['team_id']))
+    context['ray_client'] = get_ray_client(
         context['user_id'],
         context['team_id'],
-        body['api_app_id']
+        app_id,
     )
+    context['login_prompt'] = {
+        'blocks': login_block(
+            context['user_id'],
+            context['team_id'],
+            app_id,
+            context.get('channel_id', context['user_id']),
+        ),
+        'text': 'Connect your DeltaRay account',
+    }
     await next()

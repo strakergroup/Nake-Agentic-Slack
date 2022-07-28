@@ -5,8 +5,9 @@ import re
 import logging
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from .app import app
-from .middleware import get_client_id
-from .blocks import onboarding_block, login_block
+from .middleware import load_ray_client
+from .templates.text import whoami_text
+from .templates.blocks import onboarding_block
 
 # logging.basicConfig(level=logging.INFO)
 
@@ -33,19 +34,18 @@ async def home_opened(client, event, body, say):
         )
 
 
-@app.command('/ray', middleware=[get_client_id])
-async def ray_command(ack, say, respond, command, context):
+@app.command('/ray', middleware=[load_ray_client])
+async def ray_command(ack, say, respond, command, context, client, body):
     await ack()
     # Check if connected to DeltaRay account.
-    if context['client_id']:
+    if context['ray_client']:
         match command.get('text', '').split(' '):
             case ['whoami']:
-                await respond(f'Client ID: {context["client_id"]}')
+                await respond(whoami_text(context["ray_client"]["username"]))
             case ['login' | 'signin' | 'connect']:
-                # login prompt
                 await respond(
-                    blocks=login_block(command['user_id'], command['team_id'], command['api_app_id'], command['channel_id']),
-                    text='Connect your DeltaRay account'
+                    blocks=context['login_prompt']['blocks'],
+                    text=context['login_prompt']['text']
                 )
             case ['logout' | 'signoff']:
                 await respond('Logout prompt')
@@ -58,10 +58,9 @@ async def ray_command(ack, say, respond, command, context):
             case _:
                 await respond('Show help')
     else:
-        # login prompt
         await respond(
-            blocks=login_block(command['user_id'], command['team_id'], command['api_app_id'], command['channel_id']),
-            text='Connect your DeltaRay account'
+            blocks=context['login_prompt']['blocks'],
+            text=context['login_prompt']['text']
         )
 
 

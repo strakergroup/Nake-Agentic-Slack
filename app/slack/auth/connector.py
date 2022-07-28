@@ -7,9 +7,9 @@ from ...config import straker_config
 from ...database import engine
 
 
-def get_ray_client_id(user_id: str, team_id: str, app_id: str) -> str:
-    """Gets the RAY client id linked to the Slack account if an active link
-    exists, otherwise return the empty string.
+def get_ray_client(user_id: str, team_id: str, app_id: str) -> dict[str, str] | None:
+    """Gets the RAY client id and username linked to the Slack account if an active link
+    exists, otherwise return None.
 
     Args:
         user_id (str): The ID of the user.
@@ -17,17 +17,38 @@ def get_ray_client_id(user_id: str, team_id: str, app_id: str) -> str:
         app_id (str): The ID of the Slack app.
 
     Returns:
-        str: The client id or the empty string if the account is not linked.
+        dict[str, str] | None: A dict containing the client's id and username, or None if the
+        account is not linked.
     """
     with engine.connect() as conn:
         sql = text("""
-            SELECT member_uuid FROM slack_deltaray_link
+            SELECT link.member_uuid, mem.login FROM slack_deltaray_link link
+            INNER JOIN sitemanager.obj_m_member mem
+            ON link.member_uuid = mem.obj_uuid
             WHERE slack_user_id = :user_id
             AND slack_team_id = :team_id
             AND slack_app_id = :app_id
             AND is_active = 1
             AND is_revoked = 0
         """).bindparams(user_id=user_id, team_id=team_id, app_id=app_id)
+        result = conn.execute(sql)
+        row = result.first()
+    return {"id": row[0], "username": row[1]} if row else None
+
+
+def get_app_id(bot_token: str, team_id: str) -> str:
+    """Get the app_id from a bot token and team_id. Use this to get the app_id
+    if the Slack API does not provide it.
+    """
+    # TODO Create DB index
+    with engine.connect() as conn:
+        sql = text("""
+            SELECT app_id from slack_installations
+            WHERE bot_token = :bot_token
+            AND team_id = :team_id
+            ORDER BY id DESC
+            LIMIT 1
+        """).bindparams(bot_token=bot_token, team_id=team_id)
         result = conn.execute(sql)
         row = result.first()
     return row[0] if row else ''
