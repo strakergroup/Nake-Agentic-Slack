@@ -3,6 +3,8 @@ from slack_sdk.oauth.installation_store.sqlalchemy import SQLAlchemyInstallation
 from slack_sdk.oauth.installation_store.async_installation_store import AsyncInstallationStore
 from slack_sdk.oauth.installation_store.models.installation import Installation
 from slack_sdk.oauth.installation_store.models.bot import Bot
+from slack_sdk.oauth.state_store.sqlalchemy import SQLAlchemyOAuthStateStore
+from slack_sdk.oauth.state_store.async_state_store import AsyncOAuthStateStore
 
 
 class AsyncSQLAlchemyInstallationStore(SQLAlchemyInstallationStore, AsyncInstallationStore):
@@ -62,3 +64,17 @@ class AsyncSQLAlchemyInstallationStore(SQLAlchemyInstallationStore, AsyncInstall
         user_id: Optional[str] = None,
     ) -> None:
         return self.delete_installation(enterprise_id=enterprise_id, team_id=team_id, user_id=user_id)
+
+
+class AsyncSQLAlchemyOAuthStateStore(SQLAlchemyOAuthStateStore, AsyncOAuthStateStore):
+    """The OAuth state store for async SQLAlchemy apps.
+
+    The included SQLAlchemyOAuthStateStore does not support async apps, so this
+    class is required to fill in the gap.
+    """
+
+    async def async_issue(self, *args, **kwargs) -> str:
+        return self.issue(*args, **kwargs)
+
+    async def async_consume(self, state: str) -> bool:
+        return self.consume(state)
