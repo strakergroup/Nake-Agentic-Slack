@@ -8,6 +8,7 @@ from .app import app
 from .middleware import load_ray_client
 from .templates.text import whoami_text
 from .templates.blocks import onboarding_block
+from .templates.modals import new_job_modal
 
 # logging.basicConfig(level=logging.INFO)
 
@@ -34,10 +35,24 @@ async def home_opened(client, event, body, say):
         )
 
 
-@app.command('/ray', middleware=[load_ray_client])
-async def ray_command(ack, say, respond, command, context, client, body):
+@app.global_shortcut('new_job', middleware=[load_ray_client])
+async def new_job(ack, shortcut, context, client):
     await ack()
-    # Check if connected to DeltaRay account.
+    if context['ray_client']:
+        await new_job_modal(client, shortcut['trigger_id'], context['ray_client']['username'])
+    else:
+        # Prompt login if accounts are not connected yet.
+        await client.chat_postEphemeral(
+            channel=context['user_id'],
+            user=context['user_id'],
+            blocks=context['login_prompt']['blocks'],
+            text=context['login_prompt']['text']
+        )
+
+
+@app.command('/ray', middleware=[load_ray_client])
+async def ray_command(ack, say, respond, command, context, client):
+    await ack()
     if context['ray_client']:
         match command.get('text', '').split(' '):
             case ['whoami']:
@@ -49,6 +64,8 @@ async def ray_command(ack, say, respond, command, context, client, body):
                 )
             case ['logout' | 'signoff']:
                 await respond('Logout prompt')
+            case ['new']:
+                await new_job_modal(client, command['trigger_id'], context['ray_client']['username'])
             case [command_text]:
                 match = re.fullmatch('TJ\d+', command_text, re.IGNORECASE)
                 if match:
@@ -58,6 +75,7 @@ async def ray_command(ack, say, respond, command, context, client, body):
             case _:
                 await respond('Show help')
     else:
+        # Prompt login if accounts are not connected yet.
         await respond(
             blocks=context['login_prompt']['blocks'],
             text=context['login_prompt']['text']
