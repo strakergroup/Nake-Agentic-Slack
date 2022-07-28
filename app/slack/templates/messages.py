@@ -6,6 +6,8 @@ from ..auth import get_slack_deltaray_integration_url
 
 
 class OnboardingMessage(SlackMessage):
+    """Message to send to onboard a new user."""
+
     def __init__(self, user_id: str, team_id: str, app_id: str, channel_id: str) -> None:
         super().__init__(
             "The Straker RAY App has been sucessfully installed in your Slack workspace! :tada:",
@@ -44,6 +46,8 @@ class OnboardingMessage(SlackMessage):
 
 
 class LoginMessage(SlackMessage):
+    """Message to send to prompt the user to connect their DeltaRay account."""
+
     def __init__(self, user_id: str, team_id: str, app_id: str, channel_id: str) -> None:
         super().__init__(
             'Connect your DeltaRay account',
@@ -75,6 +79,10 @@ class LoginMessage(SlackMessage):
 
 
 class SuccessfulLoginMessage(SlackMessage):
+    """Message to send after a user successfully connects their DeltaRay
+    account.
+    """
+
     def __init__(self, user_id: str, ray_username: str) -> None:
         super().__init__(
             ':white_check_mark: Login was successful!',
@@ -154,7 +162,92 @@ class SuccessfulLoginMessage(SlackMessage):
         )
 
 
+class HelpMessage(SlackMessage):
+    """Help message showing how to use the app."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            'Hi there :wave: here are some ideas of what you can do:',
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Hi there :wave: here are some ideas of what you can do:"
+                    }
+                },
+                {
+                    "type": "divider"
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {
+                            "type": "mrkdwn",
+                            "text": "Check your job status"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": "`/ray [TJ number]`"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": "Create a new job"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": "`/ray new`"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": ":bell: Configure job notifications"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": "`/ray notifications`"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": "Show your connected DeltaRay account"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": "`/ray whoami`"
+                        }
+                    ]
+                },
+                {
+                    "type": "divider"
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*More*"
+                    }
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": ":open_file_folder: Straker Help Site",
+                                "emoji": True
+                            },
+                            "url": "https://help.strakertranslations.com/hc/en-us",
+                            "action_id": "link"
+                        }
+                    ]
+                }
+            ]
+        )
+
+
 class WhoamiMessage(TextMessage):
+    """Message showing which DeltaRay account is currently connected."""
+
     def __init__(self, username: str) -> None:
         super().__init__(
             f'Your connected DeltaRay account is: <{straker_config.deltaray_domain}|{username}>'

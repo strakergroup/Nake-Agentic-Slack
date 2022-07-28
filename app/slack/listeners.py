@@ -6,7 +6,7 @@ import logging
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from .app import app
 from .middleware import load_ray_client
-from .templates.messages import OnboardingMessage, WhoamiMessage
+from .templates.messages import OnboardingMessage, HelpMessage, WhoamiMessage
 from .templates.modals import new_job_modal
 
 # logging.basicConfig(level=logging.INFO)
@@ -71,9 +71,9 @@ async def ray_command(ack, say, respond, command, context, client):
                 if match:
                     await say(f'Job info: {command_text}')
                 else:
-                    await respond('Show help')
+                    await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
             case _:
-                await respond('Show help')
+                await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
     else:
         # Prompt login if accounts are not connected yet.
         await respond(
