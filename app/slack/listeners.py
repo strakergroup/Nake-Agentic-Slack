@@ -6,14 +6,14 @@ import logging
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from .app import app
 from .middleware import load_ray_client
-from .templates.messages import OnboardingMessage, HelpMessage, WhoamiMessage
+from .templates.messages import OnboardingMessage, HelpMessage, WhoamiMessage, InvalidCommandMessage
 from .templates.modals import new_job_modal
 
 # logging.basicConfig(level=logging.INFO)
 
 
 # ---------------------------------------------------------
-# Set up Slack events here.
+# Set up Slack listeners here.
 # ---------------------------------------------------------
 
 @app.message(re.compile(r'\bTJ\d+\b', re.IGNORECASE))
@@ -54,7 +54,7 @@ async def new_job(ack, shortcut, context, client):
 async def ray_command(ack, say, respond, command, context, client):
     await ack()
     if context['ray_client']:
-        match command.get('text', '').split(' '):
+        match command.get('text', '').lower().split(' '):
             case ['whoami']:
                 await respond(WhoamiMessage(context["ray_client"]["username"]).text)
             case ['login' | 'signin' | 'connect']:
@@ -66,14 +66,17 @@ async def ray_command(ack, say, respond, command, context, client):
                 await respond('Logout prompt')
             case ['new']:
                 await new_job_modal(client, command['trigger_id'], context['ray_client']['username'])
+            case['help']:
+                await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
             case [command_text]:
-                match = re.fullmatch('TJ\d+', command_text, re.IGNORECASE)
+                # TODO strip text of markdown
+                match = re.fullmatch('tj\d+', command_text, re.IGNORECASE)
                 if match:
                     await say(f'Job info: {command_text}')
                 else:
-                    await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
+                    await respond(text=InvalidCommandMessage().text)
             case _:
-                await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
+                await respond(text=InvalidCommandMessage().text)
     else:
         # Prompt login if accounts are not connected yet.
         await respond(

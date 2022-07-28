@@ -50,7 +50,7 @@ class LoginMessage(SlackMessage):
 
     def __init__(self, user_id: str, team_id: str, app_id: str, channel_id: str) -> None:
         super().__init__(
-            'Connect your DeltaRay account',
+            "Connect your DeltaRay account",
             [
                 {
                     "type": "section",
@@ -85,7 +85,7 @@ class SuccessfulLoginMessage(SlackMessage):
 
     def __init__(self, user_id: str, ray_username: str) -> None:
         super().__init__(
-            ':white_check_mark: Login was successful!',
+            ":white_check_mark: Login was successful!",
             [
                 {
                     "type": "section",
@@ -130,6 +130,14 @@ class SuccessfulLoginMessage(SlackMessage):
                         {
                             "type": "mrkdwn",
                             "text": "`/ray notifications`"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": ":information_source: Show a help message"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": "`/ray help`"
                         }
                     ]
                 },
@@ -167,7 +175,7 @@ class HelpMessage(SlackMessage):
 
     def __init__(self) -> None:
         super().__init__(
-            'Hi there :wave: here are some ideas of what you can do:',
+            "Hi there :wave: here are some ideas of what you can do:",
             [
                 {
                     "type": "section",
@@ -250,5 +258,10 @@ class WhoamiMessage(TextMessage):
 
     def __init__(self, username: str) -> None:
         super().__init__(
-            f'Your connected DeltaRay account is: <{straker_config.deltaray_domain}|{username}>'
+            f"Your connected DeltaRay account is: <{straker_config.deltaray_domain}|{username}>"
         )
+
+
+class InvalidCommandMessage(TextMessage):
+    def __init__(self) -> None:
+        super().__init__(':no_entry_sign: Invalid command. Type `/ray help` for a list of valid commands.')
