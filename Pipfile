@@ -10,6 +10,8 @@ sqlalchemy = "*"
 mysqlclient = "*"
 aiohttp = "*"
 cryptography = "*"
+httpx = "*"
+ray-python-sdk = {path = "./RAY_Python_SDK-0.0.10-py3-none-any.whl"}
 
 [dev-packages]
 autopep8 = "*"
