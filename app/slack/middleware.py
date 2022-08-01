@@ -26,6 +26,7 @@ async def load_ray_client(context, body, next) -> None:
         app_id,
         context.get('channel_id', context['user_id']),
     )
+    # TODO use message class
     context['login_prompt'] = {
         'blocks': message.blocks,
         'text': message.text,

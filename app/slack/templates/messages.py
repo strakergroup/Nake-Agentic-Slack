@@ -1,5 +1,6 @@
 """Slack Messages templates."""
 
+from urllib.parse import urlencode
 from .models import SlackMessage, TextMessage
 from ...config import straker_config
 from ..auth import get_slack_deltaray_integration_url
@@ -162,6 +163,74 @@ class SuccessfulLoginMessage(SlackMessage):
                                 "emoji": True
                             },
                             "url": "https://help.strakertranslations.com/hc/en-us",
+                            "action_id": "link"
+                        }
+                    ]
+                }
+            ]
+        )
+
+
+class JobStatusMessage(SlackMessage):
+    def __init__(self, job_id: str, job: dict, client_id: str) -> None:
+        super().__init__(
+            f"Job status ({job_id}): {job['status']}",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Job status ({job_id}):*"
+                    }
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {
+                            "type": "mrkdwn",
+                            "text": "Status"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": job['status']
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": "Source language"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": job['sl']
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": "Target language(s)"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": job['tl']
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": "Target date"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": job['target_date']
+                        }
+                    ]
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "View this job in DeltaRay",
+                                "emoji": True
+                            },
+                            "url": f"{straker_config.deltaray_domain}/job/detail?{urlencode({'j': job['obj_uuid'], 'member_id': client_id})}",
                             "action_id": "link"
                         }
                     ]

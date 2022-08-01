@@ -5,9 +5,9 @@ import re
 import json
 import logging
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
-from .app import app
+from .app import app, ray
 from .middleware import load_ray_client
-from .templates.messages import OnboardingMessage, HelpMessage, WhoamiMessage, InvalidCommandMessage
+from .templates.messages import OnboardingMessage, JobStatusMessage, HelpMessage, WhoamiMessage, InvalidCommandMessage
 from .templates.views import new_job_modal, new_job_files_modal
 from .select_options import get_language_options, map_file_options
 from random import randrange
@@ -75,6 +75,7 @@ async def new_job(ack, shortcut, context, respond, client):
 async def ray_command(ack, say, respond, command, context, client):
     await ack()
     if context['ray_client']:
+        # TODO trim, remove extra whitespace
         match command.get('text', '').lower().split(' '):
             case ['whoami']:
                 await respond(WhoamiMessage(context["ray_client"]["username"]).text)
@@ -91,13 +92,21 @@ async def ray_command(ack, say, respond, command, context, client):
                     # TODO: get latest files
                     view=new_job_modal(context['ray_client']['username'])
                 )
-            case['help']:
+            case['help' | '']:
                 await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
             case [command_text]:
                 # TODO strip text of markdown
                 match = re.fullmatch('tj\d+', command_text, re.IGNORECASE)
                 if match:
-                    await say(f'Job info: {command_text}')
+                    job = ray.get_job(int(command_text[2:]))
+                    if job:
+                        message = JobStatusMessage(command_text.upper(), job, context['ray_client']['id'])
+                        await say(
+                            blocks=message.blocks,
+                            text=message.text
+                        )
+                    else:
+                        await respond(f'You do not access to the job: `{command_text.upper()}`')
                 else:
                     await respond(text=InvalidCommandMessage().text)
             case _:

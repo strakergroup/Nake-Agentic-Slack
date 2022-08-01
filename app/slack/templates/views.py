@@ -159,7 +159,7 @@ def new_job_modal(client_name: str, files: list[dict[str, Any]] | None = None) -
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": "Due date",
+                    "text": "Target date",
                     "emoji": True
                 }
             },
