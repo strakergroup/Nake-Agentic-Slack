@@ -38,8 +38,7 @@ async def home_opened(event, body, say, client):
         )
 
 
-@app.global_shortcut('new_job', middleware=[load_ray_client])
-async def new_job(ack, shortcut, context, client):
+@app.global_shortcut('new_job_global', middleware=[load_ray_client])
     await ack()
     if context['ray_client']:
         await client.views_open(
