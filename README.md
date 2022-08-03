@@ -15,7 +15,7 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
    $ pipenv install
    ```
 
-2. Set up environment variables by copying the `.env.example` to `.env` and inputting the configuration for your app.
+2. Set up environment variables by copying the `.env.example` to `.env` and writing the configuration for your app.
 
    ```bash
    $ mv .env.example .env
@@ -23,7 +23,11 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
 
    The `.env` file contains sensitive and device-specific information so is not committed to the repository.
 
-3. Start the app using
+3. Download the credentials of your IBM Watson Assistant service instance and place the file (named `ibm-credentials.env`) in the root directory.
+
+   You can find the service instance in your [resource list](https://cloud.ibm.com/resources) under **Services and software**, the product should be **Watson Assistant**. After opening the service instance page, click the *Download* button in the *Credentials* section.
+
+4. Start the app using
 
    ```bash
    $ pipenv run uvicorn app.main:app --reload
@@ -37,9 +41,9 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
 
    The app should now be running at `localhost` in the port you specified, e.g. http://localhost:8000.
 
-4. To allow the Slack API to communicate with your app, the URL must be exposed to the public. You can do this with [boringproxy](https://boringproxy.io/), [ngrok](https://ngrok.com/) or whichever method you choose.
+5. To allow the Slack API to communicate with your app, the URL must be exposed to the public. You can do this with [boringproxy](https://boringproxy.io/), [ngrok](https://ngrok.com/) or whichever method you choose.
 
-5. After your Slack App is [set up in Slack](https://api.slack.com/apps), set the URLs to point to your app:
+6. After your Slack App is [set up in Slack](https://api.slack.com/apps), set the URLs to point to your app:
 
    - Redirect URLs (Features -> OAuth & Permissions)
      - `<your-domain>/slack/oauth_redirect`
@@ -50,7 +54,7 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
    - Slash Commands (Features -> Slash Commands)
      - Point all your request URLS to `<your-domain>/slack/events`
 
-6. Install your Slack App to Slack Workspace with the URL `/slack/install`, e.g. `<your-domain>/slack/install`.
+7. Install your Slack App to Slack Workspace with the URL `/slack/install`, e.g. `<your-domain>/slack/install`.
 
    You can share this URL or embed it in a link on a web page for anyone to install (must have public distribution enabled, Settings -> Manage Distribution). **Make sure the app is secure before making it available to the public.**
 

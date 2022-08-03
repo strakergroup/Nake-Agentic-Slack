@@ -10,6 +10,8 @@
 .venv
 env/
 venv/
+# IBM cloud credentials
+ibm-credentials.env
 
 __pycache__/
 *.py[cod]

@@ -10,6 +10,7 @@ from .middleware import load_ray_client
 from .templates.messages import OnboardingMessage, JobStatusMessage, HelpMessage, WhoamiMessage, InvalidCommandMessage
 from .templates.views import new_job_modal, new_job_files_modal
 from .select_options import get_language_options, map_file_options
+from ..watson import watson_message
 from random import randrange
 
 # logging.basicConfig(level=logging.INFO)
@@ -19,10 +20,15 @@ from random import randrange
 # Set up Slack listeners here.
 # ---------------------------------------------------------
 
-@app.message(re.compile(r'\bTJ\d+\b', re.IGNORECASE))
-async def message_hello(message, context, say):
-    job_ids = (id.upper() for id in context['matches'])
-    await say(f'Job ({", ".join(job_ids)})')
+@app.event({'type': 'message', 'subtype': None})
+async def message_event(message, context, say):
+    if 'text' not in message:
+        return
+    response = watson_message(message['text'], context.get('user_id'))
+    if isinstance(response, str):
+        await say(response)
+    else:
+        await say(json.dumps(response, indent=4))
 
 
 @app.event('app_home_opened')
@@ -39,6 +45,7 @@ async def home_opened(event, body, say, client):
 
 
 @app.global_shortcut('new_job_global', middleware=[load_ray_client])
+async def new_job_global(ack, shortcut, context, client):
     await ack()
     if context['ray_client']:
         await client.views_open(
