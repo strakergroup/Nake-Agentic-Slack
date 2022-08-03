@@ -21,7 +21,8 @@ def get_ray_client(user_id: str, team_id: str, app_id: str) -> dict[str, str] | 
         account is not linked.
     """
     with engine.connect() as conn:
-        sql = text("""
+        sql = text(
+            """
             SELECT link.member_uuid, mem.login FROM slack_deltaray_link link
             INNER JOIN sitemanager.obj_m_member mem
             ON link.member_uuid = mem.obj_uuid
@@ -30,7 +31,8 @@ def get_ray_client(user_id: str, team_id: str, app_id: str) -> dict[str, str] | 
             AND slack_app_id = :app_id
             AND is_active = 1
             AND is_revoked = 0
-        """).bindparams(user_id=user_id, team_id=team_id, app_id=app_id)
+        """
+        ).bindparams(user_id=user_id, team_id=team_id, app_id=app_id)
         result = conn.execute(sql)
         row = result.first()
     return {"id": row[0], "username": row[1]} if row else None
@@ -42,24 +44,22 @@ def get_app_id(bot_token: str, team_id: str) -> str:
     """
     # TODO Create DB index
     with engine.connect() as conn:
-        sql = text("""
+        sql = text(
+            """
             SELECT app_id from slack_installations
             WHERE bot_token = :bot_token
             AND team_id = :team_id
             ORDER BY id DESC
             LIMIT 1
-        """).bindparams(bot_token=bot_token, team_id=team_id)
+        """
+        ).bindparams(bot_token=bot_token, team_id=team_id)
         result = conn.execute(sql)
         row = result.first()
-    return row[0] if row else ''
+    return row[0] if row else ""
 
 
 def encrpyt_slack_integration_token(
-    user_id: str,
-    team_id: str,
-    app_id: str,
-    channel_id: str,
-    expire_seconds: int = 3600
+    user_id: str, team_id: str, app_id: str, channel_id: str, expire_seconds: int = 3600
 ) -> str:
     """Generates time-sensitive token to allow the Slack app to communicate
     with the RAY platform securely.
@@ -79,23 +79,19 @@ def encrpyt_slack_integration_token(
     """
     epoch = int(time.time())
     data = {
-        'appId': app_id,
-        'teamId': team_id,
-        'userId': user_id,
-        'channelId': channel_id,
-        'created': epoch,
-        'expires': epoch + expire_seconds,
+        "appId": app_id,
+        "teamId": team_id,
+        "userId": user_id,
+        "channelId": channel_id,
+        "created": epoch,
+        "expires": epoch + expire_seconds,
     }
 
     return encrypt_aes(json.dumps(data), straker_config.slack_deltaray_key)
 
 
 def get_slack_deltaray_integration_url(
-    user_id: str,
-    team_id: str,
-    app_id: str,
-    channel_id: str,
-    expire_seconds: int = 3600
+    user_id: str, team_id: str, app_id: str, channel_id: str, expire_seconds: int = 3600
 ) -> str:
     """Generates a URL for a user to connect their Slack account to their
     DeltaRay account.
@@ -110,8 +106,12 @@ def get_slack_deltaray_integration_url(
     Returns:
         str: The URL to connect a user's Slack account and DeltaRay account.
     """
-    params = {'token': encrpyt_slack_integration_token(user_id, team_id, app_id, channel_id, expire_seconds)}
-    return f'{straker_config.deltaray_domain}/integration/slack?{urlencode(params)}'
+    params = {
+        "token": encrpyt_slack_integration_token(
+            user_id, team_id, app_id, channel_id, expire_seconds
+        )
+    }
+    return f"{straker_config.deltaray_domain}/integration/slack?{urlencode(params)}"
 
 
 def validate_ray_authentication_token(token: str) -> str:
@@ -131,11 +131,14 @@ def validate_ray_authentication_token(token: str) -> str:
         raw_data = decrypt_aes(token, straker_config.slack_deltaray_key)
         data = json.loads(raw_data)
         if not isinstance(data, dict):
-            raise ValueError('The decrypted data has an invalid format')
-        if not isinstance(data['client_id'], str) or not data['client_id']:
-            raise ValueError('The decrypted data has an invalid format')
-        if not isinstance(data['expires'], (int, float)) or data['expires'] <= time.time():
-            raise ValueError('The token has expired')
-        return data['client_id']
+            raise ValueError("The decrypted data has an invalid format")
+        if not isinstance(data["client_id"], str) or not data["client_id"]:
+            raise ValueError("The decrypted data has an invalid format")
+        if (
+            not isinstance(data["expires"], (int, float))
+            or data["expires"] <= time.time()
+        ):
+            raise ValueError("The token has expired")
+        return data["client_id"]
     except Exception as e:
-        raise ValueError('Token validation failed') from e
+        raise ValueError("Token validation failed") from e

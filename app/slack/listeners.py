@@ -7,7 +7,13 @@ import logging
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from .app import app, ray
 from .middleware import load_ray_client
-from .templates.messages import OnboardingMessage, JobStatusMessage, HelpMessage, WhoamiMessage, InvalidCommandMessage
+from .templates.messages import (
+    OnboardingMessage,
+    JobStatusMessage,
+    HelpMessage,
+    WhoamiMessage,
+    InvalidCommandMessage,
+)
 from .templates.views import new_job_modal, new_job_files_modal
 from .select_options import get_language_options, map_file_options
 from ..watson import watson_message
@@ -20,99 +26,102 @@ from random import randrange
 # Set up Slack listeners here.
 # ---------------------------------------------------------
 
-@app.event({'type': 'message', 'subtype': None})
+
+@app.event({"type": "message", "subtype": None})
 async def message_event(message, context, say):
-    if 'text' not in message:
+    if "text" not in message:
         return
-    response = watson_message(message['text'], context.get('user_id'))
+    response = watson_message(message["text"], context.get("user_id"))
     if isinstance(response, str):
         await say(response)
     else:
         await say(json.dumps(response, indent=4))
 
 
-@app.event('app_home_opened')
+@app.event("app_home_opened")
 async def home_opened(event, body, say, client):
     # Send an onboarding message if the app home is opened for the first time.
     # TODO also onboard if the user hasn't opened in a long time and the account is not connected
-    history = await client.conversations_history(channel=event.get('channel'), limit=1)
-    if not history.get('messages'):
-        message = OnboardingMessage(event.get('user'), body['team_id'], body['api_app_id'], event.get('channel'))
-        await say(
-            blocks=message.blocks,
-            text=message.text
+    history = await client.conversations_history(channel=event.get("channel"), limit=1)
+    if not history.get("messages"):
+        message = OnboardingMessage(
+            event.get("user"), body["team_id"], body["api_app_id"], event.get("channel")
         )
+        await say(blocks=message.blocks, text=message.text)
 
 
-@app.global_shortcut('new_job_global', middleware=[load_ray_client])
+@app.global_shortcut("new_job_global", middleware=[load_ray_client])
 async def new_job_global(ack, shortcut, context, client):
     await ack()
-    if context['ray_client']:
+    if context["ray_client"]:
         await client.views_open(
-            trigger_id=shortcut['trigger_id'],
-            view=new_job_modal(context['ray_client']['username'])
+            trigger_id=shortcut["trigger_id"],
+            view=new_job_modal(context["ray_client"]["username"]),
         )
     else:
         # Prompt login if accounts are not connected yet.
         await client.chat_postMessage(
-            channel=context['user_id'],
-            blocks=context['login_prompt']['blocks'],
-            text=context['login_prompt']['text']
+            channel=context["user_id"],
+            blocks=context["login_prompt"]["blocks"],
+            text=context["login_prompt"]["text"],
         )
 
 
-@app.message_shortcut('new_job', middleware=[load_ray_client])
+@app.message_shortcut("new_job", middleware=[load_ray_client])
 async def new_job(ack, shortcut, context, respond, client):
     await ack()
-    if context['ray_client']:
+    if context["ray_client"]:
         await client.views_open(
-            trigger_id=shortcut['trigger_id'],
-            view=new_job_modal(context['ray_client']['username'], shortcut['message'].get('files'))
+            trigger_id=shortcut["trigger_id"],
+            view=new_job_modal(
+                context["ray_client"]["username"], shortcut["message"].get("files")
+            ),
         )
     else:
         # Prompt login if accounts are not connected yet.
         await respond(
-            blocks=context['login_prompt']['blocks'],
-            text=context['login_prompt']['text']
+            blocks=context["login_prompt"]["blocks"],
+            text=context["login_prompt"]["text"],
         )
 
 
-@app.command('/ray', middleware=[load_ray_client])
+@app.command("/ray", middleware=[load_ray_client])
 async def ray_command(ack, say, respond, command, context, client):
     await ack()
-    if context['ray_client']:
+    if context["ray_client"]:
         # TODO trim, remove extra whitespace
-        match command.get('text', '').lower().split(' '):
-            case ['whoami']:
+        match command.get("text", "").lower().split(" "):
+            case ["whoami"]:
                 await respond(WhoamiMessage(context["ray_client"]["username"]).text)
-            case ['login' | 'signin' | 'connect']:
+            case ["login" | "signin" | "connect"]:
                 await respond(
-                    blocks=context['login_prompt']['blocks'],
-                    text=context['login_prompt']['text']
+                    blocks=context["login_prompt"]["blocks"],
+                    text=context["login_prompt"]["text"],
                 )
-            case ['logout' | 'signoff']:
-                await respond('Logout prompt')
-            case ['new']:
+            case ["logout" | "signoff"]:
+                await respond("Logout prompt")
+            case ["new"]:
                 await client.views_open(
-                    trigger_id=command['trigger_id'],
+                    trigger_id=command["trigger_id"],
                     # TODO: get latest files
-                    view=new_job_modal(context['ray_client']['username'])
+                    view=new_job_modal(context["ray_client"]["username"]),
                 )
-            case['help' | '']:
+            case ["help" | ""]:
                 await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
             case [command_text]:
                 # TODO strip text of markdown
-                match = re.fullmatch('tj\d+', command_text, re.IGNORECASE)
+                match = re.fullmatch("tj\d+", command_text, re.IGNORECASE)
                 if match:
                     job = ray.get_job(int(command_text[2:]))
                     if job:
-                        message = JobStatusMessage(command_text.upper(), job, context['ray_client']['id'])
-                        await say(
-                            blocks=message.blocks,
-                            text=message.text
+                        message = JobStatusMessage(
+                            command_text.upper(), job, context["ray_client"]["id"]
                         )
+                        await say(blocks=message.blocks, text=message.text)
                     else:
-                        await respond(f'You do not access to the job: `{command_text.upper()}`')
+                        await respond(
+                            f"You do not access to the job: `{command_text.upper()}`"
+                        )
                 else:
                     await respond(text=InvalidCommandMessage().text)
             case _:
@@ -120,82 +129,83 @@ async def ray_command(ack, say, respond, command, context, client):
     else:
         # Prompt login if accounts are not connected yet.
         await respond(
-            blocks=context['login_prompt']['blocks'],
-            text=context['login_prompt']['text']
+            blocks=context["login_prompt"]["blocks"],
+            text=context["login_prompt"]["text"],
         )
 
 
-@app.action('login')
+@app.action("login")
 async def login(ack):
     # No need to do anything here, user opened a link.
     await ack()
 
 
-@app.action('link')
+@app.action("link")
 async def login(ack):
     """Simple link button action. No additional actions required."""
     await ack()
 
 
-@app.view('new_job', middleware=[load_ray_client])
+@app.view("new_job", middleware=[load_ray_client])
 async def handle_new_job(ack, view, context, body, client):
-    if context['ray_client']:
+    if context["ray_client"]:
         # TODO input validation, e.g. target date
         files = []
-        if 'private_metadata' in view:
+        if "private_metadata" in view:
             try:
-                metadata = json.loads(view['private_metadata'])
-                files = metadata.get('files', [])
+                metadata = json.loads(view["private_metadata"])
+                files = metadata.get("files", [])
             except Exception:
                 # Ignore private_metadata if the format is invalid.
                 pass
         # Go to the next form to select the files to translate.
-        await ack(response_action='push', view=new_job_files_modal(files))
+        await ack(response_action="push", view=new_job_files_modal(files))
     else:
-        await ack(response_action='clear')
+        await ack(response_action="clear")
         # Prompt login if accounts are not connected yet.
         await client.chat_postMessage(
-            channel=context['user_id'],
-            blocks=context['login_prompt']['blocks'],
-            text=context['login_prompt']['text']
+            channel=context["user_id"],
+            blocks=context["login_prompt"]["blocks"],
+            text=context["login_prompt"]["text"],
         )
 
 
-@app.view('new_job_files', middleware=[load_ray_client])
+@app.view("new_job_files", middleware=[load_ray_client])
 async def handle_new_job_files(ack, view, context, client):
-    print(view['state']['values'])
-    await ack(response_action='clear')
+    print(view["state"]["values"])
+    await ack(response_action="clear")
     # await client.chat_postMessage(
     #     channel=context['user_id'],
     #     text=':tada: Your translation job has been submitted. You will be notified when the job is created.'
     # )
     await client.chat_postMessage(
-        channel=context['user_id'],
-        text=f'New job submitted with ID: `TJ{randrange(800_000, 1_200_000)}`'
+        channel=context["user_id"],
+        text=f"New job submitted with ID: `TJ{randrange(800_000, 1_200_000)}`",
     )
 
 
-@app.options('language_options')
+@app.options("language_options")
 async def language_options(ack, payload):
-    options = get_language_options(payload.get('value'))
+    options = get_language_options(payload.get("value"))
     await ack(options=options)
 
 
-@app.options('file_options')
+@app.options("file_options")
 async def file_options(ack, payload, context, client):
     channel_id = None
-    view = payload.get('view')
+    view = payload.get("view")
     # TODO Handle selected conversation change (state?).
-    if view and 'conversation' in view['state']['values']:
-        selected_channel = view['state']['values']['conversation']['select_conversation']['selected_conversation']
+    if view and "conversation" in view["state"]["values"]:
+        selected_channel = view["state"]["values"]["conversation"][
+            "select_conversation"
+        ]["selected_conversation"]
         # If the selected conversation is a DM, get the real conversation id (instead of the user id).
-        if selected_channel == context['bot_user_id']:
+        if selected_channel == context["bot_user_id"]:
             channel = await client.conversations_open(
-                users=context['user_id'],
-                prevent_creation=True
+                users=context["user_id"], prevent_creation=True
             )
-            channel_id = channel['channel']['id']
-        elif selected_channel[0] == 'U':
+            channel_id = channel["channel"]["id"]
+        elif selected_channel[0] == "U":
             # TODO handle this (user tokens?)
             channel_id = None
         else:
@@ -208,7 +218,7 @@ async def file_options(ack, payload, context, client):
         show_files_hidden_by_limit=False,
         # TODO user= user filter?
     )
-    files = response.get('files', [])
+    files = response.get("files", [])
     await ack(options=map_file_options(files))
 
 

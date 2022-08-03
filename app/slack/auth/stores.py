@@ -1,13 +1,17 @@
 from typing import Optional
 from slack_sdk.oauth.installation_store.sqlalchemy import SQLAlchemyInstallationStore
-from slack_sdk.oauth.installation_store.async_installation_store import AsyncInstallationStore
+from slack_sdk.oauth.installation_store.async_installation_store import (
+    AsyncInstallationStore,
+)
 from slack_sdk.oauth.installation_store.models.installation import Installation
 from slack_sdk.oauth.installation_store.models.bot import Bot
 from slack_sdk.oauth.state_store.sqlalchemy import SQLAlchemyOAuthStateStore
 from slack_sdk.oauth.state_store.async_state_store import AsyncOAuthStateStore
 
 
-class AsyncSQLAlchemyInstallationStore(SQLAlchemyInstallationStore, AsyncInstallationStore):
+class AsyncSQLAlchemyInstallationStore(
+    SQLAlchemyInstallationStore, AsyncInstallationStore
+):
     """The install store for async SQLAlchemy apps.
 
     The included SQLAlchemyInstallStore does not support async apps, so this
@@ -63,7 +67,9 @@ class AsyncSQLAlchemyInstallationStore(SQLAlchemyInstallationStore, AsyncInstall
         team_id: Optional[str],
         user_id: Optional[str] = None,
     ) -> None:
-        return self.delete_installation(enterprise_id=enterprise_id, team_id=team_id, user_id=user_id)
+        return self.delete_installation(
+            enterprise_id=enterprise_id, team_id=team_id, user_id=user_id
+        )
 
 
 class AsyncSQLAlchemyOAuthStateStore(SQLAlchemyOAuthStateStore, AsyncOAuthStateStore):

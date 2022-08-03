@@ -8,6 +8,6 @@ app.include_router(slack.router)
 app.include_router(ray.router)
 
 
-@app.get('/')
+@app.get("/")
 async def root():
-    return {'message': 'Slack Ray Translator App'}
+    return {"message": "Slack Ray Translator App"}

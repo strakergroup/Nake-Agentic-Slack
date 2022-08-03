@@ -21,7 +21,7 @@ def encrypt_aes(data: str, key: bytes) -> str:
 
     encryptor = Cipher(algorithms.AES(key), modes.ECB()).encryptor()
     encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
-    return codecs.encode(encrypted_data, 'hex').decode()
+    return codecs.encode(encrypted_data, "hex").decode()
 
 
 def decrypt_aes(data: str, key: bytes) -> str:
@@ -38,8 +38,9 @@ def decrypt_aes(data: str, key: bytes) -> str:
     """
     aes = algorithms.AES(key)
     decryptor = Cipher(algorithms.AES(key), modes.ECB()).decryptor()
-    decrypted_padded_data = decryptor.update(
-        codecs.decode(data.encode(), 'hex')) + decryptor.finalize()
+    decrypted_padded_data = (
+        decryptor.update(codecs.decode(data.encode(), "hex")) + decryptor.finalize()
+    )
 
     padder = padding.PKCS7(aes.block_size).unpadder()
     decrypted_data = padder.update(decrypted_padded_data) + padder.finalize()
