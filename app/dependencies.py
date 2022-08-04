@@ -37,13 +37,14 @@ class SlackRayAuth:
         with engine.connect() as conn:
             sql = text(
                 """
-                SELECT slack_user_id,slack_team_id,slack_app_id,slack_channel_id,is_subscribed
+                SELECT slack_user_id,slack_team_id,
+                    slack_app_id,slack_channel_id,is_subscribed
                 FROM slack_deltaray_link
                 WHERE member_uuid = :client_id
                 AND is_active = 1
                 AND is_revoked = 0
                 ORDER BY id DESC
-            """
+                """
             ).bindparams(client_id=self.client_id)
             result = conn.execute(sql)
             for row in result:
@@ -73,7 +74,7 @@ class SlackRayAuth:
             WHERE team_id = :team_id AND app_id = :app_id
             ORDER BY id DESC
             LIMIT 1
-        """
+            """
         ).bindparams(team_id=team_id, app_id=app_id)
         result = conn.execute(sql).all()
         return result[0][0] if result else ""

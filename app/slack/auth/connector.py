@@ -31,7 +31,7 @@ def get_ray_client(user_id: str, team_id: str, app_id: str) -> dict[str, str] | 
             AND slack_app_id = :app_id
             AND is_active = 1
             AND is_revoked = 0
-        """
+            """
         ).bindparams(user_id=user_id, team_id=team_id, app_id=app_id)
         result = conn.execute(sql)
         row = result.first()
@@ -51,7 +51,7 @@ def get_app_id(bot_token: str, team_id: str) -> str:
             AND team_id = :team_id
             ORDER BY id DESC
             LIMIT 1
-        """
+            """
         ).bindparams(bot_token=bot_token, team_id=team_id)
         result = conn.execute(sql)
         row = result.first()
