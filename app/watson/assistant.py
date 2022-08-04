@@ -1,5 +1,6 @@
 import os
 from ibm_watson import AssistantV2
+from .response import WatsonResponse
 
 
 ASSISTANT_ID = os.getenv("WATSON_ASSISTANT_ID")
@@ -11,13 +12,11 @@ if not ASSISTANT_ID:
 assistant = AssistantV2(version="2021-11-27")
 
 
-def watson_message(text: str, user_id: str | None = None):
+def watson_message(text: str, user_id: str | None = None) -> WatsonResponse:
     response = assistant.message_stateless(
         ASSISTANT_ID,
         input={"text": text},
         user_id=user_id,
     ).get_result()
 
-    output = response["output"]
-
-    return output["generic"][0]["text"]
+    return WatsonResponse(response["output"])

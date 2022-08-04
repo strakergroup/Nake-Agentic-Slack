@@ -1,7 +1,8 @@
-from .assistant import assistant, watson_message
+from .assistant import watson_message
+from .response import WatsonResponse
 
 
 __all__ = [
-    "assistant",
     "watson_message",
+    "WatsonResponse",
 ]

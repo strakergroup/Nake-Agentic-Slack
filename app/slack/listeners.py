@@ -27,15 +27,46 @@ from random import randrange
 # ---------------------------------------------------------
 
 
-@app.event({"type": "message", "subtype": None})
-async def message_event(message, context, say):
+@app.event(
+    {"type": "message", "subtype": (None, "file_share")}, middleware=[load_ray_client]
+)
+async def message_event(message, context, say, client):
     if "text" not in message:
         return
+
+    async def require_ray_client(callback: Callable[[None], None]):
+        if context["ray_client"]:
+            await callback()
+        else:
+            await client.chat_postEphemeral(
+                channel=context["channel_id"],
+                user=context["user_id"],
+                blocks=context["login_prompt"]["blocks"],
+                text=context["login_prompt"]["text"],
+            )
+
     response = watson_message(message["text"], context.get("user_id"))
-    if isinstance(response, str):
-        await say(response)
-    else:
-        await say(json.dumps(response, indent=4))
+    match response.intent:
+        case "General_About_You" | "General_Agent_Capabilities" | "General_Greetings":
+            await say(blocks=HelpMessage().blocks, text=HelpMessage().text)
+        case "Login":
+            await client.chat_postEphemeral(
+                channel=context["channel_id"],
+                user=context["user_id"],
+                blocks=context["login_prompt"]["blocks"],
+                text=context["login_prompt"]["text"],
+            )
+        case "Job_Status":
+
+            async def action():
+                await say("Job status ...")
+
+            await require_ray_client(action)
+        case "New_Translation_Job":
+            message = NewJobMessage(context["channel_id"], message["ts"])
+            await say(blocks=message.blocks, text=message.text)
+        case _:
+            await say(response.reply)
 
 
 @app.event("app_home_opened")
@@ -134,6 +165,35 @@ async def ray_command(ack, say, respond, command, context, client):
         )
 
 
+@app.action("new_job", middleware=[load_ray_client])
+async def new_job_action(ack, payload, context, client, respond, body):
+    await ack()
+    if context["ray_client"]:
+        # Get files from the source message to prefill the modal.
+        files = []
+        try:
+            value = json.loads(payload["value"])
+            response = await client.conversations_history(
+                channel=value["channel_id"],
+                latest=value["ts"],
+                inclusive=True,
+                limit=1,
+            )
+            message = response["messages"][0]
+            files = message.get("files", [])
+        except Exception:
+            pass  # THe payload value is malformed
+        await client.views_open(
+            trigger_id=body["trigger_id"],
+            view=new_job_modal(context["ray_client"]["username"], files),
+        )
+    else:
+        await respond(
+            blocks=context["login_prompt"]["blocks"],
+            text=context["login_prompt"]["text"],
+        )
+
+
 @app.action("login")
 async def login(ack):
     # No need to do anything here, user opened a link.
@@ -141,7 +201,7 @@ async def login(ack):
 
 
 @app.action("link")
-async def login(ack):
+async def link(ack):
     """Simple link button action. No additional actions required."""
     await ack()
 

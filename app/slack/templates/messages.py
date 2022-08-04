@@ -1,5 +1,6 @@
 """Slack Messages templates."""
 
+import json
 from urllib.parse import urlencode
 from .models import SlackMessage, TextMessage
 from ...config import straker_config
@@ -149,6 +150,8 @@ class SuccessfulLoginMessage(SlackMessage):
 
 
 class JobStatusMessage(SlackMessage):
+    """Message showing the status of a translation job."""
+
     def __init__(self, job_id: str, job: dict, client_id: str) -> None:
         super().__init__(
             f"Job status ({job_id}): {job['status']}",
@@ -182,6 +185,45 @@ class JobStatusMessage(SlackMessage):
                             },
                             "url": f"{straker_config.deltaray_domain}/job/detail?{urlencode({'j': job['obj_uuid'], 'member_id': client_id})}",
                             "action_id": "link",
+                        }
+                    ],
+                },
+            ],
+        )
+
+
+class NewJobMessage(SlackMessage):
+    """Message with a button to open the new job modal."""
+
+    def __init__(self, channel_id: str, timestamp: str) -> None:
+        super().__init__(
+            "Submit a new translation job",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Click here to submit a new translation job",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "New translation job",
+                                "emoji": True,
+                            },
+                            "action_id": "new_job",
+                            "style": "primary",
+                            "value": json.dumps(
+                                {
+                                    "channel_id": channel_id,
+                                    "ts": timestamp,
+                                }
+                            ),
                         }
                     ],
                 },
