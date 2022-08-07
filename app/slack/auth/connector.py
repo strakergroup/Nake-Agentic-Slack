@@ -17,8 +17,8 @@ def get_ray_client(user_id: str, team_id: str, app_id: str) -> dict[str, str] | 
         app_id (str): The ID of the Slack app.
 
     Returns:
-        dict[str, str] | None: A dict containing the client's id and username, or None if the
-        account is not linked.
+        dict[str, str] | None: A dict containing the client's id and username,
+        or None if the account is not linked.
     """
     with engine.connect() as conn:
         sql = text(
@@ -35,7 +35,29 @@ def get_ray_client(user_id: str, team_id: str, app_id: str) -> dict[str, str] | 
         ).bindparams(user_id=user_id, team_id=team_id, app_id=app_id)
         result = conn.execute(sql)
         row = result.first()
-    return {"id": row[0], "username": row[1]} if row else None
+        if not row:
+            return None
+        ray_client = {"id": row[0], "username": row[1]}
+        # Now get the access token for authentication.
+        sql = text(
+            """
+            SELECT t.access_token FROM client_tokens t
+            INNER JOIN client_credentials c
+            ON t.client_credentials_uuid = c.obj_uuid
+            WHERE c.app_team_id = :team_id
+            AND c.app_name = 'slack-ray-translator'
+            AND c.active = 1
+            AND t.active = 1
+            AND t.expired_at IS NULL
+            LIMIT 1
+            """
+        ).bindparams(team_id=team_id)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return None
+        ray_client["access_token"] = row[0]
+    return ray_client
 
 
 def get_app_id(bot_token: str, team_id: str) -> str:
@@ -69,7 +91,8 @@ def encrpyt_slack_integration_token(
         team_id (str): The ID of the team.
         app_id (str): The ID of the Slack app.
         channel_id (str): The ID of channel where the login command was called.
-        expire_seconds (int, optional): The time in seconds before the token expires. Defaults to 3600.
+        expire_seconds (int, optional): The time in seconds before the token expires.
+        Defaults to 3600.
 
     Raises:
         AssertionError: The RAY_INTEGRATION_KEY environment variable is not set.
@@ -101,7 +124,8 @@ def get_slack_deltaray_integration_url(
         team_id (str): The ID of the team.
         app_id (str): The ID of the Slack app.
         channel_id (str): The ID of channel where the login command was called.
-        expire_seconds (int, optional): The time in seconds before the token expires. Defaults to 3600.
+        expire_seconds (int, optional): The time in seconds before the token expires.
+        Defaults to 3600.
 
     Returns:
         str: The URL to connect a user's Slack account and DeltaRay account.

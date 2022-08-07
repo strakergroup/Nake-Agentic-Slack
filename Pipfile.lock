@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "e188d5fdadfbe718a8e8385652abe528820a2a0c0c0e0864afbdf77e9bb27eaa"
+            "sha256": "70a07340c3bddadfa6cde51fbd768ca129c03dbd4c0874e237a7a23c3d261b18"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -260,7 +260,7 @@
                 "sha256:0f7569a4a6ff151958b64304071d370daa3243d15941a7beedf0c9fe5105603e",
                 "sha256:a851e51367fb93e9e1361732c1d60dab63eff98712e503ea7d92e6eccb109b4f"
             ],
-            "markers": "python_version >= '3.6' and python_version < '4.0'",
+            "markers": "python_version >= '3.6' and python_version < '4'",
             "version": "==2.2.1"
         },
         "email-validator": {
@@ -404,7 +404,7 @@
                 "sha256:fa877ca7f6b48054f847b61d6fa7bed5cebb663ebc55e018fda12db09dcc664c",
                 "sha256:fdcec0b8399108577ec290f55551d926d9a1fa6cad45882093a7a07ac5ec147b"
             ],
-            "markers": "python_version >= '3' and (platform_machine == 'aarch64' or (platform_machine == 'ppc64le' or (platform_machine == 'x86_64' or (platform_machine == 'amd64' or (platform_machine == 'AMD64' or (platform_machine == 'win32' or platform_machine == 'WIN32'))))))",
+            "markers": "python_version >= '3' and platform_machine == 'aarch64' or (platform_machine == 'ppc64le' or (platform_machine == 'x86_64' or (platform_machine == 'amd64' or (platform_machine == 'AMD64' or (platform_machine == 'win32' or platform_machine == 'WIN32')))))",
             "version": "==1.1.2"
         },
         "h11": {
@@ -467,7 +467,7 @@
                 "sha256:42974f577483e1e932c3cdc3cd2303e883cbfba17fe228b0f63589764d7b9c4b",
                 "sha256:f28eac771ec9eb4866d3fb4ab65abd42d38c424739e80c08d8d20570de60b0ef"
             ],
-            "index": "pypi",
+            "markers": "python_version >= '3.7'",
             "version": "==0.23.0"
         },
         "ibm-cloud-sdk-core": {
@@ -738,7 +738,7 @@
                 "sha256:0123cacc1627ae19ddf3c27a5de5bd67ee4586fbdd6440d9748f8abb483d3e86",
                 "sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9"
             ],
-            "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2'",
+            "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2, 3.3'",
             "version": "==2.8.2"
         },
         "python-dotenv": {
@@ -794,17 +794,17 @@
         },
         "ray-python-sdk": {
             "hashes": [
-                "sha256:9d84c0466a6eef6f7164a5c44145fdd242d0c482c96b0db07b6f823643c7e4a4"
+                "sha256:0bad3db39e52dea4984cd1f3558b81a5f5a0620763e7100affa29ccb7a1f7b34"
             ],
-            "path": "./RAY_Python_SDK-0.0.10-py3-none-any.whl",
-            "version": "==0.0.10"
+            "path": "./RAY_Python_SDK-0.0.11-py3-none-any.whl",
+            "version": "==0.0.11"
         },
         "requests": {
             "hashes": [
                 "sha256:7c5599b102feddaa661c826c56ab4fee28bfd17f5abca1ebbe3e7f19d7c97983",
                 "sha256:8fefa2a1a1365bf5520aac41836fbee479da67864514bdb821f31ce07ce65349"
             ],
-            "markers": "python_version >= '3.7' and python_version < '4.0'",
+            "markers": "python_version >= '3.7' and python_version < '4'",
             "version": "==2.28.1"
         },
         "rfc3986": {
@@ -822,7 +822,7 @@
                 "sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926",
                 "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"
             ],
-            "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2'",
+            "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2, 3.3'",
             "version": "==1.16.0"
         },
         "slack-bolt": {
@@ -967,7 +967,7 @@
                 "sha256:c33ccba33c819596124764c23a97d25f32b28433ba0dedeb77d873a38722c9bc",
                 "sha256:ea6e8fb210b19d950fab93b60c9009226c63a28808bc8386e05301e25883ac0a"
             ],
-            "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2, 3.3, 3.4, 3.5' and python_version < '4.0'",
+            "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2, 3.3, 3.4, 3.5' and python_version < '4'",
             "version": "==1.26.11"
         },
         "uvicorn": {

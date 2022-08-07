@@ -7,19 +7,10 @@ from slack_bolt.oauth.async_callback_options import (
     DefaultAsyncCallbackOptions,
     AsyncSuccessArgs,
 )
-from ray_sdk.api.ray import Ray
 from .auth.stores import AsyncSQLAlchemyInstallationStore
 from .auth.stores import AsyncSQLAlchemyOAuthStateStore
 from .templates.messages import OnboardingMessage
 from ..database import engine
-
-# Mock API credentials
-ray = Ray(
-    url="https://local-api.strakertranslations.com",
-    client_id="",
-    secret="",
-    token="Zymq2+7imGHJ7Ee/vrPWpUm40/KcH8F87Kmj9BSOEVdCHa3EmQ8mMZYZP3EbYeSrMAtlNuVvLIO3a1SBC04dvRj6kkyHDMkVdMxbXhJuHThtANNtpMWgFwTpWwaNvu4Xw8OKbEYzCdeW84aCYoAWFA==",
-)
 
 
 installation_store = AsyncSQLAlchemyInstallationStore(
@@ -48,6 +39,7 @@ oauth_settings = AsyncOAuthSettings(
         "links:write",
         "links:read",
         "files:read",
+        "im:read",
         "channels:history",
         "groups:history",
         "im:history",

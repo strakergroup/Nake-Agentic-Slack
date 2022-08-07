@@ -13,22 +13,24 @@ async def load_ray_client(context, body, next) -> None:
     to the context containing the blocks and text to be sent to the user asking
     them to connect their DeltaRay account.
     """
-    app_id = body.get('api_app_id', get_app_id(context['bot_token'], context['team_id']))
-    context['ray_client'] = get_ray_client(
-        context['user_id'],
-        context['team_id'],
+    app_id = body.get(
+        "api_app_id", get_app_id(context["bot_token"], context["team_id"])
+    )
+    context["ray_client"] = get_ray_client(
+        context["user_id"],
+        context["team_id"],
         app_id,
     )
 
     message = LoginMessage(
-        context['user_id'],
-        context['team_id'],
+        context["user_id"],
+        context["team_id"],
         app_id,
-        context.get('channel_id', context['user_id']),
+        context.get("channel_id", context["user_id"]),
     )
     # TODO use message class
-    context['login_prompt'] = {
-        'blocks': message.blocks,
-        'text': message.text,
+    context["login_prompt"] = {
+        "blocks": message.blocks,
+        "text": message.text,
     }
     await next()

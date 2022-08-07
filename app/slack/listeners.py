@@ -1,15 +1,16 @@
 """This module registers listeners to handle events, interactions,
 commands, etc. from the Slack API.
 """
+from typing import Callable
 import re
 import json
-import logging
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
-from .app import app, ray
+from .app import app
 from .middleware import load_ray_client
 from .templates.messages import (
     OnboardingMessage,
     JobStatusMessage,
+    NewJobMessage,
     HelpMessage,
     WhoamiMessage,
     InvalidCommandMessage,
@@ -17,6 +18,7 @@ from .templates.messages import (
 from .templates.views import new_job_modal, new_job_files_modal
 from .select_options import get_language_options, map_file_options
 from ..watson import watson_message
+from ..ray.methods import get_job
 from random import randrange
 
 # logging.basicConfig(level=logging.INFO)
@@ -141,17 +143,18 @@ async def ray_command(ack, say, respond, command, context, client):
                 await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
             case [command_text]:
                 # TODO strip text of markdown
-                match = re.fullmatch("tj\d+", command_text, re.IGNORECASE)
+                match = re.fullmatch(r"tj\d+", command_text, re.IGNORECASE)
                 if match:
-                    job = ray.get_job(int(command_text[2:]))
-                    if job:
-                        message = JobStatusMessage(
-                            command_text.upper(), job, context["ray_client"]["id"]
-                        )
+                    job = await get_job(
+                        context['ray_client']['access_token'],
+                        command_text,
+                    )
+                    if job is not None:
+                        message = JobStatusMessage(job, context["ray_client"]["id"])
                         await say(blocks=message.blocks, text=message.text)
                     else:
                         await respond(
-                            f"You do not access to the job: `{command_text.upper()}`"
+                            f"Cannot find the job: `{command_text.upper()}`"
                         )
                 else:
                     await respond(text=InvalidCommandMessage().text)
@@ -246,7 +249,7 @@ async def handle_new_job_files(ack, view, context, client):
 
 @app.options("language_options")
 async def language_options(ack, payload):
-    options = get_language_options(payload.get("value"))
+    options = await get_language_options(payload.get("value"))
     await ack(options=options)
 
 

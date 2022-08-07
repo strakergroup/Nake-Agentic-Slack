@@ -12,6 +12,7 @@ class StrakerConfig:
 
     environment: str
     deltaray_domain: str = field(init=False)
+    stingray_domain: str = field(init=False)
     slack_deltaray_key: bytes = field(init=False)
 
     def __post_init__(self):
@@ -24,6 +25,9 @@ class StrakerConfig:
         # Get the domains for the environment.
         object.__setattr__(
             self, "deltaray_domain", self.get_deltaray_domain(self.environment)
+        )
+        object.__setattr__(
+            self, "stingray_domain", self.get_stingray_domain(self.environment)
         )
         # Get the keys for the environment.
         object.__setattr__(
@@ -42,18 +46,31 @@ class StrakerConfig:
         return ""
 
     @staticmethod
+    def get_stingray_domain(env: str) -> str:
+        match env:
+            case "local" | "dev" | "uat":
+                return f"https://{env}-api.strakertranslations.com"
+            case "live":
+                return "https://api.strakertranslations.com"
+        return ""
+
+    @staticmethod
     def get_slack_deltaray_key(env: str, engine: Engine) -> bytes:
         with engine.connect() as conn:
             sql = text(
-                "SELECT secret_key FROM integration_keys WHERE name = :name AND environment = :env LIMIT 1"
+                """
+                SELECT secret_key FROM integration_keys
+                WHERE name = :name AND environment = :env
+                LIMIT 1
+                """
             )
             result = conn.execute(sql, {"name": "slack_deltaray", "env": env})
-            all = result.all()
+            all = result.first()
             if not all:
                 raise ValueError(
                     "The Slack-DeltaRay integration key is not in the database"
                 )
-            return base64.b64decode(all[0][0].encode())
+            return base64.b64decode(all[0].encode())
 
 
 straker_config = StrakerConfig(os.getenv("STRAKER_ENVIRONMENT", ""))

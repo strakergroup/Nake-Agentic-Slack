@@ -1,26 +1,25 @@
 from typing import Any
 from itertools import islice
-from .app import ray
+from ..ray.methods import get_languages
 
 
-def get_language_options(filter: str | None) -> list[dict[str, Any]]:
-    # TODO: async
+async def get_language_options(filter: str | None) -> list[dict[str, Any]]:
     # TODO: cache
-    languages = ray.get_languages()
+    languages = await get_languages()
     # Filter language options from keyword filter.
     if filter:
         languages = (
             lang
             for lang in languages
-            if filter.lower() in lang["name"].lower()
-            or filter.lower() in lang["code"].lower()
+            if filter.lower() in lang.name.lower()
+            or filter.lower() in lang.code.lower()
         )
     # Slack can show a maximum of 100 options.
     languages = islice(languages, 100)
     return [
         {
-            "text": {"type": "plain_text", "text": lang["name"], "emoji": False},
-            "value": lang["code"],
+            "text": {"type": "plain_text", "text": lang.name, "emoji": False},
+            "value": lang.code,
         }
         for lang in languages
     ]
