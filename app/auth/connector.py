@@ -4,12 +4,121 @@ other services, e.g. Slack, RAY apps.
 
 import time
 import json
+from dataclasses import dataclass
 from urllib.parse import urlencode
 from sqlalchemy import text
+from sqlalchemy.engine import Connection
 
 from .algorithms import encrypt_aes, decrypt_aes
 from ..config import straker_config
 from ..database import engine
+
+
+@dataclass(frozen=True, slots=True)
+class SlackUser:
+    """Dataclass containing details of a Slack account."""
+
+    user_id: str
+    team_id: str
+    app_id: str
+    channel_id: str
+    is_subscribed: bool
+    bot_token: str
+    ray_client_id: str | None = None
+
+
+def _validate_integration_secret(secret: str, integration: str) -> bool:
+    """Validates an integration secret key. Used to authenticate a request
+    from another internal app.
+
+    Args:
+        secret (str): The secret key to validate.
+        integration (str): The integration name.
+
+    Returns:
+        bool: The validation result.
+    """
+    with engine.connect() as conn:
+        sql = text(
+            """
+            SELECT 1 FROM integration_keys
+            WHERE secret_key = :secret
+            AND name = :name
+            AND environment = :env
+            LIMIT 1
+            """
+        )
+        result = conn.execute(
+            sql,
+            {"secret": secret, "name": integration, "env": straker_config.environment},
+        )
+    return result.first() is not None
+
+
+def validate_queue_proxy_secret(secret: str) -> bool:
+    """Validates an integration secret key for the queue proxy app.
+
+    Args:
+        secret (str): The secret key to validate.
+
+    Returns:
+        bool: The validation result.
+    """
+    return _validate_integration_secret(secret, "slack_queue_proxy")
+
+
+def get_bot_token(conn: Connection, team_id: str, app_id: str) -> str | None:
+    """Gets the Slack bot token for a workspace."""
+    sql = text(
+        """
+        SELECT bot_token FROM slack_bots
+        WHERE team_id = :team_id AND app_id = :app_id
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).bindparams(team_id=team_id, app_id=app_id)
+    result = conn.execute(sql).first()
+    return result[0] if result else None
+
+
+def get_slack_users(ray_client_id: str) -> list[SlackUser]:
+    """Gets the Slack user accounts connected to a RAY client.
+
+    Args:
+        ray_client_id (str): The deltaRAY user ID.
+
+    Returns:
+        list[SlackUser]: The connected Slack user accounts.
+    """
+    users: list[SlackUser] = []
+    with engine.connect() as conn:
+        sql = text(
+            """
+            SELECT slack_user_id,slack_team_id,
+                slack_app_id,slack_channel_id,is_subscribed
+            FROM slack_deltaray_link
+            WHERE member_uuid = :client_id
+            AND is_active = 1
+            AND is_revoked = 0
+            ORDER BY id DESC
+            """
+        ).bindparams(client_id=ray_client_id)
+        result = conn.execute(sql)
+        for row in result:
+            bot_token = get_bot_token(conn, row.slack_team_id, row.slack_app_id)
+            if bot_token:
+                users.append(
+                    SlackUser(
+                        user_id=row.slack_user_id,
+                        team_id=row.slack_team_id,
+                        app_id=row.slack_app_id,
+                        channel_id=row.slack_channel_id,
+                        is_subscribed=bool(row.is_subscribed),
+                        bot_token=bot_token,
+                        ray_client_id=ray_client_id,
+                    )
+                )
+    return users
 
 
 def get_ray_client(user_id: str, team_id: str, app_id: str) -> dict[str, str] | None:

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Form, status
-from pydantic import BaseModel
-from ..dependencies import SlackRayAuth
+
+from ..dependencies import SlackRayAuth, RayEventAuth, RayEvent
 from ..slack import app
 from ..slack.templates.messages import SuccessfulLoginMessage
 
@@ -8,26 +8,18 @@ from ..slack.templates.messages import SuccessfulLoginMessage
 router = APIRouter(tags=["ray"])
 
 
-class RayEvent(BaseModel):
-    event: str
-    source: str
-    job_id: str | None
-    message: str = ""
-    data: dict | None
-
-
-@router.post("/ray/events", status_code=status.HTTP_204_NO_CONTENT)
-async def ray_events(event: RayEvent, auth: SlackRayAuth = Depends()):
+@router.post("/ray/events")
+async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
     """Receives and responds to an event from the RAY platform."""
-    # TODO: loop every account and check is subscribed.
-    app.client.token = auth.slack_accounts[0].bot_token
-    message = f"{event.message} ({event.event})"
-    if event.job_id:
-        message += f" ({event.job_id})"
-    await app.client.chat_postMessage(
-        channel="C03Q3KR98ER",  # hard-coded for now
-        text=message,
-    )
+    subscribed_users = [u for u in auth.slack_users if u.is_subscribed]
+    for user in subscribed_users:
+        app.client.token = user.bot_token
+        message = f"[{event.event}] {event.message}"
+        await app.client.chat_postMessage(
+            channel=user.user_id,
+            text=message,
+        )
+    return {"message": "success"}
 
 
 @router.post("/ray/connect", status_code=status.HTTP_204_NO_CONTENT)
