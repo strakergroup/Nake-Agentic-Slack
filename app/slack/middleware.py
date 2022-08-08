@@ -9,7 +9,7 @@ from ..auth.connector import get_ray_client, get_app_id
 
 async def load_ray_client(context, body, next) -> None:
     """Gets and saves the DeltaRay client information of the Slack user to
-    the context if the accounts are connected. Also add a `login_prompt` dict
+    the context if the accounts are connected. Also add a `login_prompt` message
     to the context containing the blocks and text to be sent to the user asking
     them to connect their DeltaRay account.
     """
@@ -21,16 +21,10 @@ async def load_ray_client(context, body, next) -> None:
         context["team_id"],
         app_id,
     )
-
-    message = LoginMessage(
+    context["login_prompt"] = LoginMessage(
         context["user_id"],
         context["team_id"],
         app_id,
         context.get("channel_id", context["user_id"]),
     )
-    # TODO use message class
-    context["login_prompt"] = {
-        "blocks": message.blocks,
-        "text": message.text,
-    }
     await next()

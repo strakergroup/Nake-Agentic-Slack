@@ -43,8 +43,8 @@ async def message_event(message, context, say, client):
             await client.chat_postEphemeral(
                 channel=context["channel_id"],
                 user=context["user_id"],
-                blocks=context["login_prompt"]["blocks"],
-                text=context["login_prompt"]["text"],
+                blocks=context["login_prompt"].blocks,
+                text=context["login_prompt"].text,
             )
 
     response = watson_message(message["text"], context.get("user_id"))
@@ -55,8 +55,8 @@ async def message_event(message, context, say, client):
             await client.chat_postEphemeral(
                 channel=context["channel_id"],
                 user=context["user_id"],
-                blocks=context["login_prompt"]["blocks"],
-                text=context["login_prompt"]["text"],
+                blocks=context["login_prompt"].blocks,
+                text=context["login_prompt"].text,
             )
         case "Job_Status":
             tj_number_entity = response.findEntity("tj-number")
@@ -66,11 +66,11 @@ async def message_event(message, context, say, client):
                     tj_number = tj_number_entity.groups[0].upper()
                     # TODO put this in a function
                     job = await get_job(
-                        context["ray_client"]["access_token"],
+                        context["ray_client"].access_token,
                         tj_number,
                     )
                     if job is not None:
-                        message = JobStatusMessage(job, context["ray_client"]["id"])
+                        message = JobStatusMessage(job, context["ray_client"].id)
                         await say(blocks=message.blocks, text=message.text)
                     else:
                         await say(InvalidJobMessage(tj_number).text)
@@ -88,11 +88,11 @@ async def message_event(message, context, say, client):
                 async def action():
                     tj_number = tj_number_entity.groups[0].upper()
                     job = await get_job(
-                        context["ray_client"]["access_token"],
+                        context["ray_client"].access_token,
                         tj_number,
                     )
                     if job is not None:
-                        message = JobStatusMessage(job, context["ray_client"]["id"])
+                        message = JobStatusMessage(job, context["ray_client"].id)
                         await say(blocks=message.blocks, text=message.text)
                     else:
                         await say(InvalidJobMessage(tj_number).text)
@@ -121,14 +121,14 @@ async def new_job_global(ack, shortcut, context, client):
     if context["ray_client"]:
         await client.views_open(
             trigger_id=shortcut["trigger_id"],
-            view=new_job_modal(context["ray_client"]["username"]),
+            view=new_job_modal(context["ray_client"].username),
         )
     else:
         # Prompt login if accounts are not connected yet.
         await client.chat_postMessage(
             channel=context["user_id"],
-            blocks=context["login_prompt"]["blocks"],
-            text=context["login_prompt"]["text"],
+            blocks=context["login_prompt"].blocks,
+            text=context["login_prompt"].text,
         )
 
 
@@ -139,14 +139,14 @@ async def new_job(ack, shortcut, context, respond, client):
         await client.views_open(
             trigger_id=shortcut["trigger_id"],
             view=new_job_modal(
-                context["ray_client"]["username"], shortcut["message"].get("files")
+                context["ray_client"].username, shortcut["message"].get("files")
             ),
         )
     else:
         # Prompt login if accounts are not connected yet.
         await respond(
-            blocks=context["login_prompt"]["blocks"],
-            text=context["login_prompt"]["text"],
+            blocks=context["login_prompt"].blocks,
+            text=context["login_prompt"].text,
         )
 
 
@@ -157,11 +157,11 @@ async def ray_command(ack, say, respond, command, context, client):
         # TODO trim, remove extra whitespace
         match command.get("text", "").lower().split(" "):
             case ["whoami"]:
-                await respond(WhoamiMessage(context["ray_client"]["username"]).text)
+                await respond(WhoamiMessage(context["ray_client"].username).text)
             case ["login" | "signin" | "connect"]:
                 await respond(
-                    blocks=context["login_prompt"]["blocks"],
-                    text=context["login_prompt"]["text"],
+                    blocks=context["login_prompt"].blocks,
+                    text=context["login_prompt"].text,
                 )
             case ["logout" | "signoff"]:
                 await respond("Logout prompt")
@@ -169,7 +169,7 @@ async def ray_command(ack, say, respond, command, context, client):
                 await client.views_open(
                     trigger_id=command["trigger_id"],
                     # TODO: get latest files
-                    view=new_job_modal(context["ray_client"]["username"]),
+                    view=new_job_modal(context["ray_client"].username),
                 )
             case ["help" | ""]:
                 await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
@@ -178,11 +178,11 @@ async def ray_command(ack, say, respond, command, context, client):
                 match = re.fullmatch(r"tj\d+", command_text, re.IGNORECASE)
                 if match:
                     job = await get_job(
-                        context["ray_client"]["access_token"],
+                        context["ray_client"].access_token,
                         command_text,
                     )
                     if job is not None:
-                        message = JobStatusMessage(job, context["ray_client"]["id"])
+                        message = JobStatusMessage(job, context["ray_client"].id)
                         await say(blocks=message.blocks, text=message.text)
                     else:
                         await respond(InvalidJobMessage(command_text).text)
@@ -193,8 +193,8 @@ async def ray_command(ack, say, respond, command, context, client):
     else:
         # Prompt login if accounts are not connected yet.
         await respond(
-            blocks=context["login_prompt"]["blocks"],
-            text=context["login_prompt"]["text"],
+            blocks=context["login_prompt"].blocks,
+            text=context["login_prompt"].text,
         )
 
 
@@ -218,12 +218,12 @@ async def new_job_action(ack, payload, context, client, respond, body):
             pass  # THe payload value is malformed
         await client.views_open(
             trigger_id=body["trigger_id"],
-            view=new_job_modal(context["ray_client"]["username"], files),
+            view=new_job_modal(context["ray_client"].username, files),
         )
     else:
         await respond(
-            blocks=context["login_prompt"]["blocks"],
-            text=context["login_prompt"]["text"],
+            blocks=context["login_prompt"].blocks,
+            text=context["login_prompt"].text,
         )
 
 
@@ -258,8 +258,8 @@ async def handle_new_job(ack, view, context, body, client):
         # Prompt login if accounts are not connected yet.
         await client.chat_postMessage(
             channel=context["user_id"],
-            blocks=context["login_prompt"]["blocks"],
-            text=context["login_prompt"]["text"],
+            blocks=context["login_prompt"].blocks,
+            text=context["login_prompt"].text,
         )
 
 

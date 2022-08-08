@@ -27,6 +27,24 @@ class SlackUser:
     ray_client_id: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class RayClient:
+    """Dataclass containing details of a RAY client account."""
+
+    id: str
+    """The RAY client ID (member_uuid)."""
+    username: str
+    """The RAY client username."""
+    access_token: str
+    """The access token linked to the client and group."""
+    slack_user_id: str
+    """The Slack user ID."""
+    slack_team_id: str
+    """The Slack team ID."""
+    slack_app_id: str
+    """The Slack app ID."""
+
+
 def _validate_integration_secret(secret: str, integration: str) -> bool:
     """Validates an integration secret key. Used to authenticate a request
     from another internal app.
@@ -121,7 +139,7 @@ def get_slack_users(ray_client_id: str) -> list[SlackUser]:
     return users
 
 
-def get_ray_client(user_id: str, team_id: str, app_id: str) -> dict[str, str] | None:
+def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient | None:
     """Gets the RAY client id and username linked to the Slack account if an active link
     exists, otherwise return None.
 
@@ -151,7 +169,7 @@ def get_ray_client(user_id: str, team_id: str, app_id: str) -> dict[str, str] | 
         row = result.first()
         if not row:
             return None
-        ray_client = {"id": row[0], "username": row[1]}
+        ray_client_id, username = row[0], row[1]
         # Now get the access token for authentication.
         sql = text(
             """
@@ -170,8 +188,15 @@ def get_ray_client(user_id: str, team_id: str, app_id: str) -> dict[str, str] | 
         row = result.first()
         if not row:
             return None
-        ray_client["access_token"] = row[0]
-    return ray_client
+        access_token = row[0]
+    return RayClient(
+        id=ray_client_id,
+        username=username,
+        access_token=access_token,
+        slack_user_id=user_id,
+        slack_team_id=team_id,
+        slack_app_id=app_id,
+    )
 
 
 def get_app_id(bot_token: str, team_id: str) -> str:
