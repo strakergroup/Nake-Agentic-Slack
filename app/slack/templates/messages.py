@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 from ray_sdk.api.v3.models import Job
 from .models import SlackMessage, TextMessage
 from ...config import straker_config
-from ..auth import get_slack_deltaray_integration_url
+from ...auth.connector import get_slack_deltaray_integration_url
 
 
 class OnboardingMessage(SlackMessage):

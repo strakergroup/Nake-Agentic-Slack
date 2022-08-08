@@ -3,8 +3,9 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
+
 from .database import engine
-from .slack.auth.connector import validate_ray_authentication_token
+from .auth.connector import validate_ray_authentication_token
 
 
 # Sub-dependency to get the bearer token.
@@ -87,3 +88,15 @@ class SlackRayAuth:
         channel_id: str
         is_subscribed: bool
         bot_token: str
+
+
+class RayEventAuth:
+    """Dependency class to validate the bearer token and return the client id
+    of the client the request is for.
+    """
+
+    # def __init__(self, token: str = Depends(_oauth2_scheme)) -> None:
+    #     try:
+    #         self.client_id = validate_ray_authentication_token(token)
+    #     except Exception:
+    #         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")

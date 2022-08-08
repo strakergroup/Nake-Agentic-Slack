@@ -7,8 +7,7 @@ from slack_bolt.oauth.async_callback_options import (
     DefaultAsyncCallbackOptions,
     AsyncSuccessArgs,
 )
-from .auth.stores import AsyncSQLAlchemyInstallationStore
-from .auth.stores import AsyncSQLAlchemyOAuthStateStore
+from .stores import AsyncSQLAlchemyInstallationStore, AsyncSQLAlchemyOAuthStateStore
 from .templates.messages import OnboardingMessage
 from ..database import engine
 

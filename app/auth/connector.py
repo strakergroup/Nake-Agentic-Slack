@@ -1,10 +1,15 @@
+"""This module contains functions to connect this app to to
+other services, e.g. Slack, RAY apps.
+"""
+
 import time
 import json
 from urllib.parse import urlencode
 from sqlalchemy import text
-from .encryption import encrypt_aes, decrypt_aes
-from ...config import straker_config
-from ...database import engine
+
+from .algorithms import encrypt_aes, decrypt_aes
+from ..config import straker_config
+from ..database import engine
 
 
 def get_ray_client(user_id: str, team_id: str, app_id: str) -> dict[str, str] | None:

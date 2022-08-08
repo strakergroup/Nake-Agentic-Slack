@@ -3,8 +3,8 @@
 See https://slack.dev/bolt-python/concepts#listener-middleware.
 """
 
-from .auth.connector import get_ray_client, get_app_id
 from .templates.messages import LoginMessage
+from ..auth.connector import get_ray_client, get_app_id
 
 
 async def load_ray_client(context, body, next) -> None:
