@@ -34,13 +34,16 @@ class WatsonResponse:
     def __init__(self, input: str, output: dict[str, Any]) -> None:
         self._input = input
         self._output = output
-        print(output)
         if not all(key in output for key in ("generic", "intents", "entities")):
             raise ValueError(
                 "The Watson Assistant message response output has a missing key"
             )
-
-        self._reply = output["generic"][0]["text"] if output["generic"] else None
+        self._reply = (
+            output["generic"][0]["text"]
+            if output.get("generic")
+            and output["generic"][0].get("response_type") == "text"
+            else None
+        )
         self._intent = self.get_intent(output["intents"])
         self._entities = [Entity.fromJSON(e, self.input) for e in output["entities"]]
 
@@ -50,7 +53,6 @@ class WatsonResponse:
 
     @property
     def reply(self) -> str | None:
-        # TODO: Default message if somehow no reply
         return self._reply
 
     @property

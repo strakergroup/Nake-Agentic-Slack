@@ -33,7 +33,11 @@ from random import randrange
     {"type": "message", "subtype": (None, "file_share")}, middleware=[load_ray_client]
 )
 async def message_event(message, context, say, client):
-    if "text" not in message:
+    # If there is no text, show new job button or ignore the message.
+    if not message.get("text"):
+        if message.get("files"):
+            msg = NewJobMessage(context["channel_id"], message["ts"])
+            await say(blocks=msg.blocks, text=msg.text)
         return
 
     async def require_ray_client(callback: Callable[[None], None]):
@@ -46,6 +50,17 @@ async def message_event(message, context, say, client):
                 blocks=context["login_prompt"].blocks,
                 text=context["login_prompt"].text,
             )
+
+    async def show_job_status(job_id: str):
+        job = await get_job(
+            context["ray_client"].access_token,
+            job_id,
+        )
+        if job is not None:
+            msg = JobStatusMessage(job, context["ray_client"].id)
+            await say(blocks=msg.blocks, text=msg.text)
+        else:
+            await say(InvalidJobMessage(job_id).text)
 
     response = watson_message(message["text"], context.get("user_id"))
     match response.intent:
@@ -61,44 +76,23 @@ async def message_event(message, context, say, client):
         case "Job_Status":
             tj_number_entity = response.findEntity("tj-number")
             if tj_number_entity:
-
-                async def action():
-                    tj_number = tj_number_entity.groups[0].upper()
-                    # TODO put this in a function
-                    job = await get_job(
-                        context["ray_client"].access_token,
-                        tj_number,
-                    )
-                    if job is not None:
-                        message = JobStatusMessage(job, context["ray_client"].id)
-                        await say(blocks=message.blocks, text=message.text)
-                    else:
-                        await say(InvalidJobMessage(tj_number).text)
-
-                await require_ray_client(action)
+                await require_ray_client(
+                    lambda: show_job_status(tj_number_entity.groups[0].upper())
+                )
             else:
                 await say(JobStatusNoIdMessage().text)
         case "New_Translation_Job":
-            message = NewJobMessage(context["channel_id"], message["ts"])
-            await say(blocks=message.blocks, text=message.text)
+            msg = NewJobMessage(context["channel_id"], message["ts"])
+            await say(blocks=msg.blocks, text=msg.text)
         case _:
             tj_number_entity = response.findEntity("tj-number")
             if tj_number_entity:
                 # Show the job status if only a job id is entered.
-                async def action():
-                    tj_number = tj_number_entity.groups[0].upper()
-                    job = await get_job(
-                        context["ray_client"].access_token,
-                        tj_number,
-                    )
-                    if job is not None:
-                        message = JobStatusMessage(job, context["ray_client"].id)
-                        await say(blocks=message.blocks, text=message.text)
-                    else:
-                        await say(InvalidJobMessage(tj_number).text)
-
-                await require_ray_client(action)
-            else:
+                await require_ray_client(
+                    lambda: show_job_status(tj_number_entity.groups[0].upper())
+                )
+            elif response.reply:
+                # Default to Watson Assistant fallback response if no other matches.
                 await say(response.reply)
 
 
@@ -154,8 +148,7 @@ async def new_job(ack, shortcut, context, respond, client):
 async def ray_command(ack, say, respond, command, context, client):
     await ack()
     if context["ray_client"]:
-        # TODO trim, remove extra whitespace
-        match command.get("text", "").lower().split(" "):
+        match re.split(r"\s+", command.get("text", "").lower()):
             case ["whoami"]:
                 await respond(WhoamiMessage(context["ray_client"].username).text)
             case ["login" | "signin" | "connect"]:
