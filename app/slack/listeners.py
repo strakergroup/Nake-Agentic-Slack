@@ -10,6 +10,8 @@ from .middleware import load_ray_client
 from .templates.messages import (
     OnboardingMessage,
     JobStatusMessage,
+    InvalidJobMessage,
+    JobStatusNoIdMessage,
     NewJobMessage,
     HelpMessage,
     WhoamiMessage,
@@ -20,8 +22,6 @@ from .select_options import get_language_options, map_file_options
 from ..watson import watson_message
 from ..ray.methods import get_job
 from random import randrange
-
-# logging.basicConfig(level=logging.INFO)
 
 
 # ---------------------------------------------------------
@@ -59,22 +59,54 @@ async def message_event(message, context, say, client):
                 text=context["login_prompt"]["text"],
             )
         case "Job_Status":
+            tj_number_entity = response.findEntity("tj-number")
+            if tj_number_entity:
 
-            async def action():
-                await say("Job status ...")
+                async def action():
+                    tj_number = tj_number_entity.groups[0].upper()
+                    # TODO put this in a function
+                    job = await get_job(
+                        context["ray_client"]["access_token"],
+                        tj_number,
+                    )
+                    if job is not None:
+                        message = JobStatusMessage(job, context["ray_client"]["id"])
+                        await say(blocks=message.blocks, text=message.text)
+                    else:
+                        await say(InvalidJobMessage(tj_number).text)
 
-            await require_ray_client(action)
+                await require_ray_client(action)
+            else:
+                await say(JobStatusNoIdMessage().text)
         case "New_Translation_Job":
             message = NewJobMessage(context["channel_id"], message["ts"])
             await say(blocks=message.blocks, text=message.text)
         case _:
-            await say(response.reply)
+            tj_number_entity = response.findEntity("tj-number")
+            if tj_number_entity:
+                # Show the job status if only a job id is entered.
+                async def action():
+                    tj_number = tj_number_entity.groups[0].upper()
+                    job = await get_job(
+                        context["ray_client"]["access_token"],
+                        tj_number,
+                    )
+                    if job is not None:
+                        message = JobStatusMessage(job, context["ray_client"]["id"])
+                        await say(blocks=message.blocks, text=message.text)
+                    else:
+                        await say(InvalidJobMessage(tj_number).text)
+
+                await require_ray_client(action)
+            else:
+                await say(response.reply)
 
 
 @app.event("app_home_opened")
 async def home_opened(event, body, say, client):
     # Send an onboarding message if the app home is opened for the first time.
-    # TODO also onboard if the user hasn't opened in a long time and the account is not connected
+    # TODO also onboard if the user hasn't opened in a long time and the account
+    # is not connected yet
     history = await client.conversations_history(channel=event.get("channel"), limit=1)
     if not history.get("messages"):
         message = OnboardingMessage(
@@ -146,16 +178,14 @@ async def ray_command(ack, say, respond, command, context, client):
                 match = re.fullmatch(r"tj\d+", command_text, re.IGNORECASE)
                 if match:
                     job = await get_job(
-                        context['ray_client']['access_token'],
+                        context["ray_client"]["access_token"],
                         command_text,
                     )
                     if job is not None:
                         message = JobStatusMessage(job, context["ray_client"]["id"])
                         await say(blocks=message.blocks, text=message.text)
                     else:
-                        await respond(
-                            f"Cannot find the job: `{command_text.upper()}`"
-                        )
+                        await respond(InvalidJobMessage(command_text).text)
                 else:
                     await respond(text=InvalidCommandMessage().text)
             case _:
@@ -239,7 +269,8 @@ async def handle_new_job_files(ack, view, context, client):
     await ack(response_action="clear")
     # await client.chat_postMessage(
     #     channel=context['user_id'],
-    #     text=':tada: Your translation job has been submitted. You will be notified when the job is created.'
+    #     text=':tada: Your translation job has been submitted. '
+    #          'You will be notified when the job is created.'
     # )
     await client.chat_postMessage(
         channel=context["user_id"],
@@ -262,7 +293,8 @@ async def file_options(ack, payload, context, client):
         selected_channel = view["state"]["values"]["conversation"][
             "select_conversation"
         ]["selected_conversation"]
-        # If the selected conversation is a DM, get the real conversation id (instead of the user id).
+        # If the selected conversation is a DM, get the real conversation id
+        # (instead of the user id).
         if selected_channel == context["bot_user_id"]:
             channel = await client.conversations_open(
                 users=context["user_id"], prevent_creation=True

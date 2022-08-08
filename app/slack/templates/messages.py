@@ -198,6 +198,24 @@ class JobStatusMessage(SlackMessage):
         )
 
 
+class InvalidJobMessage(TextMessage):
+    """The user does not have access to the job."""
+
+    def __init__(self, job_id: str) -> None:
+        super().__init__(f"Cannot find the job: `{job_id.upper()}`")
+
+
+class JobStatusNoIdMessage(TextMessage):
+    """Message to send when the user asks for a job status but has not given
+    a TJ number.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "To check the status of your job, type the reference number (e.g. TJ123456)."
+        )
+
+
 class NewJobMessage(SlackMessage):
     """Message with a button to open the new job modal."""
 
@@ -302,6 +320,8 @@ class WhoamiMessage(TextMessage):
 
 
 class InvalidCommandMessage(TextMessage):
+    """Invalid /ray command."""
+
     def __init__(self) -> None:
         super().__init__(
             ":no_entry_sign: Invalid command. Type `/ray help` for a list of valid commands."

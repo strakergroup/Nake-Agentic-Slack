@@ -19,4 +19,4 @@ def watson_message(text: str, user_id: str | None = None) -> WatsonResponse:
         user_id=user_id,
     ).get_result()
 
-    return WatsonResponse(response["output"])
+    return WatsonResponse(text, response["output"])
