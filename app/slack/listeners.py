@@ -2,6 +2,7 @@
 commands, etc. from the Slack API.
 """
 from typing import Callable
+import asyncio
 import re
 import json
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
@@ -13,15 +14,16 @@ from .templates.messages import (
     InvalidJobMessage,
     JobStatusNoIdMessage,
     NewJobMessage,
+    JobSubmitMessage,
     HelpMessage,
     WhoamiMessage,
     InvalidCommandMessage,
 )
 from .templates.views import new_job_modal, new_job_files_modal
+from .web import download_files
 from .select_options import get_language_options, map_file_options
 from ..watson import watson_message
 from ..ray.methods import get_job
-from random import randrange
 
 
 # ---------------------------------------------------------
@@ -261,17 +263,21 @@ async def handle_new_job(ack, view, context, body, client):
 
 @app.view("new_job_files", middleware=[load_ray_client])
 async def handle_new_job_files(ack, view, context, client):
-    print(view["state"]["values"])
+    # TODO: input validation
+    values = view["state"]["values"]
+    selected_files = values["files_to_translate"]["file_options"]["selected_options"]
+    file_ids = (opt["value"] for opt in selected_files)
+    file_names = (opt["text"]["text"] for opt in selected_files)
     await ack(response_action="clear")
-    # await client.chat_postMessage(
-    #     channel=context['user_id'],
-    #     text=':tada: Your translation job has been submitted. '
-    #          'You will be notified when the job is created.'
-    # )
+    message = JobSubmitMessage(None, file_names)
     await client.chat_postMessage(
         channel=context["user_id"],
-        text=f"New job submitted with ID: `TJ{randrange(800_000, 1_200_000)}`",
+        text=message.text,
+        blocks=message.blocks,
     )
+
+    # Process files and submit job.
+    asyncio.create_task(download_files(client, file_ids))
 
 
 @app.options("language_options")

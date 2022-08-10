@@ -5,12 +5,14 @@ name = "pypi"
 
 [packages]
 fastapi = {extras = ["all"], version = "*"}
+pydantic = "*"
 slack-bolt = "*"
 ibm-watson = "*"
 sqlalchemy = "*"
 mysqlclient = "*"
 aiohttp = "*"
 cryptography = "*"
+httpx = "*"
 ray-python-sdk = {path = "./RAY_Python_SDK-0.0.11-py3-none-any.whl"}
 
 [dev-packages]

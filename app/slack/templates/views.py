@@ -38,46 +38,46 @@ def new_job_modal(
                     "verbatim": True,
                 },
             },
-            {
-                "type": "input",
-                "element": {
-                    "type": "static_select",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": "Select a group",
-                        "emoji": True,
-                    },
-                    # TODO get real groups
-                    "options": [
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Test Group 1",
-                                "emoji": False,
-                            },
-                            "value": "test_group_1",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Test Group 2",
-                                "emoji": False,
-                            },
-                            "value": "test_group_2",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Test Group 3",
-                                "emoji": False,
-                            },
-                            "value": "test_group_3",
-                        },
-                    ],
-                    "action_id": "new_job_group_static_select",
-                },
-                "label": {"type": "plain_text", "text": "Group", "emoji": True},
-            },
+            # {
+            #     "type": "input",
+            #     "element": {
+            #         "type": "static_select",
+            #         "placeholder": {
+            #             "type": "plain_text",
+            #             "text": "Select a group",
+            #             "emoji": True,
+            #         },
+            #         # TODO get real groups
+            #         "options": [
+            #             {
+            #                 "text": {
+            #                     "type": "plain_text",
+            #                     "text": "Test Group 1",
+            #                     "emoji": False,
+            #                 },
+            #                 "value": "test_group_1",
+            #             },
+            #             {
+            #                 "text": {
+            #                     "type": "plain_text",
+            #                     "text": "Test Group 2",
+            #                     "emoji": False,
+            #                 },
+            #                 "value": "test_group_2",
+            #             },
+            #             {
+            #                 "text": {
+            #                     "type": "plain_text",
+            #                     "text": "Test Group 3",
+            #                     "emoji": False,
+            #                 },
+            #                 "value": "test_group_3",
+            #             },
+            #         ],
+            #         "action_id": "new_job_group_static_select",
+            #     },
+            #     "label": {"type": "plain_text", "text": "Group", "emoji": True},
+            # },
             {
                 "type": "input",
                 "element": {
@@ -346,7 +346,8 @@ def new_job_files_modal(files: list[dict[str, Any]] | None = None) -> dict[str, 
                         "emoji": True,
                     },
                     "filter": {
-                        # TODO: bots cannot access private,im,mpim, use user token to access all
+                        # TODO: bots cannot access private,im,mpim, use user token
+                        # to access all
                         "include": ["public", "im"],
                         "exclude_external_shared_channels": True,
                     },
@@ -362,6 +363,7 @@ def new_job_files_modal(files: list[dict[str, Any]] | None = None) -> dict[str, 
             },
             {
                 "type": "input",
+                "block_id": "files_to_translate",
                 "element": {
                     "type": "multi_external_select",
                     "placeholder": {
@@ -372,6 +374,7 @@ def new_job_files_modal(files: list[dict[str, Any]] | None = None) -> dict[str, 
                     "action_id": "file_options",
                     "min_query_length": 0,
                     "initial_options": files or [],
+                    "max_selected_items": 10,
                 },
                 "label": {
                     "type": "plain_text",
