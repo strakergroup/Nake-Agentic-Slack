@@ -84,6 +84,9 @@ async def message_event(message, context, say, client):
         case "New_Translation_Job":
             msg = NewJobMessage(context["channel_id"], message["ts"])
             await say(blocks=msg.blocks, text=msg.text)
+        case "Jokes":
+            # Delegate jokes to IBM Watson Assistant dialog.
+            await say(response.reply)
         case _:
             tj_number_entity = response.findEntity("tj-number")
             if tj_number_entity:
