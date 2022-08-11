@@ -2,7 +2,6 @@
 # Ignore line too long lint errors
 # flake8: noqa
 
-from typing import Sequence
 import json
 from urllib.parse import urlencode
 from ray_sdk.api.v3.models import Job
@@ -259,7 +258,7 @@ class NewJobMessage(SlackMessage):
 class JobSubmitMessage(SlackMessage):
     """Message to send when a new job is submitted."""
 
-    def __init__(self, new_job_form: NewJobForm, files: Sequence[str]) -> None:
+    def __init__(self, new_job_form: NewJobForm) -> None:
         super().__init__(
             "Your translation request has been submitted. You will be notified when a job number is assigned.",
             [
@@ -274,14 +273,17 @@ class JobSubmitMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"The following files will be translated:",
+                        "text": f"The following files will be translated from *{new_job_form.source_lang.name}* "
+                        + f"to {', '.join(f'*{lang.name}*' for lang in new_job_form.target_langs)}:",
                     },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "\n".join(f"• {file_name}" for file_name in files),
+                        "text": "\n".join(
+                            f"• {file.title}" for file in new_job_form.files
+                        ),
                     },
                 },
             ],

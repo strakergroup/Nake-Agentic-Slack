@@ -8,6 +8,7 @@ import json
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from .app import app
 from .middleware import load_ray_client
+from .templates.models import NewJobForm
 from .templates.messages import (
     OnboardingMessage,
     JobStatusMessage,
@@ -19,7 +20,7 @@ from .templates.messages import (
     WhoamiMessage,
     InvalidCommandMessage,
 )
-from .templates.views import new_job_modal, new_job_files_modal
+from .templates.views import new_job_modal
 from .web import download_files
 from .select_options import get_language_options, map_file_options
 from ..watson import watson_message
@@ -238,19 +239,21 @@ async def link(ack):
 
 
 @app.view("new_job", middleware=[load_ray_client])
-async def handle_new_job(ack, view, context, body, client):
+async def handle_new_job(ack, view, context, client):
     if context["ray_client"]:
-        # TODO input validation, e.g. target date
-        files = []
-        if "private_metadata" in view:
-            try:
-                metadata = json.loads(view["private_metadata"])
-                files = metadata.get("files", [])
-            except Exception:
-                # Ignore private_metadata if the format is invalid.
-                pass
-        # Go to the next form to select the files to translate.
-        await ack(response_action="push", view=new_job_files_modal(files))
+        # TODO: input validation, file types
+        form = NewJobForm.parse_slack(view["state"]["values"])
+        file_ids = (file.id for file in form.files)
+        await ack(response_action="clear")
+        message = JobSubmitMessage(form)
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=message.text,
+            blocks=message.blocks,
+        )
+
+        # Process files and submit job.
+        asyncio.create_task(download_files(client, file_ids))
     else:
         await ack(response_action="clear")
         # Prompt login if accounts are not connected yet.
@@ -259,25 +262,6 @@ async def handle_new_job(ack, view, context, body, client):
             blocks=context["login_prompt"].blocks,
             text=context["login_prompt"].text,
         )
-
-
-@app.view("new_job_files", middleware=[load_ray_client])
-async def handle_new_job_files(ack, view, context, client):
-    # TODO: input validation
-    values = view["state"]["values"]
-    selected_files = values["files_to_translate"]["file_options"]["selected_options"]
-    file_ids = (opt["value"] for opt in selected_files)
-    file_names = (opt["text"]["text"] for opt in selected_files)
-    await ack(response_action="clear")
-    message = JobSubmitMessage(None, file_names)
-    await client.chat_postMessage(
-        channel=context["user_id"],
-        text=message.text,
-        blocks=message.blocks,
-    )
-
-    # Process files and submit job.
-    asyncio.create_task(download_files(client, file_ids))
 
 
 @app.options("language_options")

@@ -1,6 +1,6 @@
 """Utility functions for using the Slack Web API."""
 
-from typing import Sequence
+from typing import Iterable
 import os
 from pathlib import Path
 import tempfile
@@ -67,7 +67,7 @@ async def download_file(
 
 
 async def download_files(
-    client: AsyncWebClient, files: Sequence[str]
+    client: AsyncWebClient, files: Iterable[str]
 ) -> list[str | None]:
     """Download multiple files from slack. This is more efficient than calling
     `download_file()` multiple times.
