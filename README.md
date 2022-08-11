@@ -43,16 +43,9 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
 
 5. To allow the Slack API to communicate with your app, the URL must be exposed to the public. You can do this with [boringproxy](https://boringproxy.io/), [ngrok](https://ngrok.com/) or whichever method you choose.
 
-6. After your Slack App is [set up in Slack](https://api.slack.com/apps), set the URLs to point to your app:
+6. Create a new Slack workspace for the app (this is optional but is highly recommended because multiple identical apps in the same workspace will have conflicting commands).
 
-   - Redirect URLs (Features -> OAuth & Permissions)
-     - `<your-domain>/slack/oauth_redirect`
-   - Event Request URL (Features -> Event Subscriptions)
-     - `<your-domain>/slack/events`
-   - Interactivity Request URL (Features -> Interactivity & Shortcuts)
-     - `<your-domain>/slack/events`
-   - Slash Commands (Features -> Slash Commands)
-     - Point all your request URLS to `<your-domain>/slack/events`
+   [Create a new app](https://api.slack.com/apps?new_app=1) and choose the "**From an app manifest**" option. Select the workspace you've just created and paste of contents of `manifest.yml` into the manifest section, but replace `{YOUR_DOMAIN}` with your public domain created in the previous step. This will set up the app to receive the correct events and assign the commands and shortcuts.
 
 7. Install your Slack App to Slack Workspace with the URL `/slack/install`, e.g. `<your-domain>/slack/install`.
 

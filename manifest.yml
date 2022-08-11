@@ -1,0 +1,65 @@
+display_information:
+  name: Ray Translator (Test)
+  description: The official Slack app for the Straker Ray platform.
+  background_color: "#17395c"
+  long_description: "The official Slack app for the Straker Ray platform.\r
+
+    \r
+
+    Connect your Slack workspace to DeltaRay to view, update and create translation jobs directly in Slack. You can also receive notifications about your current jobs."
+features:
+  bot_user:
+    display_name: Ray Translator
+    always_online: true
+  shortcuts:
+    - name: New Translation Job
+      type: message
+      callback_id: new_job
+      description: Opens a form to submit a new translation job to DeltaRay
+    - name: New Translation Job
+      type: global
+      callback_id: new_job_global
+      description: Opens a form to submit a new translation job to DeltaRay
+  slash_commands:
+    - command: /ray
+      url: {YOUR_DOMAIN}/slack/events
+      description: Use the RAY platform
+      usage_hint: "[new][TJ number]"
+      should_escape: false
+  unfurl_domains:
+    - strakertranslations.com
+oauth_config:
+  redirect_urls:
+    - {YOUR_DOMAIN}/slack/oauth_redirect
+  scopes:
+    bot:
+      - channels:history
+      - chat:write
+      - chat:write.public
+      - commands
+      - files:read
+      - groups:history
+      - im:history
+      - im:read
+      - im:write
+      - links:read
+      - links:write
+      - mpim:history
+settings:
+  event_subscriptions:
+    request_url: {YOUR_DOMAIN}/slack/events
+    bot_events:
+      - app_home_opened
+      - app_uninstalled
+      - link_shared
+      - message.channels
+      - message.groups
+      - message.im
+      - message.mpim
+  interactivity:
+    is_enabled: true
+    request_url: {YOUR_DOMAIN}/slack/events
+    message_menu_options_url: {YOUR_DOMAIN}/slack/events
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
