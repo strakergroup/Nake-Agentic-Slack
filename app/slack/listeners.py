@@ -5,10 +5,11 @@ from typing import Callable
 import asyncio
 import re
 import json
+from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from .app import app
 from .middleware import load_ray_client
-from .templates.models import NewJobForm
+from .templates.models import NewJobForm, convert_pydantic_to_slack_error
 from .templates.messages import (
     OnboardingMessage,
     JobStatusMessage,
@@ -241,8 +242,12 @@ async def link(ack):
 @app.view("new_job", middleware=[load_ray_client])
 async def handle_new_job(ack, view, context, client):
     if context["ray_client"]:
-        # TODO: input validation, file types
-        form = NewJobForm.parse_slack(view["state"]["values"])
+        try:
+            form = NewJobForm.parse_slack(view["state"]["values"])
+        except ValidationError as e:
+            errors = convert_pydantic_to_slack_error(e)
+            await ack(response_action="errors", errors=errors)
+            return
         file_ids = (file.id for file in form.files)
         await ack(response_action="clear")
         message = JobSubmitMessage(form)

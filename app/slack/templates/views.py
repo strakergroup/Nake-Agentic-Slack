@@ -72,7 +72,7 @@ def new_job_modal(
             },
             {
                 "type": "input",
-                "block_id": "upload_files",
+                "block_id": "files",
                 "element": {
                     "type": "multi_external_select",
                     "placeholder": {
@@ -114,7 +114,7 @@ def new_job_modal(
             },
             {
                 "type": "input",
-                "block_id": "source",
+                "block_id": "source_lang",
                 "element": {
                     "type": "external_select",
                     "placeholder": {
@@ -137,7 +137,7 @@ def new_job_modal(
             },
             {
                 "type": "input",
-                "block_id": "target",
+                "block_id": "target_langs",
                 "element": {
                     "type": "multi_external_select",
                     "placeholder": {

@@ -1,6 +1,6 @@
 from typing import Any
 import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError, validator
 
 
 class TextMessage:
@@ -24,6 +24,24 @@ class SlackMessage(TextMessage):
     @property
     def blocks(self) -> list[dict[str, Any]]:
         return self._blocks
+
+
+def convert_pydantic_to_slack_error(error: ValidationError) -> dict[str, str]:
+    """Creates a Slack view error dict from pydantic's ValidationError.
+    The view's input `block_id` needs to match the pydantic model's properties.
+
+    https://api.slack.com/surfaces/modals/using#displaying_errors
+
+    Args:
+        error (ValidationError): The pydantic ValidationError to convert.
+
+    Returns:
+        dict[str, str]: The error dict for Slack's view_submission event response.
+    """
+    slack_errors = {}
+    for e in error.errors():
+        slack_errors[e["loc"][0]] = e["msg"]
+    return slack_errors
 
 
 class RayLanguage(BaseModel):
@@ -62,12 +80,43 @@ class NewJobForm(BaseModel):
     """The model for a new job form."""
 
     reference: str | None = None
+    source_lang: RayLanguage
+    target_langs: list[RayLanguage]
     target_date: datetime.date
     workflow: str
     category: str
-    source_lang: RayLanguage
-    target_langs: list[RayLanguage]
     files: list[SlackFile]
+
+    @validator("target_langs")
+    def validate_target_langs(cls, v):
+        if not v:
+            raise ValueError("At least one target language is required")
+        return v
+
+    @validator("target_langs", each_item=True)
+    def validate_target_langs_item(cls, v, values):
+        if v.code == values["source_lang"].code:
+            raise ValueError("The source language cannot be a target language")
+        return v
+
+    @validator("target_date")
+    def validate_target_date(cls, v):
+        if v <= datetime.date.today():
+            raise ValueError("The target date must be a future date")
+        return v
+
+    @validator("files")
+    def validate_files(cls, v):
+        if not v:
+            raise ValueError("At least one file is required")
+        return v
+
+    @validator("files", each_item=True)
+    def validate_files_item(cls, v):
+        # TODO: limit file types
+        # if v.title:
+        #     raise ValueError("File extension not allowed: {}")
+        return v
 
     @classmethod
     def parse_slack(cls, values: dict[str, dict[str:Any]]) -> "NewJobForm":
@@ -83,21 +132,21 @@ class NewJobForm(BaseModel):
         try:
             return cls(
                 reference=values["reference"]["reference"]["value"],
-                target_date=values["target_date"]["target_date"]["selected_date"],
-                workflow=values["workflow"]["workflow"]["selected_option"]["value"],
-                category=values["category"]["category"]["selected_option"]["value"],
                 source_lang=RayLanguage.parse_slack_option(
-                    values["source"]["language_options"]["selected_option"]
+                    values["source_lang"]["language_options"]["selected_option"]
                 ),
                 target_langs=[
                     RayLanguage.parse_slack_option(opt)
-                    for opt in values["target"]["language_options"]["selected_options"]
-                ],
-                files=[
-                    SlackFile.parse_slack_option(opt)
-                    for opt in values["upload_files"]["file_options"][
+                    for opt in values["target_langs"]["language_options"][
                         "selected_options"
                     ]
+                ],
+                target_date=values["target_date"]["target_date"]["selected_date"],
+                workflow=values["workflow"]["workflow"]["selected_option"]["value"],
+                category=values["category"]["category"]["selected_option"]["value"],
+                files=[
+                    SlackFile.parse_slack_option(opt)
+                    for opt in values["files"]["file_options"]["selected_options"]
                 ],
             )
         except KeyError as e:
