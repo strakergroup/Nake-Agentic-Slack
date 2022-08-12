@@ -1,12 +1,14 @@
 """This module registers listeners to handle events, interactions,
 commands, etc. from the Slack API.
 """
+
 from typing import Callable
 import asyncio
 import re
 import json
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
+
 from .app import app
 from .middleware import load_ray_client
 from .templates.models import NewJobForm, convert_pydantic_to_slack_error
@@ -116,25 +118,8 @@ async def home_opened(event, body, say, client):
         await say(blocks=message.blocks, text=message.text)
 
 
-@app.global_shortcut("new_job_global", middleware=[load_ray_client])
-async def new_job_global(ack, shortcut, context, client):
-    await ack()
-    if context["ray_client"]:
-        await client.views_open(
-            trigger_id=shortcut["trigger_id"],
-            view=new_job_modal(context["ray_client"].username),
-        )
-    else:
-        # Prompt login if accounts are not connected yet.
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            blocks=context["login_prompt"].blocks,
-            text=context["login_prompt"].text,
-        )
-
-
 @app.message_shortcut("new_job", middleware=[load_ray_client])
-async def new_job(ack, shortcut, context, respond, client):
+async def new_job_shortcut(ack, shortcut, context, respond, client):
     await ack()
     if context["ray_client"]:
         await client.views_open(

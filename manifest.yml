@@ -16,10 +16,6 @@ features:
       type: message
       callback_id: new_job
       description: Opens a form to submit a new translation job to DeltaRay
-    - name: New Translation Job
-      type: global
-      callback_id: new_job_global
-      description: Opens a form to submit a new translation job to DeltaRay
   slash_commands:
     - command: /ray
       url: {YOUR_DOMAIN}/slack/events
