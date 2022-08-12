@@ -9,8 +9,9 @@ from ..select_options import map_file_options
 
 def new_job_modal(
     client_name: str,
-    initial_files: list[dict[str, Any]] | None = None,
     file_options: list[dict[str, Any]] | None = None,
+    initial_files: list[dict[str, Any]] | None = None,
+    max_selected_files: int = 10,
 ) -> dict[str, Any]:
     """The template for the modal to submit a new translation job. The user can
     select the files they want to translate and enter the job details, e.g.
@@ -18,33 +19,51 @@ def new_job_modal(
 
     Args:
         client_name (str): The user's DeltaRay username.
-        initial_files (list[dict] | None, optional): A list of file objects to initally select.
-            Defaults to None.
         file_options (list[dict] | None, optional): A list of file objects to set as available
             options for the "Files to translate" select input. Defaults to None.
+        initial_files (list[dict] | None, optional): A list of file objects to initally select.
+            Defaults to None.
+        max_selected_files (int, optional): The maximum number of files to translate. Defaults to 10.
 
     Returns:
         dict: The view dict.
     """
-    initial_files = map_file_options(initial_files) if initial_files else []
-    file_options = map_file_options(file_options) if file_options else []
-    # Change the file select menu type depending on if file_options is given.
-    files_block_element = {
-        "type": "multi_static_select" if file_options else "multi_external_select",
-        "placeholder": {
-            "type": "plain_text",
-            "text": "Select file(s)",
-            "emoji": True,
-        },
-        "action_id": "file_options",
-        "max_selected_items": 10,
-    }
+    initial_files = (
+        map_file_options(initial_files[:max_selected_files]) if initial_files else []
+    )
+    file_options = map_file_options(file_options[:100]) if file_options else []
+    # Add the initial files to the file options if they are not there already.
+    for file in initial_files:
+        if not any(file["value"] == opt["value"] for opt in file_options):
+            file_options.append(file)
+    file_options = file_options[:100]
+    if file_options:
+        files_block_element = {
+            "type": "multi_static_select",
+            "placeholder": {
+                "type": "plain_text",
+                "text": "Select file(s)",
+                "emoji": True,
+            },
+            "options": file_options,
+            "action_id": "file_options",
+            "max_selected_items": max_selected_files,
+        }
+    else:
+        # Use external select if no files are given because options cannot be empty.
+        files_block_element = {
+            "type": "multi_external_select",
+            "placeholder": {
+                "type": "plain_text",
+                "text": "Select file(s)",
+                "emoji": True,
+            },
+            "action_id": "file_options",
+            "max_selected_items": max_selected_files,
+            "min_query_length": 0,
+        }
     if initial_files:
         files_block_element["initial_options"] = initial_files
-    if file_options:
-        files_block_element["options"] = file_options
-    else:
-        files_block_element["min_query_length"] = 0
 
     return {
         "type": "modal",
@@ -62,38 +81,6 @@ def new_job_modal(
                 },
             },
             {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": "Select the files you want to translate",
-                },
-            },
-            {
-                "type": "input",
-                "dispatch_action": True,
-                "block_id": "conversation_files",
-                "element": {
-                    # Use channels_select for now, may use conversations_select later.
-                    "type": "channels_select",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": "Select a channel",
-                        "emoji": True,
-                    },
-                    "action_id": "select_conversation",
-                },
-                "label": {
-                    "type": "plain_text",
-                    "text": "Location of the file(s)",
-                    "emoji": True,
-                },
-                "hint": {
-                    "type": "plain_text",
-                    "text": "Leave blank to search all accessible files",
-                },
-                "optional": True,
-            },
-            {
                 "type": "input",
                 "block_id": "files",
                 "element": files_block_element,
@@ -101,13 +88,6 @@ def new_job_modal(
                     "type": "plain_text",
                     "text": "File(s) to translate",
                     "emoji": True,
-                },
-            },
-            {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": "Job details",
                 },
             },
             {

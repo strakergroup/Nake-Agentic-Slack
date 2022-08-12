@@ -25,7 +25,7 @@ from .templates.messages import (
     InvalidCommandMessage,
 )
 from .templates.views import new_job_modal
-from .web import get_bot_accessible_files, download_files
+from .web import files_list_simple, get_bot_accessible_files, download_files
 from .select_options import get_language_options, map_file_options
 from ..watson import watson_message
 from ..ray.methods import get_job
@@ -123,13 +123,19 @@ async def home_opened(event, body, say, client):
 async def new_job_shortcut(ack, shortcut, context, respond, client):
     await ack()
     if context["ray_client"]:
-        # Set files in the message as default values if the bot has access to them.
-        files = await get_bot_accessible_files(
+        # Include a bit more than the max 100 options due to hidden files.
+        files = await files_list_simple(client, count=110)
+        # Set files in the message as initial values if the bot has access to them.
+        init_files = await get_bot_accessible_files(
             client, (f["id"] for f in shortcut["message"].get("files", []))
         )
         await client.views_open(
             trigger_id=shortcut["trigger_id"],
-            view=new_job_modal(context["ray_client"].username, files),
+            view=new_job_modal(
+                context["ray_client"].username,
+                file_options=files,
+                initial_files=init_files,
+            ),
         )
     else:
         # Prompt login if accounts are not connected yet.
@@ -154,9 +160,10 @@ async def ray_command(ack, say, respond, command, context, client):
             case ["logout" | "signoff"]:
                 await respond("Logout prompt")
             case ["new"]:
+                files = await files_list_simple(client, count=110)
                 # Try to get the files from the last 3 messages to set as the
                 # default files to translate in the new job modal.
-                files = []
+                init_files = []
                 try:
                     response = await client.conversations_history(
                         channel=context["channel_id"],
@@ -164,13 +171,17 @@ async def ray_command(ack, say, respond, command, context, client):
                     )
                     for message in response["messages"]:
                         if message.get("files"):
-                            files = message.get("files")
+                            init_files = message.get("files")
                             break
                 except SlackApiError:
                     pass
                 await client.views_open(
                     trigger_id=command["trigger_id"],
-                    view=new_job_modal(context["ray_client"].username, files),
+                    view=new_job_modal(
+                        context["ray_client"].username,
+                        file_options=files,
+                        initial_files=init_files,
+                    ),
                 )
             case ["help" | ""]:
                 await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
@@ -203,8 +214,9 @@ async def ray_command(ack, say, respond, command, context, client):
 async def new_job_action(ack, payload, context, client, respond, body):
     await ack()
     if context["ray_client"]:
+        files = await files_list_simple(client, count=110)
         # Get files from the source message to prefill the modal.
-        files = []
+        init_files = []
         try:
             value = json.loads(payload["value"])
             response = await client.conversations_history(
@@ -215,52 +227,22 @@ async def new_job_action(ack, payload, context, client, respond, body):
             )
             message = response["messages"][0]
             # Assume the files are accessible if we are able to get the message
-            files = message.get("files", [])
+            init_files = message.get("files", [])
         except (SlackApiError, json.JSONDecodeError, KeyError):
             pass  # The payload value is malformed or no access to the files.
         await client.views_open(
             trigger_id=body["trigger_id"],
-            view=new_job_modal(context["ray_client"].username, files),
+            view=new_job_modal(
+                context["ray_client"].username,
+                file_options=files,
+                initial_files=init_files,
+            ),
         )
     else:
         await respond(
             blocks=context["login_prompt"].blocks,
             text=context["login_prompt"].text,
         )
-
-
-@app.block_action(
-    {"action_id": "select_conversation", "block_id": "conversation_files"},
-    middleware=[load_ray_client],
-)
-async def select_conversation(ack, payload, body, context, client):
-    await ack()
-    if context["ray_client"]:
-        if "view" in body and payload["type"] == "channels_select":
-            channel_id = payload.get("selected_channel")
-            files = []
-            try:
-                response = await client.files_list(
-                    channel=channel_id,
-                    count=100,
-                    show_files_hidden_by_limit=False,
-                )
-                files = response.get("files", [])
-            except SlackApiError:
-                # TODO: Notify user that the app must be included in the channel first.
-                pass
-            try:
-                await client.views_update(
-                    view=new_job_modal(
-                        context["ray_client"].username, file_options=files
-                    ),
-                    view_id=body["view"]["id"],
-                    hash=body["view"]["hash"],
-                )
-            except SlackApiError as e:
-                # Ignore certain Slack API errors
-                if e.response["error"] not in ("hash_conflict",):
-                    raise
 
 
 @app.block_action("login")
@@ -312,32 +294,12 @@ async def language_options(ack, payload):
 
 
 @app.options("file_options")
-async def file_options(ack, payload, context, client):
-    channel_id: str | None = None
-    view = payload.get("view")
-    # Filter files by channel if a channel is selected.
-    if view and "conversation_files" in view["state"]["values"]:
-        selected_channel = view["state"]["values"]["conversation_files"][
-            "select_conversation"
-        ]["selected_channel"]
-        if selected_channel == context["bot_user_id"]:
-            # If the selected conversation is a DM, get the real conversation id
-            # instead of the user id.
-            channel = await client.conversations_open(
-                users=context["user_id"], prevent_creation=True
-            )
-            channel_id = channel["channel"]["id"]
-        elif not selected_channel or selected_channel[0] == "U":
-            # Cannot handle DMs with other users yet.
-            channel_id = None
-        else:
-            channel_id = selected_channel
-    response = await client.files_list(
-        channel=channel_id,
-        count=120,  # Include a bit more than the max 100 options due to filtering
-        show_files_hidden_by_limit=False,
-    )
-    files = response.get("files", [])
+async def file_options(ack, payload, client):
+    """This select options endpoint is used as a backup in case there are
+    no files available for the new job files input.
+    """
+    # Include a bit more than the max 100 options due to filters.
+    files = await files_list_simple(client, count=120)
     if filter := payload.get("value"):
         files = [f for f in files if filter.lower().strip() in f["title"].lower()]
     await ack(options=map_file_options(files[:100]))

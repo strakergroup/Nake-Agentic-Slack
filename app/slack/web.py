@@ -10,6 +10,28 @@ from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.errors import SlackApiError
 
 
+async def files_list_simple(
+    client: AsyncWebClient, channel_id: str | None = None, count: int = 100
+) -> list[dict[str, Any]]:
+    """A helper method to get the downloadable files accessible by the bot.
+    This is a simpler version of `client.files_list()` function.
+
+    Args:
+        client (AsyncWebClient): The Slack WebClient instance (with auth token).
+        channel_id (str | None, optional): The channel to filter by. Defaults to None.
+        count (int, optional): The max number of files to get. Defaults to 100.
+
+    Returns:
+        list[dict[str, Any]]: _description_
+    """
+    response = await client.files_list(
+        channel=channel_id,
+        count=count,
+        show_files_hidden_by_limit=False,
+    )
+    return response.get("files", [])
+
+
 async def get_file_info(
     client: AsyncWebClient, files: Iterable[str]
 ) -> list[dict[str, Any] | BaseException]:
