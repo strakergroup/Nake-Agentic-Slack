@@ -6,7 +6,7 @@ import json
 from urllib.parse import urlencode
 from ray_sdk.api.v3.models import Job
 from .models import SlackMessage, TextMessage, NewJobForm
-from ...config import straker_config
+from ...config import config
 from ...auth.connector import get_slack_deltaray_integration_url
 
 
@@ -101,7 +101,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f":white_check_mark: Login was successful! <@{user_id}> is now connected with <{straker_config.deltaray_domain}|{ray_username}>.",
+                        "text": f":white_check_mark: Login was successful! <@{user_id}> is now connected with <{config.deltaray_domain}|{ray_username}>.",
                     },
                 },
                 {"type": "divider"},
@@ -189,7 +189,7 @@ class JobStatusMessage(SlackMessage):
                                 "text": "View this job in DeltaRay",
                                 "emoji": True,
                             },
-                            "url": f"{straker_config.deltaray_domain}/job/detail?{urlencode({'j': job.uuid, 'member_id': client_id})}",
+                            "url": f"{config.deltaray_domain}/job/detail?{urlencode({'j': job.uuid, 'member_id': client_id})}",
                             "action_id": "link",
                         }
                     ],
@@ -350,7 +350,7 @@ class WhoamiMessage(TextMessage):
 
     def __init__(self, username: str) -> None:
         super().__init__(
-            f"Your connected DeltaRay account is: <{straker_config.deltaray_domain}|{username}>"
+            f"Your connected DeltaRay account is: <{config.deltaray_domain}|{username}>"
         )
 
 

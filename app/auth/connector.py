@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from .algorithms import encrypt_aes, decrypt_aes
-from ..config import straker_config
+from ..config import config
 from ..database import engine
 
 
@@ -45,34 +45,6 @@ class RayClient:
     """The Slack app ID."""
 
 
-def _validate_integration_secret(secret: str, integration: str) -> bool:
-    """Validates an integration secret key. Used to authenticate a request
-    from another internal app.
-
-    Args:
-        secret (str): The secret key to validate.
-        integration (str): The integration name.
-
-    Returns:
-        bool: The validation result.
-    """
-    with engine.connect() as conn:
-        sql = text(
-            """
-            SELECT 1 FROM integration_keys
-            WHERE secret_key = :secret
-            AND name = :name
-            AND environment = :env
-            LIMIT 1
-            """
-        )
-        result = conn.execute(
-            sql,
-            {"secret": secret, "name": integration, "env": straker_config.environment},
-        )
-    return result.first() is not None
-
-
 def validate_queue_proxy_secret(secret: str) -> bool:
     """Validates an integration secret key for the queue proxy app.
 
@@ -82,7 +54,7 @@ def validate_queue_proxy_secret(secret: str) -> bool:
     Returns:
         bool: The validation result.
     """
-    return _validate_integration_secret(secret, "slack_queue_proxy")
+    return secret == config.slack_queue_proxy_secret
 
 
 def get_bot_token(conn: Connection, team_id: str, app_id: str) -> str | None:
@@ -249,7 +221,7 @@ def encrpyt_slack_integration_token(
         "expires": epoch + expire_seconds,
     }
 
-    return encrypt_aes(json.dumps(data), straker_config.slack_deltaray_key)
+    return encrypt_aes(json.dumps(data), config.slack_deltaray_key)
 
 
 def get_slack_deltaray_integration_url(
@@ -274,7 +246,7 @@ def get_slack_deltaray_integration_url(
             user_id, team_id, app_id, channel_id, expire_seconds
         )
     }
-    return f"{straker_config.deltaray_domain}/integration/slack?{urlencode(params)}"
+    return f"{config.deltaray_domain}/integration/slack?{urlencode(params)}"
 
 
 def validate_ray_authentication_token(token: str) -> str:
@@ -291,7 +263,7 @@ def validate_ray_authentication_token(token: str) -> str:
         The client id of the client the request is for.
     """
     try:
-        raw_data = decrypt_aes(token, straker_config.slack_deltaray_key)
+        raw_data = decrypt_aes(token, config.slack_deltaray_key)
         data = json.loads(raw_data)
         if not isinstance(data, dict):
             raise ValueError("The decrypted data has an invalid format")

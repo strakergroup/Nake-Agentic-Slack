@@ -18,7 +18,7 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
 2. Set up environment variables by copying the `.env.example` to `.env` and writing the configuration for your app.
 
    ```bash
-   $ mv .env.example .env
+   $ cp .env.example .env
    ```
 
    The `.env` file contains sensitive and device-specific information so is not committed to the repository.

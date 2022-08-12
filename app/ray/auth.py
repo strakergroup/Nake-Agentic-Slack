@@ -1,5 +1,5 @@
 from ray_sdk import RayV3
-from ..config import straker_config
+from ..config import config
 
 
 def get_ray_service(access_token: str | None = None) -> RayV3:
@@ -7,5 +7,5 @@ def get_ray_service(access_token: str | None = None) -> RayV3:
     # TODO cache services?
     return RayV3(
         token=access_token,
-        base_url=straker_config.stingray_domain,
+        base_url=config.stingray_domain,
     )
