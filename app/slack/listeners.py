@@ -8,6 +8,7 @@ import re
 import json
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
+from slack_sdk.errors import SlackApiError
 
 from .app import app
 from .middleware import load_ray_client
@@ -24,7 +25,7 @@ from .templates.messages import (
     InvalidCommandMessage,
 )
 from .templates.views import new_job_modal
-from .web import download_files
+from .web import get_bot_accessible_files, download_files
 from .select_options import get_language_options, map_file_options
 from ..watson import watson_message
 from ..ray.methods import get_job
@@ -122,11 +123,13 @@ async def home_opened(event, body, say, client):
 async def new_job_shortcut(ack, shortcut, context, respond, client):
     await ack()
     if context["ray_client"]:
+        # Set files in the message as default values if the bot has access to them.
+        files = await get_bot_accessible_files(
+            client, (f["id"] for f in shortcut["message"].get("files", []))
+        )
         await client.views_open(
             trigger_id=shortcut["trigger_id"],
-            view=new_job_modal(
-                context["ray_client"].username, shortcut["message"].get("files")
-            ),
+            view=new_job_modal(context["ray_client"].username, files),
         )
     else:
         # Prompt login if accounts are not connected yet.
@@ -151,10 +154,23 @@ async def ray_command(ack, say, respond, command, context, client):
             case ["logout" | "signoff"]:
                 await respond("Logout prompt")
             case ["new"]:
+                # Try to get the files from the last 3 messages to set as the
+                # default files to translate in the new job modal.
+                files = []
+                try:
+                    response = await client.conversations_history(
+                        channel=context["channel_id"],
+                        limit=3,
+                    )
+                    for message in response["messages"]:
+                        if message.get("files"):
+                            files = message.get("files")
+                            break
+                except SlackApiError:
+                    pass
                 await client.views_open(
                     trigger_id=command["trigger_id"],
-                    # TODO: get latest files
-                    view=new_job_modal(context["ray_client"].username),
+                    view=new_job_modal(context["ray_client"].username, files),
                 )
             case ["help" | ""]:
                 await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
@@ -198,9 +214,10 @@ async def new_job_action(ack, payload, context, client, respond, body):
                 limit=1,
             )
             message = response["messages"][0]
+            # Assume the files are accessible if we are able to get the message
             files = message.get("files", [])
-        except Exception:
-            pass  # THe payload value is malformed
+        except (SlackApiError, json.JSONDecodeError, KeyError):
+            pass  # The payload value is malformed or no access to the files.
         await client.views_open(
             trigger_id=body["trigger_id"],
             view=new_job_modal(context["ray_client"].username, files),

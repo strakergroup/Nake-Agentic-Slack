@@ -1,6 +1,6 @@
 """Utility functions for using the Slack Web API."""
 
-from typing import Iterable
+from typing import Any, Iterable
 import os
 from pathlib import Path
 import tempfile
@@ -8,6 +8,49 @@ import asyncio
 import httpx
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.errors import SlackApiError
+
+
+async def get_file_info(
+    client: AsyncWebClient, files: Iterable[str]
+) -> list[dict[str, Any] | BaseException]:
+    """Gets the file info of files using the Slack Web API. Multiple files
+    are fetched concurrently.
+
+    Args:
+        client (AsyncWebClient): The Slack WebClient instance (with auth token).
+        files (Iterable[str]): A list of file IDs of the files to get.
+
+    Returns:
+        list[dict[str, Any], BaseException]: The list of file objects in the order
+        of the file IDs. An element is a BaseException if it raised an exception
+        for that file.
+    """
+    if not files:
+        return []
+    tasks = (client.files_info(file=file_id) for file_id in files)
+    responses = await asyncio.gather(*tasks, return_exceptions=True)
+    return [r["file"] if not isinstance(r, BaseException) else r for r in responses]
+
+
+async def get_bot_accessible_files(
+    client: AsyncWebClient, files: Iterable[str]
+) -> list[dict[str, Any]]:
+    """Gets the file info of the files which are accessible by the Slack app bot.
+    This is similar to `get_file_info()`, but it does not include the file info
+    of inaccessible files (i.e. files not shared to the bot, e.g. files in DMs or
+    private channels). This means that the return list length may be less than the
+    number of file IDs given in the argument.
+
+    Args:
+        client (AsyncWebClient): The Slack WebClient instance (with auth token).
+        files (Iterable[str]): A list of file IDs of the files to get.
+
+    Returns:
+        list[dict[str, Any]]: The list of file objects in the order of the file
+        IDs EXCLUDING files which the Web API request failed, e.g. due to no access.
+    """
+    file_info = await get_file_info(client, files)
+    return [file for file in file_info if not isinstance(file, BaseException)]
 
 
 async def download_file(
@@ -19,9 +62,8 @@ async def download_file(
     """Downloads a file from Slack and saves it to the disk.
 
     Args:
-        client (WebClient): The Slack WebClient instance (with bot token).
+        client (WebClient): The Slack WebClient instance (with auth token).
         file_id (str): The file ID.
-        destination (str, optional): The directory to save the file in. Defaults to ".".
         http (httpx.AsyncClient | None): The httpx client to use. If not given, this
         will create one.
 
@@ -30,15 +72,14 @@ async def download_file(
     """
     # Download the file from slack.
     try:
-        # TODO http errors
         file = await client.files_info(file=file_id)
         download_url = file["file"]["url_private"]
     except SlackApiError:
         # Slack auth error, file_not_found error, etc.
         raise
 
-    close_connection = http is None
-    if http is None:
+    reuse_connection = http is not None and not http.is_closed
+    if not reuse_connection:
         http = httpx.AsyncClient()
     try:
         response = await http.get(
@@ -50,7 +91,7 @@ async def download_file(
         raise
     finally:
         # Close the http connection if no httpx client given.
-        if close_connection:
+        if not reuse_connection:
             await http.aclose()
 
     # Save the file to the temp directory.
@@ -71,6 +112,10 @@ async def download_files(
 ) -> list[str | None]:
     """Download multiple files from slack. This is more efficient than calling
     `download_file()` multiple times.
+
+    Args:
+        client (WebClient): The Slack WebClient instance (with auth token).
+        files (Iterable[str]): A list of file IDs of the files to get.
 
     Returns:
         list[str | None]: A list of the paths of the downloaded files, an element is
