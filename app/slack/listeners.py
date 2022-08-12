@@ -199,7 +199,7 @@ async def ray_command(ack, say, respond, command, context, client):
         )
 
 
-@app.action("new_job", middleware=[load_ray_client])
+@app.block_action("new_job", middleware=[load_ray_client])
 async def new_job_action(ack, payload, context, client, respond, body):
     await ack()
     if context["ray_client"]:
@@ -229,13 +229,47 @@ async def new_job_action(ack, payload, context, client, respond, body):
         )
 
 
-@app.action("login")
+@app.block_action(
+    {"action_id": "select_conversation", "block_id": "conversation_files"},
+    middleware=[load_ray_client],
+)
+async def select_conversation(ack, payload, body, context, client):
+    await ack()
+    if context["ray_client"]:
+        if "view" in body and payload["type"] == "channels_select":
+            channel_id = payload.get("selected_channel")
+            files = []
+            try:
+                response = await client.files_list(
+                    channel=channel_id,
+                    count=100,
+                    show_files_hidden_by_limit=False,
+                )
+                files = response.get("files", [])
+            except SlackApiError:
+                # TODO: Notify user that the app must be included in the channel first.
+                pass
+            try:
+                await client.views_update(
+                    view=new_job_modal(
+                        context["ray_client"].username, file_options=files
+                    ),
+                    view_id=body["view"]["id"],
+                    hash=body["view"]["hash"],
+                )
+            except SlackApiError as e:
+                # Ignore certain Slack API errors
+                if e.response["error"] not in ("hash_conflict",):
+                    raise
+
+
+@app.block_action("login")
 async def login(ack):
     # No need to do anything here, user opened a link.
     await ack()
 
 
-@app.action("link")
+@app.block_action("link")
 async def link(ack):
     """Simple link button action. No additional actions required."""
     await ack()
@@ -279,35 +313,34 @@ async def language_options(ack, payload):
 
 @app.options("file_options")
 async def file_options(ack, payload, context, client):
-    channel_id = None
+    channel_id: str | None = None
     view = payload.get("view")
-    # TODO Handle selected conversation change (state?).
-    if view and "conversation" in view["state"]["values"]:
-        selected_channel = view["state"]["values"]["conversation"][
+    # Filter files by channel if a channel is selected.
+    if view and "conversation_files" in view["state"]["values"]:
+        selected_channel = view["state"]["values"]["conversation_files"][
             "select_conversation"
-        ]["selected_conversation"]
-        # If the selected conversation is a DM, get the real conversation id
-        # (instead of the user id).
+        ]["selected_channel"]
         if selected_channel == context["bot_user_id"]:
+            # If the selected conversation is a DM, get the real conversation id
+            # instead of the user id.
             channel = await client.conversations_open(
                 users=context["user_id"], prevent_creation=True
             )
             channel_id = channel["channel"]["id"]
-        elif selected_channel[0] == "U":
-            # TODO handle this (user tokens?)
+        elif not selected_channel or selected_channel[0] == "U":
+            # Cannot handle DMs with other users yet.
             channel_id = None
         else:
-            # TODO this wont work for private channels, mpim, use user token instead
             channel_id = selected_channel
-
     response = await client.files_list(
         channel=channel_id,
-        count=100,
+        count=120,  # Include a bit more than the max 100 options due to filtering
         show_files_hidden_by_limit=False,
-        # TODO user= user filter?
     )
     files = response.get("files", [])
-    await ack(options=map_file_options(files))
+    if filter := payload.get("value"):
+        files = [f for f in files if filter.lower().strip() in f["title"].lower()]
+    await ack(options=map_file_options(files[:100]))
 
 
 # FastAPI will use this to handle Slack API requests.

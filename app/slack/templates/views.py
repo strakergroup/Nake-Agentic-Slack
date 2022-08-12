@@ -8,7 +8,9 @@ from ..select_options import map_file_options
 
 
 def new_job_modal(
-    client_name: str, files: list[dict[str, Any]] | None = None
+    client_name: str,
+    initial_files: list[dict[str, Any]] | None = None,
+    file_options: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """The template for the modal to submit a new translation job. The user can
     select the files they want to translate and enter the job details, e.g.
@@ -16,12 +18,34 @@ def new_job_modal(
 
     Args:
         client_name (str): The user's DeltaRay username.
-        files (list[dict] | None, optional): A list of file objects to initally select. Defaults to None.
+        initial_files (list[dict] | None, optional): A list of file objects to initally select.
+            Defaults to None.
+        file_options (list[dict] | None, optional): A list of file objects to set as available
+            options for the "Files to translate" select input. Defaults to None.
 
     Returns:
         dict: The view dict.
     """
-    initial_files = map_file_options(files) if files else []
+    initial_files = map_file_options(initial_files) if initial_files else []
+    file_options = map_file_options(file_options) if file_options else []
+    # Change the file select menu type depending on if file_options is given.
+    files_block_element = {
+        "type": "multi_static_select" if file_options else "multi_external_select",
+        "placeholder": {
+            "type": "plain_text",
+            "text": "Select file(s)",
+            "emoji": True,
+        },
+        "action_id": "file_options",
+        "max_selected_items": 10,
+    }
+    if initial_files:
+        files_block_element["initial_options"] = initial_files
+    if file_options:
+        files_block_element["options"] = file_options
+    else:
+        files_block_element["min_query_length"] = 0
+
     return {
         "type": "modal",
         "callback_id": "new_job",
@@ -46,45 +70,33 @@ def new_job_modal(
             },
             {
                 "type": "input",
-                "block_id": "conversation",
+                "dispatch_action": True,
+                "block_id": "conversation_files",
                 "element": {
-                    "type": "conversations_select",
+                    # Use channels_select for now, may use conversations_select later.
+                    "type": "channels_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": "Select a conversation",
+                        "text": "Select a channel",
                         "emoji": True,
                     },
-                    "filter": {
-                        # TODO: bots cannot access private,im,mpim, use user token
-                        # to access all
-                        "include": ["public", "im"],
-                        "exclude_external_shared_channels": True,
-                    },
                     "action_id": "select_conversation",
-                    "default_to_current_conversation": True,
                 },
                 "label": {
                     "type": "plain_text",
                     "text": "Location of the file(s)",
                     "emoji": True,
                 },
+                "hint": {
+                    "type": "plain_text",
+                    "text": "Leave blank to search all accessible files",
+                },
                 "optional": True,
             },
             {
                 "type": "input",
                 "block_id": "files",
-                "element": {
-                    "type": "multi_external_select",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": "Select file(s)",
-                        "emoji": True,
-                    },
-                    "action_id": "file_options",
-                    "min_query_length": 0,
-                    "initial_options": initial_files,
-                    "max_selected_items": 10,
-                },
+                "element": files_block_element,
                 "label": {
                     "type": "plain_text",
                     "text": "File(s) to translate",
