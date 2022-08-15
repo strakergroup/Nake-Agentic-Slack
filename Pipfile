@@ -4,15 +4,17 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+python-dotenv = "*"
 fastapi = {extras = ["all"], version = "*"}
+uvicorn = {extras = ["standard"], version = "*"}
 pydantic = "*"
 slack-bolt = "*"
+aiohttp = "*"
 ibm-watson = "*"
 sqlalchemy = "*"
 mysqlclient = "*"
-aiohttp = "*"
-cryptography = "*"
 httpx = "*"
+cryptography = "*"
 ray-python-sdk = {path = "./RAY_Python_SDK-0.0.11-py3-none-any.whl"}
 
 [dev-packages]
