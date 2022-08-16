@@ -1,6 +1,20 @@
 import asyncio
-from fastapi import APIRouter, HTTPException, Depends, Form, status
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Depends,
+    Form,
+    Body,
+    Header,
+    status,
+    Request,
+)
 
+from ..auth.connector import (
+    validate_api_callback_signature,
+    get_slack_users,
+    get_ray_client,
+)
 from ..dependencies import SlackRayAuth, RayEventAuth, RayEvent
 from ..slack import app
 from ..slack.templates.messages import SuccessfulLoginMessage
@@ -30,10 +44,54 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
 
 
 @router.post("/ray/callback")
-async def api_job_callback():
+async def api_job_callback(
+    request: Request,
+    client_id: str,
+    body: dict | None = Body(None),
+    x_straker_signature: str = Header(),
+):
     """Callback endpoint for API jobs."""
-    # TODO
-    return {"message": "success"}
+    subscribed_users = [u for u in get_slack_users(client_id) if u.is_subscribed]
+    if not subscribed_users:
+        # TODO: log this
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+    # Validate X-Straker-Signature.
+    ray_client = get_ray_client(
+        subscribed_users[0].user_id,
+        subscribed_users[0].team_id,
+        subscribed_users[0].app_id,
+    )
+    assert ray_client is not None
+    is_header_valid = validate_api_callback_signature(
+        await request.body(),
+        ray_client.access_token,
+        x_straker_signature,
+    )
+    if not is_header_valid:
+        # TODO: log this
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+
+    # Notify Slack users.
+    try:
+        job_data = body["job"][0]
+        message = f"```{json.dumps(job_data, indent=4)}```"
+    except (json.JSONDecodeError, KeyError, IndexError):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "The payload format is invalid"
+        )
+    for user in subscribed_users:
+        app.client.token = user.bot_token
+        # TODO: Investigate concurrency issues.
+        asyncio.create_task(
+            app.client.chat_postMessage(
+                channel=user.user_id,
+                text=message,
+            )
+        )
+    return {
+        "message": "success",
+        "detail": f"{len(subscribed_users)} Slack users notified",
+    }
 
 
 @router.post("/ray/connect", status_code=status.HTTP_204_NO_CONTENT)

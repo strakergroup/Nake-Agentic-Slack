@@ -1,4 +1,7 @@
 import codecs
+import base64
+import hmac
+from hashlib import sha1
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 
@@ -45,3 +48,8 @@ def decrypt_aes(data: str, key: bytes) -> str:
     padder = padding.PKCS7(aes.block_size).unpadder()
     decrypted_data = padder.update(decrypted_padded_data) + padder.finalize()
     return decrypted_data.decode()
+
+
+def hash_hmac_sha1(message: bytes, key: bytes) -> str:
+    hashed = hmac.new(key, message, sha1)
+    return base64.b64encode(hashed.digest()).decode()

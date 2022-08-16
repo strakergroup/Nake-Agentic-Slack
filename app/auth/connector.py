@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from .algorithms import encrypt_aes, decrypt_aes
+from .algorithms import encrypt_aes, decrypt_aes, hash_hmac_sha1
 from ..config import config
 from ..database import engine
 
@@ -55,6 +55,25 @@ def validate_queue_proxy_secret(secret: str) -> bool:
         bool: The validation result.
     """
     return secret == config.slack_queue_proxy_secret
+
+
+def validate_api_callback_signature(
+    payload: bytes, api_token: str, signature: str
+) -> bool:
+    """Validate the HTTP callback request for when a job which was created in
+    Slack is updated.
+    https://help.strakertranslations.com/hc/en-us/articles/115004089033-Webhooks
+
+    Args:
+        payload (bytes): The raw request body.
+        api_token (str): The client's API token
+        signature (str): The hashed value in the `X-Straker-Signature` header.
+
+    Returns:
+        bool: The validation result.
+    """
+    hash = hash_hmac_sha1(payload, api_token.encode())
+    return signature == hash
 
 
 def get_bot_token(conn: Connection, team_id: str, app_id: str) -> str | None:
