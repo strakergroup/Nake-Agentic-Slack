@@ -1,8 +1,10 @@
+import asyncio
 from fastapi import APIRouter, HTTPException, Depends, Form, status
 
 from ..dependencies import SlackRayAuth, RayEventAuth, RayEvent
 from ..slack import app
 from ..slack.templates.messages import SuccessfulLoginMessage
+import json
 
 
 router = APIRouter(tags=["ray"])
@@ -15,10 +17,22 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
     for user in subscribed_users:
         app.client.token = user.bot_token
         message = f"[{event.event}] {event.message}"
-        await app.client.chat_postMessage(
-            channel=user.user_id,
-            text=message,
+        if event.data:
+            message += f"\n```{json.dumps(event.data, indent=4)}```"
+        # Post the message to the Slack user.
+        asyncio.create_task(
+            app.client.chat_postMessage(
+                channel=user.user_id,
+                text=message,
+            )
         )
+    return {"message": "success"}
+
+
+@router.post("/ray/callback")
+async def api_job_callback():
+    """Callback endpoint for API jobs."""
+    # TODO
     return {"message": "success"}
 
 

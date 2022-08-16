@@ -36,7 +36,7 @@ class RayClient:
     username: str
     """The RAY client username."""
     access_token: str
-    """The access token linked to the client and group."""
+    """The API token linked to the client."""
     slack_user_id: str
     """The Slack user ID."""
     slack_team_id: str
@@ -145,17 +145,12 @@ def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient | None:
         # Now get the access token for authentication.
         sql = text(
             """
-            SELECT t.access_token FROM client_tokens t
-            INNER JOIN client_credentials c
-            ON t.client_credentials_uuid = c.obj_uuid
-            WHERE c.app_team_id = :team_id
-            AND c.app_name = 'slack-ray-translator'
-            AND c.active = 1
-            AND t.active = 1
-            AND t.expired_at IS NULL
+            SELECT obj_uuid FROM api.access_token
+            WHERE account_id = :client_id
+            AND active = 1
             LIMIT 1
             """
-        ).bindparams(team_id=team_id)
+        ).bindparams(client_id=ray_client_id)
         result = conn.execute(sql)
         row = result.first()
         if not row:

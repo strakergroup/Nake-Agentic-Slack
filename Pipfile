@@ -15,7 +15,7 @@ sqlalchemy = "*"
 mysqlclient = "*"
 httpx = "*"
 cryptography = "*"
-ray-python-sdk = {path = "./RAY_Python_SDK-0.0.11-py3-none-any.whl"}
+ray-python-sdk = {path = "./RAY_Python_SDK-0.0.11b0-py3-none-any.whl"}
 
 [dev-packages]
 flake8 = "*"

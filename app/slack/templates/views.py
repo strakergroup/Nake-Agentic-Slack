@@ -258,7 +258,7 @@ def new_job_modal(
                     },
                     "action_id": "workflow",
                 },
-                "label": {"type": "plain_text", "text": "Service type", "emoji": True},
+                "label": {"type": "plain_text", "text": "Workflow", "emoji": True},
             },
             {
                 "type": "input",

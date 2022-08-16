@@ -3,7 +3,6 @@ commands, etc. from the Slack API.
 """
 
 from typing import Callable
-import asyncio
 import re
 import json
 from pydantic import ValidationError
@@ -25,10 +24,10 @@ from .templates.messages import (
     InvalidCommandMessage,
 )
 from .templates.views import new_job_modal
-from .web import files_list_simple, get_bot_accessible_files, download_files
+from .web import files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, map_file_options
 from ..watson import watson_message
-from ..ray.methods import get_job
+from ..ray.methods import get_job, submit_job
 
 
 # ---------------------------------------------------------
@@ -40,6 +39,7 @@ from ..ray.methods import get_job
     {"type": "message", "subtype": (None, "file_share")}, middleware=[load_ray_client]
 )
 async def message_event(message, context, say, client):
+    # TODO handle message threads (no not respond to threads)
     # If there is no text, show new job button or ignore the message.
     if not message.get("text"):
         if message.get("files"):
@@ -266,8 +266,8 @@ async def handle_new_job(ack, view, context, client):
             errors = convert_pydantic_to_slack_error(e)
             await ack(response_action="errors", errors=errors)
             return
-        file_ids = (file.id for file in form.files)
         await ack(response_action="clear")
+        # The response is already returned at this point, can do long tasks here.
         message = JobSubmitMessage(form)
         await client.chat_postMessage(
             channel=context["user_id"],
@@ -276,7 +276,7 @@ async def handle_new_job(ack, view, context, client):
         )
 
         # Process files and submit job.
-        asyncio.create_task(download_files(client, file_ids))
+        await submit_job(context["ray_client"].access_token, client, form)
     else:
         await ack(response_action="clear")
         # Prompt login if accounts are not connected yet.
