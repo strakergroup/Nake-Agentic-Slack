@@ -68,7 +68,7 @@ class StrakerConfig(BaseSettings):
         with engines["ray_integration"].connect() as conn:
             sql = text(
                 """
-                SELECT secret_key FROM integration_keys
+                SELECT secret_key FROM slack_integration_keys
                 WHERE name = :name AND environment = :env
                 LIMIT 1
                 """
@@ -90,7 +90,7 @@ class StrakerConfig(BaseSettings):
         with engines["ray_integration"].connect() as conn:
             sql = text(
                 """
-                SELECT secret_key FROM integration_keys
+                SELECT secret_key FROM slack_integration_keys
                 WHERE name = :name AND environment = :env
                 LIMIT 1
                 """
