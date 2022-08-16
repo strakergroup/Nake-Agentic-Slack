@@ -22,10 +22,22 @@ class StrakerConfig(BaseSettings):
     # Settings from environment variables.
     environment: Environment = Field(..., env="STRAKER_ENVIRONMENT")
     # Derived settings.
+    base_url: HttpUrl = None
     deltaray_domain: HttpUrl = None
     stingray_domain: HttpUrl = None
     slack_deltaray_key: SecretBytes = None
     slack_queue_proxy_secret: SecretStr = None
+
+    @validator("base_url")
+    def default_base_url(cls, v, values):
+        if v:
+            return v.strip("/")
+        match values["environment"]:
+            case (Environment.local | Environment.dev | Environment.uat) as env:
+                return f"https://{env.value}-slack.ray.work"
+            case Environment.live:
+                return "https://slack.ray.work"
+        raise AssertionError(f"Invalid environment value: {values['environment']}")
 
     @validator("deltaray_domain")
     def default_deltaray_domain(cls, v, values):
