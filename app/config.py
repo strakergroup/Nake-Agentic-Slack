@@ -3,7 +3,7 @@ from enum import Enum
 from pydantic import BaseSettings, Field, HttpUrl, SecretBytes, SecretStr, validator
 from sqlalchemy import text
 
-from .database import engine
+from .database import engines
 
 
 class Environment(str, Enum):
@@ -65,7 +65,7 @@ class StrakerConfig(BaseSettings):
     def default_slack_deltaray_key(cls, v, values):
         if v:
             return v
-        with engine.connect() as conn:
+        with engines["ray_integration"].connect() as conn:
             sql = text(
                 """
                 SELECT secret_key FROM integration_keys
@@ -87,7 +87,7 @@ class StrakerConfig(BaseSettings):
     def default_slack_queue_proxy_secret(cls, v, values):
         if v:
             return v
-        with engine.connect() as conn:
+        with engines["ray_integration"].connect() as conn:
             sql = text(
                 """
                 SELECT secret_key FROM integration_keys

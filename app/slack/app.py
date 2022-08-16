@@ -9,24 +9,24 @@ from slack_bolt.oauth.async_callback_options import (
 )
 from .stores import AsyncSQLAlchemyInstallationStore, AsyncSQLAlchemyOAuthStateStore
 from .templates.messages import OnboardingMessage
-from ..database import engine
+from ..database import engines
 
 
 installation_store = AsyncSQLAlchemyInstallationStore(
     client_id=os.getenv("SLACK_CLIENT_ID"),
-    engine=engine,
+    engine=engines["ray_integration"],
     bots_table_name="slack_bots",
     installations_table_name="slack_installations",
 )
 state_store = AsyncSQLAlchemyOAuthStateStore(
     expiration_seconds=1800,
-    engine=engine,
+    engine=engines["ray_integration"],
     table_name="slack_oauth_states",
 )
 
 # Create the Slack tables if they do not exist.
-installation_store.metadata.create_all(engine, checkfirst=True)
-state_store.metadata.create_all(engine, checkfirst=True)
+# installation_store.metadata.create_all(engines["ray_integration"], checkfirst=True)
+# state_store.metadata.create_all(engines["ray_integration"], checkfirst=True)
 
 oauth_settings = AsyncOAuthSettings(
     client_id=os.getenv("SLACK_CLIENT_ID"),

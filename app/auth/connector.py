@@ -11,7 +11,7 @@ from sqlalchemy.engine import Connection
 
 from .algorithms import encrypt_aes, decrypt_aes, hash_hmac_sha1
 from ..config import config
-from ..database import engine
+from ..database import engines
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +100,7 @@ def get_slack_users(ray_client_id: str) -> list[SlackUser]:
         list[SlackUser]: The connected Slack user accounts.
     """
     users: list[SlackUser] = []
-    with engine.connect() as conn:
+    with engines["ray_integration"].connect() as conn:
         sql = text(
             """
             SELECT slack_user_id,slack_team_id,
@@ -143,7 +143,8 @@ def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient | None:
         dict[str, str] | None: A dict containing the client's id and username,
         or None if the account is not linked.
     """
-    with engine.connect() as conn:
+    # First find the client details.
+    with engines["ray_integration"].connect() as conn:
         sql = text(
             """
             SELECT link.member_uuid, mem.login FROM slack_deltaray_link link
@@ -161,10 +162,11 @@ def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient | None:
         if not row:
             return None
         ray_client_id, username = row[0], row[1]
-        # Now get the access token for authentication.
+    # Now get the access token for authentication.
+    with engines["api"].connect() as conn:
         sql = text(
             """
-            SELECT obj_uuid FROM api.access_token
+            SELECT obj_uuid FROM access_token
             WHERE account_id = :client_id
             AND active = 1
             LIMIT 1
@@ -190,7 +192,7 @@ def get_app_id(bot_token: str, team_id: str) -> str:
     if the Slack API does not provide it.
     """
     # TODO Create DB index
-    with engine.connect() as conn:
+    with engines["ray_integration"].connect() as conn:
         sql = text(
             """
             SELECT app_id from slack_installations
