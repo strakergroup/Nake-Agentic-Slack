@@ -290,6 +290,15 @@ class JobSubmitMessage(SlackMessage):
         )
 
 
+class JobCreationMessage(TextMessage):
+    """Message to send when a job TJ number is created after submitting a new job."""
+
+    def __init__(self, job_id: str, files: list[str] | None = None) -> None:
+        super().__init__(
+            f"A new translation job has been created with the job number: `{job_id}`"
+        )
+
+
 class HelpMessage(SlackMessage):
     """Help message showing how to use the app."""
 

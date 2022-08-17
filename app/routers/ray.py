@@ -1,14 +1,15 @@
+from typing import Any
 import asyncio
 from fastapi import (
     APIRouter,
     HTTPException,
     Depends,
     Form,
-    Body,
     Header,
     status,
     Request,
 )
+from pydantic import BaseModel
 
 from ..auth.connector import (
     validate_api_callback_signature,
@@ -17,7 +18,7 @@ from ..auth.connector import (
 )
 from ..dependencies import SlackRayAuth, RayEventAuth, RayEvent
 from ..slack import app
-from ..slack.templates.messages import SuccessfulLoginMessage
+from ..slack.templates.messages import SuccessfulLoginMessage, JobCreationMessage
 import json
 
 
@@ -43,14 +44,22 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
     return {"message": "success"}
 
 
+class RayCallback(BaseModel):
+    """The expected body format for the RAY callback endpoint."""
+
+    event_types: list[str]
+    job: list[dict[str, Any]]
+
+
 @router.post("/ray/callback")
 async def api_job_callback(
     request: Request,
     client_id: str,
-    body: dict | None = Body(None),
+    body: RayCallback,
     x_straker_signature: str = Header(),
 ):
     """Callback endpoint for API jobs."""
+    # Check if the callback can be linked to a Slack user.
     subscribed_users = [u for u in get_slack_users(client_id) if u.is_subscribed]
     if not subscribed_users:
         # TODO: log this
@@ -71,27 +80,34 @@ async def api_job_callback(
         # TODO: log this
         raise HTTPException(status.HTTP_401_UNAUTHORIZED)
 
-    # Notify Slack users.
-    try:
-        job_data = body["job"][0]
-        message = f"```{json.dumps(job_data, indent=4)}```"
-    except (json.JSONDecodeError, KeyError, IndexError):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "The payload format is invalid"
-        )
-    for user in subscribed_users:
-        app.client.token = user.bot_token
-        # TODO: Investigate concurrency issues.
-        asyncio.create_task(
-            app.client.chat_postMessage(
-                channel=user.user_id,
-                text=message,
+    # Only listen to job creation callbacks for now.
+    if "JOB_NUMBER" in body.event_types:
+        # Notify Slack users.
+        try:
+            job_data = body.job[0]
+            message = JobCreationMessage(job_data["tj_number"])
+        except (KeyError, IndexError):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, "The payload format is invalid"
             )
-        )
-    return {
-        "message": "success",
-        "detail": f"{len(subscribed_users)} Slack users notified",
-    }
+        for user in subscribed_users:
+            app.client.token = user.bot_token
+            # TODO: Investigate concurrency issues.
+            asyncio.create_task(
+                app.client.chat_postMessage(
+                    channel=user.user_id,
+                    text=message.text,
+                )
+            )
+        return {
+            "message": "success",
+            "detail": f"{len(subscribed_users)} Slack users notified",
+        }
+    else:
+        return {
+            "message": "success",
+            "detail": f"Unhandled callback event: {body.event_types}",
+        }
 
 
 @router.post("/ray/connect", status_code=status.HTTP_204_NO_CONTENT)
