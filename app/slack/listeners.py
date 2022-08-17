@@ -26,8 +26,8 @@ from .templates.messages import (
 from .templates.views import new_job_modal
 from .web import files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, map_file_options
+from ..ray import RayService
 from ..watson import watson_message
-from ..ray.methods import get_job, submit_job
 
 
 # ---------------------------------------------------------
@@ -59,10 +59,7 @@ async def message_event(message, context, say, client):
             )
 
     async def show_job_status(job_id: str):
-        job = await get_job(
-            context["ray_client"].access_token,
-            job_id,
-        )
+        job = await RayService.get_service(context["ray_client"]).get_job(job_id)
         if job is not None:
             msg = JobStatusMessage(job, context["ray_client"].id)
             await say(blocks=msg.blocks, text=msg.text)
@@ -189,9 +186,8 @@ async def ray_command(ack, say, respond, command, context, client):
                 # TODO strip text of markdown
                 match = re.fullmatch(r"tj\d+", command_text, re.IGNORECASE)
                 if match:
-                    job = await get_job(
-                        context["ray_client"].access_token,
-                        command_text,
+                    job = await RayService.get_service(context["ray_client"]).get_job(
+                        command_text
                     )
                     if job is not None:
                         message = JobStatusMessage(job, context["ray_client"].id)
@@ -276,9 +272,7 @@ async def handle_new_job(ack, view, context, client):
         )
 
         # Process files and submit job.
-        await submit_job(
-            context["ray_client"].id, context["ray_client"].access_token, client, form
-        )
+        await RayService.get_service(context["ray_client"]).submit_job(client, form)
     else:
         await ack(response_action="clear")
         # Prompt login if accounts are not connected yet.

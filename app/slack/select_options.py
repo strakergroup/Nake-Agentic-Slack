@@ -1,6 +1,6 @@
 from typing import Any
 from itertools import islice
-from ..ray.methods import get_languages
+from ..ray import get_languages
 
 
 async def get_language_options(filter: str | None) -> list[dict[str, Any]]:
