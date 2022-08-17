@@ -5,7 +5,7 @@ name = "pypi"
 
 [packages]
 python-dotenv = "*"
-fastapi = {extras = ["all"], version = "*"}
+fastapi = {extras = ["all"], version = ">=0.79.0,<0.80.0"}
 uvicorn = {extras = ["standard"], version = "*"}
 pydantic = "*"
 slack-bolt = "*"
@@ -15,7 +15,7 @@ sqlalchemy = "*"
 mysqlclient = "*"
 httpx = "*"
 cryptography = "*"
-ray-python-sdk = {path = "./RAY_Python_SDK-0.0.11b0-py3-none-any.whl"}
+ray-python-sdk = {path = "./RAY_Python_SDK-0.0.12-py3-none-any.whl"}
 
 [dev-packages]
 flake8 = "*"

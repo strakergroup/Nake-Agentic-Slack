@@ -276,7 +276,9 @@ async def handle_new_job(ack, view, context, client):
         )
 
         # Process files and submit job.
-        await submit_job(context["ray_client"].access_token, client, form)
+        await submit_job(
+            context["ray_client"].id, context["ray_client"].access_token, client, form
+        )
     else:
         await ack(response_action="clear")
         # Prompt login if accounts are not connected yet.

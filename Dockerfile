@@ -12,7 +12,7 @@ WORKDIR /build
 # Tell pipenv to create venv in the current directory
 ENV PIPENV_VENV_IN_PROJECT=1
 # Requires the ray_sdk whl file until the package is published
-COPY Pipfile.lock Pipfile RAY_Python_SDK-0.0.11b0-py3-none-any.whl /build/
+COPY Pipfile.lock Pipfile RAY_Python_SDK-0.0.12-py3-none-any.whl /build/
 RUN /root/.local/bin/pipenv sync
 
 
