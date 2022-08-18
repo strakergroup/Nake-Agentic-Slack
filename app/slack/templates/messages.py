@@ -2,10 +2,12 @@
 # Ignore line too long lint errors
 # flake8: noqa
 
+from typing import Any
 import json
 from urllib.parse import urlencode
 from ray_sdk.api.v3.models import Job
 from .models import SlackMessage, TextMessage, NewJobForm
+from .blocks import job_deltaray_link_block
 from ...config import config
 from ...auth.connector import get_slack_deltaray_integration_url
 
@@ -369,4 +371,116 @@ class InvalidCommandMessage(TextMessage):
     def __init__(self) -> None:
         super().__init__(
             ":no_entry_sign: Invalid command. Type `/ray help` for a list of valid commands."
+        )
+
+
+# -----------------------------------------------------------------------------
+# Ray event messages
+# -----------------------------------------------------------------------------
+
+
+class JobStatusChangeEventMessage(SlackMessage):
+    def __init__(
+        self, client_id: str, job_id: str, status: str, job_data: dict[str, Any]
+    ) -> None:
+        super().__init__(
+            f"Your translation job {job_id} has changed status to: {status}",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"Your translation job {job_id} has changed status to: {status}",
+                    },
+                },
+                job_deltaray_link_block(job_data["job_uuid"], client_id),
+            ],
+        )
+
+
+class JobCompletedEventMessage(SlackMessage):
+    def __init__(self, client_id: str, job_id: str, job_data: dict[str, Any]) -> None:
+        super().__init__(
+            f":tada: Your translation job {job_id} is completed!",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f":tada: Your translation job {job_id} is completed!",
+                    },
+                },
+                job_deltaray_link_block(job_data["job_uuid"], client_id),
+            ],
+        )
+
+
+class JobCancelledEventMessage(SlackMessage):
+    def __init__(self, client_id: str, job_id: str, job_data: dict[str, Any]) -> None:
+        super().__init__(
+            f"Your translation job {job_id} has been cancelled",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"Your translation job {job_id} has been cancelled",
+                    },
+                },
+                job_deltaray_link_block(job_data["job_uuid"], client_id),
+            ],
+        )
+
+
+class JobQuotedEventMessage(SlackMessage):
+    def __init__(self, client_id: str, job_id: str, job_data: dict[str, Any]) -> None:
+        super().__init__(
+            f"Your translation job {job_id} has been quoted",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"Your translation job {job_id} has been quoted",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Accept Quote",
+                                "emoji": True,
+                            },
+                            "style": "primary",
+                            "url": job_data["quote_accpted_url"],
+                            "action_id": "link",
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "View Quote",
+                                "emoji": True,
+                            },
+                            "url": job_data["quote_detail_url"],
+                            "action_id": "link_1",
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Cancel Quote",
+                                "emoji": True,
+                            },
+                            "style": "danger",
+                            "url": job_data["quote_cancel_url"],
+                            "action_id": "link_2",
+                        },
+                    ],
+                },
+                job_deltaray_link_block(job_data["job_uuid"], client_id),
+            ],
         )

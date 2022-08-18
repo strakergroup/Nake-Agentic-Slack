@@ -18,29 +18,74 @@ from ..auth.connector import (
 )
 from ..dependencies import SlackRayAuth, RayEventAuth, RayEvent
 from ..slack import app
-from ..slack.templates.messages import SuccessfulLoginMessage, JobCreationMessage
-import json
+from ..slack.templates.models import SlackMessage
+from ..slack.templates.messages import (
+    SuccessfulLoginMessage,
+    JobCreationMessage,
+    JobStatusChangeEventMessage,
+    JobCompletedEventMessage,
+    JobCancelledEventMessage,
+    JobQuotedEventMessage,
+)
 
 
 router = APIRouter(tags=["ray"])
 
 
+# TODO: refactor this
+event_types = [
+    "job_status_update",
+    "job_cancelled",
+    "job_completed",
+    "job_quote_status",
+]
+
+
+def get_ray_event_message(event: RayEvent) -> SlackMessage:
+    match event.event:
+        case "job_status_update":
+            return JobStatusChangeEventMessage(
+                event.client_id or "",
+                event.data["id"],
+                event.data["status"],
+                event.data,
+            )
+        case "job_completed":
+            return JobCompletedEventMessage(
+                event.client_id or "",
+                event.data["id"],
+                event.data,
+            )
+        case "job_cancelled":
+            return JobCancelledEventMessage(
+                event.client_id or "",
+                event.data["id"],
+                event.data,
+            )
+        case "job_quote_status":
+            return JobQuotedEventMessage(
+                event.client_id or "",
+                event.data["id"],
+                event.data,
+            )
+    raise AssertionError(f"Unhandled RAY event: {event.event}")
+
+
 @router.post("/ray/events")
 async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
     """Receives and responds to an event from the RAY platform."""
+    if event.event not in event_types:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The event type is not valid")
     subscribed_users = [u for u in auth.slack_users if u.is_subscribed]
-    for user in subscribed_users:
-        app.client.token = user.bot_token
-        message = f"[{event.event}] {event.message}"
-        if event.data:
-            message += f"\n```{json.dumps(event.data, indent=4)}```"
-        # Post the message to the Slack user.
-        asyncio.create_task(
-            app.client.chat_postMessage(
-                channel=user.user_id,
-                text=message,
+    message = get_ray_event_message(event)
+    if subscribed_users:
+        for user in subscribed_users:
+            app.client.token = user.bot_token
+            asyncio.create_task(
+                app.client.chat_postMessage(
+                    channel=user.user_id, text=message.text, blocks=message.blocks
+                )
             )
-        )
     return {"message": "success"}
 
 

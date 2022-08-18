@@ -247,7 +247,7 @@ async def login(ack):
     await ack()
 
 
-@app.block_action("link")
+@app.block_action(re.compile(r"link(_\d+)?"))
 async def link(ack):
     """Simple link button action. No additional actions required."""
     await ack()
