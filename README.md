@@ -71,7 +71,7 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
 
 5. Create a new Slack workspace for the app (this is optional but is highly recommended because multiple identical apps in the same workspace will have conflicting commands).
 
-   [Create a new app](https://api.slack.com/apps?new_app=1) and choose the "**From an app manifest**" option. Select the workspace you've just created and paste of contents of `manifest.yml` into the manifest section, but replace `{YOUR_DOMAIN}` with your public domain created in the previous step. This will set up the app to receive the correct events and assign the commands and shortcuts.
+   [Create a new app](https://api.slack.com/apps?new_app=1) and choose the "**From an app manifest**" option. Select the workspace you've just created and paste of contents of `manifest.yml` into the manifest section, but replace `<YOUR_DOMAIN>` with your public domain created in the previous step. This will set up the app to receive the correct events and assign the commands and shortcuts.
 
 6. Install your Slack App to Slack Workspace with the URL `/slack/install`, e.g. `<your-domain>/slack/install`.
 

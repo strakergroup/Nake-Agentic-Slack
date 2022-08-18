@@ -1,5 +1,5 @@
 display_information:
-  name: Ray Translator (Test)
+  name: Ray Translator
   description: The official Slack app for the Straker Ray platform.
   background_color: "#17395c"
   long_description: "The official Slack app for the Straker Ray platform.\r
@@ -18,7 +18,7 @@ features:
       description: Opens a form to submit a new translation job to DeltaRay
   slash_commands:
     - command: /ray
-      url: {YOUR_DOMAIN}/slack/events
+      url: <YOUR_DOMAIN>/slack/events
       description: Use the RAY platform
       usage_hint: "[new][TJ number]"
       should_escape: false
@@ -26,7 +26,7 @@ features:
     - strakertranslations.com
 oauth_config:
   redirect_urls:
-    - {YOUR_DOMAIN}/slack/oauth_redirect
+    - <YOUR_DOMAIN>/slack/oauth_redirect
   scopes:
     bot:
       - channels:history
@@ -43,7 +43,7 @@ oauth_config:
       - mpim:history
 settings:
   event_subscriptions:
-    request_url: {YOUR_DOMAIN}/slack/events
+    request_url: <YOUR_DOMAIN>/slack/events
     bot_events:
       - app_home_opened
       - app_uninstalled
@@ -54,8 +54,8 @@ settings:
       - message.mpim
   interactivity:
     is_enabled: true
-    request_url: {YOUR_DOMAIN}/slack/events
-    message_menu_options_url: {YOUR_DOMAIN}/slack/events
+    request_url: <YOUR_DOMAIN>/slack/events
+    message_menu_options_url: <YOUR_DOMAIN>/slack/events
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false
