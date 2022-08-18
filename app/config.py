@@ -34,9 +34,9 @@ class StrakerConfig(BaseSettings):
             return v.strip("/")
         match values["environment"]:
             case (Environment.local | Environment.dev | Environment.uat) as env:
-                return f"https://{env.value}-slack.ray.work"
+                return f"https://{env.value}-slack-deltaray.strakertranslations.com"
             case Environment.live:
-                return "https://slack.ray.work"
+                return "https://slack-deltaray.strakertranslations.com"
         raise AssertionError(f"Invalid environment value: {values['environment']}")
 
     @validator("deltaray_domain")
