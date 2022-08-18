@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "3b2fd01d2940804d5ba46180c9487c0bbc7684fdbd2f9004ae65f1e8e76d2b7d"
+            "sha256": "cefb4125b61872f57f3ed41b158bfee5f60c3e63e478b5fa85fc0fc5ec64ad59"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -795,10 +795,10 @@
         },
         "ray-python-sdk": {
             "hashes": [
-                "sha256:2194a43de8768bacf2bcc36c4c6100dd08afbd72db611166a29ccf9bd19b7bd5"
+                "sha256:008786b9792639756999c03c6b36852fce4f89c626d1aaea28fbbcc8a6b194fd"
             ],
-            "path": "./RAY_Python_SDK-0.0.12-py3-none-any.whl",
-            "version": "==0.0.12"
+            "path": "./RAY_Python_SDK-0.0.13-py3-none-any.whl",
+            "version": "==0.0.13"
         },
         "requests": {
             "hashes": [

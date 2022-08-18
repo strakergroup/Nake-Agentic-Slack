@@ -111,7 +111,6 @@ class RayService:
 
         key = (ray_client_id, token)
         if key not in cls.services:
-            print(f"creating cached ray service: {key}")
             cls.services[key] = cls(ray_client_id=ray_client_id, token=token)
         return cls.services[key]
 
