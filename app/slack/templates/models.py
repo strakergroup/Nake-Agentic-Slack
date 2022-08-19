@@ -84,7 +84,7 @@ class NewJobForm(BaseModel):
     target_langs: list[RayLanguage]
     target_date: datetime.date
     workflow: str
-    category: str
+    # category: str
     files: list[SlackFile]
 
     @validator("target_langs")
@@ -143,7 +143,7 @@ class NewJobForm(BaseModel):
                 ],
                 target_date=values["target_date"]["target_date"]["selected_date"],
                 workflow=values["workflow"]["workflow"]["selected_option"]["value"],
-                category=values["category"]["category"]["selected_option"]["value"],
+                # category=values["category"]["category"]["selected_option"]["value"],
                 files=[
                     SlackFile.parse_slack_option(opt)
                     for opt in values["files"]["file_options"]["selected_options"]

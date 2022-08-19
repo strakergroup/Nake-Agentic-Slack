@@ -152,46 +152,6 @@ def new_job_modal(
             },
             {
                 "type": "input",
-                "block_id": "job_type",
-                "element": {
-                    "type": "static_select",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": "Select a type",
-                        "emoji": True,
-                    },
-                    "options": [
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Document",
-                                "emoji": False,
-                            },
-                            "value": "document",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Media",
-                                "emoji": False,
-                            },
-                            "value": "media",
-                        },
-                    ],
-                    "initial_option": {
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Document",
-                            "emoji": False,
-                        },
-                        "value": "document",
-                    },
-                    "action_id": "job_type",
-                },
-                "label": {"type": "plain_text", "text": "Type", "emoji": True},
-            },
-            {
-                "type": "input",
                 "block_id": "target_date",
                 "element": {
                     "type": "datepicker",
@@ -260,85 +220,86 @@ def new_job_modal(
                 },
                 "label": {"type": "plain_text", "text": "Workflow", "emoji": True},
             },
-            {
-                "type": "input",
-                "block_id": "category",
-                "element": {
-                    "type": "static_select",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": "Select a category",
-                        "emoji": True,
-                    },
-                    "option_groups": [
-                        {
-                            "label": {
-                                "type": "plain_text",
-                                "text": "Advertising/Marketing",
-                            },
-                            "options": [
-                                {
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": "Art/Literary",
-                                        "emoji": False,
-                                    },
-                                    "value": "art_literary",
-                                },
-                                {
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": "Cosmetics",
-                                        "emoji": False,
-                                    },
-                                    "value": "cosmetics",
-                                },
-                                {
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": "Cultural",
-                                        "emoji": False,
-                                    },
-                                    "value": "cultural",
-                                },
-                            ],
-                        },
-                        {
-                            "label": {
-                                "type": "plain_text",
-                                "text": "Finance, Business & HR",
-                            },
-                            "options": [
-                                {
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": "Accounting",
-                                        "emoji": False,
-                                    },
-                                    "value": "accounting",
-                                },
-                                {
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": "Banking",
-                                        "emoji": False,
-                                    },
-                                    "value": "banking",
-                                },
-                                {
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": "Business",
-                                        "emoji": False,
-                                    },
-                                    "value": "business",
-                                },
-                            ],
-                        },
-                    ],
-                    "action_id": "category",
-                },
-                "label": {"type": "plain_text", "text": "Category", "emoji": True},
-            },
+            # TODO: job category?
+            # {
+            #     "type": "input",
+            #     "block_id": "category",
+            #     "element": {
+            #         "type": "static_select",
+            #         "placeholder": {
+            #             "type": "plain_text",
+            #             "text": "Select a category",
+            #             "emoji": True,
+            #         },
+            #         "option_groups": [
+            #             {
+            #                 "label": {
+            #                     "type": "plain_text",
+            #                     "text": "Advertising/Marketing",
+            #                 },
+            #                 "options": [
+            #                     {
+            #                         "text": {
+            #                             "type": "plain_text",
+            #                             "text": "Art/Literary",
+            #                             "emoji": False,
+            #                         },
+            #                         "value": "art_literary",
+            #                     },
+            #                     {
+            #                         "text": {
+            #                             "type": "plain_text",
+            #                             "text": "Cosmetics",
+            #                             "emoji": False,
+            #                         },
+            #                         "value": "cosmetics",
+            #                     },
+            #                     {
+            #                         "text": {
+            #                             "type": "plain_text",
+            #                             "text": "Cultural",
+            #                             "emoji": False,
+            #                         },
+            #                         "value": "cultural",
+            #                     },
+            #                 ],
+            #             },
+            #             {
+            #                 "label": {
+            #                     "type": "plain_text",
+            #                     "text": "Finance, Business & HR",
+            #                 },
+            #                 "options": [
+            #                     {
+            #                         "text": {
+            #                             "type": "plain_text",
+            #                             "text": "Accounting",
+            #                             "emoji": False,
+            #                         },
+            #                         "value": "accounting",
+            #                     },
+            #                     {
+            #                         "text": {
+            #                             "type": "plain_text",
+            #                             "text": "Banking",
+            #                             "emoji": False,
+            #                         },
+            #                         "value": "banking",
+            #                     },
+            #                     {
+            #                         "text": {
+            #                             "type": "plain_text",
+            #                             "text": "Business",
+            #                             "emoji": False,
+            #                         },
+            #                         "value": "business",
+            #                     },
+            #                 ],
+            #             },
+            #         ],
+            #         "action_id": "category",
+            #     },
+            #     "label": {"type": "plain_text", "text": "Category", "emoji": True},
+            # },
         ],
     }
