@@ -1,14 +1,11 @@
 """Templates for individual Slack blocks."""
-# Ignore line too long lint errors
-# flake8: noqa
 
 from typing import Any
-from urllib.parse import urlencode
 
-from ...config import config
+from ...ray.utils import get_job_url
 
 
-def job_deltaray_link_block(job_id: str, client_id: str) -> dict[str, Any]:
+def job_deltaray_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
     return {
         "type": "actions",
         "elements": [
@@ -19,7 +16,7 @@ def job_deltaray_link_block(job_id: str, client_id: str) -> dict[str, Any]:
                     "text": "View this job in deltaRAY",
                     "emoji": True,
                 },
-                "url": f"{config.deltaray_domain}/job/detail?{urlencode({'j': job_id, 'member_id': client_id})}",
+                "url": get_job_url(job_uuid, client_id),
                 "action_id": "link",
             }
         ],

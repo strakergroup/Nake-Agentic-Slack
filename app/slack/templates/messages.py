@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 from ray_sdk.api.v3.models import Job
 from .models import SlackMessage, TextMessage, NewJobForm
 from .blocks import job_deltaray_link_block
+from ...ray.utils import get_job_url
 from ...config import config
 from ...auth.connector import get_slack_deltaray_integration_url
 
@@ -434,16 +435,57 @@ class JobCancelledEventMessage(SlackMessage):
 
 class JobQuotedEventMessage(SlackMessage):
     def __init__(self, client_id: str, job_id: str, job_data: dict[str, Any]) -> None:
+        url = get_job_url(job_data["job_uuid"], client_id)
         super().__init__(
-            f"Your translation job {job_id} has been quoted",
+            f"Your quote is now ready 🙌\n*<{url}|Straker Job Reference {job_id}>*",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Your translation job {job_id} has been quoted",
+                        "text": f"Your quote is now ready 🙌\n*<{url}|Straker Job Reference {job_id}>*",
                     },
                 },
+                {
+                    "type": "section",
+                    "fields": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Source Language:*\n{job_data['source_lang']}",
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Turnaround time:*\n{job_data['turnaround']}",
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Service:*\n{'Translation'}",  # TODO
+                        },
+                        {"type": "mrkdwn", "text": f"*Job Reference:*\n{job_id}"},
+                    ],
+                },
+                {"type": "divider"},
+                {
+                    "type": "section",
+                    # TODO: multiple target languages
+                    "fields": [
+                        # TODO: format currency
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*{job_data['target_lang']}:*\n${job_data['quote']}",
+                        },
+                    ],
+                },
+                {"type": "divider"},
+                {
+                    "type": "section",
+                    # TODO: format currency
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Total Cost (USD)*: ${job_data['quote']}",
+                    },
+                },
+                {"type": "divider"},
                 {
                     "type": "actions",
                     "elements": [
@@ -451,8 +493,8 @@ class JobQuotedEventMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Accept Quote",
                                 "emoji": True,
+                                "text": "Accept Quote",
                             },
                             "style": "primary",
                             "url": job_data["quote_accpted_url"],
@@ -462,25 +504,24 @@ class JobQuotedEventMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "View Quote",
                                 "emoji": True,
+                                "text": "Cancel",
                             },
-                            "url": job_data["quote_detail_url"],
+                            "style": "danger",
+                            "url": job_data["quote_cancel_url"],
                             "action_id": "link_1",
                         },
                         {
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Cancel Quote",
+                                "text": "More Information",
                                 "emoji": True,
                             },
-                            "style": "danger",
-                            "url": job_data["quote_cancel_url"],
+                            "url": job_data["quote_detail_url"],
                             "action_id": "link_2",
                         },
                     ],
                 },
-                job_deltaray_link_block(job_data["job_uuid"], client_id),
             ],
         )
