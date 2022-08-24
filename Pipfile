@@ -15,6 +15,7 @@ sqlalchemy = "*"
 mysqlclient = "*"
 httpx = "*"
 cryptography = "*"
+babel = "*"
 ray-python-sdk = {path = "./RAY_Python_SDK-0.0.13-py3-none-any.whl"}
 
 [dev-packages]

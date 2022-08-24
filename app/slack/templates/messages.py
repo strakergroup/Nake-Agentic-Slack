@@ -6,9 +6,10 @@ from typing import Any
 import json
 from urllib.parse import urlencode
 from ray_sdk.api.v3.models import Job
+
 from .models import SlackMessage, TextMessage, NewJobForm
 from .blocks import job_deltaray_link_block
-from ...ray.utils import get_job_url
+from ...ray.utils import get_job_url, format_currency, format_currency_symbol
 from ...config import config
 from ...auth.connector import get_slack_deltaray_integration_url
 
@@ -381,9 +382,10 @@ class InvalidCommandMessage(TextMessage):
 
 
 class JobStatusChangeEventMessage(SlackMessage):
-    def __init__(
-        self, client_id: str, job_id: str, status: str, job_data: dict[str, Any]
-    ) -> None:
+    def __init__(self, client_id: str, job_data: dict[str, Any]) -> None:
+        job_id = job_data["id"]
+        job_uuid = job_data["uuid"]
+        status = job_data["status"]
         super().__init__(
             f"Your translation job {job_id} has changed status to: {status}",
             [
@@ -394,13 +396,15 @@ class JobStatusChangeEventMessage(SlackMessage):
                         "text": f"Your translation job {job_id} has changed status to: {status}",
                     },
                 },
-                job_deltaray_link_block(job_data["job_uuid"], client_id),
+                job_deltaray_link_block(job_uuid, client_id),
             ],
         )
 
 
 class JobCompletedEventMessage(SlackMessage):
-    def __init__(self, client_id: str, job_id: str, job_data: dict[str, Any]) -> None:
+    def __init__(self, client_id: str, job_data: dict[str, Any]) -> None:
+        job_id = job_data["id"]
+        job_uuid = job_data["uuid"]
         super().__init__(
             f":tada: Your translation job {job_id} is completed!",
             [
@@ -411,13 +415,15 @@ class JobCompletedEventMessage(SlackMessage):
                         "text": f":tada: Your translation job {job_id} is completed!",
                     },
                 },
-                job_deltaray_link_block(job_data["job_uuid"], client_id),
+                job_deltaray_link_block(job_uuid, client_id),
             ],
         )
 
 
 class JobCancelledEventMessage(SlackMessage):
-    def __init__(self, client_id: str, job_id: str, job_data: dict[str, Any]) -> None:
+    def __init__(self, client_id: str, job_data: dict[str, Any]) -> None:
+        job_id = job_data["id"]
+        job_uuid = job_data["uuid"]
         super().__init__(
             f"Your translation job {job_id} has been cancelled",
             [
@@ -428,14 +434,24 @@ class JobCancelledEventMessage(SlackMessage):
                         "text": f"Your translation job {job_id} has been cancelled",
                     },
                 },
-                job_deltaray_link_block(job_data["job_uuid"], client_id),
+                job_deltaray_link_block(job_uuid, client_id),
             ],
         )
 
 
 class JobQuotedEventMessage(SlackMessage):
-    def __init__(self, client_id: str, job_id: str, job_data: dict[str, Any]) -> None:
-        url = get_job_url(job_data["job_uuid"], client_id)
+    def __init__(self, client_id: str, quote_data: dict[str, Any]) -> None:
+        job: dict[str, Any] = quote_data["job"]
+        job_id = job["id"]
+        job_uuid = job["uuid"]
+        source_lang = job["sl"]["label"]
+        target_lang = job["tl"]["label"]
+        turnaround = job["turnaround"]
+        service = job["service"]
+        quote = quote_data["quote"]
+        currency = format_currency_symbol(quote_data["currency"])
+        quote_formatted = format_currency(quote, quote_data["currency"])
+        url = get_job_url(job_uuid, client_id)
         super().__init__(
             f"Your quote is now ready 🙌\n*<{url}|Straker Job Reference {job_id}>*",
             [
@@ -451,15 +467,15 @@ class JobQuotedEventMessage(SlackMessage):
                     "fields": [
                         {
                             "type": "mrkdwn",
-                            "text": f"*Source Language:*\n{job_data['source_lang']}",
+                            "text": f"*Source Language:*\n{source_lang}",
                         },
                         {
                             "type": "mrkdwn",
-                            "text": f"*Turnaround time:*\n{job_data['turnaround']}",
+                            "text": f"*Turnaround time:*\n{turnaround}",
                         },
                         {
                             "type": "mrkdwn",
-                            "text": f"*Service:*\n{'Translation'}",  # TODO
+                            "text": f"*Service:*\n{service}",
                         },
                         {"type": "mrkdwn", "text": f"*Job Reference:*\n{job_id}"},
                     ],
@@ -469,10 +485,9 @@ class JobQuotedEventMessage(SlackMessage):
                     "type": "section",
                     # TODO: multiple target languages
                     "fields": [
-                        # TODO: format currency
                         {
                             "type": "mrkdwn",
-                            "text": f"*{job_data['target_lang']}:*\n${job_data['quote']}",
+                            "text": f"*{target_lang}:*\n{quote_formatted}",
                         },
                     ],
                 },
@@ -482,7 +497,7 @@ class JobQuotedEventMessage(SlackMessage):
                     # TODO: format currency
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Total Cost (USD)*: ${job_data['quote']}",
+                        "text": f"*Total Cost ({currency})*: {quote_formatted}",
                     },
                 },
                 {"type": "divider"},
@@ -497,7 +512,7 @@ class JobQuotedEventMessage(SlackMessage):
                                 "text": "Accept Quote",
                             },
                             "style": "primary",
-                            "url": job_data["quote_accpted_url"],
+                            "url": quote_data["quote_accept_url"],
                             "action_id": "link",
                         },
                         {
@@ -508,7 +523,7 @@ class JobQuotedEventMessage(SlackMessage):
                                 "text": "Cancel",
                             },
                             "style": "danger",
-                            "url": job_data["quote_cancel_url"],
+                            "url": quote_data["quote_cancel_url"],
                             "action_id": "link_1",
                         },
                         {
@@ -518,7 +533,7 @@ class JobQuotedEventMessage(SlackMessage):
                                 "text": "More Information",
                                 "emoji": True,
                             },
-                            "url": job_data["quote_detail_url"],
+                            "url": quote_data["quote_detail_url"],
                             "action_id": "link_2",
                         },
                     ],

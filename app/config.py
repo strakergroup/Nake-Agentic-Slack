@@ -78,7 +78,7 @@ class StrakerConfig(BaseSettings):
             )
             row = result.first()
             if not row:
-                raise ValueError(
+                raise AssertionError(
                     "The Slack-DeltaRAY integration key is not in the database"
                 )
             return base64.b64decode(row[0].encode())
@@ -100,8 +100,8 @@ class StrakerConfig(BaseSettings):
             )
             row = result.first()
             if not row:
-                raise ValueError(
-                    "The Slack-Queue_Proxy integration key is not in the database"
+                raise AssertionError(
+                    "The Slack-Queue-Proxy integration key is not in the database"
                 )
             return row[0]
 

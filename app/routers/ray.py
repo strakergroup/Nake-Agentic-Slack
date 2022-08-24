@@ -34,40 +34,24 @@ router = APIRouter(tags=["ray"])
 
 # TODO: refactor this
 event_types = [
-    "job_status_update",
-    "job_cancelled",
+    "job_status",
     "job_completed",
-    "job_quote_status",
+    "job_cancelled",
+    "quote_created",
 ]
 
 
 def get_ray_event_message(event: RayEvent) -> SlackMessage:
+    """Gets the SlackMessage based on the event type."""
     match event.event:
-        case "job_status_update":
-            return JobStatusChangeEventMessage(
-                event.client_id or "",
-                event.data["id"],
-                event.data["status"],
-                event.data,
-            )
+        case "job_status":
+            return JobStatusChangeEventMessage(event.client_id or "", event.data)
         case "job_completed":
-            return JobCompletedEventMessage(
-                event.client_id or "",
-                event.data["id"],
-                event.data,
-            )
+            return JobCompletedEventMessage(event.client_id or "", event.data)
         case "job_cancelled":
-            return JobCancelledEventMessage(
-                event.client_id or "",
-                event.data["id"],
-                event.data,
-            )
-        case "job_quote_status":
-            return JobQuotedEventMessage(
-                event.client_id or "",
-                event.data["id"],
-                event.data,
-            )
+            return JobCancelledEventMessage(event.client_id or "", event.data)
+        case "quote_created":
+            return JobQuotedEventMessage(event.client_id or "", event.data)
     raise AssertionError(f"Unhandled RAY event: {event.event}")
 
 
@@ -75,7 +59,9 @@ def get_ray_event_message(event: RayEvent) -> SlackMessage:
 async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
     """Receives and responds to an event from the RAY platform."""
     if event.event not in event_types:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The event type is not valid")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "The event type is not valid"
+        )
     subscribed_users = [u for u in auth.slack_users if u.is_subscribed]
     message = get_ray_event_message(event)
     if subscribed_users:

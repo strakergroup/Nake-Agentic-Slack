@@ -50,7 +50,6 @@ class RayEvent(BaseModel):
     """The source of the event."""
     message: str | None = None
     client_id: str | None = None
-    job_id: str | None = None
     data: dict[str, Any] | None = None
 
 

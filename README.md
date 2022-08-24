@@ -82,7 +82,7 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
 This means that some Python modules (dependencies) are not installed. To fix this, install the dependencies by running
 
 ```bash
-$ pipenv install
+$ pipenv install --dev
 ```
 
 This will create a virtual enviroment and install the dependencies from `Pipfile`.
