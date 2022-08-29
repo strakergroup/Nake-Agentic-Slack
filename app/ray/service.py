@@ -1,7 +1,7 @@
 import asyncio
 from urllib.parse import urlencode
 from slack_sdk.web.async_client import AsyncWebClient
-from ray_sdk import RayV3, RayAuthError
+from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
 from ray_sdk.api.v3.models import Job, Language
 
 from ..config import config
@@ -20,7 +20,7 @@ class RayService:
 
     def __init__(self, ray_client_id: str | None, token: str | None) -> None:
         self._ray_client_id = ray_client_id
-        self._ray = RayV3(token=token, base_url=config.stingray_domain)
+        self._ray = RayV3(api_token=token, base_url=config.stingray_domain)
 
     @property
     def ray_client_id(self) -> str | None:
@@ -37,11 +37,11 @@ class RayService:
         """
         return bool(self.ray_client_id and self.token)
 
-    async def get_languages(self) -> list[Language]:
+    async def get_languages(self) -> RayResponse[list[Language]]:
         """Gets the list of available languages for translation."""
         return await self._ray.get_languages()
 
-    async def get_job(self, job_id: str) -> Job | None:
+    async def get_job(self, job_id: str) -> RayResponse[Job] | None:
         """Gets the details of a translation job.
 
         Args:
@@ -56,8 +56,13 @@ class RayService:
             return await self._ray.get_job(job_id)
         except RayAuthError:
             return None
+        except RayAPIResponseError:
+            # TODO: log API errors
+            return None
 
-    async def submit_job(self, client: AsyncWebClient, form: NewJobForm) -> None:
+    async def submit_job(
+        self, client: AsyncWebClient, form: NewJobForm
+    ) -> list[RayResponse[None]]:
         """Submit a new job."""
         if not self.has_credentials():
             raise ValueError("The RayService does not have credentials for: submit_job")
@@ -80,7 +85,7 @@ class RayService:
                     additional_data={"app_source": "slack"},
                 )
             )
-        await asyncio.gather(*tasks)
+        return await asyncio.gather(*tasks)
 
     @classmethod
     def get_service(
@@ -120,5 +125,5 @@ class RayService:
 _noauth_service = RayService(None, None)
 
 
-async def get_languages() -> list[Language]:
+async def get_languages() -> RayResponse[list[Language]]:
     return await _noauth_service.get_languages()

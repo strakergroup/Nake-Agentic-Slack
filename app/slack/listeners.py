@@ -59,7 +59,8 @@ async def message_event(message, context, say, client):
             )
 
     async def show_job_status(job_id: str):
-        job = await RayService.get_service(context["ray_client"]).get_job(job_id)
+        response = await RayService.get_service(context["ray_client"]).get_job(job_id)
+        job = response.data if response is not None else None
         if job is not None:
             msg = JobStatusMessage(job, context["ray_client"].id)
             await say(blocks=msg.blocks, text=msg.text)
@@ -186,9 +187,10 @@ async def ray_command(ack, say, respond, command, context, client):
                 # TODO strip text of markdown
                 match = re.fullmatch(r"tj\d+", command_text, re.IGNORECASE)
                 if match:
-                    job = await RayService.get_service(context["ray_client"]).get_job(
-                        command_text
-                    )
+                    response = await RayService.get_service(
+                        context["ray_client"]
+                    ).get_job(command_text)
+                    job = response.data if response is not None else None
                     if job is not None:
                         message = JobStatusMessage(job, context["ray_client"].id)
                         await say(blocks=message.blocks, text=message.text)
@@ -272,6 +274,7 @@ async def handle_new_job(ack, view, context, client):
         )
 
         # Process files and submit job.
+        # TODO Log this
         await RayService.get_service(context["ray_client"]).submit_job(client, form)
     else:
         await ack(response_action="clear")

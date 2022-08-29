@@ -5,7 +5,7 @@ from ..ray import get_languages
 
 async def get_language_options(filter: str | None) -> list[dict[str, Any]]:
     # TODO: cache
-    languages = await get_languages()
+    languages = (await get_languages()).data
     # Filter language options from keyword filter.
     if filter:
         languages = (
