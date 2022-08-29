@@ -262,7 +262,7 @@ def get_slack_deltaray_integration_url(
             user_id, team_id, app_id, channel_id, expire_seconds
         )
     }
-    return f"{config.deltaray_domain}/integration/slack?{urlencode(params)}"
+    return f"{config.deltaray_domain}/app/slack?{urlencode(params)}"
 
 
 def validate_ray_authentication_token(token: str) -> str:
