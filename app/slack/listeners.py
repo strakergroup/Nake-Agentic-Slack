@@ -11,6 +11,7 @@ from slack_sdk.errors import SlackApiError
 
 from .app import app
 from .middleware import load_ray_client
+from .logging import slack_log_decorator
 from .templates.models import NewJobForm, convert_pydantic_to_slack_error
 from .templates.messages import (
     OnboardingMessage,
@@ -38,8 +39,9 @@ from ..watson import watson_message
 @app.event(
     {"type": "message", "subtype": (None, "file_share")}, middleware=[load_ray_client]
 )
+@slack_log_decorator
 async def message_event(message, context, say, client):
-    # TODO handle message threads (no not respond to threads)
+    # TODO handle message threads (do not respond to threads)
     # If there is no text, show new job button or ignore the message.
     if not message.get("text"):
         if message.get("files"):
@@ -66,8 +68,25 @@ async def message_event(message, context, say, client):
             await say(blocks=msg.blocks, text=msg.text)
         else:
             await say(InvalidJobMessage(job_id).text)
+        if response is not None:
+            context["log"].add_api_log(
+                response.response.status_code,
+                response.response.url,
+                response.response.request.content.decode() or None,
+                response.response.content.decode() or None,
+                dict(response.response.headers),
+                "v3",
+            )
 
     response = watson_message(message["text"], context.get("user_id"))
+    context["log"].set_watson_log(
+        response.status_code,
+        json.dumps(message["text"]),
+        response.data,
+        dict(response.headers),
+        json.dumps(response.data["output"]["intents"]),
+        json.dumps(response.data["output"]["entities"]),
+    )
     match response.intent:
         case "General_About_You" | "General_Agent_Capabilities" | "General_Greetings":
             await say(blocks=HelpMessage().blocks, text=HelpMessage().text)
@@ -105,6 +124,7 @@ async def message_event(message, context, say, client):
 
 
 @app.event("app_home_opened")
+@slack_log_decorator
 async def home_opened(event, body, say, client):
     # Send an onboarding message if the app home is opened for the first time.
     # TODO also onboard if the user hasn't opened in a long time and the account
@@ -118,6 +138,7 @@ async def home_opened(event, body, say, client):
 
 
 @app.message_shortcut("new_job", middleware=[load_ray_client])
+@slack_log_decorator
 async def new_job_shortcut(ack, shortcut, context, respond, client):
     await ack()
     if context["ray_client"]:
@@ -144,6 +165,7 @@ async def new_job_shortcut(ack, shortcut, context, respond, client):
 
 
 @app.command("/ray", middleware=[load_ray_client])
+@slack_log_decorator
 async def ray_command(ack, say, respond, command, context, client):
     await ack()
     if context["ray_client"]:
@@ -196,6 +218,15 @@ async def ray_command(ack, say, respond, command, context, client):
                         await say(blocks=message.blocks, text=message.text)
                     else:
                         await respond(InvalidJobMessage(command_text).text)
+                    if response is not None:
+                        context["log"].add_api_log(
+                            response.response.status_code,
+                            response.response.url,
+                            response.response.request.content.decode() or None,
+                            response.response.content.decode() or None,
+                            dict(response.response.headers),
+                            "v3",
+                        )
                 else:
                     await respond(text=InvalidCommandMessage().text)
             case _:
@@ -209,6 +240,7 @@ async def ray_command(ack, say, respond, command, context, client):
 
 
 @app.block_action("new_job", middleware=[load_ray_client])
+@slack_log_decorator
 async def new_job_action(ack, payload, context, client, respond, body):
     await ack()
     if context["ray_client"]:
@@ -256,6 +288,7 @@ async def link(ack):
 
 
 @app.view("new_job", middleware=[load_ray_client])
+@slack_log_decorator
 async def handle_new_job(ack, view, context, client):
     if context["ray_client"]:
         try:
@@ -274,8 +307,18 @@ async def handle_new_job(ack, view, context, client):
         )
 
         # Process files and submit job.
-        # TODO Log this
-        await RayService.get_service(context["ray_client"]).submit_job(client, form)
+        responses = await RayService.get_service(context["ray_client"]).submit_job(
+            client, form
+        )
+        for response in responses:
+            context["log"].add_api_log(
+                response.response.status_code,
+                response.response.url,
+                None,  # TODO: log payload without file
+                response.response.content.decode() or None,
+                dict(response.response.headers),
+                "v3",
+            )
     else:
         await ack(response_action="clear")
         # Prompt login if accounts are not connected yet.

@@ -1,5 +1,6 @@
 from typing import Any
 from dataclasses import dataclass
+from ibm_watson import DetailedResponse
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,36 +32,66 @@ class WatsonResponse:
     to analyse. Contains the calculated text response, intents, and entities.
     """
 
-    def __init__(self, input: str, output: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        input: str,
+        data: dict[str, Any],
+        headers: dict[str, str],
+        status_code: int,
+    ) -> None:
         self._input = input
-        self._output = output
-        if not all(key in output for key in ("generic", "intents", "entities")):
+        self._data = data
+        self._headers = headers
+        self._status_code = status_code
+        self._output = data["output"]
+        if not all(key in self._output for key in ("generic", "intents", "entities")):
             raise ValueError(
                 "The Watson Assistant message response output has a missing key"
             )
         self._reply = (
-            output["generic"][0]["text"]
-            if output.get("generic")
-            and output["generic"][0].get("response_type") == "text"
+            self._output["generic"][0]["text"]
+            if self._output.get("generic")
+            and self._output["generic"][0].get("response_type") == "text"
             else None
         )
-        self._intent = self.get_intent(output["intents"])
-        self._entities = [Entity.fromJSON(e, self.input) for e in output["entities"]]
+        self._intent = self.get_intent(self._output["intents"])
+        self._entities = [
+            Entity.fromJSON(e, self.input) for e in self._output["entities"]
+        ]
 
     @property
     def input(self) -> str:
+        """The message sent to Watson Assistant."""
         return self._input
 
     @property
+    def data(self) -> dict[str, Any]:
+        """The raw JSON data returned from the IBM Watson Assistant API."""
+        return self._data
+
+    @property
+    def headers(self) -> dict[str, str]:
+        """The headers returned from the IBM Watson Assistant API."""
+        return self._headers
+
+    @property
+    def status_code(self) -> int:
+        """The status code returned from the IBM Watson Assistant API."""
+        return self._status_code
+
+    @property
     def reply(self) -> str | None:
+        """The parsed reply text from Watson Assistant."""
         return self._reply
 
     @property
     def intent(self) -> str | None:
+        """The parsed and matched intent from Watson Assistant."""
         return self._intent
 
     @property
     def entities(self) -> list[Entity]:
+        """The parsed entites from Watson Assistant."""
         return self._entities
 
     def findEntity(self, entity: str) -> Entity | None:
@@ -72,10 +103,23 @@ class WatsonResponse:
                 return e
         return None
 
+    @classmethod
+    def from_assistant_v2(
+        cls, input: str, watson_response: DetailedResponse
+    ) -> "WatsonResponse":
+        """Creates an instance from the response from the ibm_watson sdk."""
+        return cls(
+            input=input,
+            data=watson_response.get_result(),
+            headers=watson_response.get_headers(),
+            status_code=watson_response.get_status_code(),
+        )
+
     @staticmethod
     def get_intent(
         intents: list[dict[str, Any]], min_confidence: float = 0.2
     ) -> str | None:
+        """Parse the highest matched intent from the JSON response data."""
         if intents:
             intent = intents[0]
             if intent.get("confidence", 0) >= min_confidence:

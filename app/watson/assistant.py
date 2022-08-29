@@ -1,11 +1,12 @@
 import os
 from ibm_watson import AssistantV2
+
 from .response import WatsonResponse
 
 
 ASSISTANT_ID = os.getenv("WATSON_ASSISTANT_ID")
 if not ASSISTANT_ID:
-    raise ValueError("The WATSON_ASSISTANT_ID environment variable is not set")
+    raise AssertionError("The WATSON_ASSISTANT_ID environment variable is not set")
 
 # Automatically authenticated from the ibm-credentials.env file.
 # https://github.com/watson-developer-cloud/python-sdk#credential-file
@@ -17,6 +18,6 @@ def watson_message(text: str, user_id: str | None = None) -> WatsonResponse:
         ASSISTANT_ID,
         input={"text": text},
         user_id=user_id,
-    ).get_result()
+    )
 
-    return WatsonResponse(text, response["output"])
+    return WatsonResponse.from_assistant_v2(text, response)

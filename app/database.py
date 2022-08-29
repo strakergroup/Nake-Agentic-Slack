@@ -11,7 +11,12 @@ load_dotenv()
 class EnginePool:
     """This class contains engines for different databases."""
 
-    databases: tuple[str] = ("ray_integration", "sitemanager", "api")
+    databases: tuple[str] = (
+        "ray_integration",
+        "sitemanager",
+        "api",
+        "ray_integration_log",
+    )
     """The list of databases that this app uses. This should match the arguments
     in the __init__() function for text editor autocomplete features."""
 
@@ -20,8 +25,10 @@ class EnginePool:
         ray_integration: Engine,
         sitemanager: Engine,
         api: Engine,
+        ray_integration_log: Engine,
     ) -> None:
         self.ray_integration = ray_integration
+        self.ray_integration_log = ray_integration_log
         self.sitemanager = sitemanager
         self.api = api
 
