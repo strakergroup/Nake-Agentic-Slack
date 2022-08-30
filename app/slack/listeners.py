@@ -70,22 +70,22 @@ async def message_event(message, context, say, client):
             await say(InvalidJobMessage(job_id).text)
         if response is not None:
             context["log"].add_api_log(
-                response.response.status_code,
-                response.response.url,
-                response.response.request.content.decode() or None,
-                response.response.content.decode() or None,
-                dict(response.response.headers),
-                "v3",
+                status_code=response.response.status_code,
+                url=str(response.response.url),
+                payload=response.response.request.content.decode() or None,
+                response=response.response.content.decode() or None,
+                headers=dict(response.response.headers.items()),
+                version="v3",
             )
 
     response = watson_message(message["text"], context.get("user_id"))
     context["log"].set_watson_log(
-        response.status_code,
-        json.dumps(message["text"]),
-        response.data,
-        dict(response.headers),
-        json.dumps(response.data["output"]["intents"]),
-        json.dumps(response.data["output"]["entities"]),
+        status_code=response.status_code,
+        text=message["text"],
+        response=response.data,
+        headers=dict(response.headers),
+        intents=response.data["output"]["intents"],
+        entities=response.data["output"]["entities"],
     )
     match response.intent:
         case "General_About_You" | "General_Agent_Capabilities" | "General_Greetings":
@@ -220,12 +220,12 @@ async def ray_command(ack, say, respond, command, context, client):
                         await respond(InvalidJobMessage(command_text).text)
                     if response is not None:
                         context["log"].add_api_log(
-                            response.response.status_code,
-                            response.response.url,
-                            response.response.request.content.decode() or None,
-                            response.response.content.decode() or None,
-                            dict(response.response.headers),
-                            "v3",
+                            status_code=response.response.status_code,
+                            url=str(response.response.url),
+                            payload=response.response.request.content.decode() or None,
+                            response=response.response.content.decode() or None,
+                            headers=dict(response.response.headers.items()),
+                            version="v3",
                         )
                 else:
                     await respond(text=InvalidCommandMessage().text)
@@ -312,12 +312,12 @@ async def handle_new_job(ack, view, context, client):
         )
         for response in responses:
             context["log"].add_api_log(
-                response.response.status_code,
-                response.response.url,
-                None,  # TODO: log payload without file
-                response.response.content.decode() or None,
-                dict(response.response.headers),
-                "v3",
+                status_code=response.response.status_code,
+                url=str(response.response.url),
+                payload=None,  # TODO: log payload without file
+                response=response.response.content.decode() or None,
+                headers=dict(response.response.headers.items()),
+                version="v3",
             )
     else:
         await ack(response_action="clear")

@@ -17,7 +17,7 @@ httpx = "*"
 cryptography = "*"
 babel = "*"
 ray-python-sdk = {path = "./RAY_Python_SDK-0.0.14-py3-none-any.whl"}
-ray-logger = {path = "./RAY_Logger-0.0.1-py3-none-any.whl"}
+ray-logger = {path = "./RAY_Logger-0.0.2-py3-none-any.whl"}
 
 [dev-packages]
 flake8 = "*"
