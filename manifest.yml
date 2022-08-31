@@ -1,13 +1,17 @@
 display_information:
-  name: Ray Translator
-  description: The official Slack app for the Straker Ray platform.
+  name: Straker
+  description: The official Slack app for the Straker RAY platform.
   background_color: "#17395c"
-  long_description: "The official Slack app for the Straker Ray platform.\r
+  long_description: "The official Slack app for the Straker RAY platform.\r
 
     \r
 
-    Connect your Slack workspace to DeltaRay to view, update and create translation jobs directly in Slack. You can also receive notifications about your current jobs."
+    Install this app to your Slack workspace to connect to DeltaRAY and check your job status. There are plenty more features coming soon!"
 features:
+  app_home:
+    home_tab_enabled: false
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
   bot_user:
     display_name: Ray Translator
     always_online: true
