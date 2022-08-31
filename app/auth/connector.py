@@ -94,7 +94,7 @@ def get_slack_users(ray_client_id: str) -> list[SlackUser]:
     """Gets the Slack user accounts connected to a RAY client.
 
     Args:
-        ray_client_id (str): The deltaRAY user ID.
+        ray_client_id (str): The DeltaRAY user ID.
 
     Returns:
         list[SlackUser]: The connected Slack user accounts.
@@ -108,7 +108,6 @@ def get_slack_users(ray_client_id: str) -> list[SlackUser]:
             FROM slack_deltaray_link
             WHERE member_uuid = :client_id
             AND is_active = 1
-            AND is_revoked = 0
             ORDER BY id DESC
             """
         ).bindparams(client_id=ray_client_id)
@@ -154,14 +153,13 @@ def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient | None:
             AND slack_team_id = :team_id
             AND slack_app_id = :app_id
             AND is_active = 1
-            AND is_revoked = 0
             """
         ).bindparams(user_id=user_id, team_id=team_id, app_id=app_id)
         result = conn.execute(sql)
         row = result.first()
         if not row:
             return None
-        ray_client_id, username = row[0], row[1]
+        ray_client_id, username = row.member_uuid, row.login
     # Now get the access token for authentication.
     with engines.api.connect() as conn:
         sql = text(
@@ -244,7 +242,7 @@ def get_slack_deltaray_integration_url(
     user_id: str, team_id: str, app_id: str, channel_id: str, expire_seconds: int = 3600
 ) -> str:
     """Generates a URL for a user to connect their Slack account to their
-    DeltaRay account.
+    DeltaRAY account.
 
     Args:
         user_id (str): The ID of the user.
@@ -255,7 +253,7 @@ def get_slack_deltaray_integration_url(
         Defaults to 3600.
 
     Returns:
-        str: The URL to connect a user's Slack account and DeltaRay account.
+        str: The URL to connect a user's Slack account and DeltaRAY account.
     """
     params = {
         "token": encrpyt_slack_integration_token(
