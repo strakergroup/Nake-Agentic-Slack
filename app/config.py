@@ -20,7 +20,8 @@ class StrakerConfig(BaseSettings):
     """
 
     # Settings from environment variables.
-    environment: Environment = Field(..., env="STRAKER_ENVIRONMENT")
+    environment: Environment = Field(env=["ENVIRONMENT", "STRAKER_ENVIRONMENT"])
+    sentry_dsn: str | None = Field(None, env="SENTRY_DSN")
     # Derived settings.
     base_url: HttpUrl = None
     deltaray_domain: HttpUrl = None

@@ -8,6 +8,7 @@ python-dotenv = "*"
 fastapi = {extras = ["all"], version = ">=0.79.0,<0.80.0"}
 uvicorn = {extras = ["standard"], version = "*"}
 pydantic = "*"
+sentry-sdk = {extras = ["fastapi"], version = "*"}
 slack-bolt = "*"
 aiohttp = "*"
 ibm-watson = "*"
