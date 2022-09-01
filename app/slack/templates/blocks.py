@@ -13,9 +13,10 @@ def job_deltaray_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
                 "type": "button",
                 "text": {
                     "type": "plain_text",
-                    "text": "View this job in deltaRAY",
+                    "text": "View this job in DeltaRAY",
                     "emoji": True,
                 },
+                "style": "primary",
                 "url": get_job_url(job_uuid, client_id),
                 "action_id": "link",
             }

@@ -7,11 +7,39 @@ import json
 from urllib.parse import urlencode
 from ray_sdk.api.v3.models import Job
 
-from .models import SlackMessage, TextMessage, NewJobForm
+from .models import NewJobForm
 from .blocks import job_deltaray_link_block
-from ...ray.utils import get_job_url, format_currency, format_currency_symbol
+from ...ray.utils import (
+    get_job_url,
+    format_currency,
+    format_currency_symbol,
+    format_job_status,
+)
 from ...config import config
 from ...auth.connector import get_slack_deltaray_integration_url
+
+
+class TextMessage:
+    """A class representing a text-only Slack Message."""
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    @property
+    def text(self) -> str:
+        return self._text
+
+
+class SlackMessage(TextMessage):
+    """A class representing a Slack Message with blocks."""
+
+    def __init__(self, text: str, blocks: list[dict[str, Any]]) -> None:
+        super().__init__(text)
+        self._blocks = blocks
+
+    @property
+    def blocks(self) -> list[dict[str, Any]]:
+        return self._blocks
 
 
 class OnboardingMessage(SlackMessage):
@@ -21,20 +49,20 @@ class OnboardingMessage(SlackMessage):
         self, user_id: str, team_id: str, app_id: str, channel_id: str
     ) -> None:
         super().__init__(
-            "The Straker RAY App has been sucessfully installed in your Slack workspace! :tada:",
+            "The Straker App has been sucessfully installed in your Slack workspace! :tada:",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "The Straker RAY App has been sucessfully installed in your Slack workspace! :tada:",
+                        "text": "The Straker App has been sucessfully installed in your Slack workspace! :tada:",
                     },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Sign in to your DeltaRay account to use slash commands and receive notifications about your translation jobs.",
+                        "text": "Connect your DeltaRAY account to get details about your translation jobs.",
                     },
                 },
                 {
@@ -44,7 +72,7 @@ class OnboardingMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Connect DeltaRay account",
+                                "text": "Connect DeltaRAY account",
                             },
                             "style": "primary",
                             "url": get_slack_deltaray_integration_url(
@@ -59,17 +87,17 @@ class OnboardingMessage(SlackMessage):
 
 
 class LoginMessage(SlackMessage):
-    """Message to send to prompt the user to connect their DeltaRay account."""
+    """Message to send to prompt the user to connect their DeltaRAY account."""
 
     def __init__(
         self, user_id: str, team_id: str, app_id: str, channel_id: str
     ) -> None:
         super().__init__(
-            "Connect your DeltaRay account",
+            "Connect your DeltaRAY account",
             [
                 {
                     "type": "section",
-                    "text": {"type": "mrkdwn", "text": "Connect your DeltaRay account"},
+                    "text": {"type": "mrkdwn", "text": "Connect your DeltaRAY account"},
                 },
                 {
                     "type": "actions",
@@ -78,7 +106,7 @@ class LoginMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Connect DeltaRay account",
+                                "text": "Connect DeltaRAY account",
                             },
                             "style": "primary",
                             "url": get_slack_deltaray_integration_url(
@@ -93,7 +121,7 @@ class LoginMessage(SlackMessage):
 
 
 class SuccessfulLoginMessage(SlackMessage):
-    """Message to send after a user successfully connects their DeltaRay
+    """Message to send after a user successfully connects their DeltaRAY
     account.
     """
 
@@ -121,34 +149,15 @@ class SuccessfulLoginMessage(SlackMessage):
                     "fields": [
                         {"type": "mrkdwn", "text": "Check your job status"},
                         {"type": "mrkdwn", "text": "`/ray [TJ number]`"},
-                        {"type": "mrkdwn", "text": "Create a new job"},
-                        {"type": "mrkdwn", "text": "`/ray new`"},
-                        {
-                            "type": "mrkdwn",
-                            "text": ":bell: Configure job notifications",
-                        },
-                        {"type": "mrkdwn", "text": "`/ray notifications`"},
-                        {
-                            "type": "mrkdwn",
-                            "text": ":information_source: Show a help message",
-                        },
-                        {"type": "mrkdwn", "text": "`/ray help`"},
                     ],
                 },
                 {"type": "divider"},
-                {"type": "section", "text": {"type": "mrkdwn", "text": "*More*"}},
                 {
-                    "type": "actions",
+                    "type": "context",
                     "elements": [
                         {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": ":open_file_folder: Straker Help Site",
-                                "emoji": True,
-                            },
-                            "url": "https://help.strakertranslations.com/hc/en-us",
-                            "action_id": "link",
+                            "type": "mrkdwn",
+                            "text": ":question: Need more information? Ask our chat bot below.\n:tada: New features coming soon `/ray whatsnext`",
                         }
                     ],
                 },
@@ -165,39 +174,28 @@ class JobStatusMessage(SlackMessage):
             [
                 {
                     "type": "section",
-                    "text": {"type": "mrkdwn", "text": f"Job status ({job.id}):"},
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"The job status for *{job.id}* is below:",
+                    },
                 },
                 {
                     "type": "section",
                     "fields": [
-                        {"type": "mrkdwn", "text": "Status"},
-                        {"type": "mrkdwn", "text": job.status},
-                        {"type": "mrkdwn", "text": "Source language"},
+                        {"type": "mrkdwn", "text": "*Status:*"},
+                        {"type": "mrkdwn", "text": format_job_status(job.status)},
+                        {"type": "mrkdwn", "text": "*Source Language:*"},
                         {"type": "mrkdwn", "text": job.sl},
-                        {"type": "mrkdwn", "text": "Target language(s)"},
+                        {"type": "mrkdwn", "text": "*Target Language:*"},
                         {"type": "mrkdwn", "text": job.tl},
-                        {"type": "mrkdwn", "text": "Target date"},
+                        {"type": "mrkdwn", "text": "*Expected Completion Date:*"},
                         {
                             "type": "mrkdwn",
-                            "text": job.target_date.strftime("%Y-%m-%d %H:%M:%S"),
+                            "text": job.target_date.strftime("%Y-%m-%d %H:%M:%S UTC"),
                         },
                     ],
                 },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": "View this job in DeltaRay",
-                                "emoji": True,
-                            },
-                            "url": f"{config.deltaray_domain}/job/detail?{urlencode({'j': job.uuid, 'member_id': client_id})}",
-                            "action_id": "link",
-                        }
-                    ],
-                },
+                job_deltaray_link_block(job.uuid, client_id),
             ],
         )
 
@@ -206,7 +204,7 @@ class InvalidJobMessage(TextMessage):
     """The user does not have access to the job."""
 
     def __init__(self, job_id: str) -> None:
-        super().__init__(f"Cannot find the job: `{job_id.upper()}`")
+        super().__init__(f"Cannot find the job: *{job_id.upper()}*")
 
 
 class JobStatusNoIdMessage(TextMessage):
@@ -308,13 +306,13 @@ class HelpMessage(SlackMessage):
 
     def __init__(self) -> None:
         super().__init__(
-            "Hi there :wave: here are some ideas of what you can do:",
+            "Hi there :wave: here are some ideas of what you can currently do with our Beta app:",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Hi there :wave: here are some ideas of what you can do:",
+                        "text": "Hi there :wave: here are some ideas of what you can currently do with our Beta app:",
                     },
                 },
                 {"type": "divider"},
@@ -323,34 +321,17 @@ class HelpMessage(SlackMessage):
                     "fields": [
                         {"type": "mrkdwn", "text": "Check your job status"},
                         {"type": "mrkdwn", "text": "`/ray [TJ number]`"},
-                        {"type": "mrkdwn", "text": "Create a new job"},
-                        {"type": "mrkdwn", "text": "`/ray new`"},
-                        {
-                            "type": "mrkdwn",
-                            "text": ":bell: Configure job notifications",
-                        },
-                        {"type": "mrkdwn", "text": "`/ray notifications`"},
-                        {
-                            "type": "mrkdwn",
-                            "text": "Show your connected DeltaRay account",
-                        },
-                        {"type": "mrkdwn", "text": "`/ray whoami`"},
+                        {"type": "mrkdwn", "text": "Connect your DeltaRAY account"},
+                        {"type": "mrkdwn", "text": "`/ray connect`"},
                     ],
                 },
                 {"type": "divider"},
-                {"type": "section", "text": {"type": "mrkdwn", "text": "*More*"}},
                 {
-                    "type": "actions",
+                    "type": "context",
                     "elements": [
                         {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": ":open_file_folder: Straker Help Site",
-                                "emoji": True,
-                            },
-                            "url": "https://help.strakertranslations.com/hc/en-us",
-                            "action_id": "link",
+                            "type": "mrkdwn",
+                            "text": ":question: Need more information? Ask our chat bot below.\n:tada: New features coming soon `/ray whatsnext`",
                         }
                     ],
                 },
@@ -359,11 +340,11 @@ class HelpMessage(SlackMessage):
 
 
 class WhoamiMessage(TextMessage):
-    """Message showing which DeltaRay account is currently connected."""
+    """Message showing which DeltaRAY account is currently connected."""
 
     def __init__(self, username: str) -> None:
         super().__init__(
-            f"Your connected DeltaRay account is: <{config.deltaray_domain}|{username}>"
+            f"Your connected DeltaRAY account is: <{config.deltaray_domain}|{username}>"
         )
 
 

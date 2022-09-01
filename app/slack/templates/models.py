@@ -3,29 +3,6 @@ import datetime
 from pydantic import BaseModel, ValidationError, validator
 
 
-class TextMessage:
-    """A class representing a text-only Slack Message."""
-
-    def __init__(self, text: str) -> None:
-        self._text = text
-
-    @property
-    def text(self) -> str:
-        return self._text
-
-
-class SlackMessage(TextMessage):
-    """A class representing a Slack Message with blocks."""
-
-    def __init__(self, text: str, blocks: list[dict[str, Any]]) -> None:
-        super().__init__(text)
-        self._blocks = blocks
-
-    @property
-    def blocks(self) -> list[dict[str, Any]]:
-        return self._blocks
-
-
 def convert_pydantic_to_slack_error(error: ValidationError) -> dict[str, str]:
     """Creates a Slack view error dict from pydantic's ValidationError.
     The view's input `block_id` needs to match the pydantic model's properties.

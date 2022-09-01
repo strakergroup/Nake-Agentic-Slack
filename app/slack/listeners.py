@@ -168,8 +168,19 @@ async def new_job_shortcut(ack, shortcut, context, respond, client):
 @slack_log_decorator
 async def ray_command(ack, say, respond, command, context, client):
     await ack()
+
+    # Strip the text formatting from the command args (not perfect).
+    def strip_formatting(text: str):
+        if re.match(r"(\*.+\*)|(~.+~)|(_.+_)|(`.+`)", text):
+            return text[1:-1]
+        return text
+
+    command_args = re.split(
+        r"\s+", strip_formatting(command.get("text", "").strip().lower())
+    )
+    command_args = [strip_formatting(arg) for arg in command_args]
     if context["ray_client"]:
-        match re.split(r"\s+", command.get("text", "").lower()):
+        match command_args:
             case ["whoami"]:
                 await respond(WhoamiMessage(context["ray_client"].username).text)
             case ["login" | "signin" | "connect"]:

@@ -18,8 +18,8 @@ from ..auth.connector import (
 )
 from ..dependencies import SlackRayAuth, RayEventAuth, RayEvent
 from ..slack import app
-from ..slack.templates.models import SlackMessage
 from ..slack.templates.messages import (
+    SlackMessage,
     SuccessfulLoginMessage,
     JobCreationMessage,
     JobStatusChangeEventMessage,

@@ -27,7 +27,7 @@ def format_currency(number: str | float, currency: str):
     return babel_format_currency(number, currency, locale="en_GB")
 
 
-def format_currency_symbol(currency: str):
+def format_currency_symbol(currency: str) -> str:
     """Format the currency property from RAY event. Returns a valid
     currency symbol for babel.currency()
     """
@@ -36,3 +36,37 @@ def format_currency_symbol(currency: str):
     if currency.startswith("EUR_"):
         return "EUR"
     return currency
+
+
+def format_job_status(status: str) -> str:
+    """Formats the job status returned from the API to a human-readable string.
+
+    Args:
+        status (str): The job status value, e.g. IN_PROGRESS.
+
+    Returns:
+        str: The formatted job status string, e.g. In Progress
+    """
+    if not status:
+        return ""
+    match status.strip().upper():
+        case "LEAD":
+            return "Quote Requested"
+        case "IN_PROGRESS":
+            return "In Progress"
+        case "VALIDATION":
+            return "In Validation"
+        case "CANCELLED":
+            return "Cancelled"
+        case "CLIENT_CANCELLED":
+            return "Client Cancelled"
+        case "CLOSED":
+            return "Closed"
+        case "WAITING":
+            return "Waiting"
+        case "REFUNDED":
+            return "Refunded"
+        case "COMPLETED":
+            return "Completed"
+        case _:
+            return status.strip()
