@@ -4,7 +4,6 @@
 
 from typing import Any
 import json
-from urllib.parse import urlencode
 from ray_sdk.api.v3.models import Job
 
 from .models import NewJobForm
@@ -334,6 +333,23 @@ class HelpMessage(SlackMessage):
                             "text": ":question: Need more information? Ask our chat bot below.\n:tada: New features coming soon `/ray whatsnext`",
                         }
                     ],
+                },
+            ],
+        )
+
+
+class WhatsNextMessage(SlackMessage):
+    def __init__(self) -> None:
+        url = "https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features"
+        super().__init__(
+            "Click here to see the upcoming features of our Beta app",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"<{url}|Click here> to see the upcoming features of our Beta app",
+                    },
                 },
             ],
         )

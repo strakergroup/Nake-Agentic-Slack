@@ -21,6 +21,7 @@ from .templates.messages import (
     # NewJobMessage,
     JobSubmitMessage,
     HelpMessage,
+    WhatsNextMessage,
     WhoamiMessage,
     InvalidCommandMessage,
 )
@@ -216,6 +217,10 @@ async def ray_command(ack, say, respond, command, context, client):
             #     )
             case ["help" | ""]:
                 await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
+            case ["whatsnext"]:
+                await respond(
+                    blocks=WhatsNextMessage().blocks, text=WhatsNextMessage().text
+                )
             case [command_text]:
                 # TODO strip text of markdown
                 match = re.fullmatch(r"tj\d+", command_text, re.IGNORECASE)
