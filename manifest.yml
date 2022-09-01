@@ -13,18 +13,13 @@ features:
     messages_tab_enabled: true
     messages_tab_read_only_enabled: false
   bot_user:
-    display_name: Ray Translator
+    display_name: Straker
     always_online: true
-  shortcuts:
-    - name: New Translation Job
-      type: message
-      callback_id: new_job
-      description: Opens a form to submit a new translation job to DeltaRay
   slash_commands:
     - command: /ray
       url: <YOUR_DOMAIN>/slack/events
-      description: Use the RAY platform
-      usage_hint: "[new][TJ number]"
+      description: Get the status of a job
+      usage_hint: "[TJ number]"
       should_escape: false
   unfurl_domains:
     - strakertranslations.com

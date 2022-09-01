@@ -63,15 +63,16 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
             status.HTTP_422_UNPROCESSABLE_ENTITY, "The event type is not valid"
         )
     subscribed_users = [u for u in auth.slack_users if u.is_subscribed]
-    message = get_ray_event_message(event)
+    # message = get_ray_event_message(event)
     if subscribed_users:
         for user in subscribed_users:
             app.client.token = user.bot_token
-            asyncio.create_task(
-                app.client.chat_postMessage(
-                    channel=user.user_id, text=message.text, blocks=message.blocks
-                )
-            )
+            # TODO: Enable when notifications are ready
+            # asyncio.create_task(
+            #     app.client.chat_postMessage(
+            #         channel=user.user_id, text=message.text, blocks=message.blocks
+            #     )
+            # )
     return {"message": "success"}
 
 
