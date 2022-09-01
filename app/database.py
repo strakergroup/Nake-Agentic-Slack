@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
 
 
@@ -32,6 +32,12 @@ class EnginePool:
         self.sitemanager = sitemanager
         self.api = api
 
+    def ping_all(self):
+        for db in self.databases:
+            engine: Engine = getattr(self, db)
+            with engine.connect() as conn:
+                conn.scalar(select(1))
+
     @classmethod
     def load(cls) -> "EnginePool":
         engines = {db: cls._create_engine(db) for db in cls.databases}
@@ -48,7 +54,7 @@ class EnginePool:
         assert user, f"The DB_USER_{database} environment variable is not set"
         assert password, f"The DB_PASSWORD_{database} environment variable is not set"
         database_url = f"mysql+mysqldb://{user}:{password}@{host}:{port}/{database}"
-        return create_engine(database_url, future=True)
+        return create_engine(database_url, future=True, pool_pre_ping=True)
 
 
 # Other modules will import this to use the database.

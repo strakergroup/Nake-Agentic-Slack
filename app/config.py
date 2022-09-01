@@ -1,4 +1,5 @@
 import base64
+import hashlib
 from enum import Enum
 from pydantic import BaseSettings, Field, HttpUrl, SecretBytes, SecretStr, validator
 from sqlalchemy import text
@@ -28,6 +29,7 @@ class StrakerConfig(BaseSettings):
     stingray_domain: HttpUrl = None
     slack_deltaray_key: SecretBytes = None
     slack_queue_proxy_secret: SecretStr = None
+    health_check_password: SecretStr = None
 
     @validator("base_url")
     def default_base_url(cls, v, values):
@@ -105,6 +107,12 @@ class StrakerConfig(BaseSettings):
                     "The Slack-Queue-Proxy integration key is not in the database"
                 )
             return row[0]
+
+    @validator("health_check_password")
+    def default_health_check_password(cls, v, values):
+        return hashlib.sha512(
+            base64.b64encode(values["slack_deltaray_key"])
+        ).hexdigest()
 
     class Config:
         allow_mutation = False
