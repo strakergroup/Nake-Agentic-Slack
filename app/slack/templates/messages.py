@@ -184,9 +184,12 @@ class JobStatusMessage(SlackMessage):
                         {"type": "mrkdwn", "text": "*Status:*"},
                         {"type": "mrkdwn", "text": format_job_status(job.status)},
                         {"type": "mrkdwn", "text": "*Source Language:*"},
-                        {"type": "mrkdwn", "text": job.sl},
+                        {"type": "mrkdwn", "text": job.sl.name},
                         {"type": "mrkdwn", "text": "*Target Language:*"},
-                        {"type": "mrkdwn", "text": job.tl},
+                        {
+                            "type": "mrkdwn",
+                            "text": ", ".join(sorted([lang.name for lang in job.tl])),
+                        },
                         {"type": "mrkdwn", "text": "*Expected Completion Date:*"},
                         {
                             "type": "mrkdwn",

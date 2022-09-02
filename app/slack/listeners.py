@@ -10,12 +10,11 @@ from slack_sdk.errors import SlackApiError
 
 from .app import app
 from .middleware import load_ray_client, require_ray_client
+from .listener_actions import post_job_status
 from .logging import slack_log_decorator
 from .templates.models import NewJobForm, convert_pydantic_to_slack_error
 from .templates.messages import (
     OnboardingMessage,
-    JobStatusMessage,
-    InvalidJobMessage,
     JobStatusNoIdMessage,
     # NewJobMessage,
     JobSubmitMessage,
@@ -49,24 +48,6 @@ async def message_event(message, context, say, client):
         #     await say(blocks=msg.blocks, text=msg.text)
         return
 
-    async def show_job_status(job_id: str):
-        response = await RayService.get_service(context["ray_client"]).get_job(job_id)
-        job = response.data if response is not None else None
-        if job is not None:
-            msg = JobStatusMessage(job, context["ray_client"].id)
-            await say(blocks=msg.blocks, text=msg.text)
-        else:
-            await say(InvalidJobMessage(job_id).text)
-        if response is not None:
-            context["log"].add_api_log(
-                status_code=response.response.status_code,
-                url=str(response.response.url),
-                payload=response.response.request.content.decode() or None,
-                response=response.response.content.decode() or None,
-                headers=dict(response.response.headers.items()),
-                version="v3",
-            )
-
     response = watson_message(message["text"], context.get("user_id"))
     context["log"].set_watson_log(
         status_code=response.status_code,
@@ -90,7 +71,9 @@ async def message_event(message, context, say, client):
             tj_number_entity = response.findEntity("tj-number")
             if tj_number_entity:
                 if await require_ray_client(context):
-                    await show_job_status(tj_number_entity.groups[0].upper())
+                    await post_job_status(
+                        context, context["ray_client"], tj_number_entity.groups[0]
+                    )
             else:
                 await say(JobStatusNoIdMessage().text)
         # case "New_Translation_Job":
@@ -104,7 +87,9 @@ async def message_event(message, context, say, client):
             if tj_number_entity:
                 # Show the job status if only a job id is entered.
                 if await require_ray_client(context):
-                    await show_job_status(tj_number_entity.groups[0].upper())
+                    await post_job_status(
+                        context, context["ray_client"], tj_number_entity.groups[0]
+                    )
             elif response.reply:
                 # Default to Watson Assistant fallback response if no other matches.
                 await say(response.reply)
@@ -211,25 +196,7 @@ async def ray_command(ack, say, respond, command, context, client):
             match = re.fullmatch(r"tj\d+", command_text, re.IGNORECASE)
             if match:
                 if await require_ray_client(context):
-                    # TODO: put ray_service in middleware.
-                    response = await RayService.get_service(
-                        context["ray_client"]
-                    ).get_job(command_text)
-                    job = response.data if response is not None else None
-                    if job is not None:
-                        message = JobStatusMessage(job, context["ray_client"].id)
-                        await say(blocks=message.blocks, text=message.text)
-                    else:
-                        await respond(InvalidJobMessage(command_text).text)
-                    if response is not None:
-                        context["log"].add_api_log(
-                            status_code=response.response.status_code,
-                            url=str(response.response.url),
-                            payload=response.response.request.content.decode() or None,
-                            response=response.response.content.decode() or None,
-                            headers=dict(response.response.headers.items()),
-                            version="v3",
-                        )
+                    await post_job_status(context, context["ray_client"], command_text)
             else:
                 await respond(text=InvalidCommandMessage().text)
         case _:

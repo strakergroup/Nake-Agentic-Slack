@@ -1,5 +1,8 @@
 import asyncio
+from typing import Callable, Coroutine, TypeVar
+from functools import wraps
 from urllib.parse import urlencode
+from httpx import Response
 from slack_sdk.web.async_client import AsyncWebClient
 from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
 from ray_sdk.api.v3.models import Job, Language
@@ -8,6 +11,25 @@ from ..config import config
 from ..auth.connector import RayClient
 from ..slack import web
 from ..slack.templates.models import NewJobForm
+
+
+F = TypeVar("F", bound=Callable[..., Coroutine])
+
+
+def secured_endpoint(func: F) -> F:
+    """Decorator that raises an `AssertionError` before the function is
+    called if this RayService is not authenticated (has token + client_id).
+    """
+
+    @wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        if not self.has_credentials():
+            raise AssertionError(
+                f"The RayService does not have credentials for: {func.__name__}"
+            )
+        return await func(self, *args, **kwargs)
+
+    return wrapper
 
 
 class RayService:
@@ -41,31 +63,29 @@ class RayService:
         """Gets the list of available languages for translation."""
         return await self._ray.get_languages()
 
-    async def get_job(self, job_id: str) -> RayResponse[Job] | None:
+    @secured_endpoint
+    async def get_job(self, job_id: str) -> tuple[Job | None, Response | None]:
         """Gets the details of a translation job.
 
         Args:
             job_id (str): The reference/ID of the job.
 
         Returns:
-            Job | None: The job details, or `None` if access denied.
+            The job data and the response if they exist.
         """
-        if not self.token:
-            return None
         try:
-            return await self._ray.get_job(job_id)
-        except RayAuthError:
-            return None
-        except RayAPIResponseError:
-            # TODO: log API errors
-            return None
+            response = await self._ray.get_job(job_id)
+            return response.data, response.response
+        except RayAuthError as e:
+            return None, e.response
+        except RayAPIResponseError as e:
+            return None, e.response
 
+    @secured_endpoint
     async def submit_job(
         self, client: AsyncWebClient, form: NewJobForm
     ) -> list[RayResponse[None]]:
         """Submit a new job."""
-        if not self.has_credentials():
-            raise ValueError("The RayService does not have credentials for: submit_job")
         file_ids = (file.id for file in form.files if file.id)
         # TODO: check if file is downloaded
         file_paths = await web.download_files(client, file_ids)
