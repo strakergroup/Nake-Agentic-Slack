@@ -37,34 +37,45 @@ def init_slack_app_log(body: dict[str, Any], context: dict[str, Any]) -> SlackAp
     # Automatically determine the action type and value.
     action_type = None
     action_value = None
+    ts = None
     if is_event(body):
         action_type = "event"
         action_value = body["event"]["type"]
         if "subtype" in body["event"]:
             action_value = f"{action_value}:{body['event']['subtype']}"
+        ts = body["event"].get("event_ts")
     elif is_block_actions(body):
         action_type = "block_action"
         action_value = body["actions"][0].get("action_id")
+        ts = body["actions"][0].get("action_ts") if body.get("actions") else None
     elif is_slash_command(body):
         action_type = "command"
         action_value = body.get("command")
         if "text" in body:
             action_value = f"{action_value} {body['text']}"
+        # ts is not in the command payload.
     elif is_options(body):
         action_type = "options"
         action_value = body.get("action_id")
+        # ts is not in the options payload.
     elif is_global_shortcut(body):
         action_type = "global_shortcut"
         action_value = body.get("callback_id")
+        # TODO: test this
+        ts = body.get("action_ts")
     elif is_message_shortcut(body):
         action_type = "message_shortcut"
         action_value = body.get("callback_id")
+        # TODO: test this
+        ts = body.get("action_ts")
     elif is_view_submission(body):
         action_type = "view_submission"
         action_value = body["view"].get("callback_id")
+        # ts is not in the view_submission payload.
     elif is_view_closed(body):
         action_type = "view_closed"
         action_value = body["view"].get("callback_id")
+        # ts is not in the view_closed payload.
     else:
         pass  # The action_type and action_value will remain as None
 
@@ -73,6 +84,8 @@ def init_slack_app_log(body: dict[str, Any], context: dict[str, Any]) -> SlackAp
         action_value,
         user_id=context.get("user_id"),
         team_id=context.get("team_id"),
+        channel_id=context.get("channel_id"),
+        ts=ts,
         body=body,
     )
 
