@@ -3,6 +3,7 @@ from fastapi import FastAPI
 import sentry_sdk
 from sentry_sdk.integrations.starlette import StarletteIntegration
 from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 from .database import engines
 from .config import config, Environment
@@ -19,8 +20,11 @@ sentry_sdk.init(
     integrations=[
         StarletteIntegration(),
         FastApiIntegration(),
+        SqlalchemyIntegration(),
     ],
-    traces_sample_rate=1.0,
+    send_default_pii=True,
+    request_bodies="medium",
+    traces_sample_rate=0.1,
 )
 
 
@@ -39,6 +43,7 @@ async def root():
 async def health_check(password: str | None = None):
     show_details = password == config.health_check_password
     errors = {}
+    info = {}
 
     # Databases.
     try:
@@ -46,18 +51,19 @@ async def health_check(password: str | None = None):
     except Exception as e:
         errors["database"] = str(e)
     # TODO: Redis when applicable
-    # TODO:Watson
-    # TODO: Sentry / GlitchTip
+    # TODO: Watson
+    # Sentry / GlitchTip
+    if show_details:
+        # Check sentry behind a password to prevent spamming.
+        event_id = sentry_sdk.capture_message("Health check", "debug")
+        if event_id:
+            info["sentry"] = "Check for a 'Health check' (debug) issue in Sentry"
+        else:
+            errors["sentry"] = "Sentry is not set up"
 
     result = {"message": "There are some issues" if len(errors) else "OK"}
     if show_details:
         result["environment"] = config.environment.value
         result["errors"] = errors
+        result["info"] = info
     return result
-
-
-if config.environment != Environment.live:
-    # This endpoint is for testing only, disable on live.
-    @app.get("/sentry-debug")
-    async def sentry_debug():
-        raise Exception("Testing Sentry configuration")
