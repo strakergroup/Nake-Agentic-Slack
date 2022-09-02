@@ -54,7 +54,7 @@ class EnginePool:
         assert user, f"The DB_USER_{database} environment variable is not set"
         assert password, f"The DB_PASSWORD_{database} environment variable is not set"
         database_url = f"mysql+mysqldb://{user}:{password}@{host}:{port}/{database}"
-        return create_engine(database_url, future=True, pool_pre_ping=True)
+        return create_engine(database_url, future=True, pool_recycle=7200)
 
 
 # Other modules will import this to use the database.
