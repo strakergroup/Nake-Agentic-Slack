@@ -4,6 +4,8 @@ from uuid import uuid4
 import pytest
 from slack_bolt.context.async_context import AsyncBoltContext
 
+from app.auth.connector import RayClient
+
 
 # -----------------------------------------------------------------------------
 # Helper functions
@@ -119,6 +121,11 @@ def channel_id() -> str:
 @pytest.fixture
 def ts() -> str:
     return mock_ts()
+
+
+@pytest.fixture
+def ray_client(user_id, team_id, app_id) -> RayClient:
+    return RayClient(str(uuid4()), "test.user", str(uuid4()), user_id, team_id, app_id)
 
 
 @pytest.fixture

@@ -86,6 +86,7 @@ class RayService:
         self, client: AsyncWebClient, form: NewJobForm
     ) -> list[RayResponse[None]]:
         """Submit a new job."""
+        # TODO: move to listener_actions.py and resolve circular import in tests
         file_ids = (file.id for file in form.files if file.id)
         # TODO: check if file is downloaded
         file_paths = await web.download_files(client, file_ids)

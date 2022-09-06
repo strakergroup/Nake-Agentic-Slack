@@ -21,12 +21,6 @@ def get_job_url(job_uuid: str, client_id: str | None = None) -> str:
     )
 
 
-def format_currency(number: str | float, currency: str):
-    """Format a currency value to display to users."""
-    currency = format_currency_symbol(currency)
-    return babel_format_currency(number, currency, locale="en_GB")
-
-
 def format_currency_symbol(currency: str) -> str:
     """Format the currency property from RAY event. Returns a valid
     currency symbol for babel.currency()
@@ -36,6 +30,12 @@ def format_currency_symbol(currency: str) -> str:
     if currency.startswith("EUR_"):
         return "EUR"
     return currency
+
+
+def format_currency(number: str | float, currency: str):
+    """Format a currency value to display to users."""
+    currency = format_currency_symbol(currency)
+    return babel_format_currency(number, currency, locale="en_GB")
 
 
 def format_job_status(status: str) -> str:
