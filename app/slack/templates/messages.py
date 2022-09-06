@@ -169,7 +169,7 @@ class JobStatusMessage(SlackMessage):
 
     def __init__(self, job: Job, client_id: str) -> None:
         super().__init__(
-            f"Job status ({job.id}): {job.status}",
+            f"Job status ({job.id}): {format_job_status(job.status)}",
             [
                 {
                     "type": "section",
@@ -351,7 +351,7 @@ class WhatsNextMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"<{url}|Click here> to see the upcoming features of our Beta app",
+                        "text": f"<{url}|Click here> to see the upcoming features of our Beta app.",
                     },
                 },
             ],
