@@ -33,7 +33,6 @@ def init_slack_app_log(body: dict[str, Any], context: dict[str, Any]) -> SlackAp
     Returns:
         SlackAppLog: A valid log object to be logged with `ray_logger`.
     """
-    # TODO: pytest
     # Automatically determine the action type and value.
     action_type = None
     action_value = None

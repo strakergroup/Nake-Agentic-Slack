@@ -138,7 +138,7 @@ async def new_job_shortcut(ack, shortcut, context, respond, client):
 
 @app.command("/ray", middleware=[load_ray_client])
 @slack_log_decorator
-async def ray_command(ack, say, respond, command, context, client):
+async def ray_command(ack, respond, command, context):
     await ack()
 
     # Strip the text formatting from the command args (not perfect).

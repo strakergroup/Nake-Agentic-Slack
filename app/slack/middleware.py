@@ -4,6 +4,7 @@ See https://slack.dev/bolt-python/concepts#listener-middleware.
 """
 
 import logging
+from typing import Any
 from sentry_sdk import capture_message
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_logger.slack import SlackAppLog
@@ -35,7 +36,9 @@ async def ray_log(context, body, next):
 # -----------------------------------------------------------------------------
 
 
-async def load_ray_client(context, body, next) -> None:
+async def load_ray_client(
+    context: AsyncBoltContext, body: dict[str, Any], next
+) -> None:
     """Gets and saves the DeltaRay client information of the Slack user to
     the context if the accounts are connected. Also add a `login_prompt` message
     to the context containing the blocks and text to be sent to the user asking
