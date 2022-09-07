@@ -75,7 +75,9 @@ async def load_ray_client(
 # -----------------------------------------------------------------------------
 
 
-async def require_ray_client(context: AsyncBoltContext) -> bool:
+async def require_ray_client(
+    context: AsyncBoltContext, variation: str | None = None
+) -> bool:
     """Checks if a Slack user is connected to a DeltaRAY account by checking
     the context. If not connected, then post a message prompting the user
     to connect their account. (Requires the `load_ray_client` middleware.)
@@ -91,6 +93,7 @@ async def require_ray_client(context: AsyncBoltContext) -> bool:
         capture_message('Slack: "login_prompt" is not in the context', "warning")
         return False
 
+    login_message: LoginMessage = login_message.with_variation(variation)
     # Send login prompt if no DeltaRAY account is connected.
     if context.respond.response_url:
         await context.respond(

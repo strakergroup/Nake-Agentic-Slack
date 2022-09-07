@@ -15,6 +15,7 @@ from .logging import slack_log_decorator
 from .templates.models import NewJobForm, convert_pydantic_to_slack_error
 from .templates.messages import (
     OnboardingMessage,
+    LoginMessage,
     JobStatusNoIdMessage,
     # NewJobMessage,
     JobSubmitMessage,
@@ -70,7 +71,7 @@ async def message_event(message, context, say, client):
         case "Job_Status":
             tj_number_entity = response.findEntity("tj-number")
             if tj_number_entity:
-                if await require_ray_client(context):
+                if await require_ray_client(context, LoginMessage.GET_JOB):
                     await post_job_status(
                         context, context["ray_client"], tj_number_entity.groups[0]
                     )
@@ -86,7 +87,7 @@ async def message_event(message, context, say, client):
             tj_number_entity = response.findEntity("tj-number")
             if tj_number_entity:
                 # Show the job status if only a job id is entered.
-                if await require_ray_client(context):
+                if await require_ray_client(context, LoginMessage.GET_JOB):
                     await post_job_status(
                         context, context["ray_client"], tj_number_entity.groups[0]
                     )
@@ -195,7 +196,7 @@ async def ray_command(ack, respond, command, context):
         case [command_text]:
             match = re.fullmatch(r"tj\d+", command_text, re.IGNORECASE)
             if match:
-                if await require_ray_client(context):
+                if await require_ray_client(context, LoginMessage.GET_JOB):
                     await post_job_status(context, context["ray_client"], command_text)
             else:
                 await respond(text=InvalidCommandMessage().text)

@@ -88,6 +88,9 @@ class OnboardingMessage(SlackMessage):
 class LoginMessage(SlackMessage):
     """Message to send to prompt the user to connect their DeltaRAY account."""
 
+    GET_JOB = "get_job"
+    NEW_JOB = "new_job"
+
     def __init__(
         self,
         user_id: str,
@@ -95,6 +98,7 @@ class LoginMessage(SlackMessage):
         app_id: str,
         channel_id: str,
         ray_client: RayClient | None = None,
+        variation: str | None = None,
     ) -> None:
         """Constructor for the login Slack message. If the Slack user already has
         a connected DeltaRAY account, creates a variation with the client username
@@ -107,12 +111,30 @@ class LoginMessage(SlackMessage):
             channel_id (str): The Slack channel ID to send the successful login message to.
             ray_client (RayClient | None, optional): Pass the RayClient info to use a
                 variation of the message. Defaults to None.
+            variation (str | None, optional): The variation of the message to use.
+                The options are in the class variables. Defaults to None.
         """
+        self._user_id = user_id
+        self._team_id = team_id
+        self._app_id = app_id
+        self._channel_id = channel_id
+        self._ray_client = ray_client
+        self._variation = variation
+
+        # Have variations of the login message depending on the arguments.
         block_text = "Connect your DeltaRAY account by clicking this button."
-        if isinstance(ray_client, RayClient):
+        if variation == self.GET_JOB:
+            block_text = (
+                "Connect your DeltaRAY account to view the status of your jobs."
+            )
+        elif variation == self.NEW_JOB:
+            block_text = (
+                "Connect your DeltaRAY account to submit a new translation job."
+            )
+        elif isinstance(ray_client, RayClient):
             block_text = (
                 f"Your connected DeltaRAY account is: <{config.deltaray_domain}|{ray_client.username}>.\n"
-                "You can connect to another account by clicking this button."
+                "You can connect a different account by clicking this button."
             )
 
         super().__init__(
@@ -140,6 +162,22 @@ class LoginMessage(SlackMessage):
                     ],
                 },
             ],
+        )
+
+    def with_variation(self, variation: str | None) -> "LoginMessage":
+        """Returns a copy of this message with a different variation. If the
+        variation selected is the same as the current variation, just returns
+        the current instance.
+        """
+        if self._variation == variation:
+            return self
+        return LoginMessage(
+            user_id=self._user_id,
+            team_id=self._team_id,
+            app_id=self._app_id,
+            channel_id=self._channel_id,
+            ray_client=self._ray_client,
+            variation=variation,
         )
 
 
