@@ -108,8 +108,8 @@ class RayService:
             
         result = await asyncio.gather(*tasks)
         
-        process = await self._ray.api_auto_process()
-        print(process)
+        process = await self._ray.api_ondemand_process()
+
         return result
     
     
