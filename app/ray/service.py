@@ -105,8 +105,14 @@ class RayService:
                     additional_data={"app_source": "slack"},
                 )
             )
-        return await asyncio.gather(*tasks)
-
+            
+        result = await asyncio.gather(*tasks)
+        
+        process = await self._ray.api_auto_process()
+        print(process)
+        return result
+    
+    
     @classmethod
     def get_service(
         cls, ray_client: RayClient | str, token: str | None = None
