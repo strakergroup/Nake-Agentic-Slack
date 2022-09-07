@@ -9,7 +9,7 @@ class TestLoginMessage:
         message = LoginMessage(user_id, team_id, app_id, channel_id)
         assert message.text == "Connect your DeltaRAY account"
         assert (
-            "Connect your DeltaRAY account by clicking this button"
+            "Click this button to connect your DeltaRAY account"
             in message.blocks[0]["text"]["text"]
         )
 

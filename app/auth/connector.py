@@ -185,6 +185,33 @@ def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient | None:
     )
 
 
+def disconnect_ray_account(user_id: str, team_id: str, app_id: str) -> bool:
+    """Disconnect the DeltaRAY account of a slack user.
+
+    Args:
+        user_id (str): The Slack user ID.
+        team_id (str): The Slack team ID.
+        app_id (str): The Slack app ID.
+
+    Returns:
+        bool: The Slack user had a connected DeltaRAY account.
+    """
+    with engines.ray_integration.begin() as conn:
+        sql = text(
+            """
+            UPDATE slack_deltaray_link SET
+                is_active = 0,
+                deactivated_at = NOW()
+            WHERE slack_user_id = :user_id
+            AND slack_team_id = :team_id
+            AND slack_app_id = :app_id
+            AND is_active = 1
+            """
+        ).bindparams(user_id=user_id, team_id=team_id, app_id=app_id)
+        result = conn.execute(sql)
+    return result.rowcount > 0
+
+
 def get_app_id(bot_token: str, team_id: str) -> str:
     """Get the app_id from a bot token and team_id. Use this to get the app_id
     if the Slack API does not provide it.

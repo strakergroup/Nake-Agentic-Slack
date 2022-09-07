@@ -122,7 +122,7 @@ class LoginMessage(SlackMessage):
         self._variation = variation
 
         # Have variations of the login message depending on the arguments.
-        block_text = "Connect your DeltaRAY account by clicking this button."
+        block_text = "Click this button to connect your DeltaRAY account."
         if variation == self.GET_JOB:
             block_text = (
                 "Connect your DeltaRAY account to view the status of your jobs."
@@ -221,6 +221,77 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": ":question: Need more information? Ask our chat bot below.\n:tada: New features coming soon `/ray whatsnext`",
                         }
                     ],
+                },
+            ],
+        )
+
+
+class LogoutMessage(SlackMessage):
+    """Message with a button disconnect a user's DeltaRAY account."""
+
+    def __init__(self, ray_username: str) -> None:
+        super().__init__(
+            "Disconnect your DeltaRAY account",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"Click this button to disconnect your DeltaRAY account: <{config.deltaray_domain}|{ray_username}>.",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Disconnect DeltaRAY account",
+                            },
+                            "style": "danger",
+                            "action_id": "disconnect",
+                            "value": ray_username,
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Hide this message",
+                            },
+                            "action_id": "delete_ephemeral_message",
+                        },
+                    ],
+                },
+            ],
+        )
+
+
+class SuccessfulLogoutMessage(SlackMessage):
+    """A Slack user's DeltaRAY account was successfully disconnected."""
+
+    def __init__(self, user_id: str, ray_username: str | None = None) -> None:
+        block_message = (
+            f"Your DeltaRAY account <{config.deltaray_domain}|{ray_username}> is now disconnected from <@{user_id}>."
+            if ray_username
+            else f"Your DeltaRAY account is now disconnected from <@{user_id}>."
+        )
+        super().__init__(
+            "Your DeltaRAY account is now disconnected.",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": block_message,
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "You can use `/ray connect` to connect your DeltaRAY account again.",
+                    },
                 },
             ],
         )

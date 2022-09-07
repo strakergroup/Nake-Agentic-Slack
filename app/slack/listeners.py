@@ -16,6 +16,8 @@ from .templates.models import NewJobForm, convert_pydantic_to_slack_error
 from .templates.messages import (
     OnboardingMessage,
     LoginMessage,
+    LogoutMessage,
+    SuccessfulLogoutMessage,
     JobStatusNoIdMessage,
     # NewJobMessage,
     JobSubmitMessage,
@@ -27,6 +29,7 @@ from .templates.messages import (
 from .templates.views import new_job_modal
 from .web import files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, map_file_options
+from ..auth.connector import disconnect_ray_account
 from ..ray import RayService
 from ..watson import watson_message
 
@@ -68,6 +71,15 @@ async def message_event(message, context, say, client):
                 blocks=context["login_prompt"].blocks,
                 text=context["login_prompt"].text,
             )
+        case "Logout":
+            if await require_ray_client(context):
+                msg = LogoutMessage(context["ray_client"].username)
+                await client.chat_postEphemeral(
+                    channel=context["channel_id"],
+                    user=context["user_id"],
+                    blocks=msg.blocks,
+                    text=msg.text,
+                )
         case "Job_Status":
             tj_number_entity = response.findEntity("tj-number")
             if tj_number_entity:
@@ -158,11 +170,13 @@ async def ray_command(ack, respond, command, context):
                 await respond(WhoamiMessage(context["ray_client"].username).text)
         case ["login" | "signin" | "connect"]:
             await respond(
-                blocks=context["login_prompt"].blocks,
                 text=context["login_prompt"].text,
+                blocks=context["login_prompt"].blocks,
             )
-        # case ["logout" | "signoff"]:
-        #     await respond("Logout prompt")
+        case ["logout" | "signout" | "disconnect"]:
+            if await require_ray_client(context):
+                msg = LogoutMessage(context["ray_client"].username)
+                await respond(text=msg.text, blocks=msg.blocks)
         # case ["new"]:
         #     files = await files_list_simple(client, count=110)
         #     # Try to get the files from the last 3 messages to set as the
@@ -238,6 +252,21 @@ async def new_job_action(ack, payload, context, client, respond, body):
             blocks=context["login_prompt"].blocks,
             text=context["login_prompt"].text,
         )
+
+
+@app.block_action("disconnect")
+async def disconnect_account_action(ack, action, body, context, respond):
+    await ack()
+    disconnect_ray_account(context["user_id"], context["team_id"], body["api_app_id"])
+    # action["value"] should contain the DeltaRAY account username.
+    msg = SuccessfulLogoutMessage(context["user_id"], action.get("value"))
+    await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
+
+
+@app.block_action("delete_ephemeral_message")
+async def delete_ephemeral_message(ack, respond):
+    await ack()
+    await respond(delete_original=True)
 
 
 @app.block_action(re.compile(r"link(_\d+)?|login"))
