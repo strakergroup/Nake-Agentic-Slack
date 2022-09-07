@@ -53,10 +53,11 @@ async def load_ray_client(
         app_id,
     )
     context["login_prompt"] = LoginMessage(
-        context["user_id"],
-        context["team_id"],
-        app_id,
-        context.get("channel_id", context["user_id"]),
+        user_id=context["user_id"],
+        team_id=context["team_id"],
+        app_id=app_id,
+        channel_id=context.get("channel_id", context["user_id"]),
+        ray_client=context["ray_client"],
     )
     # Log the RAY client ID if available.
     if (

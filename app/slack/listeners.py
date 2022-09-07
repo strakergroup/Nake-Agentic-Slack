@@ -239,13 +239,7 @@ async def new_job_action(ack, payload, context, client, respond, body):
         )
 
 
-@app.block_action("login")
-async def login(ack):
-    # No need to do anything here, user opened a link.
-    await ack()
-
-
-@app.block_action(re.compile(r"link(_\d+)?"))
+@app.block_action(re.compile(r"link(_\d+)?|login"))
 async def link(ack):
     """Simple link button action. No additional actions required."""
     await ack()

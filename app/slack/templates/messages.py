@@ -15,7 +15,7 @@ from ...ray.utils import (
     format_job_status,
 )
 from ...config import config
-from ...auth.connector import get_slack_deltaray_integration_url
+from ...auth.connector import RayClient, get_slack_deltaray_integration_url
 
 
 class TextMessage:
@@ -89,14 +89,38 @@ class LoginMessage(SlackMessage):
     """Message to send to prompt the user to connect their DeltaRAY account."""
 
     def __init__(
-        self, user_id: str, team_id: str, app_id: str, channel_id: str
+        self,
+        user_id: str,
+        team_id: str,
+        app_id: str,
+        channel_id: str,
+        ray_client: RayClient | None = None,
     ) -> None:
+        """Constructor for the login Slack message. If the Slack user already has
+        a connected DeltaRAY account, creates a variation with the client username
+        in the message.
+
+        Args:
+            user_id (str): The Slack user ID.
+            team_id (str): The Slack team ID.
+            app_id (str): The Slack app ID.
+            channel_id (str): The Slack channel ID to send the successful login message to.
+            ray_client (RayClient | None, optional): Pass the RayClient info to use a
+                variation of the message. Defaults to None.
+        """
+        block_text = "Connect your DeltaRAY account by clicking this button."
+        if isinstance(ray_client, RayClient):
+            block_text = (
+                f"Your connected DeltaRAY account is: <{config.deltaray_domain}|{ray_client.username}>.\n"
+                "You can connect to another account by clicking this button."
+            )
+
         super().__init__(
             "Connect your DeltaRAY account",
             [
                 {
                     "type": "section",
-                    "text": {"type": "mrkdwn", "text": "Connect your DeltaRAY account"},
+                    "text": {"type": "mrkdwn", "text": block_text},
                 },
                 {
                     "type": "actions",
