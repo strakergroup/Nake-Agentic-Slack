@@ -108,7 +108,7 @@ class RayService:
             )
 
         result = await asyncio.gather(*tasks)
-        process = await self._ray.api_ondemand_process()
+        process = await self._ray.api_ondemand_process("slack")
         result.append(process)
 
         return result
