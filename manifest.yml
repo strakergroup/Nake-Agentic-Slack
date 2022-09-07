@@ -27,6 +27,11 @@ features:
   bot_user:
     display_name: Straker
     always_online: true
+  shortcuts:
+    - name: New Translation Job
+      type: message
+      callback_id: new_job
+      description: Submit a new translation job to DeltaRAY
   slash_commands:
     - command: /ray
       url: <YOUR_DOMAIN>/slack/events

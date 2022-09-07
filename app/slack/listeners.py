@@ -19,7 +19,7 @@ from .templates.messages import (
     LogoutMessage,
     SuccessfulLogoutMessage,
     JobStatusNoIdMessage,
-    # NewJobMessage,
+    NewJobMessage,
     JobSubmitMessage,
     HelpMessage,
     WhatsNextMessage,
@@ -47,9 +47,9 @@ async def message_event(message, context, say, client):
     # TODO handle message threads (do not respond to threads)
     # If there is no text, show new job button or ignore the message.
     if not message.get("text"):
-        # if message.get("files"):
-        #     msg = NewJobMessage(context["channel_id"], message["ts"])
-        #     await say(blocks=msg.blocks, text=msg.text)
+        if message.get("files"):
+            msg = NewJobMessage(context["channel_id"], message["ts"])
+            await say(blocks=msg.blocks, text=msg.text)
         return
 
     response = watson_message(message["text"], context.get("user_id"))
@@ -89,9 +89,9 @@ async def message_event(message, context, say, client):
                     )
             else:
                 await say(JobStatusNoIdMessage().text)
-        # case "New_Translation_Job":
-        #     msg = NewJobMessage(context["channel_id"], message["ts"])
-        #     await say(blocks=msg.blocks, text=msg.text)
+        case "New_Translation_Job":
+            msg = NewJobMessage(context["channel_id"], message["ts"])
+            await say(blocks=msg.blocks, text=msg.text)
         case "Jokes":
             # Delegate jokes to IBM Watson Assistant dialog.
             await say(response.reply)
@@ -122,11 +122,11 @@ async def home_opened(event, body, say, client):
         await say(blocks=message.blocks, text=message.text)
 
 
-# @app.message_shortcut("new_job", middleware=[load_ray_client])
-# @slack_log_decorator
-async def new_job_shortcut(ack, shortcut, context, respond, client):
+@app.message_shortcut("new_job", middleware=[load_ray_client])
+@slack_log_decorator
+async def new_job_shortcut(ack, shortcut, context, client):
     await ack()
-    if context["ray_client"]:
+    if await require_ray_client(context, LoginMessage.NEW_JOB):
         # Include a bit more than the max 100 options due to hidden files.
         files = await files_list_simple(client, count=110)
         # Set files in the message as initial values if the bot has access to them.
@@ -141,17 +141,11 @@ async def new_job_shortcut(ack, shortcut, context, respond, client):
                 initial_files=init_files,
             ),
         )
-    else:
-        # Prompt login if accounts are not connected yet.
-        await respond(
-            blocks=context["login_prompt"].blocks,
-            text=context["login_prompt"].text,
-        )
 
 
 @app.command("/ray", middleware=[load_ray_client])
 @slack_log_decorator
-async def ray_command(ack, respond, command, context):
+async def ray_command(ack, respond, command, context, client):
     await ack()
 
     # Strip the text formatting from the command args (not perfect).
@@ -177,30 +171,31 @@ async def ray_command(ack, respond, command, context):
             if await require_ray_client(context):
                 msg = LogoutMessage(context["ray_client"].username)
                 await respond(text=msg.text, blocks=msg.blocks)
-        # case ["new"]:
-        #     files = await files_list_simple(client, count=110)
-        #     # Try to get the files from the last 3 messages to set as the
-        #     # default files to translate in the new job modal.
-        #     init_files = []
-        #     try:
-        #         response = await client.conversations_history(
-        #             channel=context["channel_id"],
-        #             limit=3,
-        #         )
-        #         for message in response["messages"]:
-        #             if message.get("files"):
-        #                 init_files = message.get("files")
-        #                 break
-        #     except SlackApiError:
-        #         pass
-        #     await client.views_open(
-        #         trigger_id=command["trigger_id"],
-        #         view=new_job_modal(
-        #             context["ray_client"].username,
-        #             file_options=files,
-        #             initial_files=init_files,
-        #         ),
-        #     )
+        case ["new"]:
+            if await require_ray_client(context, LoginMessage.NEW_JOB):
+                files = await files_list_simple(client, count=110)
+                # Try to get the files from the last 3 messages to set as the
+                # default files to translate in the new job modal.
+                init_files = []
+                try:
+                    response = await client.conversations_history(
+                        channel=context["channel_id"],
+                        limit=3,
+                    )
+                    for message in response["messages"]:
+                        if message.get("files"):
+                            init_files = message.get("files")
+                            break
+                except SlackApiError:
+                    pass
+                await client.views_open(
+                    trigger_id=command["trigger_id"],
+                    view=new_job_modal(
+                        context["ray_client"].username,
+                        file_options=files,
+                        initial_files=init_files,
+                    ),
+                )
         case ["help" | ""]:
             await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
         case ["whatsnext"] | ["whats", "next"]:
@@ -218,11 +213,11 @@ async def ray_command(ack, respond, command, context):
             await respond(text=InvalidCommandMessage().text)
 
 
-# @app.block_action("new_job", middleware=[load_ray_client])
-# @slack_log_decorator
-async def new_job_action(ack, payload, context, client, respond, body):
+@app.block_action("new_job", middleware=[load_ray_client])
+@slack_log_decorator
+async def new_job_action(ack, payload, context, client, body):
     await ack()
-    if context["ray_client"]:
+    if await require_ray_client(context, LoginMessage.NEW_JOB):
         files = await files_list_simple(client, count=110)
         # Get files from the source message to prefill the modal.
         init_files = []
@@ -247,11 +242,6 @@ async def new_job_action(ack, payload, context, client, respond, body):
                 initial_files=init_files,
             ),
         )
-    else:
-        await respond(
-            blocks=context["login_prompt"].blocks,
-            text=context["login_prompt"].text,
-        )
 
 
 @app.block_action("disconnect")
@@ -275,8 +265,8 @@ async def link(ack):
     await ack()
 
 
-# @app.view("new_job", middleware=[load_ray_client])
-# @slack_log_decorator
+@app.view("new_job", middleware=[load_ray_client])
+@slack_log_decorator
 async def handle_new_job(ack, view, context, client):
     if context["ray_client"]:
         try:
@@ -309,7 +299,6 @@ async def handle_new_job(ack, view, context, client):
             )
     else:
         await ack(response_action="clear")
-        # Prompt login if accounts are not connected yet.
         await client.chat_postMessage(
             channel=context["user_id"],
             blocks=context["login_prompt"].blocks,
