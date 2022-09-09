@@ -8,7 +8,7 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
 - MySQL
 - [Pipenv](https://pipenv.pypa.io/) (if not using Docker)
 
-### Quick Set Up
+### Set Up
 1. Set up environment variables by copying the `.env.example` to `.env` and writing the configuration for your app.
 
    ```bash
@@ -95,3 +95,15 @@ ssl.SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verif
 ```
 
 To fix this, install the SSL certificates by running the script at `/Applications/Python\ 3.10/Install\ Certificates.command` (or just double clicking the `Install Certificates.command` file in the `Applications/Python 3.10` directory), then restart the app.
+
+### Automated Tests
+
+All tests have been written using the [PyTest](https://docs.pytest.org/en/latest/) package. Tests are kept in the `tests` folder and can be run with:
+
+```bash
+$ pipenv run pytest
+```
+
+### Linting and Formatting Code
+
+This package uses [flake8](http://flake8.pycqa.org/en/latest/) for linting and [black](https://black.readthedocs.io/en/stable/) for formatting.

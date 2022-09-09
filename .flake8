@@ -2,4 +2,5 @@
 # Flake8 linter settings to work with the Black formatter.
 # https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html#line-length
 max-line-length = 88
-extend-ignore = E203
+extend-select = B950
+extend-ignore = E203, E501

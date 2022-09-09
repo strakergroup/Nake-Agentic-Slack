@@ -68,11 +68,11 @@ def mock_message_file(user_id: str, team_id: str) -> dict[str, Any]:
         "public_url_shared": False,
         "display_as_bot": False,
         "username": "",
-        "url_private": f"https://files.slack.com/files-pri/{team_id}-{file_id}/{file_name}",  # noqa: E501
-        "url_private_download": f"https://files.slack.com/files-pri/{team_id}-{file_id}/download/{file_name}",  # noqa: E501
-        "permalink": f"https://testworkspace.slack.com/files/{user_id}/{file_id}/{file_name}",  # noqa: E501
+        "url_private": f"https://files.slack.com/files-pri/{team_id}-{file_id}/{file_name}",
+        "url_private_download": f"https://files.slack.com/files-pri/{team_id}-{file_id}/download/{file_name}",  # noqa: B950
+        "permalink": f"https://testworkspace.slack.com/files/{user_id}/{file_id}/{file_name}",
         "permalink_public": f"https://slack-files.com/{team_id}-{file_id}-6325524492",
-        "edit_link": f"https://testworkspace.slack.com/files/{user_id}/{file_id}/{file_name}/edit",  # noqa: E501
+        "edit_link": f"https://testworkspace.slack.com/files/{user_id}/{file_id}/{file_name}/edit",  # noqa: B950
         "preview": '<?xml version="1.0" encoding="utf-8"?>\nPreview',
         "preview_highlight": "<div>Preview highlight</div>",
         "lines": 35,
@@ -361,6 +361,6 @@ def command_body(user_id, team_id, app_id, channel_id) -> dict[str, Any]:
         "text": "account",  # text could be missing if no text supplied
         "api_app_id": app_id,
         "is_enterprise_install": "false",
-        "response_url": f"https://hooks.slack.com/commands/{team_id}/0000000000/xxxxxxxxxx",  # noqa: E501
+        "response_url": f"https://hooks.slack.com/commands/{team_id}/0000000000/xxxxxxxxxx",
         "trigger_id": "0000000000.0000000000.xxxxxxxxxx",
     }

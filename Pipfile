@@ -27,6 +27,7 @@ ray-logger = {path = "./RAY_Logger-0.0.3-py3-none-any.whl"}
 
 [dev-packages]
 flake8 = "*"
+flake8-bugbear = "*"
 black = "*"
 pytest = "*"
 

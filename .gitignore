@@ -2,7 +2,8 @@
 .DS_Store
 
 # IDE
-.vscode/
+.vscode/*
+!.vscode/settings.json
 .idea/
 
 # Environments
@@ -10,9 +11,11 @@
 .venv
 env/
 venv/
+
 # IBM cloud credentials
 ibm-credentials.env
 
+# Python
 __pycache__/
 *.py[cod]
 *.log
