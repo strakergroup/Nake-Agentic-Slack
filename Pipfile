@@ -3,6 +3,11 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 name = "pypi"
 
+[[source]]
+url = "http://poc-docker-01.straker.io:13009/simple"
+verify_ssl = false
+name = "pypiserver"
+
 [packages]
 python-dotenv = "*"
 fastapi = {extras = ["all"], version = ">=0.79.0,<0.80.0"}
@@ -17,7 +22,7 @@ mysqlclient = "*"
 httpx = "*"
 cryptography = "*"
 babel = "*"
-ray-python-sdk = {path = "./RAY_Python_SDK-0.0.16-py3-none-any.whl"}
+ray-sdk = {version = "0.1.0", index = "pypiserver"}
 ray-logger = {path = "./RAY_Logger-0.0.3-py3-none-any.whl"}
 
 [dev-packages]

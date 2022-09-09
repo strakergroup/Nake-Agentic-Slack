@@ -1,6 +1,7 @@
 from typing import Any
 import datetime
 from pydantic import BaseModel, ValidationError, validator
+from ray_sdk.api.v3.file import is_valid_file_ext
 
 
 def convert_pydantic_to_slack_error(error: ValidationError) -> dict[str, str]:
@@ -17,6 +18,8 @@ def convert_pydantic_to_slack_error(error: ValidationError) -> dict[str, str]:
     """
     slack_errors = {}
     for e in error.errors():
+        # Note: Errors for the same property will be overriden, including errors of
+        # multiple items in a list.
         slack_errors[e["loc"][0]] = e["msg"]
     return slack_errors
 
@@ -89,10 +92,9 @@ class NewJobForm(BaseModel):
         return v
 
     @validator("files", each_item=True)
-    def validate_files_item(cls, v):
-        # TODO: limit file types
-        # if v.title:
-        #     raise ValueError("File extension not allowed: {}")
+    def validate_files_item(cls, v: SlackFile):
+        if not is_valid_file_ext(v.title):
+            raise ValueError(f"File type is not allowed: {v.title}")
         return v
 
     @classmethod

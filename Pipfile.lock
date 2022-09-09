@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "ec8e56df9ed4ece96793b37d2c672a45aa7503c0484fe0930ff376cfef335d3f"
+            "sha256": "78b9434e6e5ed457a33f7fff39f1de1020789114107ba4849de730e40a90dd07"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -12,6 +12,11 @@
                 "name": "pypi",
                 "url": "https://pypi.org/simple",
                 "verify_ssl": true
+            },
+            {
+                "name": "pypiserver",
+                "url": "http://poc-docker-01.straker.io:13009/simple",
+                "verify_ssl": false
             }
         ]
     },
@@ -819,12 +824,12 @@
             "path": "./RAY_Logger-0.0.3-py3-none-any.whl",
             "version": "==0.0.3"
         },
-        "ray-python-sdk": {
+        "ray-sdk": {
             "hashes": [
-                "sha256:8f9103dd11dfa1ee5fd410b154c3416fef69294d6470fc9d71615b5304fae747"
+                "sha256:81958423f65c9d10a91aa9a4058058daafd07b3413f7d8c60bb05de801039c55"
             ],
-            "path": "./RAY_Python_SDK-0.0.16-py3-none-any.whl",
-            "version": "==0.0.16"
+            "index": "pypiserver",
+            "version": "==0.1.0"
         },
         "requests": {
             "hashes": [
@@ -1332,7 +1337,7 @@
                 "sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc",
                 "sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f"
             ],
-            "markers": "python_full_version < '3.11.0a7'",
+            "markers": "python_version >= '3.7'",
             "version": "==2.0.1"
         }
     }
