@@ -500,6 +500,20 @@ class WhoamiMessage(TextMessage):
         )
 
 
+class SuperGroupMessage(TextMessage):
+    """Message showing which DeltaRAY super group is currently connected to the
+    Slack workspace.
+    """
+
+    def __init__(self, super_group_name: str | None) -> None:
+        text = (
+            f"This workspace is connected to: *{super_group_name}*"
+            if super_group_name
+            else "This workspace is not connected to a DeltaRAY super group yet."
+        )
+        super().__init__(text)
+
+
 class InvalidCommandMessage(TextMessage):
     """Invalid /ray command."""
 

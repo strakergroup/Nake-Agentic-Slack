@@ -24,6 +24,7 @@ from .templates.messages import (
     HelpMessage,
     WhatsNextMessage,
     WhoamiMessage,
+    SuperGroupMessage,
     InvalidCommandMessage,
 )
 from .templates.views import new_job_modal
@@ -162,6 +163,12 @@ async def ray_command(ack, respond, command, context, client):
         case ["account"]:
             if await require_ray_client(context):
                 await respond(WhoamiMessage(context["ray"].client.username).text)
+        case ["supergroup"] | ["super", "group"] | ["workspace"]:
+            await respond(
+                text=SuperGroupMessage(
+                    context["ray"].super_group.name if context["ray"] else None
+                ).text
+            )
         case ["login" | "signin" | "connect"]:
             await respond(
                 text=context["login_prompt"].text,
