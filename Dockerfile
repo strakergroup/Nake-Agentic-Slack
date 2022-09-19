@@ -11,8 +11,7 @@ WORKDIR /build
 
 # Tell pipenv to create venv in the current directory
 ENV PIPENV_VENV_IN_PROJECT=1
-# Requires the ray_sdk and ray_logger whl file until the package is published
-COPY Pipfile Pipfile.lock RAY_Logger-0.0.3-py3-none-any.whl /build/
+COPY Pipfile Pipfile.lock /build/
 RUN /root/.local/bin/pipenv sync
 
 

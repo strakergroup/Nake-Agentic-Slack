@@ -22,8 +22,8 @@ mysqlclient = "*"
 httpx = "*"
 cryptography = "*"
 babel = "*"
-ray-sdk = {version = "0.1.0", index = "pypiserver"}
-ray-logger = {path = "./RAY_Logger-0.0.3-py3-none-any.whl"}
+ray-sdk = {version = "==0.1.0", index = "pypiserver"}
+ray-logger = {version = "==0.1.1", index = "pypiserver"}
 
 [dev-packages]
 flake8 = "*"

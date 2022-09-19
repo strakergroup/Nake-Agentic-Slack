@@ -23,7 +23,7 @@ def get_job_url(job_uuid: str, client_id: str | None = None) -> str:
 
 def format_currency_symbol(currency: str) -> str:
     """Format the currency property from RAY event. Returns a valid
-    currency symbol for babel.currency()
+    currency symbol for babel.currency().
     """
     if currency.startswith("USD_"):
         return "USD"
@@ -45,7 +45,7 @@ def format_job_status(status: str) -> str:
         status (str): The job status value, e.g. IN_PROGRESS.
 
     Returns:
-        str: The formatted job status string, e.g. In Progress
+        str: The formatted job status string, e.g. In Progress.
     """
     if not status:
         return ""
