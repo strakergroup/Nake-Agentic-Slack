@@ -9,7 +9,7 @@ from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_sdk.errors import SlackApiError
 
 from .app import app
-from .middleware import load_ray_client, require_ray_client
+from .middleware import ray_connection, require_ray_client
 from .listener_actions import post_job_status
 from .logging import slack_log_decorator
 from .templates.models import NewJobForm, convert_pydantic_to_slack_error
@@ -40,7 +40,7 @@ from ..watson import watson_message
 
 
 @app.event(
-    {"type": "message", "subtype": (None, "file_share")}, middleware=[load_ray_client]
+    {"type": "message", "subtype": (None, "file_share")}, middleware=[ray_connection]
 )
 @slack_log_decorator
 async def message_event(message, context, say, client):
@@ -73,7 +73,7 @@ async def message_event(message, context, say, client):
             )
         case "Logout":
             if await require_ray_client(context):
-                msg = LogoutMessage(context["ray_client"].username)
+                msg = LogoutMessage(context["ray"].client.username)
                 await client.chat_postEphemeral(
                     channel=context["channel_id"],
                     user=context["user_id"],
@@ -83,9 +83,9 @@ async def message_event(message, context, say, client):
         case "Job_Status":
             tj_number_entity = response.findEntity("tj-number")
             if tj_number_entity:
-                if await require_ray_client(context, LoginMessage.GET_JOB):
+                if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                     await post_job_status(
-                        context, context["ray_client"], tj_number_entity.groups[0]
+                        context, context["ray"].client, tj_number_entity.groups[0]
                     )
             else:
                 await say(JobStatusNoIdMessage().text)
@@ -99,9 +99,9 @@ async def message_event(message, context, say, client):
             tj_number_entity = response.findEntity("tj-number")
             if tj_number_entity:
                 # Show the job status if only a job id is entered.
-                if await require_ray_client(context, LoginMessage.GET_JOB):
+                if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                     await post_job_status(
-                        context, context["ray_client"], tj_number_entity.groups[0]
+                        context, context["ray"].client, tj_number_entity.groups[0]
                     )
             elif response.reply:
                 # Default to Watson Assistant fallback response if no other matches.
@@ -122,11 +122,11 @@ async def home_opened(event, body, say, client):
         await say(blocks=message.blocks, text=message.text)
 
 
-@app.message_shortcut("new_job", middleware=[load_ray_client])
+@app.message_shortcut("new_job", middleware=[ray_connection])
 @slack_log_decorator
 async def new_job_shortcut(ack, shortcut, context, client):
     await ack()
-    if await require_ray_client(context, LoginMessage.NEW_JOB):
+    if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
         # Include a bit more than the max 100 options due to hidden files.
         files = await files_list_simple(client, count=110)
         # Set files in the message as initial values if the bot has access to them.
@@ -136,14 +136,14 @@ async def new_job_shortcut(ack, shortcut, context, client):
         await client.views_open(
             trigger_id=shortcut["trigger_id"],
             view=new_job_modal(
-                context["ray_client"].username,
+                context["ray"].client.username,
                 file_options=files,
                 initial_files=init_files,
             ),
         )
 
 
-@app.command("/ray", middleware=[load_ray_client])
+@app.command("/ray", middleware=[ray_connection])
 @slack_log_decorator
 async def ray_command(ack, respond, command, context, client):
     await ack()
@@ -161,7 +161,7 @@ async def ray_command(ack, respond, command, context, client):
     match command_args:
         case ["account"]:
             if await require_ray_client(context):
-                await respond(WhoamiMessage(context["ray_client"].username).text)
+                await respond(WhoamiMessage(context["ray"].client.username).text)
         case ["login" | "signin" | "connect"]:
             await respond(
                 text=context["login_prompt"].text,
@@ -169,10 +169,10 @@ async def ray_command(ack, respond, command, context, client):
             )
         case ["logout" | "signout" | "disconnect"]:
             if await require_ray_client(context):
-                msg = LogoutMessage(context["ray_client"].username)
+                msg = LogoutMessage(context["ray"].client.username)
                 await respond(text=msg.text, blocks=msg.blocks)
         case ["new"]:
-            if await require_ray_client(context, LoginMessage.NEW_JOB):
+            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
                 files = await files_list_simple(client, count=110)
                 # Try to get the files from the last 3 messages to set as the
                 # default files to translate in the new job modal.
@@ -191,7 +191,7 @@ async def ray_command(ack, respond, command, context, client):
                 await client.views_open(
                     trigger_id=command["trigger_id"],
                     view=new_job_modal(
-                        context["ray_client"].username,
+                        context["ray"].client.username,
                         file_options=files,
                         initial_files=init_files,
                     ),
@@ -205,19 +205,19 @@ async def ray_command(ack, respond, command, context, client):
         case [command_text]:
             match = re.fullmatch(r"tj\d+", command_text, re.IGNORECASE)
             if match:
-                if await require_ray_client(context, LoginMessage.GET_JOB):
-                    await post_job_status(context, context["ray_client"], command_text)
+                if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+                    await post_job_status(context, context["ray"].client, command_text)
             else:
                 await respond(text=InvalidCommandMessage().text)
         case _:
             await respond(text=InvalidCommandMessage().text)
 
 
-@app.block_action("new_job", middleware=[load_ray_client])
+@app.block_action("new_job", middleware=[ray_connection])
 @slack_log_decorator
 async def new_job_action(ack, payload, context, client, body):
     await ack()
-    if await require_ray_client(context, LoginMessage.NEW_JOB):
+    if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
         files = await files_list_simple(client, count=110)
         # Get files from the source message to prefill the modal.
         init_files = []
@@ -237,7 +237,7 @@ async def new_job_action(ack, payload, context, client, body):
         await client.views_open(
             trigger_id=body["trigger_id"],
             view=new_job_modal(
-                context["ray_client"].username,
+                context["ray"].client.username,
                 file_options=files,
                 initial_files=init_files,
             ),
@@ -265,10 +265,10 @@ async def link(ack):
     await ack()
 
 
-@app.view("new_job", middleware=[load_ray_client])
+@app.view("new_job", middleware=[ray_connection])
 @slack_log_decorator
 async def handle_new_job(ack, view, context, client):
-    if context["ray_client"]:
+    if await require_ray_client(context, prompt_login=False):
         try:
             form = NewJobForm.parse_slack(view["state"]["values"])
         except ValidationError as e:
@@ -285,7 +285,7 @@ async def handle_new_job(ack, view, context, client):
         )
 
         # Process files and submit job.
-        responses = await RayService.get_service(context["ray_client"]).submit_job(
+        responses = await RayService.get_service(context["ray"].client).submit_job(
             client, form
         )
         for response in responses:

@@ -2,6 +2,7 @@
 other services, e.g. Slack, RAY apps.
 """
 
+import asyncio
 import time
 import json
 from dataclasses import dataclass
@@ -16,7 +17,7 @@ from ..database import engines
 
 @dataclass(frozen=True, slots=True)
 class SlackUser:
-    """Dataclass containing details of a Slack account."""
+    """Dataclass representing a Slack user."""
 
     user_id: str
     team_id: str
@@ -28,13 +29,25 @@ class SlackUser:
 
 
 @dataclass(frozen=True, slots=True)
-class RayClient:
-    """Dataclass containing details of a RAY client account."""
+class RaySuperGroup:
+    """Dataclass representing a DeltaRAY super group."""
 
     id: str
-    """The RAY client ID (member_uuid)."""
+    """The RAY group UUID (`obj_m_group.obj_uuid`)."""
+    name: str
+    """The name of the group (`obj_m_group.label`)."""
+    slack_team_id: str
+    """The Slack team ID linked to the RAY client."""
+
+
+@dataclass(frozen=True, slots=True)
+class RayClient:
+    """Dataclass representing a DeltaRAY client."""
+
+    id: str
+    """The RAY client UUID (`obj_m_member.obj_uuid`)."""
     username: str
-    """The RAY client username."""
+    """The RAY client username (`obj_m_member.login`)."""
     access_token: str
     """The API token linked to the client."""
     slack_user_id: str
@@ -43,6 +56,17 @@ class RayClient:
     """The Slack team ID."""
     slack_app_id: str
     """The Slack app ID."""
+
+
+@dataclass(frozen=True, slots=True)
+class RayConnection:
+    """Dataclass representing a connection between a Slack user and a DeltaRAY
+    client. This also includes the connection between the Slack workspace and
+    the DeltaRAY group.
+    """
+
+    super_group: RaySuperGroup
+    client: RayClient | None
 
 
 def validate_queue_proxy_secret(secret: str) -> bool:
@@ -129,30 +153,55 @@ def get_slack_users(ray_client_id: str) -> list[SlackUser]:
     return users
 
 
-def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient | None:
+async def get_ray_super_group(team_id: str) -> RaySuperGroup | None:
+    """Gets the DeltaRAY super group linked to the Slack workspace if an active
+    link exists, otherwise returns None.
+
+    Args:
+        team_id (str): The ID of the team.
+    """
+    with engines.ray_integration.connect() as conn:
+        sql = text(
+            """
+            SELECT link.super_group_uuid, g.label
+            FROM slack_super_group_link link
+            INNER JOIN sitemanager.obj_m_group g
+            ON link.super_group_uuid = g.obj_uuid
+            WHERE link.slack_team_id = :team_id
+            AND link.is_active = 1
+            LIMIT 1
+            """
+        ).bindparams(team_id=team_id)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return None
+    return RaySuperGroup(id=row.super_group_uuid, name=row.label, slack_team_id=team_id)
+
+
+async def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient | None:
     """Gets the RAY client id and username linked to the Slack account if an active link
-    exists, otherwise return None.
+    exists, otherwise returns None.
 
     Args:
         user_id (str): The ID of the user.
         team_id (str): The ID of the team.
         app_id (str): The ID of the Slack app.
-
-    Returns:
-        dict[str, str] | None: A dict containing the client's id and username,
-        or None if the account is not linked.
     """
     # First find the client details.
     with engines.ray_integration.connect() as conn:
         sql = text(
             """
-            SELECT link.member_uuid, mem.login FROM slack_deltaray_link link
+            SELECT link.member_uuid, mem.login
+            FROM slack_deltaray_link link
             INNER JOIN sitemanager.obj_m_member mem
             ON link.member_uuid = mem.obj_uuid
-            WHERE slack_user_id = :user_id
-            AND slack_team_id = :team_id
-            AND slack_app_id = :app_id
-            AND is_active = 1
+            WHERE link.slack_user_id = :user_id
+            AND link.slack_team_id = :team_id
+            AND link.slack_app_id = :app_id
+            AND link.is_active = 1
+            AND mem.active = 1
+            AND mem.is_deleted = 0
             """
         ).bindparams(user_id=user_id, team_id=team_id, app_id=app_id)
         result = conn.execute(sql)
@@ -183,6 +232,21 @@ def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient | None:
         slack_team_id=team_id,
         slack_app_id=app_id,
     )
+
+
+async def get_ray_connection(
+    user_id: str, team_id: str, app_id: str
+) -> RayConnection | None:
+    """Gets the DeltaRAY super group and client linked to the Slack workspace
+    and user. If the Slack workspace is not linked, ignore the Slack user link.
+    A Slack workspace can have a connection without a Slack user connection.
+    """
+    super_group, client = await asyncio.gather(
+        get_ray_super_group(team_id), get_ray_client(user_id, team_id, app_id)
+    )
+    if super_group is None:
+        return None
+    return RayConnection(super_group, client)
 
 
 def disconnect_ray_account(user_id: str, team_id: str, app_id: str) -> bool:

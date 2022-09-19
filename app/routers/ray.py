@@ -97,7 +97,7 @@ async def api_job_callback(
         # TODO: log this
         raise HTTPException(status.HTTP_401_UNAUTHORIZED)
     # Validate X-Straker-Signature.
-    ray_client = get_ray_client(
+    ray_client = await get_ray_client(
         subscribed_users[0].user_id,
         subscribed_users[0].team_id,
         subscribed_users[0].app_id,
