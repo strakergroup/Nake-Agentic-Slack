@@ -124,7 +124,7 @@ def get_slack_users(ray_client_id: str) -> list[SlackUser]:
         list[SlackUser]: The connected Slack user accounts.
     """
     users: list[SlackUser] = []
-    with engines.ray_integration.connect() as conn:
+    with engines.ray_integration_readonly.connect() as conn:
         sql = text(
             """
             SELECT slack_user_id,slack_team_id,
@@ -160,7 +160,7 @@ async def get_ray_super_group(team_id: str) -> RaySuperGroup | None:
     Args:
         team_id (str): The ID of the team.
     """
-    with engines.ray_integration.connect() as conn:
+    with engines.ray_integration_readonly.connect() as conn:
         sql = text(
             """
             SELECT link.super_group_uuid, g.label
@@ -189,7 +189,7 @@ async def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient |
         app_id (str): The ID of the Slack app.
     """
     # First find the client details.
-    with engines.ray_integration.connect() as conn:
+    with engines.ray_integration_readonly.connect() as conn:
         sql = text(
             """
             SELECT link.member_uuid, mem.login
@@ -210,7 +210,7 @@ async def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient |
             return None
         ray_client_id, username = row.member_uuid, row.login
     # Now get the access token for authentication.
-    with engines.api.connect() as conn:
+    with engines.api_readonly.connect() as conn:
         sql = text(
             """
             SELECT obj_uuid FROM access_token
@@ -281,7 +281,7 @@ def get_app_id(bot_token: str, team_id: str) -> str:
     if the Slack API does not provide it.
     """
     # TODO Create DB index
-    with engines.ray_integration.connect() as conn:
+    with engines.ray_integration_readonly.connect() as conn:
         sql = text(
             """
             SELECT app_id from slack_installations

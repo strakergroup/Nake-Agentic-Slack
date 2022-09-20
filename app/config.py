@@ -68,7 +68,7 @@ class StrakerConfig(BaseSettings):
     def default_slack_deltaray_key(cls, v, values):
         if v:
             return v
-        with engines.ray_integration.connect() as conn:
+        with engines.ray_integration_readonly.connect() as conn:
             sql = text(
                 """
                 SELECT secret_key FROM slack_integration_keys
@@ -90,7 +90,7 @@ class StrakerConfig(BaseSettings):
     def default_slack_queue_proxy_secret(cls, v, values):
         if v:
             return v
-        with engines.ray_integration.connect() as conn:
+        with engines.ray_integration_readonly.connect() as conn:
             sql = text(
                 """
                 SELECT secret_key FROM slack_integration_keys
