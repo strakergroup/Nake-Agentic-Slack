@@ -1,7 +1,9 @@
 from typing import Any, Callable, Coroutine
+import asyncio
 import inspect
 import logging
 import functools
+from sentry_sdk import capture_exception
 from slack_bolt.request.payload_utils import (
     is_event,
     is_block_actions,
@@ -89,6 +91,14 @@ def init_slack_app_log(body: dict[str, Any], context: dict[str, Any]) -> SlackAp
     )
 
 
+async def log_slack(log: SlackAppLog):
+    """Wrapper around `log_async()` which logs exceptions to sentry."""
+    try:
+        slack_app_logger.log(log)
+    except Exception as e:
+        capture_exception(e)
+
+
 def slack_log_decorator(
     listener_func: Callable[..., Coroutine]
 ) -> Callable[..., Coroutine]:
@@ -127,8 +137,7 @@ def slack_log_decorator(
 
         # Log with ray_logger at the end of the function.
         if "log" in context and isinstance(context["log"], SlackAppLog):
-            # TODO: log async
-            slack_app_logger.log(context["log"])
+            asyncio.create_task(log_slack(context["log"]))
         else:
             logging.warning("The SlackAppLog object ('log') is not in the context")
 
