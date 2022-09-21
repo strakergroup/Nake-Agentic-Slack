@@ -1,5 +1,6 @@
 from typing import Any
-import asyncio
+
+# import asyncio
 from fastapi import (
     APIRouter,
     HTTPException,
@@ -13,7 +14,7 @@ from pydantic import BaseModel
 
 from ..auth.connector import (
     validate_api_callback_signature,
-    get_slack_users,
+    get_slack_user,
     get_ray_client,
 )
 from ..dependencies import SlackRayAuth, RayEventAuth, RayEvent
@@ -60,20 +61,17 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
     """Receives and responds to an event from the RAY platform."""
     if event.event not in event_types:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY, "The event type is not valid"
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"The event type is not valid: {event.event}",
         )
-    subscribed_users = [u for u in auth.slack_users if u.is_subscribed]
     # message = get_ray_event_message(event)
-    if subscribed_users:
-        for user in subscribed_users:
-            app.client.token = user.bot_token
-            # TODO: Enable when notifications are ready
-            # asyncio.create_task(
-            #     app.client.chat_postMessage(
-            #         channel=user.user_id, text=message.text, blocks=message.blocks
-            #     )
-            # )
-    return {"message": "success"}
+    if auth.slack_user is not None and auth.slack_user.is_subscribed:
+        app.client.token = auth.slack_user.bot_token
+        # TODO: Enable when notifications are ready
+        # await app.client.chat_postMessage(
+        #     channel=auth.slack_user.user_id, text=message.text, blocks=message.blocks
+        # )
+    return {"message": "success", "data": {"event": event.event}}
 
 
 class RayCallback(BaseModel):
@@ -92,15 +90,15 @@ async def api_job_callback(
 ):
     """Callback endpoint for API jobs."""
     # Check if the callback can be linked to a Slack user.
-    subscribed_users = [u for u in get_slack_users(client_id) if u.is_subscribed]
-    if not subscribed_users:
+    slack_user = get_slack_user(client_id)
+    if slack_user is None:
         # TODO: log this
         raise HTTPException(status.HTTP_401_UNAUTHORIZED)
     # Validate X-Straker-Signature.
     ray_client = await get_ray_client(
-        subscribed_users[0].user_id,
-        subscribed_users[0].team_id,
-        subscribed_users[0].app_id,
+        slack_user.user_id,
+        slack_user.team_id,
+        slack_user.app_id,
     )
     assert ray_client is not None
     is_header_valid = validate_api_callback_signature(
@@ -122,18 +120,14 @@ async def api_job_callback(
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY, "The payload format is invalid"
             )
-        for user in subscribed_users:
-            app.client.token = user.bot_token
-            # TODO: Investigate concurrency issues.
-            asyncio.create_task(
-                app.client.chat_postMessage(
-                    channel=user.user_id,
-                    text=message.text,
-                )
-            )
+        app.client.token = slack_user.bot_token
+        await app.client.chat_postMessage(
+            channel=slack_user.user_id,
+            text=message.text,
+        )
         return {
             "message": "success",
-            "detail": f"{len(subscribed_users)} Slack users notified",
+            "detail": "Slack user notified of event: JOB_NUMBER",
         }
     else:
         return {

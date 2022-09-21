@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from .auth.connector import (
     SlackUser,
     validate_queue_proxy_secret,
-    get_slack_users,
+    get_slack_user,
     validate_ray_authentication_token,
 )
 
@@ -30,14 +30,14 @@ class SlackAuth:
 class SlackRayAuth:
     """Dependency class to validate the bearer token and validate that the
     Slack account is connected with a DeltaRay account. This is similar to
-    `SlackAuth` except this also contains the connected Slack user accounts.
+    `SlackAuth` except this also contains the connected Slack user.
     """
 
     def __init__(self, auth: SlackAuth = Depends()) -> None:
         self.client_id = auth.client_id
-        self.slack_accounts = get_slack_users(auth.client_id)
-        # Return 401 error if there are no connected active Slack accounts.
-        if not self.slack_accounts:
+        self.slack_account = get_slack_user(auth.client_id)
+        # Return 401 error if there is no connected active Slack account.
+        if self.slack_account is None:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED)
 
 
@@ -56,7 +56,7 @@ class RayEvent(BaseModel):
 class RayEventAuth:
     """Dependency class to validate the bearer token for the RAY events
     endpoint. Raises a 401 HTTPException if the bearer token is invalid.
-    Provides a list of connected Slack user accounts if a client_id is given.
+    Loads the connected Slack user if a client_id is given.
     """
 
     def __init__(
@@ -64,10 +64,10 @@ class RayEventAuth:
         event: RayEvent,
         token: str = Depends(_oauth2_scheme),
     ) -> None:
-        self.slack_users: list[SlackUser] = []
+        self.slack_user: SlackUser | None = None
         is_token_valid = validate_queue_proxy_secret(token)
         if not is_token_valid:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED)
-        # Get all the Slack accounts connected to the RAY client ID.
+        # Get the Slack account connected to the RAY client ID.
         if event.client_id:
-            self.slack_users = get_slack_users(event.client_id)
+            self.slack_user = get_slack_user(event.client_id)

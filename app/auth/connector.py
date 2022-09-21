@@ -114,43 +114,38 @@ def get_bot_token(conn: Connection, team_id: str, app_id: str) -> str | None:
     return result[0] if result else None
 
 
-def get_slack_users(ray_client_id: str) -> list[SlackUser]:
-    """Gets the Slack user accounts connected to a RAY client.
+def get_slack_user(ray_client_id: str) -> SlackUser | None:
+    """Gets the Slack user connected to a RAY client.
 
     Args:
         ray_client_id (str): The DeltaRAY user ID.
-
-    Returns:
-        list[SlackUser]: The connected Slack user accounts.
     """
-    users: list[SlackUser] = []
     with engines.ray_integration_readonly.connect() as conn:
         sql = text(
             """
             SELECT slack_user_id,slack_team_id,
                 slack_app_id,slack_channel_id,is_subscribed
             FROM slack_deltaray_link
-            WHERE member_uuid = :client_id
+            WHERE member_uuid = :member_uuid
             AND is_active = 1
-            ORDER BY id DESC
+            LIMIT 1
             """
-        ).bindparams(client_id=ray_client_id)
+        ).bindparams(member_uuid=ray_client_id)
         result = conn.execute(sql)
-        for row in result:
-            bot_token = get_bot_token(conn, row.slack_team_id, row.slack_app_id)
-            if bot_token:
-                users.append(
-                    SlackUser(
-                        user_id=row.slack_user_id,
-                        team_id=row.slack_team_id,
-                        app_id=row.slack_app_id,
-                        channel_id=row.slack_channel_id,
-                        is_subscribed=bool(row.is_subscribed),
-                        bot_token=bot_token,
-                        ray_client_id=ray_client_id,
-                    )
-                )
-    return users
+        row = result.first()
+    if row:
+        bot_token = get_bot_token(conn, row.slack_team_id, row.slack_app_id)
+        if bot_token:
+            return SlackUser(
+                user_id=row.slack_user_id,
+                team_id=row.slack_team_id,
+                app_id=row.slack_app_id,
+                channel_id=row.slack_channel_id,
+                is_subscribed=bool(row.is_subscribed),
+                bot_token=bot_token,
+                ray_client_id=ray_client_id,
+            )
+    return None
 
 
 async def get_ray_super_group(team_id: str) -> RaySuperGroup | None:
@@ -202,6 +197,7 @@ async def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient |
             AND link.is_active = 1
             AND mem.active = 1
             AND mem.is_deleted = 0
+            LIMIT 1
             """
         ).bindparams(user_id=user_id, team_id=team_id, app_id=app_id)
         result = conn.execute(sql)
