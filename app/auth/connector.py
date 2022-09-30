@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from .algorithms import encrypt_aes, decrypt_aes, hash_hmac_sha1
-from ..config import config
+from ..config import config, domains
 from ..database import engines
 
 
@@ -120,7 +120,7 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
     Args:
         ray_client_id (str): The DeltaRAY user ID.
     """
-    with engines.ray_integration_readonly.connect() as conn:
+    with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
             SELECT slack_user_id,slack_team_id,
@@ -133,18 +133,18 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
         ).bindparams(member_uuid=ray_client_id)
         result = conn.execute(sql)
         row = result.first()
-    if row:
-        bot_token = get_bot_token(conn, row.slack_team_id, row.slack_app_id)
-        if bot_token:
-            return SlackUser(
-                user_id=row.slack_user_id,
-                team_id=row.slack_team_id,
-                app_id=row.slack_app_id,
-                channel_id=row.slack_channel_id,
-                is_subscribed=bool(row.is_subscribed),
-                bot_token=bot_token,
-                ray_client_id=ray_client_id,
-            )
+        if row:
+            bot_token = get_bot_token(conn, row.slack_team_id, row.slack_app_id)
+            if bot_token:
+                return SlackUser(
+                    user_id=row.slack_user_id,
+                    team_id=row.slack_team_id,
+                    app_id=row.slack_app_id,
+                    channel_id=row.slack_channel_id,
+                    is_subscribed=bool(row.is_subscribed),
+                    bot_token=bot_token,
+                    ray_client_id=ray_client_id,
+                )
     return None
 
 
@@ -155,7 +155,7 @@ async def get_ray_super_group(team_id: str) -> RaySuperGroup | None:
     Args:
         team_id (str): The ID of the team.
     """
-    with engines.ray_integration_readonly.connect() as conn:
+    with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
             SELECT link.super_group_uuid, g.label
@@ -184,7 +184,7 @@ async def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient |
         app_id (str): The ID of the Slack app.
     """
     # First find the client details.
-    with engines.ray_integration_readonly.connect() as conn:
+    with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
             SELECT link.member_uuid, mem.login
@@ -206,7 +206,7 @@ async def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient |
             return None
         ray_client_id, username = row.member_uuid, row.login
     # Now get the access token for authentication.
-    with engines.api_readonly.connect() as conn:
+    with engines["api_readonly"].connect() as conn:
         sql = text(
             """
             SELECT obj_uuid FROM access_token
@@ -256,7 +256,7 @@ def disconnect_ray_account(user_id: str, team_id: str, app_id: str) -> bool:
     Returns:
         bool: The Slack user had a connected DeltaRAY account.
     """
-    with engines.ray_integration.begin() as conn:
+    with engines["ray_integration"].begin() as conn:
         sql = text(
             """
             UPDATE slack_deltaray_link SET
@@ -277,7 +277,7 @@ def get_app_id(bot_token: str, team_id: str) -> str:
     if the Slack API does not provide it.
     """
     # TODO Create DB index
-    with engines.ray_integration_readonly.connect() as conn:
+    with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
             SELECT app_id from slack_installations
@@ -347,7 +347,7 @@ def get_slack_deltaray_integration_url(
             user_id, team_id, app_id, channel_id, expire_seconds
         )
     }
-    return f"{config.deltaray_domain}/app/slack?{urlencode(params)}"
+    return f"{domains.deltaray}/app/slack?{urlencode(params)}"
 
 
 def validate_ray_authentication_token(token: str) -> str:

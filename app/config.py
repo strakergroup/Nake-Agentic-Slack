@@ -3,6 +3,7 @@ import hashlib
 from enum import Enum
 from pydantic import BaseSettings, Field, HttpUrl, SecretBytes, SecretStr, validator
 from sqlalchemy import text
+from straker_utils.domain import StrakerDomains
 
 from .database import engines
 
@@ -21,12 +22,10 @@ class StrakerConfig(BaseSettings):
     """
 
     # Settings from environment variables.
-    environment: Environment = Field(env=["ENVIRONMENT", "STRAKER_ENVIRONMENT"])
+    environment: Environment = Field(env="ENVIRONMENT")
     sentry_dsn: str | None = Field(None, env="SENTRY_DSN")
     # Derived settings.
     base_url: HttpUrl = None
-    deltaray_domain: HttpUrl = None
-    stingray_domain: HttpUrl = None
     slack_deltaray_key: SecretBytes = None
     slack_queue_proxy_secret: SecretStr = None
     health_check_password: SecretStr = None
@@ -42,33 +41,11 @@ class StrakerConfig(BaseSettings):
                 return "https://slack-deltaray.strakertranslations.com"
         raise AssertionError(f"Invalid environment value: {values['environment']}")
 
-    @validator("deltaray_domain")
-    def default_deltaray_domain(cls, v, values):
-        if v:
-            return v.strip("/")
-        match values["environment"]:
-            case (Environment.local | Environment.dev | Environment.uat) as env:
-                return f"https://{env.value}-deltaray.strakertranslations.com"
-            case Environment.live:
-                return "https://deltaray.strakertranslations.com"
-        raise AssertionError(f"Invalid environment value: {values['environment']}")
-
-    @validator("stingray_domain")
-    def default_stingray_domain(cls, v, values):
-        if v:
-            return v.strip("/")
-        match values["environment"]:
-            case (Environment.local | Environment.dev | Environment.uat) as env:
-                return f"https://{env.value}-api.strakertranslations.com"
-            case Environment.live:
-                return "https://api.strakertranslations.com"
-        raise AssertionError(f"Invalid environment value: {values['environment']}")
-
     @validator("slack_deltaray_key")
     def default_slack_deltaray_key(cls, v, values):
         if v:
             return v
-        with engines.ray_integration_readonly.connect() as conn:
+        with engines["ray_integration_readonly"].connect() as conn:
             sql = text(
                 """
                 SELECT secret_key FROM slack_integration_keys
@@ -90,7 +67,7 @@ class StrakerConfig(BaseSettings):
     def default_slack_queue_proxy_secret(cls, v, values):
         if v:
             return v
-        with engines.ray_integration_readonly.connect() as conn:
+        with engines["ray_integration_readonly"].connect() as conn:
             sql = text(
                 """
                 SELECT secret_key FROM slack_integration_keys
@@ -119,3 +96,4 @@ class StrakerConfig(BaseSettings):
 
 
 config = StrakerConfig()
+domains = StrakerDomains.from_environment()

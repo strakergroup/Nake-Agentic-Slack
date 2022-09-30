@@ -2,7 +2,7 @@ from uuid import uuid4
 from urllib.parse import urlparse
 
 import app  # Bug - circular import
-from app.config import config
+from app.config import domains
 
 
 def test_get_job_url():
@@ -10,7 +10,7 @@ def test_get_job_url():
     client_id = str(uuid4())
     url = app.ray.utils.get_job_url(job_id, client_id)
     parsed_url = urlparse(url)
-    assert url.startswith(config.deltaray_domain)
+    assert url.startswith(domains.deltaray)
     assert f"j={job_id}" in parsed_url.query
     assert f"member_id={client_id}" in parsed_url.query
 
@@ -20,7 +20,7 @@ def test_get_job_url_no_client_id():
     url = app.ray.utils.get_job_url(job_id)
     url2 = app.ray.utils.get_job_url(job_id, "")
     parsed_url = urlparse(url)
-    assert url.startswith(config.deltaray_domain)
+    assert url.startswith(domains.deltaray)
     assert f"j={job_id}" in parsed_url.query
     assert url == url2
 

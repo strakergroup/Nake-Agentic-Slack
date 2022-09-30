@@ -21,7 +21,7 @@ from ..database import engines
 
 # The singleton logger for logging Slack events and actions.
 slack_app_logger = SlackMySQLLogger(
-    engines.ray_integration_log,
+    engines["ray_integration_log"],
     slack_log_table="slack_logs",
     watson_log_table="slack_logs_watson",
     api_log_table="slack_logs_api",

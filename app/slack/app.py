@@ -14,19 +14,15 @@ from ..database import engines
 
 installation_store = AsyncSQLAlchemyInstallationStore(
     client_id=os.getenv("SLACK_CLIENT_ID"),
-    engine=engines.ray_integration,
+    engine=engines["ray_integration"],
     bots_table_name="slack_bots",
     installations_table_name="slack_installations",
 )
 state_store = AsyncSQLAlchemyOAuthStateStore(
     expiration_seconds=1800,
-    engine=engines.ray_integration,
+    engine=engines["ray_integration"],
     table_name="slack_oauth_states",
 )
-
-# Create the Slack tables if they do not exist.
-# installation_store.metadata.create_all(engines.ray_integration, checkfirst=True)
-# state_store.metadata.create_all(engines.ray_integration, checkfirst=True)
 
 oauth_settings = AsyncOAuthSettings(
     client_id=os.getenv("SLACK_CLIENT_ID"),

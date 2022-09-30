@@ -1,7 +1,7 @@
 from typing import Any
 import asyncio
 import sentry_sdk
-from fastapi import APIRouter
+from fastapi import APIRouter, Response, status
 
 from ..config import config
 from ..database import engines
@@ -13,7 +13,7 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health_check(password: str | None = None):
+async def health_check(response: Response, password: str | None = None):
     show_details = password == config.health_check_password
     errors = {}
     info = {}
@@ -31,7 +31,11 @@ async def health_check(password: str | None = None):
     # Execute tests in parallel.
     await asyncio.gather(*checks)
 
+    if errors:
+        response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+
     result = {"message": "There are some issues" if len(errors) else "OK"}
+    # TODO: status code
     if show_details:
         result["environment"] = config.environment.value
         result["errors"] = errors
@@ -41,7 +45,7 @@ async def health_check(password: str | None = None):
 
 async def _check_database(errors: dict[str, Any], info: dict[str, Any]) -> None:
     try:
-        engines.ping_all()
+        await engines.ping_all_async()
     except Exception as e:
         errors["database"] = str(e)
 

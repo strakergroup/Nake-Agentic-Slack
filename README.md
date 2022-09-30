@@ -27,7 +27,7 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
      Create a Pipenv virtual environment and install the dependencies using
 
      ```bash
-     $ pipenv install
+     $ pipenv install --dev
      ```
 
      Then start the app using

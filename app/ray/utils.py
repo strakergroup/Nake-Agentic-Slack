@@ -1,7 +1,7 @@
 from urllib.parse import urlencode
 from babel.numbers import format_currency as babel_format_currency
 
-from ..config import config
+from ..config import domains
 
 
 def get_job_url(job_uuid: str, client_id: str | None = None) -> str:
@@ -16,7 +16,7 @@ def get_job_url(job_uuid: str, client_id: str | None = None) -> str:
         str: The URL of the job.
     """
     return "{domain}/job/detail?{params}".format(
-        domain=config.deltaray_domain,
+        domain=domains.deltaray,
         params=urlencode({"j": job_uuid, "member_id": client_id or ""}),
     )
 

@@ -14,7 +14,7 @@ from ...ray.utils import (
     format_currency_symbol,
     format_job_status,
 )
-from ...config import config
+from ...config import domains
 from ...auth.connector import RayClient, get_slack_deltaray_integration_url
 
 
@@ -133,7 +133,7 @@ class LoginMessage(SlackMessage):
             )
         elif isinstance(ray_client, RayClient):
             block_text = (
-                f"Your connected DeltaRAY account is: <{config.deltaray_domain}|{ray_client.username}>.\n"
+                f"Your connected DeltaRAY account is: <{domains.deltaray}|{ray_client.username}>.\n"
                 "You can connect a different account by clicking this button."
             )
 
@@ -194,7 +194,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f":white_check_mark: Login was successful! <@{user_id}> is now connected with <{config.deltaray_domain}|{ray_username}>.",
+                        "text": f":white_check_mark: Login was successful! <@{user_id}> is now connected with <{domains.deltaray}|{ray_username}>.",
                     },
                 },
                 {"type": "divider"},
@@ -237,7 +237,7 @@ class LogoutMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Click this button to disconnect your DeltaRAY account: <{config.deltaray_domain}|{ray_username}>.",
+                        "text": f"Click this button to disconnect your DeltaRAY account: <{domains.deltaray}|{ray_username}>.",
                     },
                 },
                 {
@@ -272,7 +272,7 @@ class SuccessfulLogoutMessage(SlackMessage):
 
     def __init__(self, user_id: str, ray_username: str | None = None) -> None:
         block_message = (
-            f"Your DeltaRAY account <{config.deltaray_domain}|{ray_username}> is now disconnected from <@{user_id}>."
+            f"Your DeltaRAY account <{domains.deltaray}|{ray_username}> is now disconnected from <@{user_id}>."
             if ray_username
             else f"Your DeltaRAY account is now disconnected from <@{user_id}>."
         )
@@ -496,7 +496,7 @@ class WhoamiMessage(TextMessage):
 
     def __init__(self, username: str) -> None:
         super().__init__(
-            f"Your connected DeltaRAY account is: <{config.deltaray_domain}|{username}>"
+            f"Your connected DeltaRAY account is: <{domains.deltaray}|{username}>"
         )
 
 

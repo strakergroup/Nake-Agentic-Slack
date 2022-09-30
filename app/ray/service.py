@@ -7,7 +7,7 @@ from slack_sdk.web.async_client import AsyncWebClient
 from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
 from ray_sdk.api.v3.models import Job, Language
 
-from ..config import config
+from ..config import config, domains
 from ..auth.connector import RayClient
 from ..slack import web
 from ..slack.templates.models import NewJobForm
@@ -42,7 +42,7 @@ class RayService:
 
     def __init__(self, ray_client_id: str | None, token: str | None) -> None:
         self._ray_client_id = ray_client_id
-        self._ray = RayV3(api_token=token, base_url=config.stingray_domain)
+        self._ray = RayV3(api_token=token, base_url=domains.stingray)
 
     @property
     def ray_client_id(self) -> str | None:
