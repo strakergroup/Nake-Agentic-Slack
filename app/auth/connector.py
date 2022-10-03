@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from .algorithms import encrypt_aes, decrypt_aes, hash_hmac_sha1
+from .algorithms import encrypt_aes, hash_hmac_sha1
 from ..config import config, domains
 from ..database import engines
 
@@ -348,33 +348,3 @@ def get_slack_deltaray_integration_url(
         )
     }
     return f"{domains.deltaray}/app/slack?{urlencode(params)}"
-
-
-def validate_ray_authentication_token(token: str) -> str:
-    """Decrypts and validates an authentication token used by Ray apps
-    to send events to this app.
-
-    Args:
-        token (str): The token to validate.
-
-    Raises:
-        ValueError: The token is invalid.
-
-    Returns:
-        The client id of the client the request is for.
-    """
-    try:
-        raw_data = decrypt_aes(token, config.slack_deltaray_key)
-        data = json.loads(raw_data)
-        if not isinstance(data, dict):
-            raise ValueError("The decrypted data has an invalid format")
-        if not isinstance(data["client_id"], str) or not data["client_id"]:
-            raise ValueError("The decrypted data has an invalid format")
-        if (
-            not isinstance(data["expires"], (int, float))
-            or data["expires"] <= time.time()
-        ):
-            raise ValueError("The token has expired")
-        return data["client_id"]
-    except Exception as e:
-        raise ValueError("Token validation failed") from e

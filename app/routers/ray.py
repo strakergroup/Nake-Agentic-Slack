@@ -5,72 +5,61 @@ from fastapi import (
     APIRouter,
     HTTPException,
     Depends,
-    Form,
     Header,
     status,
     Request,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from ..auth.connector import (
     validate_api_callback_signature,
     get_slack_user,
     get_ray_client,
 )
-from ..dependencies import SlackRayAuth, RayEventAuth, RayEvent
+from ..dependencies import RayEventAuth, RayEvent
 from ..slack import app
 from ..slack.templates.messages import (
-    SlackMessage,
     SuccessfulLoginMessage,
     JobCreationMessage,
-    JobStatusChangeEventMessage,
-    JobCompletedEventMessage,
-    JobCancelledEventMessage,
-    JobQuotedEventMessage,
 )
+from ..ray.events import get_ray_event_message
 
 
 router = APIRouter(tags=["ray"])
 
 
-# TODO: refactor this
-event_types = [
-    "job_status",
-    "job_completed",
-    "job_cancelled",
-    "quote_created",
-]
-
-
-def get_ray_event_message(event: RayEvent) -> SlackMessage:
-    """Gets the SlackMessage based on the event type."""
-    match event.event:
-        case "job_status":
-            return JobStatusChangeEventMessage(event.client_id or "", event.data)
-        case "job_completed":
-            return JobCompletedEventMessage(event.client_id or "", event.data)
-        case "job_cancelled":
-            return JobCancelledEventMessage(event.client_id or "", event.data)
-        case "quote_created":
-            return JobQuotedEventMessage(event.client_id or "", event.data)
-    raise AssertionError(f"Unhandled RAY event: {event.event}")
-
-
 @router.post("/ray/events")
 async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
     """Receives and responds to an event from the RAY platform."""
-    if event.event not in event_types:
+    try:
+        message = get_ray_event_message(event.event, event.data)
+    except ValidationError:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"The event type is not valid: {event.event}",
+            f"The event data is invalid for the event type: {event.event}",
         )
-    # message = get_ray_event_message(event)
-    if auth.slack_user is not None and auth.slack_user.is_subscribed:
+    except ValueError:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"The event type is invalid: {event.event}",
+        )
+
+    if auth.slack_user is not None:
         app.client.token = auth.slack_user.bot_token
-        # TODO: Enable when notifications are ready
-        # await app.client.chat_postMessage(
-        #     channel=auth.slack_user.user_id, text=message.text, blocks=message.blocks
-        # )
+        if isinstance(message, SuccessfulLoginMessage):
+            await app.client.chat_postEphemeral(
+                channel=auth.slack_user.channel_id,
+                user=auth.slack_user.user_id,
+                text=message.text,
+                blocks=message.blocks,
+            )
+        elif auth.slack_user.is_subscribed:
+            await app.client.chat_postMessage(
+                channel=auth.slack_user.user_id,
+                text=message.text,
+                blocks=message.blocks,
+            )
+
     return {"message": "success", "data": {"event": event.event}}
 
 
@@ -134,35 +123,3 @@ async def api_job_callback(
             "message": "success",
             "detail": f"Unhandled callback event: {body.event_types}",
         }
-
-
-@router.post("/ray/connect", status_code=status.HTTP_204_NO_CONTENT)
-async def connect(
-    user_id: str = Form(),
-    team_id: str = Form(),
-    app_id: str = Form(),
-    channel_id: str = Form(),
-    username: str = Form(),
-    auth: SlackRayAuth = Depends(),
-):
-    """Called by DeltaRay to notify a user that their Slack account has been
-    successfully connected to their DeltaRay account.
-    """
-    # Make sure the Slack account in the token matches the body for extra validation.
-    accounts = [
-        acc
-        for acc in auth.slack_accounts
-        if acc.user_id == user_id and acc.team_id == team_id and acc.app_id == app_id
-    ]
-    if not accounts:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST)
-    account = accounts[0]
-
-    app.client.token = account.bot_token
-    message = SuccessfulLoginMessage(account.user_id, username)
-    await app.client.chat_postEphemeral(
-        channel=channel_id,
-        user=account.user_id,
-        blocks=message.blocks,
-        text=message.text,
-    )
