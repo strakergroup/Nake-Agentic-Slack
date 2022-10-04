@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [[source]]
-url = "http://poc-docker-01.straker.io:13009/simple"
+url = "http://poc-docker-fra02-01.straker.io:13009/simple"
 verify_ssl = false
 name = "straker"
 
