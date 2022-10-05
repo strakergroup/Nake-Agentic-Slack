@@ -104,6 +104,15 @@ All tests have been written using the [PyTest](https://docs.pytest.org/en/latest
 $ pipenv run pytest
 ```
 
+You can use the [coverage](https://coverage.readthedocs.io/) package to measure the code coverage of the tests. Scan the code and generate a report with:
+
+```bash
+$ pipenv run coverage run --source=app -m pytest
+> ...
+$ pipenv run coverage report -m  # or
+$ pipenv run coverage html       # HTML in htmlcov/
+```
+
 ### Linting and Formatting Code
 
 This package uses [flake8](http://flake8.pycqa.org/en/latest/) for linting and [black](https://black.readthedocs.io/en/stable/) for formatting.

@@ -4,7 +4,6 @@
 # IDE
 .vscode/*
 !.vscode/settings.json
-.idea/
 
 # Environments
 .env
@@ -16,6 +15,10 @@ venv/
 ibm-credentials.env
 
 # Python
-__pycache__/
 *.py[cod]
+__pycache__/
+.pytest_cache/
+.coverage
+.coverage.xml
+htmlcov/
 *.log

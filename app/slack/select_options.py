@@ -25,7 +25,7 @@ async def _get_languages_cached() -> list[dict[str, str]]:
     return languages
 
 
-async def get_language_options(filter: str | None) -> list[dict[str, Any]]:
+async def get_language_options(filter: str | None = None) -> list[dict[str, Any]]:
     languages = await _get_languages_cached()
     # Filter language options from keyword filter.
     if filter:

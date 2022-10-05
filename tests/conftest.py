@@ -1,9 +1,11 @@
 from typing import Any
 from random import randrange
 from uuid import uuid4
+import asyncio
 import pytest
 from slack_bolt.context.async_context import AsyncBoltContext
 
+from app.redis import redis_conn
 from app.auth.connector import RayClient
 
 
@@ -86,6 +88,19 @@ def mock_message_file(user_id: str, team_id: str) -> dict[str, Any]:
 # -----------------------------------------------------------------------------
 # Fixtures
 # -----------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """This is required for the async tests to work."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
+
+
+@pytest.fixture(scope="session")
+def redis():
+    return redis_conn
 
 
 @pytest.fixture
