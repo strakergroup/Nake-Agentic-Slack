@@ -5,6 +5,7 @@ from fastapi import APIRouter, Response, status
 
 from ..config import config
 from ..database import engines
+from ..redis import redis_conn
 from ..slack import app as slack_app
 
 
@@ -19,9 +20,9 @@ async def health_check(response: Response, password: str | None = None):
     info = {}
 
     checks = [
-        _check_database(errors, info),
-        _check_slack_api(errors, info)
-        # TODO: Redis when applicable
+        _check_database(errors),
+        _check_slack_api(errors),
+        _check_redis(errors),
         # TODO: Watson
     ]
     if show_details:
@@ -43,14 +44,21 @@ async def health_check(response: Response, password: str | None = None):
     return result
 
 
-async def _check_database(errors: dict[str, Any], info: dict[str, Any]) -> None:
+async def _check_database(errors: dict[str, Any]) -> None:
     try:
         await engines.ping_all_async()
     except Exception as e:
         errors["database"] = str(e)
 
 
-async def _check_slack_api(errors: dict[str, Any], info: dict[str, Any]) -> None:
+async def _check_redis(errors: dict[str, Any]) -> None:
+    try:
+        await redis_conn.ping()
+    except Exception as e:
+        errors["redis"] = str(e)
+
+
+async def _check_slack_api(errors: dict[str, Any]) -> None:
     try:
         response = await slack_app.client.api_test()
     except Exception as e:
