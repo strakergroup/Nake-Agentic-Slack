@@ -1,6 +1,5 @@
 from typing import Any
-
-# import asyncio
+from sentry_sdk import capture_message
 from fastapi import (
     APIRouter,
     HTTPException,
@@ -81,7 +80,7 @@ async def api_job_callback(
     # Check if the callback can be linked to a Slack user.
     slack_user = get_slack_user(client_id)
     if slack_user is None:
-        # TODO: log this
+        capture_message("Slack user not found in callback endpoint", "warning")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED)
     # Validate X-Straker-Signature.
     ray_client = await get_ray_client(
@@ -96,7 +95,7 @@ async def api_job_callback(
         x_straker_signature,
     )
     if not is_header_valid:
-        # TODO: log this
+        capture_message("Callback X-Straker-Signature is invalid", "warning")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED)
 
     # Only listen to job creation callbacks for now.

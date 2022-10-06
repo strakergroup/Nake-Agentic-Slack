@@ -276,7 +276,6 @@ def get_app_id(bot_token: str, team_id: str) -> str:
     """Get the app_id from a bot token and team_id. Use this to get the app_id
     if the Slack API does not provide it.
     """
-    # TODO Create DB index
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """

@@ -62,12 +62,10 @@ def init_slack_app_log(body: dict[str, Any], context: dict[str, Any]) -> SlackAp
     elif is_global_shortcut(body):
         action_type = "global_shortcut"
         action_value = body.get("callback_id")
-        # TODO: test this
         ts = body.get("action_ts")
     elif is_message_shortcut(body):
         action_type = "message_shortcut"
         action_value = body.get("callback_id")
-        # TODO: test this
         ts = body.get("action_ts")
     elif is_view_submission(body):
         action_type = "view_submission"

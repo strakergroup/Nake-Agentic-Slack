@@ -36,7 +36,6 @@ async def health_check(response: Response, password: str | None = None):
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
 
     result = {"message": "There are some issues" if len(errors) else "OK"}
-    # TODO: status code
     if show_details:
         result["environment"] = config.environment.value
         result["errors"] = errors

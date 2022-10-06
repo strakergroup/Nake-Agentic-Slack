@@ -641,7 +641,6 @@ class JobQuotedEventMessage(SlackMessage):
                 {"type": "divider"},
                 {
                     "type": "section",
-                    # TODO: format currency
                     "text": {
                         "type": "mrkdwn",
                         "text": f"*Total Cost ({currency})*: {quote_formatted}",
