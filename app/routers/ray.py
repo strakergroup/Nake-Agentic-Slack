@@ -43,7 +43,7 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
             f"The event type is invalid: {event.event}",
         )
 
-    if auth.slack_user is not None:
+    if message is not None and auth.slack_user is not None:
         app.client.token = auth.slack_user.bot_token
         if isinstance(message, SuccessfulLoginMessage):
             await app.client.chat_postEphemeral(

@@ -528,19 +528,17 @@ class InvalidCommandMessage(TextMessage):
 # -----------------------------------------------------------------------------
 
 
-class JobStatusChangeEventMessage(SlackMessage):
-    def __init__(self, client_id: str, job_data: dict[str, Any]) -> None:
-        job_id = job_data["id"]
-        job_uuid = job_data["uuid"]
-        status = job_data["status"]
+class JobStatusChangedEventMessage(SlackMessage):
+    def __init__(self, client_id: str, job_uuid: str, job_id: str, status: str) -> None:
+        status_formatted = format_job_status(status)
         super().__init__(
-            f"Your translation job {job_id} has changed status to: {status}",
+            f"Your translation job {job_id} has changed status to: {status_formatted}",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Your translation job {job_id} has changed status to: {status}",
+                        "text": f"Your translation job *{job_id}* has changed status to: {status_formatted}",
                     },
                 },
                 job_deltaray_link_block(job_uuid, client_id),
@@ -549,9 +547,7 @@ class JobStatusChangeEventMessage(SlackMessage):
 
 
 class JobCompletedEventMessage(SlackMessage):
-    def __init__(self, client_id: str, job_data: dict[str, Any]) -> None:
-        job_id = job_data["id"]
-        job_uuid = job_data["uuid"]
+    def __init__(self, client_id: str, job_uuid: str, job_id: str) -> None:
         super().__init__(
             f":tada: Your translation job {job_id} is completed!",
             [
@@ -559,7 +555,7 @@ class JobCompletedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f":tada: Your translation job {job_id} is completed!",
+                        "text": f":tada: Your translation job *{job_id}* is completed!",
                     },
                 },
                 job_deltaray_link_block(job_uuid, client_id),
@@ -568,9 +564,7 @@ class JobCompletedEventMessage(SlackMessage):
 
 
 class JobCancelledEventMessage(SlackMessage):
-    def __init__(self, client_id: str, job_data: dict[str, Any]) -> None:
-        job_id = job_data["id"]
-        job_uuid = job_data["uuid"]
+    def __init__(self, client_id: str, job_uuid: str, job_id: str) -> None:
         super().__init__(
             f"Your translation job {job_id} has been cancelled",
             [
@@ -578,7 +572,7 @@ class JobCancelledEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Your translation job {job_id} has been cancelled",
+                        "text": f"Your translation job *{job_id}* has been cancelled",
                     },
                 },
                 job_deltaray_link_block(job_uuid, client_id),
