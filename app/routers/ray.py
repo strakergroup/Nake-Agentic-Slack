@@ -21,7 +21,7 @@ from ..slack.templates.messages import (
     SuccessfulLoginMessage,
     JobCreationMessage,
 )
-from ..ray.events import get_ray_event_message
+from ..ray.events.parse import get_ray_event_message
 
 
 router = APIRouter(tags=["ray"])
@@ -32,10 +32,13 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
     """Receives and responds to an event from the RAY platform."""
     try:
         message = get_ray_event_message(event.event, event.data)
-    except ValidationError:
+    except ValidationError as e:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            f"The event data is invalid for the event type: {event.event}",
+            {
+                "message": f"The event data is invalid for the event type: {event.event}",
+                "detail": e.errors(),
+            },
         )
     except ValueError:
         raise HTTPException(

@@ -1,6 +1,10 @@
 from typing import Any
 
-from .models import SlackAccountConnectedEvent, JobStatusChangedEvent
+from .models import (
+    SlackAccountConnectedEvent,
+    JobStatusChangedEvent,
+    JobQuoteCreatedEvent,
+)
 from ...slack.templates.messages import (
     SlackMessage,
     SuccessfulLoginMessage,
@@ -43,8 +47,7 @@ def get_ray_event_message(
                     client_id=event.client_id, job_uuid=event.uuid, job_id=event.id
                 )
         return None
-    # elif event_type == "ray:job:quote_created":
-    #     pass
-    elif event_type == "quote_created":
-        return JobQuotedEventMessage(event_data.get("client_id", ""), event_data)
+    elif event_type == "ray:job:quote_created":
+        event = JobQuoteCreatedEvent.parse_obj(event_data)
+        return JobQuotedEventMessage(event)
     raise ValueError(f"Invalid RAY event type: {event_type}")
