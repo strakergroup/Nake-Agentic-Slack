@@ -1,16 +1,13 @@
 import asyncio
-from typing import Callable, Coroutine, TypeVar
+from typing import Callable, Coroutine, Iterable, TypeVar
 from functools import wraps
 from urllib.parse import urlencode
 from httpx import Response
-from slack_sdk.web.async_client import AsyncWebClient
 from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
 from ray_sdk.api.v3.models import Job, Language
 
 from ..config import config, domains
 from ..auth.connector import RayClient
-from ..slack import web
-from ..slack.templates.models import NewJobForm
 
 
 F = TypeVar("F", bound=Callable[..., Coroutine])
@@ -82,27 +79,43 @@ class RayService:
             return None, e.response
 
     @secured_endpoint
-    async def submit_job(
-        self, client: AsyncWebClient, form: NewJobForm
+    async def new_job(
+        self,
+        files: Iterable[str],
+        sl: str,
+        tl: list[str],
+        workflow: str,
+        reference: str | None = None,
+        job_notes: str | None = None,
     ) -> list[RayResponse[None]]:
-        """Submit a new job."""
-        # TODO: move to listener_actions.py and resolve circular import in tests
-        file_ids = (file.id for file in form.files if file.id)
-        # TODO: check if file is downloaded
-        file_paths = await web.download_files(client, file_ids)
+        """Submit a new job.
+
+        Args:
+            files (Iterable[str]): A list of paths of files to submit.
+            sl (str): The source language code.
+            tl (list[str]): A list of target language codes.
+            workflow (str): The API workflow.
+            reference (str | None, optional): A job reference. Defaults to None.
+            job_notes (str | None, optional): The job notes. Defaults to None.
+
+        Returns:
+            list[RayResponse[None]]: The responses of the API requests made.
+        """
         callback_uri = "{}/ray/callback?{}".format(
             config.base_url, urlencode({"client_id": self.ray_client_id})
         )
         tasks = []
-        for path in [p for p in file_paths if p]:
+        for path in [p for p in files if p]:
             tasks.append(
                 self._ray.new_job(
                     file_path=path,
-                    title=form.reference or "Slack job",
-                    sl=form.source_lang.code,
-                    tl=[lang.code for lang in form.target_langs],
-                    workflow=form.workflow,
+                    title="Slack job",
+                    sl=sl,
+                    tl=tl,
+                    reference=reference,
+                    workflow=workflow,
                     callback_uri=callback_uri,
+                    job_notes=job_notes,
                     additional_data={"app_source": "slack"},
                 )
             )

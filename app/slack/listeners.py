@@ -10,7 +10,7 @@ from slack_sdk.errors import SlackApiError
 
 from .app import app
 from .middleware import ray_connection, require_ray_client
-from .listener_actions import post_job_status
+from .listener_actions import post_job_status, submit_job
 from .logging import slack_log_decorator
 from .templates.models import NewJobForm, convert_pydantic_to_slack_error
 from .templates.messages import (
@@ -31,7 +31,6 @@ from .templates.views import new_job_modal
 from .web import files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, map_file_options
 from ..auth.connector import disconnect_ray_account
-from ..ray import RayService
 from ..watson import watson_message
 
 
@@ -292,9 +291,7 @@ async def handle_new_job(ack, view, context, client):
         )
 
         # Process files and submit job.
-        responses = await RayService.get_service(context["ray"].client).submit_job(
-            client, form
-        )
+        responses = await submit_job(context, context["ray"].client, form)
         for response in responses:
             context["log"].add_api_log(
                 status_code=response.response.status_code,

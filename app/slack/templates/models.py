@@ -1,5 +1,4 @@
 from typing import Any
-import datetime
 from pydantic import BaseModel, ValidationError, validator
 from ray_sdk.api.v3.file import is_valid_file_ext
 
@@ -59,13 +58,31 @@ class SlackFile(BaseModel):
 class NewJobForm(BaseModel):
     """The model for a new job form."""
 
-    reference: str | None = None
+    files: list[SlackFile]
+    reference: str | None = None  # Max 100 chars, validated in view
     source_lang: RayLanguage
     target_langs: list[RayLanguage]
-    target_date: datetime.date
-    workflow: str
+    # target_date: datetime.date
+    service: str
+    validation: bool
+    notes: str | None = None
     # category: str
-    files: list[SlackFile]
+
+    @property
+    def workflow(self) -> str:
+        """The derived API workflow from the service and validation settings."""
+        if self.service == "Translation":
+            if self.validation:
+                return "TRANSLATION_VALIDATION"
+            else:
+                return "TRANSLATION"
+        elif self.service == "Translation + Edit":
+            if self.validation:
+                return "TRANSLATION_REVIEW_VALIDATION"
+            else:
+                return "TRANSLATION_REVIEW"
+        else:
+            raise ValueError(f"Cannot get workflow from service: {self.service}")
 
     @validator("target_langs")
     def validate_target_langs(cls, v):
@@ -79,11 +96,11 @@ class NewJobForm(BaseModel):
             raise ValueError("The source language cannot be a target language")
         return v
 
-    @validator("target_date")
-    def validate_target_date(cls, v):
-        if v <= datetime.date.today():
-            raise ValueError("The target date must be a future date")
-        return v
+    # @validator("target_date")
+    # def validate_target_date(cls, v):
+    #     if v <= datetime.date.today():
+    #         raise ValueError("The target date must be a future date")
+    #     return v
 
     @validator("files")
     def validate_files(cls, v):
@@ -110,6 +127,10 @@ class NewJobForm(BaseModel):
         """
         try:
             return cls(
+                files=[
+                    SlackFile.parse_slack_option(opt)
+                    for opt in values["files"]["file_options"]["selected_options"]
+                ],
                 reference=values["reference"]["reference"]["value"],
                 source_lang=RayLanguage.parse_slack_option(
                     values["source_lang"]["language_options"]["selected_option"]
@@ -120,13 +141,11 @@ class NewJobForm(BaseModel):
                         "selected_options"
                     ]
                 ],
-                target_date=values["target_date"]["target_date"]["selected_date"],
-                workflow=values["workflow"]["workflow"]["selected_option"]["value"],
+                # target_date=values["target_date"]["target_date"]["selected_date"],
+                service=values["service"]["service"]["selected_option"]["value"],
+                validation=bool(values["validation"]["validation"]["selected_options"]),
+                notes=values["notes"]["notes"]["value"],
                 # category=values["category"]["category"]["selected_option"]["value"],
-                files=[
-                    SlackFile.parse_slack_option(opt)
-                    for opt in values["files"]["file_options"]["selected_options"]
-                ],
             )
         except KeyError as e:
             raise ValueError("The Slack payload format is incorrect") from e

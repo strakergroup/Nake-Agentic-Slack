@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 import asyncio
 import httpx
+from sentry_sdk import capture_exception
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.errors import SlackApiError
 
@@ -129,9 +130,7 @@ async def download_file(
     return file_path
 
 
-async def download_files(
-    client: AsyncWebClient, files: Iterable[str]
-) -> list[str | None]:
+async def download_files(client: AsyncWebClient, files: Iterable[str]) -> list[str]:
     """Download multiple files from slack. This is more efficient than calling
     `download_file()` multiple times.
 
@@ -146,7 +145,8 @@ async def download_files(
     async with httpx.AsyncClient() as http:
         tasks = (download_file(client, file_id, http=http) for file_id in files)
         file_paths = await asyncio.gather(*tasks, return_exceptions=True)
-    # TODO: log exceptions?
-    # Set failed results as None.
-    file_paths = [result if isinstance(result, str) else None for result in file_paths]
-    return file_paths
+    # Log exceptions.
+    for exc in [result for result in file_paths if isinstance(result, Exception)]:
+        capture_exception(exc)
+    # Return successful file download paths.
+    return [result for result in file_paths if isinstance(result, str)]

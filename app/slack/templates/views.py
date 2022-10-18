@@ -96,6 +96,12 @@ def new_job_modal(
                 "element": {
                     "type": "plain_text_input",
                     "action_id": "reference",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Your job reference",
+                        "emoji": True,
+                    },
+                    "max_length": 100,
                 },
                 "label": {
                     "type": "plain_text",
@@ -124,7 +130,7 @@ def new_job_modal(
                 },
                 "hint": {
                     "type": "plain_text",
-                    "text": "What is the original language of the file(s)?",
+                    "text": "What is the original language of the file(s)? Type to show more languages.",
                 },
             },
             {
@@ -134,7 +140,7 @@ def new_job_modal(
                     "type": "multi_external_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": "Select language(s)",
+                        "text": "Select target language(s)",
                         "emoji": True,
                     },
                     "action_id": "language_options",
@@ -150,28 +156,28 @@ def new_job_modal(
                     "text": "Which language(s) do you want the file(s) to be translated to?",
                 },
             },
+            # {
+            #     "type": "input",
+            #     "block_id": "target_date",
+            #     "element": {
+            #         "type": "datepicker",
+            #         "placeholder": {
+            #             "type": "plain_text",
+            #             "text": "Select a date",
+            #             "emoji": True,
+            #         },
+            #         "action_id": "target_date",
+            #     },
+            #     "label": {"type": "plain_text", "text": "Target date", "emoji": True},
+            # },
             {
                 "type": "input",
-                "block_id": "target_date",
-                "element": {
-                    "type": "datepicker",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": "Select a date",
-                        "emoji": True,
-                    },
-                    "action_id": "target_date",
-                },
-                "label": {"type": "plain_text", "text": "Target date", "emoji": True},
-            },
-            {
-                "type": "input",
-                "block_id": "workflow",
+                "block_id": "service",
                 "element": {
                     "type": "static_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": "Select a workflow",
+                        "text": "Select a service",
                         "emoji": True,
                     },
                     "options": [
@@ -181,31 +187,15 @@ def new_job_modal(
                                 "text": "Translation",
                                 "emoji": False,
                             },
-                            "value": "TRANSLATION",
+                            "value": "Translation",
                         },
                         {
                             "text": {
                                 "type": "plain_text",
-                                "text": "Translation + Review",
+                                "text": "Translation + Edit",
                                 "emoji": False,
                             },
-                            "value": "TRANSLATION_REVIEW",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Translation + Validation",
-                                "emoji": False,
-                            },
-                            "value": "TRANSLATION_VALIDATION",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Translation + Review + Validation",
-                                "emoji": False,
-                            },
-                            "value": "TRANSLATION_REVIEW_VALIDATION",
+                            "value": "Translation + Edit",
                         },
                     ],
                     "initial_option": {
@@ -214,11 +204,46 @@ def new_job_modal(
                             "text": "Translation",
                             "emoji": False,
                         },
-                        "value": "TRANSLATION",
+                        "value": "Translation",
                     },
-                    "action_id": "workflow",
+                    "action_id": "service",
                 },
-                "label": {"type": "plain_text", "text": "Workflow", "emoji": True},
+                "label": {"type": "plain_text", "text": "Service", "emoji": True},
+            },
+            {
+                "type": "input",
+                "block_id": "validation",
+                "element": {
+                    "type": "checkboxes",
+                    "options": [
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Yes",
+                                "emoji": True,
+                            },
+                            "value": "1",
+                        },
+                    ],
+                    "action_id": "validation",
+                },
+                "label": {"type": "plain_text", "text": "Validation", "emoji": True},
+                "optional": True,
+            },
+            {
+                "type": "input",
+                "block_id": "notes",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "notes",
+                    "multiline": True,
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Notes",
+                    "emoji": True,
+                },
+                "optional": True,
             },
             # TODO: job category?
             # {

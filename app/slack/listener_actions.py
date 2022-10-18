@@ -5,10 +5,13 @@ Slack Bolt listener functions.
 
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from slack_bolt.context.async_context import AsyncBoltContext
+from ray_sdk import RayResponse
 
 from .templates.messages import JobStatusMessage, InvalidJobMessage
+from .templates.models import NewJobForm
 from ..auth.connector import RayClient
 from ..ray import RayService
+from .web import download_files
 
 
 async def post_job_status(
@@ -58,3 +61,19 @@ async def post_job_status(
                 headers=dict(response.headers.items()),
                 version="v3",
             )
+
+
+async def submit_job(
+    context: AsyncBoltContext, ray_client: RayClient, form: NewJobForm
+) -> list[RayResponse[None]]:
+    """Submit a new job."""
+    file_ids = (file.id for file in form.files if file.id)
+    file_paths = await download_files(context.client, file_ids)
+    return await RayService.get_service(ray_client).new_job(
+        files=file_paths,
+        sl=form.source_lang.code,
+        tl=[lang.code for lang in form.target_langs],
+        workflow=form.workflow,
+        reference=form.reference,
+        job_notes=form.notes,
+    )
