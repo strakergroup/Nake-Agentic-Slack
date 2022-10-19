@@ -529,6 +529,29 @@ class InvalidCommandMessage(TextMessage):
 # -----------------------------------------------------------------------------
 
 
+class ClientSignupEventMessage(SlackMessage):
+    def __init__(self, ray_username: str) -> None:
+        super().__init__(
+            "Thank you for signing up to DeltaRAY :tada:",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"Thank you for signing up to DeltaRAY <{domains.deltaray}|{ray_username}> :tada:",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "A notification has been sent to your Admins who will approve your account. You will be notified again once this has been approved.",
+                    },
+                },
+            ],
+        )
+
+
 class JobStatusChangedEventMessage(SlackMessage):
     def __init__(self, client_id: str, job_uuid: str, job_id: str, status: str) -> None:
         status_formatted = format_job_status(status)

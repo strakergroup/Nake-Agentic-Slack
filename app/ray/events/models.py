@@ -15,6 +15,11 @@ class SlackAccountConnectedEvent(BaseModel):
     channel_id: str | None = None
 
 
+class ClientSignupEvent(BaseModel):
+    client_id: str
+    username: str
+
+
 class JobStatusChangedEvent(BaseModel):
     uuid: str
     id: str
