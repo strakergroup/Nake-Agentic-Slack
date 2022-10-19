@@ -20,6 +20,11 @@ class ClientSignupEvent(BaseModel):
     username: str
 
 
+class ClientApprovedEvent(BaseModel):
+    client_id: str
+    username: str
+
+
 class JobStatusChangedEvent(BaseModel):
     uuid: str
     id: str

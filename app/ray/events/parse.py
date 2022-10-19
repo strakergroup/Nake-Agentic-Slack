@@ -3,6 +3,7 @@ from typing import Any
 from .models import (
     SlackAccountConnectedEvent,
     ClientSignupEvent,
+    ClientApprovedEvent,
     JobStatusChangedEvent,
     JobQuoteCreatedEvent,
 )
@@ -10,6 +11,7 @@ from ...slack.templates.messages import (
     SlackMessage,
     SuccessfulLoginMessage,
     ClientSignupEventMessage,
+    ClientApprovedEventMessage,
     JobStatusChangedEventMessage,
     JobCompletedEventMessage,
     JobCancelledEventMessage,
@@ -33,6 +35,9 @@ def get_ray_event_message(
     elif event_type == "ray:client:signup":
         event = ClientSignupEvent.parse_obj(event_data)
         return ClientSignupEventMessage(event.username)
+    elif event_type == "ray:client:approved":
+        event = ClientApprovedEvent.parse_obj(event_data)
+        return ClientApprovedEventMessage()
     elif event_type == "ray:job:status_changed":
         event = JobStatusChangedEvent.parse_obj(event_data)
         match event.status.strip().upper():

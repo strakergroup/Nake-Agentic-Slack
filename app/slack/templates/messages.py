@@ -552,6 +552,29 @@ class ClientSignupEventMessage(SlackMessage):
         )
 
 
+class ClientApprovedEventMessage(SlackMessage):
+    def __init__(self) -> None:
+        super().__init__(
+            ":raised_hands: Your DeltaRAY groups have been approved by an Admin.",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": ":raised_hands: Your DeltaRAY groups have been approved by an Admin.",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": ":white_check_mark: You can now access all the features within the Straker app.",
+                    },
+                },
+            ],
+        )
+
+
 class JobStatusChangedEventMessage(SlackMessage):
     def __init__(self, client_id: str, job_uuid: str, job_id: str, status: str) -> None:
         status_formatted = format_job_status(status)
