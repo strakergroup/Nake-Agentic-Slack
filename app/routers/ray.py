@@ -19,6 +19,8 @@ from ..dependencies import RayEventAuth, RayEvent
 from ..slack import app
 from ..slack.templates.messages import (
     SuccessfulLoginMessage,
+    ClientApprovedEventMessage,
+    ClientSignupEventMessage,
     JobCreationMessage,
 )
 from ..ray.events.parse import get_ray_event_message
@@ -45,9 +47,9 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
             status.HTTP_400_BAD_REQUEST,
             f"The event type is invalid: {event.event}",
         )
-
     if message is not None and auth.slack_user is not None:
         app.client.token = auth.slack_user.bot_token
+        # Send login message to the same conversation where it was prompted.
         if isinstance(message, SuccessfulLoginMessage):
             await app.client.chat_postEphemeral(
                 channel=auth.slack_user.channel_id,
@@ -55,7 +57,12 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
                 text=message.text,
                 blocks=message.blocks,
             )
-        elif auth.slack_user.is_subscribed:
+        elif (
+            # Send important messages regardless of subscribed status.
+            isinstance(message, (ClientSignupEventMessage, ClientApprovedEventMessage))
+            # Send all other messages if the client is subscribed to notifications.
+            or auth.slack_user.is_subscribed
+        ):
             await app.client.chat_postMessage(
                 channel=auth.slack_user.user_id,
                 text=message.text,

@@ -37,7 +37,8 @@ def get_ray_event_message(
         return ClientSignupEventMessage(event.username)
     elif event_type == "ray:client:approved":
         event = ClientApprovedEvent.parse_obj(event_data)
-        return ClientApprovedEventMessage()
+        group_names = [group.label for group in event.groups]
+        return ClientApprovedEventMessage(group_names)
     elif event_type == "ray:job:status_changed":
         event = JobStatusChangedEvent.parse_obj(event_data)
         match event.status.strip().upper():

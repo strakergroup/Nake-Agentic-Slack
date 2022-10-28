@@ -553,7 +553,8 @@ class ClientSignupEventMessage(SlackMessage):
 
 
 class ClientApprovedEventMessage(SlackMessage):
-    def __init__(self) -> None:
+    def __init__(self, groups: list[str]) -> None:
+        groups_text = "\n".join(f"- *{group}*" for group in groups)
         super().__init__(
             ":raised_hands: Your DeltaRAY groups have been approved by an Admin.",
             [
@@ -561,14 +562,22 @@ class ClientApprovedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": ":raised_hands: Your DeltaRAY groups have been approved by an Admin.",
+                        "text": f":raised_hands: Your DeltaRAY groups have been approved by an Admin:\n\n{groups_text}",
+                    },
+                },
+                {"type": "divider"},
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": ":white_check_mark: You can now access all the features within the Straker app.",
                     },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": ":white_check_mark: You can now access all the features within the Straker app.",
+                        "text": "Use `/ray help` to show some ideas of what you can do.",
                     },
                 },
             ],

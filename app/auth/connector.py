@@ -25,7 +25,8 @@ class SlackUser:
     channel_id: str
     is_subscribed: bool
     bot_token: str
-    ray_client_id: str | None = None
+    ray_client_id: str
+    ray_username: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,11 +124,15 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
-            SELECT slack_user_id,slack_team_id,
-                slack_app_id,slack_channel_id,is_subscribed
-            FROM slack_deltaray_link
-            WHERE member_uuid = :member_uuid
-            AND is_active = 1
+            SELECT link.slack_user_id,link.slack_team_id,link.slack_app_id,
+                link.slack_channel_id,link.is_subscribed,mem.login
+            FROM slack_deltaray_link link
+            INNER JOIN sitemanager.obj_m_member mem
+            ON link.member_uuid = mem.obj_uuid
+            WHERE link.member_uuid = :member_uuid
+            AND link.is_active = 1
+            AND mem.active = 1
+            AND mem.is_deleted = 0
             LIMIT 1
             """
         ).bindparams(member_uuid=ray_client_id)
@@ -144,6 +149,7 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
                     is_subscribed=bool(row.is_subscribed),
                     bot_token=bot_token,
                     ray_client_id=ray_client_id,
+                    ray_username=row.login,
                 )
     return None
 

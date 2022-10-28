@@ -1,6 +1,11 @@
 from pydantic import BaseModel
 
 
+class ClientGroup(BaseModel):
+    uuid: str
+    label: str
+
+
 class Language(BaseModel):
     code: str
     label: str
@@ -23,6 +28,7 @@ class ClientSignupEvent(BaseModel):
 class ClientApprovedEvent(BaseModel):
     client_id: str
     username: str
+    groups: list[ClientGroup]
 
 
 class JobStatusChangedEvent(BaseModel):
