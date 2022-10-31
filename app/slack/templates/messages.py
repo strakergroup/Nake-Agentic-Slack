@@ -8,7 +8,7 @@ from ray_sdk.api.v3.models import Job
 
 from .models import NewJobForm
 from .blocks import job_deltaray_link_block
-from ...ray.events.models import JobQuoteCreatedEvent
+from ...ray.events.models import ClientSignupEvent, JobQuoteCreatedEvent, ClientGroup
 from ...ray.utils import (
     get_job_url,
     format_currency,
@@ -530,7 +530,8 @@ class InvalidCommandMessage(TextMessage):
 
 
 class ClientSignupEventMessage(SlackMessage):
-    def __init__(self, ray_username: str) -> None:
+    def __init__(self, event: ClientSignupEvent) -> None:
+        self.event = event
         super().__init__(
             "Thank you for signing up to DeltaRAY :tada:",
             [
@@ -538,7 +539,7 @@ class ClientSignupEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Thank you for signing up to DeltaRAY <{domains.deltaray}|{ray_username}> :tada:",
+                        "text": f"Thank you for signing up to DeltaRAY <{domains.deltaray}|{event.username}> :tada:",
                     },
                 },
                 {
@@ -547,6 +548,71 @@ class ClientSignupEventMessage(SlackMessage):
                         "type": "mrkdwn",
                         "text": "A notification has been sent to your Admins who will approve your account. You will be notified again once this has been approved.",
                     },
+                },
+            ],
+        )
+
+
+class ClientSignupEventAdminMessage(SlackMessage):
+    def __init__(
+        self, client_name: str, client_email: str, groups: list[ClientGroup]
+    ) -> None:
+        super().__init__(
+            f"A new user has signed up for a DeltaRAY account: {client_name} ({client_email})",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"A new user has signed up for a DeltaRAY account:\n{client_name} ({client_email})",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Before this user can use the Straker Slack app, they require approval for the groups they should be associated with:",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*Group(s)*:\n"
+                        + "\n".join(group.label for group in groups),
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "To approve this user please click the approve button below, or alternatively if you need to change anything, please log into DeltaRAY to edit their permissions.",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "emoji": True,
+                                "text": "Approve",
+                            },
+                            "style": "primary",
+                            "value": "click_me_123",
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "emoji": True,
+                                "text": "Log into DeltaRAY",
+                            },
+                            "url": domains.deltaray,
+                            "action_id": "link",
+                        },
+                    ],
                 },
             ],
         )

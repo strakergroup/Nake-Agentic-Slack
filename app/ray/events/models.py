@@ -23,6 +23,10 @@ class SlackAccountConnectedEvent(BaseModel):
 class ClientSignupEvent(BaseModel):
     client_id: str
     username: str
+    email: str
+    first_name: str
+    last_name: str
+    groups: list[ClientGroup]
 
 
 class ClientApprovedEvent(BaseModel):

@@ -11,19 +11,23 @@ from fastapi import (
 from pydantic import BaseModel, ValidationError
 
 from ..auth.connector import (
+    SlackUser,
     validate_api_callback_signature,
     get_slack_user,
     get_ray_client,
+    get_group_admin_slack_users,
 )
 from ..dependencies import RayEventAuth, RayEvent
 from ..slack import app
 from ..slack.templates.messages import (
     SuccessfulLoginMessage,
-    ClientApprovedEventMessage,
     ClientSignupEventMessage,
+    ClientSignupEventAdminMessage,
+    ClientApprovedEventMessage,
     JobCreationMessage,
 )
 from ..ray.events.parse import get_ray_event_message
+from ..ray.events.models import ClientGroup
 
 
 router = APIRouter(tags=["ray"])
@@ -67,6 +71,30 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
                 channel=auth.slack_user.user_id,
                 text=message.text,
                 blocks=message.blocks,
+            )
+
+    # Send notifications to group admins when a new client signs up.
+    if isinstance(message, ClientSignupEventMessage):
+        event_data = message.event
+        admins: dict[str, tuple[SlackUser, list[ClientGroup]]] = {}
+        for group in event_data.groups:
+            admin_slack_users = get_group_admin_slack_users(group.uuid)
+            for admin in admin_slack_users:
+                if admin.ray_client_id not in admins:
+                    admins[admin.ray_client_id] = (admin, [])
+                admins[admin.ray_client_id][1].append(group)
+
+        for user, groups in admins.values():
+            app.client.token = user.bot_token
+            admin_message = ClientSignupEventAdminMessage(
+                client_name=f"{event_data.first_name} {event_data.last_name}",
+                client_email=event_data.email,
+                groups=groups,
+            )
+            await app.client.chat_postMessage(
+                channel=user.user_id,
+                text=admin_message.text,
+                blocks=admin_message.blocks,
             )
 
     return {"message": "success", "data": {"event": event.event}}

@@ -34,7 +34,7 @@ def get_ray_event_message(
         return SuccessfulLoginMessage(event.user_id, event.username)
     elif event_type == "ray:client:signup":
         event = ClientSignupEvent.parse_obj(event_data)
-        return ClientSignupEventMessage(event.username)
+        return ClientSignupEventMessage(event)
     elif event_type == "ray:client:approved":
         event = ClientApprovedEvent.parse_obj(event_data)
         group_names = [group.label for group in event.groups]

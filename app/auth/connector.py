@@ -251,6 +251,53 @@ async def get_ray_connection(
     return RayConnection(super_group, client)
 
 
+def get_group_admin_slack_users(group_id: str) -> list[SlackUser]:
+    """Gets the Slack users of the admins of a DeltaRAY group."""
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT slack.slack_user_id, slack.slack_team_id, slack.slack_app_id,
+                slack.slack_channel_id, slack.is_subscribed, bots.bot_token,
+                mem.obj_uuid, mem.login
+            FROM obj_m_mglink link
+            INNER JOIN obj_m_member mem
+            ON link.memberid = mem.obj_uuid
+            INNER JOIN ray_integration.slack_deltaray_link slack
+            ON link.memberid = slack.member_uuid
+            INNER JOIN ray_integration.slack_bots bots
+            ON bots.id = (
+                SELECT id FROM ray_integration.slack_bots bots2
+                WHERE bots2.team_id = slack.slack_team_id
+                AND bots2.app_id = slack.slack_app_id
+                ORDER BY id DESC LIMIT 1
+            )
+            WHERE link.groupid = :group_id
+            AND link.client_type = :client_type
+            AND mem.active = 1
+            AND mem.is_deleted = 0
+            AND slack.is_active = 1
+            GROUP BY link.memberid
+            """
+        ).bindparams(group_id=group_id, client_type="Admin")
+        result = conn.execute(sql)
+
+    slack_users = []
+    for row in result:
+        slack_users.append(
+            SlackUser(
+                user_id=row.slack_user_id,
+                team_id=row.slack_team_id,
+                app_id=row.slack_app_id,
+                channel_id=row.slack_channel_id,
+                is_subscribed=bool(row.is_subscribed),
+                bot_token=row.bot_token,
+                ray_client_id=row.obj_uuid,
+                ray_username=row.login,
+            )
+        )
+    return slack_users
+
+
 def disconnect_ray_account(user_id: str, team_id: str, app_id: str) -> bool:
     """Disconnect the DeltaRAY account of a slack user.
 
