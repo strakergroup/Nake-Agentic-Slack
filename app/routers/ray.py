@@ -75,9 +75,8 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
 
     # Send notifications to group admins when a new client signs up.
     if isinstance(message, ClientSignupEventMessage):
-        event_data = message.event
         admins: dict[str, tuple[SlackUser, list[ClientGroup]]] = {}
-        for group in event_data.groups:
+        for group in message.event.groups:
             admin_slack_users = get_group_admin_slack_users(group.uuid)
             for admin in admin_slack_users:
                 if admin.ray_client_id not in admins:
@@ -87,8 +86,7 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
         for user, groups in admins.values():
             app.client.token = user.bot_token
             admin_message = ClientSignupEventAdminMessage(
-                client_name=f"{event_data.first_name} {event_data.last_name}",
-                client_email=event_data.email,
+                event=message.event,
                 groups=groups,
             )
             await app.client.chat_postMessage(

@@ -5,10 +5,12 @@ other services, e.g. Slack, RAY apps.
 import asyncio
 import time
 import json
+from uuid import uuid4
 from dataclasses import dataclass
 from urllib.parse import urlencode
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
+import httpx
 
 from .algorithms import encrypt_aes, hash_hmac_sha1
 from ..config import config, domains
@@ -400,3 +402,87 @@ def get_slack_deltaray_integration_url(
         )
     }
     return f"{domains.deltaray}/app/slack?{urlencode(params)}"
+
+
+async def approve_pending_groups(
+    admin_client_id: str, pending_client_id: str, pending_client_username: str
+) -> tuple[str]:
+    """Approve the pending groups of a new client that the client is an admin of.
+    This function will be moved to a REST API in the future.
+    """
+    with engines["sitemanager_readonly"].connect() as conn:
+        # First get the groups that the client is an admin of.
+        sql = text(
+            """
+            SELECT DISTINCT groupid
+            FROM obj_m_mglink
+            WHERE memberid = :client_id
+            AND client_type = :client_type
+            """
+        ).bindparams(client_id=admin_client_id, client_type="Admin")
+        result = conn.execute(sql)
+        admin_groups = [row[0] for row in result]
+        if not admin_groups:
+            return tuple()
+        # Then get the new client's pending groups.
+        sql = text(
+            """
+            SELECT g.obj_uuid, g.label
+            FROM obj_m_group_pending p
+            JOIN obj_m_group g
+            ON p.group_uuid = g.obj_uuid
+            WHERE p.member_uuid = :client_id
+            AND p.is_active = 1
+            AND p.is_approved = 0
+            GROUP BY g.obj_uuid
+            """
+        ).bindparams(client_id=pending_client_id)
+        result = conn.execute(sql)
+        pending_groups = [{"uuid": row.obj_uuid, "label": row.label} for row in result]
+    # Approve the intersection of these groups.
+    groups_to_approve = [g for g in pending_groups if g["uuid"] in admin_groups]
+    if groups_to_approve:
+        with engines["sitemanager"].begin() as conn:
+            for group in groups_to_approve:
+                sql = text(
+                    """
+                    INSERT INTO obj_m_mglink
+                        (obj_uuid, groupid, memberid, label, client_type, created, modified)
+                    VALUES
+                        (:uuid, :group_id, :client_id, :label, :client_type, NOW(), NOW())
+                    """
+                ).bindparams(
+                    uuid=str(uuid4()).upper(),
+                    group_id=group["uuid"],
+                    client_id=pending_client_id,
+                    label=f"{pending_client_id}-{group['uuid']}",
+                    client_type="Normal",
+                )
+                conn.execute(sql)
+            sql = text(
+                """
+                UPDATE obj_m_group_pending
+                SET is_active = 0, is_approved = 1
+                WHERE member_uuid = :client_id
+                AND group_uuid IN :groups
+                AND is_active = 1
+                """
+            ).bindparams(
+                client_id=pending_client_id,
+                groups=tuple(g["uuid"] for g in groups_to_approve),
+            )
+            conn.execute(sql)
+        # Publish client approved event (this is hard-coded for now).
+        async with httpx.AsyncClient() as http:
+            await http.post(
+                f"{domains.stream_proxy}/events/ray:client:approved",
+                json={
+                    "data": {
+                        "client_id": pending_client_id,
+                        "username": pending_client_username,
+                        "groups": groups_to_approve,
+                    },
+                    "source": "Slack RAY Translator",
+                },
+            )
+    return tuple(g["uuid"] for g in groups_to_approve)

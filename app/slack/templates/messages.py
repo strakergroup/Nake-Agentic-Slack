@@ -524,6 +524,15 @@ class InvalidCommandMessage(TextMessage):
         )
 
 
+class ClientApprovedMessage(TextMessage):
+    """A group admin approved a new client in Slack."""
+
+    def __init__(self, approved_client) -> None:
+        super().__init__(
+            f"The user {approved_client} has been approved to join your group(s)."
+        )
+
+
 # -----------------------------------------------------------------------------
 # Ray event messages
 # -----------------------------------------------------------------------------
@@ -554,17 +563,16 @@ class ClientSignupEventMessage(SlackMessage):
 
 
 class ClientSignupEventAdminMessage(SlackMessage):
-    def __init__(
-        self, client_name: str, client_email: str, groups: list[ClientGroup]
-    ) -> None:
+    def __init__(self, event: ClientSignupEvent, groups: list[ClientGroup]) -> None:
+        self.event = event
         super().__init__(
-            f"A new user has signed up for a DeltaRAY account: {client_name} ({client_email})",
+            f"A new user has signed up for a DeltaRAY account: {event.first_name} {event.last_name} ({event.email})",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"A new user has signed up for a DeltaRAY account:\n{client_name} ({client_email})",
+                        "text": f"A new user has signed up for a DeltaRAY account:\n{event.first_name} {event.last_name} ({event.email})",
                     },
                 },
                 {
@@ -600,7 +608,10 @@ class ClientSignupEventAdminMessage(SlackMessage):
                                 "text": "Approve",
                             },
                             "style": "primary",
-                            "value": "click_me_123",
+                            "action_id": "approve_pending_client",
+                            "value": json.dumps(
+                                {"id": event.client_id, "username": event.username}
+                            ),
                         },
                         {
                             "type": "button",

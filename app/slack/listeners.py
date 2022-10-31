@@ -4,13 +4,14 @@ commands, etc. from the Slack API.
 
 import re
 import json
+import sentry_sdk
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_sdk.errors import SlackApiError
 
 from .app import app
 from .middleware import ray_connection, require_ray_client
-from .listener_actions import post_job_status, submit_job
+from .listener_actions import post_job_status, submit_job, approve_pending_client
 from .logging import slack_log_decorator
 from .templates.models import NewJobForm, convert_pydantic_to_slack_error
 from .templates.messages import (
@@ -26,6 +27,7 @@ from .templates.messages import (
     WhoamiMessage,
     SuperGroupMessage,
     InvalidCommandMessage,
+    ClientApprovedMessage,
 )
 from .templates.views import new_job_modal
 from .web import files_list_simple, get_bot_accessible_files
@@ -248,6 +250,29 @@ async def new_job_action(ack, payload, context, client, body):
                 initial_files=init_files,
             ),
         )
+
+
+@app.block_action("approve_pending_client", middleware=[ray_connection])
+@slack_log_decorator
+async def approve_pending_client_action(ack, action, context, say):
+    await ack()
+    if await require_ray_client(context):
+        try:
+            # action["value"] should contain the new client details.
+            pending_client_details = json.loads(action["value"])
+            client_id = pending_client_details["id"]
+            client_username = pending_client_details["username"]
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+        else:
+            approved_groups = await approve_pending_client(
+                context,
+                context["ray"].client,
+                pending_client_id=client_id,
+                pending_client_username=client_username,
+            )
+            if approved_groups:
+                await say(ClientApprovedMessage(client_username).text)
 
 
 @app.block_action("disconnect")

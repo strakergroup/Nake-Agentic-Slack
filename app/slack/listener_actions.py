@@ -9,7 +9,7 @@ from ray_sdk import RayResponse
 
 from .templates.messages import JobStatusMessage, InvalidJobMessage
 from .templates.models import NewJobForm
-from ..auth.connector import RayClient
+from ..auth.connector import RayClient, approve_pending_groups
 from ..ray import RayService
 from .web import download_files
 
@@ -76,4 +76,16 @@ async def submit_job(
         workflow=form.workflow,
         reference=form.reference,
         job_notes=form.notes,
+    )
+
+
+async def approve_pending_client(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    pending_client_id: str,
+    pending_client_username: str,
+):
+    # TODO: Use API to approve clients when available.
+    return await approve_pending_groups(
+        ray_client.id, pending_client_id, pending_client_username
     )
