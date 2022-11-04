@@ -68,5 +68,10 @@ def format_job_status(status: str) -> str:
             return "Refunded"
         case "COMPLETED":
             return "Completed"
+        # Derived statuses.
+        case "PENDING_QUOTES":  # status = "LEAD" + quote <= 1
+            return "Quote Requested"
+        case "ORDER_NOW":  # status = "LEAD" + quote > 1
+            return "Order Now"
         case _:
             return status.strip()

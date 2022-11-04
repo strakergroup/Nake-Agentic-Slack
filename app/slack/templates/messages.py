@@ -125,9 +125,7 @@ class LoginMessage(SlackMessage):
         # Have variations of the login message depending on the arguments.
         block_text = "Click this button to connect your DeltaRAY account."
         if variation == self.GET_JOB:
-            block_text = (
-                "Connect your DeltaRAY account to view the status of your jobs."
-            )
+            block_text = "Connect your DeltaRAY account to view your jobs."
         elif variation == self.NEW_JOB:
             block_text = (
                 "Connect your DeltaRAY account to submit a new translation job."
@@ -351,6 +349,207 @@ class JobStatusNoIdMessage(TextMessage):
     def __init__(self) -> None:
         super().__init__(
             "To check the status of your job, type the reference number (e.g. TJ123456)."
+        )
+
+
+class JobSummaryMessage(SlackMessage):
+    """A summary of the client's jobs, number of jobs in each status. Has buttons
+    to display the individual job IDs for each status and timeframe.
+    """
+
+    def __init__(
+        self,
+        in_progress: int,
+        completed: int,
+        validation: int,
+        pending_quotes: int,
+        order_now: int,
+    ) -> None:
+        super().__init__(
+            f"In Progress Jobs: {in_progress} jobs currently in progress...",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*In Progress Jobs*\n{in_progress} jobs currently in progress",
+                    },
+                    "accessory": {
+                        "type": "static_select",
+                        "placeholder": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Options",
+                        },
+                        "options": [
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": "Jobs Accepted within the last 24 hours",
+                                },
+                                "value": "value-0",
+                            },
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": "Jobs due within the next 24 hours",
+                                },
+                                "value": "value-1",
+                            },
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": "All jobs In Progress",
+                                },
+                                "value": "value-2",
+                            },
+                        ],
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Completed Jobs*\n{completed} jobs completed in the past 7 days",
+                    },
+                    "accessory": {
+                        "type": "static_select",
+                        "placeholder": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Options",
+                        },
+                        "options": [
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": "Jobs Completed within the last 24 hours",
+                                },
+                                "value": "value-0",
+                            },
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": "Jobs Completed within the last 48 hours",
+                                },
+                                "value": "value-1",
+                            },
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": "Jobs Completed within the last 7 days",
+                                },
+                                "value": "value-2",
+                            },
+                        ],
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Validation*\n{validation} jobs currently being validated",
+                    },
+                    "accessory": {
+                        "type": "static_select",
+                        "placeholder": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Options",
+                        },
+                        "options": [
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": "All jobs in Validation",
+                                },
+                                "value": "value-0",
+                            }
+                        ],
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Pending Quotes*\n{pending_quotes} quotes pending",
+                    },
+                    "accessory": {
+                        "type": "static_select",
+                        "placeholder": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Options",
+                        },
+                        "options": [
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": "Pending quotes from the last 24 hours",
+                                },
+                                "value": "value-0",
+                            },
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": "All pending quotes",
+                                },
+                                "value": "value-2",
+                            },
+                        ],
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Order Now*\n{order_now} jobs to order",
+                    },
+                    "accessory": {
+                        "type": "static_select",
+                        "placeholder": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Options",
+                        },
+                        "options": [
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": "Jobs quoted from the last 24 hours",
+                                },
+                                "value": "value-0",
+                            },
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": "Jobs quoted from the last 7 days",
+                                },
+                                "value": "value-1",
+                            },
+                            {
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": "All jobs quoted",
+                                },
+                                "value": "value-2",
+                            },
+                        ],
+                    },
+                },
+            ],
         )
 
 

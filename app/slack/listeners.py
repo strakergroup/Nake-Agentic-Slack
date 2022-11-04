@@ -11,7 +11,12 @@ from slack_sdk.errors import SlackApiError
 
 from .app import app
 from .middleware import ray_connection, require_ray_client
-from .listener_actions import post_job_status, submit_job, approve_pending_client
+from .listener_actions import (
+    post_job_status,
+    post_job_summary,
+    submit_job,
+    approve_pending_client,
+)
 from .logging import slack_log_decorator
 from .templates.models import NewJobForm, convert_pydantic_to_slack_error
 from .templates.messages import (
@@ -179,6 +184,9 @@ async def ray_command(ack, respond, command, context, client):
             if await require_ray_client(context):
                 msg = LogoutMessage(context["ray"].client.username)
                 await respond(text=msg.text, blocks=msg.blocks)
+        case ["jobs"] | ["my", "jobs"]:
+            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+                await post_job_summary(context, context["ray"].client)
         case ["new"]:
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
                 files = await files_list_simple(client, count=110)

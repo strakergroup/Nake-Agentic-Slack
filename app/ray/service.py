@@ -4,7 +4,7 @@ from functools import wraps
 from urllib.parse import urlencode
 from httpx import Response
 from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
-from ray_sdk.api.v3.models import Job, Language
+from ray_sdk.api.v3.models import Job, JobSummary, Language
 
 from ..config import config, domains
 from ..auth.connector import RayClient
@@ -77,6 +77,13 @@ class RayService:
             return None, e.response
         except RayAPIResponseError as e:
             return None, e.response
+
+    @secured_endpoint
+    async def get_job_summary(
+        self, statuses: list[str], from_hours: int = 0
+    ) -> RayResponse[JobSummary]:
+        """Gets the client's job summary."""
+        return await self._ray.get_job_summary(status=statuses, from_hours=from_hours)
 
     @secured_endpoint
     async def new_job(
