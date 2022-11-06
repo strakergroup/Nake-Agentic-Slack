@@ -52,10 +52,17 @@ def map_file_options(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
     - https://api.slack.com/types/file
     - https://api.slack.com/reference/block-kit/composition-objects#option.
     """
-    return [
-        {
-            "text": {"type": "plain_text", "text": file.get("title"), "emoji": False},
-            "value": file.get("id"),
-        }
-        for file in files
-    ]
+    max_title_length = 75
+    file_options = []
+    for file in files:
+        title = file.get("title", "")
+        # Options text has max 75 characters.
+        if len(title) > max_title_length:
+            title = f"{title[:max_title_length - 1]}…"
+        file_options.append(
+            {
+                "text": {"type": "plain_text", "text": title, "emoji": False},
+                "value": file.get("id"),
+            }
+        )
+    return file_options
