@@ -4,12 +4,18 @@ Slack Bolt listener functions.
 """
 
 import asyncio
-from sentry_sdk import capture_exception
+from sentry_sdk import capture_exception, capture_message
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
+from slack_sdk.webhook.webhook_response import WebhookResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
 
-from .templates.messages import JobStatusMessage, InvalidJobMessage, JobSummaryMessage
+from .templates.messages import (
+    JobStatusMessage,
+    InvalidJobMessage,
+    JobSummaryMessage,
+    JobListMessage,
+)
 from .templates.models import NewJobForm
 from ..auth.connector import RayClient, approve_pending_groups
 from ..ray import RayService
@@ -37,7 +43,7 @@ async def post_job_status(
         AssertionError: The `channel_id` is not given and there is no source channel.
     """
     if not context.channel_id and not channel_id:
-        raise AssertionError("No channel to post the job status to")
+        raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id
 
     job, response = await RayService.get_service(ray_client).get_job(job_id)
@@ -87,7 +93,7 @@ async def post_job_summary(
         AssertionError: The `channel_id` is not given and there is no source channel.
     """
     if not context.channel_id and not channel_id:
-        raise AssertionError("No channel to post the job status to")
+        raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id
 
     responses = await asyncio.gather(
@@ -146,6 +152,131 @@ async def post_job_summary(
                     headers=dict(response.response.headers.items()),
                     version="v3",
                 )
+
+
+async def post_job_list(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    preset: str,
+    page: int = 1,
+    page_size: int = 5,
+    channel_id: str | None = None,
+    replace_original: bool = False,
+) -> AsyncSlackResponse | WebhookResponse:
+    """Gets the job list from the RAY API and posts it to the Slack user.
+    The list of jobs is filtered depending on the `preset` argument.
+
+    Args:
+        context (AsyncBoltContext): The listener function context.
+        ray_client (RayClient): The RAY client.
+        preset (str): The preset to filter the job list.
+        channel_id (str | None, optional): The channel to post the message to.
+            If not given, posts to the source channel.
+
+    Raises:
+        AssertionError: The `channel_id` is not given and there is no source channel.
+    """
+    if not context.channel_id and not channel_id and not context.response_url:
+        raise AssertionError("No channel to post to")
+    channel_id = channel_id or context.channel_id
+
+    match preset:
+        case "IN_PROGRESS:ACCEPTED:24H":
+            title = "Jobs accepted within the last 24 hours"
+            response = await RayService.get_service(ray_client).get_job_list(
+                status="IN_PROGRESS", from_hours=24, page=page, page_size=page_size
+            )
+        case "IN_PROGRESS:DUE:24H":
+            title = "Jobs due within the next 24 hours"
+            response = await RayService.get_service(ray_client).get_job_list(
+                status="IN_PROGRESS", from_hours=24, page=page, page_size=page_size
+            )
+        case "IN_PROGRESS":
+            title = "All jobs in progress"
+            response = await RayService.get_service(ray_client).get_job_list(
+                status="IN_PROGRESS", page=page, page_size=page_size
+            )
+        case "COMPLETED:24H":
+            title = "Jobs completed within the last 24 hours"
+            response = await RayService.get_service(ray_client).get_job_list(
+                status="COMPLETED", from_hours=24, page=page, page_size=page_size
+            )
+        case "COMPLETED:48H":
+            title = "Jobs completed within the last 48 hours"
+            response = await RayService.get_service(ray_client).get_job_list(
+                status="COMPLETED", from_hours=48, page=page, page_size=page_size
+            )
+        case "COMPLETED:7D":
+            title = "Jobs completed within the last 7 days"
+            response = await RayService.get_service(ray_client).get_job_list(
+                status="COMPLETED", from_hours=24 * 7, page=page, page_size=page_size
+            )
+        case "VALIDATION":
+            title = "All jobs in validation"
+            response = await RayService.get_service(ray_client).get_job_list(
+                status="VALIDATION", page=page, page_size=page_size
+            )
+        case "PENDING_QUOTES:24H":
+            title = "Pending quotes from the last 24 hours"
+            response = await RayService.get_service(ray_client).get_job_list(
+                status="PENDING_QUOTES", from_hours=24, page=page, page_size=page_size
+            )
+        case "PENDING_QUOTES":
+            title = "All pending quotes"
+            response = await RayService.get_service(ray_client).get_job_list(
+                status="PENDING_QUOTES", page=page, page_size=page_size
+            )
+        case "ORDER_NOW:24H":
+            title = "Jobs quoted from the last 24 hours"
+            response = await RayService.get_service(ray_client).get_job_list(
+                status="ORDER_NOW", from_hours=24, page=page, page_size=page_size
+            )
+        case "ORDER_NOW:7D":
+            title = "Jobs quoted from the last 7 days"
+            response = await RayService.get_service(ray_client).get_job_list(
+                status="ORDER_NOW", from_hours=24 * 7, page=page, page_size=page_size
+            )
+        case "ORDER_NOW":
+            title = "All jobs quoted"
+            response = await RayService.get_service(ray_client).get_job_list(
+                status="ORDER_NOW", page=page, page_size=page_size
+            )
+        case _:
+            capture_message(f"post_job_list: Invalid preset ({preset})")
+            return
+
+    try:
+        msg = JobListMessage(
+            preset=preset,
+            title=title,
+            jobs=response.data[0],
+            pagination=response.data[1],
+            client_id=ray_client.id,
+        )
+        if context.response_url:
+            return await context.respond(
+                text=msg.text, blocks=msg.blocks, replace_original=replace_original
+            )
+        else:
+            return await context.client.chat_postEphemeral(
+                channel=channel_id,
+                user=context.user_id,
+                text=msg.text,
+                blocks=msg.blocks,
+            )
+    finally:
+        try:
+            response_data = response.response.json()
+        except Exception:
+            response_data = response.response.content.decode() or None
+        context["log"].add_api_log(
+            status_code=response.status_code,
+            url=str(response.response.url),
+            payload=None,
+            response=response_data,
+            headers=dict(response.response.headers.items()),
+            version="v3",
+        )
 
 
 async def submit_job(

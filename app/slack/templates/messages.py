@@ -3,8 +3,9 @@
 # flake8: noqa
 
 from typing import Any
+import datetime
 import json
-from ray_sdk.api.v3.models import Job
+from ray_sdk.api.v3.models import Job, Pagination
 
 from .models import NewJobForm
 from .blocks import job_deltaray_link_block
@@ -376,6 +377,7 @@ class JobSummaryMessage(SlackMessage):
                     },
                     "accessory": {
                         "type": "static_select",
+                        "action_id": "job_list",
                         "placeholder": {
                             "type": "plain_text",
                             "emoji": True,
@@ -386,9 +388,9 @@ class JobSummaryMessage(SlackMessage):
                                 "text": {
                                     "type": "plain_text",
                                     "emoji": True,
-                                    "text": "Jobs Accepted within the last 24 hours",
+                                    "text": "Jobs accepted within the last 24 hours",
                                 },
-                                "value": "value-0",
+                                "value": "IN_PROGRESS:ACCEPTED:24H",
                             },
                             {
                                 "text": {
@@ -396,15 +398,15 @@ class JobSummaryMessage(SlackMessage):
                                     "emoji": True,
                                     "text": "Jobs due within the next 24 hours",
                                 },
-                                "value": "value-1",
+                                "value": "IN_PROGRESS:DUE:24H",
                             },
                             {
                                 "text": {
                                     "type": "plain_text",
                                     "emoji": True,
-                                    "text": "All jobs In Progress",
+                                    "text": "All jobs in progress",
                                 },
-                                "value": "value-2",
+                                "value": "IN_PROGRESS",
                             },
                         ],
                     },
@@ -417,6 +419,7 @@ class JobSummaryMessage(SlackMessage):
                     },
                     "accessory": {
                         "type": "static_select",
+                        "action_id": "job_list",
                         "placeholder": {
                             "type": "plain_text",
                             "emoji": True,
@@ -427,25 +430,25 @@ class JobSummaryMessage(SlackMessage):
                                 "text": {
                                     "type": "plain_text",
                                     "emoji": True,
-                                    "text": "Jobs Completed within the last 24 hours",
+                                    "text": "Jobs completed within the last 24 hours",
                                 },
-                                "value": "value-0",
+                                "value": "COMPLETED:24H",
                             },
                             {
                                 "text": {
                                     "type": "plain_text",
                                     "emoji": True,
-                                    "text": "Jobs Completed within the last 48 hours",
+                                    "text": "Jobs completed within the last 48 hours",
                                 },
-                                "value": "value-1",
+                                "value": "COMPLETED:48H",
                             },
                             {
                                 "text": {
                                     "type": "plain_text",
                                     "emoji": True,
-                                    "text": "Jobs Completed within the last 7 days",
+                                    "text": "Jobs completed within the last 7 days",
                                 },
-                                "value": "value-2",
+                                "value": "COMPLETED:7D",
                             },
                         ],
                     },
@@ -458,6 +461,7 @@ class JobSummaryMessage(SlackMessage):
                     },
                     "accessory": {
                         "type": "static_select",
+                        "action_id": "job_list",
                         "placeholder": {
                             "type": "plain_text",
                             "emoji": True,
@@ -468,9 +472,9 @@ class JobSummaryMessage(SlackMessage):
                                 "text": {
                                     "type": "plain_text",
                                     "emoji": True,
-                                    "text": "All jobs in Validation",
+                                    "text": "All jobs in validation",
                                 },
-                                "value": "value-0",
+                                "value": "VALIDATION",
                             }
                         ],
                     },
@@ -483,6 +487,7 @@ class JobSummaryMessage(SlackMessage):
                     },
                     "accessory": {
                         "type": "static_select",
+                        "action_id": "job_list",
                         "placeholder": {
                             "type": "plain_text",
                             "emoji": True,
@@ -495,7 +500,7 @@ class JobSummaryMessage(SlackMessage):
                                     "emoji": True,
                                     "text": "Pending quotes from the last 24 hours",
                                 },
-                                "value": "value-0",
+                                "value": "PENDING_QUOTES:24H",
                             },
                             {
                                 "text": {
@@ -503,7 +508,7 @@ class JobSummaryMessage(SlackMessage):
                                     "emoji": True,
                                     "text": "All pending quotes",
                                 },
-                                "value": "value-2",
+                                "value": "PENDING_QUOTES",
                             },
                         ],
                     },
@@ -516,6 +521,7 @@ class JobSummaryMessage(SlackMessage):
                     },
                     "accessory": {
                         "type": "static_select",
+                        "action_id": "job_list",
                         "placeholder": {
                             "type": "plain_text",
                             "emoji": True,
@@ -528,7 +534,7 @@ class JobSummaryMessage(SlackMessage):
                                     "emoji": True,
                                     "text": "Jobs quoted from the last 24 hours",
                                 },
-                                "value": "value-0",
+                                "value": "ORDER_NOW:24H",
                             },
                             {
                                 "text": {
@@ -536,7 +542,7 @@ class JobSummaryMessage(SlackMessage):
                                     "emoji": True,
                                     "text": "Jobs quoted from the last 7 days",
                                 },
-                                "value": "value-1",
+                                "value": "ORDER_NOW:7D",
                             },
                             {
                                 "text": {
@@ -544,11 +550,118 @@ class JobSummaryMessage(SlackMessage):
                                     "emoji": True,
                                     "text": "All jobs quoted",
                                 },
-                                "value": "value-2",
+                                "value": "ORDER_NOW",
                             },
                         ],
                     },
                 },
+            ],
+        )
+
+
+class JobListMessage(SlackMessage):
+    """A list of the client's jobs."""
+
+    def __init__(
+        self,
+        preset: str,
+        title: str,
+        jobs: list[Job],
+        pagination: Pagination,
+        client_id: str,
+    ) -> None:
+        jobs_blocks = []
+        if jobs:
+            for i, job in enumerate(jobs):
+                job_text = f"*{job.id}*"
+                if job.reference:
+                    job_text += f"\nRef: {job.reference}"
+                job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
+                job_text += f"\nDue: {datetime.datetime.strftime(job.target_date, '%d/%m/%y %H:%M UTC')}"
+                jobs_blocks.append(
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": job_text,
+                        },
+                        "accessory": {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "emoji": True,
+                                "text": "View More Info",
+                            },
+                            "url": get_job_url(job.uuid, client_id),
+                            "action_id": f"link_{i}",
+                        },
+                    }
+                )
+        else:
+            jobs_blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"No jobs found",
+                    },
+                }
+            )
+
+        pagination_blocks = []
+        if jobs and pagination.total_pages > 1:
+            pagination_blocks.append({"type": "actions", "elements": []})
+            if pagination.page > 1:
+                pagination_blocks[0]["elements"].append(
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Show previous jobs",
+                            "emoji": True,
+                        },
+                        "action_id": "job_list_paginated_0",
+                        "value": json.dumps(
+                            {
+                                "preset": preset,
+                                "page": pagination.page - 1,
+                                "page_size": pagination.rows_per_page,
+                            }
+                        ),
+                    }
+                )
+            if pagination.page < pagination.total_pages:
+                pagination_blocks[0]["elements"].append(
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Show more jobs",
+                            "emoji": True,
+                        },
+                        "action_id": "job_list_paginated_1",
+                        "value": json.dumps(
+                            {
+                                "preset": preset,
+                                "page": pagination.page + 1,
+                                "page_size": pagination.rows_per_page,
+                            }
+                        ),
+                    }
+                )
+
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{title}*",
+                    },
+                },
+                *jobs_blocks,
+                *pagination_blocks,
             ],
         )
 

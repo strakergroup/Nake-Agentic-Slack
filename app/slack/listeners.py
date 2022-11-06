@@ -14,6 +14,7 @@ from .middleware import ray_connection, require_ray_client
 from .listener_actions import (
     post_job_status,
     post_job_summary,
+    post_job_list,
     submit_job,
     approve_pending_client,
 )
@@ -227,6 +228,42 @@ async def ray_command(ack, respond, command, context, client):
                 await respond(text=InvalidCommandMessage().text)
         case _:
             await respond(text=InvalidCommandMessage().text)
+
+
+@app.block_action("job_list", middleware=[ray_connection])
+@slack_log_decorator
+async def job_list_action(ack, payload, context):
+    """Paginated job list. Triggered from the job summary dropdown."""
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        if "selected_option" in payload:
+            preset = payload["selected_option"].get("value")
+            await post_job_list(context, context["ray"].client, preset=preset)
+
+
+@app.block_action(re.compile(r"job_list_paginated(_\d+)?"), middleware=[ray_connection])
+@slack_log_decorator
+async def job_list_paginated_action(ack, payload, context):
+    """Paginated job list. Triggered from the job list "Show more" and
+    "Show previous" buttons.
+    """
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        try:
+            settings = json.loads(payload["value"])
+            preset = settings["preset"]
+            page, page_size = settings["page"], settings["page_size"]
+        except (KeyError, json.JSONDecodeError):
+            pass
+        else:
+            await post_job_list(
+                context,
+                context["ray"].client,
+                preset=preset,
+                page=page,
+                page_size=page_size,
+                replace_original=True,
+            )
 
 
 @app.block_action("new_job", middleware=[ray_connection])

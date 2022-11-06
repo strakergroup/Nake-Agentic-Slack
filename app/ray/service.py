@@ -4,7 +4,7 @@ from functools import wraps
 from urllib.parse import urlencode
 from httpx import Response
 from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
-from ray_sdk.api.v3.models import Job, JobSummary, Language
+from ray_sdk.api.v3.models import Job, JobSummary, Language, Pagination
 
 from ..config import config, domains
 from ..auth.connector import RayClient
@@ -84,6 +84,15 @@ class RayService:
     ) -> RayResponse[JobSummary]:
         """Gets the client's job summary."""
         return await self._ray.get_job_summary(status=statuses, from_hours=from_hours)
+
+    @secured_endpoint
+    async def get_job_list(
+        self, status: str, from_hours: int = 0, page: int = 1, page_size: int = 5
+    ) -> RayResponse[tuple[list[Job], Pagination]]:
+        """Gets the client's list of jobs filtered."""
+        return await self._ray.get_job_list(
+            status=status, from_hours=from_hours, page=page, rows_per_page=page_size
+        )
 
     @secured_endpoint
     async def new_job(
