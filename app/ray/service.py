@@ -80,18 +80,46 @@ class RayService:
 
     @secured_endpoint
     async def get_job_summary(
-        self, statuses: list[str], from_hours: int = 0
+        self,
+        statuses: list[str],
+        from_hours: int = 0,
+        started_from: int = 0,
+        completed_from: int = 0,
+        quoted_from: int = 0,
+        due_before: int = 0,
     ) -> RayResponse[JobSummary]:
         """Gets the client's job summary."""
-        return await self._ray.get_job_summary(status=statuses, from_hours=from_hours)
+        return await self._ray.get_job_summary(
+            status=statuses,
+            from_hours=from_hours,
+            started_from=started_from,
+            completed_from=completed_from,
+            quoted_from=quoted_from,
+            due_before=due_before,
+        )
 
     @secured_endpoint
     async def get_job_list(
-        self, status: str, from_hours: int = 0, page: int = 1, page_size: int = 5
+        self,
+        status: str,
+        from_hours: int = 0,
+        started_from: int = 0,
+        completed_from: int = 0,
+        quoted_from: int = 0,
+        due_before: int = 0,
+        page: int = 1,
+        page_size: int = 5,
     ) -> RayResponse[tuple[list[Job], Pagination]]:
         """Gets the client's list of jobs filtered."""
         return await self._ray.get_job_list(
-            status=status, from_hours=from_hours, page=page, rows_per_page=page_size
+            status=status,
+            from_hours=from_hours,
+            started_from=started_from,
+            completed_from=completed_from,
+            quoted_from=quoted_from,
+            due_before=due_before,
+            page=page,
+            page_size=page_size,
         )
 
     @secured_endpoint

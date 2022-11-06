@@ -366,6 +366,15 @@ class JobSummaryMessage(SlackMessage):
         pending_quotes: int,
         order_now: int,
     ) -> None:
+        """The constructor.
+
+        Args:
+            in_progress (int): The total number of jobs in progress.
+            completed (int): The number of jobs completed in the past 7 days.
+            validation (int): The total number of jobs in validation.
+            pending_quotes (int): The total number of pending quotes.
+            order_now (int): The total number of jobs ready to order.
+        """
         super().__init__(
             f"In Progress Jobs: {in_progress} jobs currently in progress...",
             [
