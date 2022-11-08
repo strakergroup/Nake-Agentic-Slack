@@ -45,6 +45,7 @@ class JobStatusChangedEvent(BaseModel):
 class JobQuoteCreatedEvent(BaseModel):
     uuid: str
     id: str
+    client_reference: str
     client_id: str
     status: str
     sl: Language

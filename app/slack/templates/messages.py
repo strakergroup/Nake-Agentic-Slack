@@ -1120,7 +1120,7 @@ class JobQuotedEventMessage(SlackMessage):
                             "type": "mrkdwn",
                             "text": f"*Service:*\n{event.service}",
                         },
-                        {"type": "mrkdwn", "text": f"*Job Reference:*\n{event.id}"},
+                        {"type": "mrkdwn", "text": f"*Client Reference:*\n{event.client_reference}"},
                     ],
                 },
                 {"type": "divider"},
