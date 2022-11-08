@@ -30,8 +30,7 @@ from .templates.messages import (
     JobSubmitMessage,
     HelpMessage,
     WhatsNextMessage,
-    WhoamiMessage,
-    SuperGroupMessage,
+    ConnectionInfoMessage,
     InvalidCommandMessage,
     ClientApprovedMessage,
 )
@@ -167,15 +166,15 @@ async def ray_command(ack, respond, command, context, client):
     )
     command_args = [strip_formatting(arg) for arg in command_args]
     match command_args:
-        case ["account"]:
-            if await require_ray_client(context):
-                await respond(WhoamiMessage(context["ray"].client.username).text)
-        case ["supergroup"] | ["super", "group"] | ["workspace"]:
-            await respond(
-                text=SuperGroupMessage(
-                    context["ray"].super_group.name if context["ray"] else None
-                ).text
+        case ["info" | "account"]:
+            msg = ConnectionInfoMessage(
+                context["ray"],
+                user_id=context["user_id"],
+                team_id=context["team_id"],
+                app_id=command["api_app_id"],
+                channel_id=context["channel_id"],
             )
+            await respond(text=msg.text, blocks=msg.blocks)
         case ["login" | "signin" | "connect"]:
             await respond(
                 text=context["login_prompt"].text,

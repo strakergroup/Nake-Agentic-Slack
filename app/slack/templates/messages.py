@@ -17,7 +17,11 @@ from ...ray.utils import (
     format_job_status,
 )
 from ...config import domains
-from ...auth.connector import RayClient, get_slack_deltaray_integration_url
+from ...auth.connector import (
+    RayClient,
+    RayConnection,
+    get_slack_deltaray_integration_url,
+)
 
 
 class TextMessage:
@@ -813,27 +817,76 @@ class WhatsNextMessage(SlackMessage):
         )
 
 
-class WhoamiMessage(TextMessage):
-    """Message showing which DeltaRAY account is currently connected."""
+class ConnectionInfoMessage(SlackMessage):
+    """The current Slack-DeltaRAY connection details."""
 
-    def __init__(self, username: str) -> None:
+    def __init__(
+        self,
+        ray_connection: RayConnection | None,
+        user_id: str,
+        team_id: str,
+        app_id: str,
+        channel_id: str,
+    ) -> None:
+        # First get Slack workspace - super group info.
+        if ray_connection is not None:
+            text = f"This workspace is connected to: {ray_connection.super_group.name}."
+            workspace_block = {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"This workspace is connected to: *{ray_connection.super_group.name}*.",
+                },
+            }
+        else:
+            text = "This workspace is not connected to an organisation yet."
+            workspace_block = {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": text},
+            }
+        # Next get Slack user - DeltaRAY account info.
+        account_blocks = []
+        if ray_connection is not None and ray_connection.client is not None:
+            text = f"Your connected DeltaRAY account is: <{domains.deltaray}|{ray_connection.client.username}>"
+            account_blocks.append(
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": text},
+                }
+            )
+        else:
+            account_blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Click this button to connect your DeltaRAY account.",
+                    },
+                }
+            )
+            account_blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Connect DeltaRAY account",
+                            },
+                            "style": "primary",
+                            "url": get_slack_deltaray_integration_url(
+                                user_id, team_id, app_id, channel_id
+                            ),
+                            "action_id": "login",
+                        }
+                    ],
+                }
+            )
         super().__init__(
-            f"Your connected DeltaRAY account is: <{domains.deltaray}|{username}>"
+            text,
+            [workspace_block, *account_blocks],
         )
-
-
-class SuperGroupMessage(TextMessage):
-    """Message showing which DeltaRAY super group is currently connected to the
-    Slack workspace.
-    """
-
-    def __init__(self, super_group_name: str | None) -> None:
-        text = (
-            f"This workspace is connected to: *{super_group_name}*"
-            if super_group_name
-            else "This workspace is not connected to a DeltaRAY super group yet."
-        )
-        super().__init__(text)
 
 
 class InvalidCommandMessage(TextMessage):
