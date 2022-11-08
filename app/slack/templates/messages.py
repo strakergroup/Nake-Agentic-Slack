@@ -213,7 +213,14 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "fields": [
                         {"type": "mrkdwn", "text": "Check your job status"},
-                        {"type": "mrkdwn", "text": "`/ray [TJ number]`"},
+                        {"type": "mrkdwn", "text": "`/ray [job reference]`"},
+                        {"type": "mrkdwn", "text": "Your daily summary"},
+                        {"type": "mrkdwn", "text": "`/ray my jobs`"},
+                        {
+                            "type": "mrkdwn",
+                            "text": "Upload files to translate and submit a quote request",
+                        },
+                        {"type": "mrkdwn", "text": "`/ray new`"},
                     ],
                 },
                 {"type": "divider"},
@@ -781,7 +788,16 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "fields": [
                         {"type": "mrkdwn", "text": "Check your job status"},
-                        {"type": "mrkdwn", "text": "`/ray [TJ number]`"},
+                        {"type": "mrkdwn", "text": "`/ray [job reference]`"},
+                        {"type": "mrkdwn", "text": "Your daily summary"},
+                        {"type": "mrkdwn", "text": "`/ray my jobs`"},
+                        {
+                            "type": "mrkdwn",
+                            "text": "Upload files to translate and submit a quote request",
+                        },
+                        {"type": "mrkdwn", "text": "`/ray new`"},
+                        {"type": "mrkdwn", "text": "View your DeltaRAY connection"},
+                        {"type": "mrkdwn", "text": "`/ray info`"},
                         {"type": "mrkdwn", "text": "Connect your DeltaRAY account"},
                         {"type": "mrkdwn", "text": "`/ray connect`"},
                     ],
