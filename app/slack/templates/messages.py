@@ -393,7 +393,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*In Progress Jobs*\n{in_progress} jobs currently in progress",
+                        "text": f"*In Progress Jobs*\n{in_progress} job(s) currently in progress",
                     },
                     "accessory": {
                         "type": "static_select",
@@ -435,7 +435,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Completed Jobs*\n{completed} jobs completed in the past 7 days",
+                        "text": f"*Completed Jobs*\n{completed} job(s) completed in the past 7 days",
                     },
                     "accessory": {
                         "type": "static_select",
@@ -477,7 +477,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Validation*\n{validation} jobs currently being validated",
+                        "text": f"*Validation*\n{validation} job(s) currently being validated",
                     },
                     "accessory": {
                         "type": "static_select",
@@ -503,7 +503,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Pending Quotes*\n{pending_quotes} quotes pending",
+                        "text": f"*Pending Quotes*\n{pending_quotes} quote(s) pending",
                     },
                     "accessory": {
                         "type": "static_select",
@@ -537,7 +537,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Order Now*\n{order_now} jobs to order",
+                        "text": f"*Order Now*\n{order_now} job(s) to order",
                     },
                     "accessory": {
                         "type": "static_select",
