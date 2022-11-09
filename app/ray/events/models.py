@@ -11,6 +11,20 @@ class Language(BaseModel):
     label: str
 
 
+class QuoteLangPrice(BaseModel):
+    price: float
+
+
+class QuoteInfo(BaseModel):
+    currency: str
+    quote: float
+    quote_nett: float
+    quote_detail_url: str
+    quote_accept_url: str
+    quote_cancel_url: str
+    tl: dict[str, QuoteLangPrice]
+
+
 class SlackAccountConnectedEvent(BaseModel):
     client_id: str
     username: str
@@ -52,9 +66,4 @@ class JobQuoteCreatedEvent(BaseModel):
     tl: list[Language]
     service: str
     turnaround_days: int
-    quote_currency: str
-    quote: float
-    quote_nett: float
-    quote_detail_url: str
-    quote_accept_url: str
-    quote_cancel_url: str
+    quote: QuoteInfo

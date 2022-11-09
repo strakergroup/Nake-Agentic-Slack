@@ -1105,12 +1105,38 @@ class JobCancelledEventMessage(SlackMessage):
 
 class JobQuotedEventMessage(SlackMessage):
     def __init__(self, event: JobQuoteCreatedEvent) -> None:
-        currency = format_currency_symbol(event.quote_currency)
-        quote_formatted = format_currency(event.quote, event.quote_currency)
+        currency = format_currency_symbol(event.quote.currency)
+        quote_formatted = format_currency(event.quote.quote, event.quote.currency)
         turnaround_time = (
             f"within {event.turnaround_days} days" if event.turnaround_days > 0 else ""
         )
-        url = get_job_url(event.uuid, event.client_id)
+        job_url = get_job_url(event.uuid, event.client_id)
+        # Show "incl. tax" next to the total cost if > the sum of the individual language prices.
+        incl_tax = event.quote.quote != event.quote.quote_nett
+        # Show prices for individual languages (if they exist).
+        lang_price_blocks = []
+        if event.quote.tl:
+            lang_price_blocks = [
+                {
+                    "type": "section",
+                    "fields": [],
+                },
+                {"type": "divider"},
+            ]
+            for lang in event.tl:
+                lang_price = (
+                    event.quote.tl[lang.code].price
+                    if lang.code in event.quote.tl
+                    else 0.0
+                )
+                lang_price_formatted = format_currency(lang_price, event.quote.currency)
+                lang_price_blocks[0]["fields"].append(
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*{lang.label}:*\n{lang_price_formatted}",
+                    }
+                )
+
         super().__init__(
             f"Your quote is now ready :raised_hands: Straker Job Reference {event.id}",
             [
@@ -1118,7 +1144,7 @@ class JobQuotedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Your quote is now ready :raised_hands:\n*<{url}|Straker Job Reference {event.id}>*",
+                        "text": f"Your quote is now ready :raised_hands:\n*<{job_url}|Straker Job Reference {event.id}>*",
                     },
                 },
                 {
@@ -1136,27 +1162,19 @@ class JobQuotedEventMessage(SlackMessage):
                             "type": "mrkdwn",
                             "text": f"*Service:*\n{event.service}",
                         },
-                        {"type": "mrkdwn", "text": f"*Client Reference:*\n{event.client_reference}"},
-                    ],
-                },
-                {"type": "divider"},
-                {
-                    "type": "section",
-                    # TODO: Fix quote per target lang.
-                    "fields": [
                         {
                             "type": "mrkdwn",
-                            "text": f"*{lang.label}:*\n{quote_formatted}",
-                        }
-                        for lang in event.tl
+                            "text": f"*Client Reference:*\n{event.client_reference}",
+                        },
                     ],
                 },
                 {"type": "divider"},
+                *lang_price_blocks,
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Total Cost ({currency})*: {quote_formatted}",
+                        "text": f"*Total Cost ({currency})*: {quote_formatted} {'(incl. tax)' if incl_tax else ''}",
                     },
                 },
                 {"type": "divider"},
@@ -1171,7 +1189,7 @@ class JobQuotedEventMessage(SlackMessage):
                                 "text": "Accept Quote",
                             },
                             "style": "primary",
-                            "url": event.quote_accept_url,
+                            "url": event.quote.quote_accept_url,
                             "action_id": "link",
                         },
                         {
@@ -1182,7 +1200,7 @@ class JobQuotedEventMessage(SlackMessage):
                                 "text": "Cancel",
                             },
                             "style": "danger",
-                            "url": event.quote_cancel_url,
+                            "url": event.quote.quote_cancel_url,
                             "action_id": "link_1",
                         },
                         {
@@ -1192,7 +1210,7 @@ class JobQuotedEventMessage(SlackMessage):
                                 "text": "More Information",
                                 "emoji": True,
                             },
-                            "url": event.quote_detail_url,
+                            "url": job_url,
                             "action_id": "link_2",
                         },
                     ],
