@@ -1202,6 +1202,22 @@ class JobQuotedEventMessage(SlackMessage):
                             "style": "danger",
                             "url": event.quote.quote_cancel_url,
                             "action_id": "link_1",
+                            "confirm": {
+                                "title": {
+                                    "type": "plain_text",
+                                    "text": "Cancel Quote",
+                                },
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "Are you sure you want to cancel this quote?\n\n"
+                                    "This action requires you to be logged in to DeltaRAY.",
+                                },
+                                "confirm": {"type": "plain_text", "text": "Yes"},
+                                "deny": {
+                                    "type": "plain_text",
+                                    "text": "No",
+                                },
+                            },
                         },
                         {
                             "type": "button",
