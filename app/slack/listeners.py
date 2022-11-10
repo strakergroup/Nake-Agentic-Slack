@@ -97,8 +97,9 @@ async def message_event(message, context, say, client):
             else:
                 await say(JobStatusNoIdMessage().text)
         case "New_Translation_Job":
-            msg = NewJobMessage(context["channel_id"], message["ts"])
-            await say(blocks=msg.blocks, text=msg.text)
+            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+                msg = NewJobMessage(context["channel_id"], message["ts"])
+                await say(blocks=msg.blocks, text=msg.text)
         case "Jokes":
             # Delegate jokes to IBM Watson Assistant dialog.
             await say(response.reply)
@@ -185,7 +186,7 @@ async def ray_command(ack, respond, command, context, client):
                 msg = LogoutMessage(context["ray"].client.username)
                 await respond(text=msg.text, blocks=msg.blocks)
         case ["jobs"] | ["my", "jobs"]:
-            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+            if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                 await post_job_summary(context, context["ray"].client)
         case ["new"]:
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
