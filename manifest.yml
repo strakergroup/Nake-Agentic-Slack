@@ -31,12 +31,12 @@ features:
     - name: New Translation Job
       type: message
       callback_id: new_job
-      description: Submit a new translation job to DeltaRAY
+      description: Submit a new translation job
   slash_commands:
     - command: /ray
       url: <YOUR_DOMAIN>/slack/events
       description: Get the status of a job
-      usage_hint: "[TJ number]"
+      usage_hint: "[job reference]"
       should_escape: false
   unfurl_domains:
     - strakertranslations.com
