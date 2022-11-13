@@ -24,6 +24,7 @@ class StrakerConfig(BaseSettings):
     # Settings from environment variables.
     environment: Environment = Field(env="ENVIRONMENT")
     sentry_dsn: str | None = Field(None, env="SENTRY_DSN")
+    elastic_apm_server_url: str | None = Field(None, env="ELASTIC_APM_SERVER_URL")
     # Derived settings.
     base_url: HttpUrl = None
     slack_deltaray_key: SecretBytes = None
