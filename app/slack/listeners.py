@@ -33,6 +33,7 @@ from .templates.messages import (
     ConnectionInfoMessage,
     InvalidCommandMessage,
     ClientApprovedMessage,
+    ClientAlreadyApprovedMessage,
 )
 from .templates.views import new_job_modal
 from .web import files_list_simple, get_bot_accessible_files
@@ -299,7 +300,7 @@ async def new_job_action(ack, payload, context, client, body):
 
 @app.block_action("approve_pending_client", middleware=[ray_connection])
 @slack_log_decorator
-async def approve_pending_client_action(ack, action, context, say):
+async def approve_pending_client_action(ack, action, context, say, client):
     await ack()
     if await require_ray_client(context):
         try:
@@ -311,13 +312,18 @@ async def approve_pending_client_action(ack, action, context, say):
             sentry_sdk.capture_exception(e)
         else:
             approved_groups = await approve_pending_client(
-                context,
                 context["ray"].client,
                 pending_client_id=client_id,
                 pending_client_username=client_username,
             )
             if approved_groups:
                 await say(ClientApprovedMessage(client_username).text)
+            else:
+                await client.chat_postEphemeral(
+                    channel=context["channel_id"],
+                    user=context["user_id"],
+                    text=ClientAlreadyApprovedMessage(client_username).text,
+                )
 
 
 @app.block_action("disconnect")

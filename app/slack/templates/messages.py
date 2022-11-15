@@ -917,10 +917,19 @@ class InvalidCommandMessage(TextMessage):
 class ClientApprovedMessage(TextMessage):
     """A group admin approved a new client in Slack."""
 
-    def __init__(self, approved_client) -> None:
+    def __init__(self, approved_client: str) -> None:
         super().__init__(
             f"The user {approved_client} has been approved to join your group(s)."
         )
+
+
+class ClientAlreadyApprovedMessage(TextMessage):
+    """A group admin approved a new client in Slack, but the client was already
+    approved.
+    """
+
+    def __init__(self, approved_client: str) -> None:
+        super().__init__(f"The user {approved_client} has already been approved.")
 
 
 # -----------------------------------------------------------------------------

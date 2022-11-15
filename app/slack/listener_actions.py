@@ -299,7 +299,6 @@ async def submit_job(
 
 
 async def approve_pending_client(
-    context: AsyncBoltContext,
     ray_client: RayClient,
     pending_client_id: str,
     pending_client_username: str,
