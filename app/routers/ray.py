@@ -28,6 +28,7 @@ from ..slack.templates.messages import (
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.events.models import ClientGroup
+from ..ray.events.logging import post_notification, post_notification_ephemeral
 
 
 router = APIRouter(tags=["ray"])
@@ -52,14 +53,10 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
             f"The event type is invalid: {event.event}",
         )
     if message is not None and auth.slack_user is not None:
-        app.client.token = auth.slack_user.bot_token
         # Send login message to the same conversation where it was prompted.
         if isinstance(message, SuccessfulLoginMessage):
-            await app.client.chat_postEphemeral(
-                channel=auth.slack_user.channel_id,
-                user=auth.slack_user.user_id,
-                text=message.text,
-                blocks=message.blocks,
+            await post_notification_ephemeral(
+                app.client, auth.slack_user.channel_id, event, auth.slack_user, message
             )
         elif (
             # Send important messages regardless of subscribed status.
@@ -67,11 +64,7 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
             # Send all other messages if the client is subscribed to notifications.
             or auth.slack_user.is_subscribed
         ):
-            await app.client.chat_postMessage(
-                channel=auth.slack_user.user_id,
-                text=message.text,
-                blocks=message.blocks,
-            )
+            await post_notification(app.client, event, auth.slack_user, message)
 
     # Send notifications to group admins when a new client signs up.
     if isinstance(message, ClientSignupEventMessage):
@@ -84,16 +77,11 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
                 admins[admin.ray_client_id][1].append(group)
 
         for user, groups in admins.values():
-            app.client.token = user.bot_token
             admin_message = ClientSignupEventAdminMessage(
                 event=message.event,
                 groups=groups,
             )
-            await app.client.chat_postMessage(
-                channel=user.user_id,
-                text=admin_message.text,
-                blocks=admin_message.blocks,
-            )
+            await post_notification(app.client, event, user, admin_message)
 
     return {"message": "success", "data": {"event": event.event}}
 
