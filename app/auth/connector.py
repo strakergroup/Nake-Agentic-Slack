@@ -156,6 +156,21 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
     return None
 
 
+def get_client_access_tokens(ray_client_id: str) -> tuple[str]:
+    """Gets all the active API access tokens of a RAY client."""
+    with engines["ray_integration_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT obj_uuid FROM access_token
+            WHERE account_id = :client_id
+            AND active = 1
+            """
+        ).bindparams(client_id=ray_client_id)
+        result = conn.execute(sql)
+        rows = result.all()
+    return tuple(row[0] for row in rows)
+
+
 async def get_ray_super_group(team_id: str) -> RaySuperGroup | None:
     """Gets the DeltaRAY super group linked to the Slack workspace if an active
     link exists, otherwise returns None.

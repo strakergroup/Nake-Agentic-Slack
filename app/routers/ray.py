@@ -14,7 +14,7 @@ from ..auth.connector import (
     SlackUser,
     validate_api_callback_signature,
     get_slack_user,
-    get_ray_client,
+    get_client_access_tokens,
     get_group_admin_slack_users,
 )
 from ..dependencies import RayEventAuth, RayEvent
@@ -107,16 +107,11 @@ async def api_job_callback(
         capture_message("Slack user not found in callback endpoint", "warning")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED)
     # Validate X-Straker-Signature.
-    ray_client = await get_ray_client(
-        slack_user.user_id,
-        slack_user.team_id,
-        slack_user.app_id,
-    )
-    assert ray_client is not None
-    is_header_valid = validate_api_callback_signature(
-        await request.body(),
-        ray_client.access_token,
-        x_straker_signature,
+    raw_body = await request.body()
+    access_tokens = get_client_access_tokens(slack_user.ray_client_id)
+    is_header_valid = any(
+        validate_api_callback_signature(raw_body, token, x_straker_signature)
+        for token in access_tokens
     )
     if not is_header_valid:
         capture_message("Callback X-Straker-Signature is invalid", "warning")
