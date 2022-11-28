@@ -158,7 +158,7 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
 
 def get_client_access_tokens(ray_client_id: str) -> tuple[str]:
     """Gets all the active API access tokens of a RAY client."""
-    with engines["ray_integration_readonly"].connect() as conn:
+    with engines["api_readonly"].connect() as conn:
         sql = text(
             """
             SELECT obj_uuid FROM access_token
