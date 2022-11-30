@@ -29,24 +29,22 @@ sentry_sdk.init(
 )
 
 
-# Configure Elastic APM
-apm = make_apm_client(
-    {
-        "SERVICE_NAME": "slack-ray-translator",
-        "SERVER_URL": config.elastic_apm_server_url,
-        "ENVIRONMENT": config.environment.value
-        if config.environment != Environment.live
-        else "production",
-    }
-)
-
-
 # Configure FastAPI
 app = FastAPI()
 app.include_router(slack.router)
 app.include_router(ray.router)
 app.include_router(health.router)
+# Configure Elastic APM
 if config.elastic_apm_server_url:
+    apm = make_apm_client(
+        {
+            "SERVICE_NAME": "slack-ray-translator",
+            "SERVER_URL": config.elastic_apm_server_url,
+            "ENVIRONMENT": config.environment.value
+            if config.environment != Environment.live
+            else "production",
+        }
+    )
     app.add_middleware(ElasticAPM, client=apm)
 
 
