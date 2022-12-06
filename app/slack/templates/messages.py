@@ -597,7 +597,8 @@ class JobListMessage(SlackMessage):
                 if job.reference:
                     job_text += f"\nRef: {job.reference}"
                 job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
-                job_text += f"\nDue: {datetime.datetime.strftime(job.target_date, '%d/%m/%y %H:%M UTC')}"
+                job_text += "\nDue: " + (":red_circle: " if datetime.datetime.now() >= job.target_date else ":large_green_circle: ")
+                job_text += f"{datetime.datetime.strftime(job.target_date, '%d/%m/%y %H:%M UTC')}"
                 jobs_blocks.append(
                     {
                         "type": "section",
