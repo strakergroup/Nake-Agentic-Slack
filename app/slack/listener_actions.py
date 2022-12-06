@@ -247,7 +247,6 @@ async def post_job_list(
         case _:
             capture_message(f"post_job_list: Invalid preset ({preset})")
             return
-
     try:
         msg = JobListMessage(
             preset=preset,
@@ -255,6 +254,7 @@ async def post_job_list(
             jobs=response.data[0],
             pagination=response.data[1],
             client_id=ray_client.id,
+            tz_offset=context['tz_offset'],
         )
         if context.response_url:
             return await context.respond(
