@@ -337,7 +337,12 @@ class JobStatusMessage(SlackMessage):
                         {"type": "mrkdwn", "text": "*Expected Completion Date:*"},
                         {
                             "type": "mrkdwn",
-                            "text": (":red_circle: " if datetime.datetime.now() >= job.target_date else ":large_green_circle: ") + job.target_date.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                            "text": (
+                                ":red_circle: "
+                                if datetime.datetime.now() >= job.target_date
+                                else ":large_green_circle: "
+                            )
+                            + job.target_date.strftime("%Y-%m-%d %H:%M:%S UTC"),
                         },
                     ],
                 },
@@ -597,7 +602,11 @@ class JobListMessage(SlackMessage):
                 if job.reference:
                     job_text += f"\nRef: {job.reference}"
                 job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
-                job_text += "\nDue: " + (":red_circle: " if datetime.datetime.now() >= job.target_date else ":large_green_circle: ")
+                job_text += "\nDue: " + (
+                    ":red_circle: "
+                    if datetime.datetime.now() >= job.target_date
+                    else ":large_green_circle: "
+                )
                 job_text += f"{datetime.datetime.strftime(job.target_date, '%d/%m/%y %H:%M UTC')}"
                 jobs_blocks.append(
                     {
