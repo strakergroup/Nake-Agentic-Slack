@@ -15,6 +15,7 @@ from ...ray.utils import (
     format_currency,
     format_currency_symbol,
     format_job_status,
+    add_light_indicator,
 )
 from ...config import domains
 from ...auth.connector import (
@@ -337,7 +338,10 @@ class JobStatusMessage(SlackMessage):
                         {"type": "mrkdwn", "text": "*Expected Completion Date:*"},
                         {
                             "type": "mrkdwn",
-                            "text": job.target_date.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                            "text": add_light_indicator(
+                                target_date=job.target_date, job_status=job.status
+                            )
+                            + f" {job.target_date.strftime('%Y-%m-%d %H:%M:%S UTC')}",
                         },
                     ],
                 },
@@ -598,7 +602,13 @@ class JobListMessage(SlackMessage):
                     job_text += f"\nRef: {job.reference}"
                 job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
                 utc_time = job.target_date.replace(tzinfo=datetime.timezone.utc)
-                job_text += f"\n<!date^{int(utc_time.timestamp())}^Due: {{date}} {{time}}|Due: {job.target_date} UTC>"
+                job_text += (
+                    "\nDue: "
+                    + add_light_indicator(
+                        target_date=job.target_date, job_status=job.status
+                    )
+                    + f" <!date^{int(utc_time.timestamp())}^Due: {{date}} {{time}}|Due: {job.target_date} UTC>"
+                )
                 due_delta = job.target_date - datetime.datetime.utcnow()
                 if due_delta.days < 2 and due_delta.total_seconds() > 0:
                     job_text += f"\nDue in: {due_delta.days * 24 + due_delta.seconds // 3600} hours"
@@ -765,11 +775,71 @@ class JobSubmitMessage(SlackMessage):
 
 
 class JobCreationMessage(TextMessage):
-    """Message to send when a job TJ number is created after submitting a new job."""
+    """A job TJ number is created after submitting a new job (from API v3 callback)."""
 
-    def __init__(self, job_id: str, files: list[str] | None = None) -> None:
+    def __init__(self, job_id: str) -> None:
         super().__init__(
             f"A new translation job has been created with the job number: `{job_id}`"
+        )
+
+
+class FileTranslatedMessage(SlackMessage):
+    """A file is translated can be downloaded (from API v3 callback)."""
+
+    def __init__(
+        self,
+        job_id: str,
+        source_file: str,
+        source_lang: str,
+        files: list[dict[str, str]],
+    ) -> None:
+        """
+        Args:
+            job_id (str): The job ID.
+            source_file (str): The name of the source file.
+            files (list[dict[str, str]]): The list of translated file download links.
+        """
+        file_download_blocks = []
+        for idx, translated_file in enumerate(files):
+            file_download_blocks.append(
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"*{translated_file['tl']}*"},
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Download",
+                            "emoji": False,
+                        },
+                        "style": "primary",
+                        "action_id": f"link_{idx}",
+                        "url": translated_file["download_url"],
+                    },
+                }
+            )
+        super().__init__(
+            f"Some of your files are translated and ready to be downloaded ({job_id})",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"Some of your files are translated and ready to be downloaded (*{job_id}*)",
+                    },
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {"type": "mrkdwn", "text": f"*File:*\n{source_file}"},
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Source Language:*\n{source_lang}",
+                        },
+                    ],
+                },
+                *file_download_blocks,
+            ],
         )
 
 
@@ -1169,7 +1239,7 @@ class JobQuotedEventMessage(SlackMessage):
                         },
                         {
                             "type": "mrkdwn",
-                            "text": f"*Turnaround time:*\n{turnaround_time}",
+                            "text": f"*Turnaround Time:*\n{turnaround_time}",
                         },
                         {
                             "type": "mrkdwn",

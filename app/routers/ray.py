@@ -25,6 +25,7 @@ from ..slack.templates.messages import (
     ClientSignupEventAdminMessage,
     ClientApprovedEventMessage,
     JobCreationMessage,
+    FileTranslatedMessage,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.events.models import ClientGroup
@@ -100,6 +101,8 @@ async def api_job_callback(
     body: RayCallback,
     x_straker_signature: str = Header(),
 ):
+    print(f"{client_id = }")
+    print(f"{body = }")
     """Callback endpoint for API jobs."""
     # Check if the callback can be linked to a Slack user.
     slack_user = get_slack_user(client_id)
@@ -117,24 +120,43 @@ async def api_job_callback(
         capture_message("Callback X-Straker-Signature is invalid", "warning")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED)
 
-    # Only listen to job creation callbacks for now.
+    # Handle job creation and job completed callbacks.
     if "JOB_NUMBER" in body.event_types:
-        # Notify Slack users.
         try:
             job_data = body.job[0]
             message = JobCreationMessage(job_data["tj_number"])
         except (KeyError, IndexError):
             raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY, "The payload format is invalid"
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "The callback payload format is invalid",
             )
         app.client.token = slack_user.bot_token
-        await app.client.chat_postMessage(
-            channel=slack_user.user_id,
-            text=message.text,
-        )
+        await app.client.chat_postMessage(channel=slack_user.user_id, text=message.text)
         return {
             "message": "success",
             "detail": "Slack user notified of event: JOB_NUMBER",
+        }
+    elif "JOB_COMPLETED" in body.event_types:
+        try:
+            job_data = body.job[0]
+            message = FileTranslatedMessage(
+                job_data["tj_number"],
+                job_data["source_file"],
+                job_data["sl"],
+                job_data["translated_file"],
+            )
+        except (KeyError, IndexError):
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "The callback payload format is invalid",
+            )
+        app.client.token = slack_user.bot_token
+        await app.client.chat_postMessage(
+            channel=slack_user.user_id, text=message.text, blocks=message.blocks
+        )
+        return {
+            "message": "success",
+            "detail": "Slack user notified of event: JOB_COMPLETED",
         }
     else:
         return {

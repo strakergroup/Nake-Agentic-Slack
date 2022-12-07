@@ -40,7 +40,7 @@ class TestLoginMessage:
         )
         assert message.text == "Connect your DeltaRAY account"
         assert (
-            "Connect your DeltaRAY account to view the status of your jobs"
+            "Connect your DeltaRAY account to view your jobs."
             in message.blocks[0]["text"]["text"]
         )
 
@@ -77,7 +77,7 @@ class TestLoginMessage:
         )
         assert message.text == "Connect your DeltaRAY account"
         assert (
-            "Connect your DeltaRAY account to view the status of your jobs"
+            "Connect your DeltaRAY account to view your jobs."
             in message.blocks[0]["text"]["text"]
         )
         assert ray_client.username not in message.blocks[0]["text"]["text"]
