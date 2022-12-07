@@ -771,11 +771,71 @@ class JobSubmitMessage(SlackMessage):
 
 
 class JobCreationMessage(TextMessage):
-    """Message to send when a job TJ number is created after submitting a new job."""
+    """A job TJ number is created after submitting a new job (from API v3 callback)."""
 
-    def __init__(self, job_id: str, files: list[str] | None = None) -> None:
+    def __init__(self, job_id: str) -> None:
         super().__init__(
             f"A new translation job has been created with the job number: `{job_id}`"
+        )
+
+
+class FileTranslatedMessage(SlackMessage):
+    """A file is translated can be downloaded (from API v3 callback)."""
+
+    def __init__(
+        self,
+        job_id: str,
+        source_file: str,
+        source_lang: str,
+        files: list[dict[str, str]],
+    ) -> None:
+        """
+        Args:
+            job_id (str): The job ID.
+            source_file (str): The name of the source file.
+            files (list[dict[str, str]]): The list of translated file download links.
+        """
+        file_download_blocks = []
+        for idx, translated_file in enumerate(files):
+            file_download_blocks.append(
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"*{translated_file['tl']}*"},
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Download",
+                            "emoji": False,
+                        },
+                        "style": "primary",
+                        "action_id": f"link_{idx}",
+                        "url": translated_file["download_url"],
+                    },
+                }
+            )
+        super().__init__(
+            f"Some of your files are translated and ready to be downloaded ({job_id})",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"Some of your files are translated and ready to be downloaded (*{job_id}*)",
+                    },
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {"type": "mrkdwn", "text": f"*File:*\n{source_file}"},
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Source Language:*\n{source_lang}",
+                        },
+                    ],
+                },
+                *file_download_blocks,
+            ],
         )
 
 
@@ -1175,7 +1235,7 @@ class JobQuotedEventMessage(SlackMessage):
                         },
                         {
                             "type": "mrkdwn",
-                            "text": f"*Turnaround time:*\n{turnaround_time}",
+                            "text": f"*Turnaround Time:*\n{turnaround_time}",
                         },
                         {
                             "type": "mrkdwn",

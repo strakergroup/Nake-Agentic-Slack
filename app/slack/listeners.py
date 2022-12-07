@@ -367,16 +367,24 @@ async def handle_new_job(ack, view, context, client):
         )
 
         # Process files and submit job.
-        responses = await submit_job(context, context["ray"].client, form)
-        for response in responses:
-            context["log"].add_api_log(
-                status_code=response.response.status_code,
-                url=str(response.response.url),
-                payload=None,  # TODO: log payload without file
-                response=response.response.content.decode() or None,
-                headers=dict(response.response.headers.items()),
-                version="v3",
+        try:
+            responses = await submit_job(context, context["ray"].client, form)
+        except Exception as e:
+            sentry_sdk.capture_exception(e)
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text="There was an error submitting your translation request, please try again.",  # noqa: B950
             )
+        else:
+            for response in responses:
+                context["log"].add_api_log(
+                    status_code=response.response.status_code,
+                    url=str(response.response.url),
+                    payload=None,  # TODO: log payload without file
+                    response=response.response.content.decode() or None,
+                    headers=dict(response.response.headers.items()),
+                    version="v3",
+                )
     else:
         await ack(response_action="clear")
         await client.chat_postMessage(
