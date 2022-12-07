@@ -1,5 +1,6 @@
 from urllib.parse import urlencode
 from babel.numbers import format_currency as babel_format_currency
+import datetime
 
 from ..config import domains
 
@@ -75,3 +76,15 @@ def format_job_status(status: str) -> str:
             return "Order Now"
         case _:
             return status.strip()
+
+
+def add_light_indicator(target_date: datetime, job_status: str) -> str:
+    """Adds a red or green light indicator when a job's due date
+    is in the past and the job status is In_Progress
+    """
+    if job_status != "IN_PROGRESS":
+        return ""
+    elif datetime.datetime.now() >= target_date and job_status == "IN_PROGRESS":
+        return ":red_circle:"
+    else:
+        return ":large_green_circle:"
