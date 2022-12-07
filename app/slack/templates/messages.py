@@ -589,7 +589,6 @@ class JobListMessage(SlackMessage):
         jobs: list[Job],
         pagination: Pagination,
         client_id: str,
-        tz_offset: str,
     ) -> None:
         jobs_blocks = []
         if jobs:
@@ -598,7 +597,8 @@ class JobListMessage(SlackMessage):
                 if job.reference:
                     job_text += f"\nRef: {job.reference}"
                 job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
-                job_text += f"\nDue: {datetime.datetime.strftime(job.target_date + datetime.timedelta(seconds=tz_offset), '%d/%m/%y %H:%M')}"
+                utc_time = job.target_date.replace(tzinfo=datetime.timezone.utc)
+                job_text += f"\n<!date^{int(utc_time.timestamp())}^Due: {{date}} {{time}}|Due: {job.target_date} UTC>"
                 due_delta = job.target_date - datetime.datetime.utcnow()
                 if due_delta.days < 2 and due_delta.total_seconds() > 0:
                     job_text += f"\nDue in: {due_delta.days * 24 + due_delta.seconds // 3600} hours"

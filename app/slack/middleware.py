@@ -50,9 +50,6 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
     context["ray"] = await get_ray_connection(
         context["user_id"], context["team_id"], app_id
     )
-    context["tz_offset"] = (await context.client.users_info(user=context["user_id"]))[
-        "user"
-    ]["tz_offset"]
     context["login_prompt"] = LoginMessage(
         user_id=context["user_id"],
         team_id=context["team_id"],

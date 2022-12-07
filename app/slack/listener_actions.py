@@ -253,8 +253,7 @@ async def post_job_list(
             title=title,
             jobs=response.data[0],
             pagination=response.data[1],
-            client_id=ray_client.id,
-            tz_offset=context['tz_offset'],
+            client_id=ray_client.id
         )
         if context.response_url:
             return await context.respond(
