@@ -78,13 +78,13 @@ def format_job_status(status: str) -> str:
             return status.strip()
 
 
-def add_light_indicator(target_date: datetime, job_status: str) -> str:
+def add_light_indicator(target_date: datetime.datetime, job_status: str) -> str:
     """Adds a red or green light indicator when a job's due date
-    is in the past and the job status is In_Progress
+    is in the past and the job status is `IN_PROGRESS`.
     """
     if job_status != "IN_PROGRESS":
         return ""
-    elif datetime.datetime.now() >= target_date and job_status == "IN_PROGRESS":
+    elif datetime.datetime.now() >= target_date:
         return ":red_circle:"
     else:
         return ":large_green_circle:"
