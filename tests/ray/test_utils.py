@@ -1,5 +1,6 @@
 from uuid import uuid4
 from urllib.parse import urlparse
+import datetime
 
 import app  # Bug - circular import
 from app.config import domains
@@ -49,3 +50,30 @@ def test_format_job_status():
     assert app.ray.utils.format_job_status("IN_PROGRESS") == "In Progress"
     assert app.ray.utils.format_job_status("COMPLETED") == "Completed"
     assert app.ray.utils.format_job_status("OTHER_STATUS") == "OTHER_STATUS"
+
+
+def test_light_indicator():
+    current_date = datetime.datetime.now()
+    tomorrow = current_date + datetime.timedelta(days=1)
+    yesterday = current_date - datetime.timedelta(days=1)
+
+    assert (
+        app.ray.utils.add_light_indicator(
+            target_date=yesterday,
+            job_status="IN_PROGRESS",
+        )
+        == ":red_circle:"
+    )
+    assert (
+        app.ray.utils.add_light_indicator(
+            target_date=datetime.datetime.strptime("2022-01-01", "%Y-%m-%d"),
+            job_status="COMPLETED",
+        )
+        == ""
+    )
+    assert (
+        app.ray.utils.add_light_indicator(
+            target_date=tomorrow, job_status="IN_PROGRESS"
+        )
+        == ":large_green_circle:"
+    )

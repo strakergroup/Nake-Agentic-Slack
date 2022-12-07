@@ -15,6 +15,7 @@ from ...ray.utils import (
     format_currency,
     format_currency_symbol,
     format_job_status,
+    add_light_indicator,
 )
 from ...config import domains
 from ...auth.connector import (
@@ -337,7 +338,11 @@ class JobStatusMessage(SlackMessage):
                         {"type": "mrkdwn", "text": "*Expected Completion Date:*"},
                         {
                             "type": "mrkdwn",
-                            "text": job.target_date.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                            "text": add_light_indicator(
+                                target_date=job.target_date, job_status=job.status
+                            )
+                            + " "
+                            + job.target_date.strftime("%Y-%m-%d %H:%M:%S UTC"),
                         },
                     ],
                 },
@@ -597,7 +602,10 @@ class JobListMessage(SlackMessage):
                 if job.reference:
                     job_text += f"\nRef: {job.reference}"
                 job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
-                job_text += f"\nDue: {datetime.datetime.strftime(job.target_date, '%d/%m/%y %H:%M UTC')}"
+                job_text += "\nDue: " + add_light_indicator(
+                    target_date=job.target_date, job_status=job.status
+                )
+                job_text += f" {datetime.datetime.strftime(job.target_date, '%d/%m/%y %H:%M UTC')}"
                 jobs_blocks.append(
                     {
                         "type": "section",
