@@ -341,6 +341,7 @@ class JobStatusMessage(SlackMessage):
                             "text": add_light_indicator(
                                 target_date=job.target_date, job_status=job.status
                             )
+                            + " "
                             + job.target_date.strftime("%Y-%m-%d %H:%M:%S UTC"),
                         },
                     ],
