@@ -9,7 +9,12 @@ from ray_sdk.api.v3.models import Job, Pagination
 
 from .models import NewJobForm
 from .blocks import job_deltaray_link_block
-from ...ray.events.models import ClientSignupEvent, JobQuoteCreatedEvent, ClientGroup
+from ...ray.events.models import (
+    ClientSignupEvent,
+    JobQuoteCreatedEvent,
+    ClientGroup,
+    JobQuoteAcceptedEvent,
+)
 from ...ray.utils import (
     get_job_url,
     format_currency,
@@ -1178,6 +1183,25 @@ class JobCancelledEventMessage(SlackMessage):
                     },
                 },
                 job_deltaray_link_block(job_uuid, client_id),
+            ],
+        )
+
+
+class JobQuoteAcceptedEventMessage(SlackMessage):
+    def __init__(self, event: JobQuoteAcceptedEvent) -> None:
+        target_date = event.target_date
+        id = event.id
+        super().__init__(
+            f"Quote Accepted for {id}. Your job will be completed before {target_date}.",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f":clap: Quote Accepted for *{id}*. Your job will be completed before {target_date}.",
+                    },
+                },
+                job_deltaray_link_block(event.uuid, event.client_id),
             ],
         )
 
