@@ -1,6 +1,7 @@
+import math
+import datetime
 from urllib.parse import urlencode
 from babel.numbers import format_currency as babel_format_currency
-import datetime
 
 from ..config import domains
 
@@ -78,13 +79,49 @@ def format_job_status(status: str) -> str:
             return status.strip()
 
 
-def add_light_indicator(target_date: datetime.datetime, job_status: str) -> str:
-    """Adds a red or green light indicator when a job's due date
-    is in the past and the job status is `IN_PROGRESS`.
+def format_datetime_slack(date: datetime.datetime) -> str:
+    """Format a datetime to a Slack formatted string, this displays the time
+    in the Slack user's timezone. Naive datetimes are assumed to be UTC.
     """
-    if job_status != "IN_PROGRESS":
-        return ""
-    elif datetime.datetime.now() >= target_date:
-        return ":red_circle:"
-    else:
-        return ":large_green_circle:"
+    aware_date = date
+    if date.tzinfo is None:
+        aware_date = date.replace(tzinfo=datetime.timezone.utc)
+
+    timestamp = int(aware_date.timestamp())
+    fallback = aware_date.strftime("%Y-%m-%d %H:%M UTC")
+    return f"<!date^{timestamp}^{{date}} {{time}}|{fallback}>"
+
+
+def format_job_due_date_slack(
+    target_date: datetime.datetime,
+    job_status: str | None = None,
+    traffic_light: bool = True,
+) -> str:
+    """Formats a job due date to display in Slack. Returns "in x hours" if the
+    date is within 48 hours. Naive datetimes are assumed to be UTC.
+
+    Args:
+        target_date (datetime.datetime): The job's target date (due date).
+        job_status (str | None, optional): The job status. Defaults to None.
+        traffic_light (bool, optional): Adds a red or green light indicator
+            when a job's due date is in the past and the job status is
+            `IN_PROGRESS`. Defaults to True.
+
+    Returns:
+        str: The formatted string for the job's due date.
+    """
+    if target_date.tzinfo is None:
+        target_date = target_date.replace(tzinfo=datetime.timezone.utc)
+    date_delta = target_date - datetime.datetime.now(datetime.timezone.utc)
+    formatted_date = (
+        f"in {math.ceil(date_delta.total_seconds() / 3600)} hour(s)"
+        if 0 < date_delta.total_seconds() < 48 * 3600
+        else format_datetime_slack(target_date)
+    )
+
+    if traffic_light and job_status == "IN_PROGRESS":
+        if datetime.datetime.now(datetime.timezone.utc) >= target_date:
+            return f":red_circle: {formatted_date}"
+        else:
+            return f":large_green_circle: {formatted_date}"
+    return formatted_date

@@ -15,7 +15,7 @@ from ...ray.utils import (
     format_currency,
     format_currency_symbol,
     format_job_status,
-    add_light_indicator,
+    format_job_due_date_slack,
 )
 from ...config import domains
 from ...auth.connector import (
@@ -338,10 +338,9 @@ class JobStatusMessage(SlackMessage):
                         {"type": "mrkdwn", "text": "*Expected Completion Date:*"},
                         {
                             "type": "mrkdwn",
-                            "text": add_light_indicator(
-                                target_date=job.target_date, job_status=job.status
-                            )
-                            + f" {job.target_date.strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                            "text": format_job_due_date_slack(
+                                job.target_date, job.status, traffic_light=True
+                            ),
                         },
                     ],
                 },
@@ -601,17 +600,9 @@ class JobListMessage(SlackMessage):
                 if job.reference:
                     job_text += f"\nRef: {job.reference}"
                 job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
-                utc_time = job.target_date.replace(tzinfo=datetime.timezone.utc)
-                job_text += (
-                    "\nDue: "
-                    + add_light_indicator(
-                        target_date=job.target_date, job_status=job.status
-                    )
-                    + f" <!date^{int(utc_time.timestamp())}^Due: {{date}} {{time}}|Due: {job.target_date} UTC>"
+                job_text += "\nDue: " + format_job_due_date_slack(
+                    job.target_date, job.status, traffic_light=True
                 )
-                due_delta = job.target_date - datetime.datetime.utcnow()
-                if due_delta.days < 2 and due_delta.total_seconds() > 0:
-                    job_text += f"\nDue in: {due_delta.days * 24 + due_delta.seconds // 3600} hours"
                 jobs_blocks.append(
                     {
                         "type": "section",

@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 import datetime
 
 import app  # Bug - circular import
+import app.ray.utils
 from app.config import domains
 
 
@@ -52,28 +53,44 @@ def test_format_job_status():
     assert app.ray.utils.format_job_status("OTHER_STATUS") == "OTHER_STATUS"
 
 
-def test_light_indicator():
-    current_date = datetime.datetime.now()
+def test_format_datetime_slack():
+    naive_date = datetime.datetime.now()
+    aware_utc_date = naive_date.replace(tzinfo=datetime.timezone.utc)
+    timestamp = int(aware_utc_date.timestamp())
+    fallback = naive_date.strftime("%Y-%m-%d %H:%M UTC")
+    assert (
+        app.ray.utils.format_datetime_slack(naive_date)
+        == f"<!date^{timestamp}^{{date}} {{time}}|{fallback}>"
+    )
+    assert (
+        app.ray.utils.format_datetime_slack(aware_utc_date)
+        == f"<!date^{timestamp}^{{date}} {{time}}|{fallback}>"
+    )
+
+
+def test_format_job_due_date_slack():
+    current_date = datetime.datetime.utcnow()
     tomorrow = current_date + datetime.timedelta(days=1)
     yesterday = current_date - datetime.timedelta(days=1)
+    next_week = current_date + datetime.timedelta(days=7)
 
-    assert (
-        app.ray.utils.add_light_indicator(
-            target_date=yesterday,
-            job_status="IN_PROGRESS",
-        )
-        == ":red_circle:"
-    )
-    assert (
-        app.ray.utils.add_light_indicator(
-            target_date=datetime.datetime.strptime("2022-01-01", "%Y-%m-%d"),
-            job_status="COMPLETED",
-        )
-        == ""
-    )
-    assert (
-        app.ray.utils.add_light_indicator(
-            target_date=tomorrow, job_status="IN_PROGRESS"
-        )
-        == ":large_green_circle:"
-    )
+    # Show "in X hour(s)" if date within 48 hours.
+    assert app.ray.utils.format_job_due_date_slack(tomorrow).endswith("hour(s)")
+    assert app.ray.utils.format_job_due_date_slack(current_date).endswith(">")
+    assert app.ray.utils.format_job_due_date_slack(yesterday).endswith(">")
+    assert app.ray.utils.format_job_due_date_slack(next_week).endswith(">")
+
+    # Show traffic lights if status is "IN_PROGRESS".
+    assert app.ray.utils.format_job_due_date_slack(
+        target_date=yesterday, job_status="IN_PROGRESS", traffic_light=True
+    ).startswith(":red_circle:")
+    assert app.ray.utils.format_job_due_date_slack(
+        target_date=tomorrow, job_status="IN_PROGRESS", traffic_light=True
+    ).startswith(":large_green_circle:")
+    assert not app.ray.utils.format_job_due_date_slack(
+        target_date=yesterday, traffic_light=True
+    ).startswith(":")
+    # Don't show lights if the traffic_light argument is False.
+    assert not app.ray.utils.format_job_due_date_slack(
+        target_date=yesterday, job_status="IN_PROGRESS", traffic_light=False
+    ).startswith(":")
