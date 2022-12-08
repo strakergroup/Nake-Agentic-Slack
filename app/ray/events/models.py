@@ -67,3 +67,10 @@ class JobQuoteCreatedEvent(BaseModel):
     service: str
     turnaround_days: int
     quote: QuoteInfo
+
+
+class JobQuoteAcceptedEvent(BaseModel):
+    uuid: str
+    target_date: str
+    id: str
+    client_id: str
