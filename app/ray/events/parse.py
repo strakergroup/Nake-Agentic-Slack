@@ -7,6 +7,7 @@ from .models import (
     JobStatusChangedEvent,
     JobQuoteCreatedEvent,
     JobQuoteAcceptedEvent,
+    JobQuoteCancelledEvent,
 )
 from ...slack.templates.messages import (
     SlackMessage,
@@ -18,6 +19,7 @@ from ...slack.templates.messages import (
     JobCancelledEventMessage,
     JobQuotedEventMessage,
     JobQuoteAcceptedEventMessage,
+    JobQuoteCancelledEventMessage,
 )
 
 
@@ -66,4 +68,7 @@ def get_ray_event_message(
     elif event_type == "ray:job:quote_accepted":
         event = JobQuoteAcceptedEvent.parse_obj(event_data)
         return JobQuoteAcceptedEventMessage(event)
+    elif event_type == "ray:job:quote_cancelled":
+        event = JobQuoteCancelledEvent.parse_obj(event_data)
+        return JobQuoteCancelledEventMessage(event)
     raise ValueError(f"Invalid RAY event type: {event_type}")
