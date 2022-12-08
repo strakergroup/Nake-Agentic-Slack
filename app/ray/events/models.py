@@ -74,3 +74,10 @@ class JobQuoteAcceptedEvent(BaseModel):
     target_date: str
     id: str
     client_id: str
+
+
+class JobQuoteCancelledEvent(BaseModel):
+    uuid: str
+    target_date: str
+    id: str
+    client_id: str
