@@ -617,8 +617,8 @@ class JobListMessage(SlackMessage):
                                 "emoji": True,
                                 "text": "View More Info",
                             },
-                            "url": get_job_url(job.uuid, client_id),
-                            "action_id": f"link_{i}",
+                            "action_id": "show_job_info",
+                            "value": job.id
                         },
                     }
                 )

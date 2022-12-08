@@ -231,6 +231,17 @@ async def ray_command(ack, respond, command, context, client):
             await respond(text=InvalidCommandMessage().text)
 
 
+@app.block_action("show_job_info", middleware=[ray_connection])
+@slack_log_decorator
+async def show_job_info(ack, action, context):
+    """Get job info. Triggered from the "View More Info" in the job list"""
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        await post_job_status(
+            context, context["ray"].client, action["value"]
+        )
+
+
 @app.block_action("job_list", middleware=[ray_connection])
 @slack_log_decorator
 async def job_list_action(ack, payload, context):
