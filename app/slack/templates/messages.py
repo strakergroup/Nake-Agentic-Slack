@@ -14,6 +14,7 @@ from ...ray.events.models import (
     JobQuoteCreatedEvent,
     ClientGroup,
     JobQuoteAcceptedEvent,
+    JobQuoteCancelledEvent,
 )
 from ...ray.utils import (
     get_job_url,
@@ -1199,6 +1200,25 @@ class JobQuoteAcceptedEventMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": f":clap: Quote Accepted for *{id}*. Your job will be completed before {target_date}.",
+                    },
+                },
+                job_deltaray_link_block(event.uuid, event.client_id),
+            ],
+        )
+
+
+class JobQuoteCancelledEventMessage(SlackMessage):
+    def __init__(self, event: JobQuoteCancelledEvent) -> None:
+        target_date = event.target_date
+        id = event.id
+        super().__init__(
+            f"We have cancelled the quote for {id}.",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"We have cancelled the quote for *{id}*.",
                     },
                 },
                 job_deltaray_link_block(event.uuid, event.client_id),
