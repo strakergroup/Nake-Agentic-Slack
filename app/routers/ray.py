@@ -101,8 +101,6 @@ async def api_job_callback(
     body: RayCallback,
     x_straker_signature: str = Header(),
 ):
-    print(f"{client_id = }")
-    print(f"{body = }")
     """Callback endpoint for API jobs."""
     # Check if the callback can be linked to a Slack user.
     slack_user = get_slack_user(client_id)
