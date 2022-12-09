@@ -115,7 +115,7 @@ class NewJobForm(BaseModel):
         return v
 
     @classmethod
-    def parse_slack(cls, values: dict[str, dict[str:Any]]) -> "NewJobForm":
+    def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "NewJobForm":
         """Parses a view submission payload from Slack.
 
         Args:

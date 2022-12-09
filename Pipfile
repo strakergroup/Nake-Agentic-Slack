@@ -23,6 +23,7 @@ mysqlclient = "*"
 httpx = "*"
 redis = "*"
 cryptography = "*"
+python-dateutil = "*"
 babel = "*"
 straker-utils = {version = "==0.1.2", index = "straker"}
 ray-sdk = {version = "==0.1.5", index = "straker"}

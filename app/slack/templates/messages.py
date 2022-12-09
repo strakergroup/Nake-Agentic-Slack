@@ -21,6 +21,7 @@ from ...ray.utils import (
     format_currency,
     format_currency_symbol,
     format_job_status,
+    format_datetime_slack,
     format_job_due_date_slack,
 )
 from ...config import domains
@@ -1188,13 +1189,13 @@ class JobQuoteAcceptedEventMessage(SlackMessage):
         target_date = event.target_date
         id = event.id
         super().__init__(
-            f"Quote Accepted for {id}. Your job will be completed before {target_date}.",
+            f"Quote Accepted for {id}. Your job will be completed before {format_datetime_slack(target_date)}.",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f":clap: Quote Accepted for *{id}*. Your job will be completed before {target_date}.",
+                        "text": f":clap: Quote Accepted for *{id}*. Your job will be completed before {format_datetime_slack(target_date)}.",
                     },
                 },
                 job_deltaray_link_block(event.uuid, event.client_id),
@@ -1204,7 +1205,6 @@ class JobQuoteAcceptedEventMessage(SlackMessage):
 
 class JobQuoteCancelledEventMessage(SlackMessage):
     def __init__(self, event: JobQuoteCancelledEvent) -> None:
-        target_date = event.target_date
         id = event.id
         super().__init__(
             f"We have cancelled the quote for {id}.",
