@@ -13,6 +13,7 @@ from .app import app
 from .middleware import ray_connection, require_ray_client
 from .listener_actions import (
     post_job_status,
+    post_job_details,
     post_job_summary,
     post_job_list,
     submit_job,
@@ -231,13 +232,13 @@ async def ray_command(ack, respond, command, context, client):
             await respond(text=InvalidCommandMessage().text)
 
 
-@app.block_action("show_job_info", middleware=[ray_connection])
+@app.block_action("show_job_details", middleware=[ray_connection])
 @slack_log_decorator
-async def show_job_info(ack, action, context):
+async def show_job_details(ack, action, context):
     """Get job info. Triggered from the "View More Info" in the job list"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
-        await post_job_status(
+        await post_job_details(
             context, context["ray"].client, action["value"]
         )
 
