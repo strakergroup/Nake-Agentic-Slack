@@ -104,7 +104,6 @@ async def post_job_details(
     job, response = await RayService.get_service(ray_client).get_job(job_id)
     try:
         if job is not None:
-            print(job)
             msg = JobDetailsMessage(job, ray_client.id)
             return await context.client.chat_postMessage(
                 channel=channel_id,

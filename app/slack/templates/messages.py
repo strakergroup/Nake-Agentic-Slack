@@ -350,11 +350,11 @@ class JobStatusMessage(SlackMessage):
 
 
 class JobDetailsMessage(SlackMessage):
-    """Message showing the status of a translation job."""
+    """Message showing the details of a translation job."""
 
     def __init__(self, job: Job, client_id: str) -> None:
         super().__init__(
-            f"Job status ({job.id}): {format_job_status(job.status)}",
+            f"The information for {job.id} is below:",
             [
                 {
                     "type": "section",
@@ -370,10 +370,10 @@ class JobDetailsMessage(SlackMessage):
                             "type": "mrkdwn",
                             "text": f"*Job Status:*\n{format_job_status(job.status)}",
                         },
-                        {"type": "mrkdwn", "text": f"*Group:*\n{job.group_name}"},
+                        {"type": "mrkdwn", "text": f"*Group:*\n{job.group.name if job.group else ''}"},
                         {
                             "type": "mrkdwn",
-                            "text": f"*Due Date/Time*\n{ format_job_due_date_slack(job.target_date, job.status, traffic_light=True) }",
+                            "text": f"*Due Date/Time*\n{format_job_due_date_slack(job.target_date, job.status, traffic_light=True)}",
                         },
                         {"type": "mrkdwn", "text": f"*Reference:*\n{job.reference}"},
                         {
@@ -382,13 +382,16 @@ class JobDetailsMessage(SlackMessage):
                         },
                         {
                             "type": "mrkdwn",
-                            "text": f"*Target Languages:*\n{ ''.join(sorted([lang.name for lang in job.tl]))}",
+                            "text": f"*Target Languages:*\n{', '.join(sorted([lang.name for lang in job.tl]))}",
                         },
                         {
                             "type": "mrkdwn",
                             "text": f"*Valdation*\n{'Yes' if job.validation else 'No'}",
                         },
-                        {"type": "mrkdwn", "text": f"*Project Manager*\n<mailto:{job.project_manager.email}|{job.project_manager.first_name} {job.project_manager.last_name}>"},
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Project Manager*\n<mailto:{job.project_manager.email}|{job.project_manager.first_name} {job.project_manager.last_name}>",
+                        },
                     ],
                 },
                 job_deltaray_link_block(job.uuid, client_id),
