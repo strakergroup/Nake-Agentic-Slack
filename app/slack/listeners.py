@@ -164,9 +164,8 @@ async def ray_command(ack, respond, command, context, client):
             return text[1:-1]
         return text
 
-    command_args = re.split(
-        r"\s+", strip_formatting(command.get("text", "").strip().lower())
-    )
+    command_formatted = strip_formatting(command.get("text", "").strip())
+    command_args = re.split(r"\s+", command_formatted.lower())
     command_args = [strip_formatting(arg) for arg in command_args]
     match command_args:
         case ["info" | "account"]:
@@ -187,6 +186,22 @@ async def ray_command(ack, respond, command, context, client):
             if await require_ray_client(context):
                 msg = LogoutMessage(context["ray"].client.username)
                 await respond(text=msg.text, blocks=msg.blocks)
+        case ["job", reference, *reference_other]:
+            if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+                # Try searching job by TJ number if the format is correct.
+                if not reference_other and re.fullmatch(
+                    r"tj\d+", reference, re.IGNORECASE
+                ):
+                    await post_job_status(context, context["ray"].client, reference)
+                # Otherwise, search job by client reference.
+                else:
+                    client_reference = command_formatted.removeprefix("job").strip()
+                    await post_job_list(
+                        context,
+                        context["ray"].client,
+                        preset="CLIENT_REFERENCE",
+                        client_ref=client_reference,
+                    )
         case ["jobs"] | ["my", "jobs"]:
             if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                 await post_job_summary(context, context["ray"].client)
@@ -238,9 +253,7 @@ async def show_job_details(ack, action, context):
     """Get job info. Triggered from the "View More Info" in the job list"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
-        await post_job_details(
-            context, context["ray"].client, action["value"]
-        )
+        await post_job_details(context, context["ray"].client, action["value"])
 
 
 @app.block_action("job_list", middleware=[ray_connection])
@@ -265,6 +278,7 @@ async def job_list_paginated_action(ack, payload, context):
         try:
             settings = json.loads(payload["value"])
             preset = settings["preset"]
+            client_ref = settings["client_reference"]
             page, page_size = settings["page"], settings["page_size"]
         except (KeyError, json.JSONDecodeError):
             pass
@@ -273,6 +287,7 @@ async def job_list_paginated_action(ack, payload, context):
                 context,
                 context["ray"].client,
                 preset=preset,
+                client_ref=client_ref,
                 page=page,
                 page_size=page_size,
                 replace_original=True,

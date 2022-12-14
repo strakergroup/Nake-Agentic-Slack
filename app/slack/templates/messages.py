@@ -370,7 +370,10 @@ class JobDetailsMessage(SlackMessage):
                             "type": "mrkdwn",
                             "text": f"*Job Status:*\n{format_job_status(job.status)}",
                         },
-                        {"type": "mrkdwn", "text": f"*Group:*\n{job.group.name if job.group else ''}"},
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Group:*\n{job.group.name if job.group else ''}",
+                        },
                         {
                             "type": "mrkdwn",
                             "text": f"*Due Date/Time*\n{format_job_due_date_slack(job.target_date, job.status, traffic_light=True)}",
@@ -641,7 +644,7 @@ class JobListMessage(SlackMessage):
         title: str,
         jobs: list[Job],
         pagination: Pagination,
-        client_id: str,
+        client_ref: str = "",
     ) -> None:
         jobs_blocks = []
         if jobs:
@@ -699,6 +702,7 @@ class JobListMessage(SlackMessage):
                         "value": json.dumps(
                             {
                                 "preset": preset,
+                                "client_reference": client_ref[:1000],
                                 "page": pagination.page - 1,
                                 "page_size": pagination.rows_per_page,
                             }
@@ -718,6 +722,7 @@ class JobListMessage(SlackMessage):
                         "value": json.dumps(
                             {
                                 "preset": preset,
+                                "client_reference": client_ref[:1000],
                                 "page": pagination.page + 1,
                                 "page_size": pagination.rows_per_page,
                             }

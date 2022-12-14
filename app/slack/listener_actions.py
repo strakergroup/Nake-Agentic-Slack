@@ -213,11 +213,12 @@ async def post_job_list(
     context: AsyncBoltContext,
     ray_client: RayClient,
     preset: str,
+    client_ref: str = "",
     page: int = 1,
     page_size: int = 5,
     channel_id: str | None = None,
     replace_original: bool = False,
-) -> AsyncSlackResponse | WebhookResponse:
+) -> AsyncSlackResponse | WebhookResponse | None:
     """Gets the job list from the RAY API and posts it to the Slack user.
     The list of jobs is filtered depending on the `preset` argument.
 
@@ -225,6 +226,8 @@ async def post_job_list(
         context (AsyncBoltContext): The listener function context.
         ray_client (RayClient): The RAY client.
         preset (str): The preset to filter the job list.
+        client_ref (str, optional): The client reference to filter the job list
+            if the preset is "CLIENT_REF".
         channel_id (str | None, optional): The channel to post the message to.
             If not given, posts to the source channel.
 
@@ -234,6 +237,9 @@ async def post_job_list(
     if not context.channel_id and not channel_id and not context.response_url:
         raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id
+
+    # Truncate client_ref due to DB 100 char limit.
+    client_ref = client_ref[:100] if client_ref else ""
 
     match preset:
         case "IN_PROGRESS:ACCEPTED:24H":
@@ -299,6 +305,11 @@ async def post_job_list(
             response = await RayService.get_service(ray_client).get_job_list(
                 status="ORDER_NOW", page=page, page_size=page_size
             )
+        case "CLIENT_REFERENCE":
+            title = f"Reference: {client_ref}"
+            response = await RayService.get_service(ray_client).get_job_list(
+                client_ref=client_ref, page=page, page_size=page_size
+            )
         case _:
             capture_message(f"post_job_list: Invalid preset ({preset})")
             return
@@ -308,7 +319,7 @@ async def post_job_list(
             title=title,
             jobs=response.data[0],
             pagination=response.data[1],
-            client_id=ray_client.id
+            client_ref=client_ref,
         )
         if context.response_url:
             return await context.respond(
