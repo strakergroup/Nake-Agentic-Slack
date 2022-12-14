@@ -214,7 +214,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "fields": [
                         {"type": "mrkdwn", "text": "Check your job status"},
-                        {"type": "mrkdwn", "text": "`/ray [job reference]`"},
+                        {"type": "mrkdwn", "text": "`/ray job [reference]`"},
                         {"type": "mrkdwn", "text": "Your daily summary"},
                         {"type": "mrkdwn", "text": "`/ray my jobs`"},
                         {
@@ -908,7 +908,7 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "fields": [
                         {"type": "mrkdwn", "text": "Check your job status"},
-                        {"type": "mrkdwn", "text": "`/ray [job reference]`"},
+                        {"type": "mrkdwn", "text": "`/ray job [reference]`"},
                         {"type": "mrkdwn", "text": "Your daily summary"},
                         {"type": "mrkdwn", "text": "`/ray my jobs`"},
                         {
