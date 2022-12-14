@@ -390,7 +390,7 @@ class JobDetailsMessage(SlackMessage):
                         },
                         {
                             "type": "mrkdwn",
-                            "text": f"*Project Manager*\n<mailto:{job.project_manager.email}|{job.project_manager.first_name} {job.project_manager.last_name}>",
+                            "text": f"*Project Manager*\n{job.project_manager.first_name} {job.project_manager.last_name}",
                         },
                     ],
                 },
