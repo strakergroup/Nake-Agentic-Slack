@@ -36,7 +36,7 @@ features:
     - command: /ray
       url: <YOUR_DOMAIN>/slack/events
       description: Get the status of a job
-      usage_hint: "[job reference]"
+      usage_hint: "job [reference]"
       should_escape: false
   unfurl_domains:
     - strakertranslations.com

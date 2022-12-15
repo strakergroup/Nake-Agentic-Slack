@@ -101,7 +101,8 @@ class RayService:
     @secured_endpoint
     async def get_job_list(
         self,
-        status: str,
+        status: str | None = None,
+        client_ref: str | None = None,
         from_hours: int = 0,
         started_from: int = 0,
         completed_from: int = 0,
@@ -113,6 +114,7 @@ class RayService:
         """Gets the client's list of jobs filtered."""
         return await self._ray.get_job_list(
             status=status,
+            client_ref=client_ref,
             from_hours=from_hours,
             started_from=started_from,
             completed_from=completed_from,
