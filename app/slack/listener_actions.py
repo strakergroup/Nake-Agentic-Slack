@@ -15,6 +15,7 @@ from .templates.messages import (
     InvalidJobMessage,
     JobSummaryMessage,
     JobListMessage,
+    JobDetailsMessage,
 )
 from .templates.models import NewJobForm
 from ..auth.connector import RayClient, approve_pending_groups
@@ -50,6 +51,60 @@ async def post_job_status(
     try:
         if job is not None:
             msg = JobStatusMessage(job, ray_client.id)
+            return await context.client.chat_postMessage(
+                channel=channel_id,
+                text=msg.text,
+                blocks=msg.blocks,
+            )
+        else:
+            return await context.client.chat_postMessage(
+                channel=channel_id,
+                text=InvalidJobMessage(job_id).text,
+            )
+    finally:
+        if response is not None:
+            try:
+                response_data = response.json()
+            except Exception:
+                response_data = response.content.decode() or None
+            context["log"].add_api_log(
+                status_code=response.status_code,
+                url=str(response.url),
+                payload=None,
+                response=response_data,
+                headers=dict(response.headers.items()),
+                version="v3",
+            )
+
+
+async def post_job_details(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    job_id: str,
+    channel_id: str | None = None,
+) -> AsyncSlackResponse:
+    """Tries to get the job details from the RAY API and post the job status
+    to the Slack user. If the user cannot access the job, post another message
+    instead.
+
+    Args:
+        context (AsyncBoltContext): The listener function context.
+        ray_client (RayClient): The RAY client.
+        job_id (str): The ID of the job to get.
+        channel_id (str | None, optional): The channel to post the message to.
+            If not given, posts to the source channel.
+
+    Raises:
+        AssertionError: The `channel_id` is not given and there is no source channel.
+    """
+    if not context.channel_id and not channel_id:
+        raise AssertionError("No channel to post to")
+    channel_id = channel_id or context.channel_id
+
+    job, response = await RayService.get_service(ray_client).get_job(job_id)
+    try:
+        if job is not None:
+            msg = JobDetailsMessage(job, ray_client.id)
             return await context.client.chat_postMessage(
                 channel=channel_id,
                 text=msg.text,
