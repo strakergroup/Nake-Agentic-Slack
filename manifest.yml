@@ -2,23 +2,35 @@ display_information:
   name: Straker
   description: The official Slack app for the Straker RAY platform.
   background_color: "#17395c"
-  long_description: "The official Slack app for the Straker RAY platform.\r
+  long_description: "Install this app to your Slack workspace to connect to your DeltaRAY account and use Straker's RAY bot to ask about key events happening in your translation projects without leaving your work environment.\r
 
     \r
 
-    Straker is a technology-based localization solution that helps you manage multilingual content.\r
+    - Adding the Straker App to the Client's Slack Workspace\r
+
+    - Linking a DeltaRAY Account\r
+
+    - Checking a Job Status\r
+
+    - Job Summary - filtered list of jobs In Progress, Completed, In Validation, Pending Quotes and jobs clients can Order.\r
+
+    - Submit Files for a Quote\r
+
+    - Approving a quote\r
+
+    - Receiving translated files\r
+
+    - Job Notifications\r
+
+    - DeltaRAY Admin settings to approve new users\r
 
     \r
 
-    Since 2010, Straker has been leading the way in blending human and machine intelligence to increase speed, reduce complexity and cost in translations.\r
+    *About Straker*\r
 
     \r
 
-    Install this app to your Slack workspace to connect to your DeltaRAY account and use Straker's RAY bot to ask about key events happening in your translation projects without leaving your work environment.\r
-
-    \r
-
-    Need more info? Find out about the Straker integration with Slack. There are plenty more exciting features coming soon!"
+    Straker is a technology-based localization solution that helps you manage multilingual content. Since 2010, Straker has been leading the way in blending human and machine intelligence to increase speed, reduce complexity and cost in translations."
 features:
   app_home:
     home_tab_enabled: false
