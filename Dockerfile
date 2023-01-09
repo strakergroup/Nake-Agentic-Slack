@@ -26,7 +26,7 @@ COPY --from=builder /build/.venv/ /venv/
 ENV PATH=/venv/bin:$PATH
 
 COPY app app
-COPY .env ibm-credentials.env ./
+#COPY .env ibm-credentials.env ./ Removed as we can inject this as secrets file in k8s
 
 # Do not run with root
 RUN useradd -m -u 1001 -g 33 straker
