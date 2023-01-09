@@ -1,0 +1,55 @@
+pipeline {
+  agent {
+    kubernetes {
+      yaml '''
+apiVersion: v1
+kind: Pod
+metadata:
+  name: build-pod
+  labels:
+    app: container-builder
+spec:
+  containers:
+  - name: container-builder
+    image: strakertranslations/tools-container_buildah:latest
+    imagePullPolicy: Always
+    securityContext:
+      privileged: true
+      runAsUser: 0
+    tty: true
+        '''
+    }
+  }
+  stages {
+    stage('git tasks') {
+      steps {
+        container('container-builder') {
+          sh(script: """
+echo "${DOCKER_PASSWORD}" | buildah login -u strakertranslations --password-stdin docker.io
+GIT_SSH_COMMAND="ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no" git clone --branch ${BRANCH} --single-branch git@bitbucket.org:$REPO /root/container-build/${APPLICATION}/
+          """)
+        }
+      }
+    }
+    stage('build container') {
+      steps {
+        container('container-builder') {
+          sh(script: """
+cd /root/container-build/${APPLICATION}/
+buildah build --no-cache -t strakertech/${APPLICATION}:$TAG .
+          """)
+        }
+      }
+    }
+    stage('push container') {
+      steps {
+        container('container-builder') {
+          sh(script: """
+buildah push --format docker strakertech/${APPLICATION}:$TAG
+echo "I made it to the end, container built, and pushed to dockerhub."
+          """)
+        }
+      }
+    }
+  }
+}
