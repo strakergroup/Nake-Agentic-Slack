@@ -38,7 +38,7 @@ app.include_router(health.router)
 if config.elastic_apm_server_url:
     apm = make_apm_client(
         {
-            "SERVICE_NAME": "slack-ray-translator",
+            "SERVICE_NAME": "int-slack-ray-translator",
             "SERVER_URL": config.elastic_apm_server_url,
             "ENVIRONMENT": config.environment.value
             if config.environment != Environment.live

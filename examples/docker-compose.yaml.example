@@ -1,0 +1,11 @@
+version: '3.3'
+services:
+  int-slack-ray-translator:  
+    build: 
+      dockerfile: local.Dockerfile
+      context: ../
+    ports:
+      - "8888:80" # Change this the first port here to something you can use locally. 
+    volumes:
+      - /mnt/data/str-local-k8s/data/apps/int-slack-ray-translator/app:/code/app
+        # Change this first path to where your code is stored. 
