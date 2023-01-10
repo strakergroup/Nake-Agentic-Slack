@@ -22,3 +22,5 @@ __pycache__/
 .coverage.xml
 htmlcov/
 *.log
+
+**docker-compose.yaml
