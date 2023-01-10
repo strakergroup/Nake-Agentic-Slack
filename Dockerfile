@@ -3,7 +3,7 @@
 # https://pipenv.pypa.io/en/latest/basics/#pipenv-and-docker-containers
 
 # First build stage - Build venv with pipenv
-FROM python:3.10 as builder
+FROM python:3.11 as builder
 
 RUN pip install --user pipenv
 
@@ -16,7 +16,7 @@ RUN /root/.local/bin/pipenv sync
 
 
 # Final build stage - Run the app
-FROM python:3.10
+FROM python:3.11
 
 WORKDIR /code
 

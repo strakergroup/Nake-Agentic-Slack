@@ -4,7 +4,7 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
 
 ## Development
 ### Requirements
-- [Python 3.10](https://www.python.org/)
+- [Python 3.11](https://www.python.org/)
 - MySQL
 - [Pipenv](https://pipenv.pypa.io/) (if not using Docker)
 
@@ -31,12 +31,6 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
      ```
 
      Then start the app using
-
-     ```bash
-     $ pipenv run uvicorn app.main:app --reload
-     ```
-
-     *Optionally specify a port by adding `--port <int>`, e.g.*
 
      ```bash
      $ pipenv run uvicorn app.main:app --reload --port 3000
@@ -94,7 +88,7 @@ If you are using macOS and installed Python directly from https://www.python.org
 ssl.SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:997)
 ```
 
-To fix this, install the SSL certificates by running the script at `/Applications/Python\ 3.10/Install\ Certificates.command` (or just double clicking the `Install Certificates.command` file in the `Applications/Python 3.10` directory), then restart the app.
+To fix this, install the SSL certificates by running the script at `/Applications/Python\ 3.11/Install\ Certificates.command` (or just double clicking the `Install Certificates.command` file in the `Applications/Python 3.11` directory), then restart the app.
 
 ### Automated Tests
 
