@@ -10,7 +10,7 @@ from .routers import slack, ray, health
 
 # Configure BugLog
 buglog.init(
-    listener=f"{domains.buglog}/buglog/listeners/bugLogListenerREST.cfm",
+    listener=config.buglog_listener_url,
     app_name="Slack RAY Translator",
     hostname=f"{domains.slack_ray_translator.split('//')[1]} ({gethostname()})",
 )

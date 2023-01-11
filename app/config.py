@@ -8,6 +8,9 @@ from straker_utils.domain import StrakerDomains
 from .database import engines
 
 
+domains = StrakerDomains.from_environment()
+
+
 class Environment(str, Enum):
     local = "local"
     dev = "dev"
@@ -23,12 +26,20 @@ class StrakerConfig(BaseSettings):
 
     # Settings from environment variables.
     environment: Environment = Field(env="ENVIRONMENT")
+    buglog_listener_url: str | None = Field(None, env="BUGLOG_LISTENER_URL")
     elastic_apm_server_url: str | None = Field(None, env="ELASTIC_APM_SERVER_URL")
     # Derived settings.
     base_url: HttpUrl = None
     slack_deltaray_key: SecretBytes = None
     slack_queue_proxy_secret: SecretStr = None
     health_check_password: SecretStr = None
+
+    @validator("buglog_listener_url")
+    def default_buglog_listener_url(cls, v, values):
+        """Defaults to the standard BugLogHQ URL depending on the environment."""
+        if v:
+            return v
+        return f"{domains.buglog}/buglog/listeners/bugLogListenerREST.cfm"
 
     @validator("base_url")
     def default_base_url(cls, v, values):
@@ -96,4 +107,3 @@ class StrakerConfig(BaseSettings):
 
 
 config = StrakerConfig()
-domains = StrakerDomains.from_environment()
