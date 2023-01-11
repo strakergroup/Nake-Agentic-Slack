@@ -1,31 +1,18 @@
-import logging
+from socket import gethostname
+
+import buglog
 from fastapi import FastAPI
-import sentry_sdk
-from sentry_sdk.integrations.starlette import StarletteIntegration
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 from elasticapm.contrib.starlette import make_apm_client, ElasticAPM
 
-from .config import config, Environment
+from .config import config, domains, Environment
 from .routers import slack, ray, health
 
 
-# Configure Sentry
-if not config.sentry_dsn:
-    logging.warning("Sentry is not set up (SENTRY_DSN is missing)")
-sentry_sdk.init(
-    dsn=config.sentry_dsn,
-    environment=(
-        config.environment.value if config.environment != Environment.live else None
-    ),
-    integrations=[
-        StarletteIntegration(),
-        FastApiIntegration(),
-        SqlalchemyIntegration(),
-    ],
-    send_default_pii=True,
-    request_bodies="medium",
-    traces_sample_rate=0.1,
+# Configure BugLog
+buglog.init(
+    listener=f"{domains.buglog}/buglog/listeners/bugLogListenerREST.cfm",
+    app_name="Slack RAY Translator",
+    hostname=f"{domains.slack_ray_translator.split('//')[1]} ({gethostname()})",
 )
 
 
@@ -34,6 +21,17 @@ app = FastAPI()
 app.include_router(slack.router)
 app.include_router(ray.router)
 app.include_router(health.router)
+
+
+@app.middleware("http")
+async def buglog_middleware(request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as e:
+        buglog.notify_exception(e)
+        raise
+
+
 # Configure Elastic APM
 if config.elastic_apm_server_url:
     apm = make_apm_client(

@@ -1,7 +1,8 @@
 from typing import Any
 from itertools import islice
 import json
-from sentry_sdk import capture_exception
+
+from buglog import notify_exception
 
 from ..redis import redis_conn
 from ..ray import get_languages
@@ -16,7 +17,7 @@ async def _get_languages_cached() -> list[dict[str, str]]:
             assert isinstance(languages, list)
             return languages
         except Exception as e:
-            capture_exception(e)
+            notify_exception(e)
 
     languages = (await get_languages()).data
     languages = [{"code": lang.code, "name": lang.name} for lang in languages]

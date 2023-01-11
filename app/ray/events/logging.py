@@ -1,9 +1,10 @@
-from typing import Any
 import asyncio
 import json
+from typing import Any
+
 from sqlalchemy import text
-from sentry_sdk import capture_exception
 from slack_sdk.web.async_client import AsyncWebClient
+from buglog import notify_exception
 
 from ...auth.connector import SlackUser
 from ...dependencies import RayEvent
@@ -39,7 +40,7 @@ async def log_notification(
             )
             conn.execute(sql)
     except Exception as e:
-        capture_exception(e)
+        notify_exception(e)
 
 
 async def post_notification(

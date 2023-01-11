@@ -3,9 +3,10 @@
 See https://slack.dev/bolt-python/concepts#listener-middleware.
 """
 
-import logging
 from typing import Any
-from sentry_sdk import capture_message
+import logging
+
+from buglog import notify_message
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_logger.slack import SlackAppLog
 
@@ -101,7 +102,9 @@ async def require_ray_client(
     if prompt_login:
         if not isinstance(login_message := context.get("login_prompt"), SlackMessage):
             logging.warning('"login_prompt" is not in the context')
-            capture_message('Slack: "login_prompt" is not in the context', "warning")
+            notify_message(
+                'Slack: "login_prompt" is not in the context', severity="WARNING"
+            )
             return False
 
         login_message: LoginMessage = login_message.with_variation(variation)

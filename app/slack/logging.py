@@ -3,7 +3,8 @@ import asyncio
 import inspect
 import logging
 import functools
-from sentry_sdk import capture_exception
+
+from buglog import notify_exception
 from slack_bolt.request.payload_utils import (
     is_event,
     is_block_actions,
@@ -90,11 +91,11 @@ def init_slack_app_log(body: dict[str, Any], context: dict[str, Any]) -> SlackAp
 
 
 async def log_slack(log: SlackAppLog):
-    """Wrapper around `log_async()` which logs exceptions to sentry."""
+    """Wrapper around `log_async()` which logs exceptions to BugLogHQ."""
     try:
         slack_app_logger.log(log)
     except Exception as e:
-        capture_exception(e)
+        notify_exception(e)
 
 
 def slack_log_decorator(

@@ -4,9 +4,10 @@ from typing import Any, Iterable
 import os
 from pathlib import Path
 import tempfile
+
 import asyncio
 import httpx
-from sentry_sdk import capture_exception
+from buglog import notify_exception
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.errors import SlackApiError
 
@@ -147,6 +148,6 @@ async def download_files(client: AsyncWebClient, files: Iterable[str]) -> list[s
         file_paths = await asyncio.gather(*tasks, return_exceptions=True)
     # Log exceptions.
     for exc in [result for result in file_paths if isinstance(result, Exception)]:
-        capture_exception(exc)
+        notify_exception(exc)
     # Return successful file download paths.
     return [result for result in file_paths if isinstance(result, str)]

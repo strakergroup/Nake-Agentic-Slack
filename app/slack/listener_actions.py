@@ -4,7 +4,7 @@ Slack Bolt listener functions.
 """
 
 import asyncio
-from sentry_sdk import capture_exception, capture_message
+from buglog import notify_exception, notify_message
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from slack_sdk.webhook.webhook_response import WebhookResponse
 from slack_bolt.context.async_context import AsyncBoltContext
@@ -173,11 +173,11 @@ async def post_job_summary(
         pending_quotes_count = responses[0].data.summary.get("pending_quotes", 0)
         order_now_count = responses[0].data.summary.get("order_now", 0)
     else:
-        capture_exception(responses[0])
+        notify_exception(responses[0])
     if isinstance(responses[1], RayResponse):
         completed_count = responses[1].data.summary.get("completed", 0)
     else:
-        capture_exception(responses[1])
+        notify_exception(responses[1])
 
     try:
         msg = JobSummaryMessage(
@@ -311,7 +311,7 @@ async def post_job_list(
                 client_ref=client_ref, page=page, page_size=page_size
             )
         case _:
-            capture_message(f"post_job_list: Invalid preset ({preset})")
+            notify_message(f"post_job_list: Invalid preset ({preset})")
             return
     try:
         msg = JobListMessage(

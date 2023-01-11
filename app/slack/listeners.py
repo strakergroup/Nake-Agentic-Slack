@@ -4,10 +4,11 @@ commands, etc. from the Slack API.
 
 import re
 import json
-import sentry_sdk
+
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_sdk.errors import SlackApiError
+from buglog import notify_exception
 
 from .app import app
 from .middleware import ray_connection, require_ray_client
@@ -336,7 +337,7 @@ async def approve_pending_client_action(ack, action, context, say, client):
             client_id = pending_client_details["id"]
             client_username = pending_client_details["username"]
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            notify_exception(e)
         else:
             approved_groups = await approve_pending_client(
                 context["ray"].client,
@@ -397,7 +398,7 @@ async def handle_new_job(ack, view, context, client):
         try:
             responses = await submit_job(context, context["ray"].client, form)
         except Exception as e:
-            sentry_sdk.capture_exception(e)
+            notify_exception(e)
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text="There was an error submitting your translation request, please try again.",  # noqa: B950
