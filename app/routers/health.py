@@ -1,5 +1,7 @@
-from typing import Any
 import asyncio
+import json
+from typing import Any
+
 from fastapi import APIRouter, Response, status
 
 from ..config import config
@@ -28,14 +30,21 @@ async def health_check(response: Response, password: str | None = None):
     # Execute tests in parallel.
     await asyncio.gather(*checks)
 
+    result = {
+        "message": "There are some issues" if len(errors) else "OK",
+        "environment": config.environment.value,
+        "errors": errors,
+        "info": info,
+    }
+
     if errors:
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        print(json.dumps(result, indent=4))
 
-    result = {"message": "There are some issues" if len(errors) else "OK"}
-    if show_details:
-        result["environment"] = config.environment.value
-        result["errors"] = errors
-        result["info"] = info
+    if not show_details:
+        result.pop("environment", None)
+        result.pop("errors", None)
+        result.pop("info", None)
     return result
 
 
