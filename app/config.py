@@ -1,21 +1,15 @@
 import base64
 import hashlib
-from enum import Enum
+
 from pydantic import BaseSettings, Field, HttpUrl, SecretBytes, SecretStr, validator
 from sqlalchemy import text
 from straker_utils.domain import StrakerDomains
+from straker_utils.environment import Environment
 
 from .database import engines
 
 
 domains = StrakerDomains.from_environment()
-
-
-class Environment(str, Enum):
-    local = "local"
-    dev = "dev"
-    uat = "uat"
-    live = "live"
 
 
 class StrakerConfig(BaseSettings):

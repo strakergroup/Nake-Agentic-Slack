@@ -4,7 +4,7 @@ import buglog
 from fastapi import FastAPI
 from elasticapm.contrib.starlette import make_apm_client, ElasticAPM
 
-from .config import config, domains, Environment
+from .config import config, domains
 from .routers import slack, ray, health
 
 
@@ -38,9 +38,9 @@ if config.elastic_apm_server_url:
         {
             "SERVICE_NAME": "int-slack-ray-translator",
             "SERVER_URL": config.elastic_apm_server_url,
-            "ENVIRONMENT": config.environment.value
-            if config.environment != Environment.live
-            else "production",
+            "ENVIRONMENT": "production"
+            if config.environment.value == "live"
+            else config.environment.value,
         }
     )
     app.add_middleware(ElasticAPM, client=apm)

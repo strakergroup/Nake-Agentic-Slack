@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Response, status
@@ -39,7 +40,7 @@ async def health_check(response: Response, password: str | None = None):
 
     if errors:
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-        print(json.dumps(result, indent=4))
+        logging.warning(json.dumps(result, indent=4))
 
     if not show_details:
         result.pop("environment", None)

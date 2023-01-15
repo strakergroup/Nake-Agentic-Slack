@@ -375,9 +375,6 @@ def encrpyt_slack_integration_token(
         expire_seconds (int, optional): The time in seconds before the token expires.
         Defaults to 3600.
 
-    Raises:
-        AssertionError: The RAY_INTEGRATION_KEY environment variable is not set.
-
     Returns:
         str: The encrypted token.
     """
