@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "8d72241ab127cab40142c3ab7679491ec64d650294e6f2134b17fd01bb934815"
+            "sha256": "10df1824806c3e97ef6037f61961471465186a25d46a00c28b6e00d7a3145e27"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -1026,11 +1026,11 @@
         },
         "straker-utils": {
             "hashes": [
-                "sha256:a3605427888b78e11465068a62f73ed16d5f571f06dc2a5fa62bca47f408a561",
-                "sha256:bd3bd00e45742039694296f67ac238a352ce3840205eed394974f72e5e412f45"
+                "sha256:46be669297ea7f24eb81c8b9e1d3e04f310b4bf6e424e0f9df690935dc95a96a",
+                "sha256:625d215c7f6f61492b18cc3ec0a327e8cdda521136a2ae110837efec1ee22c6f"
             ],
             "index": "straker",
-            "version": "==0.1.4"
+            "version": "==0.1.5"
         },
         "typing-extensions": {
             "hashes": [
