@@ -1,0 +1,23 @@
+version: '3.9'
+services:
+  slack-ray-translator:
+    container_name: local-slack-ray-translator
+    build:
+      dockerfile: Dockerfile.local
+    ports:
+      - "3000:80" # Change this the first port here to something you can use locally.
+    volumes:
+      # Allow watch files/hot reloading
+      - ./app:/code/app
+    networks:
+      local-straker:
+        ipv4_address: 172.20.0.32
+    extra_hosts:
+      local-api.strakertranslations.com: 172.17.0.1
+      local-buglog.strakertranslations.com: 172.17.0.1
+      local-stream-proxy.straker.io: 172.17.0.1
+
+networks:
+  local-straker:
+    name: development_local-straker
+    external: true

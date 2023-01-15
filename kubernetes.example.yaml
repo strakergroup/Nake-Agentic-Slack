@@ -1,0 +1,95 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: int-slack-ray-translator
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: int-slack-ray-translator
+  name: int-slack-ray-translator
+  namespace: int-slack-ray-translator
+spec:
+  selector:
+    matchLabels:
+      app: int-slack-ray-translator
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: int-slack-ray-translator
+    spec:
+      containers:
+        - image: docker.io/strakertech/int-slack-ray-translator:develop-latest
+          name: int-slack-ray-translator
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          resources:
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 80
+              httpHeaders:
+                - name: User-Agent
+                  value: startup-probe
+          volumeMounts:
+            - name: code
+              mountPath: /code/app
+            - name: application-env
+              mountPath: /code/.env
+              subPath: .env
+            - name: ibm-env
+              mountPath: /code/ibm-credentials.env
+              subPath: ibm-credentials.env
+
+      volumes:
+        - name: code
+          hostPath:
+            path: /Users/borenxue/Straker/apps/slack-ray-translator/app
+        - name: application-env
+          # kubectl create secret generic int-slack-ray-translator-env --from-file=./.env --namespace=int-slack-ray-translator
+          secret:
+            secretName: int-slack-ray-translator-env
+            items:
+              - key: .env
+                path: .env
+        - name: ibm-env
+          # kubectl create secret generic int-slack-ray-ibm-env --from-file=./ibm-credentials.env --namespace=int-slack-ray-translator
+          secret:
+            secretName: int-slack-ray-ibm-env
+            items:
+              - key: ibm-credentials.env
+                path: ibm-credentials.env
+      imagePullSecrets:
+        - name: regcred
+status: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+  creationTimestamp: null
+  labels:
+    app: int-slack-ray-translator
+  name: int-slack-ray-translator-svc-np
+  namespace: int-slack-ray-translator
+spec:
+  externalTrafficPolicy: Local
+  ports:
+    - name: "int-slack-ray-translator-svc-np"
+      nodePort: 30600
+      port: 3000
+      protocol: TCP
+      targetPort: 80
+  selector:
+    app: int-slack-ray-translator
+  sessionAffinity: None
+  type: NodePort
+status:
+  loadBalancer: {}
+---
+

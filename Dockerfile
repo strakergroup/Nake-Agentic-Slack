@@ -1,3 +1,5 @@
+# This can be used by docker-compose and k8s to mount the 'app' folder locally
+
 # Multi-stage build
 # https://fastapi.tiangolo.com/deployment/docker/#container-images
 # https://pipenv.pypa.io/en/latest/basics/#pipenv-and-docker-containers
@@ -26,7 +28,8 @@ COPY --from=builder /build/.venv/ /venv/
 ENV PATH=/venv/bin:$PATH
 
 COPY app app
-#COPY .env ibm-credentials.env ./ Removed as we can inject this as secrets file in k8s
+# Removed as we can inject this as secrets file in k8s
+# COPY .env ibm-credentials.env ./
 
 # Do not run with root
 RUN useradd -m -u 1001 -g 33 straker
