@@ -34,20 +34,24 @@ GIT_SSH_COMMAND="ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
     stage('build container') {
       steps {
         container('container-builder') {
-          sh(script: """
-cd /root/container-build/${APPLICATION}/
-buildah build --no-cache -t strakertech/${APPLICATION}:$TAG .
-          """)
+          sh(script: '''
+cd /root/container-build/${APPLICATION}
+GITTAG=$(git rev-parse --short=7 HEAD)
+buildah build --no-cache -t strakertech/${APPLICATION}:$TAG-latest -t strakertech/${APPLICATION}:$TAG-$GITTAG .
+          ''')
         }
       }
     }
     stage('push container') {
       steps {
         container('container-builder') {
-          sh(script: """
-buildah push --format docker strakertech/${APPLICATION}:$TAG
+          sh(script: '''
+cd /root/container-build/${APPLICATION}
+GITTAG=$(git rev-parse --short=7 HEAD)
+buildah push --format docker strakertech/${APPLICATION}:$TAG-latest
+buildah push --format docker strakertech/${APPLICATION}:$TAG-$GITTAG
 echo "I made it to the end, container built, and pushed to dockerhub."
-          """)
+          ''')
         }
       }
     }
