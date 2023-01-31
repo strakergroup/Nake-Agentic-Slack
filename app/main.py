@@ -41,6 +41,7 @@ if config.elastic_apm_server_url:
             "ENVIRONMENT": "production"
             if config.environment.value == "live"
             else config.environment.value,
+            "TRANSACTION_IGNORE_URLS": ["/", "/health"],
         }
     )
     app.add_middleware(ElasticAPM, client=apm)
