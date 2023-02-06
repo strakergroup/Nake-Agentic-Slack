@@ -4,6 +4,7 @@ commands, etc. from the Slack API.
 
 import re
 import json
+import time
 
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
@@ -26,6 +27,7 @@ from .templates.messages import (
     OnboardingMessage,
     LoginMessage,
     LogoutMessage,
+    QuoteMessage,
     SuccessfulLogoutMessage,
     JobStatusNoIdMessage,
     NewJobMessage,
@@ -156,7 +158,7 @@ async def new_job_shortcut(ack, shortcut, context, client):
 
 @app.command("/ray", middleware=[ray_connection])
 @slack_log_decorator
-async def ray_command(ack, respond, command, context, client):
+async def ray_command(ack, respond, say, command, context, client):
     await ack()
 
     # Strip the text formatting from the command args (not perfect).
@@ -231,6 +233,11 @@ async def ray_command(ack, respond, command, context, client):
                         initial_files=init_files,
                     ),
                 )
+        case ["quote"]:
+            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+                # quote is like new job except it doesn't open the modal.
+                msg = QuoteMessage(context["channel_id"], time.time())
+                await say(text=msg.text, blocks=msg.blocks)
         case ["help" | ""]:
             await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
         case ["whatsnext"] | ["whats", "next"]:
@@ -250,11 +257,17 @@ async def ray_command(ack, respond, command, context, client):
 
 @app.block_action("show_job_details", middleware=[ray_connection])
 @slack_log_decorator
-async def show_job_details(ack, action, context):
+async def show_job_details(ack, action, payload, context):
     """Get job info. Triggered from the "View More Info" in the job list"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
-        await post_job_details(context, context["ray"].client, action["value"])
+        try:
+            job_info = json.loads(payload["value"])
+            job_id, status = job_info["id"], job_info["status"]
+        except (KeyError, json.JSONDecodeError):
+            pass
+        else:
+            await post_job_details(context, context["ray"].client, job_id, status)
 
 
 @app.block_action("job_list", middleware=[ray_connection])

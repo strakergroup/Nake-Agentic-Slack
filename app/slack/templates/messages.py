@@ -5,10 +5,10 @@
 from typing import Any
 import datetime
 import json
-from ray_sdk.api.v3.models import Job, Pagination
+from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm
-from .blocks import job_deltaray_link_block
+from .blocks import job_deltaray_link_block, quote_message_block
 from ...ray.events.models import (
     ClientSignupEvent,
     JobQuoteCreatedEvent,
@@ -18,8 +18,6 @@ from ...ray.events.models import (
 )
 from ...ray.utils import (
     get_job_url,
-    format_currency,
-    format_currency_symbol,
     format_job_status,
     format_datetime_slack,
     format_job_due_date_slack,
@@ -678,7 +676,7 @@ class JobListMessage(SlackMessage):
                                 "text": "View More Info",
                             },
                             "action_id": "show_job_details",
-                            "value": job.id,
+                            "value": json.dumps({"id": job.id, "status": job.status}),
                         },
                     }
                 )
@@ -942,6 +940,43 @@ class HelpMessage(SlackMessage):
             ],
         )
 
+class QuoteMessage(SlackMessage):
+    """Quote message button to pop up job form."""
+
+    def __init__(self, channel_id: str, timestamp: str) -> None:
+        super().__init__(
+            "New Quote Message",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *Submit a Quote* button below"
+                    }
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Submit a Quote"
+                            },
+                            "style": "primary",
+                            "action_id": "new_job",
+                            "value": json.dumps(
+                                {
+                                    "channel_id": channel_id,
+                                    "ts": timestamp,
+                                }
+                            ),
+                        }
+                    ]
+                }
+            ]
+        )
+
 
 class WhatsNextMessage(SlackMessage):
     def __init__(self) -> None:
@@ -1057,6 +1092,23 @@ class ClientAlreadyApprovedMessage(TextMessage):
 
     def __init__(self, approved_client: str) -> None:
         super().__init__(f"The user {approved_client} has already been approved.")
+
+
+class JobQuotedMessage(SlackMessage):
+    def __init__(self, quote: Quote) -> None:
+        job_url = get_job_url(quote.uuid, quote.client_id)
+        super().__init__(
+            f"Pending Quote: Straker Job Reference {quote.id}",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*<{job_url}|Straker Job Reference {quote.id}>*",
+                    },
+                },
+            ] + quote_message_block(quote, job_url),
+        )
 
 
 # -----------------------------------------------------------------------------
@@ -1278,38 +1330,7 @@ class JobQuoteCancelledEventMessage(SlackMessage):
 
 class JobQuotedEventMessage(SlackMessage):
     def __init__(self, event: JobQuoteCreatedEvent) -> None:
-        currency = format_currency_symbol(event.quote.currency)
-        quote_formatted = format_currency(event.quote.quote, event.quote.currency)
-        turnaround_time = (
-            f"within {event.turnaround_days} days" if event.turnaround_days > 0 else ""
-        )
         job_url = get_job_url(event.uuid, event.client_id)
-        # Show "incl. tax" next to the total cost if > the sum of the individual language prices.
-        incl_tax = event.quote.quote != event.quote.quote_nett
-        # Show prices for individual languages (if they exist).
-        lang_price_blocks = []
-        if event.quote.tl:
-            lang_price_blocks = [
-                {
-                    "type": "section",
-                    "fields": [],
-                },
-                {"type": "divider"},
-            ]
-            for lang in event.tl:
-                lang_price = (
-                    event.quote.tl[lang.code].price
-                    if lang.code in event.quote.tl
-                    else 0.0
-                )
-                lang_price_formatted = format_currency(lang_price, event.quote.currency)
-                lang_price_blocks[0]["fields"].append(
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*{lang.label}:*\n{lang_price_formatted}",
-                    }
-                )
-
         super().__init__(
             f"Your quote is now ready :raised_hands: Straker Job Reference {event.id}",
             [
@@ -1320,89 +1341,5 @@ class JobQuotedEventMessage(SlackMessage):
                         "text": f"Your quote is now ready :raised_hands:\n*<{job_url}|Straker Job Reference {event.id}>*",
                     },
                 },
-                {
-                    "type": "section",
-                    "fields": [
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Source Language:*\n{event.sl.label}",
-                        },
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Turnaround Time:*\n{turnaround_time}",
-                        },
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Service:*\n{event.service}",
-                        },
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Client Reference:*\n{event.client_reference}",
-                        },
-                    ],
-                },
-                {"type": "divider"},
-                *lang_price_blocks,
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*Total Cost ({currency})*: {quote_formatted} {'(incl. tax)' if incl_tax else ''}",
-                    },
-                },
-                {"type": "divider"},
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "emoji": True,
-                                "text": "Accept Quote",
-                            },
-                            "style": "primary",
-                            "url": event.quote.quote_accept_url,
-                            "action_id": "link",
-                        },
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "emoji": True,
-                                "text": "Cancel",
-                            },
-                            "style": "danger",
-                            "url": event.quote.quote_cancel_url,
-                            "action_id": "link_1",
-                            "confirm": {
-                                "title": {
-                                    "type": "plain_text",
-                                    "text": "Cancel Quote",
-                                },
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": "Are you sure you want to cancel this quote?\n\n"
-                                    "This action requires you to be logged in to DeltaRAY.",
-                                },
-                                "confirm": {"type": "plain_text", "text": "Yes"},
-                                "deny": {
-                                    "type": "plain_text",
-                                    "text": "No",
-                                },
-                            },
-                        },
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": "More Information",
-                                "emoji": True,
-                            },
-                            "url": job_url,
-                            "action_id": "link_2",
-                        },
-                    ],
-                },
-            ],
+            ] + quote_message_block(event, job_url),
         )

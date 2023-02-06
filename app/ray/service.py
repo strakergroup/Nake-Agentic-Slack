@@ -4,7 +4,7 @@ from functools import wraps
 from urllib.parse import urlencode
 from httpx import Response
 from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
-from ray_sdk.api.v3.models import Job, JobSummary, Language, Pagination
+from ray_sdk.api.v3.models import Job, JobSummary, Language, Pagination, Quote
 
 from ..config import config, domains
 from ..auth.connector import RayClient
@@ -171,6 +171,24 @@ class RayService:
 
         return result
 
+    @secured_endpoint
+    async def get_quote(self, job_id: str) -> tuple[Quote | None, Response | None]:
+        """Gets the quote for the job.
+
+        Args:
+            job_id (str): The reference/ID of the job.
+
+        Returns:
+            The quote data and the response if they exist.
+        """
+        try:
+            response = await self._ray.get_quote(job_id)
+            return response.data, response.response
+        except RayAuthError as e:
+            return None, e.response
+        except RayAPIResponseError as e:
+            return None, e.response
+
     @classmethod
     def get_service(
         cls, ray_client: RayClient | str, token: str | None = None
@@ -203,8 +221,9 @@ class RayService:
             cls.services[key] = cls(ray_client_id=ray_client_id, token=token)
         return cls.services[key]
 
-
+# TODO - Add get quote endpoint
 # These functions are for RAY endpoints that do not require authentication.
+
 
 _noauth_service = RayService(None, None)
 

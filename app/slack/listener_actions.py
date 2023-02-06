@@ -11,6 +11,7 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
 
 from .templates.messages import (
+    JobQuotedMessage,
     JobStatusMessage,
     InvalidJobMessage,
     JobSummaryMessage,
@@ -21,6 +22,8 @@ from .templates.models import NewJobForm
 from ..auth.connector import RayClient, approve_pending_groups
 from ..ray import RayService
 from .web import download_files
+
+# TODO - Maybe update to send quote info to the user if in quote stage
 
 
 async def post_job_status(
@@ -81,6 +84,7 @@ async def post_job_details(
     context: AsyncBoltContext,
     ray_client: RayClient,
     job_id: str,
+    status: str,
     channel_id: str | None = None,
 ) -> AsyncSlackResponse:
     """Tries to get the job details from the RAY API and post the job status
@@ -101,9 +105,20 @@ async def post_job_details(
         raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id
 
-    job, response = await RayService.get_service(ray_client).get_job(job_id)
+    if status == "PENDING_QUOTES":
+        job, response = await RayService.get_service(ray_client).get_quote(job_id)
+    else:
+        job, response = await RayService.get_service(ray_client).get_job(job_id)
+    # print job
     try:
         if job is not None:
+            if status == "PENDING_QUOTES":
+                msg = JobQuotedMessage(job)
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                    blocks=msg.blocks,
+                )
             msg = JobDetailsMessage(job, ray_client.id)
             return await context.client.chat_postMessage(
                 channel=channel_id,
