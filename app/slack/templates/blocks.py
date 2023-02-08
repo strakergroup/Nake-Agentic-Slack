@@ -1,12 +1,13 @@
 """Templates for individual Slack blocks."""
 
-from typing import Any
+from typing import Any, List
 from ray_sdk.api.v3.models import Quote
 from ...ray.utils import (
     get_job_url,
     format_currency,
     format_currency_symbol,
 )
+
 
 def job_deltaray_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
     return {
@@ -26,7 +27,8 @@ def job_deltaray_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
         ],
     }
 
-def quote_message_block(quote: Quote, job_url: str) -> [dict[str, Any]]:
+
+def quote_message_block(quote: Quote, job_url: str) -> List[dict[str, Any]]:
     currency = format_currency_symbol(quote.quote.currency)
     quote_formatted = format_currency(quote.quote.quote, quote.quote.currency)
     turnaround_time = (

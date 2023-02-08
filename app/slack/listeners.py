@@ -24,7 +24,6 @@ from .listener_actions import (
 from .logging import slack_log_decorator
 from .templates.models import NewJobForm, convert_pydantic_to_slack_error
 from .templates.messages import (
-    OnboardingMessage,
     LoginMessage,
     LogoutMessage,
     QuoteMessage,
@@ -39,7 +38,7 @@ from .templates.messages import (
     ClientApprovedMessage,
     ClientAlreadyApprovedMessage,
 )
-from .templates.views import new_job_modal
+from .templates.views import new_job_modal, home_view
 from .web import files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, map_file_options
 from ..auth.connector import disconnect_ray_account
@@ -121,18 +120,14 @@ async def message_event(message, context, say, client):
                 await say(response.reply)
 
 
-@app.event("app_home_opened")
+@app.event("app_home_opened", middleware=[ray_connection])
 @slack_log_decorator
-async def home_opened(event, body, say, client):
-    # Send an onboarding message if the app home is opened for the first time.
-    # TODO also onboard if the user hasn't opened in a long time and the account
-    # is not connected yet
-    history = await client.conversations_history(channel=event.get("channel"), limit=1)
-    if not history.get("messages"):
-        message = OnboardingMessage(
-            event.get("user"), body["team_id"], body["api_app_id"], event.get("channel")
-        )
-        await say(blocks=message.blocks, text=message.text)
+async def home_opened(event, context, body, say, client):
+    # publish view to home tab
+    await client.views_publish(
+        user_id=event.get("user"),
+        view=home_view(context),
+    )
 
 
 @app.message_shortcut("new_job", middleware=[ray_connection])
@@ -268,6 +263,31 @@ async def show_job_details(ack, action, payload, context):
             pass
         else:
             await post_job_details(context, context["ray"].client, job_id, status)
+
+
+@app.action("quote", middleware=[ray_connection])
+@slack_log_decorator
+async def quote(ack, payload, context, say):
+    """Get quote. Triggered from the Home View New Job button"""
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+        msg = QuoteMessage(payload, time.time())
+        await context.client.chat_postEphemeral(
+            channel=payload["value"],
+            user=context.user_id,
+            text=msg.text,
+            blocks=msg.blocks,
+        )
+
+
+# create a block action to get daily summary
+@app.action("daily_summary", middleware=[ray_connection])
+@slack_log_decorator
+async def daily_summary(ack, payload, context):
+    """Get daily summary. Triggered from the Home View Daily Summary button"""
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        await post_job_summary(context, context["ray"].client, payload['value'])
 
 
 @app.block_action("job_list", middleware=[ray_connection])
