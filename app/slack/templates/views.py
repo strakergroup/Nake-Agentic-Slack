@@ -332,7 +332,8 @@ def new_job_modal(
 
 
 # home view
-def home_view(context: AsyncBoltContext) -> dict[str, Any]:
+def home_view(context: AsyncBoltContext, team_id: str, app_id: str) -> dict[str, Any]:
+    message_url = f"slack://app?team={team_id}&id={app_id}&tab=messages"
     return {
         "type": "home",
         "blocks": [
@@ -373,7 +374,8 @@ def home_view(context: AsyncBoltContext) -> dict[str, Any]:
                         },
                         "value": context["channel_id"],
                         "style": "primary",
-                        "action_id": "quote"
+                        "action_id": "quote",
+                        "url": message_url
                     },
                     {
                         "type": "button",
@@ -383,7 +385,8 @@ def home_view(context: AsyncBoltContext) -> dict[str, Any]:
                             "text": "☀️ Daily Summary"
                         },
                         "value": context["channel_id"],
-                        "action_id": "daily_summary"
+                        "action_id": "daily_summary",
+                        "url": message_url
                     },
                     # {
                     #     "type": "button",
