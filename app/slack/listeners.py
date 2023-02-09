@@ -153,7 +153,7 @@ async def new_job_shortcut(ack, shortcut, context, client, body):
 
 @app.command("/ray", middleware=[ray_connection])
 @slack_log_decorator
-async def ray_command(ack, respond, say, command, context):
+async def ray_command(ack, respond, say, command, context, client):
     await ack()
 
     # Strip the text formatting from the command args (not perfect).
@@ -203,6 +203,31 @@ async def ray_command(ack, respond, say, command, context):
         case ["jobs"] | ["my", "jobs"]:
             if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                 await post_job_summary(context, context["ray"].client)
+        case ["new"]:
+            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+                files = await files_list_simple(client, count=110)
+                # Try to get the files from the last 3 messages to set as the
+                # default files to translate in the new job modal.
+                init_files = []
+                try:
+                    response = await client.conversations_history(
+                        channel=context["channel_id"],
+                        limit=3,
+                    )
+                    for message in response["messages"]:
+                        if message.get("files"):
+                            init_files = message.get("files")
+                            break
+                except SlackApiError:
+                    pass
+                await client.views_open(
+                    trigger_id=command["trigger_id"],
+                    view=new_job_modal(
+                        context["ray"].client.username,
+                        file_options=files,
+                        initial_files=init_files,
+                    ),
+                )
         case ["quote"]:
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
                 # quote is like new job except it doesn't open the modal.
