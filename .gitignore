@@ -4,6 +4,7 @@
 # IDE
 .vscode/*
 !.vscode/settings.json
+!.vscode/extensions.json
 
 # Environments
 .env
