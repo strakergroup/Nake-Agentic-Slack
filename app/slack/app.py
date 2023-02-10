@@ -7,7 +7,7 @@ from slack_bolt.oauth.async_callback_options import (
     DefaultAsyncCallbackOptions,
     AsyncSuccessArgs,
 )
-from .stores import AsyncSQLAlchemyInstallationStore, AsyncSQLAlchemyOAuthStateStore
+from .stores import AsyncSQLAlchemyInstallationStore
 from .templates.messages import OnboardingMessage
 from ..database import engines
 
@@ -17,11 +17,6 @@ installation_store = AsyncSQLAlchemyInstallationStore(
     engine=engines["ray_integration"],
     bots_table_name="slack_bots",
     installations_table_name="slack_installations",
-)
-state_store = AsyncSQLAlchemyOAuthStateStore(
-    expiration_seconds=1800,
-    engine=engines["ray_integration"],
-    table_name="slack_oauth_states",
 )
 
 oauth_settings = AsyncOAuthSettings(
@@ -42,7 +37,6 @@ oauth_settings = AsyncOAuthSettings(
         "commands",
     ],
     installation_store=installation_store,
-    state_store=state_store,
     state_validation_enabled=False,
     install_page_rendering_enabled=False,
 )
