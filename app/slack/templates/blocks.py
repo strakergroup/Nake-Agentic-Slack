@@ -1,12 +1,71 @@
 """Templates for individual Slack blocks."""
+# Ignore line too long lint errors
+# flake8: noqa
 
-from typing import Any, List
+from typing import Any
 from ray_sdk.api.v3.models import Quote
+from ...auth.connector import get_slack_deltaray_integration_url, RayConnection
+from ...config import domains
 from ...ray.utils import (
     get_job_url,
     format_currency,
     format_currency_symbol,
 )
+
+
+def home_auth_blocks(
+    user_id: str,
+    team_id: str,
+    app_id: str,
+    channel_id: str,
+    ray_connection: RayConnection | None,
+) -> list[dict[str, Any]]:
+    """The blocks in the Home tab which displays the DeltaRAY connection
+    details or asks the user to connect their DeltaRAY account.
+    """
+    if isinstance(ray_connection, RayConnection) and ray_connection.client:
+        return [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"Your Slack workspace is connected with: *{ray_connection.super_group.name}*.",
+                },
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"Your Slack account <@{user_id}> is connected with: <{domains.deltaray}|{ray_connection.client.username}>.",
+                },
+            },
+        ]
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "Connect your DeltaRAY account to get details about your translation jobs.",
+            },
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Connect your DeltaRAY account",
+                    },
+                    "style": "primary",
+                    "url": get_slack_deltaray_integration_url(
+                        user_id, team_id, app_id, channel_id
+                    ),
+                    "action_id": "login",
+                }
+            ],
+        },
+    ]
 
 
 def job_deltaray_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
@@ -28,7 +87,7 @@ def job_deltaray_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
     }
 
 
-def quote_message_block(quote: Quote, job_url: str) -> List[dict[str, Any]]:
+def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
     currency = format_currency_symbol(quote.quote.currency)
     quote_formatted = format_currency(quote.quote.quote, quote.quote.currency)
     turnaround_time = (
@@ -48,9 +107,7 @@ def quote_message_block(quote: Quote, job_url: str) -> List[dict[str, Any]]:
         ]
         for lang in quote.tl:
             lang_price = (
-                quote.quote.tl[lang.code].price
-                if lang.code in quote.quote.tl
-                else 0.0
+                quote.quote.tl[lang.code].price if lang.code in quote.quote.tl else 0.0
             )
             lang_price_formatted = format_currency(lang_price, quote.quote.currency)
             lang_price_blocks[0]["fields"].append(

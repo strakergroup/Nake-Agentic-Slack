@@ -4,8 +4,124 @@
 
 from typing import Any
 from slack_bolt.context.async_context import AsyncBoltContext
+
+from .blocks import home_auth_blocks
 from ..select_options import map_file_options
+from ...auth.connector import RayConnection
 from ...config import domains
+
+
+def home_view(
+    context: AsyncBoltContext, app_id: str, rayConnection: RayConnection
+) -> dict[str, Any]:
+    message_url = f"slack://app?team={context['team_id']}&id={app_id}&tab=messages"
+    return {
+        "type": "home",
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "Welcome to the Straker RAY Cloud App!",
+                },
+            },
+            *home_auth_blocks(
+                context["user_id"],
+                context["team_id"],
+                app_id,
+                context["channel_id"],
+                rayConnection,
+            ),
+            {"type": "divider"},
+            {"type": "header", "text": {"type": "plain_text", "text": "Get started"}},
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "Here are some things to get you started. Also make sure you check out our Help Centre and use our built in chatbot within our app to guide you through the translation process.",
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "⚡️ Create New Job",
+                        },
+                        "style": "primary",
+                        "action_id": "quote",
+                        "url": message_url,
+                    },
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "☀️ Daily Summary",
+                        },
+                        "action_id": "daily_summary",
+                        "url": message_url,
+                    },
+                    # {
+                    #     "type": "button",
+                    #     "text": {
+                    #         "type": "plain_text",
+                    #         "emoji": True,
+                    #         "text": "👏 Favorite Languages"
+                    #     },
+                    #     "value": "click_me_123"
+                    # }
+                ],
+            },
+            {"type": "divider"},
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "Give us your feedback"},
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest RAY Cloud and Enterprise features, provide updates, and engage with customers like you!",
+                },
+                "accessory": {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Learn More", "emoji": True},
+                    "action_id": "link_0",
+                    "url": "https://strakergroup.frill.co/b/6m51y2vz/feature-ideas",
+                },
+            },
+            {"type": "divider"},
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "🌐 Visit DeltaRAY",
+                        },
+                        "action_id": "link_1",
+                        "url": domains.deltaray,
+                    },
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "❓Help Centre",
+                        },
+                        "action_id": "link_2",
+                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+                    },
+                ],
+            },
+        ],
+    }
 
 
 def new_job_modal(
@@ -327,112 +443,5 @@ def new_job_modal(
             #     },
             #     "label": {"type": "plain_text", "text": "Category", "emoji": True},
             # },
-        ],
-    }
-
-
-# home view
-def home_view(context: AsyncBoltContext, team_id: str, app_id: str) -> dict[str, Any]:
-    message_url = f"slack://app?team={team_id}&id={app_id}&tab=messages"
-    return {
-        "type": "home",
-        "blocks": [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "Welcome to the Straker RAY Cloud App!",
-                },
-            },
-        ]
-        + context["login_prompt"].blocks
-        + [
-            {"type": "divider"},
-            {"type": "header", "text": {"type": "plain_text", "text": "Get started"}},
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "Here are some things to get you started. Also make sure you check out our Help Centre and use our built in chatbot within our app to guide you through the translation process.",
-                },
-            },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "⚡️ Create New Job",
-                        },
-                        "value": context["channel_id"],
-                        "style": "primary",
-                        "action_id": "quote",
-                        "url": message_url,
-                    },
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "☀️ Daily Summary",
-                        },
-                        "value": context["channel_id"],
-                        "action_id": "daily_summary",
-                        "url": message_url,
-                    },
-                    # {
-                    #     "type": "button",
-                    #     "text": {
-                    #         "type": "plain_text",
-                    #         "emoji": True,
-                    #         "text": "👏 Favorite Languages"
-                    #     },
-                    #     "value": "click_me_123"
-                    # }
-                ],
-            },
-            {"type": "divider"},
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": "Give us your feedback"},
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest RAY Cloud and Enterprise features, provide updates, and engage with customers like you!",
-                },
-                "accessory": {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Learn More", "emoji": True},
-                    "url": "https://strakergroup.frill.co/b/6m51y2vz/feature-ideas",
-                },
-            },
-            {"type": "divider"},
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "🌐 Visit DeltaRay",
-                        },
-                        "url": domains.deltaray,
-                    },
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "❓Help Centre",
-                        },
-                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
-                    },
-                ],
-            },
         ],
     }

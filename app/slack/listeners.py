@@ -4,7 +4,6 @@ commands, etc. from the Slack API.
 
 import re
 import json
-import time
 
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
@@ -18,6 +17,7 @@ from .listener_actions import (
     post_job_details,
     post_job_summary,
     post_job_list,
+    show_quote_form_modal,
     submit_job,
     approve_pending_client,
 )
@@ -39,7 +39,7 @@ from .templates.messages import (
     ClientApprovedMessage,
     ClientAlreadyApprovedMessage,
 )
-from .templates.views import new_job_modal, home_view
+from .templates.views import home_view
 from .web import files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, map_file_options
 from ..auth.connector import disconnect_ray_account
@@ -136,28 +136,24 @@ async def home_opened(event, context, body, say, client):
     # publish view to home tab
     await client.views_publish(
         user_id=event.get("user"),
-        view=home_view(context, context["team_id"], body["api_app_id"]),
+        view=home_view(context, body["api_app_id"], context["ray"]),
     )
 
 
 @app.message_shortcut("new_job", middleware=[ray_connection])
 @slack_log_decorator
-async def new_job_shortcut(ack, shortcut, context, client, body):
+async def new_job_shortcut(ack, shortcut, context, client):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        # Include a bit more than the max 100 options due to hidden files.
-        files = await files_list_simple(client, count=110)
         # Set files in the message as initial values if the bot has access to them.
         init_files = await get_bot_accessible_files(
             client, (f["id"] for f in shortcut["message"].get("files", []))
         )
-        await client.views_open(
-            trigger_id=shortcut["trigger_id"],
-            view=new_job_modal(
-                context["ray"].client.username,
-                file_options=files,
-                initial_files=init_files,
-            ),
+        await show_quote_form_modal(
+            context,
+            shortcut["trigger_id"],
+            context["ray"].client,
+            initial_files=init_files,
         )
 
 
@@ -215,34 +211,17 @@ async def ray_command(ack, respond, say, command, context, client):
                 await post_job_summary(context, context["ray"].client)
         case ["new"]:
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-                files = await files_list_simple(client, count=110)
-                # Try to get the files from the last 3 messages to set as the
-                # default files to translate in the new job modal.
-                init_files = []
-                try:
-                    response = await client.conversations_history(
-                        channel=context["channel_id"],
-                        limit=3,
-                    )
-                    for message in response["messages"]:
-                        if message.get("files"):
-                            init_files = message.get("files")
-                            break
-                except SlackApiError:
-                    pass
-                await client.views_open(
-                    trigger_id=command["trigger_id"],
-                    view=new_job_modal(
-                        context["ray"].client.username,
-                        file_options=files,
-                        initial_files=init_files,
-                    ),
+                await show_quote_form_modal(
+                    context,
+                    command["trigger_id"],
+                    context["ray"].client,
+                    check_last_messages=4,
                 )
         case ["quote"]:
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
                 # quote is like new job except it doesn't open the modal.
                 await ack()
-                msg = QuoteMessage(context["channel_id"], time.time())
+                msg = QuoteMessage()
                 await say(text=msg.text, blocks=msg.blocks)
         case ["help" | ""]:
             await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
@@ -278,14 +257,13 @@ async def show_job_details(ack, action, payload, context):
 
 @app.action("quote", middleware=[ray_connection])
 @slack_log_decorator
-async def quote(ack, payload, context, say):
+async def quote(ack, context, client):
     """Get quote. Triggered from the Home View New Job button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        msg = QuoteMessage(payload, time.time())
-        await context.client.chat_postEphemeral(
-            channel=payload["value"],
-            user=context.user_id,
+        msg = QuoteMessage()
+        await client.chat_postMessage(
+            channel=context["user_id"],
             text=msg.text,
             blocks=msg.blocks,
         )
@@ -294,11 +272,11 @@ async def quote(ack, payload, context, say):
 # create a block action to get daily summary
 @app.action("daily_summary", middleware=[ray_connection])
 @slack_log_decorator
-async def daily_summary(ack, payload, context):
+async def daily_summary(ack, context):
     """Get daily summary. Triggered from the Home View Daily Summary button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
-        await post_job_summary(context, context["ray"].client, payload["value"])
+        await post_job_summary(context, context["ray"].client)
 
 
 @app.block_action("job_list", middleware=[ray_connection])
@@ -344,8 +322,6 @@ async def job_list_paginated_action(ack, payload, context):
 async def new_job_action(ack, payload, context, client, body):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        files = await files_list_simple(client, count=110)
-        # Get files from the source message to prefill the modal.
         init_files = []
         try:
             value = json.loads(payload["value"])
@@ -359,14 +335,15 @@ async def new_job_action(ack, payload, context, client, body):
             # Assume the files are accessible if we are able to get the message
             init_files = message.get("files", [])
         except (SlackApiError, json.JSONDecodeError, KeyError):
-            pass  # The payload value is malformed or no access to the files.
-        await client.views_open(
-            trigger_id=body["trigger_id"],
-            view=new_job_modal(
-                context["ray"].client.username,
-                file_options=files,
-                initial_files=init_files,
-            ),
+            # The payload value does not exist, is malformed, or no access to the files.
+            pass
+        await show_quote_form_modal(
+            context,
+            body["trigger_id"],
+            context["ray"].client,
+            initial_files=init_files,
+            # Check message history for initial files if not in payload.
+            check_last_messages=4,
         )
 
 

@@ -4,7 +4,10 @@ Slack Bolt listener functions.
 """
 
 import asyncio
+from typing import Any
+
 from buglog import notify_exception, notify_message
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from slack_sdk.webhook.webhook_response import WebhookResponse
 from slack_bolt.context.async_context import AsyncBoltContext
@@ -19,9 +22,10 @@ from .templates.messages import (
     JobDetailsMessage,
 )
 from .templates.models import NewJobForm
+from .templates.views import new_job_modal
 from ..auth.connector import RayClient, approve_pending_groups
 from ..ray import RayService
-from .web import download_files
+from .web import files_list_simple, download_files
 
 # TODO - Maybe update to send quote info to the user if in quote stage
 
@@ -46,9 +50,9 @@ async def post_job_status(
     Raises:
         AssertionError: The `channel_id` is not given and there is no source channel.
     """
-    if not context.channel_id and not channel_id:
+    if not channel_id and not context.channel_id and not context.user_id:
         raise AssertionError("No channel to post to")
-    channel_id = channel_id or context.channel_id
+    channel_id = channel_id or context.channel_id or context.user_id
 
     job, response = await RayService.get_service(ray_client).get_job(job_id)
     try:
@@ -101,9 +105,9 @@ async def post_job_details(
     Raises:
         AssertionError: The `channel_id` is not given and there is no source channel.
     """
-    if not context.channel_id and not channel_id:
+    if not channel_id and not context.channel_id and not context.user_id:
         raise AssertionError("No channel to post to")
-    channel_id = channel_id or context.channel_id
+    channel_id = channel_id or context.channel_id or context.user_id
 
     if status == "PENDING_QUOTES":
         job, response = await RayService.get_service(ray_client).get_quote(job_id)
@@ -162,9 +166,9 @@ async def post_job_summary(
     Raises:
         AssertionError: The `channel_id` is not given and there is no source channel.
     """
-    if not context.channel_id and not channel_id:
+    if not channel_id and not context.channel_id and not context.user_id:
         raise AssertionError("No channel to post to")
-    channel_id = channel_id or context.channel_id
+    channel_id = channel_id or context.channel_id or context.user_id
 
     responses = await asyncio.gather(
         RayService.get_service(ray_client).get_job_summary(
@@ -249,9 +253,14 @@ async def post_job_list(
     Raises:
         AssertionError: The `channel_id` is not given and there is no source channel.
     """
-    if not context.channel_id and not channel_id and not context.response_url:
+    if (
+        not channel_id
+        and not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
         raise AssertionError("No channel to post to")
-    channel_id = channel_id or context.channel_id
+    channel_id = channel_id or context.channel_id or context.user_id
 
     # Truncate client_ref due to DB 100 char limit.
     client_ref = client_ref[:100] if client_ref else ""
@@ -360,6 +369,57 @@ async def post_job_list(
             headers=dict(response.response.headers.items()),
             version="v3",
         )
+
+
+async def show_quote_form_modal(
+    context: AsyncBoltContext,
+    trigger_id: str,
+    ray_client: RayClient,
+    *,
+    initial_files: list[dict[str, Any]] | None = None,
+    check_last_messages: int = 0,
+):
+    """Show the quote form (new job form) modal.
+
+    Args:
+        context (AsyncBoltContext): The context from the listener.
+        trigger_id (str): The trigger ID.
+        ray_client (RayClient): The RAY client details.
+        initial_files (list[dict[str, Any]] | None): The files to be selected
+            in the source file dropdown when the form is shown.
+        check_last_messages (int, optional): If no initial files set and this
+            argument is greater than 0, check the last `check_last_messages`
+            messages with the bot to find files to set as the initial files. If
+            a message has files attached, select those files and stop finding.
+    """
+    # Include a bit more than the max 100 options due to hidden files.
+    files = await files_list_simple(context.client, count=110)
+    # Set initial selected files.
+    if not initial_files and check_last_messages > 0:
+        # Check last 100 messages maximum.
+        check_last_messages = min(check_last_messages, 100)
+        # Try to get the files from the last n messages to set as the
+        # default files in the form dropdown.
+        try:
+            response = await context.client.conversations_history(
+                channel=context["channel_id"],
+                limit=check_last_messages,
+            )
+            for message in response["messages"]:
+                if message.get("files"):
+                    initial_files = message.get("files")
+                    break
+        except SlackApiError:
+            pass
+
+    await context.client.views_open(
+        trigger_id=trigger_id,
+        view=new_job_modal(
+            ray_client.username,
+            file_options=files,
+            initial_files=initial_files,
+        ),
+    )
 
 
 async def submit_job(

@@ -893,6 +893,7 @@ class FileTranslatedMessage(SlackMessage):
             ],
         )
 
+
 # TODO update this for quote command?
 class HelpMessage(SlackMessage):
     """Help message showing how to use the app."""
@@ -940,10 +941,11 @@ class HelpMessage(SlackMessage):
             ],
         )
 
+
 class QuoteMessage(SlackMessage):
     """Quote message button to pop up job form."""
 
-    def __init__(self, channel_id: str, timestamp: str) -> None:
+    def __init__(self) -> None:
         super().__init__(
             "New Quote Message",
             [
@@ -951,30 +953,21 @@ class QuoteMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *Submit a Quote* button below"
-                    }
+                        "text": "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *Submit a Quote* button below",
+                    },
                 },
                 {
                     "type": "actions",
                     "elements": [
                         {
                             "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Submit a Quote"
-                            },
+                            "text": {"type": "plain_text", "text": "Submit a Quote"},
                             "style": "primary",
                             "action_id": "new_job",
-                            "value": json.dumps(
-                                {
-                                    "channel_id": channel_id,
-                                    "ts": timestamp,
-                                }
-                            ),
                         }
-                    ]
-                }
-            ]
+                    ],
+                },
+            ],
         )
 
 
@@ -1008,16 +1001,16 @@ class ConnectionInfoMessage(SlackMessage):
     ) -> None:
         # First get Slack workspace - super group info.
         if ray_connection is not None:
-            text = f"This workspace is connected to: {ray_connection.super_group.name}."
+            text = f"Your Slack workspace is connected with: {ray_connection.super_group.name}."
             workspace_block = {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"This workspace is connected to: *{ray_connection.super_group.name}*.",
+                    "text": f"Your Slack workspace is connected with: *{ray_connection.super_group.name}*.",
                 },
             }
         else:
-            text = "This workspace is not connected to an organisation yet."
+            text = "Your Slack workspace is not connected with an organisation yet."
             workspace_block = {
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": text},
@@ -1107,7 +1100,8 @@ class JobQuotedMessage(SlackMessage):
                         "text": f"*<{job_url}|Straker Job Reference {quote.id}>*",
                     },
                 },
-            ] + quote_message_block(quote, job_url),
+            ]
+            + quote_message_block(quote, job_url),
         )
 
 
@@ -1341,5 +1335,6 @@ class JobQuotedEventMessage(SlackMessage):
                         "text": f"Your quote is now ready :raised_hands:\n*<{job_url}|Straker Job Reference {event.id}>*",
                     },
                 },
-            ] + quote_message_block(event, job_url),
+            ]
+            + quote_message_block(event, job_url),
         )
