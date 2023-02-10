@@ -26,6 +26,7 @@ from .templates.models import NewJobForm, convert_pydantic_to_slack_error
 from .templates.messages import (
     LoginMessage,
     LogoutMessage,
+    OnboardingMessage,
     QuoteMessage,
     SuccessfulLogoutMessage,
     JobStatusNoIdMessage,
@@ -123,6 +124,15 @@ async def message_event(message, context, say, client):
 @app.event("app_home_opened", middleware=[ray_connection])
 @slack_log_decorator
 async def home_opened(event, context, body, say, client):
+    # Send an onboarding message if the app home is opened for the first time.
+    # TODO also onboard if the user hasn't opened in a long time and the account
+    # is not connected yet
+    history = await client.conversations_history(channel=event.get("channel"), limit=1)
+    if not history.get("messages"):
+        message = OnboardingMessage(
+            event.get("user"), body["team_id"], body["api_app_id"], event.get("channel")
+        )
+        await say(blocks=message.blocks, text=message.text)
     # publish view to home tab
     await client.views_publish(
         user_id=event.get("user"),
