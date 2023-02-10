@@ -33,7 +33,7 @@ display_information:
     Straker is a technology-based localization solution that helps you manage multilingual content. Since 2010, Straker has been leading the way in blending human and machine intelligence to increase speed, reduce complexity and cost in translations."
 features:
   app_home:
-    home_tab_enabled: false
+    home_tab_enabled: true
     messages_tab_enabled: true
     messages_tab_read_only_enabled: false
   bot_user:
