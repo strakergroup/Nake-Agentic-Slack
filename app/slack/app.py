@@ -41,8 +41,8 @@ oauth_settings = AsyncOAuthSettings(
         "mpim:history",
         "commands",
     ],
-    # installation_store=installation_store,
-    # state_store=state_store,
+    installation_store=installation_store,
+    state_store=state_store,
     state_validation_enabled=False,
     install_page_rendering_enabled=False,
 )

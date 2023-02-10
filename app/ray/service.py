@@ -221,7 +221,6 @@ class RayService:
             cls.services[key] = cls(ray_client_id=ray_client_id, token=token)
         return cls.services[key]
 
-# TODO - Add get quote endpoint
 # These functions are for RAY endpoints that do not require authentication.
 
 

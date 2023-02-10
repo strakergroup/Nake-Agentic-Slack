@@ -893,7 +893,7 @@ class FileTranslatedMessage(SlackMessage):
             ],
         )
 
-
+# TODO update this for quote command?
 class HelpMessage(SlackMessage):
     """Help message showing how to use the app."""
 
