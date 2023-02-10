@@ -136,7 +136,7 @@ async def home_opened(event, context, body, say, client):
     # publish view to home tab
     await client.views_publish(
         user_id=event.get("user"),
-        view=home_view(context, context["team_id"], context['ray'].client.slack_app_id),
+        view=home_view(context, context["team_id"], body["api_app_id"]),
     )
 
 
@@ -298,7 +298,7 @@ async def daily_summary(ack, payload, context):
     """Get daily summary. Triggered from the Home View Daily Summary button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
-        await post_job_summary(context, context["ray"].client, payload['value'])
+        await post_job_summary(context, context["ray"].client, payload["value"])
 
 
 @app.block_action("job_list", middleware=[ray_connection])

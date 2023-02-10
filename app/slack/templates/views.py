@@ -341,26 +341,20 @@ def home_view(context: AsyncBoltContext, team_id: str, app_id: str) -> dict[str,
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Welcome to the Straker RAY Cloud App!"
-                }
+                    "text": "Welcome to the Straker RAY Cloud App!",
+                },
             },
-        ] + context["login_prompt"].blocks + [
-            {
-                "type": "divider"
-            },
-            {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": "Get started"
-                }
-            },
+        ]
+        + context["login_prompt"].blocks
+        + [
+            {"type": "divider"},
+            {"type": "header", "text": {"type": "plain_text", "text": "Get started"}},
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Here are some things to get you started. Also make sure you check out our Help Centre and use our built in chatbot within our app to guide you through the translation process."
-                }
+                    "text": "Here are some things to get you started. Also make sure you check out our Help Centre and use our built in chatbot within our app to guide you through the translation process.",
+                },
             },
             {
                 "type": "actions",
@@ -370,23 +364,23 @@ def home_view(context: AsyncBoltContext, team_id: str, app_id: str) -> dict[str,
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "⚡️ Create New Job"
+                            "text": "⚡️ Create New Job",
                         },
                         "value": context["channel_id"],
                         "style": "primary",
                         "action_id": "quote",
-                        "url": message_url
+                        "url": message_url,
                     },
                     {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "☀️ Daily Summary"
+                            "text": "☀️ Daily Summary",
                         },
                         "value": context["channel_id"],
                         "action_id": "daily_summary",
-                        "url": message_url
+                        "url": message_url,
                     },
                     # {
                     #     "type": "button",
@@ -397,37 +391,26 @@ def home_view(context: AsyncBoltContext, team_id: str, app_id: str) -> dict[str,
                     #     },
                     #     "value": "click_me_123"
                     # }
-                ]
+                ],
             },
-            {
-                "type": "divider"
-            },
+            {"type": "divider"},
             {
                 "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": "Give us your feedback"
-                }
+                "text": {"type": "plain_text", "text": "Give us your feedback"},
             },
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest RAY Cloud and Enterprise features, provide updates, and engage with customers like you!"
+                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest RAY Cloud and Enterprise features, provide updates, and engage with customers like you!",
                 },
                 "accessory": {
                     "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "Learn More",
-                        "emoji": True
-                    },
-                    "url": "https://strakergroup.frill.co/b/6m51y2vz/feature-ideas", # TODO: Update straker-utils
-                }
+                    "text": {"type": "plain_text", "text": "Learn More", "emoji": True},
+                    "url": "https://strakergroup.frill.co/b/6m51y2vz/feature-ideas",
+                },
             },
-            {
-                "type": "divider"
-            },
+            {"type": "divider"},
             {
                 "type": "actions",
                 "elements": [
@@ -436,20 +419,20 @@ def home_view(context: AsyncBoltContext, team_id: str, app_id: str) -> dict[str,
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "🌐 Visit DeltaRay"
+                            "text": "🌐 Visit DeltaRay",
                         },
-                        "url": domains.deltaray
+                        "url": domains.deltaray,
                     },
                     {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "❓Help Centre"
+                            "text": "❓Help Centre",
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps" # TODO: Update straker-utils
-                    }
-                ]
-            }
-        ]
+                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+                    },
+                ],
+            },
+        ],
     }
