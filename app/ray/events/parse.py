@@ -45,7 +45,18 @@ def get_ray_event_message(
         return ClientApprovedEventMessage(group_names)
     elif event_type == "ray:job:status_changed":
         event = JobStatusChangedEvent.parse_obj(event_data)
-        match event.status.strip().upper():
+        event.status = event.status.strip().upper()
+        event.previous_status = (
+            event.previous_status.strip().upper() if event.previous_status else None
+        )
+        # Do not send notification if quote is accepted or cancelled,
+        # send those notifications instead.
+        if (
+            event.status in ("IN_PROGRESS", "CANCELLED")
+            and event.previous_status == "LEAD"
+        ):
+            return None
+        match event.status:
             case "LEAD" | "IN_PROGRESS" | "VALIDATION" | "REFUNDED":
                 return JobStatusChangedEventMessage(
                     client_id=event.client_id,

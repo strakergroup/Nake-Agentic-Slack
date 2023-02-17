@@ -56,6 +56,7 @@ class JobStatusChangedEvent(BaseModel):
     id: str
     client_id: str
     status: str
+    previous_status: str | None
 
 
 class JobQuoteCreatedEvent(BaseModel):
