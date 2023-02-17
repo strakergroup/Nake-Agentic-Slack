@@ -57,6 +57,8 @@ class JobStatusChangedEvent(BaseModel):
     client_id: str
     status: str
     previous_status: str | None
+    sl: Language
+    tl: list[Language]
 
 
 class JobQuoteCreatedEvent(BaseModel):

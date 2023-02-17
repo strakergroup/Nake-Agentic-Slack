@@ -3,7 +3,6 @@
 # flake8: noqa
 
 from typing import Any
-import datetime
 import json
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
@@ -14,7 +13,6 @@ from ...ray.events.models import (
     JobQuoteCreatedEvent,
     ClientGroup,
     JobQuoteAcceptedEvent,
-    JobQuoteCancelledEvent,
 )
 from ...ray.utils import (
     get_job_url,
@@ -1252,15 +1250,36 @@ class JobStatusChangedEventMessage(SlackMessage):
 
 
 class JobCompletedEventMessage(SlackMessage):
-    def __init__(self, client_id: str, job_uuid: str, job_id: str) -> None:
+    def __init__(
+        self, client_id: str, job_uuid: str, job_id: str, target_languages: list[str]
+    ) -> None:
+        """Notification sent to the client when a translation job is completed.
+
+        Args:
+            client_id (str): The job's client ID
+            job_uuid (str): The job UUID.
+            job_id (str): The job ID (TJ number).
+            target_languages (list[str]): The job's target languages (formatted name).
+        """
+        if len(target_languages) > 3:
+            target_lang_text = ", ".join(target_languages[:2]) + ", and more"
+        else:
+            target_lang_text = ", ".join(target_languages)
         super().__init__(
-            f":tada: Your translation job {job_id} is completed!",
+            f"Your files for {job_id} are ready to download :white_check_mark:",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f":tada: Your translation job *{job_id}* is completed!",
+                        "text": f"Your files for *{job_id}* in *{target_lang_text}* are ready to download :white_check_mark:",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Please log into DeltaRAY below to access your completed files.",
                     },
                 },
                 job_deltaray_link_block(job_uuid, client_id),
@@ -1270,6 +1289,7 @@ class JobCompletedEventMessage(SlackMessage):
 
 class JobCancelledEventMessage(SlackMessage):
     def __init__(self, client_id: str, job_uuid: str, job_id: str) -> None:
+        job_url = get_job_url(job_uuid, client_id)
         super().__init__(
             f"Your translation job {job_id} has been cancelled",
             [
@@ -1277,10 +1297,9 @@ class JobCancelledEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Your translation job *{job_id}* has been cancelled",
+                        "text": f"Your translation job *<{job_url}|{job_id}>* has been cancelled.",
                     },
                 },
-                job_deltaray_link_block(job_uuid, client_id),
             ],
         )
 
@@ -1305,19 +1324,18 @@ class JobQuoteAcceptedEventMessage(SlackMessage):
 
 
 class JobQuoteCancelledEventMessage(SlackMessage):
-    def __init__(self, event: JobQuoteCancelledEvent) -> None:
-        id = event.id
+    def __init__(self, client_id: str, job_uuid: str, job_id: str) -> None:
+        job_url = get_job_url(job_uuid, client_id)
         super().__init__(
-            f"We have cancelled the quote for {id}.",
+            f"We have cancelled the quote for {job_id}.",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"We have cancelled the quote for *{id}*.",
+                        "text": f"We have cancelled the quote for *<{job_url}|{job_id}>*.",
                     },
                 },
-                job_deltaray_link_block(event.uuid, event.client_id),
             ],
         )
 

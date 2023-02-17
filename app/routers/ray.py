@@ -25,7 +25,6 @@ from ..slack.templates.messages import (
     ClientSignupEventAdminMessage,
     ClientApprovedEventMessage,
     JobCreationMessage,
-    FileTranslatedMessage,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.events.models import ClientGroup
@@ -134,28 +133,29 @@ async def api_job_callback(
             "message": "success",
             "detail": "Slack user notified of event: JOB_NUMBER",
         }
-    elif "JOB_COMPLETED" in body.event_types:
-        try:
-            job_data = body.job[0]
-            message = FileTranslatedMessage(
-                job_data["tj_number"],
-                job_data["source_file"],
-                job_data["sl"],
-                job_data["translated_file"],
-            )
-        except (KeyError, IndexError):
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                "The callback payload format is invalid",
-            )
-        app.client.token = slack_user.bot_token
-        await app.client.chat_postMessage(
-            channel=slack_user.user_id, text=message.text, blocks=message.blocks
-        )
-        return {
-            "message": "success",
-            "detail": "Slack user notified of event: JOB_COMPLETED",
-        }
+    # RAY-58084: Send one notification when job is completed instead of multiple.
+    # elif "JOB_COMPLETED" in body.event_types:
+    #     try:
+    #         job_data = body.job[0]
+    #         message = FileTranslatedMessage(
+    #             job_data["tj_number"],
+    #             job_data["source_file"],
+    #             job_data["sl"],
+    #             job_data["translated_file"],
+    #         )
+    #     except (KeyError, IndexError):
+    #         raise HTTPException(
+    #             status.HTTP_422_UNPROCESSABLE_ENTITY,
+    #             "The callback payload format is invalid",
+    #         )
+    #     app.client.token = slack_user.bot_token
+    #     await app.client.chat_postMessage(
+    #         channel=slack_user.user_id, text=message.text, blocks=message.blocks
+    #     )
+    #     return {
+    #         "message": "success",
+    #         "detail": "Slack user notified of event: JOB_COMPLETED",
+    #     }
     else:
         return {
             "message": "success",

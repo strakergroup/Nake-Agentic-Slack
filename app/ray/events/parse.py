@@ -66,7 +66,10 @@ def get_ray_event_message(
                 )
             case "COMPLETED":
                 return JobCompletedEventMessage(
-                    client_id=event.client_id, job_uuid=event.uuid, job_id=event.id
+                    client_id=event.client_id,
+                    job_uuid=event.uuid,
+                    job_id=event.id,
+                    target_languages=[lang.label for lang in event.tl],
                 )
             case "CANCELLED":
                 return JobCancelledEventMessage(
@@ -81,5 +84,7 @@ def get_ray_event_message(
         return JobQuoteAcceptedEventMessage(event)
     elif event_type == "ray:job:quote_cancelled":
         event = JobQuoteCancelledEvent.parse_obj(event_data)
-        return JobQuoteCancelledEventMessage(event)
+        return JobQuoteCancelledEventMessage(
+            client_id=event.client_id, job_uuid=event.uuid, job_id=event.id
+        )
     raise ValueError(f"Invalid RAY event type: {event_type}")
