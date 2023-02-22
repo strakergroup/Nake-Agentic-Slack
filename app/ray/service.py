@@ -202,7 +202,6 @@ class RayService:
     async def get_groups(self) -> list[GroupOptions]:
         """Gets the list of groups."""
         response = await self._ray.get_groups()
-        print(response.data)
         return response.data
 
     @classmethod
@@ -236,6 +235,7 @@ class RayService:
         if key not in cls.services:
             cls.services[key] = cls(ray_client_id=ray_client_id, token=token)
         return cls.services[key]
+
 
 # These functions are for RAY endpoints that do not require authentication.
 
