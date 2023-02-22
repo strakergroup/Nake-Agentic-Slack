@@ -403,7 +403,6 @@ async def handle_new_job(ack, view, context, client):
     if await require_ray_client(context, prompt_login=False):
         try:
             form = NewJobForm.parse_slack(view["state"]["values"])
-            print(form)
         except ValidationError as e:
             errors = convert_pydantic_to_slack_error(e)
             await ack(response_action="errors", errors=errors)
