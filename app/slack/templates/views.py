@@ -126,7 +126,6 @@ def home_view(
 
 def new_job_modal(
     client_name: str,
-    group: RaySuperGroup,
     file_options: list[dict[str, Any]] | None = None,
     initial_files: list[dict[str, Any]] | None = None,
     max_selected_files: int = 10,
@@ -296,6 +295,7 @@ def new_job_modal(
                     "type": "plain_text",
                     "text": "Which group do you want to submit job for?",
                 },
+                "optional": True,
             },
             # {
             #     "type": "input",

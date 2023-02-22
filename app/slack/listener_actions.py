@@ -415,7 +415,6 @@ async def show_quote_form_modal(
         trigger_id=trigger_id,
         view=new_job_modal(
             ray_client.username,
-            context["ray"].super_group,
             file_options=files,
             initial_files=initial_files,
         ),
@@ -432,6 +431,7 @@ async def submit_job(
         files=file_paths,
         sl=form.source_lang.code,
         tl=[lang.code for lang in form.target_langs],
+        group_id=form.group_id,
         workflow=form.workflow,
         reference=form.reference,
         job_notes=form.notes,

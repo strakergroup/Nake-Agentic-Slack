@@ -138,6 +138,7 @@ class RayService:
         sl: str,
         tl: list[str],
         workflow: str,
+        group_id: str | None = None,
         reference: str | None = None,
         job_notes: str | None = None,
     ) -> list[RayResponse[None]]:
@@ -165,6 +166,7 @@ class RayService:
                     title="Slack job",
                     sl=sl,
                     tl=tl,
+                    group_id=group_id,
                     reference=reference,
                     workflow=workflow,
                     callback_uri=callback_uri,
@@ -234,6 +236,7 @@ class RayService:
         if key not in cls.services:
             cls.services[key] = cls(ray_client_id=ray_client_id, token=token)
         return cls.services[key]
+
 
 # These functions are for RAY endpoints that do not require authentication.
 

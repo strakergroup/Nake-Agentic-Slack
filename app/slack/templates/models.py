@@ -62,6 +62,7 @@ class NewJobForm(BaseModel):
     reference: str | None = None  # Max 100 chars, validated in view
     source_lang: RayLanguage
     target_langs: list[RayLanguage]
+    group_id: str | None = None
     # target_date: datetime.date
     service: str
     validation: bool
@@ -141,6 +142,9 @@ class NewJobForm(BaseModel):
                         "selected_options"
                     ]
                 ],
+                group_id=values["group"]["group_options"]["selected_option"]["value"]
+                if values["group"]["group_options"]["selected_option"]
+                else None,
                 # target_date=values["target_date"]["target_date"]["selected_date"],
                 service=values["service"]["service"]["selected_option"]["value"],
                 validation=bool(values["validation"]["validation"]["selected_options"]),
