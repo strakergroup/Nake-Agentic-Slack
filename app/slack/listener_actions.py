@@ -411,11 +411,11 @@ async def show_quote_form_modal(
                     break
         except SlackApiError:
             pass
-
     await context.client.views_open(
         trigger_id=trigger_id,
         view=new_job_modal(
             ray_client.username,
+            context["ray"].super_group,
             file_options=files,
             initial_files=initial_files,
         ),
@@ -447,3 +447,16 @@ async def approve_pending_client(
     return await approve_pending_groups(
         ray_client.id, pending_client_id, pending_client_username
     )
+
+
+async def get_groups(ray_client: RayClient) -> list[dict[str, Any]]:
+    """Get the groups for a client."""
+
+    groups = await RayService.get_service(ray_client).get_groups()
+    return [
+        {
+            "text": {"type": "plain_text", "text": group.name, "emoji": False},
+            "value": group.id,
+        }
+        for group in groups
+    ]

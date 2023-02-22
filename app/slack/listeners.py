@@ -13,6 +13,7 @@ from buglog import notify_exception
 from .app import app
 from .middleware import ray_connection, require_ray_client
 from .listener_actions import (
+    get_groups,
     post_job_status,
     post_job_details,
     post_job_summary,
@@ -447,6 +448,13 @@ async def handle_new_job(ack, view, context, client):
 async def language_options(ack, payload):
     options = await get_language_options(payload.get("value"))
     await ack(options=options)
+
+
+@app.options("group_options", middleware=[ray_connection])
+async def group_options(ack, context):
+    if await require_ray_client(context):
+        options = await get_groups(context["ray"].client)
+        await ack(options=options)
 
 
 @app.options("file_options")

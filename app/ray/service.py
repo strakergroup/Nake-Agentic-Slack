@@ -4,7 +4,14 @@ from functools import wraps
 from urllib.parse import urlencode
 from httpx import Response
 from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
-from ray_sdk.api.v3.models import Job, JobSummary, Language, Pagination, Quote
+from ray_sdk.api.v3.models import (
+    Job,
+    JobSummary,
+    Language,
+    Pagination,
+    Quote,
+    GroupOptions,
+)
 
 from ..config import config, domains
 from ..auth.connector import RayClient
@@ -188,6 +195,13 @@ class RayService:
             return None, e.response
         except RayAPIResponseError as e:
             return None, e.response
+
+    @secured_endpoint
+    async def get_groups(self) -> list[GroupOptions]:
+        """Gets the list of groups."""
+        response = await self._ray.get_groups()
+        print(response.data)
+        return response.data
 
     @classmethod
     def get_service(

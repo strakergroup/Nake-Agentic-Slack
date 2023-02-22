@@ -7,7 +7,7 @@ from slack_bolt.context.async_context import AsyncBoltContext
 
 from .blocks import home_auth_blocks
 from ..select_options import map_file_options
-from ...auth.connector import RayConnection
+from ...auth.connector import RayConnection, RaySuperGroup
 from ...config import domains
 
 
@@ -126,6 +126,7 @@ def home_view(
 
 def new_job_modal(
     client_name: str,
+    group: RaySuperGroup,
     file_options: list[dict[str, Any]] | None = None,
     initial_files: list[dict[str, Any]] | None = None,
     max_selected_files: int = 10,
@@ -271,6 +272,29 @@ def new_job_modal(
                 "hint": {
                     "type": "plain_text",
                     "text": "Which language(s) do you want the file(s) to be translated to?",
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "group",
+                "element": {
+                    "type": "external_select",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Select group",
+                        "emoji": True,
+                    },
+                    "action_id": "group_options",
+                    "min_query_length": 0,
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Group",
+                    "emoji": True,
+                },
+                "hint": {
+                    "type": "plain_text",
+                    "text": "Which group do you want to submit job for?",
                 },
             },
             # {
