@@ -493,6 +493,7 @@ async def approve_pending_groups(
                         "client_id": pending_client_id,
                         "username": pending_client_username,
                         "groups": groups_to_approve,
+                        "approver": {"client_id": admin_client_id},
                     },
                     "source": "Slack RAY Translator",
                 },
