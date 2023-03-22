@@ -71,7 +71,7 @@ class OnboardingMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Connect your DeltaRAY account to get details about your translation jobs.",
+                        "text": "Connect your RAY Cloud account to get details about your translation jobs.",
                     },
                 },
                 {
@@ -81,7 +81,7 @@ class OnboardingMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Connect DeltaRAY account",
+                                "text": "Connect RAY Cloud account",
                             },
                             "style": "primary",
                             "url": get_slack_ray_cloud_connect_url(
@@ -132,21 +132,21 @@ class LoginMessage(SlackMessage):
         self._variation = variation
 
         # Have variations of the login message depending on the arguments.
-        block_text = "Click this button to connect your DeltaRAY account."
+        block_text = "Click this button to connect your RAY Cloud account."
         if variation == self.GET_JOB:
-            block_text = "Connect your DeltaRAY account to view your jobs."
+            block_text = "Connect your RAY Cloud account to view your jobs."
         elif variation == self.NEW_JOB:
             block_text = (
-                "Connect your DeltaRAY account to submit a new translation job."
+                "Connect your RAY Cloud account to submit a new translation job."
             )
         elif isinstance(ray_client, RayClient):
             block_text = (
-                f"Your connected DeltaRAY account is: <{domains.ray_cloud}|{ray_client.username}>.\n"
+                f"Your connected RAY Cloud account is: <{domains.ray_cloud}|{ray_client.username}>.\n"
                 "You can connect a different account by clicking this button."
             )
 
         super().__init__(
-            "Connect your DeltaRAY account",
+            "Connect your RAY Cloud account",
             [
                 {
                     "type": "section",
@@ -159,7 +159,7 @@ class LoginMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Connect DeltaRAY account",
+                                "text": "Connect RAY Cloud account",
                             },
                             "style": "primary",
                             "url": get_slack_ray_cloud_connect_url(
@@ -246,13 +246,13 @@ class LogoutMessage(SlackMessage):
 
     def __init__(self, ray_username: str) -> None:
         super().__init__(
-            "Disconnect your DeltaRAY account",
+            "Disconnect your RAY Cloud account",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Click this button to disconnect your DeltaRAY account: <{domains.ray_cloud}|{ray_username}>.",
+                        "text": f"Click this button to disconnect your RAY Cloud account: <{domains.ray_cloud}|{ray_username}>.",
                     },
                 },
                 {
@@ -262,7 +262,7 @@ class LogoutMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Disconnect DeltaRAY account",
+                                "text": "Disconnect RAY Cloud account",
                             },
                             "style": "danger",
                             "action_id": "disconnect",
@@ -287,12 +287,12 @@ class SuccessfulLogoutMessage(SlackMessage):
 
     def __init__(self, user_id: str, ray_username: str | None = None) -> None:
         block_message = (
-            f"Your DeltaRAY account <{domains.ray_cloud}|{ray_username}> is now disconnected from <@{user_id}>."
+            f"Your RAY Cloud account <{domains.ray_cloud}|{ray_username}> is now disconnected from <@{user_id}>."
             if ray_username
-            else f"Your DeltaRAY account is now disconnected from <@{user_id}>."
+            else f"Your RAY Cloud account is now disconnected from <@{user_id}>."
         )
         super().__init__(
-            "Your DeltaRAY account is now disconnected.",
+            "Your RAY Cloud account is now disconnected.",
             [
                 {
                     "type": "section",
@@ -305,7 +305,7 @@ class SuccessfulLogoutMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "You can use `/ray connect` to connect your DeltaRAY account again.",
+                        "text": "You can use `/ray connect` to connect your RAY Cloud account again.",
                     },
                 },
             ],
@@ -920,9 +920,9 @@ class HelpMessage(SlackMessage):
                             "text": "Upload files to translate and submit a quote request",
                         },
                         {"type": "mrkdwn", "text": "`/ray new`"},
-                        {"type": "mrkdwn", "text": "View your DeltaRAY connection"},
+                        {"type": "mrkdwn", "text": "View your RAY Cloud connection"},
                         {"type": "mrkdwn", "text": "`/ray info`"},
-                        {"type": "mrkdwn", "text": "Connect your DeltaRAY account"},
+                        {"type": "mrkdwn", "text": "Connect your RAY Cloud account"},
                         {"type": "mrkdwn", "text": "`/ray connect`"},
                     ],
                 },
@@ -1016,7 +1016,7 @@ class ConnectionInfoMessage(SlackMessage):
         # Next get Slack user - RAY Cloud account info.
         account_blocks = []
         if ray_connection is not None and ray_connection.client is not None:
-            text = f"Your connected DeltaRAY account is: <{domains.ray_cloud}|{ray_connection.client.username}>"
+            text = f"Your connected RAY Cloud account is: <{domains.ray_cloud}|{ray_connection.client.username}>"
             account_blocks.append(
                 {
                     "type": "section",
@@ -1029,7 +1029,7 @@ class ConnectionInfoMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Click this button to connect your DeltaRAY account.",
+                        "text": "Click this button to connect your RAY Cloud account.",
                     },
                 }
             )
@@ -1041,7 +1041,7 @@ class ConnectionInfoMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Connect DeltaRAY account",
+                                "text": "Connect RAY Cloud account",
                             },
                             "style": "primary",
                             "url": get_slack_ray_cloud_connect_url(
@@ -1112,13 +1112,13 @@ class ClientSignupEventMessage(SlackMessage):
     def __init__(self, event: ClientSignupEvent) -> None:
         self.event = event
         super().__init__(
-            "Thank you for signing up to DeltaRAY :tada:",
+            "Thank you for signing up to RAY Cloud :tada:",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Thank you for signing up to DeltaRAY <{domains.ray_cloud}|{event.username}> :tada:",
+                        "text": f"Thank you for signing up to RAY Cloud <{domains.ray_cloud}|{event.username}> :tada:",
                     },
                 },
                 {
@@ -1136,13 +1136,13 @@ class ClientSignupEventAdminMessage(SlackMessage):
     def __init__(self, event: ClientSignupEvent, groups: list[ClientGroup]) -> None:
         self.event = event
         super().__init__(
-            f"A new user has signed up for a DeltaRAY account: {event.first_name} {event.last_name} ({event.email})",
+            f"A new user has signed up for a RAY Cloud account: {event.first_name} {event.last_name} ({event.email})",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"A new user has signed up for a DeltaRAY account:\n{event.first_name} {event.last_name} ({event.email})",
+                        "text": f"A new user has signed up for a RAY Cloud account:\n{event.first_name} {event.last_name} ({event.email})",
                     },
                 },
                 {
@@ -1164,7 +1164,7 @@ class ClientSignupEventAdminMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "To approve this user please click the approve button below, or alternatively if you need to change anything, please log into DeltaRAY to edit their permissions.",
+                        "text": "To approve this user please click the approve button below, or alternatively if you need to change anything, please log into RAY Cloud to edit their permissions.",
                     },
                 },
                 {
@@ -1188,7 +1188,7 @@ class ClientSignupEventAdminMessage(SlackMessage):
                             "text": {
                                 "type": "plain_text",
                                 "emoji": True,
-                                "text": "Log into DeltaRAY",
+                                "text": "Log into RAY Cloud",
                             },
                             "url": domains.ray_cloud,
                             "action_id": "link",
@@ -1203,13 +1203,13 @@ class ClientApprovedEventMessage(SlackMessage):
     def __init__(self, groups: list[str]) -> None:
         groups_text = "\n".join(f"- *{group}*" for group in groups)
         super().__init__(
-            ":raised_hands: Your DeltaRAY groups have been approved by an Admin.",
+            ":raised_hands: Your RAY Cloud groups have been approved by an Admin.",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f":raised_hands: Your DeltaRAY groups have been approved by an Admin:\n\n{groups_text}",
+                        "text": f":raised_hands: Your RAY Cloud groups have been approved by an Admin:\n\n{groups_text}",
                     },
                 },
                 {"type": "divider"},
@@ -1279,7 +1279,7 @@ class JobCompletedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Please log into DeltaRAY below to access your completed files.",
+                        "text": "Please log into RAY Cloud below to access your completed files.",
                     },
                 },
                 job_link_block(job_uuid, client_id),

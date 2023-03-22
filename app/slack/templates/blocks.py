@@ -45,7 +45,7 @@ def home_auth_blocks(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "Connect your DeltaRAY account to get details about your translation jobs.",
+                "text": "Connect your RAY Cloud account to get details about your translation jobs.",
             },
         },
         {
@@ -55,7 +55,7 @@ def home_auth_blocks(
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": "Connect your DeltaRAY account",
+                        "text": "Connect your RAY Cloud account",
                     },
                     "style": "primary",
                     "url": get_slack_ray_cloud_connect_url(
@@ -76,7 +76,7 @@ def job_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
                 "type": "button",
                 "text": {
                     "type": "plain_text",
-                    "text": "View this job in DeltaRAY",
+                    "text": "View this job in RAY Cloud",
                     "emoji": True,
                 },
                 "style": "primary",
@@ -180,7 +180,7 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
                         "text": {
                             "type": "plain_text",
                             "text": "Are you sure you want to cancel this quote?\n\n"
-                            "This action requires you to be logged in to DeltaRAY.",
+                            "This action requires you to be logged in to RAY Cloud.",
                         },
                         "confirm": {"type": "plain_text", "text": "Yes"},
                         "deny": {
@@ -193,7 +193,7 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": "View in Deltaray",
+                        "text": "View in RAY Cloud",
                         "emoji": True,
                     },
                     "url": job_url,

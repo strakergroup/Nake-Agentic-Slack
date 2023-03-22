@@ -103,7 +103,7 @@ def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "🌐 Visit DeltaRAY",
+                            "text": "🌐 Visit RAY Cloud",
                         },
                         "action_id": "link_1",
                         "url": domains.ray_cloud,
@@ -385,6 +385,7 @@ def new_job_modal(
                     "emoji": True,
                 },
                 "optional": True,
+                "max_length": 250,
             },
             # TODO: job category?
             # {
