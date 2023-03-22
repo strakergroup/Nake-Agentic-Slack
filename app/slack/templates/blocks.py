@@ -4,7 +4,7 @@
 
 from typing import Any
 from ray_sdk.api.v3.models import Quote
-from ...auth.connector import get_slack_deltaray_integration_url, RayConnection
+from ...auth.connector import get_slack_ray_cloud_connect_url, RayConnection
 from ...config import domains
 from ...ray.utils import (
     get_job_url,
@@ -20,8 +20,8 @@ def home_auth_blocks(
     channel_id: str,
     ray_connection: RayConnection | None,
 ) -> list[dict[str, Any]]:
-    """The blocks in the Home tab which displays the DeltaRAY connection
-    details or asks the user to connect their DeltaRAY account.
+    """The blocks in the Home tab which displays the RAY Cloud connection
+    details or asks the user to connect their RAY Cloud account.
     """
     if isinstance(ray_connection, RayConnection) and ray_connection.client:
         return [
@@ -36,7 +36,7 @@ def home_auth_blocks(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"Your Slack account <@{user_id}> is connected with: <{domains.deltaray}|{ray_connection.client.username}>.",
+                    "text": f"Your Slack account <@{user_id}> is connected with: <{domains.ray_cloud}|{ray_connection.client.username}>.",
                 },
             },
         ]
@@ -58,7 +58,7 @@ def home_auth_blocks(
                         "text": "Connect your DeltaRAY account",
                     },
                     "style": "primary",
-                    "url": get_slack_deltaray_integration_url(
+                    "url": get_slack_ray_cloud_connect_url(
                         user_id, team_id, app_id, channel_id
                     ),
                     "action_id": "login",
@@ -68,7 +68,7 @@ def home_auth_blocks(
     ]
 
 
-def job_deltaray_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
+def job_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
     return {
         "type": "actions",
         "elements": [

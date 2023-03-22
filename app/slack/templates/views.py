@@ -106,7 +106,7 @@ def home_view(
                             "text": "🌐 Visit DeltaRAY",
                         },
                         "action_id": "link_1",
-                        "url": domains.deltaray,
+                        "url": domains.ray_cloud,
                     },
                     {
                         "type": "button",
@@ -135,7 +135,7 @@ def new_job_modal(
     category, source and target languages.
 
     Args:
-        client_name (str): The user's DeltaRay username.
+        client_name (str): The user's RAY Cloud username.
         file_options (list[dict] | None, optional): A list of file objects to set as available
             options for the "Files to translate" select input. Defaults to None.
         initial_files (list[dict] | None, optional): A list of file objects to initally select.

@@ -7,7 +7,7 @@ import json
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm
-from .blocks import job_deltaray_link_block, quote_message_block
+from .blocks import job_link_block, quote_message_block
 from ...ray.events.models import (
     ClientSignupEvent,
     JobQuoteCreatedEvent,
@@ -24,7 +24,7 @@ from ...config import domains
 from ...auth.connector import (
     RayClient,
     RayConnection,
-    get_slack_deltaray_integration_url,
+    get_slack_ray_cloud_connect_url,
 )
 
 
@@ -84,7 +84,7 @@ class OnboardingMessage(SlackMessage):
                                 "text": "Connect DeltaRAY account",
                             },
                             "style": "primary",
-                            "url": get_slack_deltaray_integration_url(
+                            "url": get_slack_ray_cloud_connect_url(
                                 user_id, team_id, app_id, channel_id
                             ),
                             "action_id": "login",
@@ -96,7 +96,7 @@ class OnboardingMessage(SlackMessage):
 
 
 class LoginMessage(SlackMessage):
-    """Message to send to prompt the user to connect their DeltaRAY account."""
+    """Message to send to prompt the user to connect their RAY Cloud account."""
 
     GET_JOB = "get_job"
     NEW_JOB = "new_job"
@@ -111,7 +111,7 @@ class LoginMessage(SlackMessage):
         variation: str | None = None,
     ) -> None:
         """Constructor for the login Slack message. If the Slack user already has
-        a connected DeltaRAY account, creates a variation with the client username
+        a connected RAY Cloud account, creates a variation with the client username
         in the message.
 
         Args:
@@ -141,7 +141,7 @@ class LoginMessage(SlackMessage):
             )
         elif isinstance(ray_client, RayClient):
             block_text = (
-                f"Your connected DeltaRAY account is: <{domains.deltaray}|{ray_client.username}>.\n"
+                f"Your connected DeltaRAY account is: <{domains.ray_cloud}|{ray_client.username}>.\n"
                 "You can connect a different account by clicking this button."
             )
 
@@ -162,7 +162,7 @@ class LoginMessage(SlackMessage):
                                 "text": "Connect DeltaRAY account",
                             },
                             "style": "primary",
-                            "url": get_slack_deltaray_integration_url(
+                            "url": get_slack_ray_cloud_connect_url(
                                 user_id, team_id, app_id, channel_id
                             ),
                             "action_id": "login",
@@ -190,7 +190,7 @@ class LoginMessage(SlackMessage):
 
 
 class SuccessfulLoginMessage(SlackMessage):
-    """Message to send after a user successfully connects their DeltaRAY
+    """Message to send after a user successfully connects their RAY Cloud
     account.
     """
 
@@ -202,7 +202,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f":white_check_mark: Login was successful! <@{user_id}> is now connected with <{domains.deltaray}|{ray_username}>.",
+                        "text": f":white_check_mark: Login was successful! <@{user_id}> is now connected with <{domains.ray_cloud}|{ray_username}>.",
                     },
                 },
                 {"type": "divider"},
@@ -242,7 +242,7 @@ class SuccessfulLoginMessage(SlackMessage):
 
 
 class LogoutMessage(SlackMessage):
-    """Message with a button disconnect a user's DeltaRAY account."""
+    """Message with a button disconnect a user's RAY Cloud account."""
 
     def __init__(self, ray_username: str) -> None:
         super().__init__(
@@ -252,7 +252,7 @@ class LogoutMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Click this button to disconnect your DeltaRAY account: <{domains.deltaray}|{ray_username}>.",
+                        "text": f"Click this button to disconnect your DeltaRAY account: <{domains.ray_cloud}|{ray_username}>.",
                     },
                 },
                 {
@@ -283,11 +283,11 @@ class LogoutMessage(SlackMessage):
 
 
 class SuccessfulLogoutMessage(SlackMessage):
-    """A Slack user's DeltaRAY account was successfully disconnected."""
+    """A Slack user's RAY Cloud account was successfully disconnected."""
 
     def __init__(self, user_id: str, ray_username: str | None = None) -> None:
         block_message = (
-            f"Your DeltaRAY account <{domains.deltaray}|{ray_username}> is now disconnected from <@{user_id}>."
+            f"Your DeltaRAY account <{domains.ray_cloud}|{ray_username}> is now disconnected from <@{user_id}>."
             if ray_username
             else f"Your DeltaRAY account is now disconnected from <@{user_id}>."
         )
@@ -347,7 +347,7 @@ class JobStatusMessage(SlackMessage):
                         },
                     ],
                 },
-                job_deltaray_link_block(job.uuid, client_id),
+                job_link_block(job.uuid, client_id),
             ],
         )
 
@@ -400,7 +400,7 @@ class JobDetailsMessage(SlackMessage):
                         },
                     ],
                 },
-                job_deltaray_link_block(job.uuid, client_id),
+                job_link_block(job.uuid, client_id),
             ],
         )
 
@@ -987,7 +987,7 @@ class WhatsNextMessage(SlackMessage):
 
 
 class ConnectionInfoMessage(SlackMessage):
-    """The current Slack-DeltaRAY connection details."""
+    """The current Slack - RAY Cloud connection details."""
 
     def __init__(
         self,
@@ -1013,10 +1013,10 @@ class ConnectionInfoMessage(SlackMessage):
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": text},
             }
-        # Next get Slack user - DeltaRAY account info.
+        # Next get Slack user - RAY Cloud account info.
         account_blocks = []
         if ray_connection is not None and ray_connection.client is not None:
-            text = f"Your connected DeltaRAY account is: <{domains.deltaray}|{ray_connection.client.username}>"
+            text = f"Your connected DeltaRAY account is: <{domains.ray_cloud}|{ray_connection.client.username}>"
             account_blocks.append(
                 {
                     "type": "section",
@@ -1044,7 +1044,7 @@ class ConnectionInfoMessage(SlackMessage):
                                 "text": "Connect DeltaRAY account",
                             },
                             "style": "primary",
-                            "url": get_slack_deltaray_integration_url(
+                            "url": get_slack_ray_cloud_connect_url(
                                 user_id, team_id, app_id, channel_id
                             ),
                             "action_id": "login",
@@ -1118,7 +1118,7 @@ class ClientSignupEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Thank you for signing up to DeltaRAY <{domains.deltaray}|{event.username}> :tada:",
+                        "text": f"Thank you for signing up to DeltaRAY <{domains.ray_cloud}|{event.username}> :tada:",
                     },
                 },
                 {
@@ -1190,7 +1190,7 @@ class ClientSignupEventAdminMessage(SlackMessage):
                                 "emoji": True,
                                 "text": "Log into DeltaRAY",
                             },
-                            "url": domains.deltaray,
+                            "url": domains.ray_cloud,
                             "action_id": "link",
                         },
                     ],
@@ -1244,7 +1244,7 @@ class JobStatusChangedEventMessage(SlackMessage):
                         "text": f"Your translation job *{job_id}* has changed status to: {status_formatted}",
                     },
                 },
-                job_deltaray_link_block(job_uuid, client_id),
+                job_link_block(job_uuid, client_id),
             ],
         )
 
@@ -1282,7 +1282,7 @@ class JobCompletedEventMessage(SlackMessage):
                         "text": "Please log into DeltaRAY below to access your completed files.",
                     },
                 },
-                job_deltaray_link_block(job_uuid, client_id),
+                job_link_block(job_uuid, client_id),
             ],
         )
 
@@ -1318,7 +1318,7 @@ class JobQuoteAcceptedEventMessage(SlackMessage):
                         "text": f":clap: Quote Accepted for *{id}*. Your job will be completed before {format_datetime_slack(target_date)}.",
                     },
                 },
-                job_deltaray_link_block(event.uuid, event.client_id),
+                job_link_block(event.uuid, event.client_id),
             ],
         )
 

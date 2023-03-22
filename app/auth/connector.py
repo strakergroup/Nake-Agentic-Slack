@@ -33,7 +33,7 @@ class SlackUser:
 
 @dataclass(frozen=True, slots=True)
 class RaySuperGroup:
-    """Dataclass representing a DeltaRAY super group."""
+    """Dataclass representing a RAY Cloud super group."""
 
     id: str
     """The RAY group UUID (`obj_m_group.obj_uuid`)."""
@@ -45,7 +45,7 @@ class RaySuperGroup:
 
 @dataclass(frozen=True, slots=True)
 class RayClient:
-    """Dataclass representing a DeltaRAY client."""
+    """Dataclass representing a RAY Cloud client."""
 
     id: str
     """The RAY client UUID (`obj_m_member.obj_uuid`)."""
@@ -63,9 +63,9 @@ class RayClient:
 
 @dataclass(frozen=True, slots=True)
 class RayConnection:
-    """Dataclass representing a connection between a Slack user and a DeltaRAY
+    """Dataclass representing a connection between a Slack user and a RAY Cloud
     client. This also includes the connection between the Slack workspace and
-    the DeltaRAY group.
+    the RAY Cloud group.
     """
 
     super_group: RaySuperGroup
@@ -121,7 +121,7 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
     """Gets the Slack user connected to a RAY client.
 
     Args:
-        ray_client_id (str): The DeltaRAY user ID.
+        ray_client_id (str): The RAY Cloud user ID.
     """
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
@@ -172,7 +172,7 @@ def get_client_access_tokens(ray_client_id: str) -> tuple[str]:
 
 
 async def get_ray_super_group(team_id: str) -> RaySuperGroup | None:
-    """Gets the DeltaRAY super group linked to the Slack workspace if an active
+    """Gets the RAY Cloud super group linked to the Slack workspace if an active
     link exists, otherwise returns None.
 
     Args:
@@ -198,7 +198,7 @@ async def get_ray_super_group(team_id: str) -> RaySuperGroup | None:
 
 
 async def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient | None:
-    """Gets the RAY client id and username linked to the Slack account if an active link
+    """Gets the RAY Cloud client id and username linked to the Slack account if an active link
     exists, otherwise returns None.
 
     Args:
@@ -256,7 +256,7 @@ async def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient |
 async def get_ray_connection(
     user_id: str, team_id: str, app_id: str
 ) -> RayConnection | None:
-    """Gets the DeltaRAY super group and client linked to the Slack workspace
+    """Gets the RAY Cloud super group and client linked to the Slack workspace
     and user. If the Slack workspace is not linked, ignore the Slack user link.
     A Slack workspace can have a connection without a Slack user connection.
     """
@@ -269,7 +269,7 @@ async def get_ray_connection(
 
 
 def get_group_admin_slack_users(group_id: str) -> list[SlackUser]:
-    """Gets the Slack users of the admins of a DeltaRAY group."""
+    """Gets the Slack users of the admins of a RAY Cloud group."""
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
             """
@@ -316,7 +316,7 @@ def get_group_admin_slack_users(group_id: str) -> list[SlackUser]:
 
 
 def disconnect_ray_account(user_id: str, team_id: str, app_id: str) -> bool:
-    """Disconnect the DeltaRAY account of a slack user.
+    """Disconnect the RAY Cloud account of a slack user.
 
     Args:
         user_id (str): The Slack user ID.
@@ -324,7 +324,7 @@ def disconnect_ray_account(user_id: str, team_id: str, app_id: str) -> bool:
         app_id (str): The Slack app ID.
 
     Returns:
-        bool: The Slack user had a connected DeltaRAY account.
+        bool: The Slack user had a connected RAY Cloud account.
     """
     with engines["ray_integration"].begin() as conn:
         sql = text(
@@ -391,11 +391,11 @@ def encrpyt_slack_integration_token(
     return encrypt_aes(json.dumps(data), config.slack_deltaray_key)
 
 
-def get_slack_deltaray_integration_url(
+def get_slack_ray_cloud_connect_url(
     user_id: str, team_id: str, app_id: str, channel_id: str, expire_seconds: int = 3600
 ) -> str:
     """Generates a URL for a user to connect their Slack account to their
-    DeltaRAY account.
+    RAY Cloud account.
 
     Args:
         user_id (str): The ID of the user.
@@ -406,14 +406,14 @@ def get_slack_deltaray_integration_url(
         Defaults to 3600.
 
     Returns:
-        str: The URL to connect a user's Slack account and DeltaRAY account.
+        str: The URL to connect a user's Slack account and RAY Cloud account.
     """
     params = {
         "token": encrpyt_slack_integration_token(
             user_id, team_id, app_id, channel_id, expire_seconds
         )
     }
-    return f"{domains.deltaray}/app/slack?{urlencode(params)}"
+    return f"{domains.ray_cloud}/app/slack?{urlencode(params)}"
 
 
 async def approve_pending_groups(
