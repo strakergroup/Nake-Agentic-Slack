@@ -10,9 +10,9 @@ name = "straker"
 
 [packages]
 python-dotenv = "*"
-fastapi = {extras = ["all"], version = ">=0.89.0,<0.90.0"}
+fastapi = {extras = ["all"], version = ">=0.95.0,<0.96.0"}
 uvicorn = {extras = ["standard"], version = "*"}
-pydantic = "*"
+pydantic = ">=1.10.0,<1.11.0"
 elastic-apm = "*"
 slack-bolt = "*"
 aiohttp = "*"
