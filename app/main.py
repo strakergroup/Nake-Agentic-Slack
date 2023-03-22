@@ -4,7 +4,7 @@ import buglog
 from fastapi import FastAPI
 from elasticapm.contrib.starlette import make_apm_client, ElasticAPM
 
-from .config import config, domains
+from .config import Environment, config, domains
 from .routers import slack, ray, health
 
 
@@ -17,7 +17,12 @@ buglog.init(
 
 
 # Configure FastAPI
-app = FastAPI()
+app = FastAPI(
+    title="Slack RAY Translator",
+    description="The Slack app API for Straker RAY Cloud",
+    docs_url="/docs" if config.environment != Environment.production else None,
+    redoc_url="/redoc" if config.environment != Environment.production else None,
+)
 app.include_router(slack.router)
 app.include_router(ray.router)
 app.include_router(health.router)
@@ -38,9 +43,7 @@ if config.elastic_apm_server_url:
         {
             "SERVICE_NAME": "int-slack-ray-translator",
             "SERVER_URL": config.elastic_apm_server_url,
-            "ENVIRONMENT": "production"
-            if config.environment.value == "live"
-            else config.environment.value,
+            "ENVIRONMENT": config.environment.value,
             "TRANSACTION_IGNORE_URLS": ["/health"],
             "TRANSACTIONS_IGNORE_PATTERNS": ["^OPTIONS ", "/health"],
         }

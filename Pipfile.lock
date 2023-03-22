@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "04854d4fa47e433afc332b8052463d4b0e97cd4482a4592474ac41728d396c3f"
+            "sha256": "ef5a24c21d28f648e25b5e37b60604a914b9f14c5d9152c99be8d9a227999530"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -362,7 +362,7 @@
                 "sha256:224e32b03eb46be70e12ef6d64e0be123a64e621ab4c0822ff6d450d52a540b9",
                 "sha256:89141536394f909066cabd112e3e1a37e4e654db00a25308b0f130bc3152eb46"
             ],
-            "markers": "python_version >= '3.7' and python_version < '4'",
+            "markers": "python_version >= '3.7' and python_version < '4.0'",
             "version": "==2.3.0"
         },
         "elastic-apm": {
@@ -1006,7 +1006,7 @@
                 "sha256:64299f4909223da747622c030b781c0d7811e359c37124b4bd368fb8c6518baa",
                 "sha256:98b1b2782e3c6c4904938b84c0eb932721069dfdb9134313beff7c83c2df24bf"
             ],
-            "markers": "python_version >= '3.7' and python_version < '4'",
+            "markers": "python_version >= '3.7' and python_version < '4.0'",
             "version": "==2.28.2"
         },
         "rfc3986": {
@@ -1108,11 +1108,11 @@
         },
         "straker-utils": {
             "hashes": [
-                "sha256:46be669297ea7f24eb81c8b9e1d3e04f310b4bf6e424e0f9df690935dc95a96a",
-                "sha256:625d215c7f6f61492b18cc3ec0a327e8cdda521136a2ae110837efec1ee22c6f"
+                "sha256:04d342539bc9787d68a37214c2cdb842c44cf67b589a30e48bf48d41165fcd77",
+                "sha256:1ebd82c6315182bd98687ccbf8ba3a978e1d2920bb90b601094ef47d1b0d65ed"
             ],
             "index": "straker",
-            "version": "==0.1.5"
+            "version": "==0.1.8"
         },
         "typing-extensions": {
             "hashes": [

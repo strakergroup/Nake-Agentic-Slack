@@ -4,7 +4,7 @@ import hashlib
 from pydantic import BaseSettings, Field, HttpUrl, SecretBytes, SecretStr, validator
 from sqlalchemy import text
 from straker_utils.domain import StrakerDomains
-from straker_utils.environment import Environment
+from straker_utils.environment import Environment, get_current_environment
 
 from .database import engines
 
@@ -18,8 +18,8 @@ class StrakerConfig(BaseSettings):
     derived from from the `environment` setting.
     """
 
+    environment: Environment = None
     # Settings from environment variables.
-    environment: Environment = Field(env="ENVIRONMENT")
     buglog_listener_url: str | None = Field(None, env="BUGLOG_LISTENER_URL")
     elastic_apm_server_url: str | None = Field(None, env="ELASTIC_APM_SERVER_URL")
     # Derived settings.
@@ -27,6 +27,10 @@ class StrakerConfig(BaseSettings):
     slack_deltaray_key: SecretBytes = None
     slack_queue_proxy_secret: SecretStr = None
     health_check_password: SecretStr = None
+
+    @validator("environment", pre=True)
+    def environment_validator(cls, v, values):
+        return get_current_environment()
 
     @validator("buglog_listener_url")
     def default_buglog_listener_url(cls, v, values):
@@ -39,12 +43,7 @@ class StrakerConfig(BaseSettings):
     def default_base_url(cls, v, values):
         if v:
             return v.strip("/")
-        match values["environment"]:
-            case (Environment.local | Environment.dev | Environment.uat) as env:
-                return f"https://{env.value}-slack-deltaray.strakertranslations.com"
-            case Environment.live:
-                return "https://slack-deltaray.strakertranslations.com"
-        raise AssertionError(f"Invalid environment value: {values['environment']}")
+        return domains.slack_ray_translator
 
     @validator("slack_deltaray_key")
     def default_slack_deltaray_key(cls, v, values):
@@ -53,13 +52,19 @@ class StrakerConfig(BaseSettings):
         with engines["ray_integration_readonly"].connect() as conn:
             sql = text(
                 """
-                SELECT secret_key FROM slack_integration_keys
+                SELECT secret_key FROM integration_keys
                 WHERE name = :name AND environment = :env
                 LIMIT 1
                 """
             )
             result = conn.execute(
-                sql, {"name": "slack_deltaray", "env": values["environment"].value}
+                sql,
+                {
+                    "name": "slack_deltaray",
+                    "env": "live"
+                    if values["environment"] == Environment.production
+                    else values["environment"].value,
+                },
             )
             row = result.first()
             if not row:
@@ -75,18 +80,24 @@ class StrakerConfig(BaseSettings):
         with engines["ray_integration_readonly"].connect() as conn:
             sql = text(
                 """
-                SELECT secret_key FROM slack_integration_keys
+                SELECT secret_key FROM integration_keys
                 WHERE name = :name AND environment = :env
                 LIMIT 1
                 """
             )
             result = conn.execute(
-                sql, {"name": "slack_queue_proxy", "env": values["environment"].value}
+                sql,
+                {
+                    "name": "slack_streams",
+                    "env": "live"
+                    if values["environment"] == Environment.production
+                    else values["environment"].value,
+                },
             )
             row = result.first()
             if not row:
                 raise AssertionError(
-                    "The Slack-Queue-Proxy integration key is not in the database"
+                    "The Slack-Streams integration key is not in the database"
                 )
             return row[0]
 
