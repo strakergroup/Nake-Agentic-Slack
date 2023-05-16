@@ -378,6 +378,7 @@ def new_job_modal(
                     "type": "plain_text_input",
                     "action_id": "notes",
                     "multiline": True,
+                    "max_length": 250,
                 },
                 "label": {
                     "type": "plain_text",
@@ -385,7 +386,6 @@ def new_job_modal(
                     "emoji": True,
                 },
                 "optional": True,
-                "max_length": 250,
             },
             # TODO: job category?
             # {
