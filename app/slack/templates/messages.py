@@ -452,7 +452,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*In Progress Jobs*\n{in_progress} job(s) currently in progress",
+                        "text": f"*In Progress Jobs*\n:large_green_circle: *{in_progress} job(s)* are predicted to be on-time\n:large_orange_circle: *{in_progress} jobs* have been flagged as caution",
                     },
                     "accessory": {
                         "type": "static_select",
