@@ -185,12 +185,18 @@ async def post_job_summary(
     validation_count = 0
     pending_quotes_count = 0
     order_now_count = 0
-
     if isinstance(responses[0], RayResponse):
         in_progress_count = responses[0].data.summary.get("in_progress", 0)
         validation_count = responses[0].data.summary.get("validation", 0)
         pending_quotes_count = responses[0].data.summary.get("pending_quotes", 0)
         order_now_count = responses[0].data.summary.get("order_now", 0)
+        predictions = responses[0].data.summary.get(
+            "predictions",
+            {
+                "on_time": 0,
+                "late": 0,
+            },
+        )
     else:
         notify_exception(responses[0])
     if isinstance(responses[1], RayResponse):
@@ -205,6 +211,7 @@ async def post_job_summary(
             validation=validation_count,
             pending_quotes=pending_quotes_count,
             order_now=order_now_count,
+            predictions=predictions,
         )
         return await context.client.chat_postMessage(
             channel=channel_id,
