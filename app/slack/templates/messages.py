@@ -435,6 +435,7 @@ class JobSummaryMessage(SlackMessage):
         validation: int,
         pending_quotes: int,
         order_now: int,
+        predictions: dict,
     ) -> None:
         """The constructor.
 
@@ -452,7 +453,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*In Progress Jobs*\n{in_progress} job(s) currently in progress",
+                        "text": f"*In Progress Jobs*\n:large_green_circle: *{predictions['on_time']} job(s)* are predicted to be on-time\n:large_orange_circle: *{predictions['late']} job(s)* have been flagged as caution",
                     },
                     "accessory": {
                         "type": "static_select",
