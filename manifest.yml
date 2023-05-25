@@ -46,7 +46,7 @@ features:
       description: Submit a new translation job
   slash_commands:
     - command: /ray
-      url: https://zoeslackapp.straker.dev/slack/events
+      url: <YOUR_DOMAIN>/slack/events
       description: Get the status of a job
       usage_hint: "job [reference]"
       should_escape: false
@@ -54,7 +54,7 @@ features:
     - strakertranslations.com
 oauth_config:
   redirect_urls:
-    - https://zoeslackapp.straker.dev/slack/oauth_redirect
+    - <YOUR_DOMAIN>/slack/oauth_redirect
   scopes:
     bot:
       - channels:history
@@ -71,7 +71,7 @@ oauth_config:
       - mpim:history
 settings:
   event_subscriptions:
-    request_url: https://zoeslackapp.straker.dev/slack/events
+    request_url: <YOUR_DOMAIN>/slack/events
     bot_events:
       - app_home_opened
       - app_uninstalled
@@ -82,8 +82,8 @@ settings:
       - message.mpim
   interactivity:
     is_enabled: true
-    request_url: https://zoeslackapp.straker.dev/slack/events
-    message_menu_options_url: https://zoeslackapp.straker.dev/slack/events
+    request_url: <YOUR_DOMAIN>/slack/events
+    message_menu_options_url: <YOUR_DOMAIN>/slack/events
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false
