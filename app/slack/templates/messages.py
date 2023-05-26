@@ -454,7 +454,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": format_predictions(predictions),
+                        "text": format_predictions(in_progress, predictions),
                     },
                     "accessory": {
                         "type": "static_select",

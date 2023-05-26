@@ -127,12 +127,10 @@ def format_job_due_date_slack(
     return formatted_date
 
 
-def format_predictions(predictions: dict) -> str:
+def format_predictions(in_progress_count: int, predictions: dict) -> str:
     """Returns the progress text for the job."""
-    status = (
-        f"*In Progress Jobs*\n{predictions['in_progress']} job(s) currently in progress"
-    )
-    if predictions["on_time"] and predictions["late"] and predictions["over_due"]:
+    status = f"*In Progress Jobs*\n{in_progress_count} job(s) currently in progress"
+    if in_progress_count:
         aPredictions = []
         if predictions["on_time"]:
             aPredictions.append(
@@ -144,7 +142,7 @@ def format_predictions(predictions: dict) -> str:
             )
         if predictions["over_due"]:
             aPredictions.append(
-                f"*In Progress Jobs*\n:large_red_circle: *{predictions['over_due']} job(s)* are overdue"
+                f"*In Progress Jobs*\n:red_circle: *{predictions['over_due']} job(s)* are overdue"
             )
         status = "\n".join(aPredictions)
     return status
