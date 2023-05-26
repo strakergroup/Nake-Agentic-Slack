@@ -192,10 +192,7 @@ async def post_job_summary(
         order_now_count = responses[0].data.summary.get("order_now", 0)
         predictions = responses[0].data.summary.get(
             "predictions",
-            {
-                "on_time": 0,
-                "late": 0,
-            },
+            {"on_time": 0, "late": 0, "over_due": 0},
         )
     else:
         notify_exception(responses[0])
