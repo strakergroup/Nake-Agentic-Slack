@@ -45,6 +45,9 @@ class AsyncSQLAlchemyInstallationStore(
         user_id: Optional[str] = None,
         is_enterprise_install: Optional[bool] = False,
     ) -> Optional[Installation]:
+        print(
+            f"find_installation: E: {enterprise_id}, T: {team_id}, U: {user_id}, {is_enterprise_install}"
+        )
         return self.find_installation(
             enterprise_id=enterprise_id,
             team_id=team_id,
