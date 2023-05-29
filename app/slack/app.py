@@ -6,7 +6,9 @@ from slack_bolt.oauth.async_oauth_settings import AsyncOAuthSettings
 from slack_bolt.oauth.async_callback_options import (
     DefaultAsyncCallbackOptions,
     AsyncSuccessArgs,
+    AsyncFailureArgs,
 )
+from buglog import notify_exception
 from .stores import AsyncSQLAlchemyInstallationStore, AsyncSQLAlchemyOAuthStateStore
 from .templates.messages import OnboardingMessage
 from ..database import engines
@@ -66,6 +68,14 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
             channel=args.installation.user_id, blocks=message.blocks, text=message.text
         )
         return await super()._success_handler(args)
+
+    async def _failure_handler(self, args: AsyncFailureArgs) -> BoltResponse:
+        notify_exception(
+            args.error,
+            msg="Slack App failed to install",
+            extra={"reason": args.reason, "request": args.request.body},
+        )
+        return await super()._failure_handler(args)
 
 
 oauth_settings.callback_options = RayCallbackOptions(
