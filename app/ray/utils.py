@@ -136,13 +136,9 @@ def format_predictions(in_progress_count: int, predictions: dict) -> str:
             aPredictions.append(
                 f":large_green_circle: *{predictions['on_time']} job(s)* are predicted to be on-time"
             )
-        if predictions["late"]:
+        if predictions["late"] or predictions["over_due"]:
             aPredictions.append(
-                f":large_orange_circle: *{predictions['late']} job(s)* are behind schedule"
+                f":large_orange_circle: *{int(predictions['late']) + int(predictions['over_due'])} job(s)* have been flagged as caution"
             )
-        if predictions["over_due"]:
-            aPredictions.append(
-                f":red_circle: *{predictions['over_due']} job(s)* are overdue"
-            )
-        status = "*In Progress Jobs*\n" + "\n".join(aPredictions)
+        status = "In Progress Jobs*\n" + "\n".join(aPredictions)
     return status
