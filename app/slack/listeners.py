@@ -426,21 +426,9 @@ async def handle_new_job(ack, view, context, client):
         except Exception as e:
             if isinstance(e, RayAPIResponseError):
                 try:
-                    notify_exception(
-                        e,
-                        extra={
-                            "response": e.response.json(),
-                            "request": e.request.content.decode(),
-                        },
-                    )
+                    notify_exception(e, extra={"response": e.response.json()})
                 except Exception:
-                    notify_exception(
-                        e,
-                        extra={
-                            "response": e.response.content.decode(),
-                            "request": e.request.content.decode(),
-                        },
-                    )
+                    notify_exception(e, extra={"response": e.response.content.decode()})
             else:
                 notify_exception(e)
             await client.chat_postMessage(
