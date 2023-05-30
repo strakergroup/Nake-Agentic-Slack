@@ -47,8 +47,8 @@ class AsyncSQLAlchemyInstallationStore(
     ) -> Optional[Installation]:
         # Temp: For the Straker Group enterprise, force the Workspace to use the
         # "Straker Demo - Apps" workspace.
-        if enterprise_id == "E04RDMG8XP1" and team_id in ["T03PE1PGBV5", "T02FDFCGK"]:
-            team_id = "T058B4G5QQ1"
+        # if enterprise_id == "E04RDMG8XP1" and team_id in ["T03PE1PGBV5", "T02FDFCGK"]:
+        #     team_id = "T058B4G5QQ1"
         return self.find_installation(
             enterprise_id=enterprise_id,
             team_id=team_id,

@@ -17,9 +17,10 @@ from ..auth.connector import (
     RayConnection,
     get_ray_connection,
     get_app_id,
-    get_bot_token,
+    # get_bot_token,
 )
-from ..database import engines
+
+# from ..database import engines
 
 
 # -----------------------------------------------------------------------------
@@ -28,27 +29,27 @@ from ..database import engines
 # -----------------------------------------------------------------------------
 
 
-@app.use
-async def straker_workspace_fix(context, body, next):
-    """Global middleware for logging. Adds a `SlackAppLog` object from
-    the internal `ray_logger` library to the context with the key "log".
-    """
-    if context["enterprise_id"] == "E04RDMG8XP1" and context["team_id"] in [
-        "T03PE1PGBV5",
-        "T02FDFCGK",
-    ]:
-        context["team_id"] = "T058B4G5QQ1"
-        with engines["ray_integration_readonly"].connect() as conn:
-            bot_token = get_bot_token(conn, context["team_id"])
-        context["bot_token"] = bot_token
-        context["client"].token = bot_token
-    # Peter
-    if context["user_id"] == "U03PN1FB6Q6":
-        context["user_id"] = "UC78X13PC"
-    # Boren
-    if context["user_id"] == "U03QD69H6G1":
-        context["user_id"] = "U01TRBX3MFY"
-    await next()
+# @app.use
+# async def straker_workspace_fix(context, body, next):
+#     """Global middleware for logging. Adds a `SlackAppLog` object from
+#     the internal `ray_logger` library to the context with the key "log".
+#     """
+#     if context["enterprise_id"] == "E04RDMG8XP1" and context["team_id"] in [
+#         "T03PE1PGBV5",
+#         "T02FDFCGK",
+#     ]:
+#         context["team_id"] = "T058B4G5QQ1"
+#         with engines["ray_integration_readonly"].connect() as conn:
+#             bot_token = get_bot_token(conn, context["team_id"])
+#         context["bot_token"] = bot_token
+#         context["client"].token = bot_token
+#     # Peter
+#     if context["user_id"] == "U03PN1FB6Q6":
+#         context["user_id"] = "UC78X13PC"
+#     # Boren
+#     if context["user_id"] == "U03QD69H6G1":
+#         context["user_id"] = "U01TRBX3MFY"
+#     await next()
 
 
 @app.use

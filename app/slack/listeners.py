@@ -430,7 +430,7 @@ async def handle_new_job(ack, view, context, client):
                         e,
                         extra={
                             "response": e.response.json(),
-                            "request": e.request.content,
+                            "request": e.request.content.decode(),
                         },
                     )
                 except Exception:
@@ -438,7 +438,7 @@ async def handle_new_job(ack, view, context, client):
                         e,
                         extra={
                             "response": e.response.content.decode(),
-                            "request": e.request.content,
+                            "request": e.request.content.decode(),
                         },
                     )
             else:
