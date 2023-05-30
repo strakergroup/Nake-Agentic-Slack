@@ -32,6 +32,12 @@ async def straker_workspace_fix(context, body, next):
         "T02FDFCGK",
     ]:
         context["team_id"] = "T058B4G5QQ1"
+    # Peter
+    if context["user_id"] == "U03PN1FB6Q6":
+        context["user_id"] = "UC78X13PC"
+    # Boren
+    if context["user_id"] == "U03QD69H6G1":
+        context["user_id"] = "U01TRBX3MFY"
     await next()
 
 
