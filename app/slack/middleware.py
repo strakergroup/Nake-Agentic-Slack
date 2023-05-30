@@ -13,7 +13,13 @@ from ray_logger.slack import SlackAppLog
 from .app import app
 from .logging import init_slack_app_log
 from .templates.messages import SlackMessage, LoginMessage
-from ..auth.connector import RayConnection, get_ray_connection, get_app_id
+from ..auth.connector import (
+    RayConnection,
+    get_ray_connection,
+    get_app_id,
+    get_bot_token,
+)
+from ..database import engines
 
 
 # -----------------------------------------------------------------------------
@@ -32,6 +38,10 @@ async def straker_workspace_fix(context, body, next):
         "T02FDFCGK",
     ]:
         context["team_id"] = "T058B4G5QQ1"
+        with engines["ray_integration_readonly"].connect() as conn:
+            bot_token = get_bot_token(conn, context["team_id"])
+        context["bot_token"] = bot_token
+        context["client"].token = bot_token
     # Peter
     if context["user_id"] == "U03PN1FB6Q6":
         context["user_id"] = "UC78X13PC"

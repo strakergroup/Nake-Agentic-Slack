@@ -103,12 +103,15 @@ def validate_api_callback_signature(
     return signature == hash
 
 
-def get_bot_token(conn: Connection, team_id: str, app_id: str) -> str | None:
+def get_bot_token(
+    conn: Connection, team_id: str, app_id: str | None = None
+) -> str | None:
     """Gets the Slack bot token for a workspace."""
     sql = text(
-        """
+        f"""
         SELECT bot_token FROM slack_bots
-        WHERE team_id = :team_id AND app_id = :app_id
+        WHERE team_id = :team_id
+        {'AND app_id = :app_id' if app_id else ''}
         ORDER BY id DESC
         LIMIT 1
         """
