@@ -179,8 +179,9 @@ def new_job_modal(
             "max_selected_items": max_selected_files,
             "min_query_length": 0,
         }
-    if initial_files:
-        files_block_element["initial_options"] = initial_files
+    # Temp: Disable initial files for Demo due to unknown bug
+    # if initial_files:
+    #     files_block_element["initial_options"] = initial_files
 
     return {
         "type": "modal",

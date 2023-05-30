@@ -8,6 +8,7 @@ import json
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_sdk.errors import SlackApiError
+from ray_sdk import RayAPIResponseError
 from buglog import notify_exception
 
 from .app import app
@@ -423,7 +424,13 @@ async def handle_new_job(ack, view, context, client):
         try:
             responses = await submit_job(context, context["ray"].client, form)
         except Exception as e:
-            notify_exception(e)
+            if isinstance(e, RayAPIResponseError):
+                try:
+                    notify_exception(e, extra={"response": e.response.json()})
+                except Exception:
+                    notify_exception(e, extra={"response": e.response.content.decode()})
+            else:
+                notify_exception(e)
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text="There was an error submitting your translation request, please try again.",  # noqa: B950
