@@ -35,13 +35,13 @@ class StrakerConfig(BaseSettings):
     @validator("buglog_listener_url")
     def default_buglog_listener_url(cls, v, values):
         """Defaults to the standard BugLogHQ URL depending on the environment."""
-        if v:
+        if v and values["environment"] == Environment.local:
             return v
         return f"{domains.buglog}/buglog/listeners/bugLogListenerREST.cfm"
 
     @validator("base_url")
     def default_base_url(cls, v, values):
-        if v:
+        if v and values["environment"] == Environment.local:
             return v.strip("/")
         return domains.slack_ray_translator
 
