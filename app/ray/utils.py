@@ -140,5 +140,5 @@ def format_predictions(in_progress_count: int, predictions: dict) -> str:
             aPredictions.append(
                 f":large_orange_circle: *{int(predictions['late']) + int(predictions['over_due'])} job(s)* have been flagged as caution"
             )
-        status = "In Progress Jobs*\n" + "\n".join(aPredictions)
+        status = "*In Progress Jobs*\n" + "\n".join(aPredictions)
     return status
