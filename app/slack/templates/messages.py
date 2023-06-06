@@ -58,13 +58,13 @@ class OnboardingMessage(SlackMessage):
         self, user_id: str, team_id: str, app_id: str, channel_id: str
     ) -> None:
         super().__init__(
-            "The Straker App has been sucessfully installed in your Slack workspace! :tada:",
+            "Welcome to the Straker App for Slack! :tada:",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "The Straker App has been sucessfully installed in your Slack workspace! :tada:",
+                        "text": "Welcome to the Straker App for Slack! :tada:",
                     },
                 },
                 {
