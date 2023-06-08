@@ -43,7 +43,10 @@ from .templates.messages import (
 from .templates.views import home_view
 from .web import files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, map_file_options
-from ..auth.connector import disconnect_ray_account
+from ..auth.connector import (
+    disconnect_ray_account,
+    disconnect_ray_super_group_and_users,
+)
 from ..watson import watson_message
 
 
@@ -139,6 +142,15 @@ async def home_opened(event, context, body, say, client):
         user_id=event.get("user"),
         view=home_view(context, body["api_app_id"], context["ray"]),
     )
+
+
+@app.event("app_uninstalled")
+@slack_log_decorator
+async def app_uninstalled(context):
+    # Disconnect the Super Group and all users linked to the Slack workspace
+    # when the app is uninstalled.
+    # RAY-59799: This is a requirement of the Slack app directory submission.
+    disconnect_ray_super_group_and_users(context["team_id"])
 
 
 @app.message_shortcut("new_job", middleware=[ray_connection])

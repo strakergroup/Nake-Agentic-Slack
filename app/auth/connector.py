@@ -342,6 +342,40 @@ def disconnect_ray_account(user_id: str, team_id: str, app_id: str) -> bool:
     return result.rowcount > 0
 
 
+def disconnect_ray_super_group_and_users(team_id: str) -> bool:
+    """Disconnect the DeltaRAY super group and all connected users
+    of a Slack Workspace.
+
+    Args:
+        team_id (str): The Slack team ID.
+
+    Returns:
+        bool: An active Slack-DeltaRAY connection was deactivated.
+    """
+    with engines["ray_integration"].begin() as conn:
+        sql = text(
+            """
+            UPDATE slack_super_group_link SET
+                is_active = 0,
+                deactivated_at = NOW()
+            WHERE slack_team_id = :team_id
+            AND is_active = 1
+            """
+        ).bindparams(team_id=team_id)
+        result1 = conn.execute(sql)
+        sql = text(
+            """
+            UPDATE slack_deltaray_link SET
+                is_active = 0,
+                deactivated_at = NOW()
+            WHERE slack_team_id = :team_id
+            AND is_active = 1
+            """
+        ).bindparams(team_id=team_id)
+        result2 = conn.execute(sql)
+    return result1.rowcount > 0 or result2.rowcount > 0
+
+
 def get_app_id(bot_token: str, team_id: str) -> str:
     """Get the app_id from a bot token and team_id. Use this to get the app_id
     if the Slack API does not provide it.
