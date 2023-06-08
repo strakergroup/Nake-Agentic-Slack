@@ -223,7 +223,7 @@ async def ray_command(ack, respond, say, command, context, client):
                 # quote is like new job except it doesn't open the modal.
                 await ack()
                 msg = QuoteMessage()
-                await say(text=msg.text, blocks=msg.blocks)
+                await respond(text=msg.text, blocks=msg.blocks)
         case ["help" | ""]:
             await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
         case ["whatsnext"] | ["whats", "next"]:

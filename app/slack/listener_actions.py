@@ -58,16 +58,23 @@ async def post_job_status(
     try:
         if job is not None:
             msg = JobStatusMessage(job, ray_client.id)
-            return await context.client.chat_postMessage(
-                channel=channel_id,
-                text=msg.text,
-                blocks=msg.blocks,
-            )
+            if context.response_url:
+                return await context.respond(text=msg.text, blocks=msg.blocks)
+            else:
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                    blocks=msg.blocks,
+                )
         else:
-            return await context.client.chat_postMessage(
-                channel=channel_id,
-                text=InvalidJobMessage(job_id).text,
-            )
+            msg = InvalidJobMessage(job_id)
+            if context.response_url:
+                return await context.respond(text=msg.text)
+            else:
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                )
     finally:
         if response is not None:
             try:
@@ -118,22 +125,32 @@ async def post_job_details(
         if job is not None:
             if status == "PENDING_QUOTES":
                 msg = JobQuotedMessage(job)
+                if context.response_url:
+                    return await context.respond(text=msg.text, blocks=msg.blocks)
+                else:
+                    return await context.client.chat_postMessage(
+                        channel=channel_id,
+                        text=msg.text,
+                        blocks=msg.blocks,
+                    )
+            msg = JobDetailsMessage(job, ray_client.id)
+            if context.response_url:
+                return await context.respond(text=msg.text, blocks=msg.blocks)
+            else:
                 return await context.client.chat_postMessage(
                     channel=channel_id,
                     text=msg.text,
                     blocks=msg.blocks,
                 )
-            msg = JobDetailsMessage(job, ray_client.id)
-            return await context.client.chat_postMessage(
-                channel=channel_id,
-                text=msg.text,
-                blocks=msg.blocks,
-            )
         else:
-            return await context.client.chat_postMessage(
-                channel=channel_id,
-                text=InvalidJobMessage(job_id).text,
-            )
+            msg = InvalidJobMessage(job_id)
+            if context.response_url:
+                return await context.respond(text=msg.text)
+            else:
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                )
     finally:
         if response is not None:
             try:
@@ -206,11 +223,14 @@ async def post_job_summary(
             pending_quotes=pending_quotes_count,
             order_now=order_now_count,
         )
-        return await context.client.chat_postMessage(
-            channel=channel_id,
-            text=msg.text,
-            blocks=msg.blocks,
-        )
+        if context.response_url:
+            return await context.respond(text=msg.text, blocks=msg.blocks)
+        else:
+            return await context.client.chat_postMessage(
+                channel=channel_id,
+                text=msg.text,
+                blocks=msg.blocks,
+            )
     finally:
         for response in responses:
             if isinstance(response, RayResponse):
