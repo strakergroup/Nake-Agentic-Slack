@@ -56,16 +56,22 @@ from ..watson import watson_message
 
 
 @app.event(
-    {"type": "message", "subtype": (None, "file_share")}, middleware=[ray_connection]
+    {"type": "message", "subtype": (None, "message_replied", "file_share")},
+    middleware=[ray_connection],
 )
 @slack_log_decorator
 async def message_event(message, context, say, client):
-    # TODO handle message threads (do not respond to threads)
+    # Reply in a thread in channels and groups (non-ephemeral messages only).
+    thread_ts = (
+        message.get("thread_ts", message.get("ts"))
+        if message.get("channel_type") != "im"
+        else None
+    )
     # If there is no text, show new job button or ignore the message.
     if not message.get("text"):
         if message.get("files"):
             msg = NewJobMessage(context["channel_id"], message["ts"])
-            await say(blocks=msg.blocks, text=msg.text)
+            await say(blocks=msg.blocks, text=msg.text, thread_ts=thread_ts)
         return
 
     response = watson_message(message["text"], context.get("user_id"))
@@ -79,13 +85,17 @@ async def message_event(message, context, say, client):
     )
     match response.intent:
         case "General_About_You" | "General_Agent_Capabilities" | "General_Greetings":
-            await say(blocks=HelpMessage().blocks, text=HelpMessage().text)
+            await say(
+                blocks=HelpMessage().blocks,
+                text=HelpMessage().text,
+                thread_ts=thread_ts,
+            )
         case "Login":
             await client.chat_postEphemeral(
                 channel=context["channel_id"],
                 user=context["user_id"],
-                blocks=context["login_prompt"].blocks,
                 text=context["login_prompt"].text,
+                blocks=context["login_prompt"].blocks,
             )
         case "Logout":
             if await require_ray_client(context):
@@ -93,36 +103,42 @@ async def message_event(message, context, say, client):
                 await client.chat_postEphemeral(
                     channel=context["channel_id"],
                     user=context["user_id"],
-                    blocks=msg.blocks,
                     text=msg.text,
+                    blocks=msg.blocks,
                 )
         case "Job_Status":
             tj_number_entity = response.findEntity("tj-number")
             if tj_number_entity:
                 if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                     await post_job_status(
-                        context, context["ray"].client, tj_number_entity.groups[0]
+                        context,
+                        context["ray"].client,
+                        tj_number_entity.groups[0],
+                        thread_ts=thread_ts,
                     )
             else:
-                await say(JobStatusNoIdMessage().text)
+                await say(JobStatusNoIdMessage().text, thread_ts=thread_ts)
         case "New_Translation_Job":
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
                 msg = NewJobMessage(context["channel_id"], message["ts"])
-                await say(blocks=msg.blocks, text=msg.text)
+                await say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
         case "Jokes":
             # Delegate jokes to IBM Watson Assistant dialog.
-            await say(response.reply)
+            await say(response.reply, thread_ts=thread_ts)
         case _:
             tj_number_entity = response.findEntity("tj-number")
             if tj_number_entity:
                 # Show the job status if only a job id is entered.
                 if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                     await post_job_status(
-                        context, context["ray"].client, tj_number_entity.groups[0]
+                        context,
+                        context["ray"].client,
+                        tj_number_entity.groups[0],
+                        thread_ts=thread_ts,
                     )
             elif response.reply:
                 # Default to Watson Assistant fallback response if no other matches.
-                await say(response.reply)
+                await say(response.reply, thread_ts=thread_ts)
 
 
 @app.event("app_home_opened", middleware=[ray_connection])
@@ -282,7 +298,6 @@ async def quote(ack, context, client):
         )
 
 
-# create a block action to get daily summary
 @app.action("daily_summary", middleware=[ray_connection])
 @slack_log_decorator
 async def daily_summary(ack, context):
