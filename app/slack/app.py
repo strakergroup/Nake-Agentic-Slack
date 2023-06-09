@@ -30,18 +30,17 @@ oauth_settings = AsyncOAuthSettings(
     client_id=os.getenv("SLACK_CLIENT_ID"),
     client_secret=os.getenv("SLACK_CLIENT_SECRET"),
     scopes=[
+        "app_mentions:read",
+        "channels:history",
         "chat:write",
         "chat:write.public",
-        "im:write",
-        "links:write",
-        "links:read",
+        "commands",
         "files:read",
-        "im:read",
-        "channels:history",
         "groups:history",
         "im:history",
+        # "links:write",
+        # "links:read",
         "mpim:history",
-        "commands",
     ],
     installation_store=installation_store,
     state_store=state_store,
@@ -73,8 +72,27 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
         notify_exception(
             args.error,
             msg="Slack App failed to install",
-            extra={"reason": args.reason, "request": args.request.body},
+            extra={
+                "reason": args.reason,
+                "suggested_status_code": args.suggested_status_code,
+                "request": args.request.body,
+            },
         )
+        if args.reason == "invalid_browser":
+            # The user installed from the wrong starting URL, e.g. Slack app directory.
+            # Should be /slack/install. This is because it requires a state token
+            # generated from this app.
+            # Redirect to the correct URL.
+            return BoltResponse(status=307, headers={"Location": "/slack/install"})
+        elif args.reason == "access_denied" or args.suggested_status_code == 200:
+            # If the user cancelled the installation, redirect to the public Landing Page.
+            # TODO: Delete state token
+            return BoltResponse(
+                status=307,
+                headers={
+                    "Location": "https://www.strakertranslations.com/products/ray-translate-app-for-slack"  # noqa: B950
+                },
+            )
         return await super()._failure_handler(args)
 
 

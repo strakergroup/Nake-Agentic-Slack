@@ -9,11 +9,12 @@ from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_sdk.errors import SlackApiError
 from ray_sdk import RayAPIResponseError
-from buglog import notify_exception
+from buglog import notify_exception, notify_message
 
 from .app import app
 from .middleware import ray_connection, require_ray_client
 from .listener_actions import (
+    respond_to_message,
     get_groups,
     post_job_status,
     post_job_details,
@@ -31,8 +32,6 @@ from .templates.messages import (
     OnboardingMessage,
     QuoteMessage,
     SuccessfulLogoutMessage,
-    JobStatusNoIdMessage,
-    NewJobMessage,
     JobSubmitMessage,
     HelpMessage,
     WhatsNextMessage,
@@ -44,8 +43,10 @@ from .templates.messages import (
 from .templates.views import home_view
 from .web import files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, map_file_options
-from ..auth.connector import disconnect_ray_account
-from ..watson import watson_message
+from ..auth.connector import (
+    disconnect_ray_account,
+    disconnect_ray_super_group_and_users,
+)
 
 
 # ---------------------------------------------------------
@@ -54,95 +55,63 @@ from ..watson import watson_message
 
 
 @app.event(
-    {"type": "message", "subtype": (None, "file_share")}, middleware=[ray_connection]
+    {"type": "message", "subtype": (None, "message_replied", "file_share")},
+    middleware=[ray_connection],
 )
 @slack_log_decorator
-async def message_event(message, context, say, client):
-    # TODO handle message threads (do not respond to threads)
-    # If there is no text, show new job button or ignore the message.
-    if not message.get("text"):
-        if message.get("files"):
-            msg = NewJobMessage(context["channel_id"], message["ts"])
-            await say(blocks=msg.blocks, text=msg.text)
-        return
+async def message_event(context, message):
+    # https://api.slack.com/events/message
+    # Respond to messages without threads in 1-on-1 DMs with the bot only,
+    # not channel or group conversations (see the "app_mention" event).
+    if message.get("channel_type") == "im" or context["channel_id"][0] in ("D", "U"):
+        await respond_to_message(context, message, use_thread=False)
+    else:
+        notify_message(
+            "Slack App message event received from channel",
+            extra={
+                "detail": "This event should not be received from a conversation "
+                "other than a DM with the bot, unsubscribe from message:groups, "
+                "message:channels, and message:mpim"
+            },
+        )
 
-    response = watson_message(message["text"], context.get("user_id"))
-    context["log"].set_watson_log(
-        status_code=response.status_code,
-        text=message["text"],
-        response=response.data,
-        headers=dict(response.headers),
-        intents=response.data["output"]["intents"],
-        entities=response.data["output"]["entities"],
-    )
-    match response.intent:
-        case "General_About_You" | "General_Agent_Capabilities" | "General_Greetings":
-            await say(blocks=HelpMessage().blocks, text=HelpMessage().text)
-        case "Login":
-            await client.chat_postEphemeral(
-                channel=context["channel_id"],
-                user=context["user_id"],
-                blocks=context["login_prompt"].blocks,
-                text=context["login_prompt"].text,
-            )
-        case "Logout":
-            if await require_ray_client(context):
-                msg = LogoutMessage(context["ray"].client.username)
-                await client.chat_postEphemeral(
-                    channel=context["channel_id"],
-                    user=context["user_id"],
-                    blocks=msg.blocks,
-                    text=msg.text,
-                )
-        case "Job_Overview":
-            if await require_ray_client(context, variation=LoginMessage.GET_JOB):
-                await post_job_summary(context, context["ray"].client)
-        case "Job_Status":
-            tj_number_entity = response.findEntity("tj-number")
-            if tj_number_entity:
-                if await require_ray_client(context, variation=LoginMessage.GET_JOB):
-                    await post_job_status(
-                        context, context["ray"].client, tj_number_entity.groups[0]
-                    )
-            else:
-                await say(JobStatusNoIdMessage().text)
-        case "New_Translation_Job":
-            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-                msg = NewJobMessage(context["channel_id"], message["ts"])
-                await say(blocks=msg.blocks, text=msg.text)
-        case "Jokes":
-            # Delegate jokes to IBM Watson Assistant dialog.
-            await say(response.reply)
-        case _:
-            tj_number_entity = response.findEntity("tj-number")
-            if tj_number_entity:
-                # Show the job status if only a job id is entered.
-                if await require_ray_client(context, variation=LoginMessage.GET_JOB):
-                    await post_job_status(
-                        context, context["ray"].client, tj_number_entity.groups[0]
-                    )
-            elif response.reply:
-                # Default to Watson Assistant fallback response if no other matches.
-                await say(response.reply)
+
+@app.event("app_mention", middleware=[ray_connection])
+@slack_log_decorator
+async def app_mention_event(context, event):
+    # https://api.slack.com/events/app_mention
+    # Respond to messages with threads in channel and group chats if mentioned.
+    # Remove user mentions from text before processing.
+    event["text"] = re.sub(r"<@\w+>", "", event.get("text", "")).strip()
+    await respond_to_message(context, event, use_thread=True)
 
 
 @app.event("app_home_opened", middleware=[ray_connection])
 @slack_log_decorator
 async def home_opened(event, context, body, say, client):
+    # https://api.slack.com/events/app_home_opened
     # Send an onboarding message if the app home is opened for the first time.
-    # TODO also onboard if the user hasn't opened in a long time and the account
-    # is not connected yet
     history = await client.conversations_history(channel=event.get("channel"), limit=1)
     if not history.get("messages"):
         message = OnboardingMessage(
             event.get("user"), body["team_id"], body["api_app_id"], event.get("channel")
         )
         await say(blocks=message.blocks, text=message.text)
-    # publish view to home tab
+    # Publish view to home tab.
     await client.views_publish(
         user_id=event.get("user"),
         view=home_view(context, body["api_app_id"], context["ray"]),
     )
+
+
+@app.event("app_uninstalled")
+@slack_log_decorator
+async def app_uninstalled(context):
+    # https://api.slack.com/events/app_uninstalled
+    # Disconnect the Super Group and all users linked to the Slack workspace
+    # when the app is uninstalled.
+    # RAY-59799: This is a requirement of the Slack app directory submission.
+    disconnect_ray_super_group_and_users(context["team_id"])
 
 
 @app.message_shortcut("new_job", middleware=[ray_connection])
@@ -227,7 +196,7 @@ async def ray_command(ack, respond, say, command, context, client):
                 # quote is like new job except it doesn't open the modal.
                 await ack()
                 msg = QuoteMessage()
-                await say(text=msg.text, blocks=msg.blocks)
+                await respond(text=msg.text, blocks=msg.blocks)
         case ["help" | ""]:
             await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
         case ["whatsnext"] | ["whats", "next"]:
@@ -274,7 +243,6 @@ async def quote(ack, context, client):
         )
 
 
-# create a block action to get daily summary
 @app.action("daily_summary", middleware=[ray_connection])
 @slack_log_decorator
 async def daily_summary(ack, context):

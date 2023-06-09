@@ -13,7 +13,13 @@ from slack_sdk.webhook.webhook_response import WebhookResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
 
+from .middleware import require_ray_client
 from .templates.messages import (
+    HelpMessage,
+    LoginMessage,
+    LogoutMessage,
+    JobStatusNoIdMessage,
+    NewJobMessage,
     JobQuotedMessage,
     JobStatusMessage,
     InvalidJobMessage,
@@ -23,11 +29,95 @@ from .templates.messages import (
 )
 from .templates.models import NewJobForm
 from .templates.views import new_job_modal
+from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
 from ..ray import RayService
-from .web import files_list_simple, download_files
+from ..watson import watson_message
 
-# TODO - Maybe update to send quote info to the user if in quote stage
+
+async def respond_to_message(
+    context: AsyncBoltContext, message: dict[str, Any], *, use_thread: bool = False
+):
+    """Respond to a Slack message event (or app mention event).
+
+    Args:
+        context (AsyncBoltContext): The listener function context.
+        message (dict[str, Any]): The message data from the request body.
+        use_thread (bool, optional): Reply to messages in a thread. Defaults to False.
+    """
+    # Reply in a thread in channels and groups (non-ephemeral messages only).
+    thread_ts = message.get("thread_ts", message.get("ts")) if use_thread else None
+
+    # If there is no text, show new job button or ignore the message.
+    if not message.get("text"):
+        if message.get("files"):
+            msg = NewJobMessage(context["channel_id"], message["ts"])
+            await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
+        return
+
+    response = watson_message(message["text"], context.get("user_id"))
+    context["log"].set_watson_log(
+        status_code=response.status_code,
+        text=message["text"],
+        response=response.data,
+        headers=dict(response.headers),
+        intents=response.data["output"]["intents"],
+        entities=response.data["output"]["entities"],
+    )
+    match response.intent:
+        case "General_About_You" | "General_Agent_Capabilities" | "General_Greetings":
+            await context.say(
+                text=HelpMessage().text,
+                blocks=HelpMessage().blocks,
+                thread_ts=thread_ts,
+            )
+        case "Login":
+            await context.client.chat_postEphemeral(
+                channel=context["channel_id"],
+                user=context["user_id"],
+                text=context["login_prompt"].text,
+                blocks=context["login_prompt"].blocks,
+            )
+        case "Logout":
+            if await require_ray_client(context):
+                msg = LogoutMessage(context["ray"].client.username)
+                await context.client.chat_postEphemeral(
+                    channel=context["channel_id"],
+                    user=context["user_id"],
+                    text=msg.text,
+                    blocks=msg.blocks,
+                )
+        case "Job_Status":
+            if tj_number_entity := response.findEntity("tj-number"):
+                if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+                    await post_job_status(
+                        context,
+                        context["ray"].client,
+                        tj_number_entity.groups[0],
+                        thread_ts=thread_ts,
+                    )
+            else:
+                await context.say(JobStatusNoIdMessage().text, thread_ts=thread_ts)
+        case "New_Translation_Job":
+            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+                msg = NewJobMessage(context["channel_id"], message["ts"])
+                await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
+        case "Jokes":
+            # Delegate jokes to IBM Watson Assistant dialog.
+            await context.say(response.reply, thread_ts=thread_ts)
+        case _:
+            if tj_number_entity := response.findEntity("tj-number"):
+                # Show the job status if only a job id is entered.
+                if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+                    await post_job_status(
+                        context,
+                        context["ray"].client,
+                        tj_number_entity.groups[0],
+                        thread_ts=thread_ts,
+                    )
+            elif response.reply:
+                # Default to Watson Assistant fallback response if no other matches.
+                await context.say(response.reply, thread_ts=thread_ts)
 
 
 async def post_job_status(
@@ -35,6 +125,7 @@ async def post_job_status(
     ray_client: RayClient,
     job_id: str,
     channel_id: str | None = None,
+    thread_ts: str | None = None,
 ) -> AsyncSlackResponse:
     """Tries to get the job details from the RAY API and post the job status
     to the Slack user. If the user cannot access the job, post another message
@@ -46,11 +137,17 @@ async def post_job_status(
         job_id (str): The ID of the job to get.
         channel_id (str | None, optional): The channel to post the message to.
             If not given, posts to the source channel.
+        thread_ts (str | None, optional): The message thread to reply to.
 
     Raises:
         AssertionError: The `channel_id` is not given and there is no source channel.
     """
-    if not channel_id and not context.channel_id and not context.user_id:
+    if (
+        not channel_id
+        and not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
         raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
 
@@ -58,16 +155,25 @@ async def post_job_status(
     try:
         if job is not None:
             msg = JobStatusMessage(job, ray_client.id)
-            return await context.client.chat_postMessage(
-                channel=channel_id,
-                text=msg.text,
-                blocks=msg.blocks,
-            )
+            if context.response_url:
+                return await context.respond(text=msg.text, blocks=msg.blocks)
+            else:
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                    blocks=msg.blocks,
+                    thread_ts=thread_ts,
+                )
         else:
-            return await context.client.chat_postMessage(
-                channel=channel_id,
-                text=InvalidJobMessage(job_id).text,
-            )
+            msg = InvalidJobMessage(job_id)
+            if context.response_url:
+                return await context.respond(text=msg.text)
+            else:
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                    thread_ts=thread_ts,
+                )
     finally:
         if response is not None:
             try:
@@ -90,6 +196,7 @@ async def post_job_details(
     job_id: str,
     status: str,
     channel_id: str | None = None,
+    thread_ts: str | None = None,
 ) -> AsyncSlackResponse:
     """Tries to get the job details from the RAY API and post the job status
     to the Slack user. If the user cannot access the job, post another message
@@ -101,11 +208,17 @@ async def post_job_details(
         job_id (str): The ID of the job to get.
         channel_id (str | None, optional): The channel to post the message to.
             If not given, posts to the source channel.
+        thread_ts (str | None, optional): The message thread to reply to.
 
     Raises:
         AssertionError: The `channel_id` is not given and there is no source channel.
     """
-    if not channel_id and not context.channel_id and not context.user_id:
+    if (
+        not channel_id
+        and not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
         raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
 
@@ -118,22 +231,35 @@ async def post_job_details(
         if job is not None:
             if status == "PENDING_QUOTES":
                 msg = JobQuotedMessage(job)
+                if context.response_url:
+                    return await context.respond(text=msg.text, blocks=msg.blocks)
+                else:
+                    return await context.client.chat_postMessage(
+                        channel=channel_id,
+                        text=msg.text,
+                        blocks=msg.blocks,
+                        thread_ts=thread_ts,
+                    )
+            msg = JobDetailsMessage(job, ray_client.id)
+            if context.response_url:
+                return await context.respond(text=msg.text, blocks=msg.blocks)
+            else:
                 return await context.client.chat_postMessage(
                     channel=channel_id,
                     text=msg.text,
                     blocks=msg.blocks,
+                    thread_ts=thread_ts,
                 )
-            msg = JobDetailsMessage(job, ray_client.id)
-            return await context.client.chat_postMessage(
-                channel=channel_id,
-                text=msg.text,
-                blocks=msg.blocks,
-            )
         else:
-            return await context.client.chat_postMessage(
-                channel=channel_id,
-                text=InvalidJobMessage(job_id).text,
-            )
+            msg = InvalidJobMessage(job_id)
+            if context.response_url:
+                return await context.respond(text=msg.text)
+            else:
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                    thread_ts=thread_ts,
+                )
     finally:
         if response is not None:
             try:
@@ -154,6 +280,7 @@ async def post_job_summary(
     context: AsyncBoltContext,
     ray_client: RayClient,
     channel_id: str | None = None,
+    thread_ts: str | None = None,
 ) -> AsyncSlackResponse:
     """Gets the job summary from the RAY API and posts it to the Slack user.
 
@@ -162,11 +289,17 @@ async def post_job_summary(
         ray_client (RayClient): The RAY client.
         channel_id (str | None, optional): The channel to post the message to.
             If not given, posts to the source channel.
+        thread_ts (str | None, optional): The message thread to reply to.
 
     Raises:
         AssertionError: The `channel_id` is not given and there is no source channel.
     """
-    if not channel_id and not context.channel_id and not context.user_id:
+    if (
+        not channel_id
+        and not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
         raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
 
@@ -207,11 +340,15 @@ async def post_job_summary(
             order_now=order_now_count,
             predictions=predictions,
         )
-        return await context.client.chat_postMessage(
-            channel=channel_id,
-            text=msg.text,
-            blocks=msg.blocks,
-        )
+        if context.response_url:
+            return await context.respond(text=msg.text, blocks=msg.blocks)
+        else:
+            return await context.client.chat_postMessage(
+                channel=channel_id,
+                text=msg.text,
+                blocks=msg.blocks,
+                thread_ts=thread_ts,
+            )
     finally:
         for response in responses:
             if isinstance(response, RayResponse):
@@ -250,6 +387,7 @@ async def post_job_list(
             if the preset is "CLIENT_REF".
         channel_id (str | None, optional): The channel to post the message to.
             If not given, posts to the source channel.
+        replace_original (bool, optional): Replace the original ephemeral message.
 
     Raises:
         AssertionError: The `channel_id` is not given and there is no source channel.
