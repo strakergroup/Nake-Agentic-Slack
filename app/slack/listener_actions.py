@@ -87,6 +87,11 @@ async def respond_to_message(
                     text=msg.text,
                     blocks=msg.blocks,
                 )
+        case "Job_Overview":
+            if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+                await post_job_summary(
+                    context, context["ray"].client, thread_ts=thread_ts
+                )
         case "Job_Status":
             if tj_number_entity := response.findEntity("tj-number"):
                 if await require_ray_client(context, variation=LoginMessage.GET_JOB):
