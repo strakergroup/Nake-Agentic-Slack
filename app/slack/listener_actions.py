@@ -13,7 +13,13 @@ from slack_sdk.webhook.webhook_response import WebhookResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
 
+from .middleware import require_ray_client
 from .templates.messages import (
+    HelpMessage,
+    LoginMessage,
+    LogoutMessage,
+    JobStatusNoIdMessage,
+    NewJobMessage,
     JobQuotedMessage,
     JobStatusMessage,
     InvalidJobMessage,
@@ -23,11 +29,95 @@ from .templates.messages import (
 )
 from .templates.models import NewJobForm
 from .templates.views import new_job_modal
+from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
 from ..ray import RayService
-from .web import files_list_simple, download_files
+from ..watson import watson_message
 
-# TODO - Maybe update to send quote info to the user if in quote stage
+
+async def respond_to_message(
+    context: AsyncBoltContext, message: dict[str, Any], *, use_thread: bool = False
+):
+    """Respond to a Slack message event (or app mention event).
+
+    Args:
+        context (AsyncBoltContext): The listener function context.
+        message (dict[str, Any]): The message data from the request body.
+        use_thread (bool, optional): Reply to messages in a thread. Defaults to False.
+    """
+    # Reply in a thread in channels and groups (non-ephemeral messages only).
+    thread_ts = message.get("thread_ts", message.get("ts")) if use_thread else None
+
+    # If there is no text, show new job button or ignore the message.
+    if not message.get("text"):
+        if message.get("files"):
+            msg = NewJobMessage(context["channel_id"], message["ts"])
+            await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
+        return
+
+    response = watson_message(message["text"], context.get("user_id"))
+    context["log"].set_watson_log(
+        status_code=response.status_code,
+        text=message["text"],
+        response=response.data,
+        headers=dict(response.headers),
+        intents=response.data["output"]["intents"],
+        entities=response.data["output"]["entities"],
+    )
+    match response.intent:
+        case "General_About_You" | "General_Agent_Capabilities" | "General_Greetings":
+            await context.say(
+                text=HelpMessage().text,
+                blocks=HelpMessage().blocks,
+                thread_ts=thread_ts,
+            )
+        case "Login":
+            await context.client.chat_postEphemeral(
+                channel=context["channel_id"],
+                user=context["user_id"],
+                text=context["login_prompt"].text,
+                blocks=context["login_prompt"].blocks,
+            )
+        case "Logout":
+            if await require_ray_client(context):
+                msg = LogoutMessage(context["ray"].client.username)
+                await context.client.chat_postEphemeral(
+                    channel=context["channel_id"],
+                    user=context["user_id"],
+                    text=msg.text,
+                    blocks=msg.blocks,
+                )
+        case "Job_Status":
+            if tj_number_entity := response.findEntity("tj-number"):
+                if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+                    await post_job_status(
+                        context,
+                        context["ray"].client,
+                        tj_number_entity.groups[0],
+                        thread_ts=thread_ts,
+                    )
+            else:
+                await context.say(JobStatusNoIdMessage().text, thread_ts=thread_ts)
+        case "New_Translation_Job":
+            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+                msg = NewJobMessage(context["channel_id"], message["ts"])
+                await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
+        case "Jokes":
+            # Delegate jokes to IBM Watson Assistant dialog.
+            await context.say(response.reply, thread_ts=thread_ts)
+        case _:
+            if tj_number_entity := response.findEntity("tj-number"):
+                # Show the job status if only a job id is entered.
+                if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+                    await post_job_status(
+                        context,
+                        context["ray"].client,
+                        tj_number_entity.groups[0],
+                        thread_ts=thread_ts,
+                    )
+            elif response.reply:
+                # Default to Watson Assistant fallback response if no other matches.
+                await context.say(response.reply, thread_ts=thread_ts)
 
 
 async def post_job_status(
