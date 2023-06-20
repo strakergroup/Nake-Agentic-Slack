@@ -535,6 +535,7 @@ async def show_quote_form_modal(
             argument is greater than 0, check the last `check_last_messages`
             messages with the bot to find files to set as the initial files. If
             a message has files attached, select those files and stop finding.
+            Only works with DM with the bot, not channels or groups.
     """
     # Include a bit more than the max 100 options due to hidden files.
     files = await files_list_simple(context.client, count=110)
@@ -554,6 +555,7 @@ async def show_quote_form_modal(
                     initial_files = message.get("files")
                     break
         except SlackApiError:
+            # Unknown or forbidden conversation (e.g. channel, DM with other user).
             pass
     await context.client.views_open(
         trigger_id=trigger_id,
