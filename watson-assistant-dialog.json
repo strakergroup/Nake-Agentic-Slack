@@ -262,6 +262,66 @@
       "description": "Show help."
     },
     {
+      "intent": "Job_Overview",
+      "examples": [
+        {
+          "text": "Can I see a list of all my jobs"
+        },
+        {
+          "text": "Can I see an overview of my jobs"
+        },
+        {
+          "text": "Can I see a status of all my jobs"
+        },
+        {
+          "text": "Can I see a summary of my jobs"
+        },
+        {
+          "text": "Can I see my completed jobs?"
+        },
+        {
+          "text": "Can I see my jobs in progress?"
+        },
+        {
+          "text": "Can I see my jobs in Validation?"
+        },
+        {
+          "text": "job overview"
+        },
+        {
+          "text": "job prediction"
+        },
+        {
+          "text": "jobs that are overdue"
+        },
+        {
+          "text": "My jobs"
+        },
+        {
+          "text": "My jobs list"
+        },
+        {
+          "text": "On time delivery"
+        },
+        {
+          "text": "overview of my jobs"
+        },
+        {
+          "text": "Status of my jobs"
+        },
+        {
+          "text": "summary of my jobs"
+        },
+        {
+          "text": "View my jobs"
+        },
+        {
+          "text": "Where are all my jobs?"
+        }
+      ],
+      "description": "Show an overview of all my jobs"
+    },
+    {
       "intent": "Job_Status",
       "examples": [
         {
@@ -351,19 +411,79 @@
           "text": "Connect"
         },
         {
-          "text": "Deltaray"
+          "text": "Connect DeltaRAY account"
+        },
+        {
+          "text": "Connect RAY Cloud account"
         },
         {
           "text": "Login"
+        },
+        {
+          "text": "Login to DeltaRAY"
+        },
+        {
+          "text": "Login to RAY Cloud"
         }
       ],
-      "description": "The user wants to connect their DeltaRay account."
+      "description": "The user wants to connect their RAY Cloud account."
+    },
+    {
+      "intent": "Logout",
+      "examples": [
+        {
+          "text": "Disconnect"
+        },
+        {
+          "text": "Disconnect DeltaRAY account"
+        },
+        {
+          "text": "Disconnect Language Cloud account"
+        },
+        {
+          "text": "Disconnect RAY Cloud account"
+        },
+        {
+          "text": "I would like to log out of my account"
+        },
+        {
+          "text": "Logout"
+        },
+        {
+          "text": "Logout from DeltaRAY"
+        },
+        {
+          "text": "Logout from RAY Cloud"
+        },
+        {
+          "text": "Logout of my Language Cloud account"
+        },
+        {
+          "text": "Logout of Straker account"
+        }
+      ],
+      "description": "Disconnect RAY Cloud account"
     },
     {
       "intent": "New_Translation_Job",
       "examples": [
         {
+          "text": "Can I have a quote"
+        },
+        {
+          "text": "Can I submit a job for a quote"
+        },
+        {
+          "text": "Create quote"
+        },
+        {
           "text": "Create translation"
+        },
+        {
+          "text": "Get quote"
+        },
+        {
+          "text": "Give me a quote"
         },
         {
           "text": "I want these files to be translated"
@@ -375,13 +495,37 @@
           "text": "I want to translate a file"
         },
         {
+          "text": "I would like to upload a quote"
+        },
+        {
           "text": "New job"
+        },
+        {
+          "text": "New quote"
         },
         {
           "text": "New translation"
         },
         {
+          "text": "New translation job"
+        },
+        {
+          "text": "Submit a file"
+        },
+        {
+          "text": "Submit a job"
+        },
+        {
+          "text": "Submit a job to Straker"
+        },
+        {
           "text": "Submit new translation"
+        },
+        {
+          "text": "translate my files"
+        },
+        {
+          "text": "Translate these files for me"
         },
         {
           "text": "Translate this"
@@ -412,7 +556,6 @@
     },
     "from-sample": true
   },
-  "webhooks": [],
   "dialog_nodes": [
     {
       "type": "standard",
@@ -462,6 +605,12 @@
               },
               {
                 "text": "Not to brag, but I’m fluent in 10 languages. English and Binary."
+              },
+              {
+                "text": "What do you call a translator who only speaks one language? Monolingual."
+              },
+              {
+                "text": "Why did the translator refuse to work on a cookbook? He said he couldn't stomach all the food puns."
               }
             ],
             "response_type": "text",
@@ -498,7 +647,7 @@
     "spelling_auto_correct": true
   },
   "learning_opt_out": false,
-  "name": "RAY Translator",
   "language": "en",
-  "description": "Assistant for the Slack RAY Translator app."
+  "description": "Assistant for the Slack RAY Translator app.",
+  "name": "RAY Translator-dialog"
 }
