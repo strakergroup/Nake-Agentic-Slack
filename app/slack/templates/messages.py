@@ -58,13 +58,13 @@ class OnboardingMessage(SlackMessage):
         self, user_id: str, team_id: str, app_id: str, channel_id: str
     ) -> None:
         super().__init__(
-            "Welcome to the Straker App for Slack! :tada:",
+            "Welcome to RAY Translate for Slack! :tada:",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Welcome to the Straker App for Slack! :tada:",
+                        "text": "Welcome to RAY Translate for Slack! :tada:",
                     },
                 },
                 {
@@ -1149,7 +1149,7 @@ class ClientSignupEventAdminMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Before this user can use the Straker Slack app, they require approval for the groups they should be associated with:",
+                        "text": "Before this user can use RAY Translate for Slack, they require approval for the groups they should be associated with:",
                     },
                 },
                 {
@@ -1217,7 +1217,7 @@ class ClientApprovedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": ":white_check_mark: You can now access all the features within the Straker app.",
+                        "text": ":white_check_mark: You can now access all the features within RAY Translate.",
                     },
                 },
                 {

@@ -7,7 +7,7 @@ from slack_bolt.context.async_context import AsyncBoltContext
 
 from .blocks import home_auth_blocks
 from ..select_options import map_file_options
-from ...auth.connector import RayConnection, RaySuperGroup
+from ...auth.connector import RayConnection
 from ...config import domains
 
 
@@ -22,7 +22,7 @@ def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Welcome to the Straker RAY Cloud App!",
+                    "text": "Welcome to RAY Translate for Slack!",
                 },
             },
             *home_auth_blocks(
@@ -85,7 +85,7 @@ def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest RAY Cloud and Enterprise features, provide updates, and engage with customers like you!",
+                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest Straker LanguageCloud and Enterprise features, provide updates, and engage with customers like you!",
                 },
                 "accessory": {
                     "type": "button",
