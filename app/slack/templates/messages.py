@@ -898,13 +898,13 @@ class HelpMessage(SlackMessage):
 
     def __init__(self) -> None:
         super().__init__(
-            "Hi there :wave: here are some ideas of what you can currently do with our Beta app:",
+            "Hi there :wave: here are some ideas of what you can currently do with our app:",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Hi there :wave: here are some ideas of what you can currently do with our Beta app:",
+                        "text": "Hi there :wave: here are some ideas of what you can currently do with our app:",
                     },
                 },
                 {"type": "divider"},
@@ -973,13 +973,13 @@ class WhatsNextMessage(SlackMessage):
     def __init__(self) -> None:
         url = "https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features"
         super().__init__(
-            "Click here to see the upcoming features of our Beta app",
+            "Click here to see the upcoming features of our app",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"<{url}|Click here> to see the upcoming features of our Beta app.",
+                        "text": f"<{url}|Click here> to see the upcoming features of our app.",
                     },
                 },
             ],
