@@ -1,43 +1,50 @@
 display_information:
-  name: Straker
-  description: The official Slack app for the Straker RAY platform.
+  name: RAY Translate
+  description: Get high-quality translations of your files directly in Slack.
   background_color: "#17395c"
-  long_description: "Install this app to your Slack workspace to connect to your DeltaRAY account and use Straker's RAY bot to ask about key events happening in your translation projects without leaving your work environment.\r
+  long_description:
+    "RAY Translate for Slack helps you streamline your translation tasks all in one place You can manage all of your translation projects without leaving your work environment, check job status, send files for a quote, and get project updates with RAY Translate.\r
 
     \r
 
-    - Adding the Straker App to the Client's Slack Workspace\r
+    Users of the RAY Cloud can use RAY Translate for Slack to:\r
 
-    - Linking a DeltaRAY Account\r
+    • Check job status\r
 
-    - Checking a Job Status\r
+    • Receive a job summary – filtered list of jobs categorized by: In Progress, Completed, In Validation, Pending Quotes\r
 
-    - Job Summary - filtered list of jobs In Progress, Completed, In Validation, Pending Quotes and jobs clients can Order.\r
+    • Submit files for a quote\r
 
-    - Submit Files for a Quote\r
+    • Approve a quote\r
 
-    - Approving a quote\r
+    • Receive translated files\r
 
-    - Receiving translated files\r
-
-    - Job Notifications\r
-
-    - DeltaRAY Admin settings to approve new users\r
+    • Receive job notifications\r
 
     \r
 
-    *About Straker*\r
+    In addition, RAY Cloud admin users can utilize RAY Translate for Slack to:\r
+
+    • Approve new signed-up users\r
 
     \r
 
-    Straker is a technology-based localization solution that helps you manage multilingual content. Since 2010, Straker has been leading the way in blending human and machine intelligence to increase speed, reduce complexity and cost in translations."
+    Install RAY Translate to your Slack workspace, connect your RAY Cloud account and use Straker’s RAY bot to ask about key events happening in your translation projects, all without having to leave the familiarity of Slack.\r
+
+    \r
+
+    About Straker\r
+
+    - Straker provides next-generation language cloud solutions supported by a state-of-the-art technology stack and robust AI layers to boost productivity, reduce friction and move faster with a new holistic approach to translation and localization. \r
+
+    - By combining technical innovation and linguistic expertise, Straker delivers effortless accuracy through cost-effective and scalable translation solutions to global clients."
 features:
   app_home:
     home_tab_enabled: true
     messages_tab_enabled: true
     messages_tab_read_only_enabled: false
   bot_user:
-    display_name: Straker
+    display_name: RAY Translate
     always_online: true
   shortcuts:
     - name: New Translation Job
@@ -47,39 +54,28 @@ features:
   slash_commands:
     - command: /ray
       url: <YOUR_DOMAIN>/slack/events
-      description: Get the status of a job
-      usage_hint: "job [reference]"
+      description: Job Status, Daily Summary, Submit a New Job
+      usage_hint: "[job reference], my jobs, new"
       should_escape: false
-  unfurl_domains:
-    - strakertranslations.com
 oauth_config:
   redirect_urls:
     - <YOUR_DOMAIN>/slack/oauth_redirect
   scopes:
     bot:
-      - channels:history
+      - app_mentions:read
       - chat:write
       - chat:write.public
       - commands
       - files:read
-      - groups:history
       - im:history
-      - im:read
-      - im:write
-      - links:read
-      - links:write
-      - mpim:history
 settings:
   event_subscriptions:
     request_url: <YOUR_DOMAIN>/slack/events
     bot_events:
       - app_home_opened
+      - app_mention
       - app_uninstalled
-      - link_shared
-      - message.channels
-      - message.groups
       - message.im
-      - message.mpim
   interactivity:
     is_enabled: true
     request_url: <YOUR_DOMAIN>/slack/events
