@@ -131,7 +131,7 @@ async def new_job_shortcut(ack, shortcut, context, client):
         )
 
 
-@app.command("/ray", middleware=[ray_connection])
+@app.command(re.compile(r"\/\w*(ray|straker|lc)\w*"), middleware=[ray_connection])
 @slack_log_decorator
 async def ray_command(ack, respond, say, command, context, client):
     await ack()
