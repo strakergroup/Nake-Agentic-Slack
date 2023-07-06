@@ -4,7 +4,7 @@
 
 from typing import Any
 from ray_sdk.api.v3.models import Quote
-from ...auth.connector import get_slack_ray_cloud_connect_url, RayConnection
+from ...auth.connector import get_language_cloud_connect_url, RayConnection
 from ...config import domains
 from ...ray.utils import (
     get_job_url,
@@ -20,8 +20,8 @@ def home_auth_blocks(
     channel_id: str,
     ray_connection: RayConnection | None,
 ) -> list[dict[str, Any]]:
-    """The blocks in the Home tab which displays the RAY Cloud connection
-    details or asks the user to connect their RAY Cloud account.
+    """The blocks in the Home tab which displays the LanguageCloud connection
+    details or asks the user to connect their LanguageCloud account.
     """
     if isinstance(ray_connection, RayConnection) and ray_connection.client:
         return [
@@ -36,7 +36,7 @@ def home_auth_blocks(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"Your Slack account <@{user_id}> is connected with: <{domains.ray_cloud}|{ray_connection.client.username}>.",
+                    "text": f"Your Slack account <@{user_id}> is connected with: <{domains.languagecloud}|{ray_connection.client.username}>.",
                 },
             },
         ]
@@ -45,7 +45,7 @@ def home_auth_blocks(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "Connect your RAY Cloud account to get details about your translation jobs.",
+                "text": "Connect your LanguageCloud account to get details about your translation jobs.",
             },
         },
         {
@@ -55,10 +55,10 @@ def home_auth_blocks(
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": "Connect your RAY Cloud account",
+                        "text": "Connect your LanguageCloud account",
                     },
                     "style": "primary",
-                    "url": get_slack_ray_cloud_connect_url(
+                    "url": get_language_cloud_connect_url(
                         user_id, team_id, app_id, channel_id
                     ),
                     "action_id": "login",
@@ -76,7 +76,7 @@ def job_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
                 "type": "button",
                 "text": {
                     "type": "plain_text",
-                    "text": "View this job in RAY Cloud",
+                    "text": "View this job in LanguageCloud",
                     "emoji": True,
                 },
                 "style": "primary",
@@ -180,7 +180,7 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
                         "text": {
                             "type": "plain_text",
                             "text": "Are you sure you want to cancel this quote?\n\n"
-                            "This action requires you to be logged in to RAY Cloud.",
+                            "This action requires you to be logged in to LanguageCloud.",
                         },
                         "confirm": {"type": "plain_text", "text": "Yes"},
                         "deny": {
@@ -193,7 +193,7 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": "View in RAY Cloud",
+                        "text": "View in LanguageCloud",
                         "emoji": True,
                     },
                     "url": job_url,

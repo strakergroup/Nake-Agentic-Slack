@@ -7,9 +7,9 @@ class TestLoginMessage:
         self, user_id: str, team_id: str, app_id: str, channel_id: str
     ):
         message = LoginMessage(user_id, team_id, app_id, channel_id)
-        assert message.text == "Connect your RAY Cloud account"
+        assert message.text == "Connect your LanguageCloud account"
         assert (
-            "Click this button to connect your RAY Cloud account"
+            "Click this button to connect your LanguageCloud account"
             in message.blocks[0]["text"]["text"]
         )
 
@@ -24,9 +24,10 @@ class TestLoginMessage:
         message = LoginMessage(
             user_id, team_id, app_id, channel_id, ray_client=ray_client
         )
-        assert message.text == "Connect your RAY Cloud account"
+        assert message.text == "Connect your LanguageCloud account"
         assert (
-            "Your connected RAY Cloud account is" in message.blocks[0]["text"]["text"]
+            "Your connected LanguageCloud account is"
+            in message.blocks[0]["text"]["text"]
         )
         assert ray_client.username in message.blocks[0]["text"]["text"]
         assert (
@@ -40,9 +41,9 @@ class TestLoginMessage:
         message = LoginMessage(
             user_id, team_id, app_id, channel_id, variation=LoginMessage.GET_JOB
         )
-        assert message.text == "Connect your RAY Cloud account"
+        assert message.text == "Connect your LanguageCloud account"
         assert (
-            "Connect your RAY Cloud account to view your jobs."
+            "Connect your LanguageCloud account to view your jobs."
             in message.blocks[0]["text"]["text"]
         )
 
@@ -52,9 +53,9 @@ class TestLoginMessage:
         message = LoginMessage(
             user_id, team_id, app_id, channel_id, variation=LoginMessage.NEW_JOB
         )
-        assert message.text == "Connect your RAY Cloud account"
+        assert message.text == "Connect your LanguageCloud account"
         assert (
-            "Connect your RAY Cloud account to submit a new translation job"
+            "Connect your LanguageCloud account to submit a new translation job"
             in message.blocks[0]["text"]["text"]
         )
 
@@ -77,9 +78,9 @@ class TestLoginMessage:
             ray_client=ray_client,
             variation=LoginMessage.GET_JOB,
         )
-        assert message.text == "Connect your RAY Cloud account"
+        assert message.text == "Connect your LanguageCloud account"
         assert (
-            "Connect your RAY Cloud account to view your jobs."
+            "Connect your LanguageCloud account to view your jobs."
             in message.blocks[0]["text"]["text"]
         )
         assert ray_client.username not in message.blocks[0]["text"]["text"]

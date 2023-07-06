@@ -18,8 +18,8 @@ buglog.init(
 
 # Configure FastAPI
 app = FastAPI(
-    title="Slack RAY Translator",
-    description="The Slack app API for Straker RAY Cloud",
+    title="Straker Translate for Slack",
+    description="The Slack app API for Straker LanguageCloud",
     docs_url="/docs" if config.environment != Environment.production else None,
     redoc_url="/redoc" if config.environment != Environment.production else None,
 )

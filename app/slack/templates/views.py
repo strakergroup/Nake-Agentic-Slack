@@ -103,10 +103,10 @@ def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "🌐 Visit RAY Cloud",
+                            "text": "🌐 Visit Straker LanguageCloud",
                         },
                         "action_id": "link_1",
-                        "url": domains.ray_cloud,
+                        "url": domains.languagecloud,
                     },
                     {
                         "type": "button",
@@ -135,7 +135,7 @@ def new_job_modal(
     category, source and target languages.
 
     Args:
-        client_name (str): The user's RAY Cloud username.
+        client_name (str): The user's LanguageCloud username.
         file_options (list[dict] | None, optional): A list of file objects to set as available
             options for the "Files to translate" select input. Defaults to None.
         initial_files (list[dict] | None, optional): A list of file objects to initally select.

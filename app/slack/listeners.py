@@ -352,7 +352,7 @@ async def approve_pending_client_action(ack, action, context, say, client):
 async def disconnect_account_action(ack, action, body, context, respond):
     await ack()
     disconnect_ray_account(context["user_id"], context["team_id"], body["api_app_id"])
-    # action["value"] should contain the RAY Cloud account username.
+    # action["value"] should contain the LanguageCloud account username.
     msg = SuccessfulLogoutMessage(context["user_id"], action.get("value"))
     await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
 

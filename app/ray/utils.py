@@ -18,7 +18,7 @@ def get_job_url(job_uuid: str, client_id: str | None = None) -> str:
         str: The URL of the job.
     """
     return "{domain}/job/detail?{params}".format(
-        domain=domains.ray_cloud,
+        domain=domains.languagecloud,
         params=urlencode({"j": job_uuid, "member_id": client_id or ""}),
     )
 

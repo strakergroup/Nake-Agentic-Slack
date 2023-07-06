@@ -68,12 +68,12 @@ async def ray_log(context, body, next):
 
 
 async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) -> None:
-    """Gets and saves the RAY Cloud super group and client information of the
+    """Gets and saves the LanguageCloud super group and client information of the
     Slack user to the context. The `RayConnection` object is stored as `ray` in
     the context if the Slack workspace has a connected super group.
 
     Also add a `login_prompt` message to the context containing the message to
-    be sent to the user asking them to connect their RAY Cloud account.
+    be sent to the user asking them to connect their LanguageCloud account.
     """
     app_id = body.get(
         "api_app_id", get_app_id(context["bot_token"], context["team_id"])
@@ -109,19 +109,19 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
 async def require_ray_client(
     context: AsyncBoltContext, prompt_login: bool = True, variation: str | None = None
 ) -> bool:
-    """Checks if a Slack user is connected to a RAY Cloud account by checking
+    """Checks if a Slack user is connected to a LanguageCloud account by checking
     the context. If not connected, then optionally post a message prompting the
-    user to connect their RAY Cloud account. (Requires the `ray_connection` middleware.)
+    user to connect their LanguageCloud account. (Requires the `ray_connection` middleware.)
 
     Args:
         context (AsyncBoltContext): The Slack listener context.
         prompt_login (bool, optional): Post a login message if the Slack user does
-            not have a connected RAY Cloud account. Defaults to True.
+            not have a connected LanguageCloud account. Defaults to True.
         variation (str | None, optional): The variation of the login message to use.
             Defaults to None.
 
     Returns:
-        bool: The Slack user has a connected RAY Cloud account.
+        bool: The Slack user has a connected LanguageCloud account.
     """
     if (
         isinstance(context.get("ray"), RayConnection)
@@ -138,7 +138,7 @@ async def require_ray_client(
             return False
 
         login_message: LoginMessage = login_message.with_variation(variation)
-        # Send login prompt if no RAY Cloud account is connected.
+        # Send login prompt if no LanguageCloud account is connected.
         if context.respond.response_url:
             await context.respond(
                 text=login_message.text,

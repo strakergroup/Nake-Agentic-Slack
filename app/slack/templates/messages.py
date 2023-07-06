@@ -25,7 +25,7 @@ from ...config import domains
 from ...auth.connector import (
     RayClient,
     RayConnection,
-    get_slack_ray_cloud_connect_url,
+    get_language_cloud_connect_url,
 )
 
 
@@ -72,7 +72,7 @@ class OnboardingMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Connect your RAY Cloud account to get details about your translation jobs.",
+                        "text": "Connect your LanguageCloud account to get details about your translation jobs.",
                     },
                 },
                 {
@@ -82,10 +82,10 @@ class OnboardingMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Connect RAY Cloud account",
+                                "text": "Connect LanguageCloud account",
                             },
                             "style": "primary",
-                            "url": get_slack_ray_cloud_connect_url(
+                            "url": get_language_cloud_connect_url(
                                 user_id, team_id, app_id, channel_id
                             ),
                             "action_id": "login",
@@ -97,7 +97,7 @@ class OnboardingMessage(SlackMessage):
 
 
 class LoginMessage(SlackMessage):
-    """Message to send to prompt the user to connect their RAY Cloud account."""
+    """Message to send to prompt the user to connect their LanguageCloud account."""
 
     GET_JOB = "get_job"
     NEW_JOB = "new_job"
@@ -112,7 +112,7 @@ class LoginMessage(SlackMessage):
         variation: str | None = None,
     ) -> None:
         """Constructor for the login Slack message. If the Slack user already has
-        a connected RAY Cloud account, creates a variation with the client username
+        a connected LanguageCloud account, creates a variation with the client username
         in the message.
 
         Args:
@@ -133,21 +133,21 @@ class LoginMessage(SlackMessage):
         self._variation = variation
 
         # Have variations of the login message depending on the arguments.
-        block_text = "Click this button to connect your RAY Cloud account."
+        block_text = "Click this button to connect your LanguageCloud account."
         if variation == self.GET_JOB:
-            block_text = "Connect your RAY Cloud account to view your jobs."
+            block_text = "Connect your LanguageCloud account to view your jobs."
         elif variation == self.NEW_JOB:
             block_text = (
-                "Connect your RAY Cloud account to submit a new translation job."
+                "Connect your LanguageCloud account to submit a new translation job."
             )
         elif isinstance(ray_client, RayClient):
             block_text = (
-                f"Your connected RAY Cloud account is: <{domains.ray_cloud}|{ray_client.username}>.\n"
+                f"Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_client.username}>.\n"
                 "You can connect a different account by clicking this button."
             )
 
         super().__init__(
-            "Connect your RAY Cloud account",
+            "Connect your LanguageCloud account",
             [
                 {
                     "type": "section",
@@ -160,10 +160,10 @@ class LoginMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Connect RAY Cloud account",
+                                "text": "Connect LanguageCloud account",
                             },
                             "style": "primary",
-                            "url": get_slack_ray_cloud_connect_url(
+                            "url": get_language_cloud_connect_url(
                                 user_id, team_id, app_id, channel_id
                             ),
                             "action_id": "login",
@@ -191,7 +191,7 @@ class LoginMessage(SlackMessage):
 
 
 class SuccessfulLoginMessage(SlackMessage):
-    """Message to send after a user successfully connects their RAY Cloud
+    """Message to send after a user successfully connects their LanguageCloud
     account.
     """
 
@@ -203,7 +203,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f":white_check_mark: Login was successful! <@{user_id}> is now connected with <{domains.ray_cloud}|{ray_username}>.",
+                        "text": f":white_check_mark: Login was successful! <@{user_id}> is now connected with <{domains.languagecloud}|{ray_username}>.",
                     },
                 },
                 {"type": "divider"},
@@ -243,17 +243,17 @@ class SuccessfulLoginMessage(SlackMessage):
 
 
 class LogoutMessage(SlackMessage):
-    """Message with a button disconnect a user's RAY Cloud account."""
+    """Message with a button disconnect a user's LanguageCloud account."""
 
     def __init__(self, ray_username: str) -> None:
         super().__init__(
-            "Disconnect your RAY Cloud account",
+            "Disconnect your LanguageCloud account",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Click this button to disconnect your RAY Cloud account: <{domains.ray_cloud}|{ray_username}>.",
+                        "text": f"Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_username}>.",
                     },
                 },
                 {
@@ -263,7 +263,7 @@ class LogoutMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Disconnect RAY Cloud account",
+                                "text": "Disconnect LanguageCloud account",
                             },
                             "style": "danger",
                             "action_id": "disconnect",
@@ -284,16 +284,16 @@ class LogoutMessage(SlackMessage):
 
 
 class SuccessfulLogoutMessage(SlackMessage):
-    """A Slack user's RAY Cloud account was successfully disconnected."""
+    """A Slack user's LanguageCloud account was successfully disconnected."""
 
     def __init__(self, user_id: str, ray_username: str | None = None) -> None:
         block_message = (
-            f"Your RAY Cloud account <{domains.ray_cloud}|{ray_username}> is now disconnected from <@{user_id}>."
+            f"Your LanguageCloud account <{domains.languagecloud}|{ray_username}> is now disconnected from <@{user_id}>."
             if ray_username
-            else f"Your RAY Cloud account is now disconnected from <@{user_id}>."
+            else f"Your LanguageCloud account is now disconnected from <@{user_id}>."
         )
         super().__init__(
-            "Your RAY Cloud account is now disconnected.",
+            "Your LanguageCloud account is now disconnected.",
             [
                 {
                     "type": "section",
@@ -306,7 +306,7 @@ class SuccessfulLogoutMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "You can use `/ray connect` to connect your RAY Cloud account again.",
+                        "text": "You can use `/ray connect` to connect your LanguageCloud account again.",
                     },
                 },
             ],
@@ -922,9 +922,15 @@ class HelpMessage(SlackMessage):
                             "text": "Upload files to translate and submit a quote request",
                         },
                         {"type": "mrkdwn", "text": "`/ray new`"},
-                        {"type": "mrkdwn", "text": "View your RAY Cloud connection"},
+                        {
+                            "type": "mrkdwn",
+                            "text": "View your LanguageCloud connection",
+                        },
                         {"type": "mrkdwn", "text": "`/ray info`"},
-                        {"type": "mrkdwn", "text": "Connect your RAY Cloud account"},
+                        {
+                            "type": "mrkdwn",
+                            "text": "Connect your LanguageCloud account",
+                        },
                         {"type": "mrkdwn", "text": "`/ray connect`"},
                     ],
                 },
@@ -989,7 +995,7 @@ class WhatsNextMessage(SlackMessage):
 
 
 class ConnectionInfoMessage(SlackMessage):
-    """The current Slack - RAY Cloud connection details."""
+    """The current Slack - LanguageCloud connection details."""
 
     def __init__(
         self,
@@ -1015,10 +1021,10 @@ class ConnectionInfoMessage(SlackMessage):
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": text},
             }
-        # Next get Slack user - RAY Cloud account info.
+        # Next get Slack user - LanguageCloud account info.
         account_blocks = []
         if ray_connection is not None and ray_connection.client is not None:
-            text = f"Your connected RAY Cloud account is: <{domains.ray_cloud}|{ray_connection.client.username}>"
+            text = f"Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_connection.client.username}>"
             account_blocks.append(
                 {
                     "type": "section",
@@ -1031,7 +1037,7 @@ class ConnectionInfoMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Click this button to connect your RAY Cloud account.",
+                        "text": "Click this button to connect your LanguageCloud account.",
                     },
                 }
             )
@@ -1043,10 +1049,10 @@ class ConnectionInfoMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Connect RAY Cloud account",
+                                "text": "Connect LanguageCloud account",
                             },
                             "style": "primary",
-                            "url": get_slack_ray_cloud_connect_url(
+                            "url": get_language_cloud_connect_url(
                                 user_id, team_id, app_id, channel_id
                             ),
                             "action_id": "login",
@@ -1114,13 +1120,13 @@ class ClientSignupEventMessage(SlackMessage):
     def __init__(self, event: ClientSignupEvent) -> None:
         self.event = event
         super().__init__(
-            "Thank you for signing up to RAY Cloud :tada:",
+            "Thank you for signing up to LanguageCloud :tada:",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Thank you for signing up to RAY Cloud <{domains.ray_cloud}|{event.username}> :tada:",
+                        "text": f"Thank you for signing up to LanguageCloud <{domains.languagecloud}|{event.username}> :tada:",
                     },
                 },
                 {
@@ -1138,13 +1144,13 @@ class ClientSignupEventAdminMessage(SlackMessage):
     def __init__(self, event: ClientSignupEvent, groups: list[ClientGroup]) -> None:
         self.event = event
         super().__init__(
-            f"A new user has signed up for a RAY Cloud account: {event.first_name} {event.last_name} ({event.email})",
+            f"A new user has signed up for a LanguageCloud account: {event.first_name} {event.last_name} ({event.email})",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"A new user has signed up for a RAY Cloud account:\n{event.first_name} {event.last_name} ({event.email})",
+                        "text": f"A new user has signed up for a LanguageCloud account:\n{event.first_name} {event.last_name} ({event.email})",
                     },
                 },
                 {
@@ -1166,7 +1172,7 @@ class ClientSignupEventAdminMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "To approve this user please click the approve button below, or alternatively if you need to change anything, please log into RAY Cloud to edit their permissions.",
+                        "text": "To approve this user please click the approve button below, or alternatively if you need to change anything, please log into LanguageCloud to edit their permissions.",
                     },
                 },
                 {
@@ -1190,9 +1196,9 @@ class ClientSignupEventAdminMessage(SlackMessage):
                             "text": {
                                 "type": "plain_text",
                                 "emoji": True,
-                                "text": "Log into RAY Cloud",
+                                "text": "Log into LanguageCloud",
                             },
-                            "url": domains.ray_cloud,
+                            "url": domains.languagecloud,
                             "action_id": "link",
                         },
                     ],
@@ -1205,13 +1211,13 @@ class ClientApprovedEventMessage(SlackMessage):
     def __init__(self, groups: list[str]) -> None:
         groups_text = "\n".join(f"- *{group}*" for group in groups)
         super().__init__(
-            ":raised_hands: Your RAY Cloud groups have been approved by an Admin.",
+            ":raised_hands: Your LanguageCloud groups have been approved by an Admin.",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f":raised_hands: Your RAY Cloud groups have been approved by an Admin:\n\n{groups_text}",
+                        "text": f":raised_hands: Your LanguageCloud groups have been approved by an Admin:\n\n{groups_text}",
                     },
                 },
                 {"type": "divider"},
@@ -1281,7 +1287,7 @@ class JobCompletedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Please log into RAY Cloud below to access your completed files.",
+                        "text": "Please log into LanguageCloud below to access your completed files.",
                     },
                 },
                 job_link_block(job_uuid, client_id),
