@@ -107,15 +107,25 @@ def get_bot_token(
     conn: Connection, team_id: str, app_id: str | None = None
 ) -> str | None:
     """Gets the Slack bot token for a workspace."""
-    sql = text(
-        f"""
-        SELECT bot_token FROM slack_bots
-        WHERE team_id = :team_id
-        {'AND app_id = :app_id' if app_id else ''}
-        ORDER BY id DESC
-        LIMIT 1
-        """
-    ).bindparams(team_id=team_id, app_id=app_id)
+    if app_id:
+        sql = text(
+            """
+            SELECT bot_token FROM slack_bots
+            WHERE team_id = :team_id
+            AND app_id = :app_id
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).bindparams(team_id=team_id, app_id=app_id)
+    else:
+        sql = text(
+            """
+            SELECT bot_token FROM slack_bots
+            WHERE team_id = :team_id
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).bindparams(team_id=team_id)
     result = conn.execute(sql).first()
     return result[0] if result else None
 
