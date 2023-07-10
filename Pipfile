@@ -10,9 +10,9 @@ name = "straker"
 
 [packages]
 python-dotenv = "*"
-fastapi = {extras = ["all"], version = ">=0.95.0,<0.96.0"}
+fastapi = {extras = ["all"], version = ">=0.99.0,<0.100.0"}
 uvicorn = {extras = ["standard"], version = "*"}
-pydantic = ">=1.10.0,<1.11.0"
+pydantic = "==1.*"
 elastic-apm = "*"
 slack-bolt = "*"
 aiohttp = "*"
@@ -25,7 +25,7 @@ redis = "*"
 cryptography = "*"
 python-dateutil = "*"
 babel = "*"
-straker-utils = {version = "==0.1.10", index = "straker"}
+straker-utils = {version = "==0.1.11", index = "straker"}
 ray-sdk = {version = "==0.2.5", index = "straker"}
 ray-logger = {version = "==0.1.2", index = "straker"}
 buglog = {version = "==0.1.1", index = "straker"}
