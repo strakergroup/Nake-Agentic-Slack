@@ -28,7 +28,7 @@ def home_view(
             *home_auth_blocks(
                 context["user_id"],
                 context["team_id"],
-                app_id,
+                context.get("enterprise_id"),
                 context["channel_id"],
                 rayConnection,
             ),

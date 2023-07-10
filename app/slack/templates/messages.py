@@ -56,7 +56,7 @@ class OnboardingMessage(SlackMessage):
     """Message to send to onboard a new user."""
 
     def __init__(
-        self, user_id: str, team_id: str, app_id: str, channel_id: str
+        self, user_id: str, team_id: str, enterprise_id: str | None, channel_id: str
     ) -> None:
         super().__init__(
             "Welcome to RAY Translate for Slack! :tada:",
@@ -86,7 +86,7 @@ class OnboardingMessage(SlackMessage):
                             },
                             "style": "primary",
                             "url": get_language_cloud_connect_url(
-                                user_id, team_id, app_id, channel_id
+                                user_id, team_id, enterprise_id, channel_id
                             ),
                             "action_id": "login",
                         }
@@ -106,7 +106,7 @@ class LoginMessage(SlackMessage):
         self,
         user_id: str,
         team_id: str,
-        app_id: str,
+        enterprise_id: str | None,
         channel_id: str,
         ray_client: RayClient | None = None,
         variation: str | None = None,
@@ -118,7 +118,7 @@ class LoginMessage(SlackMessage):
         Args:
             user_id (str): The Slack user ID.
             team_id (str): The Slack team ID.
-            app_id (str): The Slack app ID.
+            enterprise_id (str): The Slack enterprise ID.
             channel_id (str): The Slack channel ID to send the successful login message to.
             ray_client (RayClient | None, optional): Pass the RayClient info to use a
                 variation of the message. Defaults to None.
@@ -127,7 +127,7 @@ class LoginMessage(SlackMessage):
         """
         self._user_id = user_id
         self._team_id = team_id
-        self._app_id = app_id
+        self._enterprise_id = enterprise_id
         self._channel_id = channel_id
         self._ray_client = ray_client
         self._variation = variation
@@ -164,7 +164,7 @@ class LoginMessage(SlackMessage):
                             },
                             "style": "primary",
                             "url": get_language_cloud_connect_url(
-                                user_id, team_id, app_id, channel_id
+                                user_id, team_id, enterprise_id, channel_id
                             ),
                             "action_id": "login",
                         }
@@ -183,7 +183,7 @@ class LoginMessage(SlackMessage):
         return LoginMessage(
             user_id=self._user_id,
             team_id=self._team_id,
-            app_id=self._app_id,
+            enterprise_id=self._enterprise_id,
             channel_id=self._channel_id,
             ray_client=self._ray_client,
             variation=variation,
@@ -1002,7 +1002,7 @@ class ConnectionInfoMessage(SlackMessage):
         ray_connection: RayConnection | None,
         user_id: str,
         team_id: str,
-        app_id: str,
+        enterprise_id: str | None,
         channel_id: str,
     ) -> None:
         # First get Slack workspace - super group info.
@@ -1053,7 +1053,7 @@ class ConnectionInfoMessage(SlackMessage):
                             },
                             "style": "primary",
                             "url": get_language_cloud_connect_url(
-                                user_id, team_id, app_id, channel_id
+                                user_id, team_id, enterprise_id, channel_id
                             ),
                             "action_id": "login",
                         }

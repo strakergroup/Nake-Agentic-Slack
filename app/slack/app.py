@@ -57,7 +57,7 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
         message = OnboardingMessage(
             args.installation.user_id,
             args.installation.team_id,
-            args.installation.app_id,
+            args.installation.enterprise_id,
             args.installation.user_id,
         )
         await app.client.chat_postMessage(

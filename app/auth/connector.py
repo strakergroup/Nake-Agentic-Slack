@@ -409,27 +409,31 @@ def get_app_id(bot_token: str, team_id: str) -> str:
 
 
 def encrpyt_slack_integration_token(
-    user_id: str, team_id: str, app_id: str, channel_id: str, expire_seconds: int = 3600
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    channel_id: str,
+    expire_seconds: int = 7200,
 ) -> str:
     """Generates time-sensitive token to allow the Slack app to communicate
     with the RAY platform securely.
 
     Args:
-        user_id (str): The ID of the user.
-        team_id (str): The ID of the team.
-        app_id (str): The ID of the Slack app.
+        user_id (str): The Slack user ID.
+        team_id (str): The Slack team ID.
+        enterprise_id (str | None): The Slack enterprise ID.
         channel_id (str): The ID of channel where the login command was called.
         expire_seconds (int, optional): The time in seconds before the token expires.
-        Defaults to 3600.
+        Defaults to 7200.
 
     Returns:
         str: The encrypted token.
     """
     epoch = int(time.time())
     data = {
-        "appId": app_id,
-        "teamId": team_id,
         "userId": user_id,
+        "teamId": team_id,
+        "enterpriseId": enterprise_id or None,
         "channelId": channel_id,
         "created": epoch,
         "expires": epoch + expire_seconds,
@@ -439,25 +443,29 @@ def encrpyt_slack_integration_token(
 
 
 def get_language_cloud_connect_url(
-    user_id: str, team_id: str, app_id: str, channel_id: str, expire_seconds: int = 3600
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    channel_id: str,
+    expire_seconds: int = 7200,
 ) -> str:
     """Generates a URL for a user to connect their Slack account to their
     LanguageCloud account.
 
     Args:
-        user_id (str): The ID of the user.
-        team_id (str): The ID of the team.
-        app_id (str): The ID of the Slack app.
+        user_id (str): The Slack user ID.
+        team_id (str): The Slack team ID.
+        enterprise_id (str | None): The Slack enterprise ID.
         channel_id (str): The ID of channel where the login command was called.
         expire_seconds (int, optional): The time in seconds before the token expires.
-        Defaults to 3600.
+        Defaults to 7200.
 
     Returns:
         str: The URL to connect a user's Slack account and LanguageCloud account.
     """
     params = {
         "token": encrpyt_slack_integration_token(
-            user_id, team_id, app_id, channel_id, expire_seconds
+            user_id, team_id, enterprise_id, channel_id, expire_seconds
         )
     }
     return f"{domains.languagecloud}/app/slack?{urlencode(params)}"

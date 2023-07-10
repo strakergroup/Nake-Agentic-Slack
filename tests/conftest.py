@@ -22,6 +22,10 @@ def mock_team_id() -> str:
     return f"T{randrange(0, 10_000_000_000):010}"
 
 
+def mock_enterprise_id() -> str:
+    return f"E{randrange(0, 10_000_000_000):010}"
+
+
 def mock_app_id() -> str:
     return f"A{randrange(0, 10_000_000_000):010}"
 
@@ -121,6 +125,11 @@ def bot_id() -> str:
 @pytest.fixture
 def team_id() -> str:
     return mock_team_id()
+
+
+@pytest.fixture
+def enterprise_id() -> str:
+    return mock_enterprise_id()
 
 
 @pytest.fixture

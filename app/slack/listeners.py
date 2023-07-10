@@ -94,7 +94,10 @@ async def home_opened(event, context, body, say, client):
     history = await client.conversations_history(channel=event.get("channel"), limit=1)
     if not history.get("messages"):
         message = OnboardingMessage(
-            event.get("user"), body["team_id"], body["api_app_id"], event.get("channel")
+            context["user_id"],
+            context["team_id"],
+            context.get("enterprise_id"),
+            event.get("channel"),
         )
         await say(blocks=message.blocks, text=message.text)
     # Publish view to home tab.
@@ -151,7 +154,7 @@ async def ray_command(ack, respond, say, command, context, client):
                 context["ray"],
                 user_id=context["user_id"],
                 team_id=context["team_id"],
-                app_id=command["api_app_id"],
+                enterprise_id=context.get("enterprise_id"),
                 channel_id=context["channel_id"],
             )
             await respond(text=msg.text, blocks=msg.blocks)

@@ -16,7 +16,7 @@ from ...ray.utils import (
 def home_auth_blocks(
     user_id: str,
     team_id: str,
-    app_id: str,
+    enterprise_id: str | None,
     channel_id: str,
     ray_connection: RayConnection | None,
 ) -> list[dict[str, Any]]:
@@ -55,11 +55,11 @@ def home_auth_blocks(
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": "Connect your LanguageCloud account",
+                        "text": "Connect LanguageCloud account",
                     },
                     "style": "primary",
                     "url": get_language_cloud_connect_url(
-                        user_id, team_id, app_id, channel_id
+                        user_id, team_id, enterprise_id, channel_id
                     ),
                     "action_id": "login",
                 }
