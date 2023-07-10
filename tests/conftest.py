@@ -148,8 +148,10 @@ def ts() -> str:
 
 
 @pytest.fixture
-def ray_client(user_id, team_id, app_id) -> RayClient:
-    return RayClient(str(uuid4()), "test.user", str(uuid4()), user_id, team_id, app_id)
+def ray_client(user_id, team_id, enterprise_id) -> RayClient:
+    return RayClient(
+        str(uuid4()), "test.user", str(uuid4()), user_id, team_id, enterprise_id
+    )
 
 
 @pytest.fixture

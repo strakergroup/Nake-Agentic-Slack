@@ -23,7 +23,7 @@ class SlackUser:
 
     user_id: str
     team_id: str
-    app_id: str
+    enterprise_id: str | None
     channel_id: str
     is_subscribed: bool
     bot_token: str
@@ -41,6 +41,8 @@ class RaySuperGroup:
     """The name of the group (`obj_m_group.label`)."""
     slack_team_id: str
     """The Slack team ID linked to the RAY client."""
+    slack_enterprise_id: str | None
+    """The Slack enterprise ID linked to the RAY client."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,8 +59,8 @@ class RayClient:
     """The Slack user ID."""
     slack_team_id: str
     """The Slack team ID."""
-    slack_app_id: str
-    """The Slack app ID."""
+    slack_enterprise_id: str | None
+    """The Slack enterprise ID."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,19 +106,20 @@ def validate_api_callback_signature(
 
 
 def get_bot_token(
-    conn: Connection, team_id: str, app_id: str | None = None
+    conn: Connection,
+    team_id: str,
+    enterprise_id: str | None = None,
 ) -> str | None:
     """Gets the Slack bot token for a workspace."""
-    if app_id:
+    if enterprise_id:
         sql = text(
             """
             SELECT bot_token FROM slack_bots
-            WHERE team_id = :team_id
-            AND app_id = :app_id
+            WHERE enterprise_id = :enterprise_id
             ORDER BY id DESC
             LIMIT 1
             """
-        ).bindparams(team_id=team_id, app_id=app_id)
+        ).bindparams(enterprise_id=enterprise_id)
     else:
         sql = text(
             """
@@ -139,7 +142,7 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
-            SELECT link.slack_user_id,link.slack_team_id,link.slack_app_id,
+            SELECT link.slack_user_id,link.slack_team_id,link.slack_enterprise_id,
                 link.slack_channel_id,link.is_subscribed,mem.login
             FROM slack_deltaray_link link
             INNER JOIN sitemanager.obj_m_member mem
@@ -154,12 +157,14 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
         result = conn.execute(sql)
         row = result.first()
         if row:
-            bot_token = get_bot_token(conn, row.slack_team_id, row.slack_app_id)
+            bot_token = get_bot_token(
+                conn, team_id=row.slack_team_id, enterprise_id=row.slack_enterprise_id
+            )
             if bot_token:
                 return SlackUser(
                     user_id=row.slack_user_id,
                     team_id=row.slack_team_id,
-                    app_id=row.slack_app_id,
+                    enterprise_id=row.slack_enterprise_id,
                     channel_id=row.slack_channel_id,
                     is_subscribed=bool(row.is_subscribed),
                     bot_token=bot_token,
@@ -184,7 +189,9 @@ def get_client_access_tokens(ray_client_id: str) -> tuple[str]:
     return tuple(row[0] for row in rows)
 
 
-async def get_ray_super_group(team_id: str) -> RaySuperGroup | None:
+async def get_ray_super_group(
+    team_id: str, enterprise_id: str | None = None
+) -> RaySuperGroup | None:
     """Gets the LanguageCloud super group linked to the Slack workspace if an active
     link exists, otherwise returns None.
 
@@ -192,50 +199,85 @@ async def get_ray_super_group(team_id: str) -> RaySuperGroup | None:
         team_id (str): The ID of the team.
     """
     with engines["ray_integration_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT link.super_group_uuid, g.label
-            FROM slack_super_group_link link
-            INNER JOIN sitemanager.obj_m_group g
-            ON link.super_group_uuid = g.obj_uuid
-            WHERE link.slack_team_id = :team_id
-            AND link.is_active = 1
-            LIMIT 1
-            """
-        ).bindparams(team_id=team_id)
+        if enterprise_id:
+            sql = text(
+                """
+                SELECT link.super_group_uuid, g.label
+                FROM slack_super_group_link link
+                INNER JOIN sitemanager.obj_m_group g
+                ON link.super_group_uuid = g.obj_uuid
+                WHERE link.slack_enterprise_id = :enterprise_id
+                AND link.is_active = 1
+                LIMIT 1
+                """
+            ).bindparams(enterprise_id=enterprise_id)
+        else:
+            sql = text(
+                """
+                SELECT link.super_group_uuid, g.label
+                FROM slack_super_group_link link
+                INNER JOIN sitemanager.obj_m_group g
+                ON link.super_group_uuid = g.obj_uuid
+                WHERE link.slack_team_id = :team_id
+                AND link.is_active = 1
+                LIMIT 1
+                """
+            ).bindparams(team_id=team_id)
         result = conn.execute(sql)
         row = result.first()
         if not row:
             return None
-    return RaySuperGroup(id=row.super_group_uuid, name=row.label, slack_team_id=team_id)
+    return RaySuperGroup(
+        id=row.super_group_uuid,
+        name=row.label,
+        slack_team_id=team_id,
+        slack_enterprise_id=enterprise_id,
+    )
 
 
-async def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient | None:
+async def get_ray_client(
+    user_id: str, team_id: str, enterprise_id: str | None = None
+) -> RayClient | None:
     """Gets the LanguageCloud client id and username linked to the Slack account if an active link
     exists, otherwise returns None.
 
     Args:
-        user_id (str): The ID of the user.
-        team_id (str): The ID of the team.
-        app_id (str): The ID of the Slack app.
+        user_id (str): The Slack user ID.
+        team_id (str): The Slack team ID.
+        enterprise_id (str | None): The Slack enterprise ID.
     """
     # First find the client details.
     with engines["ray_integration_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT link.member_uuid, mem.login
-            FROM slack_deltaray_link link
-            INNER JOIN sitemanager.obj_m_member mem
-            ON link.member_uuid = mem.obj_uuid
-            WHERE link.slack_user_id = :user_id
-            AND link.slack_team_id = :team_id
-            AND link.slack_app_id = :app_id
-            AND link.is_active = 1
-            AND mem.active = 1
-            AND mem.is_deleted = 0
-            LIMIT 1
-            """
-        ).bindparams(user_id=user_id, team_id=team_id, app_id=app_id)
+        if enterprise_id:
+            sql = text(
+                """
+                SELECT link.member_uuid, mem.login
+                FROM slack_deltaray_link link
+                INNER JOIN sitemanager.obj_m_member mem
+                ON link.member_uuid = mem.obj_uuid
+                WHERE link.slack_user_id = :user_id
+                AND link.slack_enterprise_id = :enterprise_id
+                AND link.is_active = 1
+                AND mem.active = 1
+                AND mem.is_deleted = 0
+                LIMIT 1
+                """
+            ).bindparams(user_id=user_id, enterprise_id=enterprise_id)
+        else:
+            sql = text(
+                """
+                SELECT link.member_uuid, mem.login
+                FROM slack_deltaray_link link
+                INNER JOIN sitemanager.obj_m_member mem
+                ON link.member_uuid = mem.obj_uuid
+                WHERE link.slack_user_id = :user_id
+                AND link.slack_team_id = :team_id
+                AND link.is_active = 1
+                AND mem.active = 1
+                AND mem.is_deleted = 0
+                LIMIT 1
+                """
+            ).bindparams(user_id=user_id, team_id=team_id)
         result = conn.execute(sql)
         row = result.first()
         if not row:
@@ -262,19 +304,20 @@ async def get_ray_client(user_id: str, team_id: str, app_id: str) -> RayClient |
         access_token=access_token,
         slack_user_id=user_id,
         slack_team_id=team_id,
-        slack_app_id=app_id,
+        slack_enterprise_id=enterprise_id,
     )
 
 
 async def get_ray_connection(
-    user_id: str, team_id: str, app_id: str
+    user_id: str, team_id: str, enterprise_id: str | None
 ) -> RayConnection | None:
     """Gets the LanguageCloud super group and client linked to the Slack workspace
     and user. If the Slack workspace is not linked, ignore the Slack user link.
     A Slack workspace can have a connection without a Slack user connection.
     """
     super_group, client = await asyncio.gather(
-        get_ray_super_group(team_id), get_ray_client(user_id, team_id, app_id)
+        get_ray_super_group(team_id, enterprise_id),
+        get_ray_client(user_id, team_id, enterprise_id),
     )
     if super_group is None:
         return None
@@ -286,7 +329,7 @@ def get_group_admin_slack_users(group_id: str) -> list[SlackUser]:
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
             """
-            SELECT slack.slack_user_id, slack.slack_team_id, slack.slack_app_id,
+            SELECT slack.slack_user_id, slack.slack_team_id, slack.slack_enterprise_id,
                 slack.slack_channel_id, slack.is_subscribed, bots.bot_token,
                 mem.obj_uuid, mem.login
             FROM obj_m_mglink link
@@ -298,17 +341,17 @@ def get_group_admin_slack_users(group_id: str) -> list[SlackUser]:
             ON bots.id = (
                 SELECT id FROM ray_integration.slack_bots bots2
                 WHERE bots2.team_id = slack.slack_team_id
-                AND bots2.app_id = slack.slack_app_id
+                OR bots2.enterprise_id = slack.slack_enterprise_id
                 ORDER BY id DESC LIMIT 1
             )
             WHERE link.groupid = :group_id
-            AND link.client_type = :client_type
+            AND link.client_type IN ('Admin', 'Owner')
             AND mem.active = 1
             AND mem.is_deleted = 0
             AND slack.is_active = 1
             GROUP BY link.memberid
             """
-        ).bindparams(group_id=group_id, client_type="Admin")
+        ).bindparams(group_id=group_id)
         result = conn.execute(sql)
 
     slack_users = []
@@ -317,7 +360,7 @@ def get_group_admin_slack_users(group_id: str) -> list[SlackUser]:
             SlackUser(
                 user_id=row.slack_user_id,
                 team_id=row.slack_team_id,
-                app_id=row.slack_app_id,
+                enterprise_id=row.slack_enterprise_id,
                 channel_id=row.slack_channel_id,
                 is_subscribed=bool(row.is_subscribed),
                 bot_token=row.bot_token,
@@ -328,13 +371,15 @@ def get_group_admin_slack_users(group_id: str) -> list[SlackUser]:
     return slack_users
 
 
-def disconnect_ray_account(user_id: str, team_id: str, app_id: str) -> bool:
+def disconnect_ray_account(
+    user_id: str, team_id: str, enterprise_id: str | None = None
+) -> bool:
     """Disconnect the LanguageCloud account of a slack user.
 
     Args:
         user_id (str): The Slack user ID.
         team_id (str): The Slack team ID.
-        app_id (str): The Slack app ID.
+        enterprise_id (str): The Slack enterprise ID.
 
     Returns:
         bool: The Slack user had a connected LanguageCloud account.
@@ -346,21 +391,26 @@ def disconnect_ray_account(user_id: str, team_id: str, app_id: str) -> bool:
                 is_active = 0,
                 deactivated_at = NOW()
             WHERE slack_user_id = :user_id
-            AND slack_team_id = :team_id
-            AND slack_app_id = :app_id
+            AND (
+                slack_team_id = :team_id
+                OR slack_enterprise_id = :enterprise_id
+            )
             AND is_active = 1
             """
-        ).bindparams(user_id=user_id, team_id=team_id, app_id=app_id)
+        ).bindparams(user_id=user_id, team_id=team_id, enterprise_id=enterprise_id)
         result = conn.execute(sql)
     return result.rowcount > 0
 
 
-def disconnect_ray_super_group_and_users(team_id: str) -> bool:
+def disconnect_ray_super_group_and_users(
+    team_id: str, enterprise_id: str | None = None
+) -> bool:
     """Disconnect the LanguageCloud super group and all connected users
     of a Slack Workspace.
 
     Args:
         team_id (str): The Slack team ID.
+        enterprise_id (str | None): The Slack enterprise ID.
 
     Returns:
         bool: An active Slack-LanguageCloud connection was deactivated.
@@ -371,41 +421,28 @@ def disconnect_ray_super_group_and_users(team_id: str) -> bool:
             UPDATE slack_super_group_link SET
                 is_active = 0,
                 deactivated_at = NOW()
-            WHERE slack_team_id = :team_id
+            WHERE (
+                slack_team_id = :team_id
+                OR slack_enterprise_id = :enterprise_id
+            )
             AND is_active = 1
             """
-        ).bindparams(team_id=team_id)
+        ).bindparams(team_id=team_id, enterprise_id=enterprise_id)
         result1 = conn.execute(sql)
         sql = text(
             """
             UPDATE slack_deltaray_link SET
                 is_active = 0,
                 deactivated_at = NOW()
-            WHERE slack_team_id = :team_id
+            WHERE (
+                slack_team_id = :team_id
+                OR slack_enterprise_id = :enterprise_id
+            )
             AND is_active = 1
             """
-        ).bindparams(team_id=team_id)
+        ).bindparams(team_id=team_id, enterprise_id=enterprise_id)
         result2 = conn.execute(sql)
     return result1.rowcount > 0 or result2.rowcount > 0
-
-
-def get_app_id(bot_token: str, team_id: str) -> str:
-    """Get the app_id from a bot token and team_id. Use this to get the app_id
-    if the Slack API does not provide it.
-    """
-    with engines["ray_integration_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT app_id from slack_installations
-            WHERE bot_token = :bot_token
-            AND team_id = :team_id
-            ORDER BY id DESC
-            LIMIT 1
-            """
-        ).bindparams(bot_token=bot_token, team_id=team_id)
-        result = conn.execute(sql)
-        row = result.first()
-    return row[0] if row else ""
 
 
 def encrpyt_slack_integration_token(
@@ -484,9 +521,9 @@ async def approve_pending_groups(
             SELECT DISTINCT groupid
             FROM obj_m_mglink
             WHERE memberid = :client_id
-            AND client_type = :client_type
+            AND client_type IN ('Admin', 'Owner')
             """
-        ).bindparams(client_id=admin_client_id, client_type="Admin")
+        ).bindparams(client_id=admin_client_id)
         result = conn.execute(sql)
         admin_groups = [row[0] for row in result]
         if not admin_groups:
@@ -550,7 +587,7 @@ async def approve_pending_groups(
                         "groups": groups_to_approve,
                         "approver": {"client_id": admin_client_id},
                     },
-                    "source": "Slack RAY Translator",
+                    "source": "Straker Translate for Slack",
                 },
             )
     return tuple(g["uuid"] for g in groups_to_approve)

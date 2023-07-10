@@ -16,7 +16,6 @@ from .templates.messages import SlackMessage, LoginMessage
 from ..auth.connector import (
     RayConnection,
     get_ray_connection,
-    get_app_id,
 )
 
 
@@ -49,11 +48,8 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
     Also add a `login_prompt` message to the context containing the message to
     be sent to the user asking them to connect their LanguageCloud account.
     """
-    app_id = body.get(
-        "api_app_id", get_app_id(context["bot_token"], context["team_id"])
-    )
     context["ray"] = await get_ray_connection(
-        context["user_id"], context["team_id"], app_id
+        context["user_id"], context["team_id"], context.get("enterprise_id")
     )
     context["login_prompt"] = LoginMessage(
         user_id=context["user_id"],

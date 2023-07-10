@@ -32,7 +32,7 @@ class SlackAccountConnectedEvent(BaseModel):
     username: str
     user_id: str
     team_id: str
-    app_id: str
+    enterprise_id: str | None = None
     channel_id: str | None = None
 
 
