@@ -3,6 +3,7 @@ from typing import Callable, Coroutine, Iterable, TypeVar
 from functools import wraps
 from urllib.parse import urlencode
 from httpx import Response
+import httpx
 from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
 from ray_sdk.api.v3.models import (
     Job,
@@ -245,3 +246,15 @@ _noauth_service = RayService(None, None)
 
 async def get_languages() -> RayResponse[list[Language]]:
     return await _noauth_service.get_languages()
+
+
+async def get_job_prediction(job_id: str) -> str:
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.post(
+            f"{domains.job_on_time_prediction}/predict",
+            json={"job_ids": [job_id.upper()]},
+        )
+        job_prediction = r.json()
+        if job_prediction:
+            return job_prediction[0].get("prediction", "")
+    return ""

@@ -20,6 +20,7 @@ from ...ray.utils import (
     format_job_status,
     format_datetime_slack,
     format_job_due_date_slack,
+    format_job_prediction,
 )
 from ...config import domains
 from ...auth.connector import (
@@ -316,7 +317,7 @@ class SuccessfulLogoutMessage(SlackMessage):
 class JobStatusMessage(SlackMessage):
     """Message showing the status of a translation job."""
 
-    def __init__(self, job: Job, client_id: str) -> None:
+    def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
         super().__init__(
             f"Job status ({job.id}): {format_job_status(job.status)}",
             [
@@ -324,7 +325,7 @@ class JobStatusMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"The job status for *{job.id}* is below:",
+                        "text": f"The job status for *{job.id}* is below:{format_job_prediction(job_prediction)}",
                     },
                 },
                 {
@@ -356,7 +357,7 @@ class JobStatusMessage(SlackMessage):
 class JobDetailsMessage(SlackMessage):
     """Message showing the details of a translation job."""
 
-    def __init__(self, job: Job, client_id: str) -> None:
+    def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
         super().__init__(
             f"The information for {job.id} is below:",
             [
@@ -364,7 +365,7 @@ class JobDetailsMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"The information for <{get_job_url(job.uuid, client_id)}|*{job.id}*> is below:",
+                        "text": f"The information for <{get_job_url(job.uuid, client_id)}|*{job.id}*> is below:{format_job_prediction(job_prediction)}",
                     },
                 },
                 {

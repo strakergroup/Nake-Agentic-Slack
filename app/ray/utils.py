@@ -121,9 +121,9 @@ def format_job_due_date_slack(
 
     if traffic_light and job_status == "IN_PROGRESS":
         if datetime.datetime.now(datetime.timezone.utc) >= target_date:
-            return f":red_circle: {formatted_date}"
+            return f"{formatted_date}"
         else:
-            return f":large_green_circle: {formatted_date}"
+            return f"{formatted_date}"
     return formatted_date
 
 
@@ -134,11 +134,20 @@ def format_predictions(in_progress_count: int, predictions: dict) -> str:
         aPredictions = []
         if predictions["on_time"]:
             aPredictions.append(
-                f":large_green_circle: *{predictions['on_time']} job(s)* are predicted to be on-time"
+                f":large_green_circle: *{predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'} predicted to be on-time"
             )
         if predictions["late"] or predictions["over_due"]:
             aPredictions.append(
-                f":large_orange_circle: *{int(predictions['late']) + int(predictions['over_due'])} job(s)* have been flagged as caution"
+                f":large_orange_circle: *{int(predictions['late']) + int(predictions['over_due'])} {'job is' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs are'} behind schedule"
             )
         status = "*In Progress Jobs*\n" + "\n".join(aPredictions)
     return status
+
+
+def format_job_prediction(prediction) -> str:
+    if prediction == "on time":
+        return "\n\n:large_green_circle: Tracking on time"
+    elif prediction == "late":
+        return "\n\n:large_orange_circle: Tracking behind schedule"
+    else:
+        return ""
