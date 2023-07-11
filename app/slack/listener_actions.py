@@ -34,7 +34,7 @@ from .templates.views import new_job_modal
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
 from ..config import domains
-from ..ray import RayService
+from ..ray import RayService, get_job_prediction
 from ..watson import watson_message
 
 
@@ -170,7 +170,10 @@ async def post_job_status(
     job, response = await RayService.get_service(ray_client).get_job(job_id)
     try:
         if job is not None:
-            msg = JobStatusMessage(job, ray_client.id)
+            job_prediction = (
+                await get_job_prediction(job_id) if job.status == "IN_PROGRESS" else ""
+            )
+            msg = JobStatusMessage(job, ray_client.id, job_prediction)
             if context.response_url:
                 return await context.respond(text=msg.text, blocks=msg.blocks)
             else:
@@ -256,7 +259,11 @@ async def post_job_details(
                         blocks=msg.blocks,
                         thread_ts=thread_ts,
                     )
-            msg = JobDetailsMessage(job, ray_client.id)
+            # get the job prediction
+            job_prediction = (
+                await get_job_prediction(job_id) if job.status == "IN_PROGRESS" else ""
+            )
+            msg = JobDetailsMessage(job, ray_client.id, job_prediction)
             if context.response_url:
                 return await context.respond(text=msg.text, blocks=msg.blocks)
             else:
