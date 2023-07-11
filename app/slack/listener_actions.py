@@ -542,14 +542,13 @@ async def post_insights(
         raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
 
-    insights_response = httpx.post(
-        f"{domains.insights_api}/ai/",
-        json={"clientId": ray_client.id, "prompt": prompt},
-        timeout=30,
-    )
-    insights_response = insights_response.json()
-
     async def send_insights_message():
+        insights_response = httpx.post(
+            f"{domains.insights_api}/ai/",
+            json={"clientId": ray_client.id, "prompt": prompt},
+            timeout=30,
+        )
+        insights_response = insights_response.json()
         insights_msg = InsightsMessage(insights_response["result"].strip())
         if context.response_url:
             await context.respond(text=insights_msg.text, blocks=insights_msg.blocks)
