@@ -467,12 +467,6 @@ class JobSummaryMessage(SlackMessage):
             pending_quotes (int): The total number of pending quotes.
             order_now (int): The total number of jobs ready to order.
         """
-        # job_prediction_block(
-        #             f":large_green_circle: {predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'} predicted to be on-time"
-        #         ),
-        # job_prediction_block(
-        #     f":large_orange_circle: {int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'} may be behind schedule"
-        # ),
         sections = []
         if in_progress > 0:
             sections.append(
@@ -518,6 +512,16 @@ class JobSummaryMessage(SlackMessage):
                         ],
                     },
                 }
+            )
+            sections.append(
+                job_prediction_block(
+                    f":large_green_circle: {predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'} predicted to be on-time"
+                )
+            ),
+            sections.append(
+                job_prediction_block(
+                    f":large_orange_circle: {int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'} may be behind schedule"
+                )
             )
         if completed > 0:
             sections.append(
