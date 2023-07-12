@@ -675,10 +675,14 @@ class JobListMessage(SlackMessage):
                 job_text += "\nDue: " + format_job_due_date_slack(
                     job.target_date, job.status, traffic_light=True
                 )
-                prediction = next(
-                    prediction.get("prediction", "")
-                    for prediction in job_predictions
-                    if prediction["job_id"] == job.id.upper()
+                prediction = (
+                    next(
+                        prediction.get("prediction", "")
+                        for prediction in job_predictions
+                        if prediction["job_id"] == job.id.upper()
+                    )
+                    if job_predictions
+                    else ""
                 )
                 formatted_job_prediction = format_job_prediction(
                     prediction, job.target_date
@@ -702,7 +706,8 @@ class JobListMessage(SlackMessage):
                         },
                     }
                 )
-                jobs_blocks.append(job_prediction_block(formatted_job_prediction))
+                if formatted_job_prediction != "":
+                    jobs_blocks.append(job_prediction_block(formatted_job_prediction))
         else:
             jobs_blocks.append(
                 {

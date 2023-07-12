@@ -493,7 +493,12 @@ async def post_job_list(
             notify_message(f"post_job_list: Invalid preset ({preset})")
             return
     try:
-        job_predictions = await get_job_prediction([Job.id for Job in response.data[0]])
+        job_ids_in_progress = [
+            Job.id for Job in response.data[0] if Job.status == "IN_PROGRESS"
+        ]
+        job_predictions = (
+            await get_job_prediction(job_ids_in_progress) if job_ids_in_progress else []
+        )
         msg = JobListMessage(
             preset=preset,
             title=title,

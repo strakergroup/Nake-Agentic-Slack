@@ -150,5 +150,7 @@ def format_job_prediction(prediction: str, target_date: datetime.datetime) -> st
     date_delta = target_date - datetime.datetime.now(datetime.timezone.utc)
     if date_delta.total_seconds() < 0 or prediction == "late":
         return ":large_orange_circle: May be tracking behind schedule."
-    else:
+    elif prediction == "on time":
         return ":large_green_circle: Tracking on time"
+    else:
+        return ""
