@@ -12,6 +12,7 @@ from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from slack_sdk.webhook.webhook_response import WebhookResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
+import httpx
 
 from .middleware import require_ray_client
 from .templates.messages import (
@@ -26,11 +27,13 @@ from .templates.messages import (
     JobSummaryMessage,
     JobListMessage,
     JobDetailsMessage,
+    InsightsMessage,
 )
 from .templates.models import NewJobForm
 from .templates.views import new_job_modal
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
+from ..config import domains
 from ..ray import RayService, get_job_prediction
 from ..watson import watson_message
 
@@ -107,6 +110,14 @@ async def respond_to_message(
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
                 msg = NewJobMessage(context["channel_id"], message["ts"])
                 await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
+        case "Show_Insights":
+            if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
+                await post_insights(
+                    context,
+                    context["ray"].client,
+                    message["text"],
+                    thread_ts=thread_ts,
+                )
         case "Jokes":
             # Delegate jokes to IBM Watson Assistant dialog.
             await context.say(response.reply, thread_ts=thread_ts)
@@ -531,6 +542,56 @@ async def post_job_list(
             headers=dict(response.response.headers.items()),
             version="v3",
         )
+
+
+async def post_insights(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    prompt: str,
+    channel_id: str | None = None,
+    thread_ts: str | None = None,
+):
+    if (
+        not channel_id
+        and not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
+        raise AssertionError("No channel to post to")
+    channel_id = channel_id or context.channel_id or context.user_id
+
+    async def send_insights_message():
+        insights_response = httpx.post(
+            f"{domains.insights_api}/ai/",
+            json={"clientId": ray_client.id, "prompt": prompt},
+            timeout=30,
+        )
+        insights_response = insights_response.json()
+        insights_msg = InsightsMessage(insights_response["result"].strip())
+        if context.response_url:
+            await context.respond(text=insights_msg.text, blocks=insights_msg.blocks)
+        else:
+            await context.client.chat_postMessage(
+                channel=channel_id,
+                text=insights_msg.text,
+                blocks=insights_msg.blocks,
+                thread_ts=thread_ts,
+            )
+
+    waiting_msg = ":stopwatch: Please wait as we gather your information..."
+    if context.response_url:
+        response = await context.respond(text=waiting_msg)
+    else:
+        response = await context.client.chat_postMessage(
+            channel=channel_id,
+            text=waiting_msg,
+            thread_ts=thread_ts,
+        )
+
+    # Send insights message async because it might take a long time.
+    asyncio.create_task(send_insights_message())
+
+    return response
 
 
 async def show_quote_form_modal(

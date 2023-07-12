@@ -102,6 +102,7 @@ class LoginMessage(SlackMessage):
 
     GET_JOB = "get_job"
     NEW_JOB = "new_job"
+    INSIGHTS = "insights"
 
     def __init__(
         self,
@@ -141,6 +142,8 @@ class LoginMessage(SlackMessage):
             block_text = (
                 "Connect your LanguageCloud account to submit a new translation job."
             )
+        elif variation == self.INSIGHTS:
+            block_text = "Connect your LanguageCloud account to view your insights."
         elif isinstance(ray_client, RayClient):
             block_text = (
                 f"Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_client.username}>.\n"
@@ -860,6 +863,28 @@ class JobSubmitMessage(SlackMessage):
                             f"• {file.title}" for file in new_job_form.files
                         ),
                     },
+                },
+            ],
+        )
+
+
+class InsightsMessage(SlackMessage):
+    def __init__(self, message: str):
+        super().__init__(
+            f":idea: Here are your insights",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": ":idea: *Here are your insights*",
+                    },
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {"type": "mrkdwn", "text": ">" + message},
+                    ],
                 },
             ],
         )
