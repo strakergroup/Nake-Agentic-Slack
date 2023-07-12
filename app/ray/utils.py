@@ -138,16 +138,17 @@ def format_predictions(in_progress_count: int, predictions: dict) -> str:
             )
         if predictions["late"] or predictions["over_due"]:
             aPredictions.append(
-                f":large_orange_circle: *{int(predictions['late']) + int(predictions['over_due'])} {'job is' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs are'} behind schedule"
+                f":large_orange_circle: *{int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'} may be behind schedule"
             )
         status = "*In Progress Jobs*\n" + "\n".join(aPredictions)
     return status
 
 
-def format_job_prediction(prediction) -> str:
-    if prediction == "on time":
-        return "\n\n:large_green_circle: Tracking on time"
-    elif prediction == "late":
-        return "\n\n:large_orange_circle: Tracking behind schedule"
+def format_job_prediction(prediction: str, target_date: datetime.datetime) -> str:
+    if target_date.tzinfo is None:
+        target_date = target_date.replace(tzinfo=datetime.timezone.utc)
+    date_delta = target_date - datetime.datetime.now(datetime.timezone.utc)
+    if date_delta.total_seconds() < 0 or prediction == "late":
+        return ":large_orange_circle: May be tracking behind schedule."
     else:
-        return ""
+        return ":large_green_circle: Tracking on time"

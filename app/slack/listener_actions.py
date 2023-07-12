@@ -160,7 +160,9 @@ async def post_job_status(
     try:
         if job is not None:
             job_prediction = (
-                await get_job_prediction(job_id) if job.status == "IN_PROGRESS" else ""
+                (await get_job_prediction([job_id]))[0].get("prediction", "")
+                if job.status == "IN_PROGRESS"
+                else ""
             )
             msg = JobStatusMessage(job, ray_client.id, job_prediction)
             if context.response_url:
@@ -250,7 +252,9 @@ async def post_job_details(
                     )
             # get the job prediction
             job_prediction = (
-                await get_job_prediction(job_id) if job.status == "IN_PROGRESS" else ""
+                (await get_job_prediction([job_id]))[0].get("prediction", "")
+                if job.status == "IN_PROGRESS"
+                else ""
             )
             msg = JobDetailsMessage(job, ray_client.id, job_prediction)
             if context.response_url:
@@ -489,12 +493,14 @@ async def post_job_list(
             notify_message(f"post_job_list: Invalid preset ({preset})")
             return
     try:
+        job_predictions = await get_job_prediction([Job.id for Job in response.data[0]])
         msg = JobListMessage(
             preset=preset,
             title=title,
             jobs=response.data[0],
             pagination=response.data[1],
             client_ref=client_ref,
+            job_predictions=job_predictions,
         )
         if context.response_url:
             return await context.respond(

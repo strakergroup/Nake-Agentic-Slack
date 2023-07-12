@@ -225,3 +225,32 @@ def get_progess_text(predictions: dict) -> str:
             )
         status = "\n".join(aPredictions)
     return status
+
+
+def job_prediction_block(prediction: str) -> dict:
+    if "behind schedule" in prediction:
+        return {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": prediction,
+            },
+            "accessory": {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "emoji": True,
+                    "text": "Why?",
+                },
+                "action_id": "delay_info",
+                "value": "delay_info",
+            },
+        }
+    else:
+        return {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": prediction,
+            },
+        }

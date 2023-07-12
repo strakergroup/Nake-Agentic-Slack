@@ -7,7 +7,7 @@ import json
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm
-from .blocks import job_link_block, quote_message_block
+from .blocks import job_link_block, quote_message_block, job_prediction_block
 from ...ray.events.models import (
     ClientSignupEvent,
     JobQuoteCreatedEvent,
@@ -325,9 +325,12 @@ class JobStatusMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"The job status for *{job.id}* is below:{format_job_prediction(job_prediction)}",
+                        "text": f"The job status for *{job.id}* is below:",
                     },
                 },
+                job_prediction_block(
+                    format_job_prediction(job_prediction, job.target_date)
+                ),
                 {
                     "type": "section",
                     "fields": [
@@ -365,9 +368,12 @@ class JobDetailsMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"The information for <{get_job_url(job.uuid, client_id)}|*{job.id}*> is below:{format_job_prediction(job_prediction)}",
+                        "text": f"The information for <{get_job_url(job.uuid, client_id)}|*{job.id}*> is below:",
                     },
                 },
+                job_prediction_block(
+                    format_job_prediction(job_prediction, job.target_date)
+                ),
                 {
                     "type": "section",
                     "fields": [
@@ -650,6 +656,7 @@ class JobListMessage(SlackMessage):
         title: str,
         jobs: list[Job],
         pagination: Pagination,
+        job_predictions: list[dict],
         client_ref: str = "",
     ) -> None:
         jobs_blocks = []
@@ -661,6 +668,14 @@ class JobListMessage(SlackMessage):
                 job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
                 job_text += "\nDue: " + format_job_due_date_slack(
                     job.target_date, job.status, traffic_light=True
+                )
+                prediction = next(
+                    prediction.get("prediction", "")
+                    for prediction in job_predictions
+                    if prediction["job_id"] == job.id.upper()
+                )
+                formatted_job_prediction = format_job_prediction(
+                    prediction, job.target_date
                 )
                 jobs_blocks.append(
                     {
@@ -681,6 +696,7 @@ class JobListMessage(SlackMessage):
                         },
                     }
                 )
+                jobs_blocks.append(job_prediction_block(formatted_job_prediction))
         else:
             jobs_blocks.append(
                 {
@@ -1364,4 +1380,26 @@ class JobQuotedEventMessage(SlackMessage):
                 },
             ]
             + quote_message_block(event, job_url),
+        )
+
+
+class JobDelayMessage(SlackMessage):
+    def __init__(self) -> None:
+        message = "Our LanguageCloud on-time AI prediction model has indicated that your job may be tracking behind schedule.\n\n"
+        message += "Our Project Managers have been notified and will be taking action to ensure that we still meet your due date. "
+        message += "If there is going to be a delay meeting your due dates, our Project Managers or your Account Manager will inform you. "
+        message += "This is only a prediction and should not be taken as an indication that your job is going to be late.\n\n"
+        message += "This status is updated in real time so can change if we predict it is tracking on time again."
+
+        super().__init__(
+            message,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": message,
+                    },
+                },
+            ],
         )

@@ -248,13 +248,16 @@ async def get_languages() -> RayResponse[list[Language]]:
     return await _noauth_service.get_languages()
 
 
-async def get_job_prediction(job_id: str) -> str:
-    async with httpx.AsyncClient(timeout=10) as client:
+async def get_job_prediction(job_ids: list[str]) -> list[dict]:
+    job_predictions = [
+        {"job_id": job_id.upper(), "prediction": ""} for job_id in job_ids
+    ]
+    async with httpx.AsyncClient(timeout=20) as client:
         r = await client.post(
             f"{domains.job_on_time_prediction}/predict",
-            json={"job_ids": [job_id.upper()]},
+            json={"job_ids": [job_id.upper() for job_id in job_ids]},
         )
-        job_prediction = r.json()
-        if job_prediction:
-            return job_prediction[0].get("prediction", "")
-    return ""
+        predictions = r.json()
+        if predictions:
+            return predictions
+    return job_predictions
