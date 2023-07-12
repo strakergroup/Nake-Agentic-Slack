@@ -227,7 +227,7 @@ def get_progess_text(predictions: dict) -> str:
     return status
 
 
-def job_prediction_block(prediction: str):
+def job_prediction_block(prediction: str) -> dict:
     if "behind schedule" in prediction:
         return {
             "type": "section",
@@ -246,7 +246,7 @@ def job_prediction_block(prediction: str):
                 "value": "delay_info",
             },
         }
-    elif "on time" in prediction:
+    elif "on time" in prediction or "on-time" in prediction:
         return {
             "type": "section",
             "text": {
@@ -255,4 +255,4 @@ def job_prediction_block(prediction: str):
             },
         }
     else:
-        return ""
+        return {}
