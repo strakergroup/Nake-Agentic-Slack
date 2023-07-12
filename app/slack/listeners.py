@@ -39,6 +39,7 @@ from .templates.messages import (
     InvalidCommandMessage,
     ClientApprovedMessage,
     ClientAlreadyApprovedMessage,
+    JobDelayMessage,
 )
 from .templates.views import home_view
 from .web import files_list_simple, get_bot_accessible_files
@@ -323,6 +324,13 @@ async def new_job_action(ack, payload, context, client, body):
             # Check message history for initial files if not in payload.
             check_last_messages=4,
         )
+
+
+@app.block_action("delay_info")
+@slack_log_decorator
+async def get_delay_info(ack, respond):
+    await ack()
+    await respond(JobDelayMessage().text, JobDelayMessage().blocks)
 
 
 @app.block_action("approve_pending_client", middleware=[ray_connection])

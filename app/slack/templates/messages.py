@@ -7,7 +7,7 @@ import json
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm
-from .blocks import job_link_block, quote_message_block
+from .blocks import job_link_block, quote_message_block, job_prediction_block
 from ...ray.events.models import (
     ClientSignupEvent,
     JobQuoteCreatedEvent,
@@ -20,6 +20,7 @@ from ...ray.utils import (
     format_job_status,
     format_datetime_slack,
     format_job_due_date_slack,
+    format_job_prediction,
 )
 from ...config import domains
 from ...auth.connector import (
@@ -101,6 +102,7 @@ class LoginMessage(SlackMessage):
 
     GET_JOB = "get_job"
     NEW_JOB = "new_job"
+    INSIGHTS = "insights"
 
     def __init__(
         self,
@@ -140,6 +142,8 @@ class LoginMessage(SlackMessage):
             block_text = (
                 "Connect your LanguageCloud account to submit a new translation job."
             )
+        elif variation == self.INSIGHTS:
+            block_text = "Connect your LanguageCloud account to view your insights."
         elif isinstance(ray_client, RayClient):
             block_text = (
                 f"Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_client.username}>.\n"
@@ -316,93 +320,109 @@ class SuccessfulLogoutMessage(SlackMessage):
 class JobStatusMessage(SlackMessage):
     """Message showing the status of a translation job."""
 
-    def __init__(self, job: Job, client_id: str) -> None:
+    def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
+        job_status_block = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"The job status for *{job.id}* is below:",
+                },
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": "*Status:*"},
+                    {"type": "mrkdwn", "text": format_job_status(job.status)},
+                    {"type": "mrkdwn", "text": "*Source Language:*"},
+                    {"type": "mrkdwn", "text": job.sl.name},
+                    {"type": "mrkdwn", "text": "*Target Language:*"},
+                    {
+                        "type": "mrkdwn",
+                        "text": ", ".join(sorted([lang.name for lang in job.tl])),
+                    },
+                    {"type": "mrkdwn", "text": "*Expected Completion Date:*"},
+                    {
+                        "type": "mrkdwn",
+                        "text": format_job_due_date_slack(
+                            job.target_date, job.status, traffic_light=True
+                        ),
+                    },
+                ],
+            },
+            job_link_block(job.uuid, client_id),
+        ]
+        if job_prediction != "":
+            job_status_block.insert(
+                1,
+                job_prediction_block(
+                    format_job_prediction(job_prediction, job.target_date)
+                ),
+            )
         super().__init__(
             f"Job status ({job.id}): {format_job_status(job.status)}",
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"The job status for *{job.id}* is below:",
-                    },
-                },
-                {
-                    "type": "section",
-                    "fields": [
-                        {"type": "mrkdwn", "text": "*Status:*"},
-                        {"type": "mrkdwn", "text": format_job_status(job.status)},
-                        {"type": "mrkdwn", "text": "*Source Language:*"},
-                        {"type": "mrkdwn", "text": job.sl.name},
-                        {"type": "mrkdwn", "text": "*Target Language:*"},
-                        {
-                            "type": "mrkdwn",
-                            "text": ", ".join(sorted([lang.name for lang in job.tl])),
-                        },
-                        {"type": "mrkdwn", "text": "*Expected Completion Date:*"},
-                        {
-                            "type": "mrkdwn",
-                            "text": format_job_due_date_slack(
-                                job.target_date, job.status, traffic_light=True
-                            ),
-                        },
-                    ],
-                },
-                job_link_block(job.uuid, client_id),
-            ],
+            job_status_block,
         )
 
 
 class JobDetailsMessage(SlackMessage):
     """Message showing the details of a translation job."""
 
-    def __init__(self, job: Job, client_id: str) -> None:
+    def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
+        job_detail_block = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"The information for <{get_job_url(job.uuid, client_id)}|*{job.id}*> is below:",
+                },
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Job Status:*\n{format_job_status(job.status)}",
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Group:*\n{job.group.name if job.group else ''}",
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Due Date/Time*\n{format_job_due_date_slack(job.target_date, job.status, traffic_light=True)}",
+                    },
+                    {"type": "mrkdwn", "text": f"*Reference:*\n{job.reference}"},
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Source Language:*\n{job.sl.name}",
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Target Languages:*\n{', '.join(sorted([lang.name for lang in job.tl]))}",
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Valdation*\n{'Yes' if job.validation else 'No'}",
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Project Manager*\n{job.project_manager.first_name} {job.project_manager.last_name}",
+                    },
+                ],
+            },
+            job_link_block(job.uuid, client_id),
+        ]
+        if job_prediction != "":
+            job_detail_block.insert(
+                1,
+                job_prediction_block(
+                    format_job_prediction(job_prediction, job.target_date)
+                ),
+            )
         super().__init__(
             f"The information for {job.id} is below:",
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"The information for <{get_job_url(job.uuid, client_id)}|*{job.id}*> is below:",
-                    },
-                },
-                {
-                    "type": "section",
-                    "fields": [
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Job Status:*\n{format_job_status(job.status)}",
-                        },
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Group:*\n{job.group.name if job.group else ''}",
-                        },
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Due Date/Time*\n{format_job_due_date_slack(job.target_date, job.status, traffic_light=True)}",
-                        },
-                        {"type": "mrkdwn", "text": f"*Reference:*\n{job.reference}"},
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Source Language:*\n{job.sl.name}",
-                        },
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Target Languages:*\n{', '.join(sorted([lang.name for lang in job.tl]))}",
-                        },
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Valdation*\n{'Yes' if job.validation else 'No'}",
-                        },
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Project Manager*\n{job.project_manager.first_name} {job.project_manager.last_name}",
-                        },
-                    ],
-                },
-                job_link_block(job.uuid, client_id),
-            ],
+            job_detail_block,
         )
 
 
@@ -447,6 +467,12 @@ class JobSummaryMessage(SlackMessage):
             pending_quotes (int): The total number of pending quotes.
             order_now (int): The total number of jobs ready to order.
         """
+        # job_prediction_block(
+        #             f":large_green_circle: {predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'} predicted to be on-time"
+        #         ),
+        # job_prediction_block(
+        #     f":large_orange_circle: {int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'} may be behind schedule"
+        # ),
         sections = []
         if in_progress > 0:
             sections.append(
@@ -454,7 +480,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": format_predictions(in_progress, predictions),
+                        "text": f"*In Progress Jobs*\n{in_progress} job(s) currently in progress",
                     },
                     "accessory": {
                         "type": "static_select",
@@ -674,6 +700,7 @@ class JobListMessage(SlackMessage):
         title: str,
         jobs: list[Job],
         pagination: Pagination,
+        job_predictions: list[dict],
         client_ref: str = "",
     ) -> None:
         jobs_blocks = []
@@ -685,6 +712,20 @@ class JobListMessage(SlackMessage):
                 job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
                 job_text += "\nDue: " + format_job_due_date_slack(
                     job.target_date, job.status, traffic_light=True
+                )
+                prediction = (
+                    next(
+                        prediction.get("prediction", "")
+                        for prediction in job_predictions
+                        if prediction["job_id"] == job.id.upper()
+                    )
+                    if job_predictions
+                    else ""
+                )
+                formatted_job_prediction = (
+                    format_job_prediction(prediction, job.target_date)
+                    if prediction != ""
+                    else ""
                 )
                 jobs_blocks.append(
                     {
@@ -705,6 +746,8 @@ class JobListMessage(SlackMessage):
                         },
                     }
                 )
+                if formatted_job_prediction != "":
+                    jobs_blocks.append(job_prediction_block(formatted_job_prediction))
         else:
             jobs_blocks.append(
                 {
@@ -845,6 +888,28 @@ class JobSubmitMessage(SlackMessage):
                             f"• {file.title}" for file in new_job_form.files
                         ),
                     },
+                },
+            ],
+        )
+
+
+class InsightsMessage(SlackMessage):
+    def __init__(self, message: str):
+        super().__init__(
+            f":idea: Here are your insights",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": ":idea: *Here are your insights*",
+                    },
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {"type": "mrkdwn", "text": ">" + message},
+                    ],
                 },
             ],
         )
@@ -1388,4 +1453,26 @@ class JobQuotedEventMessage(SlackMessage):
                 },
             ]
             + quote_message_block(event, job_url),
+        )
+
+
+class JobDelayMessage(SlackMessage):
+    def __init__(self) -> None:
+        message = "Our LanguageCloud on-time AI prediction model has indicated that your job may be tracking behind schedule.\n\n"
+        message += "Our Project Managers have been notified and will be taking action to ensure that we still meet your due date. "
+        message += "If there is going to be a delay meeting your due dates, our Project Managers or your Account Manager will inform you. "
+        message += "This is only a prediction and should not be taken as an indication that your job is going to be late.\n\n"
+        message += "This status is updated in real time so can change if we predict it is tracking on time again."
+
+        super().__init__(
+            message,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": message,
+                    },
+                },
+            ],
         )

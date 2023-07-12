@@ -12,6 +12,7 @@ from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from slack_sdk.webhook.webhook_response import WebhookResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
+import httpx
 
 from .middleware import require_ray_client
 from .templates.messages import (
@@ -26,12 +27,14 @@ from .templates.messages import (
     JobSummaryMessage,
     JobListMessage,
     JobDetailsMessage,
+    InsightsMessage,
 )
 from .templates.models import NewJobForm
 from .templates.views import new_job_modal
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
-from ..ray import RayService
+from ..config import domains
+from ..ray.service import RayService, get_job_predictions
 from ..watson import watson_message
 
 
@@ -107,6 +110,14 @@ async def respond_to_message(
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
                 msg = NewJobMessage(context["channel_id"], message["ts"])
                 await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
+        case "Show_Insights":
+            if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
+                await post_insights(
+                    context,
+                    context["ray"].client,
+                    message["text"],
+                    thread_ts=thread_ts,
+                )
         case "Jokes":
             # Delegate jokes to IBM Watson Assistant dialog.
             await context.say(response.reply, thread_ts=thread_ts)
@@ -159,7 +170,12 @@ async def post_job_status(
     job, response = await RayService.get_service(ray_client).get_job(job_id)
     try:
         if job is not None:
-            msg = JobStatusMessage(job, ray_client.id)
+            job_prediction = (
+                (await get_job_predictions([job_id]))[0].get("prediction", "")
+                if job.status == "IN_PROGRESS"
+                else ""
+            )
+            msg = JobStatusMessage(job, ray_client.id, job_prediction)
             if context.response_url:
                 return await context.respond(text=msg.text, blocks=msg.blocks)
             else:
@@ -245,7 +261,13 @@ async def post_job_details(
                         blocks=msg.blocks,
                         thread_ts=thread_ts,
                     )
-            msg = JobDetailsMessage(job, ray_client.id)
+            # get the job prediction
+            job_prediction = (
+                (await get_job_predictions([job_id]))[0].get("prediction", "")
+                if job.status == "IN_PROGRESS"
+                else ""
+            )
+            msg = JobDetailsMessage(job, ray_client.id, job_prediction)
             if context.response_url:
                 return await context.respond(text=msg.text, blocks=msg.blocks)
             else:
@@ -329,7 +351,26 @@ async def post_job_summary(
         validation_count = responses[0].data.summary.get("validation", 0)
         pending_quotes_count = responses[0].data.summary.get("pending_quotes", 0)
         order_now_count = responses[0].data.summary.get("order_now", 0)
-        predictions = responses[0].data.summary.get("predictions", predictions)
+        # Get job predictions.
+        job_ids: list[str] = []
+        for group in responses[0].data.groups:
+            group_in_progress = group.get("in_progress", {})
+            group_total = group_in_progress.get("count", 0)
+            group_overdue = group.get("over_due_count", 0)
+            predictions["over_due"] += group_overdue
+            job_ids.extend(
+                group_in_progress.get("jobs", [])[: group_total - group_overdue]
+            )
+        if job_ids:
+            try:
+                job_predictions = await get_job_predictions(job_ids)
+                for pred in job_predictions:
+                    if pred.get("prediction") == "on_time":
+                        predictions["on_time"] += 1
+                    else:
+                        predictions["late"] += 1
+            except Exception as e:
+                notify_exception(e)
     else:
         notify_exception(responses[0])
     if isinstance(responses[1], RayResponse):
@@ -482,12 +523,21 @@ async def post_job_list(
             notify_message(f"post_job_list: Invalid preset ({preset})")
             return
     try:
+        job_ids_in_progress = [
+            Job.id for Job in response.data[0] if Job.status == "IN_PROGRESS"
+        ]
+        job_predictions = (
+            await get_job_predictions(job_ids_in_progress)
+            if job_ids_in_progress
+            else []
+        )
         msg = JobListMessage(
             preset=preset,
             title=title,
             jobs=response.data[0],
             pagination=response.data[1],
             client_ref=client_ref,
+            job_predictions=job_predictions,
         )
         if context.response_url:
             return await context.respond(
@@ -513,6 +563,56 @@ async def post_job_list(
             headers=dict(response.response.headers.items()),
             version="v3",
         )
+
+
+async def post_insights(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    prompt: str,
+    channel_id: str | None = None,
+    thread_ts: str | None = None,
+):
+    if (
+        not channel_id
+        and not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
+        raise AssertionError("No channel to post to")
+    channel_id = channel_id or context.channel_id or context.user_id
+
+    async def send_insights_message():
+        insights_response = httpx.post(
+            f"{domains.insights_api}/ai/",
+            json={"clientId": ray_client.id, "prompt": prompt},
+            timeout=30,
+        )
+        insights_response = insights_response.json()
+        insights_msg = InsightsMessage(insights_response["result"].strip())
+        if context.response_url:
+            await context.respond(text=insights_msg.text, blocks=insights_msg.blocks)
+        else:
+            await context.client.chat_postMessage(
+                channel=channel_id,
+                text=insights_msg.text,
+                blocks=insights_msg.blocks,
+                thread_ts=thread_ts,
+            )
+
+    waiting_msg = ":stopwatch: Please wait as we gather your information..."
+    if context.response_url:
+        response = await context.respond(text=waiting_msg)
+    else:
+        response = await context.client.chat_postMessage(
+            channel=channel_id,
+            text=waiting_msg,
+            thread_ts=thread_ts,
+        )
+
+    # Send insights message async because it might take a long time.
+    asyncio.create_task(send_insights_message())
+
+    return response
 
 
 async def show_quote_form_modal(

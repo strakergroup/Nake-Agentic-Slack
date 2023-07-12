@@ -121,24 +121,36 @@ def format_job_due_date_slack(
 
     if traffic_light and job_status == "IN_PROGRESS":
         if datetime.datetime.now(datetime.timezone.utc) >= target_date:
-            return f":red_circle: {formatted_date}"
+            return f"{formatted_date}"
         else:
-            return f":large_green_circle: {formatted_date}"
+            return f"{formatted_date}"
     return formatted_date
 
 
-def format_predictions(in_progress_count: int, predictions: dict) -> str:
+def format_predictions(in_progress_count: int, predictions: dict[str, int]) -> str:
     """Returns the progress text for the job."""
     status = f"*In Progress Jobs*\n{in_progress_count} job(s) currently in progress"
     if in_progress_count:
         aPredictions = []
         if predictions["on_time"]:
             aPredictions.append(
-                f":large_green_circle: *{predictions['on_time']} job(s)* are predicted to be on-time"
+                f":large_green_circle: *{predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'} predicted to be on-time"
             )
         if predictions["late"] or predictions["over_due"]:
             aPredictions.append(
-                f":large_orange_circle: *{int(predictions['late']) + int(predictions['over_due'])} job(s)* have been flagged as caution"
+                f":large_orange_circle: *{int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'} may be behind schedule"
             )
         status = "*In Progress Jobs*\n" + "\n".join(aPredictions)
     return status
+
+
+def format_job_prediction(prediction: str, target_date: datetime.datetime) -> str:
+    if target_date.tzinfo is None:
+        target_date = target_date.replace(tzinfo=datetime.timezone.utc)
+    date_delta = target_date - datetime.datetime.now(datetime.timezone.utc)
+    if date_delta.total_seconds() < 0 or prediction == "late":
+        return ":large_orange_circle: May be tracking behind schedule."
+    elif prediction == "on time":
+        return ":large_green_circle: Tracking on time"
+    else:
+        return ""
