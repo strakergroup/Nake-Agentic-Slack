@@ -1,7 +1,8 @@
 import asyncio
-from typing import Callable, Coroutine, Iterable, TypeVar
+from typing import Any, Callable, Coroutine, Iterable, TypeVar
 from functools import wraps
 from urllib.parse import urlencode
+import httpx
 from httpx import Response
 import httpx
 from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
@@ -248,7 +249,15 @@ async def get_languages() -> RayResponse[list[Language]]:
     return await _noauth_service.get_languages()
 
 
-async def get_job_prediction(job_ids: list[str]) -> list[dict]:
+async def get_job_predictions(job_ids: list[str]) -> list[dict[str, Any]]:
+    """Gets the job on-time predictions from the ml-job-on-time-prediction API.
+
+    Args:
+        job_ids (list[str]): The list of job IDs to check.
+
+    Returns:
+        list[bool]: A list of dictionaries containing the job ID and on time status.
+    """
     job_predictions = [
         {"job_id": job_id.upper(), "prediction": ""} for job_id in job_ids
     ]

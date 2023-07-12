@@ -34,7 +34,7 @@ from .templates.views import new_job_modal
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
 from ..config import domains
-from ..ray import RayService, get_job_prediction
+from ..ray.service import RayService, get_job_predictions
 from ..watson import watson_message
 
 
@@ -171,7 +171,7 @@ async def post_job_status(
     try:
         if job is not None:
             job_prediction = (
-                (await get_job_prediction([job_id]))[0].get("prediction", "")
+                (await get_job_predictions([job_id]))[0].get("prediction", "")
                 if job.status == "IN_PROGRESS"
                 else ""
             )
@@ -263,7 +263,7 @@ async def post_job_details(
                     )
             # get the job prediction
             job_prediction = (
-                (await get_job_prediction([job_id]))[0].get("prediction", "")
+                (await get_job_predictions([job_id]))[0].get("prediction", "")
                 if job.status == "IN_PROGRESS"
                 else ""
             )
@@ -351,7 +351,26 @@ async def post_job_summary(
         validation_count = responses[0].data.summary.get("validation", 0)
         pending_quotes_count = responses[0].data.summary.get("pending_quotes", 0)
         order_now_count = responses[0].data.summary.get("order_now", 0)
-        predictions = responses[0].data.summary.get("predictions", predictions)
+        # Get job predictions.
+        job_ids: list[str] = []
+        for group in responses[0].data.groups:
+            group_in_progress = group.get("in_progress", {})
+            group_total = group_in_progress.get("count", 0)
+            group_overdue = group.get("over_due_count", 0)
+            predictions["over_due"] += group_overdue
+            job_ids.extend(
+                group_in_progress.get("jobs", [])[: group_total - group_overdue]
+            )
+        if job_ids:
+            try:
+                job_predictions = await get_job_predictions(job_ids)
+                for pred in job_predictions:
+                    if pred.get("prediction") == "on_time":
+                        predictions["on_time"] += 1
+                    else:
+                        predictions["late"] += 1
+            except Exception as e:
+                notify_exception(e)
     else:
         notify_exception(responses[0])
     if isinstance(responses[1], RayResponse):
@@ -508,7 +527,9 @@ async def post_job_list(
             Job.id for Job in response.data[0] if Job.status == "IN_PROGRESS"
         ]
         job_predictions = (
-            await get_job_prediction(job_ids_in_progress) if job_ids_in_progress else []
+            await get_job_predictions(job_ids_in_progress)
+            if job_ids_in_progress
+            else []
         )
         msg = JobListMessage(
             preset=preset,

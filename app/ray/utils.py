@@ -127,7 +127,7 @@ def format_job_due_date_slack(
     return formatted_date
 
 
-def format_predictions(in_progress_count: int, predictions: dict) -> str:
+def format_predictions(in_progress_count: int, predictions: dict[str, int]) -> str:
     """Returns the progress text for the job."""
     status = f"*In Progress Jobs*\n{in_progress_count} job(s) currently in progress"
     if in_progress_count:
