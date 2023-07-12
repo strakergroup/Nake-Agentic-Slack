@@ -2,6 +2,7 @@ import asyncio
 from typing import Callable, Coroutine, Iterable, TypeVar
 from functools import wraps
 from urllib.parse import urlencode
+import httpx
 from httpx import Response
 from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
 from ray_sdk.api.v3.models import (
@@ -245,3 +246,25 @@ _noauth_service = RayService(None, None)
 
 async def get_languages() -> RayResponse[list[Language]]:
     return await _noauth_service.get_languages()
+
+
+async def get_job_predictions(job_ids: list[str]) -> dict[str, bool]:
+    """Gets the job on-time predictions from the ml-job-on-time-prediction API.
+
+    Args:
+        job_ids (list[str]): The list of job IDs to check.
+
+    Returns:
+        list[bool]: A dictionary mapping job IDs to if the job was on time. Jobs
+            do not exist count as late.
+    """
+    if not job_ids:
+        return {}
+    async with httpx.AsyncClient(timeout=5) as client:
+        response = await client.request(
+            method="POST",
+            url=f"{domains.job_on_time_prediction}",
+            json={"job_ids": [job_id.upper() for job_id in job_ids]},
+        )
+    data = response.json()
+    return {job["job_id"]: job.get("prediction") == "on_time" for job in data}
