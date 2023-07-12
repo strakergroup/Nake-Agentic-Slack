@@ -649,7 +649,6 @@ class JobSummaryMessage(SlackMessage):
                     },
                 },
             )
-        sections = []
         if len(sections) == 0:
             sections.append(
                 {
