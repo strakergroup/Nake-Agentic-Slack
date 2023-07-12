@@ -461,7 +461,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": format_predictions(in_progress, predictions),
+                        "text": f"*In Progress Jobs*\n{in_progress} job(s) currently in progress",
                     },
                     "accessory": {
                         "type": "static_select",
@@ -499,6 +499,12 @@ class JobSummaryMessage(SlackMessage):
                         ],
                     },
                 },
+                job_prediction_block(
+                    f":large_green_circle: {predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'} predicted to be on-time"
+                ),
+                job_prediction_block(
+                    f":large_orange_circle: {int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'} may be behind schedule"
+                ),
                 {
                     "type": "section",
                     "text": {
