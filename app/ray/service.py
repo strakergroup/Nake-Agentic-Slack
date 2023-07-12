@@ -4,7 +4,6 @@ from functools import wraps
 from urllib.parse import urlencode
 import httpx
 from httpx import Response
-import httpx
 from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
 from ray_sdk.api.v3.models import (
     Job,
