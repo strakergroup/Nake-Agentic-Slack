@@ -447,9 +447,9 @@ class JobSummaryMessage(SlackMessage):
             pending_quotes (int): The total number of pending quotes.
             order_now (int): The total number of jobs ready to order.
         """
-        super().__init__(
-            f"In Progress Jobs: {in_progress} jobs currently in progress...",
-            [
+        sections = []
+        if in_progress > 0:
+            sections.append(
                 {
                     "type": "section",
                     "text": {
@@ -491,7 +491,10 @@ class JobSummaryMessage(SlackMessage):
                             },
                         ],
                     },
-                },
+                }
+            )
+        if completed > 0:
+            sections.append(
                 {
                     "type": "section",
                     "text": {
@@ -534,11 +537,14 @@ class JobSummaryMessage(SlackMessage):
                         ],
                     },
                 },
+            )
+        if validation > 0:
+            sections.append(
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Validation*\n{validation} job(s) currently being validated",
+                        "text": f"*Validation*\n*{validation} job(s)* currently being validated",
                     },
                     "accessory": {
                         "type": "static_select",
@@ -560,6 +566,9 @@ class JobSummaryMessage(SlackMessage):
                         ],
                     },
                 },
+            )
+        if pending_quotes > 0:
+            sections.append(
                 {
                     "type": "section",
                     "text": {
@@ -593,7 +602,10 @@ class JobSummaryMessage(SlackMessage):
                             },
                         ],
                     },
-                },
+                }
+            )
+        if order_now > 0:
+            sections.append(
                 {
                     "type": "section",
                     "text": {
@@ -636,7 +648,21 @@ class JobSummaryMessage(SlackMessage):
                         ],
                     },
                 },
-            ],
+            )
+        sections = []
+        if len(sections) == 0:
+            sections.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "No jobs found.",
+                    },
+                },
+            )
+        super().__init__(
+            f"In Progress Jobs: {in_progress} jobs currently in progress...",
+            sections,
         )
 
 
