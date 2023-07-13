@@ -457,6 +457,7 @@ class JobSummaryMessage(SlackMessage):
         pending_quotes: int,
         order_now: int,
         predictions: dict,
+        all_jobs: bool = False,
     ) -> None:
         """The constructor.
 
@@ -468,7 +469,7 @@ class JobSummaryMessage(SlackMessage):
             order_now (int): The total number of jobs ready to order.
         """
         sections = []
-        if in_progress > 0:
+        if in_progress > 0 or all_jobs:
             sections.append(
                 {
                     "type": "section",
@@ -525,7 +526,7 @@ class JobSummaryMessage(SlackMessage):
                         f":large_orange_circle: {int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'} may be behind schedule"
                     )
                 )
-        if completed > 0:
+        if completed > 0 or all_jobs:
             sections.append(
                 {
                     "type": "section",
@@ -545,7 +546,7 @@ class JobSummaryMessage(SlackMessage):
                     },
                 },
             )
-        if validation > 0:
+        if validation > 0 or all_jobs:
             sections.append(
                 {
                     "type": "section",
@@ -565,7 +566,7 @@ class JobSummaryMessage(SlackMessage):
                     },
                 },
             )
-        if pending_quotes > 0:
+        if pending_quotes > 0 or all_jobs:
             sections.append(
                 {
                     "type": "section",
@@ -585,7 +586,7 @@ class JobSummaryMessage(SlackMessage):
                     },
                 }
             )
-        if order_now > 0:
+        if order_now > 0 or all_jobs:
             sections.append(
                 {
                     "type": "section",
@@ -612,6 +613,25 @@ class JobSummaryMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": "No jobs found.",
+                    },
+                },
+            )
+        if not all_jobs:
+            sections.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f" ",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "View All",
+                        },
+                        "action_id": "all_summary",
                     },
                 },
             )

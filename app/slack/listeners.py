@@ -258,6 +258,17 @@ async def daily_summary(ack, context):
         await post_job_summary(context, context["ray"].client)
 
 
+@app.block_action("all_summary", middleware=[ray_connection])
+@slack_log_decorator
+async def all_summary(ack, context):
+    """Get daily summary. Triggered from the Home View Daily Summary button"""
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        await post_job_summary(
+            context=context, ray_client=context["ray"].client, all_jobs=True
+        )
+
+
 @app.block_action("job_list", middleware=[ray_connection])
 @slack_log_decorator
 async def job_list_action(ack, payload, context):

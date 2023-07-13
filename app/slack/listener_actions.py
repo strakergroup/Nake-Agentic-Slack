@@ -308,6 +308,7 @@ async def post_job_summary(
     ray_client: RayClient,
     channel_id: str | None = None,
     thread_ts: str | None = None,
+    all_jobs: bool = False,
 ) -> AsyncSlackResponse:
     """Gets the job summary from the RAY API and posts it to the Slack user.
 
@@ -385,6 +386,7 @@ async def post_job_summary(
             pending_quotes=pending_quotes_count,
             order_now=order_now_count,
             predictions=predictions,
+            all_jobs=all_jobs,
         )
         if context.response_url:
             return await context.respond(text=msg.text, blocks=msg.blocks)
