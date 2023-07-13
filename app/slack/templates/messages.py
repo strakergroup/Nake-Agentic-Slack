@@ -22,7 +22,7 @@ from ...ray.utils import (
     format_job_due_date_slack,
     format_job_prediction,
 )
-from ...config import domains
+from ...config import config, domains, Environment
 from ...auth.connector import (
     RayClient,
     RayConnection,
@@ -538,18 +538,20 @@ class JobSummaryMessage(SlackMessage):
                     "accessory": accessory,
                 }
             )
-            if (predictions["on_time"]) > 0:
-                sections.append(
-                    job_prediction_block(
-                        f":large_green_circle: {predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'} predicted to be on-time"
+
+            if config.environment != Environment.production:
+                if (predictions["on_time"]) > 0:
+                    sections.append(
+                        job_prediction_block(
+                            f":large_green_circle: {predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'} predicted to be on-time"
+                        )
+                    ),
+                if (predictions["late"]) > 0 or (predictions["over_due"]) > 0:
+                    sections.append(
+                        job_prediction_block(
+                            f":large_orange_circle: {int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'} may be behind schedule"
+                        )
                     )
-                ),
-            if (predictions["late"]) > 0 or (predictions["over_due"]) > 0:
-                sections.append(
-                    job_prediction_block(
-                        f":large_orange_circle: {int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'} may be behind schedule"
-                    )
-                )
         if completed > 0 or all_jobs:
             sections.append(
                 {
