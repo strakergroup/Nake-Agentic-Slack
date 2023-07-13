@@ -267,6 +267,9 @@ async def job_list_action(ack, payload, context):
         if "selected_option" in payload:
             preset = payload["selected_option"].get("value")
             await post_job_list(context, context["ray"].client, preset=preset)
+        else:
+            preset = payload.get("value")
+            await post_job_list(context, context["ray"].client, preset=preset)
 
 
 @app.block_action(re.compile(r"job_list_paginated(_\d+)?"), middleware=[ray_connection])

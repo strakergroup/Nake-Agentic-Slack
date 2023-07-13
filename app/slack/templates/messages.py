@@ -474,7 +474,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*In Progress Jobs*\n{in_progress} job(s) currently in progress",
+                        "text": f"*In Progress Jobs*\n*{in_progress} job(s)* currently in progress",
                     },
                     "accessory": {
                         "type": "static_select",
@@ -513,58 +513,35 @@ class JobSummaryMessage(SlackMessage):
                     },
                 }
             )
-            sections.append(
-                job_prediction_block(
-                    f":large_green_circle: {predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'} predicted to be on-time"
+            if (predictions["on_time"]) > 0:
+                sections.append(
+                    job_prediction_block(
+                        f":large_green_circle: {predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'} predicted to be on-time"
+                    )
+                ),
+            if (predictions["late"]) > 0 or (predictions["over_due"]) > 0:
+                sections.append(
+                    job_prediction_block(
+                        f":large_orange_circle: {int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'} may be behind schedule"
+                    )
                 )
-            ),
-            sections.append(
-                job_prediction_block(
-                    f":large_orange_circle: {int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'} may be behind schedule"
-                )
-            )
         if completed > 0:
             sections.append(
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Completed Jobs*\n{completed} job(s) completed in the past 7 days",
+                        "text": f"*Completed Jobs*\n*{completed} job(s)* completed in the past 7 days",
                     },
                     "accessory": {
-                        "type": "static_select",
-                        "action_id": "job_list",
-                        "placeholder": {
+                        "type": "button",
+                        "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Options",
+                            "text": "View More",
                         },
-                        "options": [
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": "Jobs completed within the last 24 hours",
-                                },
-                                "value": "COMPLETED:24H",
-                            },
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": "Jobs completed within the last 48 hours",
-                                },
-                                "value": "COMPLETED:48H",
-                            },
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": "Jobs completed within the last 7 days",
-                                },
-                                "value": "COMPLETED:7D",
-                            },
-                        ],
+                        "action_id": "job_list",
+                        "value": "COMPLETED:7D",
                     },
                 },
             )
@@ -577,23 +554,14 @@ class JobSummaryMessage(SlackMessage):
                         "text": f"*Validation*\n*{validation} job(s)* currently being validated",
                     },
                     "accessory": {
-                        "type": "static_select",
-                        "action_id": "job_list",
-                        "placeholder": {
+                        "type": "button",
+                        "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Options",
+                            "text": "View More",
                         },
-                        "options": [
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": "All jobs in validation",
-                                },
-                                "value": "VALIDATION",
-                            }
-                        ],
+                        "action_id": "job_list",
+                        "value": "VALIDATION",
                     },
                 },
             )
@@ -603,34 +571,17 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Pending Quotes*\n{pending_quotes} quote(s) pending",
+                        "text": f"*Pending Quotes*\n*{pending_quotes} quote(s)* pending",
                     },
                     "accessory": {
-                        "type": "static_select",
-                        "action_id": "job_list",
-                        "placeholder": {
+                        "type": "button",
+                        "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Options",
+                            "text": "View More",
                         },
-                        "options": [
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": "Pending quotes from the last 24 hours",
-                                },
-                                "value": "PENDING_QUOTES:24H",
-                            },
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": "All pending quotes",
-                                },
-                                "value": "PENDING_QUOTES",
-                            },
-                        ],
+                        "action_id": "job_list",
+                        "value": "PENDING_QUOTES",
                     },
                 }
             )
@@ -640,42 +591,17 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Order Now*\n{order_now} job(s) to order",
+                        "text": f"*Order Now*\n*{order_now} job(s)* to order",
                     },
                     "accessory": {
-                        "type": "static_select",
-                        "action_id": "job_list",
-                        "placeholder": {
+                        "type": "button",
+                        "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Options",
+                            "text": "View More",
                         },
-                        "options": [
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": "Jobs quoted from the last 24 hours",
-                                },
-                                "value": "ORDER_NOW:24H",
-                            },
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": "Jobs quoted from the last 7 days",
-                                },
-                                "value": "ORDER_NOW:7D",
-                            },
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": "All jobs quoted",
-                                },
-                                "value": "ORDER_NOW",
-                            },
-                        ],
+                        "action_id": "job_list",
+                        "value": "ORDER_NOW",
                     },
                 },
             )
