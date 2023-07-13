@@ -33,7 +33,7 @@ from .templates.models import NewJobForm
 from .templates.views import new_job_modal
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
-from ..config import domains
+from ..config import config, domains, Environment
 from ..ray.service import RayService, get_job_predictions
 from ..watson import watson_message
 
@@ -111,13 +111,17 @@ async def respond_to_message(
                 msg = NewJobMessage(context["channel_id"], message["ts"])
                 await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
         case "Show_Insights":
-            if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
-                await post_insights(
-                    context,
-                    context["ray"].client,
-                    message["text"],
-                    thread_ts=thread_ts,
-                )
+            # TODO Disable insights on production for now.
+            if config.environment != Environment.production:
+                if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
+                    await post_insights(
+                        context,
+                        context["ray"].client,
+                        message["text"],
+                        thread_ts=thread_ts,
+                    )
+            else:
+                await context.say(response.reply, thread_ts=thread_ts)
         case "Jokes":
             # Delegate jokes to IBM Watson Assistant dialog.
             await context.say(response.reply, thread_ts=thread_ts)
@@ -361,7 +365,7 @@ async def post_job_summary(
             job_ids.extend(
                 group_in_progress.get("jobs", [])[: group_total - group_overdue]
             )
-        if job_ids:
+        if job_ids and config.environment != Environment.production:
             try:
                 job_predictions = await get_job_predictions(job_ids)
                 for pred in job_predictions:

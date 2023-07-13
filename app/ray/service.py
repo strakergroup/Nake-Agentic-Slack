@@ -14,7 +14,7 @@ from ray_sdk.api.v3.models import (
     GroupOptions,
 )
 
-from ..config import config, domains
+from ..config import config, domains, Environment
 from ..auth.connector import RayClient
 
 
@@ -260,6 +260,9 @@ async def get_job_predictions(job_ids: list[str]) -> list[dict[str, Any]]:
     job_predictions = [
         {"job_id": job_id.upper(), "prediction": ""} for job_id in job_ids
     ]
+    if config.environment == Environment.production:
+        # Disable predictions on live for now.
+        return job_predictions
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.post(
