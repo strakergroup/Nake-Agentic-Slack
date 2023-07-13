@@ -452,6 +452,8 @@ class JobSummaryMessage(SlackMessage):
     def __init__(
         self,
         in_progress: int,
+        in_progress_count_24: int,
+        in_progress_due: int,
         completed: int,
         validation: int,
         pending_quotes: int,
@@ -470,6 +472,62 @@ class JobSummaryMessage(SlackMessage):
         """
         sections = []
         if in_progress > 0 or all_jobs:
+            options = []
+            if in_progress_count_24 > 0:
+                options.append(
+                    {
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": f"{in_progress_count_24} Job{ 's' if in_progress_count_24 > 1 else '' } accepted within the last 24 hours",
+                        },
+                        "value": "IN_PROGRESS:ACCEPTED:24H",
+                    }
+                )
+            if in_progress_due > 0:
+                options.append(
+                    {
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": f"{in_progress_due} Job{ 's' if in_progress_due > 1 else '' } due within the next 24 hours",
+                        },
+                        "value": "IN_PROGRESS:DUE:24H",
+                    }
+                )
+            options.append(
+                {
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": "All jobs in progress",
+                    },
+                    "value": "IN_PROGRESS",
+                },
+            )
+
+            accessory = {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "emoji": True,
+                    "text": "View More",
+                },
+                "action_id": "job_list",
+                "value": "IN_PROGRESS",
+            }
+
+            if len(options) > 1:
+                accessory = {
+                    "type": "static_select",
+                    "action_id": "job_list",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": "Options",
+                    },
+                    "options": options,
+                }
             sections.append(
                 {
                     "type": "section",
@@ -477,41 +535,7 @@ class JobSummaryMessage(SlackMessage):
                         "type": "mrkdwn",
                         "text": f"*In Progress Jobs*\n*{in_progress} job(s)* currently in progress",
                     },
-                    "accessory": {
-                        "type": "static_select",
-                        "action_id": "job_list",
-                        "placeholder": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "Options",
-                        },
-                        "options": [
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": "Jobs accepted within the last 24 hours",
-                                },
-                                "value": "IN_PROGRESS:ACCEPTED:24H",
-                            },
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": "Jobs due within the next 24 hours",
-                                },
-                                "value": "IN_PROGRESS:DUE:24H",
-                            },
-                            {
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": "All jobs in progress",
-                                },
-                                "value": "IN_PROGRESS",
-                            },
-                        ],
-                    },
+                    "accessory": accessory,
                 }
             )
             if (predictions["on_time"]) > 0:

@@ -338,6 +338,12 @@ async def post_job_summary(
         RayService.get_service(ray_client).get_job_summary(
             ["COMPLETED"], completed_from=7 * 24
         ),
+        RayService.get_service(ray_client).get_job_summary(
+            ["IN_PROGRESS"], from_hours=24
+        ),
+        RayService.get_service(ray_client).get_job_summary(
+            ["IN_PROGRESS"], due_before=24
+        ),
         return_exceptions=True,
     )
 
@@ -346,7 +352,13 @@ async def post_job_summary(
     validation_count = 0
     pending_quotes_count = 0
     order_now_count = 0
+    in_progress_count_24 = 0
+    in_progress_due = 0
     predictions = {"on_time": 0, "late": 0, "over_due": 0}
+    if isinstance(responses[2], RayResponse):
+        in_progress_count_24 = responses[2].data.summary.get("in_progress", 0)
+    if isinstance(responses[2], RayResponse):
+        in_progress_due = responses[2].data.summary.get("in_progress", 0)
     if isinstance(responses[0], RayResponse):
         in_progress_count = responses[0].data.summary.get("in_progress", 0)
         validation_count = responses[0].data.summary.get("validation", 0)
@@ -381,6 +393,8 @@ async def post_job_summary(
     try:
         msg = JobSummaryMessage(
             in_progress=in_progress_count,
+            in_progress_count_24=in_progress_count_24,
+            in_progress_due=in_progress_due,
             completed=completed_count,
             validation=validation_count,
             pending_quotes=pending_quotes_count,
