@@ -603,21 +603,27 @@ async def post_insights(
 
     async def send_insights_message():
         insights_response = httpx.post(
-            f"{domains.insights_api}/ai/",
+            f"{domains.insights_api}/nlp",
             json={"clientId": ray_client.id, "prompt": prompt},
             timeout=30,
         )
         insights_response = insights_response.json()
         insights_msg = InsightsMessage(insights_response["result"].strip())
-        if context.response_url:
-            await context.respond(text=insights_msg.text, blocks=insights_msg.blocks)
-        else:
-            await context.client.chat_postMessage(
-                channel=channel_id,
-                text=insights_msg.text,
-                blocks=insights_msg.blocks,
-                thread_ts=thread_ts,
-            )
+        try:
+            if context.response_url:
+                await context.respond(
+                    text=insights_msg.text, blocks=insights_msg.blocks
+                )
+            else:
+                await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=insights_msg.text,
+                    blocks=insights_msg.blocks,
+                    thread_ts=thread_ts,
+                )
+        except Exception as e:
+            notify_exception(e, "Failed to get insights from Insights API")
+            # TODO send error message
 
     waiting_msg = ":stopwatch: Please wait as we gather your information..."
     if context.response_url:

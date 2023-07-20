@@ -8,7 +8,7 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
 - MySQL
 - [Pipenv](https://pipenv.pypa.io/) (if not using Docker)
 
-### Set Up
+### Setup
 1. Set up environment variables by copying the `.env.example` to `.env` and writing the configuration for your app.
 
    ```bash
