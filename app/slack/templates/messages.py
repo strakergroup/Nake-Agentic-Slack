@@ -472,84 +472,86 @@ class JobSummaryMessage(SlackMessage):
         """
         sections = []
         if in_progress > 0 or all_jobs:
-            options = []
-            if in_progress_count_24 > 0:
-                options.append(
-                    {
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": f"{in_progress_count_24} Job{ 's' if in_progress_count_24 > 1 else '' } accepted within the last 24 hours",
-                        },
-                        "value": "IN_PROGRESS:ACCEPTED:24H",
-                    }
-                )
-            if in_progress_due > 0:
-                options.append(
-                    {
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": f"{in_progress_due} Job{ 's' if in_progress_due > 1 else '' } due within the next 24 hours",
-                        },
-                        "value": "IN_PROGRESS:DUE:24H",
-                    }
-                )
-            options.append(
-                {
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": "All jobs in progress",
-                    },
-                    "value": "IN_PROGRESS",
-                },
-            )
-
-            accessory = {
-                "type": "button",
-                "text": {
-                    "type": "plain_text",
-                    "emoji": True,
-                    "text": "View More",
-                },
-                "action_id": "job_list",
-                "value": "IN_PROGRESS",
-            }
-
-            if len(options) > 1:
-                accessory = {
-                    "type": "static_select",
-                    "action_id": "job_list",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": "Options",
-                    },
-                    "options": options,
-                }
             sections.append(
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*In Progress Jobs*\n*{in_progress} job(s)* currently in progress",
+                        "text": "*In Progress Jobs*",
                     },
-                    "accessory": accessory,
                 }
+            )
+            if in_progress_count_24 > 0:
+                sections.append(
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*     {in_progress_count_24} job(s)* accepted in the last 24 hours",
+                        },
+                        "accessory": {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "emoji": True,
+                                "text": "View More",
+                            },
+                            "action_id": "job_list",
+                            "value": "IN_PROGRESS:ACCEPTED:24H",
+                        },
+                    },
+                )
+            if in_progress_due > 0:
+                sections.append(
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"*     {in_progress_due} job(s)* due within 24 hours",
+                        },
+                        "accessory": {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "emoji": True,
+                                "text": "View More",
+                            },
+                            "action_id": "job_list",
+                            "value": "IN_PROGRESS:DUE:24H",
+                        },
+                    },
+                )
+            sections.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*     {in_progress} Total Job(s)*",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "View More",
+                        },
+                        "action_id": "job_list",
+                        "value": "IN_PROGRESS",
+                    },
+                },
             )
 
             if config.environment != Environment.production:
                 if (predictions["on_time"]) > 0:
                     sections.append(
                         job_prediction_block(
-                            f":large_green_circle: {predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'} predicted to be on-time"
+                            f"*     :large_green_circle: {predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'}* predicted to be on-time"
                         )
                     ),
                 if (predictions["late"]) > 0 or (predictions["over_due"]) > 0:
                     sections.append(
                         job_prediction_block(
-                            f":large_orange_circle: {int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'} may be behind schedule"
+                            f"*     :large_orange_circle: {int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'}* may be behind schedule"
                         )
                     )
         if completed > 0 or all_jobs:
@@ -558,7 +560,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Completed Jobs*\n*{completed} job(s)* completed in the past 7 days",
+                        "text": f"*Completed Jobs*\n*     {completed} job(s)* completed in the past 7 days",
                     },
                     "accessory": {
                         "type": "button",
@@ -578,7 +580,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Validation*\n*{validation} job(s)* currently being validated",
+                        "text": f"*Validation*\n*     {validation} job(s)* currently being validated",
                     },
                     "accessory": {
                         "type": "button",
@@ -598,7 +600,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Pending Quotes*\n*{pending_quotes} quote(s)* pending",
+                        "text": f"*Pending Quotes*\n*     {pending_quotes} quote(s)* pending",
                     },
                     "accessory": {
                         "type": "button",
@@ -618,7 +620,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Order Now*\n*{order_now} job(s)* to order",
+                        "text": f"*Order Now*\n*     {order_now} job(s)* to order",
                     },
                     "accessory": {
                         "type": "button",
@@ -642,7 +644,15 @@ class JobSummaryMessage(SlackMessage):
                     },
                 },
             )
-        if not all_jobs:
+        if not all_jobs and (
+            not in_progress
+            or not in_progress_count_24
+            or not in_progress_due
+            or not completed
+            or not validation
+            or not pending_quotes
+            or not order_now
+        ):
             sections.append(
                 {
                     "type": "section",
