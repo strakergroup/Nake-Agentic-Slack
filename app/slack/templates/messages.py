@@ -477,7 +477,17 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*In Progress Jobs*",
+                        "text": f"*In Progress Jobs*\n*     {in_progress} Total Job(s)*",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "View More",
+                        },
+                        "action_id": "job_list",
+                        "value": "IN_PROGRESS",
                     },
                 }
             )
@@ -521,25 +531,6 @@ class JobSummaryMessage(SlackMessage):
                         },
                     },
                 )
-            sections.append(
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*     {in_progress} Total Job(s)*",
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "View More",
-                        },
-                        "action_id": "job_list",
-                        "value": "IN_PROGRESS",
-                    },
-                },
-            )
 
             if config.environment != Environment.production:
                 if (predictions["on_time"]) > 0:
