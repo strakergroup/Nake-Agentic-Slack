@@ -48,11 +48,10 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
     context["ray"] = await get_ray_connection(
         context["user_id"], context["team_id"], context.get("enterprise_id")
     )
-    if context["ray"] is None:
-        if context.get("enterprise_id") == "E04RDMG8XP1":
-            context["ray"] = await get_ray_connection_demo(
-                context["user_id"], context["team_id"], context.get("enterprise_id")
-            )
+    if context["ray"] is None or context["ray"].client is None:
+        context["ray"] = await get_ray_connection_demo(
+            context["user_id"], context["team_id"], context.get("enterprise_id")
+        )
     context["login_prompt"] = LoginMessage(
         user_id=context["user_id"],
         team_id=context["team_id"],

@@ -440,8 +440,6 @@ async def get_ray_connection_demo(
     )
     if super_group is None:
         return None
-    if client is None:
-        return None
     return RayConnection(super_group, client)
 
 
