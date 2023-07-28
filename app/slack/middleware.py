@@ -13,10 +13,7 @@ from ray_logger.slack import SlackAppLog
 from .app import app
 from .logging import init_slack_app_log
 from .templates.messages import SlackMessage, LoginMessage
-from ..auth.connector import (
-    RayConnection,
-    get_ray_connection,
-)
+from ..auth.connector import RayConnection, get_ray_connection, get_ray_connection_demo
 
 
 # -----------------------------------------------------------------------------
@@ -51,6 +48,10 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
     context["ray"] = await get_ray_connection(
         context["user_id"], context["team_id"], context.get("enterprise_id")
     )
+    if context["ray"] is None or context["ray"].client is None:
+        context["ray"] = await get_ray_connection_demo(
+            context["user_id"], context["team_id"], context.get("enterprise_id")
+        )
     context["login_prompt"] = LoginMessage(
         user_id=context["user_id"],
         team_id=context["team_id"],

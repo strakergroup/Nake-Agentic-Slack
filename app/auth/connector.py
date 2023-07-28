@@ -174,6 +174,30 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
     return None
 
 
+def get_demo_link(member_uuid: str) -> list[str]:
+    with engines["ray_integration_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT member_uuid
+            FROM slack_demo_users
+            WHERE member_uuid = :member_uuid
+            """
+        ).bindparams(member_uuid=member_uuid)
+        result = conn.execute(sql)
+        row = result.first()
+        if row:
+            sql = text(
+                """
+                SELECT link.slack_user_id
+                FROM slack_demo_link link
+                """
+            )
+            result = conn.execute(sql)
+            slack_user_ids = [row[0] for row in result]
+            return slack_user_ids
+        return []
+
+
 def get_client_access_tokens(ray_client_id: str) -> tuple[str]:
     """Gets all the active API access tokens of a RAY client."""
     with engines["api_readonly"].connect() as conn:
@@ -187,6 +211,33 @@ def get_client_access_tokens(ray_client_id: str) -> tuple[str]:
         result = conn.execute(sql)
         rows = result.all()
     return tuple(row[0] for row in rows)
+
+
+async def get_demo_super_group(team_id: str) -> RaySuperGroup | None:
+    with engines["ray_integration_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT link.super_group_uuid, g.label, link.slack_enterprise_id
+            FROM slack_super_group_link link
+            INNER JOIN sitemanager.obj_m_group g
+            ON link.super_group_uuid = g.obj_uuid
+            INNER JOIN slack_deltaray_link dlink
+            ON dlink.slack_enterprise_id = link.slack_enterprise_id
+            INNER JOIN slack_demo_users dmem on dmem.member_uuid = dlink.member_uuid
+            WHERE link.is_active = 1
+            LIMIT 1
+            """
+        )
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return None
+    return RaySuperGroup(
+        id=row.super_group_uuid,
+        name=row.label,
+        slack_team_id=team_id,
+        slack_enterprise_id=row.slack_enterprise_id,
+    )
 
 
 async def get_ray_super_group(
@@ -232,6 +283,58 @@ async def get_ray_super_group(
         name=row.label,
         slack_team_id=team_id,
         slack_enterprise_id=enterprise_id,
+    )
+
+
+async def get_ray_demo_client(
+    user_id: str, team_id: str, slack_enterprise_id: str
+) -> RayClient | None:
+    with engines["ray_integration_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT link.member_uuid, mem.login, link.slack_enterprise_id
+            FROM slack_deltaray_link link
+            INNER JOIN sitemanager.obj_m_member mem
+            ON link.member_uuid = mem.obj_uuid
+            INNER JOIN slack_demo_users dmem
+            ON dmem.member_uuid = link.member_uuid
+            WHERE mem.active = 1
+            AND link.slack_enterprise_id = :slack_enterprise_id
+            AND mem.is_deleted = 0
+            LIMIT 1
+            """
+        ).bindparams(slack_enterprise_id=slack_enterprise_id)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return None
+        ray_client_id, username, slack_enterprise_id = (
+            row.member_uuid,
+            row.login,
+            row.slack_enterprise_id,
+        )
+    # Now get the access token for authentication.
+    with engines["api_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT obj_uuid FROM access_token
+            WHERE account_id = :client_id
+            AND active = 1
+            LIMIT 1
+            """
+        ).bindparams(client_id=ray_client_id)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return None
+        access_token = row[0]
+    return RayClient(
+        id=ray_client_id,
+        username=username,
+        access_token=access_token,
+        slack_user_id=user_id,
+        slack_team_id=team_id,
+        slack_enterprise_id=slack_enterprise_id,
     )
 
 
@@ -318,6 +421,22 @@ async def get_ray_connection(
     super_group, client = await asyncio.gather(
         get_ray_super_group(team_id, enterprise_id),
         get_ray_client(user_id, team_id, enterprise_id),
+    )
+    if super_group is None:
+        return None
+    return RayConnection(super_group, client)
+
+
+async def get_ray_connection_demo(
+    user_id: str, team_id: str, enterprise_id: str | None
+) -> RayConnection | None:
+    """Gets the LanguageCloud super group and client linked to the Slack workspace
+    and user. If the Slack workspace is not linked, ignore the Slack user link.
+    A Slack workspace can have a connection without a Slack user connection.
+    """
+    super_group, client = await asyncio.gather(
+        get_demo_super_group(team_id),
+        get_ray_demo_client(user_id, team_id, enterprise_id),
     )
     if super_group is None:
         return None

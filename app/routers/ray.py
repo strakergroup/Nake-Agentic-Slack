@@ -29,7 +29,7 @@ from ..slack.templates.messages import (
 from ..ray.events.parse import get_ray_event_message
 from ..ray.events.models import ClientGroup
 from ..ray.events.logging import post_notification, post_notification_ephemeral
-
+from dataclasses import replace
 
 router = APIRouter(tags=["ray"])
 
@@ -64,7 +64,22 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
             # Send all other messages if the client is subscribed to notifications.
             or auth.slack_user.is_subscribed
         ):
-            await post_notification(app.client, event, auth.slack_user, message)
+            if auth.demo_slack_users:
+                for slack_user_id in auth.demo_slack_users:
+                    new_slack_user = replace(auth.slack_user, user_id=slack_user_id)
+                    # auth.slack_user.user_id = slack_user_id
+                    try:
+                        await post_notification(
+                            app.client, event, new_slack_user, message
+                        )
+                    except Exception as e:
+                        notify_message(
+                            msg="Failed to send notification to send demo message",
+                            severity="WARNING",
+                            extra=e.__cause__,
+                        )
+            else:
+                await post_notification(app.client, event, auth.slack_user, message)
 
     # Send notifications to group admins when a new client signs up.
     if isinstance(message, ClientSignupEventMessage):
