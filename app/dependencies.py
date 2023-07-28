@@ -7,6 +7,7 @@ from .auth.connector import (
     SlackUser,
     validate_queue_proxy_secret,
     get_slack_user,
+    get_demo_link,
 )
 
 
@@ -34,9 +35,12 @@ class RayEventAuth:
         token: str = Depends(_oauth2_scheme),
     ) -> None:
         self.slack_user: SlackUser | None = None
+        self.demo_slack_users = []
+
         is_token_valid = validate_queue_proxy_secret(token)
         if not is_token_valid:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED)
         # Get the Slack account connected to the RAY client ID.
         if "client_id" in event.data:
             self.slack_user = get_slack_user(event.data["client_id"])
+            self.demo_slack_users = get_demo_link(event.data["client_id"])
