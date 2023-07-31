@@ -12,6 +12,7 @@ from pydantic import BaseModel, ValidationError
 
 from ..auth.connector import (
     SlackUser,
+    get_demo_link,
     validate_api_callback_signature,
     get_slack_user,
     get_client_access_tokens,
@@ -118,6 +119,7 @@ async def api_job_callback(
     """Callback endpoint for API jobs."""
     # Check if the callback can be linked to a Slack user.
     slack_user = get_slack_user(client_id)
+    demo_slack_users = get_demo_link(client_id)
     if slack_user is None:
         notify_message("Slack user not found in callback endpoint", severity="WARNING")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED)
@@ -143,7 +145,15 @@ async def api_job_callback(
                 "The callback payload format is invalid",
             )
         app.client.token = slack_user.bot_token
-        await app.client.chat_postMessage(channel=slack_user.user_id, text=message.text)
+        if demo_slack_users:
+            for slack_user_id in demo_slack_users:
+                await app.client.chat_postMessage(
+                    channel=slack_user_id, text=message.text
+                )
+        else:
+            await app.client.chat_postMessage(
+                channel=slack_user.user_id, text=message.text
+            )
         return {
             "message": "success",
             "detail": "Slack user notified of event: JOB_NUMBER",
