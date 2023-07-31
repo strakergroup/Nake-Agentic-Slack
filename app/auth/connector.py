@@ -213,11 +213,13 @@ def get_client_access_tokens(ray_client_id: str) -> tuple[str]:
     return tuple(row[0] for row in rows)
 
 
-async def get_demo_super_group(team_id: str) -> RaySuperGroup | None:
+async def get_demo_super_group(
+    team_id: str, enterprise_id: str
+) -> RaySuperGroup | None:
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
-            SELECT link.super_group_uuid, g.label, link.slack_enterprise_id
+            SELECT link.super_group_uuid, g.label
             FROM slack_super_group_link link
             INNER JOIN sitemanager.obj_m_group g
             ON link.super_group_uuid = g.obj_uuid
@@ -225,9 +227,10 @@ async def get_demo_super_group(team_id: str) -> RaySuperGroup | None:
             ON dlink.slack_enterprise_id = link.slack_enterprise_id
             INNER JOIN slack_demo_users dmem on dmem.member_uuid = dlink.member_uuid
             WHERE link.is_active = 1
+            AND link.slack_enterprise_id = :enterprise_id
             LIMIT 1
             """
-        )
+        ).bindparams(enterprise_id=enterprise_id)
         result = conn.execute(sql)
         row = result.first()
         if not row:
@@ -236,7 +239,7 @@ async def get_demo_super_group(team_id: str) -> RaySuperGroup | None:
         id=row.super_group_uuid,
         name=row.label,
         slack_team_id=team_id,
-        slack_enterprise_id=row.slack_enterprise_id,
+        slack_enterprise_id=enterprise_id,
     )
 
 
@@ -289,6 +292,18 @@ async def get_ray_super_group(
 async def get_ray_demo_client(
     user_id: str, team_id: str, slack_enterprise_id: str
 ) -> RayClient | None:
+    with engines["ray_integration_readonly"].connect() as conn:
+        sql = text(
+            """
+                SELECT id
+                FROM slack_demo_link link
+                WHERE slack_user_id = :user_id
+                """
+        ).bindparams(user_id=user_id)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return None
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
@@ -435,7 +450,7 @@ async def get_ray_connection_demo(
     A Slack workspace can have a connection without a Slack user connection.
     """
     super_group, client = await asyncio.gather(
-        get_demo_super_group(team_id),
+        get_demo_super_group(team_id, enterprise_id),
         get_ray_demo_client(user_id, team_id, enterprise_id),
     )
     if super_group is None:
