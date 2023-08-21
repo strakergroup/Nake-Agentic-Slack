@@ -1074,12 +1074,14 @@ class ConnectionInfoMessage(SlackMessage):
     ) -> None:
         # First get Slack workspace - super group info.
         if ray_connection is not None:
-            text = f"Your Slack workspace is connected with: {ray_connection.super_group.name}."
+            super_group_names = [group.name for group in ray_connection.super_group]
+            super_group_names_str = ", ".join(super_group_names)
+            text = f"Your Slack workspace is connected with: {super_group_names_str}."
             workspace_block = {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"Your Slack workspace is connected with: *{ray_connection.super_group.name}*.",
+                    "text": f"Your Slack workspace is connected with: *{super_group_names_str}*.",
                 },
             }
         else:

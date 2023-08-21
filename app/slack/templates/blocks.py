@@ -24,12 +24,14 @@ def home_auth_blocks(
     details or asks the user to connect their LanguageCloud account.
     """
     if isinstance(ray_connection, RayConnection) and ray_connection.client:
+        super_group_names = [group.name for group in ray_connection.super_group]
+        super_group_names_str = ", ".join(super_group_names)
         return [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"Your Slack workspace is connected with: *{ray_connection.super_group.name}*.",
+                    "text": f"Your Slack workspace is connected with: *{super_group_names_str}*.",
                 },
             },
             {

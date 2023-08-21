@@ -67,7 +67,9 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
         and "log" in context
         and isinstance(context["log"], SlackAppLog)
     ):
-        context["log"].slack_log.super_group_uuid = context["ray"].super_group.id
+        context["log"].slack_log.super_group_uuid = [
+            group.id for group in context["ray"].super_group
+        ]
         if context["ray"].client is not None:
             context["log"].slack_log.client_uuid = context["ray"].client.id
 

@@ -245,7 +245,7 @@ async def get_demo_super_group(
 
 async def get_ray_super_group(
     team_id: str, enterprise_id: str | None = None
-) -> RaySuperGroup | None:
+) -> list[RaySuperGroup] | None:
     """Gets the LanguageCloud super group linked to the Slack workspace if an active
     link exists, otherwise returns None.
 
@@ -262,7 +262,6 @@ async def get_ray_super_group(
                 ON link.super_group_uuid = g.obj_uuid
                 WHERE link.slack_enterprise_id = :enterprise_id
                 AND link.is_active = 1
-                LIMIT 1
                 """
             ).bindparams(enterprise_id=enterprise_id)
         else:
@@ -274,19 +273,21 @@ async def get_ray_super_group(
                 ON link.super_group_uuid = g.obj_uuid
                 WHERE link.slack_team_id = :team_id
                 AND link.is_active = 1
-                LIMIT 1
                 """
             ).bindparams(team_id=team_id)
         result = conn.execute(sql)
-        row = result.first()
-        if not row:
+        rows = result.fetchall()
+        if not rows:
             return None
-    return RaySuperGroup(
-        id=row.super_group_uuid,
-        name=row.label,
-        slack_team_id=team_id,
-        slack_enterprise_id=enterprise_id,
-    )
+    return [
+        RaySuperGroup(
+            id=row.super_group_uuid,
+            name=row.label,
+            slack_team_id=team_id,
+            slack_enterprise_id=enterprise_id,
+        )
+        for row in rows
+    ]
 
 
 async def get_ray_demo_client(
