@@ -70,7 +70,7 @@ class RayConnection:
     the LanguageCloud group.
     """
 
-    super_group: RaySuperGroup
+    super_group: list[RaySuperGroup]
     client: RayClient | None
 
 
@@ -215,7 +215,7 @@ def get_client_access_tokens(ray_client_id: str) -> tuple[str]:
 
 async def get_demo_super_group(
     team_id: str, enterprise_id: str
-) -> RaySuperGroup | None:
+) -> list[RaySuperGroup] | None:
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
@@ -235,12 +235,14 @@ async def get_demo_super_group(
         row = result.first()
         if not row:
             return None
-    return RaySuperGroup(
-        id=row.super_group_uuid,
-        name=row.label,
-        slack_team_id=team_id,
-        slack_enterprise_id=enterprise_id,
-    )
+    return [
+        RaySuperGroup(
+            id=row.super_group_uuid,
+            name=row.label,
+            slack_team_id=team_id,
+            slack_enterprise_id=enterprise_id,
+        )
+    ]
 
 
 async def get_ray_super_group(
@@ -357,8 +359,8 @@ async def get_ray_demo_client(
 async def get_ray_client(
     user_id: str, team_id: str, enterprise_id: str | None = None
 ) -> RayClient | None:
-    """Gets the LanguageCloud client id and username linked to the Slack account if an active link
-    exists, otherwise returns None.
+    """Gets the LanguageCloud client id and username linked to the Slack account if an active
+    link exists, otherwise returns None.
 
     Args:
         user_id (str): The Slack user ID.
