@@ -110,3 +110,7 @@ $ pipenv run coverage html       # HTML in htmlcov/
 ### Linting and Formatting Code
 
 This package uses [flake8](http://flake8.pycqa.org/en/latest/) for linting and [black](https://black.readthedocs.io/en/stable/) for formatting.
+
+### Slack API fields in env file
+
+These can be found once created in step 5 on the app page at https://api.slack.com/apps/
