@@ -338,6 +338,14 @@ def new_job_modal(
                             },
                             "value": "Translation + Edit",
                         },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Machine Translation",
+                                "emoji": False,
+                            },
+                            "value": "Machine Translation",
+                        },
                     ],
                     "initial_option": {
                         "text": {
