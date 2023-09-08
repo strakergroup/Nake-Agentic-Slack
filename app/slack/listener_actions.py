@@ -725,6 +725,8 @@ async def get_groups(ray_client: RayClient) -> list[dict[str, Any]]:
     """Get the groups for a client."""
 
     groups = await RayService.get_service(ray_client).get_groups()
+    # return sorted by name lower case
+    groups.sort(key=lambda x: x.name.lower())
     return [
         {
             "text": {"type": "plain_text", "text": group.name, "emoji": False},
