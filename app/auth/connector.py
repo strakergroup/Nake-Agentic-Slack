@@ -728,3 +728,29 @@ async def approve_pending_groups(
                 },
             )
     return tuple(g["uuid"] for g in groups_to_approve)
+
+
+# log new user info
+async def log_new_user_info(user):
+    with engines["ray_integration_log"].connect() as conn:
+        sql = text(
+            """
+            INSERT IGNORE INTO slack_user_log
+                (slack_user_id, slack_team_id, slack_enterprise_id, tz, tz_label, email, name)
+            VALUES
+                (:user_id, :team_id, :enterprise_id, :tz, :tz_label, :email, :name)
+            """
+        ).bindparams(
+            user_id=user["id"],
+            team_id=user["team_id"],
+            enterprise_id=user["enterprise_user"]["enterprise_id"],
+            tz=user["tz"],
+            tz_label=user["tz_label"],
+            email=user["profile"]["email"],
+            name=user["profile"]["real_name_normalized"],
+        )
+        # compiled_sql = sql.compile()
+        # print(compiled_sql)
+        res = conn.execute(sql)
+        conn.commit()
+        print(f"Inserted {res.rowcount} rows into slack_user_log table.")
