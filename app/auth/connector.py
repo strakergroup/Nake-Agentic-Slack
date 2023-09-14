@@ -749,8 +749,5 @@ async def log_new_user_info(user):
             email=user["profile"]["email"],
             name=user["profile"]["real_name_normalized"],
         )
-        # compiled_sql = sql.compile()
-        # print(compiled_sql)
-        res = conn.execute(sql)
+        conn.execute(sql)
         conn.commit()
-        print(f"Inserted {res.rowcount} rows into slack_user_log table.")
