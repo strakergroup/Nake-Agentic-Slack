@@ -736,18 +736,19 @@ async def log_new_user_info(user):
         sql = text(
             """
             INSERT IGNORE INTO slack_user_log
-                (slack_user_id, slack_team_id, slack_enterprise_id, tz, tz_label, email, name)
+                (slack_user_id, slack_team_id, slack_enterprise_id, slack_enterprise_name, tz, tz_label, email, name)
             VALUES
-                (:user_id, :team_id, :enterprise_id, :tz, :tz_label, :email, :name)
+                (:user_id, :team_id, :enterprise_id, :enterprise_name, :tz, :tz_label, :email, :name)
             """
         ).bindparams(
-            user_id=user["id"],
-            team_id=user["team_id"],
-            enterprise_id=user["enterprise_user"]["enterprise_id"],
-            tz=user["tz"],
-            tz_label=user["tz_label"],
-            email=user["profile"]["email"],
-            name=user["profile"]["real_name_normalized"],
+            user_id=user.get("id", ""),
+            team_id=user.get("team_id", ""),
+            enterprise_id=user.get("enterprise_user", {}).get("enterprise_id", ""),
+            enterprise_name=user.get("enterprise_user", {}).get("enterprise_name", ""),
+            tz=user.get("tz", ""),
+            tz_label=user.get("tz_label", ""),
+            email=user.get("profile", {}).get("email", ""),
+            name=user.get("profile", {}).get("real_name_normalized", ""),
         )
         conn.execute(sql)
         conn.commit()
