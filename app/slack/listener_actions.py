@@ -707,6 +707,7 @@ async def submit_job(
         workflow=form.workflow,
         reference=form.reference,
         job_notes=form.notes,
+        translation_notes=form.translation_notes,
     )
 
 
