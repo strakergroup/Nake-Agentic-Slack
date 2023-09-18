@@ -2,6 +2,7 @@ import asyncio
 from typing import Any, Callable, Coroutine, Iterable, TypeVar
 from functools import wraps
 from urllib.parse import urlencode
+from buglog import notify_exception
 import httpx
 from httpx import Response
 from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
@@ -272,6 +273,7 @@ async def get_job_predictions(job_ids: list[str]) -> list[dict[str, Any]]:
             predictions = r.json()
             if predictions:
                 return predictions
-    except httpx.TimeoutException:
+    except Exception as e:
+        notify_exception(e)
         return job_predictions
     return job_predictions
