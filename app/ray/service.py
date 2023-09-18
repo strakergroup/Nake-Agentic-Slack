@@ -143,6 +143,7 @@ class RayService:
         group_id: str | None = None,
         reference: str | None = None,
         job_notes: str | None = None,
+        translation_notes: str | None = None,
     ) -> list[RayResponse[None]]:
         """Submit a new job.
 
@@ -153,6 +154,7 @@ class RayService:
             workflow (str): The API workflow.
             reference (str | None, optional): A job reference. Defaults to None.
             job_notes (str | None, optional): The job notes. Defaults to None.
+            translation_notes (str | None, optional): The translation notes. Defaults to None.
 
         Returns:
             list[RayResponse[None]]: The responses of the API requests made.
@@ -173,6 +175,7 @@ class RayService:
                     workflow=workflow,
                     callback_uri=callback_uri,
                     job_notes=job_notes,
+                    translation_notes=translation_notes,
                     additional_data={"app_source": "slack"},
                 )
             )

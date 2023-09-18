@@ -395,6 +395,22 @@ def new_job_modal(
                 },
                 "optional": True,
             },
+            {
+                "type": "input",
+                "block_id": "translation_notes",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "translation_notes",
+                    "multiline": True,
+                    "max_length": 250,
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Job Notes",
+                    "emoji": True,
+                },
+                "optional": True,
+            },
             # TODO: job category?
             # {
             #     "type": "input",
