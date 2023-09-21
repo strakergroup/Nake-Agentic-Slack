@@ -352,6 +352,27 @@ class JobStatusMessage(SlackMessage):
             },
             job_link_block(job.uuid, client_id),
         ]
+        for x in job.translated_file:
+            url={
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": x["lang"],
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": x["file_name"],
+                        },
+                        "url": x["download_url"],
+                        "action_id": "link",
+                        "style": "primary",
+                    },
+                }
+            job_status_block.insert(3,url)
+
         if job_prediction != "":
             job_status_block.insert(
                 1,
