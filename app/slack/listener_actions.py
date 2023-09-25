@@ -28,6 +28,7 @@ from .templates.messages import (
     JobListMessage,
     JobDetailsMessage,
     InsightsMessage,
+    FileListMessage,
 )
 from .templates.models import NewJobForm
 from .templates.views import new_job_modal
@@ -735,3 +736,80 @@ async def get_groups(ray_client: RayClient) -> list[dict[str, Any]]:
         }
         for group in groups
     ]
+
+
+async def post_file_list(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    job_id: str,
+    page: int,
+    page_size: int,
+    channel_id: str | None = None,
+    thread_ts: str | None = None,
+    replace_original: bool = False,
+) -> AsyncSlackResponse:
+    """Tries to get the file list from the RAY API and list translated files.
+    If the user cannot access the job, post another message
+    instead.
+
+    Args:
+        context (AsyncBoltContext): The listener function context.
+        ray_client (RayClient): The RAY client.
+        job_id (str): The ID of the job to get.
+        channel_id (str | None, optional): The channel to post the message to.
+            If not given, posts to the source channel.
+        thread_ts (str | None, optional): The message thread to reply to.
+
+    Raises:
+        AssertionError: The `channel_id` is not given and there is no source channel.
+    """
+    if (
+        not channel_id
+        and not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
+        raise AssertionError("No channel to post to")
+    channel_id = channel_id or context.channel_id or context.user_id
+
+    job, response = await RayService.get_service(ray_client).get_job(
+        job_id, page, page_size
+    )
+    try:
+        if job is not None:
+            msg = FileListMessage(job, ray_client.id)
+            if context.response_url:
+                return await context.respond(
+                    text=msg.text, blocks=msg.blocks, replace_original=replace_original
+                )
+            else:
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                    blocks=msg.blocks,
+                    thread_ts=thread_ts,
+                )
+        else:
+            msg = InvalidJobMessage(job_id)
+            if context.response_url:
+                return await context.respond(text=msg.text)
+            else:
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                    thread_ts=thread_ts,
+                )
+    finally:
+        if response is not None:
+            try:
+                response_data = response.json()
+            except Exception:
+                response_data = response.content.decode() or None
+            context["log"].add_api_log(
+                status_code=response.status_code,
+                url=str(response.url),
+                payload=None,
+                response=response_data,
+                headers=dict(response.headers.items()),
+                version="v3",
+            )
