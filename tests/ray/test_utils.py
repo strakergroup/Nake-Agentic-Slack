@@ -83,10 +83,10 @@ def test_format_job_due_date_slack():
     # Show traffic lights if status is "IN_PROGRESS".
     assert app.ray.utils.format_job_due_date_slack(
         target_date=yesterday, job_status="IN_PROGRESS", traffic_light=True
-    ).startswith(":red_circle:")
+    ).startswith("<!date")
     assert app.ray.utils.format_job_due_date_slack(
         target_date=tomorrow, job_status="IN_PROGRESS", traffic_light=True
-    ).startswith(":large_green_circle:")
+    ).startswith("in")
     assert not app.ray.utils.format_job_due_date_slack(
         target_date=yesterday, traffic_light=True
     ).startswith(":")
