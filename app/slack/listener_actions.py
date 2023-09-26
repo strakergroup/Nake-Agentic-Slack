@@ -378,7 +378,7 @@ async def post_job_summary(
             job_ids.extend(
                 group_in_progress.get("jobs", [])[: group_total - group_overdue]
             )
-        if job_ids and config.environment != Environment.production:
+        if job_ids and config.environment != Environment.production and config.environment != Environment.local:
             try:
                 job_predictions = await get_job_predictions(job_ids)
                 for pred in job_predictions:
