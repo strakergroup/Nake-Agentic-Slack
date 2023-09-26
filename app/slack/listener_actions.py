@@ -361,8 +361,8 @@ async def post_job_summary(
     predictions = {"on_time": 0, "late": 0, "over_due": 0}
     if isinstance(responses[2], RayResponse):
         in_progress_count_24 = responses[2].data.summary.get("in_progress", 0)
-    if isinstance(responses[2], RayResponse):
-        in_progress_due = responses[2].data.summary.get("in_progress", 0)
+    if isinstance(responses[3], RayResponse):
+        in_progress_due = responses[3].data.summary.get("in_progress", 0)
     if isinstance(responses[0], RayResponse):
         in_progress_count = responses[0].data.summary.get("in_progress", 0)
         validation_count = responses[0].data.summary.get("validation", 0)
