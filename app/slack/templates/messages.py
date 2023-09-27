@@ -1405,6 +1405,28 @@ class JobCompletedEventMessage(SlackMessage):
                     },
                 },
                 {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Show Files",
+                                "emoji": True,
+                            },
+                            "action_id": "file_list",
+                            "value": json.dumps(
+                                {
+                                    "id": job_id,
+                                    "page": 1,
+                                    "page_size": 5,
+                                    "replace_original": False,
+                                }
+                            ),
+                        }
+                    ],
+                },
+                {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
@@ -1520,14 +1542,14 @@ class FileListMessage(SlackMessage):
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": x["lang"],
+                    "text": x["file_name"] + " " + job.sl.name + "-" + x["lang"],
                 },
                 "accessory": {
                     "type": "button",
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
-                        "text": x["file_name"],
+                        "text": "Download",
                     },
                     "url": x["download_url"],
                     "action_id": "link",
