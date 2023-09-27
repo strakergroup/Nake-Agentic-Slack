@@ -70,7 +70,12 @@ class RayService:
         return await self._ray.get_languages()
 
     @secured_endpoint
-    async def get_job(self, job_id: str) -> tuple[Job | None, Response | None]:
+    async def get_job(
+        self,
+        job_id: str,
+        page: int = 1,
+        page_size: int = 5,
+    ) -> tuple[Job | None, Response | None]:
         """Gets the details of a translation job.
 
         Args:
@@ -80,7 +85,7 @@ class RayService:
             The job data and the response if they exist.
         """
         try:
-            response = await self._ray.get_job(job_id)
+            response = await self._ray.get_job(job_id, page, page_size)
             return response.data, response.response
         except RayAuthError as e:
             return None, e.response
