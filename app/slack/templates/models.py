@@ -67,6 +67,7 @@ class NewJobForm(BaseModel):
     service: str
     validation: bool
     notes: str | None = None
+    translation_notes: str | None = None
     # category: str
 
     @property
@@ -82,6 +83,8 @@ class NewJobForm(BaseModel):
                 return "TRANSLATION_REVIEW_VALIDATION"
             else:
                 return "TRANSLATION_REVIEW"
+        elif self.service == "Machine Translation":
+            return "MACHINE_TRANSLATION"
         else:
             raise ValueError(f"Cannot get workflow from service: {self.service}")
 
@@ -149,6 +152,7 @@ class NewJobForm(BaseModel):
                 service=values["service"]["service"]["selected_option"]["value"],
                 validation=bool(values["validation"]["validation"]["selected_options"]),
                 notes=values["notes"]["notes"]["value"],
+                translation_notes=values["translation_notes"]["translation_notes"]["value"],
                 # category=values["category"]["category"]["selected_option"]["value"],
             )
         except KeyError as e:
