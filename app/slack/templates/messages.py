@@ -701,7 +701,7 @@ class JobListMessage(SlackMessage):
                 # Loop for each sub batch inside a job and print out detailed information and download links if available
                 for batch in job_batches:
                     job_text += f"\n{batch['batch_label'].upper()} \n    - {batch['source_lang'].upper()} > {batch['target_lang'].upper()}"
-                    if batch["generated_file"] != "":
+                    if job.status == "COMPLETED" and batch["generated_file"] != "":
                         job_text += f"\n    - <{download_prefix + batch['generated_file']}|DOWNLOAD LINK>"
                     else:
                         job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()}"
