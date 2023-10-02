@@ -4,6 +4,7 @@
 
 from typing import Any
 import json
+import urllib.request
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm
@@ -681,12 +682,31 @@ class JobListMessage(SlackMessage):
         client_ref: str = "",
     ) -> None:
         jobs_blocks = []
+        # Prepare download links prefix
+        if config.environment == Environment.production:
+            download_prefix = "https://workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
+        elif config.environment == Environment.uat:
+            download_prefix = "https://uat-workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
+        elif config.environment == Environment.local:
+            download_prefix = "https://local-workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
+        else:
+            download_prefix = "https://local-workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
+
+        # If there is any jobs result
         if jobs:
             for i, job in enumerate(jobs):
+                job_batches = json.loads(job.batches)
                 job_text = f"*{job.id}*"
                 if job.reference:
                     job_text += f"\nRef: {job.reference}"
-                job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
+                # Loop for each sub batch inside a job and print out detailed information and download links if available
+                for batch in job_batches:
+                    job_text += f"\n{batch['batch_label'].upper()} \n    - {batch['source_lang'].upper()} > {batch['target_lang'].upper()}"
+                    if batch["generated_file"] != "":
+                        job_text += f"\n    - <{download_prefix + batch['generated_file']}|DOWNLOAD LINK>"
+                    else:
+                        job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()}"
+                # job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
                 job_text += "\nDue: " + format_job_due_date_slack(
                     job.target_date, job.status, traffic_light=True
                 )
