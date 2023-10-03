@@ -27,6 +27,7 @@ class StrakerConfig(BaseSettings):
     slack_deltaray_key: SecretBytes = None
     slack_queue_proxy_secret: SecretStr = None
     health_check_password: SecretStr = None
+    languagecloud_api_key: SecretStr = None
 
     @validator("environment", pre=True)
     def environment_validator(cls, v, values):
@@ -106,6 +107,34 @@ class StrakerConfig(BaseSettings):
         return hashlib.sha512(
             base64.b64encode(values["slack_deltaray_key"])
         ).hexdigest()
+
+    @validator("languagecloud_api_key")
+    def default_languagecloud_api_key(cls, v, values):
+        if v:
+            return v
+        with engines["ray_integration_readonly"].connect() as conn:
+            sql = text(
+                """
+                SELECT secret_key FROM integration_keys
+                WHERE name = :name AND environment = :env
+                LIMIT 1
+                """
+            )
+            result = conn.execute(
+                sql,
+                {
+                    "name": "languagecloud_api",
+                    "env": "live"
+                    if values["environment"] == Environment.production
+                    else values["environment"].value,
+                },
+            )
+            row = result.first()
+            if not row:
+                raise AssertionError(
+                    "The languagecloud_api integration key is not in the database"
+                )
+            return row[0]
 
     class Config:
         allow_mutation = False

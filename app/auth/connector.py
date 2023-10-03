@@ -3,6 +3,7 @@ other services, e.g. Slack, RAY apps.
 """
 
 import asyncio
+from straker_auth.languagecloud import create_languagecloud_id_token
 import time
 import json
 from uuid import uuid4
@@ -61,6 +62,8 @@ class RayClient:
     """The Slack team ID."""
     slack_enterprise_id: str | None
     """The Slack enterprise ID."""
+    id_token: str | None
+    """an ID Token according to the OpenID Connect spec"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -372,7 +375,7 @@ async def get_ray_client(
         if enterprise_id:
             sql = text(
                 """
-                SELECT link.member_uuid, mem.login
+                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, mem.active
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
@@ -387,8 +390,8 @@ async def get_ray_client(
         else:
             sql = text(
                 """
-                SELECT link.member_uuid, mem.login
                 FROM slack_deltaray_link link
+                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, mem.active
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
                 WHERE link.slack_user_id = :user_id
@@ -404,6 +407,14 @@ async def get_ray_client(
         if not row:
             return None
         ray_client_id, username = row.member_uuid, row.login
+        id_token = create_languagecloud_id_token(
+            uuid=ray_client_id,
+            given_name=row.given_name,
+            family_name=row.family_name,
+            email=row.email_primary,
+            is_active=bool(row.active),
+            secret=config.languagecloud_api_key,
+        )
     # Now get the access token for authentication.
     with engines["api_readonly"].connect() as conn:
         sql = text(
@@ -426,6 +437,7 @@ async def get_ray_client(
         slack_user_id=user_id,
         slack_team_id=team_id,
         slack_enterprise_id=enterprise_id,
+        id_token=id_token,
     )
 
 
