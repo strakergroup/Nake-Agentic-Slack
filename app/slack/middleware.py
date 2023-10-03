@@ -81,7 +81,11 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
                 # insert to db
                 await log_new_user_info(user_info["user"])
             except Exception as e:
-                print(e)
+                error_message = str(e)
+                notify_message(
+                    f"Slack: Failed to get user details {error_message}",
+                    severity="WARNING",
+                )
 
     await next()
 
