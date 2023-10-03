@@ -703,6 +703,19 @@ class JobListMessage(SlackMessage):
                     job_text += f"\n{batch['batch_label'].upper()} \n    - {batch['source_lang'].upper()} > {batch['target_lang'].upper()}"
                     if job.status == "COMPLETED" and batch["generated_file"] != "":
                         job_text += f"\n    - <{download_prefix + batch['generated_file']}|DOWNLOAD LINK>"
+                    elif (
+                        job.status != "COMPLETED"
+                        and batch["generated_file"] != ""
+                        and batch["batch_status"]
+                        in (
+                            "TRANSLATED",
+                            "REVIEWED",
+                            "QA_REVIEWED",
+                            "VALIDATED",
+                            "VALIDATED 2"
+                        )
+                    ):
+                        job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()} - <{download_prefix + batch['generated_file']}|DOWNLOAD LINK>"
                     else:
                         job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()}"
                 # job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
