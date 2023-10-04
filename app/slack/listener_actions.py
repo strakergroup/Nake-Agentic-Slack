@@ -706,6 +706,7 @@ async def submit_job(
         tl=[lang.code for lang in form.target_langs],
         group_id=form.group_id,
         workflow=form.workflow,
+        timeframe=form.timeframe,
         reference=form.reference,
         job_notes=form.notes,
         translation_notes=form.translation_notes,

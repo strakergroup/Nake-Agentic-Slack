@@ -145,6 +145,7 @@ class RayService:
         sl: str,
         tl: list[str],
         workflow: str,
+        timeframe: str = "5",
         group_id: str | None = None,
         reference: str | None = None,
         job_notes: str | None = None,
@@ -157,6 +158,7 @@ class RayService:
             sl (str): The source language code.
             tl (list[str]): A list of target language codes.
             workflow (str): The API workflow.
+            timeframe (str): The API priority. Defaults to 5.
             reference (str | None, optional): A job reference. Defaults to None.
             job_notes (str | None, optional): The job notes. Defaults to None.
             translation_notes (str | None, optional): The translation notes. Defaults to None.
@@ -178,6 +180,7 @@ class RayService:
                     group_id=group_id,
                     reference=reference,
                     workflow=workflow,
+                    timeframe=timeframe,
                     callback_uri=callback_uri,
                     job_notes=job_notes,
                     translation_notes=translation_notes,
