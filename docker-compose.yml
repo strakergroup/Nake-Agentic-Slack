@@ -1,0 +1,20 @@
+version: "3.9"
+services:
+  slack-app:
+    container_name: local-slack-translator
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+    networks:
+      local-straker:
+        ipv4_address: 172.20.0.62
+    extra_hosts:
+      local-buglog.strakertranslations.com: 172.17.0.1
+networks:
+  local-straker:
+    name: development_local-straker
+    external: true

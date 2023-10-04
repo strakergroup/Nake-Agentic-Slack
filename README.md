@@ -40,24 +40,12 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
 
    - ### With Docker
 
-     First create the image:
-
+     You should be able to just run
      ```bash
-     $ docker build -t slack-ray-translator .
+     $ docker compose up -d
      ```
 
-     Then start a container using
-
-     ```bash
-     $ docker run -d --rm -p 3000:80 slack-ray-translator
-     ```
-
-     The `-p 3000:80` flag makes the app available on port 3000 on `localhost`, you can use any port you want. The `--rm` flag deletes the container when it is stopped, this is useful to prevent creating duplicate containers.
-
-     **Note:** \
-     The image has to be re-built after changes to the code because it copies the files when it is built. This means that the Docker method of running the app is less convenient during development.
-
-     When running this app in Docker, the `DB_HOST` variable in `.env` is not `127.0.0.1`. This should be the hostname of the MySQL container, or just `host.docker.internal` (this is the address of Docker host).
+     Note: Your .env db host will be local-percona
 
    The app should now be running at `localhost` in the port you specified, e.g. http://localhost:3000.
 
@@ -70,6 +58,15 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
 6. Install your Slack App to Slack Workspace with the URL `/slack/install`, e.g. `<your-domain>/slack/install`.
 
    You can share this URL or embed it in a link on a web page for anyone to install (must have public distribution enabled, Settings -> Manage Distribution). **Make sure the app is secure before making it available to the public.**
+
+### Dependencies
+These are Dependencies you will probably need to set up. Check the repo for readme for setup.
+
+local-redis - this is in the docker repo development/servers/redis/docker-compose.yml
+
+redis-slack-consumer - This is for events. You can find the repo [here](https://bitbucket.org/strakertech/redis-slack-consumer/)
+
+slack-sdk - If you need to update the sdk you can find repo [here](https://bitbucket.org/strakertech/ray-python-sdk/)
 
 ### Troubleshooting
 #### **ModuleNotFoundError: No module named '...'**
