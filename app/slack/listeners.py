@@ -477,7 +477,7 @@ async def file_options(ack, payload, client):
     await ack(options=map_file_options(files[:100]))
 
 
-@app.block_action("file_list", middleware=[ray_connection])
+@app.block_action(re.compile(r"file_list(_\d+)?"), middleware=[ray_connection])
 @slack_log_decorator
 async def file_list_action(ack, payload, context):
     """Paginated file list. Triggered from the Show Files button."""

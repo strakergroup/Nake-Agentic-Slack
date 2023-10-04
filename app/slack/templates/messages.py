@@ -365,7 +365,7 @@ class JobStatusMessage(SlackMessage):
                                 "text": "Show Files",
                                 "emoji": True,
                             },
-                            "action_id": "file_list",
+                            "action_id": "file_list_1",
                             "value": json.dumps(
                                 {
                                     "id": job.id,
@@ -452,7 +452,7 @@ class JobDetailsMessage(SlackMessage):
                                 "text": "Show Files",
                                 "emoji": True,
                             },
-                            "action_id": "file_list",
+                            "action_id": "file_list_1",
                             "value": json.dumps(
                                 {
                                     "id": job.id,
@@ -1414,7 +1414,7 @@ class JobCompletedEventMessage(SlackMessage):
                                 "text": "Show Files",
                                 "emoji": True,
                             },
-                            "action_id": "file_list",
+                            "action_id": "file_list_1",
                             "value": json.dumps(
                                 {
                                     "id": job_id,
@@ -1570,7 +1570,7 @@ class FileListMessage(SlackMessage):
                             "text": "Show previous files",
                             "emoji": True,
                         },
-                        "action_id": "file_list",
+                        "action_id": "file_list_0",
                         "value": json.dumps(
                             {
                                 "id": job.id,
@@ -1590,7 +1590,7 @@ class FileListMessage(SlackMessage):
                             "text": "Show more files",
                             "emoji": True,
                         },
-                        "action_id": "file_list",
+                        "action_id": "file_list_1",
                         "value": json.dumps(
                             {
                                 "id": job.id,
