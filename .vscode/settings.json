@@ -4,7 +4,7 @@
     "python.linting.flake8CategorySeverity.B": "Warning",
     "python.formatting.provider": "black",
     "[python]": {
-        "editor.formatOnSave": true,
+        "editor.formatOnSave": false,
         "editor.defaultFormatter": "ms-python.black-formatter"
     }
 }

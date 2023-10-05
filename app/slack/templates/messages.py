@@ -706,14 +706,7 @@ class JobListMessage(SlackMessage):
                     elif (
                         job.status != "COMPLETED"
                         and batch["generated_file"] != ""
-                        and batch["batch_status"]
-                        in (
-                            "TRANSLATED",
-                            "REVIEWED",
-                            "QA_REVIEWED",
-                            "VALIDATED",
-                            "VALIDATED 2"
-                        )
+                        and batch["batch_status"] in ("TRANSLATED", "REVIEWED", "QA_REVIEWED", "VALIDATED", "VALIDATED 2")
                     ):
                         job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()} - <{download_prefix + batch['generated_file']}|DOWNLOAD LINK>"
                     else:

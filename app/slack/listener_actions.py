@@ -5,7 +5,6 @@ Slack Bolt listener functions.
 
 import asyncio
 from typing import Any
-import buglog
 
 from buglog import notify_exception, notify_message
 from slack_sdk.errors import SlackApiError
@@ -560,7 +559,7 @@ async def post_job_list(
                 notify_message(f"post_job_list: Invalid preset ({preset})")
                 return
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         raise
     try:
         job_ids_in_progress = [
@@ -591,7 +590,7 @@ async def post_job_list(
                 blocks=msg.blocks,
             )
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         raise
     finally:
         try:
