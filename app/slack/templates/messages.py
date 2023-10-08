@@ -702,7 +702,7 @@ class JobListMessage(SlackMessage):
                 for batch in job_batches:
                     job_text += f"\n{batch['batch_label'].upper()} \n    - {batch['source_lang'].upper()} > {batch['target_lang'].upper()}"
                     if job.status == "COMPLETED" and batch["generated_file"] != "":
-                        job_text += f"\n    - <{download_prefix + batch['generated_file']}|DOWNLOAD LINK>"
+                        job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()} - <{download_prefix + batch['generated_file']}|DOWNLOAD LINK>"
                     elif (
                         job.status != "COMPLETED"
                         and batch["generated_file"] != ""
