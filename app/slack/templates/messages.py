@@ -965,7 +965,13 @@ class FileTranslatedMessage(SlackMessage):
 class HelpMessage(SlackMessage):
     """Help message showing how to use the app."""
 
-    def __init__(self) -> None:
+    def __init__(self,
+        ray_connection: RayConnection | None,
+        user_id: str,
+        team_id: str,
+        enterprise_id: str | None,
+        channel_id: str,
+        ) -> None:
         super().__init__(
             "Hi there :wave: here are some ideas of what you can currently do with our app:",
             [
@@ -973,33 +979,158 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Hi there :wave: here are some ideas of what you can currently do with our app:",
+                        "text": "Hi there:wave: \n\nHow can we help?",
                     },
                 },
                 {"type": "divider"},
+                # {
+                #     "type": "section",
+                #     "fields": [
+                #         {
+                #             "type": "mrkdwn",
+                #             "text": "Check your job status"
+                #         },
+                #         {
+                #             "type": "mrkdwn",
+                #             "text": "`/ray job [reference]`"
+                #         },
+                #         {
+                #             "type": "mrkdwn",
+                #             "text": "Your daily summary"
+                #         },
+                #         {
+                #             "type": "mrkdwn",
+                #             "text": "`/ray my jobs`"
+                #         },
+                #         {
+                #             "type": "mrkdwn",
+                #             "text": "Upload files to translate and submit a quote request"
+                #         },
+                #         {
+                #             "type": "mrkdwn",
+                #             "text": "`/ray new`"
+                #         },
+                #         {
+                #             "type": "mrkdwn",
+                #             "text": "View your LanguageCloud connection"
+                #         },
+                #         {
+                #             "type": "mrkdwn",
+                #             "text": "`/ray info`"
+                #         },
+                #         {
+                #             "type": "mrkdwn",
+                #             "text": "Connect your LanguageCloud account"
+                #         },
+                #         {
+                #             "type": "mrkdwn",
+                #             "text": "`/ray connect`"
+                #         },
+                #     ]
+                # },
                 {
                     "type": "section",
-                    "fields": [
-                        {"type": "mrkdwn", "text": "Check your job status"},
-                        {"type": "mrkdwn", "text": "`/ray job [reference]`"},
-                        {"type": "mrkdwn", "text": "Your daily summary"},
-                        {"type": "mrkdwn", "text": "`/ray my jobs`"},
-                        {
-                            "type": "mrkdwn",
-                            "text": "Upload files to translate and submit a quote request",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🔍 Status allows you to search for a specific job. "
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Status"
                         },
-                        {"type": "mrkdwn", "text": "`/ray new`"},
-                        {
-                            "type": "mrkdwn",
-                            "text": "View your LanguageCloud connection",
+                        "action_id" : "all_summary"
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs."
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Jobs"
                         },
-                        {"type": "mrkdwn", "text": "`/ray info`"},
-                        {
-                            "type": "mrkdwn",
-                            "text": "Connect your LanguageCloud account",
+                        "action_id" : "all_summary"
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🗂️ Quote opens the form to upload documents for translation."
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Quote"
                         },
-                        {"type": "mrkdwn", "text": "`/ray connect`"},
-                    ],
+                        "action_id" : "quote"
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "📊 Insights uses AI to gather and show data about your translation experience"
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Insights"
+                        },
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": ":globe_with_meridians: View your LanguageCloud connection."
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Info"
+                        },
+                        "action_id": "delay_info"
+                    }
+                },
+                {
+                    "type": "section",
+                    "block_id": "sectionBlockWithButton",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": ":Seedling: Connect your LanguageCloud account"
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Connect",
+                        },
+                        "url": get_language_cloud_connect_url(
+                            user_id, team_id, enterprise_id, channel_id
+                        ),
+                        "action_id": "login"
+                    }
+                },
+                {
+                    "type": "divider"
+                },
+                {
+                    "type": "section",
+                    "block_id": "sectionBlockOnlyMrkdwn",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*"
+                    }
                 },
                 {"type": "divider"},
                 {
