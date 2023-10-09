@@ -36,6 +36,8 @@ oauth_settings = AsyncOAuthSettings(
         "commands",
         "files:read",
         "im:history",
+        "users:read",
+        "users:read.email",
         # "links:write",
         # "links:read",
     ],
