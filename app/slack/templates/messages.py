@@ -830,6 +830,32 @@ class JobListMessage(SlackMessage):
                         },
                     }
                 )
+                if job.status != "COMPLETED" and job.batches != "[]":
+                    jobs_blocks.insert(
+                        3,
+                        {
+                            "type": "actions",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": "Show In Progress Files",
+                                        "emoji": True,
+                                    },
+                                    "action_id": "batch_list_1",
+                                    "value": json.dumps(
+                                        {
+                                            "id": job.id,
+                                            "page": 1,
+                                            "page_size": 5,
+                                            "replace_original": False,
+                                        }
+                                    ),
+                                }
+                            ],
+                        },
+                    )
                 if formatted_job_prediction != "":
                     jobs_blocks.append(job_prediction_block(formatted_job_prediction))
         else:
