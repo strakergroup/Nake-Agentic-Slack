@@ -796,7 +796,7 @@ async def post_batch_list(
         raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
 
-    job, response = await RayService.get_service(ray_client).get_batch_list(
+    job, response = await RayService.get_service(ray_client).get_job(
         job_id, page, page_size
     )
     try:

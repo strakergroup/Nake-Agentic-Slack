@@ -785,37 +785,15 @@ class JobListMessage(SlackMessage):
         client_ref: str = "",
     ) -> None:
         jobs_blocks = []
-        # Prepare download links prefix
-        if config.environment == Environment.production:
-            download_prefix = "https://workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
-        elif config.environment == Environment.uat:
-            download_prefix = "https://uat-workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
-        elif config.environment == Environment.local:
-            download_prefix = "https://local-workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
-        else:
-            download_prefix = "https://local-workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
 
         # If there is any jobs result
         if jobs:
             for i, job in enumerate(jobs):
-                job_batches = json.loads(job.batches)
                 job_text = f"*{job.id}*"
                 if job.reference:
                     job_text += f"\nRef: {job.reference}"
-                # Loop for each sub batch inside a job and print out detailed information and download links if available
-                for batch in job_batches:
-                    job_text += f"\n{batch['batch_label'].upper()} \n    - {batch['source_lang'].upper()} > {batch['target_lang'].upper()}"
-                    if job.status == "COMPLETED" and batch["generated_file"] != "":
-                        job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()} - <{download_prefix + batch['generated_file']}|DOWNLOAD LINK>"
-                    elif (
-                        job.status != "COMPLETED"
-                        and batch["generated_file"] != ""
-                        and batch["batch_status"] in ("TRANSLATED", "REVIEWED", "QA_REVIEWED", "VALIDATED", "VALIDATED 2")
-                    ):
-                        job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()} - <{download_prefix + batch['generated_file']}|DOWNLOAD LINK>"
-                    else:
-                        job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()}"
-                # job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
+
+                job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
                 job_text += "\nDue: " + format_job_due_date_slack(
                     job.target_date, job.status, traffic_light=True
                 )
@@ -1609,31 +1587,49 @@ class JobDelayMessage(SlackMessage):
 
 
 class BatchListMessage(SlackMessage):
-    """Message showing the list of translation files."""
+    """Message showing the list of in progress files."""
 
     def __init__(self, job: Job, client_id: str) -> None:
         title = f"The in progress file list for *{job.id}* is below:"
+
         job_file_block = []
-        for x in job.batches:
-            url = {
+        # Prepare download links prefix
+        if config.environment == Environment.production:
+            download_prefix = "https://workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
+        elif config.environment == Environment.uat:
+            download_prefix = "https://uat-workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
+        elif config.environment == Environment.local:
+            download_prefix = "https://local-workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
+        else:
+            download_prefix = "https://local-workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
+
+        # If there is any jobs result
+        job_batches = json.loads(job.batches)
+        job_text = ""
+
+        # Loop for each sub batch inside a job and print out detailed information and download links if available
+        for batch in job_batches:
+            job_text += f"\n{batch['batch_label'].upper()} \n    - {batch['source_lang'].upper()} > {batch['target_lang'].upper()}"
+            if job.status == "COMPLETED" and batch["generated_file"] != "":
+                job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()} - <{download_prefix + batch['generated_file']}|DOWNLOAD>"
+            elif (
+                job.status != "COMPLETED"
+                and batch["generated_file"] != ""
+                and batch["batch_status"] in ("TRANSLATED", "REVIEWED", "QA_REVIEWED", "VALIDATED", "VALIDATED 2")
+            ):
+                job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()} - <{download_prefix + batch['generated_file']}|DOWNLOAD>"
+            else:
+                job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()}"
+
+        job_file_block.append(
+            {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": x["batch_label"] + "-" + x["source_lang"],
-                },
-                "accessory": {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": "Download",
-                    },
-                    "url": x["generated_file"],
-                    "action_id": "link",
-                    "style": "primary",
+                    "text": job_text,
                 },
             }
-            job_file_block.insert(2, url)
+        )
 
         pagination_blocks = []
         if job.pagination.total_pages > 1:
