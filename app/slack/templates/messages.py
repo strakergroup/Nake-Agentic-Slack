@@ -465,7 +465,7 @@ class JobDetailsMessage(SlackMessage):
             },
             job_link_block(job.uuid, client_id),
         ]
-        if job.status != "COMPLETED":
+        if job.status != "COMPLETED" and job.batches != "[]":
             job_detail_block.insert(
                 3,
                 {
