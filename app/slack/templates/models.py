@@ -65,6 +65,7 @@ class NewJobForm(BaseModel):
     group_id: str | None = None
     # target_date: datetime.date
     service: str
+    timeframe: str
     validation: bool
     notes: str | None = None
     translation_notes: str | None = None
@@ -150,9 +151,12 @@ class NewJobForm(BaseModel):
                 else None,
                 # target_date=values["target_date"]["target_date"]["selected_date"],
                 service=values["service"]["service"]["selected_option"]["value"],
+                timeframe=values["timeframe"]["timeframe"]["selected_option"]["value"],
                 validation=bool(values["validation"]["validation"]["selected_options"]),
                 notes=values["notes"]["notes"]["value"],
-                translation_notes=values["translation_notes"]["translation_notes"]["value"],
+                translation_notes=values["translation_notes"]["translation_notes"][
+                    "value"
+                ],
                 # category=values["category"]["category"]["selected_option"]["value"],
             )
         except KeyError as e:
