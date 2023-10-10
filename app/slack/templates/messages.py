@@ -979,51 +979,6 @@ class HelpMessage(SlackMessage):
                     },
                 },
                 {"type": "divider"},
-                # {
-                #     "type": "section",
-                #     "fields": [
-                #         {
-                #             "type": "mrkdwn",
-                #             "text": "Check your job status"
-                #         },
-                #         {
-                #             "type": "mrkdwn",
-                #             "text": "`/ray job [reference]`"
-                #         },
-                #         {
-                #             "type": "mrkdwn",
-                #             "text": "Your daily summary"
-                #         },
-                #         {
-                #             "type": "mrkdwn",
-                #             "text": "`/ray my jobs`"
-                #         },
-                #         {
-                #             "type": "mrkdwn",
-                #             "text": "Upload files to translate and submit a quote request"
-                #         },
-                #         {
-                #             "type": "mrkdwn",
-                #             "text": "`/ray new`"
-                #         },
-                #         {
-                #             "type": "mrkdwn",
-                #             "text": "View your LanguageCloud connection"
-                #         },
-                #         {
-                #             "type": "mrkdwn",
-                #             "text": "`/ray info`"
-                #         },
-                #         {
-                #             "type": "mrkdwn",
-                #             "text": "Connect your LanguageCloud account"
-                #         },
-                #         {
-                #             "type": "mrkdwn",
-                #             "text": "`/ray connect`"
-                #         },
-                #     ]
-                # },
                 {
                     "type": "section",
                     "text": {
@@ -1119,17 +1074,6 @@ class HelpMessage(SlackMessage):
                             context["channel_id"],
                         ),
                         "action_id": "login"
-                    }
-                },
-                {
-                    "type": "divider"
-                },
-                {
-                    "type": "section",
-                    "block_id": "sectionBlockOnlyMrkdwn",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*"
                     }
                 },
                 {"type": "divider"},
