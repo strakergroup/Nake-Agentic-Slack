@@ -139,6 +139,7 @@ async def new_job_shortcut(ack, shortcut, context, client):
 
 @app.command(re.compile(r"\/\w*(ray|straker|lc)\w*"), middleware=[ray_connection])
 @slack_log_decorator
+# Process slash commands.
 async def ray_command(ack, respond, say, command, context, client):
     await ack()
 
@@ -151,8 +152,11 @@ async def ray_command(ack, respond, say, command, context, client):
     command_formatted = strip_formatting(command.get("text", "").strip())
     command_args = re.split(r"\s+", command_formatted.lower())
     command_args = [strip_formatting(arg) for arg in command_args]
+
+    # Use match to handle different command arguments.
     match command_args:
         case ["info" | "account"]:
+            # Get connection info and respond with message.
             msg = ConnectionInfoMessage(
                 context["ray"],
                 user_id=context["user_id"],
@@ -161,16 +165,22 @@ async def ray_command(ack, respond, say, command, context, client):
                 channel_id=context["channel_id"],
             )
             await respond(text=msg.text, blocks=msg.blocks)
+
         case ["login" | "signin" | "connect"]:
+            # Respond with login prompt.
             await respond(
                 text=context["login_prompt"].text,
                 blocks=context["login_prompt"].blocks,
             )
+
         case ["logout" | "signout" | "disconnect"]:
+            # Logout and respond with message.
             if await require_ray_client(context):
                 msg = LogoutMessage(context["ray"].client.username)
                 await respond(text=msg.text, blocks=msg.blocks)
+
         case ["job", reference, *reference_other]:
+            # Get job status or list of jobs.
             if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                 # Try searching job by TJ number if the format is correct.
                 if not reference_other and re.fullmatch(
@@ -186,10 +196,14 @@ async def ray_command(ack, respond, say, command, context, client):
                         preset="CLIENT_REFERENCE",
                         client_ref=client_reference,
                     )
+
         case ["jobs"] | ["my", "jobs"]:
+            # Get summary of jobs.
             if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                 await post_job_summary(context, context["ray"].client)
+
         case ["new"]:
+            # Show quote form modal.
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
                 await show_quote_form_modal(
                     context,
@@ -197,26 +211,36 @@ async def ray_command(ack, respond, say, command, context, client):
                     context["ray"].client,
                     check_last_messages=4,
                 )
+
         case ["quote"]:
+            # Show quote message.
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
                 # quote is like new job except it doesn't open the modal.
                 await ack()
                 msg = QuoteMessage()
                 await respond(text=msg.text, blocks=msg.blocks)
+
         case ["help" | ""]:
+            # Show help message.
             await respond(blocks=HelpMessage(context).blocks, text=HelpMessage(context).text)
+
         case ["whatsnext"] | ["whats", "next"]:
+            # Show what's next message.
             await respond(
                 blocks=WhatsNextMessage().blocks, text=WhatsNextMessage().text
             )
+
         case [command_text]:
+            # Get job status by TJ number.
             match = re.fullmatch(r"tj\d+", command_text, re.IGNORECASE)
             if match:
                 if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                     await post_job_status(context, context["ray"].client, command_text)
             else:
                 await respond(text=InvalidCommandMessage().text)
+
         case _:
+            # Invalid command.
             await respond(text=InvalidCommandMessage().text)
 
 
