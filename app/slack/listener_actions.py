@@ -70,8 +70,8 @@ async def respond_to_message(
     match response.intent:
         case "General_About_You" | "General_Agent_Capabilities" | "General_Greetings":
             await context.say(
-                text=HelpMessage().text,
-                blocks=HelpMessage().blocks,
+                text=HelpMessage(context).text,
+                blocks=HelpMessage(context).blocks,
                 thread_ts=thread_ts,
             )
         case "Login":

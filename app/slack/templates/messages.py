@@ -28,6 +28,8 @@ from ...auth.connector import (
     RayConnection,
     get_language_cloud_connect_url,
 )
+from slack_bolt.context.async_context import AsyncBoltContext
+
 
 
 class TextMessage:
@@ -965,13 +967,7 @@ class FileTranslatedMessage(SlackMessage):
 class HelpMessage(SlackMessage):
     """Help message showing how to use the app."""
 
-    def __init__(self,
-        ray_connection: RayConnection | None,
-        user_id: str,
-        team_id: str,
-        enterprise_id: str | None,
-        channel_id: str,
-        ) -> None:
+    def __init__(self, context: AsyncBoltContext) -> None:
         super().__init__(
             "Hi there :wave: here are some ideas of what you can currently do with our app:",
             [
@@ -1085,6 +1081,7 @@ class HelpMessage(SlackMessage):
                             "type": "plain_text",
                             "text": "Insights"
                         },
+                        "action_id": "report_insights"
                     }
                 },
                 {
@@ -1099,7 +1096,7 @@ class HelpMessage(SlackMessage):
                             "type": "plain_text",
                             "text": "Info"
                         },
-                        "action_id": "delay_info"
+                        "action_id": "account_info"
                     }
                 },
                 {
@@ -1116,7 +1113,10 @@ class HelpMessage(SlackMessage):
                             "text": "Connect",
                         },
                         "url": get_language_cloud_connect_url(
-                            user_id, team_id, enterprise_id, channel_id
+                            context["user_id"],
+                            context["team_id"],
+                            context.get("enterprise_id"),
+                            context["channel_id"],
                         ),
                         "action_id": "login"
                     }

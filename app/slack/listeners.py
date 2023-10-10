@@ -204,7 +204,7 @@ async def ray_command(ack, respond, say, command, context, client):
                 msg = QuoteMessage()
                 await respond(text=msg.text, blocks=msg.blocks)
         case ["help" | ""]:
-            await respond(blocks=HelpMessage().blocks, text=HelpMessage().text)
+            await respond(blocks=HelpMessage(context).blocks, text=HelpMessage(context).text)
         case ["whatsnext"] | ["whats", "next"]:
             await respond(
                 blocks=WhatsNextMessage().blocks, text=WhatsNextMessage().text
@@ -338,6 +338,29 @@ async def new_job_action(ack, payload, context, client, body):
             # Check message history for initial files if not in payload.
             check_last_messages=4,
         )
+
+
+@app.block_action("report_insights", middleware=[ray_connection])
+@slack_log_decorator
+async def get_report_insights(ack, respond):
+    await ack()
+    # TODO:
+    print("Report insights button clicked")
+
+
+# The "Account Info" button short cut
+@app.block_action("account_info", middleware=[ray_connection])
+@slack_log_decorator
+async def get_account_info(ack, context, respond):
+    await ack()
+    msg = ConnectionInfoMessage(
+        context["ray"],
+        user_id=context["user_id"],
+        team_id=context["team_id"],
+        enterprise_id=context.get("enterprise_id"),
+        channel_id=context["channel_id"],
+    )
+    await respond(text=msg.text, blocks=msg.blocks)
 
 
 @app.block_action("delay_info")

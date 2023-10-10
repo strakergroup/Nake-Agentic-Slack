@@ -64,7 +64,7 @@ def home_view(
                         },
                         "action_id": "daily_summary",
                         "url": message_url,
-                    },
+                    }
                     # {
                     #     "type": "button",
                     #     "text": {
