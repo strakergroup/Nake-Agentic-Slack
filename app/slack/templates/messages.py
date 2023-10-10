@@ -206,42 +206,96 @@ class SuccessfulLoginMessage(SlackMessage):
                 {
                     "type": "section",
                     "text": {
-                        "type": "mrkdwn",
-                        "text": f":white_check_mark: Login was successful! <@{user_id}> is now connected with <{domains.languagecloud}|{ray_username}>.",
-                    },
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": "Welcome :wave: \n\nChoose an option below to get started."
+                    }
                 },
-                {"type": "divider"},
+                {
+                    "type": "divider"
+                },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*Here are some things to get you started*",
+                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). "
                     },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Search"
+                        },
+                        "action_id": "all_summary"
+                    }
                 },
                 {
                     "type": "section",
-                    "fields": [
-                        {"type": "mrkdwn", "text": "Check your job status"},
-                        {"type": "mrkdwn", "text": "`/ray job [reference]`"},
-                        {"type": "mrkdwn", "text": "Your daily summary"},
-                        {"type": "mrkdwn", "text": "`/ray my jobs`"},
-                        {
-                            "type": "mrkdwn",
-                            "text": "Upload files to translate and submit a quote request",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs."
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Jobs"
                         },
-                        {"type": "mrkdwn", "text": "`/ray new`"},
-                    ],
+                        "action_id": "all_summary"
+                    }
                 },
-                {"type": "divider"},
                 {
-                    "type": "context",
-                    "elements": [
-                        {
-                            "type": "mrkdwn",
-                            "text": ":question: Need more information? Ask our chat bot below.\n:tada: New features coming soon `/ray whatsnext`",
-                        }
-                    ],
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🗂️ Quote opens the form to upload documents for translation."
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Quote"
+                        },
+                        "action_id": "quote"
+                    }
                 },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "📊 Insights uses AI to gather and show data about your translation experience"
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Insights"
+                        },
+                        "action_id": "report_insights"
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*<fakelink.ToMoreTimes.com|Show more options>*"
+                    }
+                },
+                {
+                    "type": "divider"
+                },
+                {
+                    "type": "section",
+                    "block_id": "sectionBlockOnlyMrkdwn",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*"
+                    }
+                }
             ],
         )
 
