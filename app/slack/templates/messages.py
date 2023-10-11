@@ -1687,6 +1687,26 @@ class JobDelayMessage(SlackMessage):
         )
 
 
+class ReportInsightsMessage(SlackMessage):
+    def __init__(self, plan: str) -> None:
+            if plan == "Free":
+                message = "The insights feature is only avaiable on the Growth and Enterprise plans."
+            else:
+                message = "Use can use the message pane below to type your insights request using natural language. Get turn around times, cost, or validation quality. An example:\n>Can you tell me how many jobs have been delivered on time in the last 30 days"
+            super().__init__(
+                f":idea: Here are your insights",
+                [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": message
+                        }
+                    }
+                ],
+            )
+
+
 class BatchListMessage(SlackMessage):
     """Message showing the list of in progress files."""
 
