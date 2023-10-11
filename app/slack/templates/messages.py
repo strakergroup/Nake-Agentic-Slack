@@ -352,6 +352,32 @@ class JobStatusMessage(SlackMessage):
             },
             job_link_block(job.uuid, client_id),
         ]
+        if job.status == "COMPLETED":
+            job_status_block.insert(
+                3,
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Show Files",
+                                "emoji": True,
+                            },
+                            "action_id": "file_list_1",
+                            "value": json.dumps(
+                                {
+                                    "id": job.id,
+                                    "page": 1,
+                                    "page_size": 5,
+                                    "replace_original": False,
+                                }
+                            ),
+                        }
+                    ],
+                },
+            )
         if job_prediction != "":
             job_status_block.insert(
                 1,
@@ -413,6 +439,32 @@ class JobDetailsMessage(SlackMessage):
             },
             job_link_block(job.uuid, client_id),
         ]
+        if job.status == "COMPLETED":
+            job_detail_block.insert(
+                3,
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Show Files",
+                                "emoji": True,
+                            },
+                            "action_id": "file_list_1",
+                            "value": json.dumps(
+                                {
+                                    "id": job.id,
+                                    "page": 1,
+                                    "page_size": 5,
+                                    "replace_original": False,
+                                }
+                            ),
+                        }
+                    ],
+                },
+            )
         if job_prediction != "":
             job_detail_block.insert(
                 1,
@@ -1353,6 +1405,28 @@ class JobCompletedEventMessage(SlackMessage):
                     },
                 },
                 {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Show Files",
+                                "emoji": True,
+                            },
+                            "action_id": "file_list_1",
+                            "value": json.dumps(
+                                {
+                                    "id": job_id,
+                                    "page": 1,
+                                    "page_size": 5,
+                                    "replace_original": False,
+                                }
+                            ),
+                        }
+                    ],
+                },
+                {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
@@ -1453,5 +1527,91 @@ class JobDelayMessage(SlackMessage):
                         "text": message,
                     },
                 },
+            ],
+        )
+
+
+class FileListMessage(SlackMessage):
+    """Message showing the list of translation files."""
+
+    def __init__(self, job: Job, client_id: str) -> None:
+        title = f"The translated file list for *{job.id}* is below:"
+        job_file_block = []
+        for x in job.translated_file:
+            url = {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": x["file_name"] + " " + job.sl.name + "-" + x["lang"],
+                },
+                "accessory": {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": "Download",
+                    },
+                    "url": x["download_url"],
+                    "action_id": "link",
+                    "style": "primary",
+                },
+            }
+            job_file_block.insert(2, url)
+
+        pagination_blocks = []
+        if job.pagination.total_pages > 1:
+            pagination_blocks.append({"type": "actions", "elements": []})
+            if job.pagination.page > 1:
+                pagination_blocks[0]["elements"].append(
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Show previous files",
+                            "emoji": True,
+                        },
+                        "action_id": "file_list_0",
+                        "value": json.dumps(
+                            {
+                                "id": job.id,
+                                "page": job.pagination.page - 1,
+                                "page_size": job.pagination.rows_per_page,
+                                "replace_original": True,
+                            }
+                        ),
+                    }
+                )
+            if job.pagination.page < job.pagination.total_pages:
+                pagination_blocks[0]["elements"].append(
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Show more files",
+                            "emoji": True,
+                        },
+                        "action_id": "file_list_1",
+                        "value": json.dumps(
+                            {
+                                "id": job.id,
+                                "page": job.pagination.page + 1,
+                                "page_size": job.pagination.rows_per_page,
+                                "replace_original": True,
+                            }
+                        ),
+                    }
+                )
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{title}*",
+                    },
+                },
+                *job_file_block,
+                *pagination_blocks,
             ],
         )
