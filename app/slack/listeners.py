@@ -21,11 +21,12 @@ from .listener_actions import (
     post_job_summary,
     post_job_list,
     show_quote_form_modal,
+    show_job_search_modal,
     submit_job,
     approve_pending_client,
 )
 from .logging import slack_log_decorator
-from .templates.models import NewJobForm, convert_pydantic_to_slack_error
+from .templates.models import NewJobForm, JobSearchForm, convert_pydantic_to_slack_error
 from .templates.messages import (
     LoginMessage,
     LogoutMessage,
@@ -134,6 +135,18 @@ async def new_job_shortcut(ack, shortcut, context, client):
             shortcut["trigger_id"],
             context["ray"].client,
             initial_files=init_files,
+        )
+
+
+@app.block_action("job_search", middleware=[ray_connection])
+@slack_log_decorator
+async def job_search_action(ack, payload, context, client, body):
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+        await show_job_search_modal(
+            context,
+            body["trigger_id"],
+            context["ray"].client,
         )
 
 
@@ -489,6 +502,42 @@ async def handle_new_job(ack, view, context, client):
                     headers=dict(response.response.headers.items()),
                     version="v3",
                 )
+    else:
+        await ack(response_action="clear")
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            blocks=context["login_prompt"].blocks,
+            text=context["login_prompt"].text,
+        )
+
+
+@app.view("job_search", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_job_search(ack, view, context, client):
+    if await require_ray_client(context, prompt_login=False):
+        try:
+            form = JobSearchForm.parse_slack(view["state"]["values"])
+        except ValidationError as e:
+            errors = convert_pydantic_to_slack_error(e)
+            await ack(response_action="errors", errors=errors)
+            return
+        await ack(response_action="clear")
+        # The response is already returned at this point, can do long tasks here.
+        reference = form.reference.strip()
+        # Try searching job by TJ number if the format is correct.
+        if re.fullmatch(
+            r"tj\d+", reference, re.IGNORECASE
+        ):
+            await post_job_status(context, context["ray"].client, reference)
+        elif re.fullmatch(
+            r"\d+", reference, re.IGNORECASE
+        ):
+            await post_job_status(context, context["ray"].client, "TJ"+reference)
+        else :
+            client.chat_postMessage(
+                channel=context["user_id"],
+                text="TJ Number is in incorrect format. E.g. TJ123456 or 123456",
+            )
     else:
         await ack(response_action="clear")
         await client.chat_postMessage(

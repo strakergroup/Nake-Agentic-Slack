@@ -123,6 +123,54 @@ def home_view(
         ],
     }
 
+def job_search_modal(
+    client_name: str,
+) -> dict[str, Any]:
+    """The template for the modal to input TJ number and submit a search request
+
+    Args:
+        client_name (str): The user's LanguageCloud username.
+
+    Returns:
+        dict: The view dict.
+    """
+
+    return {
+        "type": "modal",
+        "callback_id": "job_search",
+        "title": {"type": "plain_text", "text": "Job Status"},
+        "submit": {"type": "plain_text", "text": "Submit"},
+        "close": {"type": "plain_text", "text": "Close"},
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"You are searching a job as `{client_name}`.",
+                    "verbatim": True,
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "reference",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "reference",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Your job reference",
+                        "emoji": True,
+                    },
+                    "max_length": 100,
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Your job reference",
+                    "emoji": True,
+                },
+            },
+        ],
+    }
 
 def new_job_modal(
     client_name: str,

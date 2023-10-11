@@ -991,7 +991,7 @@ class HelpMessage(SlackMessage):
                             "type": "plain_text",
                             "text": "Status"
                         },
-                        "action_id" : "all_summary"
+                        "action_id" : "job_search"
                     }
                 },
                 {

@@ -31,6 +31,7 @@ from .templates.messages import (
 )
 from .templates.models import NewJobForm
 from .templates.views import new_job_modal
+from .templates.views import job_search_modal
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
 from ..config import config, domains, Environment
@@ -689,6 +690,27 @@ async def show_quote_form_modal(
             ray_client.username,
             file_options=files,
             initial_files=initial_files,
+        ),
+    )
+
+
+# Show job search modal view dialog
+async def show_job_search_modal(
+    context: AsyncBoltContext,
+    trigger_id: str,
+    ray_client: RayClient,
+):
+    """Show the job search modal view dialog.
+
+    Args:
+        context (AsyncBoltContext): The context from the listener.
+        trigger_id (str): The trigger ID.
+        ray_client (RayClient): The RAY client details.
+    """
+    await context.client.views_open(
+        trigger_id=trigger_id,
+        view=job_search_modal(
+            ray_client.username,
         ),
     )
 
