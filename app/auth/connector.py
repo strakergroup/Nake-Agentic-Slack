@@ -61,7 +61,8 @@ class RayClient:
     """The Slack team ID."""
     slack_enterprise_id: str | None
     """The Slack enterprise ID."""
-
+    planname: str | None
+    """The Slack enterprise ID."""
 
 @dataclass(frozen=True, slots=True)
 class RayConnection:
@@ -387,7 +388,7 @@ async def get_ray_client(
         else:
             sql = text(
                 """
-                SELECT link.member_uuid, mem.login
+                SELECT link.member_uuid, mem.login, mem.groupid
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
@@ -403,7 +404,7 @@ async def get_ray_client(
         row = result.first()
         if not row:
             return None
-        ray_client_id, username = row.member_uuid, row.login
+        ray_client_id, username, groupid = row.member_uuid, row.login, row.groupid
     # Now get the access token for authentication.
     with engines["api_readonly"].connect() as conn:
         sql = text(
@@ -419,6 +420,31 @@ async def get_ray_client(
         if not row:
             return None
         access_token = row[0]
+
+    # get group subscription plan
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+                    """
+                    SELECT psp.plan_name
+                    FROM ps_service ps
+                    LEFT JOIN ps_plan psp
+                    ON psp.service_type_uuid = ps.service_type_uuid
+                    LEFT JOIN ps_subscription pss
+                    ON pss.ps_service_uuid = ps.obj_uuid
+                    LEFT JOIN ps_subscription_billing psb
+                    ON psb.ps_subscription_uuid = pss.obj_uuid
+                    WHERE ps.group_uuid = :group_uuid
+                    AND pss.is_active = 1
+                    AND psb.expiry > NOW()
+                    """
+                ).bindparams(group_uuid=groupid)
+        result = conn.execute(sql)
+        row = result.fetchall()
+        print(row)
+        if not row:
+            plan = 'Free'
+        else:
+            plan = row[0].plan_name
     return RayClient(
         id=ray_client_id,
         username=username,
@@ -426,6 +452,7 @@ async def get_ray_client(
         slack_user_id=user_id,
         slack_team_id=team_id,
         slack_enterprise_id=enterprise_id,
+        planname=plan,
     )
 
 
@@ -438,7 +465,7 @@ async def get_ray_connection(
     """
     super_group, client = await asyncio.gather(
         get_ray_super_group(team_id, enterprise_id),
-        get_ray_client(user_id, team_id, enterprise_id),
+        get_ray_client(user_id, team_id, enterprise_id)
     )
     if super_group is None:
         return None

@@ -23,6 +23,7 @@ from .listener_actions import (
     show_quote_form_modal,
     submit_job,
     approve_pending_client,
+    post_report_insights
 )
 from .logging import slack_log_decorator
 from .templates.models import NewJobForm, convert_pydantic_to_slack_error
@@ -267,6 +268,15 @@ async def all_summary(ack, context):
         await post_job_summary(
             context=context, ray_client=context["ray"].client, all_jobs=True
         )
+
+
+@app.action("report_insights", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_report_insights_action(ack, context):
+    """Get Report and Insights. Triggered from the Home Report Insights button"""
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        await post_report_insights(context, context["ray"].client)
 
 
 @app.block_action("job_list", middleware=[ray_connection])

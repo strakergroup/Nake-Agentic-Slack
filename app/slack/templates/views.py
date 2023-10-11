@@ -22,7 +22,7 @@ def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Welcome to RAY Translate for Slack!",
+                    "text": "Welcome to the Straker LanguageCloud App!",
                 },
             },
             *home_auth_blocks(
@@ -65,15 +65,16 @@ def home_view(
                         "action_id": "daily_summary",
                         "url": message_url,
                     },
-                    # {
-                    #     "type": "button",
-                    #     "text": {
-                    #         "type": "plain_text",
-                    #         "emoji": True,
-                    #         "text": "👏 Favorite Languages"
-                    #     },
-                    #     "value": "click_me_123"
-                    # }
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "📊 Reports/Insights"
+                        },
+                        "action_id": "report_insights",
+                        "url": message_url,
+                    }
                 ],
             },
             {"type": "divider"},
@@ -85,7 +86,7 @@ def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest Straker LanguageCloud and Enterprise features, provide updates, and engage with customers like you!",
+                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest LanguageCloud and Enterprise features, provide updates, and engage with customers like you!",
                 },
                 "accessory": {
                     "type": "button",

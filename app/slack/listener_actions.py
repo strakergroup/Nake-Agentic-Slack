@@ -28,6 +28,7 @@ from .templates.messages import (
     JobListMessage,
     JobDetailsMessage,
     InsightsMessage,
+    ReportInsightsMessage
 )
 from .templates.models import NewJobForm
 from .templates.views import new_job_modal
@@ -735,3 +736,51 @@ async def get_groups(ray_client: RayClient) -> list[dict[str, Any]]:
         }
         for group in groups
     ]
+
+
+async def post_report_insights(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    channel_id: str | None = None,
+    thread_ts: str | None = None,
+):
+    if (
+        not channel_id
+        and not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
+        raise AssertionError("No channel to post to")
+    channel_id = channel_id or context.channel_id or context.user_id
+
+    async def send_insights_message():
+        insights_msg = ReportInsightsMessage(ray_client.planname)
+        try:
+            if context.response_url:
+                await context.respond(
+                    text=insights_msg.text, blocks=insights_msg.blocks
+                )
+            else:
+                await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=insights_msg.text,
+                    blocks=insights_msg.blocks,
+                    thread_ts=thread_ts,
+                )
+        except Exception as e:
+            notify_exception(e, "Failed to get insights from Insights API")
+
+    waiting_msg = ":stopwatch: Please wait as we gather your information..."
+    if context.response_url:
+        response = await context.respond(text=waiting_msg)
+    else:
+        response = await context.client.chat_postMessage(
+            channel=channel_id,
+            text=waiting_msg,
+            thread_ts=thread_ts,
+        )
+
+    # Send insights message async because it might take a long time.
+    asyncio.create_task(send_insights_message())
+
+    return response
