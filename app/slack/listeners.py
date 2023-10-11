@@ -389,14 +389,6 @@ async def new_job_action(ack, payload, context, client, body):
         )
 
 
-@app.block_action("report_insights", middleware=[ray_connection])
-@slack_log_decorator
-async def get_report_insights(ack, respond):
-    await ack()
-    # TODO:
-    print("Report insights button clicked")
-
-
 # The "Account Info" button short cut
 @app.block_action("account_info", middleware=[ray_connection])
 @slack_log_decorator
