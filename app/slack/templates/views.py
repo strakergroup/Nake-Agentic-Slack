@@ -409,6 +409,94 @@ def new_job_modal(
             },
             {
                 "type": "input",
+                "block_id": "timeframe",
+                "element": {
+                    "type": "static_select",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Select a timeframe",
+                        "emoji": True,
+                    },
+                    "options": [
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 12 hours",
+                                "emoji": False,
+                            },
+                            "value": "1",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 24 hours",
+                                "emoji": False,
+                            },
+                            "value": "2",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 36 hours",
+                                "emoji": False,
+                            },
+                            "value": "3",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 48 hours",
+                                "emoji": False,
+                            },
+                            "value": "4",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 3 days",
+                                "emoji": False,
+                            },
+                            "value": "5",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 5 days",
+                                "emoji": False,
+                            },
+                            "value": "6",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 10 days",
+                                "emoji": False,
+                            },
+                            "value": "7",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 15 days",
+                                "emoji": False,
+                            },
+                            "value": "8",
+                        },
+                    ],
+                    "initial_option": {
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Within 3 days",
+                            "emoji": False,
+                        },
+                        "value": "5",
+                    },
+                    "action_id": "timeframe",
+                },
+                "label": {"type": "plain_text", "text": "Timeframe", "emoji": True},
+            },
+            {
+                "type": "input",
                 "block_id": "validation",
                 "element": {
                     "type": "checkboxes",
