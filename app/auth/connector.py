@@ -440,7 +440,6 @@ async def get_ray_client(
                 ).bindparams(group_uuid=groupid)
         result = conn.execute(sql)
         row = result.fetchall()
-        print(row)
         if not row:
             plan = 'Free'
         else:
