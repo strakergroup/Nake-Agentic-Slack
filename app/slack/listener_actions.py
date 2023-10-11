@@ -811,6 +811,7 @@ async def post_report_insights(
 
     return response
 
+
 async def post_batch_list(
     context: AsyncBoltContext,
     ray_client: RayClient,
