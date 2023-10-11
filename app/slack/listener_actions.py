@@ -744,6 +744,15 @@ async def post_report_insights(
     channel_id: str | None = None,
     thread_ts: str | None = None,
 ):
+    """Show Insight message modal.
+
+    Args:
+        context (AsyncBoltContext): The context from the listener.
+        ray_client (RayClient): The RAY client details.
+        channel_id (str | None, optional): The channel to post the message to.
+            If not given, posts to the source channel.
+        thread_ts (str | None, optional): The message thread to reply to.
+    """
     if (
         not channel_id
         and not context.channel_id
