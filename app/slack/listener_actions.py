@@ -763,55 +763,6 @@ async def get_groups(ray_client: RayClient) -> list[dict[str, Any]]:
     ]
 
 
-async def post_report_insights(
-    context: AsyncBoltContext,
-    ray_client: RayClient,
-    channel_id: str | None = None,
-    thread_ts: str | None = None,
-):
-    """Show Insight message modal.
-
-    Args:
-        context (AsyncBoltContext): The context from the listener.
-        ray_client (RayClient): The RAY client details.
-        channel_id (str | None, optional): The channel to post the message to.
-            If not given, posts to the source channel.
-        thread_ts (str | None, optional): The message thread to reply to.
-    """
-
-    async def send_insights_message():
-        insights_msg = ReportInsightsMessage(ray_client.planname)
-        try:
-            if context.response_url:
-                await context.respond(
-                    text=insights_msg.text, blocks=insights_msg.blocks
-                )
-            else:
-                await context.client.chat_postMessage(
-                    channel=channel_id,
-                    text=insights_msg.text,
-                    blocks=insights_msg.blocks,
-                    thread_ts=thread_ts,
-                )
-        except Exception as e:
-            notify_exception(e, "Failed to get insights from Insights API")
-
-    waiting_msg = ":stopwatch: Please wait as we gather your information..."
-    if context.response_url:
-        response = await context.respond(text=waiting_msg)
-    else:
-        response = await context.client.chat_postMessage(
-            channel=channel_id,
-            text=waiting_msg,
-            thread_ts=thread_ts,
-        )
-
-    # Send insights message async because it might take a long time.
-    asyncio.create_task(send_insights_message())
-
-    return response
-
-
 async def post_batch_list(
     context: AsyncBoltContext,
     ray_client: RayClient,
@@ -965,3 +916,60 @@ async def post_file_list(
                 headers=dict(response.headers.items()),
                 version="v3",
             )
+
+
+async def post_report_insights(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    channel_id: str | None = None,
+    thread_ts: str | None = None,
+):
+    """ Show Insight message modal.
+
+    Args:
+        context (AsyncBoltContext): The context from the listener.
+        ray_client (RayClient): The RAY client details.
+        channel_id (str | None, optional): The channel to post the message to.
+            If not given, posts to the source channel.
+        thread_ts (str | None, optional): The message thread to reply to.
+    """
+    if (
+        not channel_id
+        and not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
+        raise AssertionError("No channel to post to")
+    channel_id = channel_id or context.channel_id or context.user_id
+
+    async def send_insights_message():
+        insights_msg = ReportInsightsMessage(ray_client.planname)
+        try:
+            if context.response_url:
+                await context.respond(
+                    text=insights_msg.text, blocks=insights_msg.blocks
+                )
+            else:
+                await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=insights_msg.text,
+                    blocks=insights_msg.blocks,
+                    thread_ts=thread_ts,
+                )
+        except Exception as e:
+            notify_exception(e, "Failed to get insights from Insights API")
+
+    waiting_msg = ":stopwatch: Please wait as we gather your information..."
+    if context.response_url:
+        response = await context.respond(text=waiting_msg)
+    else:
+        response = await context.client.chat_postMessage(
+            channel=channel_id,
+            text=waiting_msg,
+            thread_ts=thread_ts,
+        )
+
+    # Send insights message async because it might take a long time.
+    asyncio.create_task(send_insights_message())
+
+    return response
