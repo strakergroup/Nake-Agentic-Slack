@@ -28,7 +28,7 @@ from .templates.messages import (
     JobListMessage,
     JobDetailsMessage,
     InsightsMessage,
-    ReportInsightsMessage
+    ReportInsightsMessage,
     BatchListMessage,
     FileListMessage,
 )
