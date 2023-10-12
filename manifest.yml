@@ -68,6 +68,8 @@ oauth_config:
       - commands
       - files:read
       - im:history
+      - users:read.email
+      - users:read
 settings:
   event_subscriptions:
     request_url: <YOUR_DOMAIN>/slack/events

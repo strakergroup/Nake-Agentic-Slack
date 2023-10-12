@@ -61,7 +61,8 @@ class RayClient:
     """The Slack team ID."""
     slack_enterprise_id: str | None
     """The Slack enterprise ID."""
-
+    planname: str | None
+    """The Slack enterprise ID."""
 
 @dataclass(frozen=True, slots=True)
 class RayConnection:
@@ -372,7 +373,7 @@ async def get_ray_client(
         if enterprise_id:
             sql = text(
                 """
-                SELECT link.member_uuid, mem.login
+                SELECT link.member_uuid, mem.login, mem.groupid
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
@@ -387,7 +388,7 @@ async def get_ray_client(
         else:
             sql = text(
                 """
-                SELECT link.member_uuid, mem.login
+                SELECT link.member_uuid, mem.login, mem.groupid
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
@@ -403,7 +404,7 @@ async def get_ray_client(
         row = result.first()
         if not row:
             return None
-        ray_client_id, username = row.member_uuid, row.login
+        ray_client_id, username, groupid = row.member_uuid, row.login, row.groupid
     # Now get the access token for authentication.
     with engines["api_readonly"].connect() as conn:
         sql = text(
@@ -419,6 +420,30 @@ async def get_ray_client(
         if not row:
             return None
         access_token = row[0]
+
+    # get group subscription plan
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+                    """
+                    SELECT psp.plan_name
+                    FROM ps_service ps
+                    LEFT JOIN ps_plan psp
+                    ON psp.service_type_uuid = ps.service_type_uuid
+                    LEFT JOIN ps_subscription pss
+                    ON pss.ps_service_uuid = ps.obj_uuid
+                    LEFT JOIN ps_subscription_billing psb
+                    ON psb.ps_subscription_uuid = pss.obj_uuid
+                    WHERE ps.group_uuid = :group_uuid
+                    AND pss.is_active = 1
+                    AND psb.expiry > NOW()
+                    """
+                ).bindparams(group_uuid=groupid)
+        result = conn.execute(sql)
+        row = result.fetchall()
+        if not row:
+            plan = 'Free'
+        else:
+            plan = row[0].plan_name
     return RayClient(
         id=ray_client_id,
         username=username,
@@ -426,6 +451,7 @@ async def get_ray_client(
         slack_user_id=user_id,
         slack_team_id=team_id,
         slack_enterprise_id=enterprise_id,
+        planname=plan,
     )
 
 
@@ -438,7 +464,7 @@ async def get_ray_connection(
     """
     super_group, client = await asyncio.gather(
         get_ray_super_group(team_id, enterprise_id),
-        get_ray_client(user_id, team_id, enterprise_id),
+        get_ray_client(user_id, team_id, enterprise_id)
     )
     if super_group is None:
         return None
@@ -728,3 +754,27 @@ async def approve_pending_groups(
                 },
             )
     return tuple(g["uuid"] for g in groups_to_approve)
+
+
+# log new user info
+async def log_new_user_info(user):
+    with engines["ray_integration"].connect() as conn:
+        sql = text(
+            """
+            INSERT IGNORE INTO slack_user_details
+                (slack_user_id, slack_team_id, slack_enterprise_id, slack_enterprise_name, timezone, timezone_label, client_email, client_full_name)
+            VALUES
+                (:user_id, :team_id, :enterprise_id, :enterprise_name, :timezone, :timezone_label, :client_email, :client_full_name)
+            """
+        ).bindparams(
+            user_id=user.get("id", ""),
+            team_id=user.get("team_id", ""),
+            enterprise_id=user.get("enterprise_user", {}).get("enterprise_id", ""),
+            enterprise_name=user.get("enterprise_user", {}).get("enterprise_name", ""),
+            timezone=user.get("tz", ""),
+            timezone_label=user.get("tz_label", ""),
+            client_email=user.get("profile", {}).get("email", ""),
+            client_full_name=user.get("profile", {}).get("real_name_normalized", ""),
+        )
+        conn.execute(sql)
+        conn.commit()

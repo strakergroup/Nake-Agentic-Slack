@@ -13,7 +13,12 @@ from ray_logger.slack import SlackAppLog
 from .app import app
 from .logging import init_slack_app_log
 from .templates.messages import SlackMessage, LoginMessage
-from ..auth.connector import RayConnection, get_ray_connection, get_ray_connection_demo
+from ..auth.connector import (
+    RayConnection,
+    get_ray_connection,
+    get_ray_connection_demo,
+    log_new_user_info,
+)
 
 
 # -----------------------------------------------------------------------------
@@ -62,16 +67,24 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
         ray_client=context["ray"].client if context["ray"] is not None else None,
     )
     # Log the RAY client ID if available.
-    if (
-        context["ray"] is not None
-        and "log" in context
-        and isinstance(context["log"], SlackAppLog)
-    ):
-        context["log"].slack_log.super_group_uuid = [
-            group.id for group in context["ray"].super_group
-        ]
-        if context["ray"].client is not None:
-            context["log"].slack_log.client_uuid = context["ray"].client.id
+    if "log" in context and isinstance(context["log"], SlackAppLog):
+        if context["ray"] is not None:
+            if context["ray"].super_group:
+                context["log"].slack_log.super_group_uuid = (
+                    context["ray"].super_group[0].id
+                )
+
+            if context["ray"].client is not None:
+                context["log"].slack_log.client_uuid = context["ray"].client.id
+        if context["ray"] is None or context["ray"].client is None:
+            # get slack user info from api and log it
+            try:
+                user_info = await context.client.users_info(user=context["user_id"])
+                # insert to db
+                await log_new_user_info(user_info["user"])
+            except Exception as e:
+                error_message = str(e)
+                print(error_message)
 
     await next()
 
