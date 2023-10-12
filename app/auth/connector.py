@@ -413,6 +413,7 @@ async def get_ray_client(
             family_name=row.family_name,
             email=row.email_primary,
             is_active=bool(row.active),
+            aud="languagecloud-api",
             secret=config.languagecloud_api_key,
         )
     # Now get the access token for authentication.
