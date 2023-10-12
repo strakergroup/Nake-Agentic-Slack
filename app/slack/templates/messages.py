@@ -229,7 +229,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "emoji": True,
                             "text": "Search"
                         },
-                        "action_id": "all_summary"
+                        "action_id": "job_search"
                     }
                 },
                 {
