@@ -35,6 +35,7 @@ from .templates.messages import (
     LogoutMessage,
     OnboardingMessage,
     QuoteMessage,
+    SuccessfulLoginMessage,
     SuccessfulLogoutMessage,
     JobSubmitMessage,
     HelpMessage,
@@ -49,6 +50,7 @@ from .templates.views import home_view
 from .web import files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, map_file_options
 from ..auth.connector import (
+    connect_ray_account,
     disconnect_ray_account,
     disconnect_ray_super_group_and_users,
 )
@@ -437,6 +439,19 @@ async def approve_pending_client_action(ack, action, context, say, client):
                     user=context["user_id"],
                     text=ClientAlreadyApprovedMessage(client_username).text,
                 )
+
+
+@app.block_action("login")
+async def login_account_action(ack, action, context, respond):
+    await ack()
+    try:
+        connect_ray_account(
+            context["user_id"], context["team_id"], context.get("enterprise_id")
+        )
+        msg = SuccessfulLoginMessage(context["user_id"], action.get("value"))
+        await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
+    except Exception as e:
+        notify_exception(e)
 
 
 @app.block_action("disconnect")
