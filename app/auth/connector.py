@@ -5,13 +5,13 @@ other services, e.g. Slack, RAY apps.
 import asyncio
 import time
 import json
+import httpx
 from uuid import uuid4
 from dataclasses import dataclass
 from urllib.parse import urlencode
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
-import httpx
-
+from buglog import notify_exception
 from .algorithms import encrypt_aes, hash_hmac_sha1
 from ..config import config, domains
 from ..database import engines
@@ -532,6 +532,42 @@ def get_group_admin_slack_users(group_id: str) -> list[SlackUser]:
             )
         )
     return slack_users
+
+
+async def connect_ray_account(
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None = None,
+    channel_id: str = None,
+) -> str:
+    """Connect the LanguageCloud account of a slack user.
+
+    Args:
+        user_id (str): The Slack user ID.
+        team_id (str): The Slack team ID.
+        enterprise_id (str): The Slack enterprise ID.
+
+    Returns:
+        bool: The Slack user had a connected LanguageCloud account.
+    """
+
+    try:
+        url = get_language_cloud_connect_url(
+            user_id,
+            team_id,
+            enterprise_id,
+            channel_id
+        )
+        print(url)
+        async with httpx.AsyncClient(timeout=10) as http:
+            print("before sending request")
+            r = await http.post(url)
+            print("after sending request")
+            print(r.status_code)
+        return "success"
+    except Exception as e:
+        notify_exception(e)
+        return "failed"
 
 
 def disconnect_ray_account(

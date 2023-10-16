@@ -26,10 +26,8 @@ from ...config import config, domains, Environment
 from ...auth.connector import (
     RayClient,
     RayConnection,
-    get_language_cloud_connect_url,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
-
 
 
 class TextMessage:
@@ -88,9 +86,6 @@ class OnboardingMessage(SlackMessage):
                                 "text": "Connect LanguageCloud account",
                             },
                             "style": "primary",
-                            "url": get_language_cloud_connect_url(
-                                user_id, team_id, enterprise_id, channel_id
-                            ),
                             "action_id": "login",
                         }
                     ],
@@ -1251,12 +1246,6 @@ class HelpMessage(SlackMessage):
                             "type": "plain_text",
                             "text": "Connect",
                         },
-                        "url": get_language_cloud_connect_url(
-                            context["user_id"],
-                            context["team_id"],
-                            context.get("enterprise_id"),
-                            context["channel_id"],
-                        ),
                         "action_id": "login"
                     }
                 },
@@ -1380,9 +1369,6 @@ class ConnectionInfoMessage(SlackMessage):
                                 "text": "Connect LanguageCloud account",
                             },
                             "style": "primary",
-                            "url": get_language_cloud_connect_url(
-                                user_id, team_id, enterprise_id, channel_id
-                            ),
                             "action_id": "login",
                         }
                     ],

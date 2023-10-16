@@ -445,13 +445,24 @@ async def approve_pending_client_action(ack, action, context, say, client):
 async def login_account_action(ack, action, context, respond):
     await ack()
     try:
-        connect_ray_account(
-            context["user_id"], context["team_id"], context.get("enterprise_id")
+        result = await connect_ray_account(
+            context["user_id"],
+            context["team_id"],
+            context.get("enterprise_id"),
+            channel_id=context["channel_id"],
         )
-        msg = SuccessfulLoginMessage(context["user_id"], action.get("value"))
-        await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
+        if result == "success":
+            msg = SuccessfulLoginMessage(context["user_id"], action.get("value"))
+            await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
+        else :
+            await respond(
+                text="Login required on language cloud website. Please try again."
+            )
     except Exception as e:
         notify_exception(e)
+        await respond(
+            text="There was an error connecting your account, please try again."
+        )
 
 
 @app.block_action("disconnect")
