@@ -10,6 +10,7 @@ from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_sdk.errors import SlackApiError
 from ray_sdk import RayAPIResponseError
 from buglog import notify_exception, notify_message
+from datetime import datetime, timedelta
 
 from .app import app
 from .middleware import ray_connection, require_ray_client
@@ -35,6 +36,7 @@ from .templates.messages import (
     LogoutMessage,
     OnboardingMessage,
     QuoteMessage,
+    WelcomeBackMessage,
     SuccessfulLoginMessage,
     SuccessfulLogoutMessage,
     JobSubmitMessage,
@@ -95,7 +97,7 @@ async def app_mention_event(context, event):
 
 @app.event("app_home_opened", middleware=[ray_connection])
 @slack_log_decorator
-async def home_opened(event, context, body, say, client):
+async def home_opened(event, action, context, body, say, client):
     # https://api.slack.com/events/app_home_opened
     # Send an onboarding message if the app home is opened for the first time.
     history = await client.conversations_history(channel=event.get("channel"), limit=1)
@@ -107,6 +109,21 @@ async def home_opened(event, context, body, say, client):
             event.get("channel"),
         )
         await say(blocks=message.blocks, text=message.text)
+    # Send a welcome message if the app home has been idle for 24 hours
+    else:
+        history_last_24_hours = await client.conversations_history(
+            channel=event.get("channel"),
+            oldest=int((datetime.now() - timedelta(minutes=1)).timestamp()) ,
+            latest=int(datetime.now().timestamp())
+        )
+        if not history_last_24_hours.get("messages"):
+            message = WelcomeBackMessage(
+                context["user_id"]
+            )
+            await say(blocks=message.blocks, text=message.text)
+        else:
+            # There had been some activity in the last 24 hours
+            pass
     # Publish view to home tab.
     await client.views_publish(
         user_id=event.get("user"),

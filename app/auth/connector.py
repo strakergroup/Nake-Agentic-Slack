@@ -558,12 +558,8 @@ async def connect_ray_account(
             enterprise_id,
             channel_id
         )
-        print(url)
         async with httpx.AsyncClient(timeout=10) as http:
-            print("before sending request")
-            r = await http.post(url)
-            print("after sending request")
-            print(r.status_code)
+            await http.post(url)
         return "success"
     except Exception as e:
         notify_exception(e)
