@@ -90,6 +90,7 @@ class OnboardingMessage(SlackMessage):
                             "url": get_language_cloud_connect_url(
                                 user_id, team_id, enterprise_id, channel_id
                             ),
+                            "action_id": "login",
                         }
                     ],
                 },
@@ -170,6 +171,7 @@ class LoginMessage(SlackMessage):
                             "url": get_language_cloud_connect_url(
                                 user_id, team_id, enterprise_id, channel_id
                             ),
+                            "action_id": "login",
                         }
                     ],
                 },
@@ -1071,7 +1073,6 @@ class JobListMessage(SlackMessage):
                         ),
                     }
                 )
-
         super().__init__(
             title,
             [
@@ -1488,6 +1489,7 @@ class ConnectionInfoMessage(SlackMessage):
                             "url": get_language_cloud_connect_url(
                                 user_id, team_id, enterprise_id, channel_id
                             ),
+                            "action_id": "login",
                         }
                     ],
                 }
@@ -1842,26 +1844,6 @@ class JobDelayMessage(SlackMessage):
         )
 
 
-class ReportInsightsMessage(SlackMessage):
-    def __init__(self, plan: str) -> None:
-            if plan == "Free":
-                message = "The insights feature is only avaiable on the Growth and Enterprise plans."
-            else:
-                message = "Use can use the message pane below to type your insights request using natural language. Get turn around times, cost, or validation quality. An example:\n>Can you tell me how many jobs have been delivered on time in the last 30 days"
-            super().__init__(
-                f":idea: Here are your insights",
-                [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": message
-                        }
-                    }
-                ],
-            )
-
-
 class BatchListMessage(SlackMessage):
     """Message showing the list of in progress files."""
 
@@ -2050,3 +2032,23 @@ class FileListMessage(SlackMessage):
                 *pagination_blocks,
             ],
         )
+
+
+class ReportInsightsMessage(SlackMessage):
+    def __init__(self, plan: str) -> None:
+            if plan == "Free":
+                message = "The insights feature is only avaiable on the Growth and Enterprise plans."
+            else:
+                message = "Use can use the message pane below to type your insights request using natural language. Get turn around times, cost, or validation quality. An example:\n>Can you tell me how many jobs have been delivered on time in the last 30 days"
+            super().__init__(
+                f":idea: Here are your insights",
+                [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": message
+                        }
+                    }
+                ],
+            )

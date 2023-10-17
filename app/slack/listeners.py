@@ -462,19 +462,21 @@ async def approve_pending_client_action(ack, action, context, say, client):
 async def login_account_action(ack, action, context, respond):
     await ack()
     try:
-        result = await connect_ray_account(
-            context["user_id"],
-            context["team_id"],
-            context.get("enterprise_id"),
-            channel_id=context["channel_id"],
-        )
-        if result == "success":
-            msg = SuccessfulLoginMessage(context["user_id"], action.get("value"))
-            await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
-        else :
-            await respond(
-                text="Login required on language cloud website. Please try again."
-            )
+        # Use language cloud API to send success message
+        pass
+        # result = await connect_ray_account(
+        #     context["user_id"],
+        #     context["team_id"],
+        #     context.get("enterprise_id"),
+        #     channel_id=context["channel_id"],
+        # )
+        # if result == "success":
+        #     msg = SuccessfulLoginMessage(context["user_id"], action.get("value"))
+        #     await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
+        # else :
+        #     await respond(
+        #         text="Login required on language cloud website. Please try again."
+        #     )
     except Exception as e:
         notify_exception(e)
         await respond(
