@@ -191,6 +191,112 @@ class LoginMessage(SlackMessage):
         )
 
 
+class WelcomeBackMessage(SlackMessage):
+    """Message to send after a user successfully connects their LanguageCloud
+    account.
+    """
+
+    def __init__(self, user_id: str) -> None:
+        super().__init__(
+            ":white_check_mark: Welcome back",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": "Welcome :wave: \n\nChoose an option below to get started."
+                    }
+                },
+                {
+                    "type": "divider"
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). "
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Search"
+                        },
+                        "action_id": "job_search"
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs."
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Jobs"
+                        },
+                        "action_id": "all_summary"
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🗂️ Quote opens the form to upload documents for translation."
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Quote"
+                        },
+                        "action_id": "quote"
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "📊 Insights uses AI to gather and show data about your translation experience"
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Insights"
+                        },
+                        "action_id": "report_insights"
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*"
+                    }
+                },
+                {
+                    "type": "divider"
+                },
+                {
+                    "type": "section",
+                    "block_id": "sectionBlockOnlyMrkdwn",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*"
+                    }
+                }
+            ],
+        )
+
+
 class SuccessfulLoginMessage(SlackMessage):
     """Message to send after a user successfully connects their LanguageCloud
     account.
@@ -279,7 +385,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<fakelink.ToMoreTimes.com|Show more options>*"
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*"
                     }
                 },
                 {
