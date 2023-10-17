@@ -259,7 +259,7 @@ class WelcomeBackMessage(SlackMessage):
                             "type": "plain_text",
                             "text": "Quote"
                         },
-                        "action_id": "quote"
+                        "action_id": "new_job"
                     }
                 },
                 {
@@ -364,7 +364,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "type": "plain_text",
                             "text": "Quote"
                         },
-                        "action_id": "quote"
+                        "action_id": "new_job"
                     }
                 },
                 {
