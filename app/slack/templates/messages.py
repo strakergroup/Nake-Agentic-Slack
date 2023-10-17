@@ -167,7 +167,9 @@ class LoginMessage(SlackMessage):
                                 "text": "Connect LanguageCloud account",
                             },
                             "style": "primary",
-                            "action_id": "login",
+                            "url": get_language_cloud_connect_url(
+                                user_id, team_id, enterprise_id, channel_id
+                            ),
                         }
                     ],
                 },
