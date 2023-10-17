@@ -272,7 +272,7 @@ async def get_job_predictions(job_ids: list[str]) -> list[dict[str, Any]]:
     job_predictions = [
         {"job_id": job_id.upper(), "prediction": ""} for job_id in job_ids
     ]
-    if config.environment == Environment.production:
+    if config.environment == Environment.production or config.environment == Environment.local :
         # Disable predictions on live for now.
         return job_predictions
     try:

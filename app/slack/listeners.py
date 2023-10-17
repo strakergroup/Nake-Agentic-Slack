@@ -23,6 +23,7 @@ from .listener_actions import (
     show_quote_form_modal,
     submit_job,
     approve_pending_client,
+    post_batch_list,
     post_file_list,
 )
 from .logging import slack_log_decorator
@@ -475,6 +476,27 @@ async def file_options(ack, payload, client):
     if filter := payload.get("value"):
         files = [f for f in files if filter.lower().strip() in f["title"].lower()]
     await ack(options=map_file_options(files[:100]))
+
+
+@app.block_action(re.compile(r"batch_list(_\d+)?"), middleware=[ray_connection])
+@slack_log_decorator
+async def batch_list_action(ack, payload, context):
+    """Paginated batch file list. Triggered from the Show In Progress Files button."""
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        settings = json.loads(payload["value"])
+        job_id = settings["id"]
+        page = settings["page"]
+        page_size = settings["page_size"]
+        replace_original = settings["replace_original"]
+        await post_batch_list(
+            context,
+            context["ray"].client,
+            job_id=job_id,
+            page=page,
+            page_size=page_size,
+            replace_original=replace_original,
+        )
 
 
 @app.block_action(re.compile(r"file_list(_\d+)?"), middleware=[ray_connection])

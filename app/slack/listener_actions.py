@@ -28,6 +28,7 @@ from .templates.messages import (
     JobListMessage,
     JobDetailsMessage,
     InsightsMessage,
+    BatchListMessage,
     FileListMessage,
 )
 from .templates.models import NewJobForm
@@ -362,8 +363,8 @@ async def post_job_summary(
     predictions = {"on_time": 0, "late": 0, "over_due": 0}
     if isinstance(responses[2], RayResponse):
         in_progress_count_24 = responses[2].data.summary.get("in_progress", 0)
-    if isinstance(responses[2], RayResponse):
-        in_progress_due = responses[2].data.summary.get("in_progress", 0)
+    if isinstance(responses[3], RayResponse):
+        in_progress_due = responses[3].data.summary.get("in_progress", 0)
     if isinstance(responses[0], RayResponse):
         in_progress_count = responses[0].data.summary.get("in_progress", 0)
         validation_count = responses[0].data.summary.get("validation", 0)
@@ -459,90 +460,109 @@ async def post_job_list(
     Raises:
         AssertionError: The `channel_id` is not given and there is no source channel.
     """
-    if (
-        not channel_id
-        and not context.channel_id
-        and not context.user_id
-        and not context.response_url
-    ):
-        raise AssertionError("No channel to post to")
-    channel_id = channel_id or context.channel_id or context.user_id
+    try:
+        if (
+            not channel_id
+            and not context.channel_id
+            and not context.user_id
+            and not context.response_url
+        ):
+            raise AssertionError("No channel to post to")
+        channel_id = channel_id or context.channel_id or context.user_id
 
-    # Truncate client_ref due to DB 100 char limit.
-    client_ref = client_ref[:100] if client_ref else ""
+        # Truncate client_ref due to DB 100 char limit.
+        client_ref = client_ref[:100] if client_ref else ""
 
-    match preset:
-        case "IN_PROGRESS:ACCEPTED:24H":
-            title = "Jobs accepted within the last 24 hours"
-            response = await RayService.get_service(ray_client).get_job_list(
-                status="IN_PROGRESS", started_from=24, page=page, page_size=page_size
-            )
-        case "IN_PROGRESS:DUE:24H":
-            title = "Jobs due within the next 24 hours"
-            response = await RayService.get_service(ray_client).get_job_list(
-                status="IN_PROGRESS", due_before=24, page=page, page_size=page_size
-            )
-        case "IN_PROGRESS":
-            title = "All jobs in progress"
-            response = await RayService.get_service(ray_client).get_job_list(
-                status="IN_PROGRESS", page=page, page_size=page_size
-            )
-        case "COMPLETED:24H":
-            title = "Jobs completed within the last 24 hours"
-            response = await RayService.get_service(ray_client).get_job_list(
-                status="COMPLETED", completed_from=24, page=page, page_size=page_size
-            )
-        case "COMPLETED:48H":
-            title = "Jobs completed within the last 48 hours"
-            response = await RayService.get_service(ray_client).get_job_list(
-                status="COMPLETED", completed_from=48, page=page, page_size=page_size
-            )
-        case "COMPLETED:7D":
-            title = "Jobs completed within the last 7 days"
-            response = await RayService.get_service(ray_client).get_job_list(
-                status="COMPLETED",
-                completed_from=24 * 7,
-                page=page,
-                page_size=page_size,
-            )
-        case "VALIDATION":
-            title = "All jobs in validation"
-            response = await RayService.get_service(ray_client).get_job_list(
-                status="VALIDATION", page=page, page_size=page_size
-            )
-        case "PENDING_QUOTES:24H":
-            title = "Pending quotes from the last 24 hours"
-            response = await RayService.get_service(ray_client).get_job_list(
-                status="PENDING_QUOTES", from_hours=24, page=page, page_size=page_size
-            )
-        case "PENDING_QUOTES":
-            title = "All pending quotes"
-            response = await RayService.get_service(ray_client).get_job_list(
-                status="PENDING_QUOTES", page=page, page_size=page_size
-            )
-        case "ORDER_NOW:24H":
-            title = "Jobs quoted from the last 24 hours"
-            response = await RayService.get_service(ray_client).get_job_list(
-                status="ORDER_NOW", quoted_from=24, page=page, page_size=page_size
-            )
-        case "ORDER_NOW:7D":
-            title = "Jobs quoted from the last 7 days"
-            response = await RayService.get_service(ray_client).get_job_list(
-                status="ORDER_NOW", quoted_from=24 * 7, page=page, page_size=page_size
-            )
-        case "ORDER_NOW":
-            title = "All jobs quoted"
-            response = await RayService.get_service(ray_client).get_job_list(
-                status="ORDER_NOW", page=page, page_size=page_size
-            )
-        case "CLIENT_REFERENCE":
-            title = f"Reference: {client_ref}"
-            response = await RayService.get_service(ray_client).get_job_list(
-                client_ref=client_ref, page=page, page_size=page_size
-            )
-        case _:
-            notify_message(f"post_job_list: Invalid preset ({preset})")
-            return
+        match preset:
+            case "IN_PROGRESS:ACCEPTED:24H":
+                title = "Jobs accepted within the last 24 hours"
+                response = await RayService.get_service(ray_client).get_job_list(
+                    status="IN_PROGRESS",
+                    started_from=24,
+                    page=page,
+                    page_size=page_size,
+                )
+            case "IN_PROGRESS:DUE:24H":
+                title = "Jobs due within the next 24 hours"
+                response = await RayService.get_service(ray_client).get_job_list(
+                    status="IN_PROGRESS", due_before=24, page=page, page_size=page_size
+                )
+            case "IN_PROGRESS":
+                title = "All jobs in progress"
+                response = await RayService.get_service(ray_client).get_job_list(
+                    status="IN_PROGRESS", page=page, page_size=page_size
+                )
+            case "COMPLETED:24H":
+                title = "Jobs completed within the last 24 hours"
+                response = await RayService.get_service(ray_client).get_job_list(
+                    status="COMPLETED",
+                    completed_from=24,
+                    page=page,
+                    page_size=page_size,
+                )
+            case "COMPLETED:48H":
+                title = "Jobs completed within the last 48 hours"
+                response = await RayService.get_service(ray_client).get_job_list(
+                    status="COMPLETED",
+                    completed_from=48,
+                    page=page,
+                    page_size=page_size,
+                )
+            case "COMPLETED:7D":
+                title = "Jobs completed within the last 7 days"
+                response = await RayService.get_service(ray_client).get_job_list(
+                    status="COMPLETED",
+                    completed_from=24 * 7,
+                    page=page,
+                    page_size=page_size,
+                )
+            case "VALIDATION":
+                title = "All jobs in validation"
+                response = await RayService.get_service(ray_client).get_job_list(
+                    status="VALIDATION", page=page, page_size=page_size
+                )
+            case "PENDING_QUOTES:24H":
+                title = "Pending quotes from the last 24 hours"
+                response = await RayService.get_service(ray_client).get_job_list(
+                    status="PENDING_QUOTES",
+                    from_hours=24,
+                    page=page,
+                    page_size=page_size,
+                )
+            case "PENDING_QUOTES":
+                title = "All pending quotes"
+                response = await RayService.get_service(ray_client).get_job_list(
+                    status="PENDING_QUOTES", page=page, page_size=page_size
+                )
+            case "ORDER_NOW:24H":
+                title = "Jobs quoted from the last 24 hours"
+                response = await RayService.get_service(ray_client).get_job_list(
+                    status="ORDER_NOW", quoted_from=24, page=page, page_size=page_size
+                )
+            case "ORDER_NOW:7D":
+                title = "Jobs quoted from the last 7 days"
+                response = await RayService.get_service(ray_client).get_job_list(
+                    status="ORDER_NOW",
+                    quoted_from=24 * 7,
+                    page=page,
+                    page_size=page_size,
+                )
+            case "ORDER_NOW":
+                title = "All jobs quoted"
+                response = await RayService.get_service(ray_client).get_job_list(
+                    status="ORDER_NOW", page=page, page_size=page_size
+                )
+            case "CLIENT_REFERENCE":
+                title = f"Reference: {client_ref}"
+                response = await RayService.get_service(ray_client).get_job_list(
+                    client_ref=client_ref, page=page, page_size=page_size
+                )
+            case _:
+                notify_message(f"post_job_list: Invalid preset ({preset})")
+                return
+    except Exception as e:
+        notify_exception(e)
+        raise
     try:
         job_ids_in_progress = [
             Job.id for Job in response.data[0] if Job.status == "IN_PROGRESS"
@@ -571,6 +591,9 @@ async def post_job_list(
                 text=msg.text,
                 blocks=msg.blocks,
             )
+    except Exception as e:
+        notify_exception(e)
+        raise
     finally:
         try:
             response_data = response.response.json()
@@ -737,6 +760,84 @@ async def get_groups(ray_client: RayClient) -> list[dict[str, Any]]:
         }
         for group in groups
     ]
+
+
+async def post_batch_list(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    job_id: str,
+    page: int,
+    page_size: int,
+    channel_id: str | None = None,
+    thread_ts: str | None = None,
+    replace_original: bool = False,
+) -> AsyncSlackResponse:
+    """Tries to get the batch list from the RAY API and list in progress batches.
+    If the user cannot access the job, post another message instead.
+
+    Args:
+        context (AsyncBoltContext): The listener function context.
+        ray_client (RayClient): The RAY client.
+        job_id (str): The ID of the job to get.
+        page (int): The page number to get.
+        page_size (int): The page size to get.
+        channel_id (str | None, optional): The channel to post the message to. If not given, posts to the source channel.
+        thread_ts (str | None, optional): The message thread to reply to.
+        replace_original (bool, optional): Replace the original ephemeral message.
+
+    Raises:
+        AssertionError: The `channel_id` is not given and there is no source channel.
+    """
+    if (
+        not channel_id
+        and not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
+        raise AssertionError("No channel to post to")
+    channel_id = channel_id or context.channel_id or context.user_id
+
+    job, response = await RayService.get_service(ray_client).get_job(
+        job_id, page, page_size
+    )
+    try:
+        if job is not None:
+            msg = BatchListMessage(job, ray_client.id)
+            if context.response_url:
+                return await context.respond(
+                    text=msg.text, blocks=msg.blocks, replace_original=replace_original
+                )
+            else:
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                    blocks=msg.blocks,
+                    thread_ts=thread_ts,
+                )
+        else:
+            msg = InvalidJobMessage(job_id)
+            if context.response_url:
+                return await context.respond(text=msg.text)
+            else:
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                    thread_ts=thread_ts,
+                )
+    finally:
+        if response is not None:
+            try:
+                response_data = response.json()
+            except Exception:
+                response_data = response.content.decode() or None
+            context["log"].add_api_log(
+                status_code=response.status_code,
+                url=str(response.url),
+                payload=None,
+                response=response_data,
+                headers=dict(response.headers.items()),
+                version="v3",
+            )
 
 
 async def post_file_list(
