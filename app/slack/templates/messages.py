@@ -257,7 +257,6 @@ class WelcomeBackMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "emoji": True,
                             "text": "Quote"
                         },
                         "action_id": "quote"
@@ -363,7 +362,6 @@ class SuccessfulLoginMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "emoji": True,
                             "text": "Quote"
                         },
                         "action_id": "quote"
