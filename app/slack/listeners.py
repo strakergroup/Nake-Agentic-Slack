@@ -113,7 +113,7 @@ async def home_opened(event, action, context, body, say, client):
     else:
         history_last_24_hours = await client.conversations_history(
             channel=event.get("channel"),
-            oldest=int((datetime.now() - timedelta(minutes=1)).timestamp()) ,
+            oldest=int((datetime.now() - timedelta(hours=24)).timestamp()) ,
             latest=int(datetime.now().timestamp())
         )
         if not history_last_24_hours.get("messages"):
