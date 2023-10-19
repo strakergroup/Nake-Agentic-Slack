@@ -92,7 +92,7 @@ def home_view(
                     "type": "button",
                     "text": {"type": "plain_text", "text": "Learn More", "emoji": True},
                     "action_id": "link_0",
-                    "url": "https://strakergroup.frill.co/b/6m51y2vz/feature-ideas",
+                    "url": "https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions",
                 },
             },
             {"type": "divider"},
