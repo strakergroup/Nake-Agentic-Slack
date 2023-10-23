@@ -831,8 +831,7 @@ class JobListMessage(SlackMessage):
                     }
                 )
                 if job.status != "COMPLETED" and job.batches != "[]":
-                    jobs_blocks.insert(
-                        3,
+                    jobs_blocks.append(
                         {
                             "type": "actions",
                             "elements": [
