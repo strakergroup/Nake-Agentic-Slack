@@ -28,11 +28,13 @@ from .templates.messages import (
     JobListMessage,
     JobDetailsMessage,
     InsightsMessage,
+    ReportInsightsMessage,
     BatchListMessage,
     FileListMessage,
 )
 from .templates.models import NewJobForm
 from .templates.views import new_job_modal
+from .templates.views import job_search_modal
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
 from ..config import config, domains, Environment
@@ -72,8 +74,8 @@ async def respond_to_message(
     match response.intent:
         case "General_About_You" | "General_Agent_Capabilities" | "General_Greetings":
             await context.say(
-                text=HelpMessage().text,
-                blocks=HelpMessage().blocks,
+                text=HelpMessage(context).text,
+                blocks=HelpMessage(context).blocks,
                 thread_ts=thread_ts,
             )
         case "Login":
@@ -717,6 +719,27 @@ async def show_quote_form_modal(
     )
 
 
+# Show job search modal view dialog
+async def show_job_search_modal(
+    context: AsyncBoltContext,
+    trigger_id: str,
+    ray_client: RayClient,
+):
+    """Show the job search modal view dialog.
+
+    Args:
+        context (AsyncBoltContext): The context from the listener.
+        trigger_id (str): The trigger ID.
+        ray_client (RayClient): The RAY client details.
+    """
+    await context.client.views_open(
+        trigger_id=trigger_id,
+        view=job_search_modal(
+            ray_client.username,
+        ),
+    )
+
+
 async def submit_job(
     context: AsyncBoltContext, ray_client: RayClient, form: NewJobForm
 ) -> list[RayResponse[None]]:
@@ -915,3 +938,60 @@ async def post_file_list(
                 headers=dict(response.headers.items()),
                 version="v3",
             )
+
+
+async def post_report_insights(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    channel_id: str | None = None,
+    thread_ts: str | None = None,
+):
+    """ Show Insight message modal.
+
+    Args:
+        context (AsyncBoltContext): The context from the listener.
+        ray_client (RayClient): The RAY client details.
+        channel_id (str | None, optional): The channel to post the message to.
+            If not given, posts to the source channel.
+        thread_ts (str | None, optional): The message thread to reply to.
+    """
+    if (
+        not channel_id
+        and not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
+        raise AssertionError("No channel to post to")
+    channel_id = channel_id or context.channel_id or context.user_id
+
+    async def send_insights_message():
+        insights_msg = ReportInsightsMessage(ray_client.planname)
+        try:
+            if context.response_url:
+                await context.respond(
+                    text=insights_msg.text, blocks=insights_msg.blocks
+                )
+            else:
+                await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=insights_msg.text,
+                    blocks=insights_msg.blocks,
+                    thread_ts=thread_ts,
+                )
+        except Exception as e:
+            notify_exception(e, "Failed to get insights from Insights API")
+
+    waiting_msg = ":stopwatch: Please wait as we gather your information..."
+    if context.response_url:
+        response = await context.respond(text=waiting_msg)
+    else:
+        response = await context.client.chat_postMessage(
+            channel=channel_id,
+            text=waiting_msg,
+            thread_ts=thread_ts,
+        )
+
+    # Send insights message async because it might take a long time.
+    asyncio.create_task(send_insights_message())
+
+    return response

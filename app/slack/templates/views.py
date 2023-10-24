@@ -22,7 +22,7 @@ def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Welcome to RAY Translate for Slack!",
+                    "text": "Welcome to the Straker LanguageCloud App!",
                 },
             },
             *home_auth_blocks(
@@ -65,15 +65,16 @@ def home_view(
                         "action_id": "daily_summary",
                         "url": message_url,
                     },
-                    # {
-                    #     "type": "button",
-                    #     "text": {
-                    #         "type": "plain_text",
-                    #         "emoji": True,
-                    #         "text": "👏 Favorite Languages"
-                    #     },
-                    #     "value": "click_me_123"
-                    # }
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "📊 Reports/Insights"
+                        },
+                        "action_id": "report_insights",
+                        "url": message_url,
+                    }
                 ],
             },
             {"type": "divider"},
@@ -85,13 +86,13 @@ def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest Straker LanguageCloud and Enterprise features, provide updates, and engage with customers like you!",
+                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest LanguageCloud and Enterprise features, provide updates, and engage with customers like you!",
                 },
                 "accessory": {
                     "type": "button",
                     "text": {"type": "plain_text", "text": "Learn More", "emoji": True},
                     "action_id": "link_0",
-                    "url": "https://strakergroup.frill.co/b/6m51y2vz/feature-ideas",
+                    "url": "https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions",
                 },
             },
             {"type": "divider"},
@@ -123,6 +124,54 @@ def home_view(
         ],
     }
 
+def job_search_modal(
+    client_name: str,
+) -> dict[str, Any]:
+    """The template for the modal to input TJ number and submit a search request
+
+    Args:
+        client_name (str): The user's LanguageCloud username.
+
+    Returns:
+        dict: The view dict.
+    """
+
+    return {
+        "type": "modal",
+        "callback_id": "job_search",
+        "title": {"type": "plain_text", "text": "Job Status"},
+        "submit": {"type": "plain_text", "text": "Submit"},
+        "close": {"type": "plain_text", "text": "Close"},
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"You are searching a job as `{client_name}`.",
+                    "verbatim": True,
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "reference",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "reference",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Your job reference",
+                        "emoji": True,
+                    },
+                    "max_length": 100,
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Your job reference",
+                    "emoji": True,
+                },
+            },
+        ],
+    }
 
 def new_job_modal(
     client_name: str,
