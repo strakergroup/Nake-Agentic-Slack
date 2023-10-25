@@ -1799,3 +1799,36 @@ class FileListMessage(SlackMessage):
                 *pagination_blocks,
             ],
         )
+
+class JobTargetsNoIdMessage(TextMessage):
+        """Message to send when the user asks for a job targets but has not given
+        a TJ number.
+        """
+
+        def __init__(self) -> None:
+            super().__init__(
+                "To check the targets of your job, type the reference number (e.g. TJ123456)."
+            )
+
+class JobTargetLangMessage(SlackMessage):
+    """Message showing the list of translation files."""
+
+    def __init__(self, job: Job, client_id: str) -> None:
+        if job.status == "PENDING_QUOTES":
+            title = f"*{job.id}* waiting for quotation."
+        elif job.status == "ORDER_NOW":
+            title = f"Job *{job.id}* waiting for order."
+        else:
+            title = f"Job *{job.id}* no targets information."
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{title}*",
+                    },
+                },
+            ],
+        )
