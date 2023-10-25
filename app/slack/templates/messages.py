@@ -282,7 +282,7 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*"
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*"
                     }
                 },
                 {
@@ -387,7 +387,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*"
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*"
                     }
                 },
                 {
