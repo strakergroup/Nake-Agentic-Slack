@@ -6,13 +6,13 @@ import asyncio
 from straker_auth.languagecloud import create_languagecloud_id_token
 import time
 import json
+import httpx
 from uuid import uuid4
 from dataclasses import dataclass
 from urllib.parse import urlencode
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
-import httpx
-
+from buglog import notify_exception
 from .algorithms import encrypt_aes, hash_hmac_sha1
 from ..config import config, domains
 from ..database import engines
@@ -64,6 +64,8 @@ class RayClient:
     """The Slack enterprise ID."""
     id_token: str | None
     """an ID Token according to the OpenID Connect spec"""
+    planname: str | None
+    """The Slack enterprise ID."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,7 +377,7 @@ async def get_ray_client(
         if enterprise_id:
             sql = text(
                 """
-                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, mem.active
+                SELECT link.member_uuid, mem.login, mem.groupid
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
@@ -390,6 +392,7 @@ async def get_ray_client(
         else:
             sql = text(
                 """
+                SELECT link.member_uuid, mem.login, mem.groupid
                 FROM slack_deltaray_link link
                 SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, mem.active
                 INNER JOIN sitemanager.obj_m_member mem
@@ -409,13 +412,10 @@ async def get_ray_client(
         ray_client_id, username = row.member_uuid, row.login
         id_token = create_languagecloud_id_token(
             uuid=ray_client_id,
-            given_name=row.given_name,
-            family_name=row.family_name,
-            email=row.email_primary,
-            is_active=bool(row.active),
             aud="languagecloud-api",
             secret=config.languagecloud_api_key,
         )
+        ray_client_id, username, groupid = row.member_uuid, row.login, row.groupid
     # Now get the access token for authentication.
     with engines["api_readonly"].connect() as conn:
         sql = text(
@@ -431,6 +431,30 @@ async def get_ray_client(
         if not row:
             return None
         access_token = row[0]
+
+    # get group subscription plan
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+                    SELECT psp.plan_name
+                    FROM ps_service ps
+                    LEFT JOIN ps_plan psp
+                    ON psp.service_type_uuid = ps.service_type_uuid
+                    LEFT JOIN ps_subscription pss
+                    ON pss.ps_service_uuid = ps.obj_uuid
+                    LEFT JOIN ps_subscription_billing psb
+                    ON psb.ps_subscription_uuid = pss.obj_uuid
+                    WHERE ps.group_uuid = :group_uuid
+                    AND pss.is_active = 1
+                    AND psb.expiry > NOW()
+                    """
+        ).bindparams(group_uuid=groupid)
+        result = conn.execute(sql)
+        row = result.fetchall()
+        if not row:
+            plan = "Free"
+        else:
+            plan = row[0].plan_name
     return RayClient(
         id=ray_client_id,
         username=username,
@@ -439,6 +463,7 @@ async def get_ray_client(
         slack_team_id=team_id,
         slack_enterprise_id=enterprise_id,
         id_token=id_token,
+        planname=plan,
     )
 
 
@@ -519,6 +544,35 @@ def get_group_admin_slack_users(group_id: str) -> list[SlackUser]:
             )
         )
     return slack_users
+
+
+async def connect_ray_account(
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None = None,
+    channel_id: str = None,
+) -> str:
+    """Connect the LanguageCloud account of a slack user.
+
+    Args:
+        user_id (str): The Slack user ID.
+        team_id (str): The Slack team ID.
+        enterprise_id (str): The Slack enterprise ID.
+
+    Returns:
+        bool: The Slack user had a connected LanguageCloud account.
+    """
+
+    try:
+        url = get_language_cloud_connect_url(
+            user_id, team_id, enterprise_id, channel_id
+        )
+        async with httpx.AsyncClient(timeout=10) as http:
+            await http.post(url)
+        return "success"
+    except Exception as e:
+        notify_exception(e)
+        return "failed"
 
 
 def disconnect_ray_account(

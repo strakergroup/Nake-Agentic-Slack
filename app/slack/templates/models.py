@@ -55,6 +55,30 @@ class SlackFile(BaseModel):
         return cls(id=option["value"], title=option["text"]["text"])
 
 
+class JobSearchForm(BaseModel):
+    """The model for a job search form."""
+
+    reference: str | None = None  # Max 100 chars, validated in view
+
+    @classmethod
+    def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "JobSearchForm":
+        """Parses a view submission payload from Slack.
+
+        Args:
+            values (dict): The input values payload from the Slack API
+            (`view["state"]["values"]`).
+
+        Returns:
+            NewJobForm: An instance parsed and validated from the Slack payload.
+        """
+        try:
+            return cls(
+                reference=values["reference"]["reference"]["value"],
+            )
+        except KeyError as e:
+            raise ValueError("The Slack payload format is incorrect") from e
+
+
 class NewJobForm(BaseModel):
     """The model for a new job form."""
 
@@ -65,6 +89,7 @@ class NewJobForm(BaseModel):
     group_id: str | None = None
     # target_date: datetime.date
     service: str
+    timeframe: str
     validation: bool
     notes: str | None = None
     translation_notes: str | None = None
@@ -150,9 +175,12 @@ class NewJobForm(BaseModel):
                 else None,
                 # target_date=values["target_date"]["target_date"]["selected_date"],
                 service=values["service"]["service"]["selected_option"]["value"],
+                timeframe=values["timeframe"]["timeframe"]["selected_option"]["value"],
                 validation=bool(values["validation"]["validation"]["selected_options"]),
                 notes=values["notes"]["notes"]["value"],
-                translation_notes=values["translation_notes"]["translation_notes"]["value"],
+                translation_notes=values["translation_notes"]["translation_notes"][
+                    "value"
+                ],
                 # category=values["category"]["category"]["selected_option"]["value"],
             )
         except KeyError as e:

@@ -22,7 +22,7 @@ def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Welcome to RAY Translate for Slack!",
+                    "text": "Welcome to the Straker LanguageCloud App!",
                 },
             },
             *home_auth_blocks(
@@ -65,15 +65,16 @@ def home_view(
                         "action_id": "daily_summary",
                         "url": message_url,
                     },
-                    # {
-                    #     "type": "button",
-                    #     "text": {
-                    #         "type": "plain_text",
-                    #         "emoji": True,
-                    #         "text": "👏 Favorite Languages"
-                    #     },
-                    #     "value": "click_me_123"
-                    # }
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "📊 Reports/Insights"
+                        },
+                        "action_id": "report_insights",
+                        "url": message_url,
+                    }
                 ],
             },
             {"type": "divider"},
@@ -85,13 +86,13 @@ def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest Straker LanguageCloud and Enterprise features, provide updates, and engage with customers like you!",
+                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest LanguageCloud and Enterprise features, provide updates, and engage with customers like you!",
                 },
                 "accessory": {
                     "type": "button",
                     "text": {"type": "plain_text", "text": "Learn More", "emoji": True},
                     "action_id": "link_0",
-                    "url": "https://strakergroup.frill.co/b/6m51y2vz/feature-ideas",
+                    "url": "https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions",
                 },
             },
             {"type": "divider"},
@@ -123,6 +124,54 @@ def home_view(
         ],
     }
 
+def job_search_modal(
+    client_name: str,
+) -> dict[str, Any]:
+    """The template for the modal to input TJ number and submit a search request
+
+    Args:
+        client_name (str): The user's LanguageCloud username.
+
+    Returns:
+        dict: The view dict.
+    """
+
+    return {
+        "type": "modal",
+        "callback_id": "job_search",
+        "title": {"type": "plain_text", "text": "Job Status"},
+        "submit": {"type": "plain_text", "text": "Submit"},
+        "close": {"type": "plain_text", "text": "Close"},
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"You are searching a job as `{client_name}`.",
+                    "verbatim": True,
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "reference",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "reference",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Your job reference",
+                        "emoji": True,
+                    },
+                    "max_length": 100,
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Your job reference",
+                    "emoji": True,
+                },
+            },
+        ],
+    }
 
 def new_job_modal(
     client_name: str,
@@ -358,6 +407,94 @@ def new_job_modal(
                     "action_id": "service",
                 },
                 "label": {"type": "plain_text", "text": "Service", "emoji": True},
+            },
+            {
+                "type": "input",
+                "block_id": "timeframe",
+                "element": {
+                    "type": "static_select",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Select a timeframe",
+                        "emoji": True,
+                    },
+                    "options": [
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 12 hours",
+                                "emoji": False,
+                            },
+                            "value": "1",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 24 hours",
+                                "emoji": False,
+                            },
+                            "value": "2",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 36 hours",
+                                "emoji": False,
+                            },
+                            "value": "3",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 48 hours",
+                                "emoji": False,
+                            },
+                            "value": "4",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 3 days",
+                                "emoji": False,
+                            },
+                            "value": "5",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 5 days",
+                                "emoji": False,
+                            },
+                            "value": "6",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 10 days",
+                                "emoji": False,
+                            },
+                            "value": "7",
+                        },
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Within 15 days",
+                                "emoji": False,
+                            },
+                            "value": "8",
+                        },
+                    ],
+                    "initial_option": {
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Within 3 days",
+                            "emoji": False,
+                        },
+                        "value": "5",
+                    },
+                    "action_id": "timeframe",
+                },
+                "label": {"type": "plain_text", "text": "Timeframe", "emoji": True},
             },
             {
                 "type": "input",
