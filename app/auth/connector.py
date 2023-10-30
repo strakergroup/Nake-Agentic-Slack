@@ -377,7 +377,7 @@ async def get_ray_client(
         if enterprise_id:
             sql = text(
                 """
-                SELECT link.member_uuid, mem.login, mem.groupid
+                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, mem.active, mem.groupid
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
@@ -392,9 +392,8 @@ async def get_ray_client(
         else:
             sql = text(
                 """
-                SELECT link.member_uuid, mem.login, mem.groupid
+                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, mem.active, mem.groupid
                 FROM slack_deltaray_link link
-                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, mem.active
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
                 WHERE link.slack_user_id = :user_id
@@ -412,6 +411,10 @@ async def get_ray_client(
         ray_client_id, username = row.member_uuid, row.login
         id_token = create_languagecloud_id_token(
             uuid=ray_client_id,
+            given_name=row.given_name,
+            family_name=row.family_name,
+            email=row.email_primary,
+            is_active=bool(row.active),
             aud="languagecloud-api",
             secret=config.languagecloud_api_key,
         )

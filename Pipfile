@@ -28,6 +28,7 @@ babel = "*"
 straker-utils = {version = "==0.1.11", index = "straker"}
 ray-sdk = {version = "==0.3.1", index = "straker"}
 ray-logger = {version = "==0.1.2", index = "straker"}
+straker-auth = {version = "==0.1.5", index = "straker"}
 buglog = {version = "==0.1.1", index = "straker"}
 
 [dev-packages]
