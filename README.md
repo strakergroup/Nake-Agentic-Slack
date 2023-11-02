@@ -68,6 +68,8 @@ redis-slack-consumer - This is for events. You can find the repo [here](https://
 
 slack-sdk - If you need to update the sdk you can find repo [here](https://bitbucket.org/strakertech/ray-python-sdk/)
 
+languagecloud-api - On going work to port to using languagecloud-api repo [here](https://bitbucket.org/strakertech/pt-languagecloud-api/)
+
 ### Troubleshooting
 #### **ModuleNotFoundError: No module named '...'**
 This means that some Python modules (dependencies) are not installed. To fix this, install the dependencies by running

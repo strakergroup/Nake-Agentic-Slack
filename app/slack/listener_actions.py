@@ -946,7 +946,7 @@ async def post_report_insights(
     channel_id: str | None = None,
     thread_ts: str | None = None,
 ):
-    """ Show Insight message modal.
+    """Show Insight message modal.
 
     Args:
         context (AsyncBoltContext): The context from the listener.

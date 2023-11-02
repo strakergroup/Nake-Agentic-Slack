@@ -336,6 +336,16 @@ async def get_ray_demo_client(
             row.login,
             row.slack_enterprise_id,
         )
+        id_token = create_languagecloud_id_token(
+            uuid=ray_client_id,
+            given_name=row.given_name,
+            family_name=row.family_name,
+            email=row.email_primary,
+            is_active=bool(row.active),
+            aud="languagecloud-api",
+            secret=config.languagecloud_api_key,
+        )
+        print(id_token)
     # Now get the access token for authentication.
     with engines["api_readonly"].connect() as conn:
         sql = text(
@@ -358,6 +368,7 @@ async def get_ray_demo_client(
         slack_user_id=user_id,
         slack_team_id=team_id,
         slack_enterprise_id=slack_enterprise_id,
+        id_token=id_token,
     )
 
 
