@@ -31,6 +31,8 @@ from .templates.messages import (
     ReportInsightsMessage,
     BatchListMessage,
     FileListMessage,
+    JobTargetsNoIdMessage,
+    JobTargetLangMessage,
 )
 from .templates.models import NewJobForm
 from .templates.views import new_job_modal
@@ -110,6 +112,16 @@ async def respond_to_message(
                     )
             else:
                 await context.say(JobStatusNoIdMessage().text, thread_ts=thread_ts)
+        case "Job_Targets":
+            if tj_number_entity := response.findEntity("tj-number"):
+                if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+                    await post_job_target_lang(
+                        context,
+                        context["ray"].client,
+                        tj_number_entity.groups[0]
+                    )
+            else:
+                await context.say(JobTargetsNoIdMessage().text, thread_ts=thread_ts)
         case "New_Translation_Job":
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
                 msg = NewJobMessage(context["channel_id"], message["ts"])
@@ -819,10 +831,10 @@ async def post_batch_list(
     ):
         raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
-
     job, response = await RayService.get_service(ray_client).get_job(
         job_id, page, page_size
     )
+
     try:
         if job is not None:
             msg = BatchListMessage(job, ray_client.id)
@@ -923,6 +935,93 @@ async def post_file_list(
                     channel=channel_id,
                     text=msg.text,
                     thread_ts=thread_ts,
+                )
+    finally:
+        if response is not None:
+            try:
+                response_data = response.json()
+            except Exception:
+                response_data = response.content.decode() or None
+            context["log"].add_api_log(
+                status_code=response.status_code,
+                url=str(response.url),
+                payload=None,
+                response=response_data,
+                headers=dict(response.headers.items()),
+                version="v3",
+            )
+
+
+async def post_job_target_lang(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    job_id: str,
+    page: int = 1,
+    page_size: int = 5,
+    channel_id: str | None = None,
+) -> AsyncSlackResponse:
+    """Tries to get the file list from the RAY API and list translated files.
+    If the user cannot access the job, post another message
+    instead.
+
+    Args:
+        context (AsyncBoltContext): The listener function context.
+        ray_client (RayClient): The RAY client.
+        job_id (str): The ID of the job to get.
+        channel_id (str | None, optional): The channel to post the message to.
+            If not given, posts to the source channel.
+        thread_ts (str | None, optional): The message thread to reply to.
+
+    Raises:
+        AssertionError: The `channel_id` is not given and there is no source channel.
+    """
+    # add check job status then get correct redirection function\
+    job, response = await RayService.get_service(ray_client).get_job(
+        job_id, page, page_size
+    )
+    no_job = False
+    try:
+        if job is not None:
+            if len(job.batches):
+                await post_batch_list(
+                        context,
+                        context["ray"].client,
+                        job_id=job_id,
+                        page=1,
+                        page_size=5,
+                    )
+            else:
+                no_job = True
+
+            if len(job.translated_file):
+                await post_file_list(
+                        context,
+                        context["ray"].client,
+                        job_id=job_id,
+                        page=1,
+                        page_size=5
+                    )
+            else:
+                no_job = True
+
+            if no_job :
+                msg = JobTargetLangMessage(job, ray_client.id)
+                if context.response_url:
+                    return await context.respond(text=msg.text, blocks=msg.blocks)
+                else:
+                    return await context.client.chat_postMessage(
+                        channel=channel_id,
+                        text=msg.text,
+                        blocks=msg.blocks,
+                    )
+        else:
+            msg = InvalidJobMessage(job_id)
+            if context.response_url:
+                return await context.respond(text=msg.text)
+            else:
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
                 )
     finally:
         if response is not None:
