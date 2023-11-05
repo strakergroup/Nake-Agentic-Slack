@@ -960,7 +960,7 @@ async def post_job_target_lang(
     page_size: int = 5,
     channel_id: str | None = None,
 ) -> AsyncSlackResponse:
-    """Tries to get the file list from the RAY API and list translated files.
+    """Tries to get the file list from the RAY API and list translated files, and batch file.
     If the user cannot access the job, post another message
     instead.
 
