@@ -71,7 +71,20 @@ def home_auth_blocks(
             ],
         },
     ]
-    if(team_id == "T04QVSH7XDF"):
+    if(enterprise_id):
+        if(enterprise_id == "E04RDMG8XP1"):
+            msg[1]["elements"].append(
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Connect via SSO",
+                    },
+                    "style": "primary",
+                    "action_id": "login_sso",
+                }
+            )
+    elif(team_id == "T04QVSH7XDF"):
         msg[1]["elements"].append(
             {
                 "type": "button",

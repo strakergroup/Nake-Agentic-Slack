@@ -177,7 +177,22 @@ class LoginMessage(SlackMessage):
                     ],
                 },
             ]
-        if team_id == "T04QVSH7XDF" and ray_client is None:
+        if enterprise_id:
+            if enterprise_id == "E04RDMG8XP1" and ray_client is None:
+                msg[1]["elements"].append(
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Connect via SSO",
+                        },
+                        "style": "primary",
+                        "action_id": "login_sso",
+                    }
+                )
+            elif enterprise_id == "E04RDMG8XP1" and ray_client is not None and ray_client.sso:
+                msg.pop(1)
+        elif team_id == "T04QVSH7XDF" and ray_client is None:
             msg[1]["elements"].append(
                 {
                     "type": "button",
