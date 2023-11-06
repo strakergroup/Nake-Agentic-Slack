@@ -150,10 +150,11 @@ class LoginMessage(SlackMessage):
                 f"Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_client.username}>.\n"
                 "You can connect a different account by clicking this button."
             )
-
-        super().__init__(
-            "Connect your LanguageCloud account",
-            [
+            if ray_client.sso:
+                block_text = (
+                    f"Your connected LanguageCloud account is: <{domains.languagecloud}/auth/slacksso?e={ray_client.username}|{ray_client.username}>."
+                )
+        msg = [
                 {
                     "type": "section",
                     "text": {"type": "mrkdwn", "text": block_text},
@@ -175,7 +176,24 @@ class LoginMessage(SlackMessage):
                         }
                     ],
                 },
-            ],
+            ]
+        if team_id == "T04QVSH7XDF" and ray_client is None:
+            msg[1]["elements"].append(
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Connect via SSO",
+                    },
+                    "style": "primary",
+                    "action_id": "login_sso",
+                }
+            )
+        elif team_id == "T04QVSH7XDF" and ray_client is not None and ray_client.sso:
+            msg.pop(1)
+        super().__init__(
+            "Connect your LanguageCloud account",
+            msg,
         )
 
     def with_variation(self, variation: str | None) -> "LoginMessage":
@@ -408,7 +426,10 @@ class SuccessfulLoginMessage(SlackMessage):
 class LogoutMessage(SlackMessage):
     """Message with a button disconnect a user's LanguageCloud account."""
 
-    def __init__(self, ray_username: str) -> None:
+    def __init__(self, ray_client: RayClient | None = None) -> None:
+        text = f"Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_client.username}>."
+        if ray_client.sso:
+            text = f"Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}/auth/slacksso?e={ray_client.username}|{ray_client.username}>."
         super().__init__(
             "Disconnect your LanguageCloud account",
             [
@@ -416,7 +437,7 @@ class LogoutMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_username}>.",
+                        "text": text,
                     },
                 },
                 {
@@ -430,7 +451,7 @@ class LogoutMessage(SlackMessage):
                             },
                             "style": "danger",
                             "action_id": "disconnect",
-                            "value": ray_username,
+                            "value": ray_client.username,
                         },
                         {
                             "type": "button",
@@ -1539,6 +1560,29 @@ class JobQuotedMessage(SlackMessage):
                 },
             ]
             + quote_message_block(quote, job_url),
+        )
+
+
+class SsoConnectionInfoMessage(SlackMessage):
+    """The current Slack - LanguageCloud connection details."""
+
+    def __init__(
+        self,
+        ray_connection: RayConnection | None,
+    ) -> None:
+        # Next get Slack user - LanguageCloud account info.
+        account_blocks = []
+        if ray_connection is not None and ray_connection.client is not None:
+            text = f"Your connected LanguageCloud account is: <{domains.languagecloud}/auth/slacksso?e={ray_connection.client.username}|{ray_connection.client.username}>"
+            account_blocks.append(
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": text},
+                }
+            )
+        super().__init__(
+            text,
+            [*account_blocks],
         )
 
 

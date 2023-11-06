@@ -87,7 +87,7 @@ async def respond_to_message(
             )
         case "Logout":
             if await require_ray_client(context):
-                msg = LogoutMessage(context["ray"].client.username)
+                msg = LogoutMessage(context["ray"].client)
                 await context.client.chat_postEphemeral(
                     channel=context["channel_id"],
                     user=context["user_id"],

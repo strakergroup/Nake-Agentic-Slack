@@ -4,6 +4,7 @@ commands, etc. from the Slack API.
 
 import re
 import json
+import httpx
 
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
@@ -11,7 +12,6 @@ from slack_sdk.errors import SlackApiError
 from ray_sdk import RayAPIResponseError
 from buglog import notify_exception, notify_message
 from datetime import datetime, timedelta
-
 from .app import app
 from .middleware import ray_connection, require_ray_client
 from .listener_actions import (
@@ -43,6 +43,7 @@ from .templates.messages import (
     HelpMessage,
     WhatsNextMessage,
     ConnectionInfoMessage,
+    SsoConnectionInfoMessage,
     InvalidCommandMessage,
     ClientApprovedMessage,
     ClientAlreadyApprovedMessage,
@@ -55,8 +56,10 @@ from ..auth.connector import (
     connect_ray_account,
     disconnect_ray_account,
     disconnect_ray_super_group_and_users,
+    connect_ray_account_sso,
+    get_ray_connection,
 )
-
+from ..ray.events.parse import get_ray_event_message
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -160,6 +163,76 @@ async def new_job_shortcut(ack, shortcut, context, client):
         )
 
 
+@app.block_action("login_sso", middleware=[ray_connection])
+@slack_log_decorator
+async def login_sso_action(ack, context, body, respond, client):
+    try:
+        context["ray"] = await get_ray_connection(
+                    context["user_id"], context["team_id"], context.get("enterprise_id")
+                )
+        if "channel_id" not in context:
+            context["channel_id"] = context["user_id"]
+        if context["ray"].client is None:
+            # The API endpoint to get user info
+            infoUrl = "https://slack.com/api/users.info"
+            infoData = {"token" : context["token"], "user" : body["user"]["id"]}
+            # A POST request to the API
+            async with httpx.AsyncClient(timeout=10) as slackapi:
+                infoResponse = await slackapi.post(
+                                    infoUrl,
+                                    data=infoData,
+                                )
+            # Assign the response
+            info_response_json = infoResponse.json()
+            if (info_response_json["ok"]):
+                user_info = info_response_json["user"]
+                ray_user_id = connect_ray_account_sso(
+                                user_info["id"],
+                                user_info["team_id"],
+                                user_info["profile"]["email"],
+                                user_info["profile"]["first_name"],
+                                user_info["profile"]["last_name"],
+                                context["channel_id"],
+                                context.get("enterprise_id")
+                            )
+                context["ray"] = await get_ray_connection(
+                    user_info["id"], user_info["team_id"], context.get("enterprise_id")
+                )
+                data = {
+                        "client_id" : ray_user_id ,
+                        "username" : user_info["profile"]["email"] ,
+                        "user_id" : context["user_id"] ,
+                        "team_id" : context["team_id"] ,
+                        "channel_id" : context["channel_id"] ,
+                        "enterprise_id" : ""}
+                msg = get_ray_event_message("ray:slack:account_connected" , data)
+                await ack()
+                await respond(text=msg.text, blocks=msg.blocks)
+            else:
+                await ack()
+                await respond(text="There was an error connecting your account, please try again.")
+        else:
+            await ack()
+            if context["ray"].client.sso:
+                msg = SsoConnectionInfoMessage(
+                    context["ray"],
+                )
+            # need else block if triggered from old message
+            else:
+                msg = ConnectionInfoMessage(
+                    context["ray"],
+                    user_id=context["user_id"],
+                    team_id=context["team_id"],
+                    enterprise_id=context.get("enterprise_id"),
+                    channel_id=context["channel_id"],
+                )
+            await respond(text=msg.text, blocks=msg.blocks)
+    except Exception as e:
+        notify_exception(e)
+        await ack()
+        await respond(text="There was an error connecting your account, please try again.")
+
+
 @app.block_action("job_search", middleware=[ray_connection])
 @slack_log_decorator
 async def job_search_action(ack, payload, context, client, body):
@@ -211,7 +284,7 @@ async def ray_command(ack, respond, say, command, context, client):
         case ["logout" | "signout" | "disconnect"]:
             # Logout and respond with message.
             if await require_ray_client(context):
-                msg = LogoutMessage(context["ray"].client.username)
+                msg = LogoutMessage(context["ray"].client)
                 await respond(text=msg.text, blocks=msg.blocks)
 
         case ["job", reference, *reference_other]:

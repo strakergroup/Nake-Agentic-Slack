@@ -26,6 +26,9 @@ def home_auth_blocks(
     if isinstance(ray_connection, RayConnection) and ray_connection.client:
         super_group_names = [group.name for group in ray_connection.super_group]
         super_group_names_str = ", ".join(super_group_names)
+        text = f"Your Slack account <@{user_id}> is connected with: <{domains.languagecloud}|{ray_connection.client.username}>."
+        if ray_connection.client.sso:
+            text = f"Your Slack account <@{user_id}> is connected with: <{domains.languagecloud}/auth/slacksso?e={ray_connection.client.username}|{ray_connection.client.username}>."
         return [
             {
                 "type": "section",
@@ -38,11 +41,11 @@ def home_auth_blocks(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"Your Slack account <@{user_id}> is connected with: <{domains.languagecloud}|{ray_connection.client.username}>.",
+                    "text": text,
                 },
             },
         ]
-    return [
+    msg = [
         {
             "type": "section",
             "text": {
@@ -68,6 +71,19 @@ def home_auth_blocks(
             ],
         },
     ]
+    if(team_id == "T04QVSH7XDF"):
+        msg[1]["elements"].append(
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": "Connect via SSO",
+                },
+                "style": "primary",
+                "action_id": "login_sso",
+            }
+        )
+    return msg
 
 
 def job_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
