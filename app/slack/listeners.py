@@ -172,66 +172,70 @@ async def login_sso_action(ack, context, body, respond, client):
                 )
         if "channel_id" not in context:
             context["channel_id"] = context["user_id"]
-        if context["ray"].client is None:
-            # The API endpoint to get user info
-            # infoUrl = "https://slack.com/api/users.info"
-            # infoData = {"token" : context["token"], "user" : body["user"]["id"]}
-            # A POST request to the API
-            # async with httpx.AsyncClient(timeout=10) as slackapi:
-            #     infoResponse = await slackapi.post(
-            #                         infoUrl,
-            #                         data=infoData,
-            #                     )
-            # Assign the response
-            # info_response_json = infoResponse.json()
-            info_response_json = await context.client.users_info(user=context["user_id"])
-            if (info_response_json["ok"]):
-                user_info = info_response_json["user"]
-                ray_user_id = connect_ray_account_sso(
-                                user_info["id"],
-                                user_info["team_id"],
-                                user_info["profile"]["email"],
-                                user_info["profile"]["first_name"],
-                                user_info["profile"]["last_name"],
-                                context["channel_id"],
-                                context.get("enterprise_id")
-                            )
-                context["ray"] = await get_ray_connection(
-                    user_info["id"], user_info["team_id"], context.get("enterprise_id")
-                )
-                data = {
-                        "client_id" : ray_user_id ,
-                        "username" : user_info["profile"]["email"] ,
-                        "user_id" : context["user_id"] ,
-                        "team_id" : context["team_id"] ,
-                        "channel_id" : context["channel_id"] ,
-                        "enterprise_id" : ""}
-                msg = get_ray_event_message("ray:slack:account_connected" , data)
-                await ack()
-                await client.chat_postMessage(
-                    channel=context["user_id"],
-                    text=msg.text,
-                    blocks=msg.blocks,
-                )
+        if context["ray"] is not None:
+            if context["ray"].client is None:
+                # The API endpoint to get user info
+                # infoUrl = "https://slack.com/api/users.info"
+                # infoData = {"token" : context["token"], "user" : body["user"]["id"]}
+                # A POST request to the API
+                # async with httpx.AsyncClient(timeout=10) as slackapi:
+                #     infoResponse = await slackapi.post(
+                #                         infoUrl,
+                #                         data=infoData,
+                #                     )
+                # Assign the response
+                # info_response_json = infoResponse.json()
+                info_response_json = await context.client.users_info(user=context["user_id"])
+                if (info_response_json["ok"]):
+                    user_info = info_response_json["user"]
+                    ray_user_id = connect_ray_account_sso(
+                                    user_info["id"],
+                                    user_info["team_id"],
+                                    user_info["profile"]["email"],
+                                    user_info["profile"]["first_name"],
+                                    user_info["profile"]["last_name"],
+                                    context["channel_id"],
+                                    context.get("enterprise_id")
+                                )
+                    context["ray"] = await get_ray_connection(
+                        user_info["id"], user_info["team_id"], context.get("enterprise_id")
+                    )
+                    data = {
+                            "client_id" : ray_user_id ,
+                            "username" : user_info["profile"]["email"] ,
+                            "user_id" : context["user_id"] ,
+                            "team_id" : context["team_id"] ,
+                            "channel_id" : context["channel_id"] ,
+                            "enterprise_id" : ""}
+                    msg = get_ray_event_message("ray:slack:account_connected" , data)
+                    await ack()
+                    await client.chat_postMessage(
+                        channel=context["user_id"],
+                        text=msg.text,
+                        blocks=msg.blocks,
+                    )
+                else:
+                    await ack()
+                    await respond(text="There was an error connecting to Slack, please try again.")
             else:
                 await ack()
-                await respond(text="There was an error connecting to Slack, please try again.")
+                if context["ray"].client.sso:
+                    msg = SsoConnectionInfoMessage(
+                        context["ray"],
+                    )
+                # need else block if triggered from old message
+                else:
+                    msg = ConnectionInfoMessage(
+                        context["ray"],
+                        user_id=context["user_id"],
+                        team_id=context["team_id"],
+                        enterprise_id=context.get("enterprise_id"),
+                        channel_id=context["channel_id"],
+                    )
+                await respond(text=msg.text, blocks=msg.blocks)
         else:
             await ack()
-            if context["ray"].client.sso:
-                msg = SsoConnectionInfoMessage(
-                    context["ray"],
-                )
-            # need else block if triggered from old message
-            else:
-                msg = ConnectionInfoMessage(
-                    context["ray"],
-                    user_id=context["user_id"],
-                    team_id=context["team_id"],
-                    enterprise_id=context.get("enterprise_id"),
-                    channel_id=context["channel_id"],
-                )
-            await respond(text=msg.text, blocks=msg.blocks)
+            await respond(text="Your organisation requires a Super Group to connect your account to Slack.")
     except Exception as e:
         notify_exception(e)
         await ack()
