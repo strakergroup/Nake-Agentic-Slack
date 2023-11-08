@@ -174,17 +174,6 @@ async def login_sso_action(ack, context, body, respond, client):
             context["channel_id"] = context["user_id"]
         if context["ray"] is not None:
             if context["ray"].client is None:
-                # The API endpoint to get user info
-                # infoUrl = "https://slack.com/api/users.info"
-                # infoData = {"token" : context["token"], "user" : body["user"]["id"]}
-                # A POST request to the API
-                # async with httpx.AsyncClient(timeout=10) as slackapi:
-                #     infoResponse = await slackapi.post(
-                #                         infoUrl,
-                #                         data=infoData,
-                #                     )
-                # Assign the response
-                # info_response_json = infoResponse.json()
                 info_response_json = await context.client.users_info(user=context["user_id"])
                 if (info_response_json["ok"]):
                     user_info = info_response_json["user"]
@@ -236,6 +225,10 @@ async def login_sso_action(ack, context, body, respond, client):
         else:
             await ack()
             await respond(text="Your organisation requires a Super Group to connect your account to Slack.")
+    except SlackApiError as sae:
+        notify_exception(sae)
+        await ack()
+        await respond(text="There was an error connecting to Slack, please try again.")
     except Exception as e:
         notify_exception(e)
         await ack()
