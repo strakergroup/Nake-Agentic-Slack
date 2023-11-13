@@ -354,6 +354,7 @@ async def get_ray_demo_client(
         slack_user_id=user_id,
         slack_team_id=team_id,
         slack_enterprise_id=slack_enterprise_id,
+        planname='Enterprise',
     )
 
 
