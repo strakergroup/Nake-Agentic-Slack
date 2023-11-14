@@ -315,7 +315,7 @@ async def get_ray_demo_client(
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
-            SELECT link.member_uuid, mem.login, link.slack_enterprise_id
+            SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, mem.active, mem.groupid
             FROM slack_deltaray_link link
             INNER JOIN sitemanager.obj_m_member mem
             ON link.member_uuid = mem.obj_uuid
