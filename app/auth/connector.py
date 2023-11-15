@@ -373,7 +373,7 @@ async def get_ray_demo_client(
         slack_enterprise_id=slack_enterprise_id,
         id_token=id_token,
         planname="Enterprise",
-        sso=False
+        sso=False,
     )
 
 
@@ -434,7 +434,12 @@ async def get_ray_client(
             aud="languagecloud-api",
             secret=config.languagecloud_api_key,
         )
-        ray_client_id, username, groupid, is_sso = row.member_uuid, row.login, row.groupid, row.is_sso
+        ray_client_id, username, groupid, is_sso = (
+            row.member_uuid,
+            row.login,
+            row.groupid,
+            row.is_sso,
+        )
     # Now get the access token for authentication.
     with engines["api_readonly"].connect() as conn:
         sql = text(
@@ -842,7 +847,13 @@ async def log_new_user_info(user):
 
 
 def connect_ray_account_sso(
-    user_id: str, team_id: str, email_id: str, first_name: str, last_name: str, channel_id: str, enterprise_id: str | None
+    user_id: str,
+    team_id: str,
+    email_id: str,
+    first_name: str,
+    last_name: str,
+    channel_id: str,
+    enterprise_id: str | None,
 ) -> str:
     """Connect the LanguageCloud account of a slack user via SSO.
 
@@ -859,34 +870,38 @@ def connect_ray_account_sso(
         bool: The Slack user had a connected LanguageCloud account.
     """
     slack_data = {
-            "user_id": user_id,
-            "team_id": team_id,
-            "email_id": email_id,
-            "first_name": first_name,
-            "last_name": last_name,
-            "channel_id": channel_id,
-            "enterprise_id": enterprise_id if enterprise_id is not None else "",
-        }
+        "user_id": user_id,
+        "team_id": team_id,
+        "email_id": email_id,
+        "first_name": first_name,
+        "last_name": last_name,
+        "channel_id": channel_id,
+        "enterprise_id": enterprise_id if enterprise_id is not None else "",
+    }
     with engines["sitemanager"].connect() as conn:
         sql = text(
             """
             SELECT obj_uuid, email_primary, login FROM obj_m_member WHERE login = :login
             """
-        ).bindparams(
-            login=email_id
-        )
+        ).bindparams(login=email_id)
         conn.execute(sql)
         result1 = conn.execute(sql)
     if result1.rowcount == 0:
         member_id = str(uuid4()).upper()
         # Create User and User Group Link
-        create_client_and_mglink(user_data=json.dumps(slack_data), member_id=member_id, group_id='173231FA-D524-42BF-9AF3F4834CAA88A0')
+        create_client_and_mglink(
+            user_data=json.dumps(slack_data),
+            member_id=member_id,
+            group_id="173231FA-D524-42BF-9AF3F4834CAA88A0",
+        )
         # Create log
         # crete_slack_logs_sso(user_data=json.dumps(slack_data), member_id=member_id, message="New User")
         # Create User Access Token
         create_client_access_tokens(client_id=member_id, type="public")
         # Create User Slack Link
-        create_slack_deltaray_link_sso(user_data=json.dumps(slack_data), member_id=member_id)
+        create_slack_deltaray_link_sso(
+            user_data=json.dumps(slack_data), member_id=member_id
+        )
         return member_id
     else:
         member_id = result1.first().obj_uuid
@@ -905,15 +920,24 @@ def connect_ray_account_sso(
                 )
                 AND is_active = 0
                 """
-            ).bindparams(member_id=member_id, user_id=user_id, team_id=team_id, enterprise_id=enterprise_id)
+            ).bindparams(
+                member_id=member_id,
+                user_id=user_id,
+                team_id=team_id,
+                enterprise_id=enterprise_id,
+            )
             conn.execute(sqlRay)
             conn.commit()
         return member_id
 
 
-def create_client_and_mglink(user_data: str, member_id: str, group_id: str = '173231FA-D524-42BF-9AF3F4834CAA88A0'):
+def create_client_and_mglink(
+    user_data: str,
+    member_id: str,
+    group_id: str = "173231FA-D524-42BF-9AF3F4834CAA88A0",
+):
     json_data = json.loads(user_data)
-    password = "secret".encode('utf-8')  # Convert the password to bytes
+    password = "secret".encode("utf-8")  # Convert the password to bytes
     hash_object = hashlib.sha512(password)
     with engines["sitemanager"].connect() as conn:
         # Get Account Manager
@@ -922,7 +946,8 @@ def create_client_and_mglink(user_data: str, member_id: str, group_id: str = '17
                 SELECT account_manager
                 FROM obj_m_group
                 WHERE obj_uuid = :obj_uuid
-            """).bindparams(obj_uuid=group_id)
+            """
+        ).bindparams(obj_uuid=group_id)
         conn.execute(sqlAm)
         resultAm = conn.execute(sqlAm).first()
         # Create User
@@ -952,13 +977,13 @@ def create_client_and_mglink(user_data: str, member_id: str, group_id: str = '17
             VALUES
                 (:obj_uuid, :groupid, :memberid, :label, :client_type, now(), now())
             """
-            ).bindparams(
-                obj_uuid=str(uuid4()).upper(),
-                groupid=group_id,
-                memberid=member_id,
-                label=f"{member_id}-{group_id}",
-                client_type="Normal",
-            )
+        ).bindparams(
+            obj_uuid=str(uuid4()).upper(),
+            groupid=group_id,
+            memberid=member_id,
+            label=f"{member_id}-{group_id}",
+            client_type="Normal",
+        )
         conn.execute(sqlMgLink)
         conn.commit()
 
@@ -973,11 +998,7 @@ def create_client_access_tokens(client_id: str, type: str = "public"):
                 VALUES
                     (:obj_uuid, :account_id, 1, :type, '', now())
             """
-        ).bindparams(
-            obj_uuid=str(uuid4()).upper(),
-            account_id=client_id,
-            type=type
-        )
+        ).bindparams(obj_uuid=str(uuid4()).upper(), account_id=client_id, type=type)
         conn.execute(sql)
         conn.commit()
     # Enable API Access
@@ -987,30 +1008,113 @@ def create_client_access_tokens(client_id: str, type: str = "public"):
                 UPDATE obj_m_member
                 SET api_access = 1
                 WHERE obj_uuid = :obj_uuid
-            """).bindparams(obj_uuid=client_id)
+            """
+        ).bindparams(obj_uuid=client_id)
         conn.execute(sqlMemUpdate)
         conn.commit()
 
 
 def create_slack_deltaray_link_sso(user_data: str, member_id: str):
     json_data = json.loads(user_data)
-    with engines["ray_integration"].connect() as conn:
-        sqlRay = text(
+    with engines["ray_integration_readonly"].connect() as conn:
+        sqlSlackAccount = text(
             """
-            INSERT INTO slack_deltaray_link
-                (slack_user_id, slack_team_id, slack_enterprise_id, slack_channel_id, member_uuid, is_active, is_sso, activated_at, created_at, modified_at)
-            VALUES
-                (:user_id, :team_id, :enterprise_id, :channel_id, :member_uuid, 1, 1, now(), now(), now())
+            SELECT slack_user_id
+            FROM slack_deltaray_link
+            WHERE slack_user_id = :slack_user_id
+            AND slack_team_id = :slack_team_id
+            AND is_active = 0
             """
         ).bindparams(
-            user_id=json_data.get("user_id"),
-            team_id=json_data.get("team_id"),
-            enterprise_id=json_data.get("enterprise_id"),
-            channel_id=json_data.get("channel_id"),
-            member_uuid=member_id,
+            slack_user_id=json_data.get("user_id"),
+            slack_team_id=json_data.get("team_id"),
         )
-        conn.execute(sqlRay)
-        conn.commit()
+        if json_data.get("enterprise_id") is not None:
+            sqlSlackAccount = text(
+                """
+                SELECT slack_user_id
+                FROM slack_deltaray_link
+                WHERE slack_user_id = :slack_user_id
+                AND (slack_enterprise_id = :slack_enterprise_id OR slack_team_id = :slack_team_id)
+                AND is_active = 0
+                """
+            ).bindparams(
+                slack_user_id=json_data.get("user_id"),
+                slack_team_id=json_data.get("team_id"),
+                slack_enterprise_id=json_data.get("enterprise_id"),
+            )
+        resultSlackAccount = conn.execute(sqlSlackAccount).first()
+    if resultSlackAccount is not None:
+        with engines["ray_integration"].connect() as conn:
+            if json_data.get("enterprise_id") is not None:
+                sqlRayUpdate = text(
+                    """
+                    UPDATE slack_deltaray_link SET
+                        member_uuid = :member_uuid,
+                        slack_user_id = :user_id,
+                        slack_team_id = :team_id,
+                        slack_enterprise_id = :enterprise_id,
+                        slack_channel_id = :channel_id,
+                        is_subscribed = 1
+                        is_active = 1
+                        is_sso = 1
+                        activated_at = now()
+                    WHERE slack_user_id = :user_id
+                    AND (
+                        slack_team_id = :team_id
+                        OR slack_enterprise_id = :enterprise_id
+                    )
+                    """
+                ).bindparams(
+                    member_id=member_id,
+                    user_id=json_data.get("user_id"),
+                    team_id=json_data.get("team_id"),
+                    enterprise_id=json_data.get("enterprise_id"),
+                    channel_id=json_data.get("channel_id"),
+                )
+            else:
+                sqlRayUpdate = text(
+                    """
+                    UPDATE slack_deltaray_link SET
+                        member_uuid = :member_uuid,
+                        slack_user_id = :user_id,
+                        slack_team_id = :team_id,
+                        slack_enterprise_id = :enterprise_id,
+                        slack_channel_id = :channel_id,
+                        is_subscribed = 1
+                        is_active = 1
+                        is_sso = 1
+                        activated_at = now()
+                    WHERE slack_user_id = :user_id
+                    AND slack_team_id = :team_id
+                    """
+                ).bindparams(
+                    member_id=member_id,
+                    user_id=json_data.get("user_id"),
+                    team_id=json_data.get("team_id"),
+                    enterprise_id=json_data.get("enterprise_id"),
+                    channel_id=json_data.get("channel_id"),
+                )
+            conn.execute(sqlRayUpdate)
+            conn.commit()
+    else:
+        with engines["ray_integration"].connect() as conn:
+            sqlRay = text(
+                """
+                INSERT INTO slack_deltaray_link
+                    (slack_user_id, slack_team_id, slack_enterprise_id, slack_channel_id, member_uuid, is_subscribed, is_active, is_sso, activated_at)
+                VALUES
+                    (:user_id, :team_id, :enterprise_id, :channel_id, :member_uuid, 1, 1, 1, now())
+                """
+            ).bindparams(
+                user_id=json_data.get("user_id"),
+                team_id=json_data.get("team_id"),
+                enterprise_id=json_data.get("enterprise_id"),
+                channel_id=json_data.get("channel_id"),
+                member_uuid=member_id,
+            )
+            conn.execute(sqlRay)
+            conn.commit()
 
 
 def crete_slack_logs_sso(user_data: str, member_id: str, message: str):
