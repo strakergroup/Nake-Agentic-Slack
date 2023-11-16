@@ -116,13 +116,11 @@ async def home_opened(event, action, context, body, say, client):
     else:
         history_last_24_hours = await client.conversations_history(
             channel=event.get("channel"),
-            oldest=int((datetime.now() - timedelta(hours=24)).timestamp()) ,
-            latest=int(datetime.now().timestamp())
+            oldest=int((datetime.now() - timedelta(hours=24)).timestamp()),
+            latest=int(datetime.now().timestamp()),
         )
         if not history_last_24_hours.get("messages"):
-            message = WelcomeBackMessage(
-                context["user_id"]
-            )
+            message = WelcomeBackMessage(context["user_id"])
             await say(blocks=message.blocks, text=message.text)
         else:
             # There had been some activity in the last 24 hours
@@ -165,38 +163,43 @@ async def new_job_shortcut(ack, shortcut, context, client):
 
 @app.block_action("login_sso", middleware=[ray_connection])
 @slack_log_decorator
-async def login_sso_action(ack, context, body, respond, client):
+async def login_sso_action(ack, context: AsyncBoltContext, body, respond, client):
     try:
         context["ray"] = await get_ray_connection(
-                    context["user_id"], context["team_id"], context.get("enterprise_id")
-                )
+            context["user_id"], context["team_id"], context.get("enterprise_id")
+        )
         if "channel_id" not in context:
             context["channel_id"] = context["user_id"]
         if context["ray"] is not None:
             if context["ray"].client is None:
-                info_response_json = await context.client.users_info(user=context["user_id"])
-                if (info_response_json["ok"]):
+                info_response_json = await context.client.users_info(
+                    user=context["user_id"]
+                )
+                if info_response_json["ok"]:
                     user_info = info_response_json["user"]
                     ray_user_id = connect_ray_account_sso(
-                                    user_info["id"],
-                                    user_info["team_id"],
-                                    user_info["profile"]["email"],
-                                    user_info["profile"]["first_name"],
-                                    user_info["profile"]["last_name"],
-                                    context["channel_id"],
-                                    context.get("enterprise_id")
-                                )
+                        user_info["id"],
+                        user_info["team_id"],
+                        user_info["profile"]["email"],
+                        user_info["profile"]["first_name"],
+                        user_info["profile"]["last_name"],
+                        context["channel_id"],
+                        context.get("enterprise_id"),
+                    )
                     context["ray"] = await get_ray_connection(
-                        user_info["id"], user_info["team_id"], context.get("enterprise_id")
+                        user_info["id"],
+                        user_info["team_id"],
+                        context.get("enterprise_id"),
                     )
                     data = {
-                            "client_id" : ray_user_id ,
-                            "username" : user_info["profile"]["email"] ,
-                            "user_id" : context["user_id"] ,
-                            "team_id" : context["team_id"] ,
-                            "channel_id" : context["channel_id"] ,
-                            "enterprise_id" : ""}
-                    msg = get_ray_event_message("ray:slack:account_connected" , data)
+                        "client_id": ray_user_id,
+                        "username": user_info["profile"]["email"],
+                        "user_id": context["user_id"],
+                        "team_id": context["team_id"],
+                        "channel_id": context["channel_id"],
+                        "enterprise_id": "",
+                    }
+                    msg = get_ray_event_message("ray:slack:account_connected", data)
                     await ack()
                     await client.chat_postMessage(
                         channel=context["user_id"],
@@ -205,7 +208,9 @@ async def login_sso_action(ack, context, body, respond, client):
                     )
                 else:
                     await ack()
-                    await respond(text="There was an error connecting to Slack, please try again.")
+                    await respond(
+                        text="There was an error connecting to Slack, please try again."
+                    )
             else:
                 await ack()
                 if context["ray"].client.sso:
@@ -224,7 +229,9 @@ async def login_sso_action(ack, context, body, respond, client):
                 await respond(text=msg.text, blocks=msg.blocks)
         else:
             await ack()
-            await respond(text="Your organisation requires a Super Group to connect your account to Slack.")
+            await respond(
+                text="Your organisation requires a Super Group to connect your account to Slack."
+            )
     except SlackApiError as sae:
         notify_exception(sae)
         await ack()
@@ -232,7 +239,9 @@ async def login_sso_action(ack, context, body, respond, client):
     except Exception as e:
         notify_exception(e)
         await ack()
-        await respond(text="There was an error connecting your account, please try again.")
+        await respond(
+            text="There was an error connecting your account, please try again."
+        )
 
 
 @app.block_action("job_search", middleware=[ray_connection])
@@ -332,7 +341,9 @@ async def ray_command(ack, respond, say, command, context, client):
 
         case ["help" | ""]:
             # Show help message.
-            await respond(blocks=HelpMessage(context).blocks, text=HelpMessage(context).text)
+            await respond(
+                blocks=HelpMessage(context).blocks, text=HelpMessage(context).text
+            )
 
         case ["whatsnext"] | ["whats", "next"]:
             # Show what's next message.
@@ -649,15 +660,11 @@ async def handle_job_search(ack, view, context, client):
         # The response is already returned at this point, can do long tasks here.
         reference = form.reference.strip()
         # Try searching job by TJ number if the format is correct.
-        if re.fullmatch(
-            r"tj\d+", reference, re.IGNORECASE
-        ):
+        if re.fullmatch(r"tj\d+", reference, re.IGNORECASE):
             await post_job_status(context, context["ray"].client, reference)
-        elif re.fullmatch(
-            r"\d+", reference, re.IGNORECASE
-        ):
-            await post_job_status(context, context["ray"].client, "TJ"+reference)
-        else :
+        elif re.fullmatch(r"\d+", reference, re.IGNORECASE):
+            await post_job_status(context, context["ray"].client, "TJ" + reference)
+        else:
             client.chat_postMessage(
                 channel=context["user_id"],
                 text="TJ Number is in incorrect format. E.g. TJ123456 or 123456",
