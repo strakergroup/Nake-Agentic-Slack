@@ -905,29 +905,9 @@ def connect_ray_account_sso(
         return member_id
     else:
         member_id = result1.first().obj_uuid
-        with engines["ray_integration"].connect() as conn:
-            sqlRay = text(
-                """
-                UPDATE slack_deltaray_link SET
-                    is_active = 1,
-                    is_sso = 1,
-                    activated_at = NOW()
-                WHERE slack_user_id = :user_id
-                AND member_uuid = :member_id
-                AND (
-                    slack_team_id = :team_id
-                    OR slack_enterprise_id = :enterprise_id
-                )
-                AND is_active = 0
-                """
-            ).bindparams(
-                member_id=member_id,
-                user_id=user_id,
-                team_id=team_id,
-                enterprise_id=enterprise_id,
-            )
-            conn.execute(sqlRay)
-            conn.commit()
+        create_slack_deltaray_link_sso(
+            user_data=json.dumps(slack_data), member_id=member_id
+        )
         return member_id
 
 
@@ -1055,9 +1035,9 @@ def create_slack_deltaray_link_sso(user_data: str, member_id: str):
                         slack_team_id = :team_id,
                         slack_enterprise_id = :enterprise_id,
                         slack_channel_id = :channel_id,
-                        is_subscribed = 1
-                        is_active = 1
-                        is_sso = 1
+                        is_subscribed = 1,
+                        is_active = 1,
+                        is_sso = 1,
                         activated_at = now()
                     WHERE slack_user_id = :user_id
                     AND (
@@ -1066,7 +1046,7 @@ def create_slack_deltaray_link_sso(user_data: str, member_id: str):
                     )
                     """
                 ).bindparams(
-                    member_id=member_id,
+                    member_uuid=member_id,
                     user_id=json_data.get("user_id"),
                     team_id=json_data.get("team_id"),
                     enterprise_id=json_data.get("enterprise_id"),
@@ -1081,15 +1061,15 @@ def create_slack_deltaray_link_sso(user_data: str, member_id: str):
                         slack_team_id = :team_id,
                         slack_enterprise_id = :enterprise_id,
                         slack_channel_id = :channel_id,
-                        is_subscribed = 1
-                        is_active = 1
-                        is_sso = 1
+                        is_subscribed = 1,
+                        is_active = 1,
+                        is_sso = 1,
                         activated_at = now()
                     WHERE slack_user_id = :user_id
                     AND slack_team_id = :team_id
                     """
                 ).bindparams(
-                    member_id=member_id,
+                    member_uuid=member_id,
                     user_id=json_data.get("user_id"),
                     team_id=json_data.get("team_id"),
                     enterprise_id=json_data.get("enterprise_id"),
