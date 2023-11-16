@@ -163,7 +163,7 @@ async def new_job_shortcut(ack, shortcut, context, client):
 
 @app.block_action("login_sso", middleware=[ray_connection])
 @slack_log_decorator
-async def login_sso_action(ack, context: AsyncBoltContext, body, respond, client):
+async def login_sso_action(ack, context, body, respond, client):
     try:
         context["ray"] = await get_ray_connection(
             context["user_id"], context["team_id"], context.get("enterprise_id")
