@@ -60,6 +60,7 @@ from ..auth.connector import (
     get_ray_connection,
 )
 from ..ray.events.parse import get_ray_event_message
+from slack_bolt.context.async_context import AsyncBoltContext
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -163,7 +164,7 @@ async def new_job_shortcut(ack, shortcut, context, client):
 
 @app.block_action("login_sso", middleware=[ray_connection])
 @slack_log_decorator
-async def login_sso_action(ack, context, body, respond, client):
+async def login_sso_action(ack, context: AsyncBoltContext, body, respond, client):
     try:
         context["ray"] = await get_ray_connection(
             context["user_id"], context["team_id"], context.get("enterprise_id")
