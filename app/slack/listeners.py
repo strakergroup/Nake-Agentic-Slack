@@ -166,8 +166,10 @@ async def new_job_shortcut(ack, shortcut, context, client):
 @slack_log_decorator
 async def login_sso_action(ack, context: AsyncBoltContext, body, respond, client):
     try:
+        team_id = context["team_id"]
+        team_name = context["authorize_result"]["team"]
         botscopes = context["authorize_result"]["bot_scopes"]
-        botblock = {"type": "section", "text": {"type": "plain_text", "text": f"{botscopes}"}}
+        botblock = {"type": "section", "text": {"type": "plain_text", "text": f"{botscopes}\n{team_id}\n{team_name}"}}
         await ack()
         await client.chat_postMessage(
                         channel=context["user_id"],
