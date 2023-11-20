@@ -485,9 +485,12 @@ class LogoutMessage(SlackMessage):
 class SuccessfulLogoutMessage(SlackMessage):
     """A Slack user's LanguageCloud account was successfully disconnected."""
 
-    def __init__(self, user_id: str, ray_username: str | None = None) -> None:
+    def __init__(self, user_id: str, is_sso: bool = False, ray_username: str | None = None) -> None:
+        text = f"Your LanguageCloud account <{domains.languagecloud}|{ray_username}> is now disconnected from <@{user_id}>."
+        if is_sso:
+            text = f"Your LanguageCloud account <{domains.languagecloud}/auth/slacksso?e={ray_username}|{ray_username}> is now disconnected from <@{user_id}>."
         block_message = (
-            f"Your LanguageCloud account <{domains.languagecloud}|{ray_username}> is now disconnected from <@{user_id}>."
+            text
             if ray_username
             else f"Your LanguageCloud account is now disconnected from <@{user_id}>."
         )

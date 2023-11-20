@@ -571,11 +571,15 @@ async def login_account_action(ack, action, context, respond):
 @app.block_action("disconnect")
 async def disconnect_account_action(ack, action, context, respond):
     await ack()
+    # Get connection info before disconnecting.
+    context["ray"] = await get_ray_connection(
+        context["user_id"], context["team_id"], context.get("enterprise_id")
+    )
     disconnect_ray_account(
         context["user_id"], context["team_id"], context.get("enterprise_id")
     )
     # action["value"] should contain the LanguageCloud account username.
-    msg = SuccessfulLogoutMessage(context["user_id"], action.get("value"))
+    msg = SuccessfulLogoutMessage(context["user_id"], context["ray"].client.sso, action.get("value"))
     await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
 
 
