@@ -204,6 +204,10 @@ async def login_sso_action(ack, context: AsyncBoltContext, body, respond, client
                         text=msg.text,
                         blocks=msg.blocks,
                     )
+                    sso_msg = SsoConnectionInfoMessage(
+                        context["ray"],
+                    )
+                    await respond(text=sso_msg.text, blocks=sso_msg.blocks)
                 else:
                     await ack()
                     await respond(
