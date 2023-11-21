@@ -70,7 +70,7 @@ class JobQuoteCreatedEvent(BaseModel):
     sl: Language
     tl: list[Language]
     service: str
-    turnaround_days: int
+    turnaround_days: float
     quote: QuoteInfo
 
 
