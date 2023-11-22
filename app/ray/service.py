@@ -16,7 +16,7 @@ from ray_sdk.api.v3.models import (
 )
 
 from ..config import config, domains, Environment
-from ..auth.connector import RayClient
+from ..auth.connector import RayClient, encrpyt_slack_integration_token
 
 
 F = TypeVar("F", bound=Callable[..., Coroutine])
@@ -46,9 +46,10 @@ class RayService:
     # Cache of RayServices. The key is a tuple of ray_client_id and token.
     services: dict[tuple[str, str], "RayService"] = {}
 
-    def __init__(self, ray_client_id: str | None, token: str | None) -> None:
+    def __init__(self, ray_client_id: str | None, token: str | None, lc_token: str | None) -> None:
         self._ray_client_id = ray_client_id
-        self._ray = RayV3(api_token=token, base_url=domains.stingray)
+        self._ray = RayV3(api_token=token, base_url=domains.stingray,
+                          lc_api_id_token=lc_token, lc_base_url=domains.languagecloud_api)
 
     @property
     def ray_client_id(self) -> str | None:
@@ -57,6 +58,10 @@ class RayService:
     @property
     def token(self) -> str | None:
         return self._ray.api_token
+
+    @property
+    def lc_token(self) -> str | None:
+        return self._ray.lc_api_id_token
 
     def has_credentials(self) -> bool:
         """Returns `True` if this service has a RAY client ID and access token.
@@ -217,6 +222,22 @@ class RayService:
         response = await self._ray.get_groups()
         return response.data
 
+    @secured_endpoint
+    async def get_machine_translation(
+        self,
+        target_lang: str | None = None,
+        source_lang: str | None = None,
+        sentence: str | None = None,
+    ) -> RayResponse[dict[str, str]]:
+        """Gets the machine translation from the goolge api by correct target and source langauge."""
+        response = await self._ray.get_machine_translation(
+            target_lang=target_lang,
+            source_lang=source_lang,
+            sentence=sentence,
+        )
+
+        return response.data, response.response
+
     @classmethod
     def get_service(
         cls, ray_client: RayClient | str, token: str | None = None
@@ -244,16 +265,20 @@ class RayService:
                 "must be given"
             )
 
-        key = (ray_client_id, token)
+        lc_token = encrpyt_slack_integration_token(
+            user_id=ray_client.slack_user_id, team_id=ray_client.slack_team_id, enterprise_id=ray_client.slack_enterprise_id, channel_id=ray_client.slack_team_id)
+
+        key = (ray_client_id, token, lc_token)
         if key not in cls.services:
-            cls.services[key] = cls(ray_client_id=ray_client_id, token=token)
+            cls.services[key] = cls(ray_client_id=ray_client_id,
+                                    token=token, lc_token=lc_token)
         return cls.services[key]
 
 
 # These functions are for RAY endpoints that do not require authentication.
 
 
-_noauth_service = RayService(None, None)
+_noauth_service = RayService(None, None, None)
 
 
 async def get_languages() -> RayResponse[list[Language]]:
@@ -272,7 +297,7 @@ async def get_job_predictions(job_ids: list[str]) -> list[dict[str, Any]]:
     job_predictions = [
         {"job_id": job_id.upper(), "prediction": ""} for job_id in job_ids
     ]
-    if config.environment == Environment.production or config.environment == Environment.local :
+    if config.environment == Environment.production or config.environment == Environment.local:
         # Disable predictions on live for now.
         return job_predictions
     try:

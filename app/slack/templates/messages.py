@@ -2084,3 +2084,50 @@ class JobTargetLangMessage(SlackMessage):
                 },
             ],
         )
+
+class MachineTranslationMessage(SlackMessage):
+    """Message showing the list of translation files."""
+    def __init__(self, tl: str, sl: str, mt_text: str) -> None:
+        mt_label = f"Machine translation result:"
+        super().__init__(
+            mt_label,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{mt_label}*",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{mt_text} ({sl}-{tl}) ",
+                    },
+                },
+            ],
+        )
+
+
+class InvalidMTResultMessage(TextMessage):
+    """The user does not get MT result."""
+
+    def __init__(self, msg: str) -> None:
+        if msg == 'match_failed':
+            msg = 'Invalid machine translation request, please try Mt source_lang to target_lang translate: sentence.'
+        else:
+            msg = f"Your machine translation has some error."
+
+        super().__init__(
+            msg,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{msg}*",
+                    },
+                },
+            ],
+        )
