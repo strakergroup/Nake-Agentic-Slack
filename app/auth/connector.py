@@ -3,6 +3,7 @@ other services, e.g. Slack, RAY apps.
 """
 
 import asyncio
+from straker_auth.languagecloud import create_languagecloud_id_token
 import time
 import json
 import httpx
@@ -61,8 +62,11 @@ class RayClient:
     """The Slack team ID."""
     slack_enterprise_id: str | None
     """The Slack enterprise ID."""
+    id_token: str | None
+    """an ID Token according to the OpenID Connect spec"""
     planname: str | None
     """The Slack enterprise ID."""
+
 
 @dataclass(frozen=True, slots=True)
 class RayConnection:
@@ -311,7 +315,7 @@ async def get_ray_demo_client(
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
-            SELECT link.member_uuid, mem.login, link.slack_enterprise_id
+            SELECT link.member_uuid, link.slack_enterprise_id, mem.login, mem.email_primary, mem.given_name, mem.family_name, mem.active, mem.groupid
             FROM slack_deltaray_link link
             INNER JOIN sitemanager.obj_m_member mem
             ON link.member_uuid = mem.obj_uuid
@@ -332,6 +336,16 @@ async def get_ray_demo_client(
             row.login,
             row.slack_enterprise_id,
         )
+        id_token = create_languagecloud_id_token(
+            uuid=ray_client_id,
+            given_name=row.given_name,
+            family_name=row.family_name,
+            email=row.email_primary,
+            is_active=bool(row.active),
+            aud="languagecloud-api",
+            secret=config.languagecloud_api_key,
+        )
+        print(id_token)
     # Now get the access token for authentication.
     with engines["api_readonly"].connect() as conn:
         sql = text(
@@ -354,6 +368,8 @@ async def get_ray_demo_client(
         slack_user_id=user_id,
         slack_team_id=team_id,
         slack_enterprise_id=slack_enterprise_id,
+        id_token=id_token,
+        planname='Enterprise',
     )
 
 
@@ -373,7 +389,7 @@ async def get_ray_client(
         if enterprise_id:
             sql = text(
                 """
-                SELECT link.member_uuid, mem.login, mem.groupid
+                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, mem.active, mem.groupid
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
@@ -388,7 +404,7 @@ async def get_ray_client(
         else:
             sql = text(
                 """
-                SELECT link.member_uuid, mem.login, mem.groupid
+                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, mem.active, mem.groupid
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
@@ -404,6 +420,16 @@ async def get_ray_client(
         row = result.first()
         if not row:
             return None
+        ray_client_id, username = row.member_uuid, row.login
+        id_token = create_languagecloud_id_token(
+            uuid=ray_client_id,
+            given_name=row.given_name,
+            family_name=row.family_name,
+            email=row.email_primary,
+            is_active=bool(row.active),
+            aud="languagecloud-api",
+            secret=config.languagecloud_api_key,
+        )
         ray_client_id, username, groupid = row.member_uuid, row.login, row.groupid
     # Now get the access token for authentication.
     with engines["api_readonly"].connect() as conn:
@@ -424,7 +450,7 @@ async def get_ray_client(
     # get group subscription plan
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
-                    """
+            """
                     SELECT psp.plan_name
                     FROM ps_service ps
                     LEFT JOIN ps_plan psp
@@ -437,11 +463,11 @@ async def get_ray_client(
                     AND pss.is_active = 1
                     AND psb.expiry > NOW()
                     """
-                ).bindparams(group_uuid=groupid)
+        ).bindparams(group_uuid=groupid)
         result = conn.execute(sql)
         row = result.fetchall()
         if not row:
-            plan = 'Free'
+            plan = "Free"
         else:
             plan = row[0].plan_name
     return RayClient(
@@ -451,6 +477,7 @@ async def get_ray_client(
         slack_user_id=user_id,
         slack_team_id=team_id,
         slack_enterprise_id=enterprise_id,
+        id_token=id_token,
         planname=plan,
     )
 
@@ -464,7 +491,7 @@ async def get_ray_connection(
     """
     super_group, client = await asyncio.gather(
         get_ray_super_group(team_id, enterprise_id),
-        get_ray_client(user_id, team_id, enterprise_id)
+        get_ray_client(user_id, team_id, enterprise_id),
     )
     if super_group is None:
         return None
@@ -553,10 +580,7 @@ async def connect_ray_account(
 
     try:
         url = get_language_cloud_connect_url(
-            user_id,
-            team_id,
-            enterprise_id,
-            channel_id
+            user_id, team_id, enterprise_id, channel_id
         )
         async with httpx.AsyncClient(timeout=10) as http:
             await http.post(url)

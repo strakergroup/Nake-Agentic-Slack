@@ -1017,27 +1017,27 @@ async def post_job_target_lang(
         if job is not None:
             if len(job.batches):
                 await post_batch_list(
-                        context,
-                        context["ray"].client,
-                        job_id=job_id,
-                        page=1,
-                        page_size=5,
-                    )
+                    context,
+                    context["ray"].client,
+                    job_id=job_id,
+                    page=1,
+                    page_size=5,
+                )
             else:
                 no_job = True
 
             if len(job.translated_file):
                 await post_file_list(
-                        context,
-                        context["ray"].client,
-                        job_id=job_id,
-                        page=1,
-                        page_size=5
-                    )
+                    context,
+                    context["ray"].client,
+                    job_id=job_id,
+                    page=1,
+                    page_size=5
+                )
             else:
                 no_job = True
 
-            if no_job :
+            if no_job:
                 msg = JobTargetLangMessage(job, ray_client.id)
                 if context.response_url:
                     return await context.respond(text=msg.text, blocks=msg.blocks)
@@ -1078,7 +1078,7 @@ async def post_report_insights(
     channel_id: str | None = None,
     thread_ts: str | None = None,
 ):
-    """ Show Insight message modal.
+    """Show Insight message modal.
 
     Args:
         context (AsyncBoltContext): The context from the listener.

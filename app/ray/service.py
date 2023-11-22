@@ -46,10 +46,16 @@ class RayService:
     # Cache of RayServices. The key is a tuple of ray_client_id and token.
     services: dict[tuple[str, str], "RayService"] = {}
 
-    def __init__(self, ray_client_id: str | None, token: str | None, lc_token: str | None) -> None:
+    def __init__(
+        self, ray_client_id: str | None, token: str | None, id_token: str | None
+    ) -> None:
         self._ray_client_id = ray_client_id
-        self._ray = RayV3(api_token=token, base_url=domains.stingray,
-                          lc_api_id_token=lc_token, lc_base_url=domains.languagecloud_api)
+        self._ray = RayV3(
+            api_token=token,
+            lc_api_id_token=id_token,
+            base_url=domains.stingray,
+            lc_base_url=domains.languagecloud_api,
+        )
 
     @property
     def ray_client_id(self) -> str | None:
@@ -240,7 +246,10 @@ class RayService:
 
     @classmethod
     def get_service(
-        cls, ray_client: RayClient | str, token: str | None = None
+        cls,
+        ray_client: RayClient | str,
+        token: str | None = None,
+        id_token: str | None = None,
     ) -> "RayService":
         """Gets the RayService instance for a particular RAY client. Instances
         created with this method are cached. Can pass either a RayClient
@@ -259,19 +268,19 @@ class RayService:
             ray_client.id if isinstance(ray_client, RayClient) else ray_client
         )
         token = ray_client.access_token if isinstance(ray_client, RayClient) else token
-        if not ray_client_id or not token:
+        id_token = (
+            ray_client.id_token if isinstance(ray_client, RayClient) else id_token
+        )
+        if not ray_client_id or not token or not id_token:
             raise ValueError(
                 "Either a RayClient or a RAY client ID and token combination"
                 "must be given"
             )
-
-        lc_token = encrpyt_slack_integration_token(
-            user_id=ray_client.slack_user_id, team_id=ray_client.slack_team_id, enterprise_id=ray_client.slack_enterprise_id, channel_id=ray_client.slack_team_id)
-
-        key = (ray_client_id, token, lc_token)
+        key = (ray_client_id, token, id_token)
         if key not in cls.services:
-            cls.services[key] = cls(ray_client_id=ray_client_id,
-                                    token=token, lc_token=lc_token)
+            cls.services[key] = cls(
+                ray_client_id=ray_client_id, token=token, id_token=id_token
+            )
         return cls.services[key]
 
 
@@ -297,7 +306,10 @@ async def get_job_predictions(job_ids: list[str]) -> list[dict[str, Any]]:
     job_predictions = [
         {"job_id": job_id.upper(), "prediction": ""} for job_id in job_ids
     ]
-    if config.environment == Environment.production or config.environment == Environment.local:
+    if (
+        config.environment == Environment.production
+        or config.environment == Environment.local
+    ):
         # Disable predictions on live for now.
         return job_predictions
     try:
