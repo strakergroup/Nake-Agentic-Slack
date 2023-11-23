@@ -147,17 +147,12 @@ async def respond_to_message(
         case "Machine_Translate":
             # splict target and source language from the text
             try:
-                message_match = re.match(
-                    r'^mt\s[a-zA-Z_]+\sto\s[a-zA-Z_]+\stranslate:', message["text"], re.I)
+                message_match = re.findall(
+                    r'(mt|Mt|mT|MT)\s(\w+)?(\s\w+)?\sto\s(\w+)(\s\w+)?\stranslate:\s?(.*)', message["text"], re.I)
                 if message_match is not None:
-                    mt_sl = ''
-                    mt_tl = ''
-                    mt_text = message["text"].split(':')
-                    lang_info = mt_text[0].split(' ')
-                    for i, val in enumerate(lang_info):
-                        if val == 'to':
-                            mt_sl = lang_info[i-1]
-                            mt_tl = lang_info[i+1]
+                    mt_sl = message_match[-1][1]+message_match[-1][2]
+                    mt_tl = message_match[-1][3]+message_match[-1][4]
+                    mt_text = message_match[-1][-1]
 
                     await get_mt_translation(
                         context,
@@ -168,7 +163,7 @@ async def respond_to_message(
                         thread_ts=thread_ts,
                     )
                 else:
-                    await context.say('Invalid machine translation request. Please try "Mt source_lang to target_lang translate: sentence."', thread_ts=thread_ts)
+                    await context.say('Invalid machine translation request. Please try "Mt source language to target language translate: sentence."', thread_ts=thread_ts)
             except Exception as e:
                 # Default to Watson Assistant fallback response if no other matches.
                 await context.say(response.reply, thread_ts=thread_ts)
