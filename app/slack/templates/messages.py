@@ -151,32 +151,30 @@ class LoginMessage(SlackMessage):
                 "You can connect a different account by clicking this button."
             )
             if ray_client.sso:
-                block_text = (
-                    f"Your connected LanguageCloud account is: <{domains.languagecloud}/auth/slacksso?e={ray_client.username}|{ray_client.username}>."
-                )
+                block_text = f"Your connected LanguageCloud account is: <{domains.languagecloud}/auth/slacksso?e={ray_client.username}|{ray_client.username}>."
         msg = [
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": block_text},
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Connect LanguageCloud account",
-                            },
-                            "style": "primary",
-                            "url": get_language_cloud_connect_url(
-                                user_id, team_id, enterprise_id, channel_id
-                            ),
-                            "action_id": "login",
-                        }
-                    ],
-                },
-            ]
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": block_text},
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Connect LanguageCloud account",
+                        },
+                        "style": "primary",
+                        "url": get_language_cloud_connect_url(
+                            user_id, team_id, enterprise_id, channel_id
+                        ),
+                        "action_id": "login",
+                    }
+                ],
+            },
+        ]
         if enterprise_id:
             if enterprise_id == "E04RDMG8XP1" and ray_client is None:
                 msg[1]["elements"].append(
@@ -184,13 +182,17 @@ class LoginMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Connect via SSO",
+                            "text": "Direct Login",
                         },
                         "style": "primary",
                         "action_id": "login_sso",
                     }
                 )
-            elif enterprise_id == "E04RDMG8XP1" and ray_client is not None and ray_client.sso:
+            elif (
+                enterprise_id == "E04RDMG8XP1"
+                and ray_client is not None
+                and ray_client.sso
+            ):
                 msg.pop(1)
         elif team_id == "T04QVSH7XDF" and ray_client is None:
             msg[1]["elements"].append(
@@ -198,7 +200,7 @@ class LoginMessage(SlackMessage):
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": "Connect via SSO",
+                        "text": "Direct Login",
                     },
                     "style": "primary",
                     "action_id": "login_sso",
@@ -242,93 +244,78 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
-                        "text": "Welcome :wave: \n\nChoose an option below to get started."
-                    }
+                        "text": "Welcome :wave: \n\nChoose an option below to get started.",
+                    },
                 },
+                {"type": "divider"},
                 {
-                    "type": "divider"
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). ",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "emoji": True, "text": "Search"},
+                        "action_id": "job_search",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). "
+                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs.",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "emoji": True, "text": "Jobs"},
+                        "action_id": "all_summary",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🗂️ Quote opens the form to upload documents for translation.",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Quote"},
+                        "action_id": "new_job",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Search"
+                            "text": "Insights",
                         },
-                        "action_id": "job_search"
-                    }
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs."
+                        "action_id": "report_insights",
                     },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "Jobs"
-                        },
-                        "action_id": "all_summary"
-                    }
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation."
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*",
                     },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Quote"
-                        },
-                        "action_id": "new_job"
-                    }
                 },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience"
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "Insights"
-                        },
-                        "action_id": "report_insights"
-                    }
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*"
-                    }
-                },
-                {
-                    "type": "divider"
-                },
+                {"type": "divider"},
                 {
                     "type": "section",
                     "block_id": "sectionBlockOnlyMrkdwn",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*"
-                    }
-                }
+                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*",
+                    },
+                },
             ],
         )
 
@@ -347,93 +334,78 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
-                        "text": "Welcome :wave: \n\nChoose an option below to get started."
-                    }
+                        "text": "Welcome :wave: \n\nChoose an option below to get started.",
+                    },
                 },
+                {"type": "divider"},
                 {
-                    "type": "divider"
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). ",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "emoji": True, "text": "Search"},
+                        "action_id": "job_search",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). "
+                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs.",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "emoji": True, "text": "Jobs"},
+                        "action_id": "all_summary",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🗂️ Quote opens the form to upload documents for translation.",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Quote"},
+                        "action_id": "new_job",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Search"
+                            "text": "Insights",
                         },
-                        "action_id": "job_search"
-                    }
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs."
+                        "action_id": "report_insights",
                     },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "Jobs"
-                        },
-                        "action_id": "all_summary"
-                    }
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation."
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*",
                     },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Quote"
-                        },
-                        "action_id": "new_job"
-                    }
                 },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience"
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "Insights"
-                        },
-                        "action_id": "report_insights"
-                    }
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*"
-                    }
-                },
-                {
-                    "type": "divider"
-                },
+                {"type": "divider"},
                 {
                     "type": "section",
                     "block_id": "sectionBlockOnlyMrkdwn",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*"
-                    }
-                }
+                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*",
+                    },
+                },
             ],
         )
 
@@ -485,7 +457,9 @@ class LogoutMessage(SlackMessage):
 class SuccessfulLogoutMessage(SlackMessage):
     """A Slack user's LanguageCloud account was successfully disconnected."""
 
-    def __init__(self, user_id: str, is_sso: bool = False, ray_username: str | None = None) -> None:
+    def __init__(
+        self, user_id: str, is_sso: bool = False, ray_username: str | None = None
+    ) -> None:
         text = f"Your LanguageCloud account <{domains.languagecloud}|{ray_username}> is now disconnected from <@{user_id}>."
         if is_sso:
             text = f"Your LanguageCloud account <{domains.languagecloud}/auth/slacksso?e={ray_username}|{ray_username}> is now disconnected from <@{user_id}>."
@@ -1310,83 +1284,68 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔍 Status allows you to search for a specific job. "
+                        "text": "🔍 Status allows you to search for a specific job. ",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Status"
-                        },
-                        "action_id" : "job_search"
-                    }
+                        "text": {"type": "plain_text", "text": "Status"},
+                        "action_id": "job_search",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs."
+                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs.",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Jobs"
-                        },
-                        "action_id" : "all_summary"
-                    }
+                        "text": {"type": "plain_text", "text": "Jobs"},
+                        "action_id": "all_summary",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation."
+                        "text": "🗂️ Quote opens the form to upload documents for translation.",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Quote"
-                        },
-                        "action_id" : "quote"
-                    }
+                        "text": {"type": "plain_text", "text": "Quote"},
+                        "action_id": "quote",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience"
+                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Insights"
-                        },
-                        "action_id": "report_insights"
-                    }
+                        "text": {"type": "plain_text", "text": "Insights"},
+                        "action_id": "report_insights",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": ":globe_with_meridians: View your LanguageCloud connection."
+                        "text": ":globe_with_meridians: View your LanguageCloud connection.",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Info"
-                        },
-                        "action_id": "account_info"
-                    }
+                        "text": {"type": "plain_text", "text": "Info"},
+                        "action_id": "account_info",
+                    },
                 },
                 {
                     "type": "section",
                     "block_id": "sectionBlockWithButton",
                     "text": {
                         "type": "mrkdwn",
-                        "text": ":Seedling: Connect your LanguageCloud account"
+                        "text": ":Seedling: Connect your LanguageCloud account",
                     },
                     "accessory": {
                         "type": "button",
@@ -1400,7 +1359,7 @@ class HelpMessage(SlackMessage):
                             context.get("enterprise_id"),
                             context["channel_id"],
                         ),
-                    }
+                    },
                 },
                 {"type": "divider"},
                 {
@@ -1932,11 +1891,14 @@ class BatchListMessage(SlackMessage):
             elif (
                 job.status != "COMPLETED"
                 and batch["generated_file"] != ""
-                and batch["batch_status"] in ("TRANSLATED", "REVIEWED", "QA_REVIEWED", "VALIDATED", "VALIDATED 2")
+                and batch["batch_status"]
+                in ("TRANSLATED", "REVIEWED", "QA_REVIEWED", "VALIDATED", "VALIDATED 2")
             ):
                 job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()} - <{download_prefix + batch['generated_file']}|DOWNLOAD>"
             else:
-                job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()}"
+                job_text += (
+                    f"\n    - {job.status.upper()} - {batch['batch_status'].upper()}"
+                )
 
         job_file_block.append(
             {
@@ -2095,19 +2057,11 @@ class FileListMessage(SlackMessage):
 
 class ReportInsightsMessage(SlackMessage):
     def __init__(self, plan: str) -> None:
-            if plan == "Free":
-                message = "The insights feature is only avaiable on the Growth and Enterprise plans."
-            else:
-                message = "Use can use the message pane below to type your insights request using natural language. Get turn around times, cost, or validation quality. An example:\n>Can you tell me how many jobs have been delivered on time in the last 30 days"
-            super().__init__(
-                f":idea: Here are your insights",
-                [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": message
-                        }
-                    }
-                ],
-            )
+        if plan == "Free":
+            message = "The insights feature is only avaiable on the Growth and Enterprise plans."
+        else:
+            message = "Use can use the message pane below to type your insights request using natural language. Get turn around times, cost, or validation quality. An example:\n>Can you tell me how many jobs have been delivered on time in the last 30 days"
+        super().__init__(
+            f":idea: Here are your insights",
+            [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
+        )

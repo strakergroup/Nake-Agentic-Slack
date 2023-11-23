@@ -71,26 +71,26 @@ def home_auth_blocks(
             ],
         },
     ]
-    if(enterprise_id):
-        if(enterprise_id == "E04RDMG8XP1"):
+    if enterprise_id:
+        if enterprise_id == "E04RDMG8XP1":
             msg[1]["elements"].append(
                 {
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": "Connect via SSO",
+                        "text": "Direct Login",
                     },
                     "style": "primary",
                     "action_id": "login_sso",
                 }
             )
-    elif(team_id == "T04QVSH7XDF"):
+    elif team_id == "T04QVSH7XDF":
         msg[1]["elements"].append(
             {
                 "type": "button",
                 "text": {
                     "type": "plain_text",
-                    "text": "Connect via SSO",
+                    "text": "Direct Login",
                 },
                 "style": "primary",
                 "action_id": "login_sso",
