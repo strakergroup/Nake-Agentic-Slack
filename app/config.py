@@ -124,9 +124,7 @@ class StrakerConfig(BaseSettings):
                 sql,
                 {
                     "name": "languagecloud_api",
-                    "env": "live"
-                    if values["environment"] == Environment.production
-                    else values["environment"].value,
+                    "env": values["environment"].value
                 },
             )
             row = result.first()
