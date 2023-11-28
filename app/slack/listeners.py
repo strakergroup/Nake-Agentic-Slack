@@ -113,7 +113,7 @@ async def home_opened(event, action, context, body, say, client):
     else:
         history_last_24_hours = await client.conversations_history(
             channel=event.get("channel"),
-            oldest=int((datetime.now() - timedelta(hours=24)).timestamp()) ,
+            oldest=int((datetime.now() - timedelta(hours=24)).timestamp()),
             latest=int(datetime.now().timestamp())
         )
         if not history_last_24_hours.get("messages"):
@@ -582,7 +582,7 @@ async def handle_job_search(ack, view, context, client):
             r"\d+", reference, re.IGNORECASE
         ):
             await post_job_status(context, context["ray"].client, "TJ"+reference)
-        else :
+        else:
             client.chat_postMessage(
                 channel=context["user_id"],
                 text="TJ Number is in incorrect format. E.g. TJ123456 or 123456",

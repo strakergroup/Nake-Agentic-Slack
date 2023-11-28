@@ -67,6 +67,30 @@ async def respond_to_message(
             await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
         return
 
+    # process mt
+    message_match = re.findall(
+        r'(mt|Mt|mT|MT)\s(\w+)?(\s\w+)?\sto\s(\w+)(\s\w+)?\stranslate:\s?(.*)', message["text"], re.I)
+
+    if len(message_match) > 0:
+        if len(message_match[-1][2].strip()) > 0:
+            mt_sl = message_match[-1][1]+"_"+message_match[-1][2].strip()
+        else:
+            mt_sl = message_match[-1][1]
+        if len(message_match[-1][4].strip()) > 0:
+            mt_tl = message_match[-1][3]+"_"+message_match[-1][4].strip()
+        else:
+            mt_tl = message_match[-1][3]
+        mt_text = message_match[-1][-1]
+        await get_mt_translation(
+            context,
+            context["ray"].client,
+            source_lang=mt_sl,
+            target_lang=mt_tl,
+            sentence=mt_text,
+            thread_ts=thread_ts,
+        )
+        return
+
     response = watson_message(message["text"], context.get("user_id"))
     context["log"].set_watson_log(
         status_code=response.status_code,
@@ -144,31 +168,31 @@ async def respond_to_message(
         case "Jokes":
             # Delegate jokes to IBM Watson Assistant dialog.
             await context.say(response.reply, thread_ts=thread_ts)
-        case "Machine_Translate":
+        # case "Machine_Translate":
             # splict target and source language from the text
-            try:
-                message_match = re.findall(
-                    r'(mt|Mt|mT|MT)\s(\w+)?(\s\w+)?\sto\s(\w+)(\s\w+)?\stranslate:\s?(.*)', message["text"], re.I)
-                if message_match is not None:
-                    mt_sl = message_match[-1][1]+message_match[-1][2]
-                    mt_tl = message_match[-1][3]+message_match[-1][4]
-                    mt_text = message_match[-1][-1]
+            # try:
+            #     message_match = re.findall(
+            #         r'(mt|Mt|mT|MT)\s(\w+)?(\s\w+)?\sto\s(\w+)(\s\w+)?\stranslate:\s?(.*)', message["text"], re.I)
+            #     if message_match is not None:
+            #         mt_sl = message_match[-1][1]+message_match[-1][2]
+            #         mt_tl = message_match[-1][3]+message_match[-1][4]
+            #         mt_text = message_match[-1][-1]
 
-                    await get_mt_translation(
-                        context,
-                        context["ray"].client,
-                        source_lang=mt_sl,
-                        target_lang=mt_tl,
-                        sentence=mt_text[1],
-                        thread_ts=thread_ts,
-                    )
-                else:
-                    await context.say('Invalid machine translation request. Please try "Mt source language to target language translate: sentence."', thread_ts=thread_ts)
-            except Exception as e:
-                # Default to Watson Assistant fallback response if no other matches.
-                await context.say(response.reply, thread_ts=thread_ts)
-                notify_exception(
-                    e, "Failed to get machine translation from watson response")
+            #         await get_mt_translation(
+            #             context,
+            #             context["ray"].client,
+            #             source_lang=mt_sl,
+            #             target_lang=mt_tl,
+            #             sentence=mt_text[1],
+            #             thread_ts=thread_ts,
+            #         )
+            #     else:
+            #         await context.say('Invalid machine translation request. Please try "Mt source language to target language translate: sentence."', thread_ts=thread_ts)
+            # except Exception as e:
+            #     # Default to Watson Assistant fallback response if no other matches.
+            #     await context.say(response.reply, thread_ts=thread_ts)
+            #     notify_exception(
+            #         e, "Failed to get machine translation from watson response")
         case _:
             if tj_number_entity := response.findEntity("tj-number"):
                 # Show the job status if only a job id is entered.

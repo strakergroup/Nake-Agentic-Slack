@@ -240,6 +240,7 @@ class RayService:
             target_lang=target_lang,
             source_lang=source_lang,
             sentence=sentence,
+            app_name="slack",
         )
 
         return response.data, response.response
