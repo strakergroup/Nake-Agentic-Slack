@@ -195,6 +195,23 @@ class LoginMessage(SlackMessage):
                 and ray_client.sso
             ):
                 msg.pop(1)
+                msg.append(
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "Login to LanguageCloud",
+                                },
+                                "style": "primary",
+                                "url": encrpyt_slack_sso_token(ray_client.username),
+                                "action_id": "login",
+                            }
+                        ],
+                    },
+                )
         elif team_id == "T04QVSH7XDF" and ray_client is None:
             msg[1]["elements"].append(
                 {
@@ -209,6 +226,23 @@ class LoginMessage(SlackMessage):
             )
         elif team_id == "T04QVSH7XDF" and ray_client is not None and ray_client.sso:
             msg.pop(1)
+            msg.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Login to LanguageCloud",
+                            },
+                            "style": "primary",
+                            "url": encrpyt_slack_sso_token(ray_client.username),
+                            "action_id": "login",
+                        }
+                    ],
+                },
+            )
         super().__init__(
             "Connect your LanguageCloud account",
             msg,
@@ -1548,19 +1582,33 @@ class SsoConnectionInfoMessage(SlackMessage):
         self,
         ray_connection: RayConnection | None,
     ) -> None:
-        # Next get Slack user - LanguageCloud account info.
-        account_blocks = []
         if ray_connection is not None and ray_connection.client is not None:
             text = f"Your connected LanguageCloud account is: <{encrpyt_slack_sso_token(ray_connection.client.username)}|{ray_connection.client.username}>"
-            account_blocks.append(
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": text},
-                }
-            )
+
+        msg = [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": text},
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Login to LanguageCloud",
+                        },
+                        "style": "primary",
+                        "url": encrpyt_slack_sso_token(ray_connection.client.username),
+                        "action_id": "login",
+                    }
+                ],
+            },
+        ]
         super().__init__(
-            text,
-            [*account_blocks],
+            "Login to LanguageCloud",
+            msg,
         )
 
 
