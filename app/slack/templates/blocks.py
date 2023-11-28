@@ -4,7 +4,11 @@
 
 from typing import Any
 from ray_sdk.api.v3.models import Quote
-from ...auth.connector import get_language_cloud_connect_url, RayConnection
+from ...auth.connector import (
+    get_language_cloud_connect_url,
+    RayConnection,
+    encrpyt_slack_sso_token,
+)
 from ...config import domains
 from ...ray.utils import (
     get_job_url,
@@ -28,7 +32,7 @@ def home_auth_blocks(
         super_group_names_str = ", ".join(super_group_names)
         text = f"Your Slack account <@{user_id}> is connected with: <{domains.languagecloud}|{ray_connection.client.username}>."
         if ray_connection.client.sso:
-            text = f"Your Slack account <@{user_id}> is connected with: <{domains.languagecloud}/auth/slacksso?e={ray_connection.client.username}|{ray_connection.client.username}>."
+            text = f"Your Slack account <@{user_id}> is connected with: <{encrpyt_slack_sso_token(ray_connection.client.username)}|{ray_connection.client.username}>."
         return [
             {
                 "type": "section",

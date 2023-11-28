@@ -1116,3 +1116,20 @@ def crete_slack_logs_sso(user_data: str, member_id: str, message: str):
             message=message,
         )
         conn.execute(sql)
+
+
+def encrpyt_slack_sso_token(
+    email_id: str,
+) -> str:
+    """Generates sso token to allow the Slack app users to communicate
+    with the RAY platform securely.
+
+    Args:
+        email_id (str): The Slack user Email ID.
+
+    Returns:
+        str: The encrypted token.
+    """
+    data = {"email_id": email_id}
+    params = {"token": encrypt_aes(json.dumps(data), config.slack_deltaray_key)}
+    return f"{domains.languagecloud}/auth/slacksso?{urlencode(params)}"
