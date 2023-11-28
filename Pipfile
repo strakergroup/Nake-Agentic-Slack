@@ -26,7 +26,7 @@ cryptography = "*"
 python-dateutil = "*"
 babel = "*"
 straker-utils = {version = "==0.1.15", index = "straker"}
-ray-sdk = {version = "==0.3.7", index = "straker"}
+ray-sdk = {version = "==0.3.9", index = "straker"}
 ray-logger = {version = "==0.1.2", index = "straker"}
 straker-auth = {version = "==0.1.5", index = "straker"}
 buglog = {version = "==0.1.1", index = "straker"}
