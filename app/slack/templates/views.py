@@ -640,9 +640,6 @@ def sso_form_modal() -> dict[str, Any]:
     select the files they want to translate and enter the job details, e.g.
     category, source and target languages.
 
-    Args:
-        client_name (str): The user's LanguageCloud username.
-
     Returns:
         dict: The view dict.
     """
@@ -657,7 +654,6 @@ def sso_form_modal() -> dict[str, Any]:
                     "type": "email_text_input",
                     "action_id": "email",
                     "placeholder": {"type": "plain_text", "text": "Email"},
-                    "min_length": 5,
                 },
                 "label": {"type": "plain_text", "text": "Email"},
                 "optional": False,
