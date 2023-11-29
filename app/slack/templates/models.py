@@ -185,3 +185,31 @@ class NewJobForm(BaseModel):
             )
         except KeyError as e:
             raise ValueError("The Slack payload format is incorrect") from e
+
+
+class SsoLoginForm(BaseModel):
+    """The model for a sso login form."""
+
+    email: str | None = None
+    firstName: str | None = None
+    lastName: str | None = None
+
+    @classmethod
+    def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "SsoLoginForm":
+        """Parses a view submission payload from Slack.
+
+        Args:
+            values (dict): The input values payload from the Slack API
+            (`view["state"]["values"]`).
+
+        Returns:
+            SsoLoginForm: An instance parsed and validated from the Slack payload.
+        """
+        try:
+            return cls(
+                email=values["email"]["email"]["value"],
+                firstName=values["firstName"]["firstName"]["value"],
+                lastName=values["lastName"]["lastName"]["value"],
+            )
+        except KeyError as e:
+            raise ValueError("The Slack payload format is incorrect") from e

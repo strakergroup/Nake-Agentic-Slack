@@ -35,6 +35,7 @@ from .templates.messages import (
 from .templates.models import NewJobForm
 from .templates.views import new_job_modal
 from .templates.views import job_search_modal
+from .templates.views import sso_form_modal
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
 from ..config import config, domains, Environment
@@ -995,3 +996,16 @@ async def post_report_insights(
     asyncio.create_task(send_insights_message())
 
     return response
+
+
+async def show_sso_form_modal(context: AsyncBoltContext, trigger_id: str):
+    """Show the quote form (new job form) modal.
+
+    Args:
+        context (AsyncBoltContext): The context from the listener.
+        trigger_id (str): The trigger ID.
+    """
+    await context.client.views_open(
+        trigger_id=trigger_id,
+        view=sso_form_modal(),
+    )
