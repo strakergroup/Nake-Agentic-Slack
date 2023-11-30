@@ -754,7 +754,9 @@ async def show_quote_form_modal(
             Only works with DM with the bot, not channels or groups.
     """
     # Include a bit more than the max 100 options due to hidden files.
-    files = await files_list_simple(context.client, count=110)
+    # TODO: This causes trigger timeout. Figure out better way to handle this
+    # files = await files_list_simple(context.client, count=110 )
+    files = []
     # Set initial selected files.
     if not initial_files and check_last_messages > 0:
         # Check last 100 messages maximum.
