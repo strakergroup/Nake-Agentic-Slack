@@ -70,11 +70,11 @@ def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "📊 Reports/Insights"
+                            "text": "📊 Reports/Insights",
                         },
                         "action_id": "report_insights",
                         "url": message_url,
-                    }
+                    },
                 ],
             },
             {"type": "divider"},
@@ -124,6 +124,7 @@ def home_view(
         ],
     }
 
+
 def job_search_modal(
     client_name: str,
 ) -> dict[str, Any]:
@@ -172,6 +173,7 @@ def job_search_modal(
             },
         ],
     }
+
 
 def new_job_modal(
     client_name: str,
@@ -630,4 +632,59 @@ def new_job_modal(
             #     "label": {"type": "plain_text", "text": "Category", "emoji": True},
             # },
         ],
+    }
+
+
+def sso_form_modal() -> dict[str, Any]:
+    """The template for the modal to submit a new translation job. The user can
+    select the files they want to translate and enter the job details, e.g.
+    category, source and target languages.
+
+    Returns:
+        dict: The view dict.
+    """
+    return {
+        "title": {"type": "plain_text", "text": "Direct Login"},
+        "submit": {"type": "plain_text", "text": "Submit"},
+        "blocks": [
+            {
+                "type": "input",
+                "block_id": "email",
+                "element": {
+                    "type": "email_text_input",
+                    "action_id": "email",
+                    "placeholder": {"type": "plain_text", "text": "Email"},
+                },
+                "label": {"type": "plain_text", "text": "Email"},
+                "optional": False,
+            },
+            {
+                "type": "input",
+                "block_id": "firstName",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "firstName",
+                    "placeholder": {"type": "plain_text", "text": "First Name"},
+                    "min_length": 3,
+                    "max_length": 50,
+                },
+                "label": {"type": "plain_text", "text": "First Name"},
+                "optional": False,
+            },
+            {
+                "type": "input",
+                "block_id": "lastName",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "lastName",
+                    "placeholder": {"type": "plain_text", "text": "Last Name"},
+                    "min_length": 3,
+                    "max_length": 50,
+                },
+                "label": {"type": "plain_text", "text": "Last Name"},
+                "optional": False,
+            },
+        ],
+        "type": "modal",
+        "callback_id": "login_sso",
     }

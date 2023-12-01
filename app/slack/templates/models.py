@@ -1,5 +1,5 @@
 from typing import Any
-from pydantic import BaseModel, ValidationError, validator
+from pydantic import BaseModel, ValidationError, validator, EmailStr, Field
 from ray_sdk.api.v3.file import is_valid_file_ext
 
 
@@ -182,6 +182,34 @@ class NewJobForm(BaseModel):
                     "value"
                 ],
                 # category=values["category"]["category"]["selected_option"]["value"],
+            )
+        except KeyError as e:
+            raise ValueError("The Slack payload format is incorrect") from e
+
+
+class SsoLoginForm(BaseModel):
+    """The model for a sso login form."""
+
+    email: EmailStr
+    firstName: str = Field(min_length=3, max_length=55, regex="^[^*<>\\%$##!();}{\[\]&\"]*$")
+    lastName: str = Field(min_length=3, max_length=55, regex="^[^*<>\\%$##!();}{\[\]&\"]*$")
+
+    @classmethod
+    def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "SsoLoginForm":
+        """Parses a view submission payload from Slack.
+
+        Args:
+            values (dict): The input values payload from the Slack API
+            (`view["state"]["values"]`).
+
+        Returns:
+            SsoLoginForm: An instance parsed and validated from the Slack payload.
+        """
+        try:
+            return cls(
+                email=values["email"]["email"]["value"],
+                firstName=values["firstName"]["firstName"]["value"],
+                lastName=values["lastName"]["lastName"]["value"],
             )
         except KeyError as e:
             raise ValueError("The Slack payload format is incorrect") from e

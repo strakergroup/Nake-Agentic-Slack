@@ -27,6 +27,7 @@ from ...auth.connector import (
     RayClient,
     RayConnection,
     get_language_cloud_connect_url,
+    encrpyt_slack_sso_token,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
 
@@ -150,14 +151,82 @@ class LoginMessage(SlackMessage):
                 f"Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_client.username}>.\n"
                 "You can connect a different account by clicking this button."
             )
-
-        super().__init__(
-            "Connect your LanguageCloud account",
-            [
+            if ray_client.sso:
+                block_text = f"Your connected LanguageCloud account is: <{encrpyt_slack_sso_token(ray_client.username)}|{ray_client.username}>."
+        msg = [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": block_text},
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Connect LanguageCloud account",
+                        },
+                        "style": "primary",
+                        "url": get_language_cloud_connect_url(
+                            user_id, team_id, enterprise_id, channel_id
+                        ),
+                        "action_id": "login",
+                    }
+                ],
+            },
+        ]
+        if enterprise_id:
+            if enterprise_id == "E04RDMG8XP1" and ray_client is None:
+                msg[1]["elements"].append(
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Direct Login",
+                        },
+                        "style": "primary",
+                        "action_id": "login_sso",
+                    }
+                )
+            elif (
+                enterprise_id == "E04RDMG8XP1"
+                and ray_client is not None
+                and ray_client.sso
+            ):
+                msg.pop(1)
+                msg.append(
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "Login to LanguageCloud",
+                                },
+                                "style": "primary",
+                                "url": encrpyt_slack_sso_token(ray_client.username),
+                                "action_id": "login",
+                            }
+                        ],
+                    },
+                )
+        elif team_id == "T04QVSH7XDF" and ray_client is None:
+            msg[1]["elements"].append(
                 {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": block_text},
-                },
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Direct Login",
+                    },
+                    "style": "primary",
+                    "action_id": "login_sso",
+                }
+            )
+        elif team_id == "T04QVSH7XDF" and ray_client is not None and ray_client.sso:
+            msg.pop(1)
+            msg.append(
                 {
                     "type": "actions",
                     "elements": [
@@ -165,17 +234,18 @@ class LoginMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Connect LanguageCloud account",
+                                "text": "Login to LanguageCloud",
                             },
                             "style": "primary",
-                            "url": get_language_cloud_connect_url(
-                                user_id, team_id, enterprise_id, channel_id
-                            ),
+                            "url": encrpyt_slack_sso_token(ray_client.username),
                             "action_id": "login",
                         }
                     ],
                 },
-            ],
+            )
+        super().__init__(
+            "Connect your LanguageCloud account",
+            msg,
         )
 
     def with_variation(self, variation: str | None) -> "LoginMessage":
@@ -209,49 +279,67 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
-                        "text": "Welcome :wave: \n\nChoose an option below to get started."
-                    }
+                        "text": "Welcome :wave: \n\nChoose an option below to get started.",
+                    },
                 },
+                {"type": "divider"},
                 {
-                    "type": "divider"
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). ",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "emoji": True, "text": "Search"},
+                        "action_id": "job_search",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). "
+                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs.",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "emoji": True, "text": "Jobs"},
+                        "action_id": "all_summary",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🗂️ Quote opens the form to upload documents for translation.",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Quote"},
+                        "action_id": "new_job",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Search"
+                            "text": "Insights",
                         },
-                        "action_id": "job_search"
-                    }
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs."
+                        "action_id": "report_insights",
                     },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "Jobs"
-                        },
-                        "action_id": "all_summary"
-                    }
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation."
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*",
                     },
                     "accessory": {
                         "type": "button",
@@ -288,14 +376,15 @@ class WelcomeBackMessage(SlackMessage):
                 {
                     "type": "divider"
                 },
+                {"type": "divider"},
                 {
                     "type": "section",
                     "block_id": "sectionBlockOnlyMrkdwn",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*"
-                    }
-                }
+                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*",
+                    },
+                },
             ],
         )
 
@@ -314,49 +403,67 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
-                        "text": "Welcome :wave: \n\nChoose an option below to get started."
-                    }
+                        "text": "Welcome :wave: \n\nChoose an option below to get started.",
+                    },
                 },
+                {"type": "divider"},
                 {
-                    "type": "divider"
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). ",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "emoji": True, "text": "Search"},
+                        "action_id": "job_search",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). "
+                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs.",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "emoji": True, "text": "Jobs"},
+                        "action_id": "all_summary",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🗂️ Quote opens the form to upload documents for translation.",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Quote"},
+                        "action_id": "new_job",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Search"
+                            "text": "Insights",
                         },
-                        "action_id": "job_search"
-                    }
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs."
+                        "action_id": "report_insights",
                     },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "Jobs"
-                        },
-                        "action_id": "all_summary"
-                    }
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation."
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*",
                     },
                     "accessory": {
                         "type": "button",
@@ -393,14 +500,15 @@ class SuccessfulLoginMessage(SlackMessage):
                 {
                     "type": "divider"
                 },
+                {"type": "divider"},
                 {
                     "type": "section",
                     "block_id": "sectionBlockOnlyMrkdwn",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*"
-                    }
-                }
+                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*",
+                    },
+                },
             ],
         )
 
@@ -408,7 +516,10 @@ class SuccessfulLoginMessage(SlackMessage):
 class LogoutMessage(SlackMessage):
     """Message with a button disconnect a user's LanguageCloud account."""
 
-    def __init__(self, ray_username: str) -> None:
+    def __init__(self, ray_client: RayClient | None = None) -> None:
+        text = f"Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_client.username}>."
+        if ray_client.sso:
+            text = f"Click this button to disconnect your LanguageCloud account: <{encrpyt_slack_sso_token(ray_client.username)}|{ray_client.username}>."
         super().__init__(
             "Disconnect your LanguageCloud account",
             [
@@ -416,7 +527,7 @@ class LogoutMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_username}>.",
+                        "text": text,
                     },
                 },
                 {
@@ -430,7 +541,7 @@ class LogoutMessage(SlackMessage):
                             },
                             "style": "danger",
                             "action_id": "disconnect",
-                            "value": ray_username,
+                            "value": ray_client.username,
                         },
                         {
                             "type": "button",
@@ -449,9 +560,14 @@ class LogoutMessage(SlackMessage):
 class SuccessfulLogoutMessage(SlackMessage):
     """A Slack user's LanguageCloud account was successfully disconnected."""
 
-    def __init__(self, user_id: str, ray_username: str | None = None) -> None:
+    def __init__(
+        self, user_id: str, is_sso: bool = False, ray_username: str | None = None
+    ) -> None:
+        text = f"Your LanguageCloud account <{domains.languagecloud}|{ray_username}> is now disconnected from <@{user_id}>."
+        if is_sso:
+            text = f"Your LanguageCloud account <{encrpyt_slack_sso_token(ray_username)}|{ray_username}> is now disconnected from <@{user_id}>."
         block_message = (
-            f"Your LanguageCloud account <{domains.languagecloud}|{ray_username}> is now disconnected from <@{user_id}>."
+            text
             if ray_username
             else f"Your LanguageCloud account is now disconnected from <@{user_id}>."
         )
@@ -1271,83 +1387,68 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔍 Status allows you to search for a specific job. "
+                        "text": "🔍 Status allows you to search for a specific job. ",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Status"
-                        },
-                        "action_id" : "job_search"
-                    }
+                        "text": {"type": "plain_text", "text": "Status"},
+                        "action_id": "job_search",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs."
+                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs.",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Jobs"
-                        },
-                        "action_id" : "all_summary"
-                    }
+                        "text": {"type": "plain_text", "text": "Jobs"},
+                        "action_id": "all_summary",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation."
+                        "text": "🗂️ Quote opens the form to upload documents for translation.",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Quote"
-                        },
-                        "action_id" : "quote"
-                    }
+                        "text": {"type": "plain_text", "text": "Quote"},
+                        "action_id": "quote",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience"
+                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Insights"
-                        },
-                        "action_id": "report_insights"
-                    }
+                        "text": {"type": "plain_text", "text": "Insights"},
+                        "action_id": "report_insights",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": ":globe_with_meridians: View your LanguageCloud connection."
+                        "text": ":globe_with_meridians: View your LanguageCloud connection.",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Info"
-                        },
-                        "action_id": "account_info"
-                    }
+                        "text": {"type": "plain_text", "text": "Info"},
+                        "action_id": "account_info",
+                    },
                 },
                 {
                     "type": "section",
                     "block_id": "sectionBlockWithButton",
                     "text": {
                         "type": "mrkdwn",
-                        "text": ":Seedling: Connect your LanguageCloud account"
+                        "text": ":Seedling: Connect your LanguageCloud account",
                     },
                     "accessory": {
                         "type": "button",
@@ -1361,7 +1462,7 @@ class HelpMessage(SlackMessage):
                             context.get("enterprise_id"),
                             context["channel_id"],
                         ),
-                    }
+                    },
                 },
                 {"type": "divider"},
                 {
@@ -1539,6 +1640,43 @@ class JobQuotedMessage(SlackMessage):
                 },
             ]
             + quote_message_block(quote, job_url),
+        )
+
+
+class SsoConnectionInfoMessage(SlackMessage):
+    """The current Slack - LanguageCloud connection details."""
+
+    def __init__(
+        self,
+        ray_connection: RayConnection | None,
+    ) -> None:
+        if ray_connection is not None and ray_connection.client is not None:
+            text = f"Your connected LanguageCloud account is: <{encrpyt_slack_sso_token(ray_connection.client.username)}|{ray_connection.client.username}>"
+
+        msg = [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": text},
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Login to LanguageCloud",
+                        },
+                        "style": "primary",
+                        "url": encrpyt_slack_sso_token(ray_connection.client.username),
+                        "action_id": "login",
+                    }
+                ],
+            },
+        ]
+        super().__init__(
+            "Login to LanguageCloud",
+            msg,
         )
 
 
@@ -1870,11 +2008,14 @@ class BatchListMessage(SlackMessage):
             elif (
                 job.status != "COMPLETED"
                 and batch["generated_file"] != ""
-                and batch["batch_status"] in ("TRANSLATED", "REVIEWED", "QA_REVIEWED", "VALIDATED", "VALIDATED 2")
+                and batch["batch_status"]
+                in ("TRANSLATED", "REVIEWED", "QA_REVIEWED", "VALIDATED", "VALIDATED 2")
             ):
                 job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()} - <{download_prefix + batch['generated_file']}|DOWNLOAD>"
             else:
-                job_text += f"\n    - {job.status.upper()} - {batch['batch_status'].upper()}"
+                job_text += (
+                    f"\n    - {job.status.upper()} - {batch['batch_status'].upper()}"
+                )
 
         job_file_block.append(
             {

@@ -4,6 +4,7 @@ commands, etc. from the Slack API.
 
 import re
 import json
+import httpx
 
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
@@ -11,7 +12,6 @@ from slack_sdk.errors import SlackApiError
 from ray_sdk import RayAPIResponseError
 from buglog import notify_exception, notify_message
 from datetime import datetime, timedelta
-
 from .app import app
 from .middleware import ray_connection, require_ray_client
 from .listener_actions import (
@@ -28,9 +28,15 @@ from .listener_actions import (
     post_report_insights,
     post_batch_list,
     post_file_list,
+    show_sso_form_modal,
 )
 from .logging import slack_log_decorator
-from .templates.models import NewJobForm, JobSearchForm, convert_pydantic_to_slack_error
+from .templates.models import (
+    NewJobForm,
+    JobSearchForm,
+    convert_pydantic_to_slack_error,
+    SsoLoginForm,
+)
 from .templates.messages import (
     LoginMessage,
     LogoutMessage,
@@ -43,6 +49,7 @@ from .templates.messages import (
     HelpMessage,
     WhatsNextMessage,
     ConnectionInfoMessage,
+    SsoConnectionInfoMessage,
     InvalidCommandMessage,
     ClientApprovedMessage,
     ClientAlreadyApprovedMessage,
@@ -55,8 +62,11 @@ from ..auth.connector import (
     connect_ray_account,
     disconnect_ray_account,
     disconnect_ray_super_group_and_users,
+    connect_ray_account_sso,
+    get_ray_connection,
 )
-
+from ..ray.events.parse import get_ray_event_message
+from slack_bolt.context.async_context import AsyncBoltContext
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -117,9 +127,7 @@ async def home_opened(event, action, context, body, say, client):
             latest=int(datetime.now().timestamp())
         )
         if not history_last_24_hours.get("messages"):
-            message = WelcomeBackMessage(
-                context["user_id"]
-            )
+            message = WelcomeBackMessage(context["user_id"])
             await say(blocks=message.blocks, text=message.text)
         else:
             # There had been some activity in the last 24 hours
@@ -157,6 +165,95 @@ async def new_job_shortcut(ack, shortcut, context, client):
             shortcut["trigger_id"],
             context["ray"].client,
             initial_files=init_files,
+        )
+
+
+@app.block_action("login_sso", middleware=[ray_connection])
+@slack_log_decorator
+async def login_sso_action(ack, context, body, respond):
+    if context["ray"].client is None:
+        await ack()
+        await show_sso_form_modal(context, body["trigger_id"])
+    else:
+        await ack()
+        if context["ray"].client.sso:
+            msg = SsoConnectionInfoMessage(
+                context["ray"],
+            )
+        else:
+            msg = ConnectionInfoMessage(
+                context["ray"],
+                user_id=context["user_id"],
+                team_id=context["team_id"],
+                enterprise_id=context.get("enterprise_id"),
+                channel_id=context["channel_id"],
+            )
+        await respond(text=msg.text, blocks=msg.blocks)
+
+
+@app.view("login_sso", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_login_sso(ack, context: AsyncBoltContext, respond, client, view):
+    try:
+        if "channel_id" not in context:
+            context["channel_id"] = context["user_id"]
+        if context["ray"] is not None:
+            if context["ray"].client is None:
+                try:
+                    form = SsoLoginForm.parse_slack(view["state"]["values"])
+                except ValidationError as e:
+                    errors = convert_pydantic_to_slack_error(e)
+                    await ack(response_action="errors", errors=errors)
+                    return
+                await ack(response_action="clear")
+                ray_user_id = connect_ray_account_sso(
+                    context["user_id"],
+                    context["team_id"],
+                    form.email,
+                    form.firstName,
+                    form.lastName,
+                    context["channel_id"],
+                    context.get("enterprise_id"),
+                )
+                context["ray"] = await get_ray_connection(
+                    context["user_id"],
+                    context["team_id"],
+                    context.get("enterprise_id"),
+                )
+                # Show connection success message
+                sso_msg = SsoConnectionInfoMessage(
+                    context["ray"],
+                )
+                await client.chat_postMessage(
+                    channel=context["channel_id"],
+                    text=sso_msg.text,
+                    blocks=sso_msg.blocks,
+                    replace_original=True,
+                )
+                data = {
+                    "client_id": ray_user_id,
+                    "username": form.email,
+                    "user_id": context["user_id"],
+                    "team_id": context["team_id"],
+                    "channel_id": context["channel_id"],
+                    "enterprise_id": context.get("enterprise_id"),
+                }
+                msg = get_ray_event_message("ray:slack:account_connected", data)
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=msg.text,
+                    blocks=msg.blocks,
+                )
+        else:
+            await ack(response_action="clear")
+            await respond(
+                text="Your organisation requires a Super Group to connect your account to Slack."
+            )
+    except Exception as e:
+        notify_exception(e)
+        await ack()
+        await respond(
+            text="There was an error connecting your account, please try again."
         )
 
 
@@ -211,7 +308,7 @@ async def ray_command(ack, respond, say, command, context, client):
         case ["logout" | "signout" | "disconnect"]:
             # Logout and respond with message.
             if await require_ray_client(context):
-                msg = LogoutMessage(context["ray"].client.username)
+                msg = LogoutMessage(context["ray"].client)
                 await respond(text=msg.text, blocks=msg.blocks)
 
         case ["job", reference, *reference_other]:
@@ -257,7 +354,9 @@ async def ray_command(ack, respond, say, command, context, client):
 
         case ["help" | ""]:
             # Show help message.
-            await respond(blocks=HelpMessage(context).blocks, text=HelpMessage(context).text)
+            await respond(
+                blocks=HelpMessage(context).blocks, text=HelpMessage(context).text
+            )
 
         case ["whatsnext"] | ["whats", "next"]:
             # Show what's next message.
@@ -487,11 +586,17 @@ async def login_account_action(ack, action, context, respond):
 @app.block_action("disconnect")
 async def disconnect_account_action(ack, action, context, respond):
     await ack()
+    # Get connection info before disconnecting.
+    context["ray"] = await get_ray_connection(
+        context["user_id"], context["team_id"], context.get("enterprise_id")
+    )
     disconnect_ray_account(
         context["user_id"], context["team_id"], context.get("enterprise_id")
     )
     # action["value"] should contain the LanguageCloud account username.
-    msg = SuccessfulLogoutMessage(context["user_id"], action.get("value"))
+    msg = SuccessfulLogoutMessage(
+        context["user_id"], context["ray"].client.sso, action.get("value")
+    )
     await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
 
 
@@ -574,9 +679,7 @@ async def handle_job_search(ack, view, context, client):
         # The response is already returned at this point, can do long tasks here.
         reference = form.reference.strip()
         # Try searching job by TJ number if the format is correct.
-        if re.fullmatch(
-            r"tj\d+", reference, re.IGNORECASE
-        ):
+        if re.fullmatch(r"tj\d+", reference, re.IGNORECASE):
             await post_job_status(context, context["ray"].client, reference)
         elif re.fullmatch(
             r"\d+", reference, re.IGNORECASE
