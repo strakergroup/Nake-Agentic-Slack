@@ -199,7 +199,13 @@ async def handle_login_sso(ack, context: AsyncBoltContext, respond, client, view
             context["channel_id"] = context["user_id"]
         if context["ray"] is not None:
             if context["ray"].client is None:
-                form = SsoLoginForm.parse_slack(view["state"]["values"])
+                try:
+                    form = SsoLoginForm.parse_slack(view["state"]["values"])
+                except ValidationError as e:
+                    errors = convert_pydantic_to_slack_error(e)
+                    await ack(response_action="errors", errors=errors)
+                    return
+                await ack(response_action="clear")
                 ray_user_id = connect_ray_account_sso(
                     context["user_id"],
                     context["team_id"],
@@ -218,7 +224,6 @@ async def handle_login_sso(ack, context: AsyncBoltContext, respond, client, view
                 sso_msg = SsoConnectionInfoMessage(
                     context["ray"],
                 )
-                await ack()
                 await client.chat_postMessage(
                     channel=context["channel_id"],
                     text=sso_msg.text,
@@ -234,14 +239,13 @@ async def handle_login_sso(ack, context: AsyncBoltContext, respond, client, view
                     "enterprise_id": context.get("enterprise_id"),
                 }
                 msg = get_ray_event_message("ray:slack:account_connected", data)
-                await ack()
                 await client.chat_postMessage(
                     channel=context["user_id"],
                     text=msg.text,
                     blocks=msg.blocks,
                 )
         else:
-            await ack()
+            await ack(response_action="clear")
             await respond(
                 text="Your organisation requires a Super Group to connect your account to Slack."
             )

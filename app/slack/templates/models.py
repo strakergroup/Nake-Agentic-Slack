@@ -1,5 +1,5 @@
 from typing import Any
-from pydantic import BaseModel, ValidationError, validator
+from pydantic import BaseModel, ValidationError, validator, EmailStr, Field
 from ray_sdk.api.v3.file import is_valid_file_ext
 
 
@@ -190,9 +190,9 @@ class NewJobForm(BaseModel):
 class SsoLoginForm(BaseModel):
     """The model for a sso login form."""
 
-    email: str | None = None
-    firstName: str | None = None
-    lastName: str | None = None
+    email: EmailStr
+    firstName: str = Field(min_length=3, max_length=55, regex="^[^*<>\\%$##!();}{\[\]&\"]*$")
+    lastName: str = Field(min_length=3, max_length=55, regex="^[^*<>\\%$##!();}{\[\]&\"]*$")
 
     @classmethod
     def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "SsoLoginForm":
