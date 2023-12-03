@@ -152,7 +152,9 @@ class LoginMessage(SlackMessage):
                 "You can connect a different account by clicking this button."
             )
             if ray_client.sso:
-                block_text = f"Your connected LanguageCloud account is: <{encrpyt_slack_sso_token(ray_client.username)}|{ray_client.username}>."
+                block_text = (
+                    f"Your connected LanguageCloud account is: *{ray_client.username}*."
+                )
         msg = [
             {
                 "type": "section",
@@ -451,7 +453,7 @@ class LogoutMessage(SlackMessage):
     def __init__(self, ray_client: RayClient | None = None) -> None:
         text = f"Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_client.username}>."
         if ray_client.sso:
-            text = f"Click this button to disconnect your LanguageCloud account: <{encrpyt_slack_sso_token(ray_client.username)}|{ray_client.username}>."
+            text = f"Click this button to disconnect your LanguageCloud account: *{ray_client.username}*."
         super().__init__(
             "Disconnect your LanguageCloud account",
             [
@@ -497,7 +499,7 @@ class SuccessfulLogoutMessage(SlackMessage):
     ) -> None:
         text = f"Your LanguageCloud account <{domains.languagecloud}|{ray_username}> is now disconnected from <@{user_id}>."
         if is_sso:
-            text = f"Your LanguageCloud account <{encrpyt_slack_sso_token(ray_username)}|{ray_username}> is now disconnected from <@{user_id}>."
+            text = f"Your LanguageCloud account *{ray_username}* is now disconnected from <@{user_id}>."
         block_message = (
             text
             if ray_username
@@ -1583,7 +1585,7 @@ class SsoConnectionInfoMessage(SlackMessage):
         ray_connection: RayConnection | None,
     ) -> None:
         if ray_connection is not None and ray_connection.client is not None:
-            text = f"Your connected LanguageCloud account is: <{encrpyt_slack_sso_token(ray_connection.client.username)}|{ray_connection.client.username}>"
+            text = f"Your connected LanguageCloud account is: *{ray_connection.client.username}*."
 
         msg = [
             {
