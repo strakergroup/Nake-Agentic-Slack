@@ -32,7 +32,7 @@ def home_auth_blocks(
         super_group_names_str = ", ".join(super_group_names)
         text = f"Your Slack account <@{user_id}> is connected with: <{domains.languagecloud}|{ray_connection.client.username}>."
         if ray_connection.client.sso:
-            text = f"Your Slack account <@{user_id}> is connected with: <{encrpyt_slack_sso_token(ray_connection.client.username)}|{ray_connection.client.username}>."
+            text = f"Your Slack account <@{user_id}> is connected with: *{ray_connection.client.username}*."
         return [
             {
                 "type": "section",
