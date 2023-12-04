@@ -1010,6 +1010,23 @@ class JobListMessage(SlackMessage):
                                             "replace_original": False,
                                         }
                                     ),
+                                },
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": "Show Completed Files",
+                                        "emoji": True,
+                                    },
+                                    "action_id": "file_list_1",
+                                    "value": json.dumps(
+                                        {
+                                            "id": job.id,
+                                            "page": 1,
+                                            "page_size": 5,
+                                            "replace_original": False,
+                                        }
+                                    ),
                                 }
                             ],
                         },
