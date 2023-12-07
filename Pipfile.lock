@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "c463d997bc3ce54202bb66327861671d95f73207d0580571e2624a2c0fd0c2a4"
+            "sha256": "95a5c77078ed94c755f1d972a7be8946a6b4984ea1e51b95ce06b831c80194ce"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -1020,11 +1020,11 @@
         },
         "ray-sdk": {
             "hashes": [
-                "sha256:a7b12dbcb06681e1649ba05d4db534b96eb9a53a674a120bbd283ec90c00aa9d",
-                "sha256:fa8fd8afcd3b0a1b66e9f2b227ce4f8fb50d9d820b3961c77aea828bf9253be5"
+                "sha256:002a5b825f9430ab62124add0abb54f8269da269ca4d43c58c7442834977a774",
+                "sha256:528dd46e22510bfa3411c139121aadecb22d359771e5ff332c4117cabe51efb4"
             ],
             "index": "straker",
-            "version": "==0.4.0"
+            "version": "==0.4.1"
         },
         "redis": {
             "hashes": [
