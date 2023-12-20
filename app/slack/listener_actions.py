@@ -916,6 +916,8 @@ async def post_file_list(
     )
     try:
         if job is not None:
+            print("------------------------")
+            print(job)
             msg = FileListMessage(job, ray_client.id)
             if context.response_url:
                 return await context.respond(
