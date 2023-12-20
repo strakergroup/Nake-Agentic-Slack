@@ -533,10 +533,28 @@ class JobStatusMessage(SlackMessage):
                                     "replace_original": False,
                                 }
                             ),
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Show Completed Files",
+                                "emoji": True,
+                            },
+                            "action_id": "file_list_1",
+                            "value": json.dumps(
+                                {
+                                    "id": job.id,
+                                    "page": 1,
+                                    "page_size": 5,
+                                    "replace_original": False,
+                                }
+                            ),
                         }
                     ],
                 },
             )
+        if job.status == "COMPLETED":
             job_status_block.insert(
                 3,
                 {
@@ -637,6 +655,23 @@ class JobDetailsMessage(SlackMessage):
                                 "emoji": True,
                             },
                             "action_id": "batch_list_1",
+                            "value": json.dumps(
+                                {
+                                    "id": job.id,
+                                    "page": 1,
+                                    "page_size": 5,
+                                    "replace_original": False,
+                                }
+                            ),
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Show Completed Files",
+                                "emoji": True,
+                            },
+                            "action_id": "file_list_1",
                             "value": json.dumps(
                                 {
                                     "id": job.id,
@@ -1010,6 +1045,31 @@ class JobListMessage(SlackMessage):
                                         }
                                     ),
                                 },
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": "Show Completed Files",
+                                        "emoji": True,
+                                    },
+                                    "action_id": "file_list_1",
+                                    "value": json.dumps(
+                                        {
+                                            "id": job.id,
+                                            "page": 1,
+                                            "page_size": 5,
+                                            "replace_original": False,
+                                        }
+                                    ),
+                                }
+                            ],
+                        },
+                    )
+                elif job.status == "COMPLETED":
+                    jobs_blocks.append(
+                        {
+                            "type": "actions",
+                            "elements": [
                                 {
                                     "type": "button",
                                     "text": {
