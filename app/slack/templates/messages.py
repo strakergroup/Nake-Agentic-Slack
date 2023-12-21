@@ -629,7 +629,7 @@ class JobStatusMessage(SlackMessage):
             },
             job_link_block(job.uuid, client_id),
         ]
-        if job.status != "COMPLETED" and job.batches != "[]":
+        if job.status != "COMPLETED" and job.batches != "[]" and job.translated_file == []:
             job_status_block.insert(
                 3,
                 {
@@ -643,6 +643,49 @@ class JobStatusMessage(SlackMessage):
                                 "emoji": True,
                             },
                             "action_id": "batch_list_1",
+                            "value": json.dumps(
+                                {
+                                    "id": job.id,
+                                    "page": 1,
+                                    "page_size": 5,
+                                    "replace_original": False,
+                                }
+                            ),
+                        }
+                    ],
+                },
+            )
+        if job.status != "COMPLETED" and job.batches != "[]" and job.translated_file != []:
+            job_status_block.insert(
+                3,
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Show In Progress Files",
+                                "emoji": True,
+                            },
+                            "action_id": "batch_list_1",
+                            "value": json.dumps(
+                                {
+                                    "id": job.id,
+                                    "page": 1,
+                                    "page_size": 5,
+                                    "replace_original": False,
+                                }
+                            ),
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Show Completed Files",
+                                "emoji": True,
+                            },
+                            "action_id": "file_list_1",
                             "value": json.dumps(
                                 {
                                     "id": job.id,
@@ -742,7 +785,7 @@ class JobDetailsMessage(SlackMessage):
             },
             job_link_block(job.uuid, client_id),
         ]
-        if job.status != "COMPLETED" and job.batches != "[]":
+        if job.status != "COMPLETED" and job.batches != "[]" and job.translated_file == []:
             job_detail_block.insert(
                 3,
                 {
@@ -768,7 +811,50 @@ class JobDetailsMessage(SlackMessage):
                     ],
                 },
             )
-        if job.status == "COMPLETED":
+        elif job.status != "COMPLETED" and job.batches != "[]" and job.translated_file != []:
+            job_detail_block.insert(
+                3,
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Show In Progress Files",
+                                "emoji": True,
+                            },
+                            "action_id": "batch_list_1",
+                            "value": json.dumps(
+                                {
+                                    "id": job.id,
+                                    "page": 1,
+                                    "page_size": 5,
+                                    "replace_original": False,
+                                }
+                            ),
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Show Completed Files",
+                                "emoji": True,
+                            },
+                            "action_id": "file_list_1",
+                            "value": json.dumps(
+                                {
+                                    "id": job.id,
+                                    "page": 1,
+                                    "page_size": 5,
+                                    "replace_original": False,
+                                }
+                            ),
+                        }
+                    ],
+                },
+            )
+        elif job.status == "COMPLETED":
             job_detail_block.insert(
                 3,
                 {
@@ -1107,7 +1193,8 @@ class JobListMessage(SlackMessage):
                         },
                     }
                 )
-                if job.status != "COMPLETED" and job.batches != "[]":
+                print(job)
+                if job.status != "COMPLETED" and job.batches != "[]" and job.translated_file == []:
                     jobs_blocks.append(
                         {
                             "type": "actions",
@@ -1120,6 +1207,73 @@ class JobListMessage(SlackMessage):
                                         "emoji": True,
                                     },
                                     "action_id": "batch_list_1",
+                                    "value": json.dumps(
+                                        {
+                                            "id": job.id,
+                                            "page": 1,
+                                            "page_size": 5,
+                                            "replace_original": False,
+                                        }
+                                    ),
+                                }
+                            ],
+                        },
+                    )
+                elif job.status != "COMPLETED" and job.batches != "[]" and job.translated_file != []:
+                    jobs_blocks.append(
+                        {
+                            "type": "actions",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": "Show In Progress Fileass",
+                                        "emoji": True,
+                                    },
+                                    "action_id": "batch_list_1",
+                                    "value": json.dumps(
+                                        {
+                                            "id": job.id,
+                                            "page": 1,
+                                            "page_size": 5,
+                                            "replace_original": False,
+                                        }
+                                    ),
+                                },
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": "Show Completed Files",
+                                        "emoji": True,
+                                    },
+                                    "action_id": "file_list_1",
+                                    "value": json.dumps(
+                                        {
+                                            "id": job.id,
+                                            "page": 1,
+                                            "page_size": 5,
+                                            "replace_original": False,
+                                        }
+                                    ),
+                                }
+                            ],
+                        },
+                    )
+                elif job.status == "COMPLETED":
+                    jobs_blocks.append(
+                        {
+                            "type": "actions",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": "Show Completed Files",
+                                        "emoji": True,
+                                    },
+                                    "action_id": "file_list_1",
                                     "value": json.dumps(
                                         {
                                             "id": job.id,
@@ -2116,7 +2270,7 @@ class FileListMessage(SlackMessage):
             job_file_block.insert(2, url)
 
         pagination_blocks = []
-        if job.pagination.total_pages > 1:
+        if job.f_pagination.total_pages > 1:
             pagination_blocks.append({"type": "actions", "elements": []})
             if job.pagination.page > 1:
                 pagination_blocks[0]["elements"].append(
@@ -2131,14 +2285,14 @@ class FileListMessage(SlackMessage):
                         "value": json.dumps(
                             {
                                 "id": job.id,
-                                "page": job.pagination.page - 1,
-                                "page_size": job.pagination.rows_per_page,
+                                "page": job.f_pagination.page - 1,
+                                "page_size": job.f_pagination.rows_per_page,
                                 "replace_original": True,
                             }
                         ),
                     }
                 )
-            if job.pagination.page < job.pagination.total_pages:
+            if job.f_pagination.page < job.f_pagination.total_pages:
                 pagination_blocks[0]["elements"].append(
                     {
                         "type": "button",
@@ -2151,8 +2305,8 @@ class FileListMessage(SlackMessage):
                         "value": json.dumps(
                             {
                                 "id": job.id,
-                                "page": job.pagination.page + 1,
-                                "page_size": job.pagination.rows_per_page,
+                                "page": job.f_pagination.page + 1,
+                                "page_size": job.f_pagination.rows_per_page,
                                 "replace_original": True,
                             }
                         ),
