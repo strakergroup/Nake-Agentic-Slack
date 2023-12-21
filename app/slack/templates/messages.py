@@ -1110,7 +1110,7 @@ class JobListMessage(SlackMessage):
                                     "type": "button",
                                     "text": {
                                         "type": "plain_text",
-                                        "text": "Show In Progress Fileass",
+                                        "text": "Show In Progress Files",
                                         "emoji": True,
                                     },
                                     "action_id": "batch_list_1",
