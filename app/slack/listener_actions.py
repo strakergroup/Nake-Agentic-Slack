@@ -13,6 +13,7 @@ from slack_sdk.webhook.webhook_response import WebhookResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
 import httpx
+import re
 
 from .middleware import require_ray_client
 from .templates.messages import (
@@ -33,6 +34,8 @@ from .templates.messages import (
     FileListMessage,
     JobTargetsNoIdMessage,
     JobTargetLangMessage,
+    # MachineTranslationMessage,
+    # InvalidMTResultMessage,
 )
 from .templates.models import NewJobForm
 from .templates.views import new_job_modal
@@ -64,6 +67,30 @@ async def respond_to_message(
             msg = NewJobMessage(context["channel_id"], message["ts"])
             await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
         return
+
+    # process mt
+    # message_match = re.findall(
+    #     r'(mt|Mt|mT|MT)\s(\w+)?(\s\w+)?\sto\s(\w+)(\s\w+)?\stranslate:\s?(.*)', message["text"], re.I)
+
+    # if len(message_match) > 0:
+    #     if len(message_match[-1][2].strip()) > 0:
+    #         mt_sl = message_match[-1][1]+"_"+message_match[-1][2].strip()
+    #     else:
+    #         mt_sl = message_match[-1][1]
+    #     if len(message_match[-1][4].strip()) > 0:
+    #         mt_tl = message_match[-1][3]+"_"+message_match[-1][4].strip()
+    #     else:
+    #         mt_tl = message_match[-1][3]
+    #     mt_text = message_match[-1][-1]
+    #     await get_mt_translation(
+    #         context,
+    #         context["ray"].client,
+    #         source_lang=mt_sl,
+    #         target_lang=mt_tl,
+    #         sentence=mt_text,
+    #         thread_ts=thread_ts,
+    #     )
+    #     return
 
     response = watson_message(message["text"], context.get("user_id"))
     context["log"].set_watson_log(
@@ -117,9 +144,7 @@ async def respond_to_message(
             if tj_number_entity := response.findEntity("tj-number"):
                 if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                     await post_job_target_lang(
-                        context,
-                        context["ray"].client,
-                        tj_number_entity.groups[0]
+                        context, context["ray"].client, tj_number_entity.groups[0]
                     )
             else:
                 await context.say(JobTargetsNoIdMessage().text, thread_ts=thread_ts)
@@ -142,6 +167,31 @@ async def respond_to_message(
         case "Jokes":
             # Delegate jokes to IBM Watson Assistant dialog.
             await context.say(response.reply, thread_ts=thread_ts)
+        # case "Machine_Translate":
+        # splict target and source language from the text
+        # try:
+        #     message_match = re.findall(
+        #         r'(mt|Mt|mT|MT)\s(\w+)?(\s\w+)?\sto\s(\w+)(\s\w+)?\stranslate:\s?(.*)', message["text"], re.I)
+        #     if message_match is not None:
+        #         mt_sl = message_match[-1][1]+message_match[-1][2]
+        #         mt_tl = message_match[-1][3]+message_match[-1][4]
+        #         mt_text = message_match[-1][-1]
+
+        #         await get_mt_translation(
+        #             context,
+        #             context["ray"].client,
+        #             source_lang=mt_sl,
+        #             target_lang=mt_tl,
+        #             sentence=mt_text[1],
+        #             thread_ts=thread_ts,
+        #         )
+        #     else:
+        #         await context.say('Invalid machine translation request. Please try "Mt source language to target language translate: sentence."', thread_ts=thread_ts)
+        # except Exception as e:
+        #     # Default to Watson Assistant fallback response if no other matches.
+        #     await context.say(response.reply, thread_ts=thread_ts)
+        #     notify_exception(
+        #         e, "Failed to get machine translation from watson response")
         case _:
             if tj_number_entity := response.findEntity("tj-number"):
                 # Show the job status if only a job id is entered.
@@ -987,27 +1037,23 @@ async def post_job_target_lang(
         if job is not None:
             if len(job.batches):
                 await post_batch_list(
-                        context,
-                        context["ray"].client,
-                        job_id=job_id,
-                        page=1,
-                        page_size=5,
-                    )
+                    context,
+                    context["ray"].client,
+                    job_id=job_id,
+                    page=1,
+                    page_size=5,
+                )
             else:
                 no_job = True
 
             if len(job.translated_file):
                 await post_file_list(
-                        context,
-                        context["ray"].client,
-                        job_id=job_id,
-                        page=1,
-                        page_size=5
-                    )
+                    context, context["ray"].client, job_id=job_id, page=1, page_size=5
+                )
             else:
                 no_job = True
 
-            if no_job :
+            if no_job:
                 msg = JobTargetLangMessage(job, ray_client.id)
                 if context.response_url:
                     return await context.respond(text=msg.text, blocks=msg.blocks)
@@ -1097,6 +1143,75 @@ async def post_report_insights(
     asyncio.create_task(send_insights_message())
 
     return response
+
+
+async def get_mt_translation(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    target_lang: str | None = None,
+    source_lang: str | None = None,
+    sentence: str | None = None,
+    thread_ts: str | None = None,
+):
+    """Get google machine translation for sentence by correct language pair.
+
+    Args:
+        context (AsyncBoltContext): The context from the listener.
+        ray_client (RayClient): The RAY client details.
+        source_lan (str | None, optional): The source language use for detect sentence.
+        target_lang (str | None, optional): The target language use for translation.
+        sentence (str | None, optional): The sentence post on RAY need to be translated.
+        thread_ts (str | None, optional): The message thread to reply to.
+    """
+    if not context.channel_id and not context.user_id and not context.response_url:
+        raise AssertionError("No channel to post to")
+    channel_id = context.channel_id or context.user_id
+
+    try:
+        mt_data, response = await RayService.get_service(
+            ray_client
+        ).get_machine_translation(target_lang, source_lang, sentence)
+        if mt_data is not None:
+            msg = MachineTranslationMessage(
+                mt_data["target_lang"], mt_data["source_lang"], mt_data["text"]
+            )
+
+            if context.response_url:
+                return await context.respond(text=msg.text, blocks=msg.blocks)
+            else:
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                    blocks=msg.blocks,
+                    thread_ts=thread_ts,
+                )
+        else:
+            msg = InvalidMTResultMessage()
+            if context.response_url:
+                return await context.respond(text=msg.text)
+            else:
+                return await context.client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                    thread_ts=thread_ts,
+                )
+    except Exception as e:
+        notify_exception(e, "Failed to get machine translation from language cloud API")
+
+    finally:
+        if response is not None:
+            try:
+                response_data = response.json()
+            except Exception:
+                response_data = response.content.decode() or None
+            context["log"].add_api_log(
+                status_code=response.status_code,
+                url=str(response.url),
+                payload=None,
+                response=response_data,
+                headers=dict(response.headers.items()),
+                version="v3",
+            )
 
 
 async def show_sso_form_modal(context: AsyncBoltContext, trigger_id: str):

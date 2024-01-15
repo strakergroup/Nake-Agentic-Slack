@@ -124,7 +124,7 @@ async def home_opened(event, action, context, body, say, client):
         history_last_24_hours = await client.conversations_history(
             channel=event.get("channel"),
             oldest=int((datetime.now() - timedelta(hours=24)).timestamp()),
-            latest=int(datetime.now().timestamp()),
+            latest=int(datetime.now().timestamp())
         )
         if not history_last_24_hours.get("messages"):
             message = WelcomeBackMessage(context["user_id"])
@@ -681,8 +681,10 @@ async def handle_job_search(ack, view, context, client):
         # Try searching job by TJ number if the format is correct.
         if re.fullmatch(r"tj\d+", reference, re.IGNORECASE):
             await post_job_status(context, context["ray"].client, reference)
-        elif re.fullmatch(r"\d+", reference, re.IGNORECASE):
-            await post_job_status(context, context["ray"].client, "TJ" + reference)
+        elif re.fullmatch(
+            r"\d+", reference, re.IGNORECASE
+        ):
+            await post_job_status(context, context["ray"].client, "TJ"+reference)
         else:
             client.chat_postMessage(
                 channel=context["user_id"],

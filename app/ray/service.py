@@ -16,7 +16,7 @@ from ray_sdk.api.v3.models import (
 )
 
 from ..config import config, domains, Environment
-from ..auth.connector import RayClient
+from ..auth.connector import RayClient, encrpyt_slack_integration_token
 
 
 F = TypeVar("F", bound=Callable[..., Coroutine])
@@ -64,6 +64,10 @@ class RayService:
     @property
     def token(self) -> str | None:
         return self._ray.api_token
+
+    @property
+    def lc_token(self) -> str | None:
+        return self._ray.lc_api_id_token
 
     def has_credentials(self) -> bool:
         """Returns `True` if this service has a RAY client ID and access token.
@@ -223,6 +227,23 @@ class RayService:
         """Gets the list of groups."""
         response = await self._ray.get_groups()
         return response.data
+
+    @secured_endpoint
+    async def get_machine_translation(
+        self,
+        target_lang: str | None = None,
+        source_lang: str | None = None,
+        sentence: str | None = None,
+    ) -> RayResponse[dict[str, str]]:
+        """Gets the machine translation from the goolge api by correct target and source langauge."""
+        response = await self._ray.get_machine_translation(
+            target_lang=target_lang,
+            source_lang=source_lang,
+            sentence=sentence,
+            app_name="slack",
+        )
+
+        return response.data, response.response
 
     @classmethod
     def get_service(
