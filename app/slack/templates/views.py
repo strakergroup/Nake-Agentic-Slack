@@ -177,6 +177,7 @@ def job_search_modal(
 
 def new_job_modal(
     client_name: str,
+    channel_id: str,
     file_options: list[dict[str, Any]] | None = None,
     initial_files: list[dict[str, Any]] | None = None,
     max_selected_files: int = 10,
@@ -214,7 +215,7 @@ def new_job_modal(
                 "emoji": True,
             },
             "options": file_options,
-            "action_id": "file_options",
+            "action_id": f"file_options_{channel_id}",
             "max_selected_items": max_selected_files,
         }
     else:
@@ -226,7 +227,7 @@ def new_job_modal(
                 "text": "Select file(s)",
                 "emoji": True,
             },
-            "action_id": "file_options",
+            "action_id": f"file_options_{channel_id}",
             "max_selected_items": max_selected_files,
             "min_query_length": 0,
         }

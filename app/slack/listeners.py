@@ -162,6 +162,7 @@ async def new_job_shortcut(ack, shortcut, context, client):
         )
         await show_quote_form_modal(
             context,
+            shortcut["channel"]['id'],
             shortcut["trigger_id"],
             context["ray"].client,
             initial_files=init_files,
@@ -339,6 +340,7 @@ async def ray_command(ack, respond, say, command, context, client):
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
                 await show_quote_form_modal(
                     context,
+                    command['channel_id'],
                     command["trigger_id"],
                     context["ray"].client,
                     check_last_messages=4,
@@ -499,6 +501,7 @@ async def new_job_action(ack, payload, context, client, body):
             pass
         await show_quote_form_modal(
             context,
+            value["channel_id"],
             body["trigger_id"],
             context["ray"].client,
             initial_files=init_files,
@@ -712,13 +715,14 @@ async def group_options(ack, context):
         await ack(options=options)
 
 
-@app.options("file_options")
+@app.options(re.compile(r"file_options_+"))
 async def file_options(ack, payload, client):
     """This select options endpoint is used as a backup in case there are
     no files available for the new job files input.
     """
+    channel_id = payload['action_id'].split('_')[2]
     # Include a bit more than the max 100 options due to filters.
-    files = await files_list_simple(client, count=120)
+    files = await files_list_simple(client, channel_id = channel_id, count=120)
     if filter := payload.get("value"):
         files = [f for f in files if filter.lower().strip() in f["title"].lower()]
     await ack(options=map_file_options(files[:100]))

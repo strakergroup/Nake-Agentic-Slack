@@ -179,7 +179,7 @@ class LoginMessage(SlackMessage):
             },
         ]
         if enterprise_id:
-            if enterprise_id == "E04RDMG8XP1" and ray_client is None:
+            if enterprise_id == "EUJJ37YFR" and ray_client is None:
                 msg[1]["elements"].append(
                     {
                         "type": "button",
@@ -192,7 +192,7 @@ class LoginMessage(SlackMessage):
                     }
                 )
             elif (
-                enterprise_id == "E04RDMG8XP1"
+                enterprise_id == "EUJJ37YFR"
                 and ray_client is not None
                 and ray_client.sso
             ):
@@ -214,7 +214,7 @@ class LoginMessage(SlackMessage):
                         ],
                     },
                 )
-        elif team_id == "T04QVSH7XDF" and ray_client is None:
+        elif team_id == "T0360HUQKS9" and ray_client is None:
             msg[1]["elements"].append(
                 {
                     "type": "button",
@@ -226,7 +226,7 @@ class LoginMessage(SlackMessage):
                     "action_id": "login_sso",
                 }
             )
-        elif team_id == "T04QVSH7XDF" and ray_client is not None and ray_client.sso:
+        elif team_id == "T0360HUQKS9" and ray_client is not None and ray_client.sso:
             msg.pop(1)
             msg.append(
                 {
@@ -341,43 +341,10 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*",
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*",
                     },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Quote"
-                        },
-                        "action_id": "new_job"
-                    }
                 },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience"
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "Insights"
-                        },
-                        "action_id": "report_insights"
-                    }
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*"
-                    }
-                },
-                {
-                    "type": "divider"
-                },
+                {"type": "divider"},
                 {"type": "divider"},
                 {
                     "type": "section",
@@ -465,43 +432,10 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*",
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*",
                     },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Quote"
-                        },
-                        "action_id": "new_job"
-                    }
                 },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience"
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "Insights"
-                        },
-                        "action_id": "report_insights"
-                    }
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*"
-                    }
-                },
-                {
-                    "type": "divider"
-                },
+                {"type": "divider"},
                 {"type": "divider"},
                 {
                     "type": "section",
@@ -1228,7 +1162,7 @@ class JobListMessage(SlackMessage):
                                     "type": "button",
                                     "text": {
                                         "type": "plain_text",
-                                        "text": "Show In Progress Fileass",
+                                        "text": "Show In Progress Files",
                                         "emoji": True,
                                     },
                                     "action_id": "batch_list_1",
@@ -2330,22 +2264,14 @@ class FileListMessage(SlackMessage):
 
 class ReportInsightsMessage(SlackMessage):
     def __init__(self, plan: str) -> None:
-            if plan == "Free":
-                message = "The insights feature is only avaiable on the Growth and Enterprise plans."
-            else:
-                message = "Use can use the message pane below to type your insights request using natural language. Get turn around times, cost, or validation quality. An example:\n>Can you tell me how many jobs have been delivered on time in the last 30 days"
-            super().__init__(
-                f":idea: Here are your insights",
-                [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": message
-                        }
-                    }
-                ],
-            )
+        if plan == "Free":
+            message = "The insights feature is only avaiable on the Growth and Enterprise plans."
+        else:
+            message = "Use can use the message pane below to type your insights request using natural language. Get turn around times, cost, or validation quality. An example:\n>Can you tell me how many jobs have been delivered on time in the last 30 days"
+        super().__init__(
+            f":idea: Here are your insights",
+            [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
+        )
 
 
 class JobTargetsNoIdMessage(TextMessage):
@@ -2382,8 +2308,10 @@ class JobTargetLangMessage(SlackMessage):
             ],
         )
 
+
 class MachineTranslationMessage(SlackMessage):
     """Message showing the list of translation files."""
+
     def __init__(self, tl: str, sl: str, mt_text: str) -> None:
         mt_label = f"Machine translation result:"
         super().__init__(
@@ -2411,11 +2339,10 @@ class InvalidMTResultMessage(TextMessage):
     """The user does not get MT result."""
 
     def __init__(self, msg: str) -> None:
-        if msg == 'match_failed':
-            msg = 'Invalid machine translation request, please try Mt source_lang to target_lang translate: sentence.'
+        if msg == "match_failed":
+            msg = "Invalid machine translation request, please try Mt source_lang to target_lang translate: sentence."
         else:
             msg = f"Your machine translation has some error."
-
         super().__init__(
             msg,
             [

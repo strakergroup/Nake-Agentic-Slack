@@ -13,7 +13,7 @@ from slack_sdk.errors import SlackApiError
 
 
 async def files_list_simple(
-    client: AsyncWebClient, channel_id: str | None = None, count: int = 100
+    client: AsyncWebClient, channel_id: str, count: int = 100
 ) -> list[dict[str, Any]]:
     """A helper method to get the downloadable files accessible by the bot.
     This is a simpler version of `client.files_list()` function.
