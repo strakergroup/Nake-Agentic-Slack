@@ -179,7 +179,7 @@ class LoginMessage(SlackMessage):
             },
         ]
         if enterprise_id:
-            if enterprise_id == "EUJJ37YFR" and ray_client is None:
+            if enterprise_id == "E04RDMG8XP1" and ray_client is None:
                 msg[1]["elements"].append(
                     {
                         "type": "button",
@@ -192,7 +192,7 @@ class LoginMessage(SlackMessage):
                     }
                 )
             elif (
-                enterprise_id == "EUJJ37YFR"
+                enterprise_id == "E04RDMG8XP1"
                 and ray_client is not None
                 and ray_client.sso
             ):
@@ -214,7 +214,7 @@ class LoginMessage(SlackMessage):
                         ],
                     },
                 )
-        elif team_id == "T0360HUQKS9" and ray_client is None:
+        elif team_id == "T04QVSH7XDF" and ray_client is None:
             msg[1]["elements"].append(
                 {
                     "type": "button",
@@ -226,7 +226,7 @@ class LoginMessage(SlackMessage):
                     "action_id": "login_sso",
                 }
             )
-        elif team_id == "T0360HUQKS9" and ray_client is not None and ray_client.sso:
+        elif team_id == "T04QVSH7XDF" and ray_client is not None and ray_client.sso:
             msg.pop(1)
             msg.append(
                 {
@@ -341,10 +341,43 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*",
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*",
                     },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Quote"
+                        },
+                        "action_id": "new_job"
+                    }
                 },
-                {"type": "divider"},
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "📊 Insights uses AI to gather and show data about your translation experience"
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Insights"
+                        },
+                        "action_id": "report_insights"
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*"
+                    }
+                },
+                {
+                    "type": "divider"
+                },
                 {"type": "divider"},
                 {
                     "type": "section",
@@ -432,10 +465,43 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*",
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*",
                     },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Quote"
+                        },
+                        "action_id": "new_job"
+                    }
                 },
-                {"type": "divider"},
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "📊 Insights uses AI to gather and show data about your translation experience"
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Insights"
+                        },
+                        "action_id": "report_insights"
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*"
+                    }
+                },
+                {
+                    "type": "divider"
+                },
                 {"type": "divider"},
                 {
                     "type": "section",

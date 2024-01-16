@@ -76,7 +76,7 @@ def home_auth_blocks(
         },
     ]
     if enterprise_id:
-        if enterprise_id == "EUJJ37YFR":
+        if enterprise_id == "E04RDMG8XP1":
             msg[1]["elements"].append(
                 {
                     "type": "button",
@@ -88,7 +88,7 @@ def home_auth_blocks(
                     "action_id": "login_sso",
                 }
             )
-    elif team_id == "T0360HUQKS9":
+    elif team_id == "T04QVSH7XDF":
         msg[1]["elements"].append(
             {
                 "type": "button",
