@@ -158,7 +158,9 @@ class NewJobForm(BaseModel):
             return cls(
                 files=[
                     SlackFile.parse_slack_option(opt)
-                    for opt in values["files"]["file_options"]["selected_options"]
+                    for key in values["files"]
+                    if key.startswith("file_options")
+                    for opt in values["files"][key]["selected_options"]
                 ],
                 reference=values["reference"]["reference"]["value"],
                 source_lang=RayLanguage.parse_slack_option(

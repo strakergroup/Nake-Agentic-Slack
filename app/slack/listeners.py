@@ -715,7 +715,7 @@ async def group_options(ack, context):
         await ack(options=options)
 
 
-@app.options(re.compile(r"file_options_+"))
+@app.options(re.compile(r"file_options_.+"))
 async def file_options(ack, payload, client):
     """This select options endpoint is used as a backup in case there are
     no files available for the new job files input.
