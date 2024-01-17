@@ -732,7 +732,6 @@ async def post_insights(
 
 async def show_quote_form_modal(
     context: AsyncBoltContext,
-    channel_id: str,
     trigger_id: str,
     ray_client: RayClient,
     *,
@@ -779,7 +778,7 @@ async def show_quote_form_modal(
         trigger_id=trigger_id,
         view=new_job_modal(
             ray_client.username,
-            channel_id=channel_id,
+            channel_id=context["channel_id"],
             file_options=files,
             initial_files=initial_files,
         ),
