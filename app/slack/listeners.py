@@ -162,7 +162,6 @@ async def new_job_shortcut(ack, shortcut, context, client):
         )
         await show_quote_form_modal(
             context,
-            shortcut["channel"]['id'],
             shortcut["trigger_id"],
             context["ray"].client,
             initial_files=init_files,
@@ -340,7 +339,6 @@ async def ray_command(ack, respond, say, command, context, client):
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
                 await show_quote_form_modal(
                     context,
-                    command['channel_id'],
                     command["trigger_id"],
                     context["ray"].client,
                     check_last_messages=4,
@@ -501,7 +499,6 @@ async def new_job_action(ack, payload, context, client, body):
             pass
         await show_quote_form_modal(
             context,
-            value["channel_id"],
             body["trigger_id"],
             context["ray"].client,
             initial_files=init_files,
