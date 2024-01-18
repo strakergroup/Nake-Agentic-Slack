@@ -15,5 +15,6 @@ engines = DBEnginePool(
         "api",
         "api_readonly",
         "ray_integration_log",
-    )
+    ),
+    dbapi="mysqlconnector",
 )
