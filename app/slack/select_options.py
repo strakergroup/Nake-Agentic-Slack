@@ -10,7 +10,11 @@ from ..ray import get_languages
 
 async def _get_languages_cached() -> list[dict[str, str]]:
     key = "slack-ray-translator:languages"
-    cached = await redis_conn.get(key)
+    cached = False
+    try:
+        cached = await redis_conn.get(key)
+    except Exception as e:
+        notify_exception(e)
     if cached:
         try:
             languages = json.loads(cached)
@@ -22,7 +26,10 @@ async def _get_languages_cached() -> list[dict[str, str]]:
     languages = (await get_languages()).data
     languages = [{"code": lang.code, "name": lang.name} for lang in languages]
     # Cache languages for 1 hour.
-    await redis_conn.set(key, json.dumps(languages), ex=3600)
+    try:
+        await redis_conn.set(key, json.dumps(languages), ex=3600)
+    except Exception as e:
+        notify_exception(e)
     return languages
 
 
