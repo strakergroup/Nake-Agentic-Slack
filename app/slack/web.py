@@ -10,7 +10,9 @@ import httpx
 from buglog import notify_exception
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.errors import SlackApiError
-
+from ..redis import redis_conn
+import json
+from .select_options import map_file_options
 
 async def files_list_simple(
     client: AsyncWebClient, channel_id: str, count: int = 100
@@ -26,12 +28,20 @@ async def files_list_simple(
     Returns:
         list[dict[str, Any]]: _description_
     """
+    key = f"slack-ray-translator:files:{channel_id}"
     response = await client.files_list(
         channel=channel_id,
         count=count,
         show_files_hidden_by_limit=False,
     )
-    return response.get("files", [])
+     # Cache files for 1 hour.
+    files = response.get("files", [])
+    files = map_file_options(files)
+    try:
+        await redis_conn.set(key, json.dumps(files), ex=3600)
+    except Exception as e:
+        notify_exception(e)
+    return files
 
 
 async def get_file_info(

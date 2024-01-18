@@ -7,7 +7,6 @@ from buglog import notify_exception
 from ..redis import redis_conn
 from ..ray import get_languages
 
-
 async def _get_languages_cached() -> list[dict[str, str]]:
     key = "slack-ray-translator:languages"
     cached = False
@@ -53,6 +52,23 @@ async def get_language_options(filter: str | None = None) -> list[dict[str, Any]
         for lang in languages
     ]
 
+async def get_file_options_cached(channel_id: str) -> list[dict[str, Any]]:
+    key = f"slack-ray-translator:files:{channel_id}"
+    cached = False
+    files = []
+    try:
+        cached = await redis_conn.get(key)
+    except Exception as e:
+        notify_exception(e)
+    if cached:
+        try:
+            files = json.loads(cached)
+            assert isinstance(files, list)
+            return files
+        except Exception as e:
+            notify_exception(e)
+
+    return files
 
 def map_file_options(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Maps a list of file objects to a list of select options.
