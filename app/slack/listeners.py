@@ -157,6 +157,7 @@ async def app_uninstalled(context):
 async def new_job_shortcut(ack, shortcut, context, client):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+        asyncio.create_task(files_list_simple(client, channel_id=context["channel_id"], count=120))
         # Set files in the message as initial values if the bot has access to them.
         init_files = await get_bot_accessible_files(
             client, (f["id"] for f in shortcut["message"].get("files", []))
@@ -338,6 +339,7 @@ async def ray_command(ack, respond, say, command, context, client):
         case ["new"]:
             # Show quote form modal.
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+                asyncio.create_task(files_list_simple(client, channel_id=context["channel_id"], count=120))
                 await show_quote_form_modal(
                     context,
                     command["trigger_id"],
@@ -498,6 +500,7 @@ async def new_job_action(ack, payload, context, client, body):
         except (SlackApiError, json.JSONDecodeError, KeyError):
             # The payload value does not exist, is malformed, or no access to the files.
             pass
+        asyncio.create_task(files_list_simple(client, channel_id=context["channel_id"], count=120))
         await show_quote_form_modal(
             context,
             body["trigger_id"],
