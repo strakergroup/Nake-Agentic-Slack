@@ -46,10 +46,11 @@ from ..auth.connector import RayClient, approve_pending_groups
 from ..config import config, domains, Environment
 from ..ray.service import RayService, get_job_predictions
 from ..watson import watson_message
-
+from .select_options import get_file_options_cached
+from slack_sdk.web.async_client import AsyncWebClient
 
 async def respond_to_message(
-    context: AsyncBoltContext, message: dict[str, Any], *, use_thread: bool = False
+    client: AsyncWebClient, context: AsyncBoltContext, message: dict[str, Any], *, use_thread: bool = False
 ):
     """Respond to a Slack message event (or app mention event).
 
@@ -64,6 +65,7 @@ async def respond_to_message(
     # If there is no text, show new job button or ignore the message.
     if not message.get("text"):
         if message.get("files"):
+            asyncio.create_task(files_list_simple(client, channel_id=context['channel_id'], count=120))
             msg = NewJobMessage(context["channel_id"], message["ts"])
             await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
         return
@@ -150,6 +152,7 @@ async def respond_to_message(
                 await context.say(JobTargetsNoIdMessage().text, thread_ts=thread_ts)
         case "New_Translation_Job":
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+                asyncio.create_task(files_list_simple(client, channel_id=context['channel_id'], count=120))
                 msg = NewJobMessage(context["channel_id"], message["ts"])
                 await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
         case "Show_Insights":
@@ -753,9 +756,7 @@ async def show_quote_form_modal(
             Only works with DM with the bot, not channels or groups.
     """
     # Include a bit more than the max 100 options due to hidden files.
-    # TODO: This causes trigger timeout. Figure out better way to handle this
-    # files = await files_list_simple(context.client, count=110 )
-    files = []
+    files = await get_file_options_cached(context["channel_id"])
     # Set initial selected files.
     if not initial_files and check_last_messages > 0:
         # Check last 100 messages maximum.
