@@ -80,6 +80,40 @@ def home_view(
             {"type": "divider"},
             {
                 "type": "header",
+                "text": {"type": "plain_text", "text": "Translate Channels"},
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences.",
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": ":speech_balloon: Translation Settings",
+                        },
+                        "action_id": "settings_auto_translate",
+                    },
+                ],
+            }
+            if rayConnection.client
+            else {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "_Connect your Straker LanguageCloud account to enable this feature_",
+                },
+            },
+            {"type": "divider"},
+            {
+                "type": "header",
                 "text": {"type": "plain_text", "text": "Give us your feedback"},
             },
             {
@@ -688,4 +722,135 @@ def sso_form_modal() -> dict[str, Any]:
         ],
         "type": "modal",
         "callback_id": "login_sso",
+    }
+
+
+def settings_auto_translate_view(
+    initial_channels: list[str] | None = None, initial_langs: list[str] | None = None
+) -> dict[str, Any]:
+    language_options = [
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "English",
+            },
+            "value": "en",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "Spanish",
+            },
+            "value": "es",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "French",
+            },
+            "value": "fr",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "German",
+            },
+            "value": "de",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "Italian",
+            },
+            "value": "it",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "Chinese (Simplified)",
+            },
+            "value": "zh-CN",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "Chinese (Traditional)",
+            },
+            "value": "zh-TW",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "Japanese",
+            },
+            "value": "ja",
+        },
+    ]
+    language_options_dict: dict[str, dict[str, Any]] = {
+        opt["value"]: opt for opt in language_options
+    }
+    initial_channels = initial_channels or []
+    initial_lang_options = (
+        [
+            language_options_dict[lang]
+            for lang in initial_langs
+            if (lang in language_options_dict)
+        ]
+        if initial_langs
+        else []
+    )  # TODO more languages
+
+    return {
+        "type": "modal",
+        "callback_id": "settings_auto_translate",
+        "title": {"type": "plain_text", "text": "Translation Settings"},
+        "submit": {"type": "plain_text", "text": "Save"},
+        "close": {"type": "plain_text", "text": "Cancel"},
+        "blocks": [
+            {
+                "type": "input",
+                "block_id": "channels",
+                "element": {
+                    "type": "multi_conversations_select",
+                    "action_id": "channels",
+                    "placeholder": {"type": "plain_text", "text": "Select channel(s)"},
+                    "initial_conversations": initial_channels,
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Channels",
+                    "emoji": True,
+                },
+                "hint": {
+                    "type": "plain_text",
+                    "text": "Important: Straker must be a member in the chosen channel or DM",
+                },
+                "optional": True,
+            },
+            {
+                "type": "input",
+                "block_id": "languages",
+                "element": {
+                    "type": "multi_static_select",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Choose language(s)",
+                    },
+                    "options": language_options,
+                    **(
+                        {"initial_options": initial_lang_options}
+                        if initial_lang_options
+                        else {}
+                    ),
+                    "action_id": "languages",
+                    "max_selected_items": 3,
+                },
+                "label": {"type": "plain_text", "text": "Language", "emoji": True},
+                "hint": {
+                    "type": "plain_text",
+                    "text": "Automatically translate messages into these language(s)",
+                },
+                "optional": True,
+            },
+        ],
     }

@@ -15,7 +15,7 @@ def convert_pydantic_to_slack_error(error: ValidationError) -> dict[str, str]:
     Returns:
         dict[str, str]: The error dict for Slack's view_submission event response.
     """
-    slack_errors = {}
+    slack_errors: dict[str, str] = {}
     for e in error.errors():
         # Note: Errors for the same property will be overriden, including errors of
         # multiple items in a list.
@@ -193,8 +193,12 @@ class SsoLoginForm(BaseModel):
     """The model for a sso login form."""
 
     email: EmailStr
-    firstName: str = Field(min_length=3, max_length=55, regex="^[^*<>\\%$##!();}{\[\]&\"]*$")
-    lastName: str = Field(min_length=3, max_length=55, regex="^[^*<>\\%$##!();}{\[\]&\"]*$")
+    firstName: str = Field(
+        min_length=3, max_length=55, regex='^[^*<>\\%$##!();}{\[\]&"]*$'
+    )
+    lastName: str = Field(
+        min_length=3, max_length=55, regex='^[^*<>\\%$##!();}{\[\]&"]*$'
+    )
 
     @classmethod
     def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "SsoLoginForm":
@@ -212,6 +216,39 @@ class SsoLoginForm(BaseModel):
                 email=values["email"]["email"]["value"],
                 firstName=values["firstName"]["firstName"]["value"],
                 lastName=values["lastName"]["lastName"]["value"],
+            )
+        except KeyError as e:
+            raise ValueError("The Slack payload format is incorrect") from e
+
+
+class AutoTranslationSettingsForm(BaseModel):
+    """The model for the auto-translation settings form."""
+
+    channels: list[str]
+    languages: list[str]
+
+    @classmethod
+    def parse_slack(
+        cls, values: dict[str, dict[str, Any]]
+    ) -> "AutoTranslationSettingsForm":
+        """Parses a view submission payload from Slack.
+
+        Args:
+            values (dict): The input values payload from the Slack API
+            (`view["state"]["values"]`).
+
+        Returns:
+            AutoTranslationSettingsForm: An instance parsed and validated from the Slack payload.
+        """
+        try:
+            return cls(
+                channels=[
+                    c for c in values["channels"]["channels"]["selected_conversations"]
+                ],
+                languages=[
+                    opt["value"]
+                    for opt in values["languages"]["languages"]["selected_options"]
+                ],
             )
         except KeyError as e:
             raise ValueError("The Slack payload format is incorrect") from e

@@ -17,4 +17,5 @@ engines = DBEnginePool(
         "ray_integration_log",
     ),
     dbapi="mysqlconnector",
+    # echo=True,  # Uncomment to log SQL queries
 )
