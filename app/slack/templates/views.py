@@ -201,11 +201,12 @@ def new_job_modal(
     initial_files = (
         map_file_options(initial_files[:max_selected_files]) if initial_files else []
     )
-    file_options = file_options[:100]
     # Add the initial files to the file options if they are not there already.
     for file in initial_files:
         if not any(file["value"] == opt["value"] for opt in file_options):
-            file_options.append(file)
+            file_options.insert(0, file)
+    file_options = file_options[:100]
+
     if file_options:
         files_block_element = {
             "type": "multi_static_select",
