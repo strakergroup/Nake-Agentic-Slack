@@ -77,6 +77,8 @@ def map_file_options(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
     - https://api.slack.com/reference/block-kit/composition-objects#option.
     """
     max_title_length = 75
+    # sort files by timestamp descending
+    files.sort(key=lambda f: f["timestamp"], reverse=True)
     file_options = []
     for file in files:
         title = file.get("title", "")
