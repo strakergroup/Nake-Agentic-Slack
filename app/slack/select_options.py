@@ -82,13 +82,18 @@ def map_file_options(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
     file_options = []
     for file in files:
         title = file.get("title", "")
+        if not title:
+            continue
         # Options text has max 75 characters.
         if len(title) > max_title_length:
             title = f"{title[:max_title_length - 1]}…"
+        id = file.get("id")
+        if not id or len(id) > max_title_length:
+            continue
         file_options.append(
             {
                 "text": {"type": "plain_text", "text": title, "emoji": False},
-                "value": file.get("id"),
+                "value": id,
             }
         )
     return file_options
