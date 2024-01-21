@@ -22,4 +22,6 @@ __pycache__/
 .coverage
 .coverage.xml
 htmlcov/
+.ruff_cache
+.mypy_cache
 *.log
