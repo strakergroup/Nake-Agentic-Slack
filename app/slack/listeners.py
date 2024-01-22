@@ -68,7 +68,7 @@ from ..auth.connector import (
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
-    get_auto_translate_settings_channels,
+    get_auto_translate_settings_conversations,
     get_auto_translate_settings_langs,
     update_auto_translate_settings,
 )
@@ -393,7 +393,7 @@ async def ray_command(ack, respond, say, command, context, client):
 async def show_auto_translate_settings(ack, context, body, client):
     await ack()
     if await require_ray_client(context):
-        channels = get_auto_translate_settings_channels(context["ray"].client)
+        channels = get_auto_translate_settings_conversations(context["ray"].client)
         languages = get_auto_translate_settings_langs(context["ray"].client)
         await client.views_open(
             trigger_id=body["trigger_id"],
@@ -734,7 +734,9 @@ async def view_update_auto_translate_settings(ack, view, context, client):
 
         try:
             update_auto_translate_settings(
-                context["ray"].client, channels=form.channels, languages=form.languages
+                context["ray"].client,
+                conversations=form.conversations,
+                languages=form.languages,
             )
         except Exception as e:
             notify_exception(e)

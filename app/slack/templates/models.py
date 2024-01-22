@@ -224,7 +224,7 @@ class SsoLoginForm(BaseModel):
 class AutoTranslationSettingsForm(BaseModel):
     """The model for the auto-translation settings form."""
 
-    channels: list[str]
+    conversations: list[str]
     languages: list[str]
 
     @classmethod
@@ -242,7 +242,7 @@ class AutoTranslationSettingsForm(BaseModel):
         """
         try:
             return cls(
-                channels=[
+                conversations=[
                     c for c in values["channels"]["channels"]["selected_conversations"]
                 ],
                 languages=[

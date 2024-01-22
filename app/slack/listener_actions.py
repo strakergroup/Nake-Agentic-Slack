@@ -45,7 +45,7 @@ from ..auth.connector import RayClient, approve_pending_groups
 from ..config import config, domains, Environment
 from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
-    get_auto_translate_settings_channels,
+    get_auto_translate_settings_conversations,
     get_auto_translate_settings_langs,
 )
 from ..watson import watson_message
@@ -218,7 +218,7 @@ async def auto_translate_message(
 ):
     if not text:
         return
-    enabled_conversations = get_auto_translate_settings_channels(ray_client)
+    enabled_conversations = get_auto_translate_settings_conversations(ray_client)
     if context.channel_id not in enabled_conversations:
         return
     target_langs = get_auto_translate_settings_langs(ray_client)
