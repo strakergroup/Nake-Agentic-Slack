@@ -1,6 +1,5 @@
 """Slack view templates (modals, home tab)."""
-# Ignore line too long lint errors
-# flake8: noqa
+
 
 from typing import Any
 from slack_bolt.context.async_context import AsyncBoltContext

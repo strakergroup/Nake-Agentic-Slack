@@ -1,6 +1,5 @@
 """Templates for individual Slack blocks."""
-# Ignore line too long lint errors
-# flake8: noqa
+
 
 from typing import Any
 from ray_sdk.api.v3.models import Quote
