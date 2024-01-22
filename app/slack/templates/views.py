@@ -6,7 +6,11 @@ from typing import Any
 from slack_bolt.context.async_context import AsyncBoltContext
 
 from .blocks import home_auth_blocks
-from ..select_options import map_file_options
+from ..select_options import (
+    map_file_options,
+    get_auto_translate_language_options,
+    filter_auto_translate_language_options,
+)
 from ...auth.connector import RayConnection
 from ...config import domains
 
@@ -728,76 +732,15 @@ def sso_form_modal() -> dict[str, Any]:
 def settings_auto_translate_view(
     initial_channels: list[str] | None = None, initial_langs: list[str] | None = None
 ) -> dict[str, Any]:
-    language_options = [
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "English",
-            },
-            "value": "en",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "Spanish",
-            },
-            "value": "es",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "French",
-            },
-            "value": "fr",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "German",
-            },
-            "value": "de",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "Italian",
-            },
-            "value": "it",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "Chinese (Simplified)",
-            },
-            "value": "zh-CN",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "Chinese (Traditional)",
-            },
-            "value": "zh-TW",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "Japanese",
-            },
-            "value": "ja",
-        },
-    ]
-    language_options_dict: dict[str, dict[str, Any]] = {
-        opt["value"]: opt for opt in language_options
-    }
+    # TODO: Filter conversations by access?
+    # TODO: Detect message max length
+    # TODO: Detect message formatting, emojis
+    # TODO: 429 rate limiting
+    # TODO: Max characters (5000?)
+    language_options = get_auto_translate_language_options()
     initial_channels = initial_channels or []
     initial_lang_options = (
-        [
-            language_options_dict[lang]
-            for lang in initial_langs
-            if (lang in language_options_dict)
-        ]
-        if initial_langs
-        else []
+        filter_auto_translate_language_options(initial_langs) if initial_langs else []
     )  # TODO more languages
 
     return {
@@ -815,6 +758,10 @@ def settings_auto_translate_view(
                     "action_id": "channels",
                     "placeholder": {"type": "plain_text", "text": "Select channel(s)"},
                     "initial_conversations": initial_channels,
+                    "filter": {
+                        "include": ["public", "private", "mpim"],
+                        "exclude_bot_users": True,
+                    },
                 },
                 "label": {
                     "type": "plain_text",

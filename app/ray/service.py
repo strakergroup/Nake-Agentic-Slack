@@ -243,7 +243,7 @@ class RayService:
             app_name="slack",
         )
 
-        return response.data, response.response
+        return response
 
     @classmethod
     def get_service(

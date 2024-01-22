@@ -15,6 +15,7 @@ from .app import app
 from .middleware import ray_connection, require_ray_client
 from .listener_actions import (
     respond_to_message,
+    auto_translate_message,
     get_groups,
     post_job_status,
     post_job_details,
@@ -89,15 +90,19 @@ async def message_event(context, message):
     # not channel or group conversations (see the "app_mention" event).
     if message.get("channel_type") == "im" or context["channel_id"][0] in ("D", "U"):
         await respond_to_message(context, message, use_thread=False)
+    elif message.get("text") and f"<@{context['bot_user_id']}>" not in message["text"]:
+        # Do not auto-translate if the bot is mentioned (should default to normal response).
+        if await require_ray_client(context, prompt_login=False):
+            await auto_translate_message(
+                context,
+                context["ray"].client,
+                text=message.get("text"),
+                ts=message["ts"],
+            )
     else:
-        notify_message(
-            "Slack App message event received from channel",
-            extra={
-                "detail": "This event should not be received from a conversation "
-                "other than a DM with the bot, unsubscribe from message:groups, "
-                "message:channels, and message:mpim"
-            },
-        )
+        # Do nothing if the Slack app is not mentioned in group chats and
+        # auto-translate is disabled.
+        pass
 
 
 @app.event("app_mention", middleware=[ray_connection])

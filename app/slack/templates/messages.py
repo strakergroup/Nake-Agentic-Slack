@@ -274,7 +274,7 @@ class WelcomeBackMessage(SlackMessage):
 
     def __init__(self, user_id: str) -> None:
         super().__init__(
-            ":white_check_mark: Welcome back",
+            "Welcome back :wave:",
             [
                 {
                     "type": "section",
@@ -345,38 +345,32 @@ class WelcomeBackMessage(SlackMessage):
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Quote"
-                        },
-                        "action_id": "new_job"
-                    }
+                        "text": {"type": "plain_text", "text": "Quote"},
+                        "action_id": "new_job",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience"
+                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Insights"
+                            "text": "Insights",
                         },
-                        "action_id": "report_insights"
-                    }
+                        "action_id": "report_insights",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*"
-                    }
-                },
-                {
-                    "type": "divider"
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*",
+                    },
                 },
                 {"type": "divider"},
                 {
@@ -469,38 +463,32 @@ class SuccessfulLoginMessage(SlackMessage):
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Quote"
-                        },
-                        "action_id": "new_job"
-                    }
+                        "text": {"type": "plain_text", "text": "Quote"},
+                        "action_id": "new_job",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience"
+                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Insights"
+                            "text": "Insights",
                         },
-                        "action_id": "report_insights"
-                    }
+                        "action_id": "report_insights",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*"
-                    }
-                },
-                {
-                    "type": "divider"
+                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*",
+                    },
                 },
                 {"type": "divider"},
                 {
@@ -629,7 +617,11 @@ class JobStatusMessage(SlackMessage):
             },
             job_link_block(job.uuid, client_id),
         ]
-        if job.status != "COMPLETED" and job.batches != "[]" and job.translated_file == []:
+        if (
+            job.status != "COMPLETED"
+            and job.batches != "[]"
+            and job.translated_file == []
+        ):
             job_status_block.insert(
                 3,
                 {
@@ -655,7 +647,11 @@ class JobStatusMessage(SlackMessage):
                     ],
                 },
             )
-        if job.status != "COMPLETED" and job.batches != "[]" and job.translated_file != []:
+        if (
+            job.status != "COMPLETED"
+            and job.batches != "[]"
+            and job.translated_file != []
+        ):
             job_status_block.insert(
                 3,
                 {
@@ -694,7 +690,7 @@ class JobStatusMessage(SlackMessage):
                                     "replace_original": False,
                                 }
                             ),
-                        }
+                        },
                     ],
                 },
             )
@@ -785,7 +781,11 @@ class JobDetailsMessage(SlackMessage):
             },
             job_link_block(job.uuid, client_id),
         ]
-        if job.status != "COMPLETED" and job.batches != "[]" and job.translated_file == []:
+        if (
+            job.status != "COMPLETED"
+            and job.batches != "[]"
+            and job.translated_file == []
+        ):
             job_detail_block.insert(
                 3,
                 {
@@ -811,7 +811,11 @@ class JobDetailsMessage(SlackMessage):
                     ],
                 },
             )
-        elif job.status != "COMPLETED" and job.batches != "[]" and job.translated_file != []:
+        elif (
+            job.status != "COMPLETED"
+            and job.batches != "[]"
+            and job.translated_file != []
+        ):
             job_detail_block.insert(
                 3,
                 {
@@ -850,7 +854,7 @@ class JobDetailsMessage(SlackMessage):
                                     "replace_original": False,
                                 }
                             ),
-                        }
+                        },
                     ],
                 },
             )
@@ -1193,8 +1197,11 @@ class JobListMessage(SlackMessage):
                         },
                     }
                 )
-                print(job)
-                if job.status != "COMPLETED" and job.batches != "[]" and job.translated_file == []:
+                if (
+                    job.status != "COMPLETED"
+                    and job.batches != "[]"
+                    and job.translated_file == []
+                ):
                     jobs_blocks.append(
                         {
                             "type": "actions",
@@ -1219,7 +1226,11 @@ class JobListMessage(SlackMessage):
                             ],
                         },
                     )
-                elif job.status != "COMPLETED" and job.batches != "[]" and job.translated_file != []:
+                elif (
+                    job.status != "COMPLETED"
+                    and job.batches != "[]"
+                    and job.translated_file != []
+                ):
                     jobs_blocks.append(
                         {
                             "type": "actions",
@@ -1257,7 +1268,7 @@ class JobListMessage(SlackMessage):
                                             "replace_original": False,
                                         }
                                     ),
-                                }
+                                },
                             ],
                         },
                     )
@@ -2375,13 +2386,59 @@ class JobTargetLangMessage(SlackMessage):
         )
 
 
+class AutoTranslationMessage(SlackMessage):
+    def __init__(
+        self,
+        original_text: str,
+        translations: list[tuple[str, str, str]],
+    ) -> None:
+        """Slack message template for an auto-translated message
+
+        Args:
+            original_text (str | None): The original text.
+            translations (list[tuple[str, str, str]]): A list of translations.
+                Each element is a 3-tuple with the translated text, source
+                language, and target language.
+        """
+        blocks: list[dict[str, Any]] = [
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": original_text},
+            }
+        ]
+        for translated, source, target in translations:
+            blocks.append(
+                {
+                    "type": "rich_text",
+                    "elements": [
+                        {
+                            "type": "rich_text_quote",
+                            "elements": [{"type": "text", "text": translated}],
+                        }
+                    ],
+                }
+            )
+            blocks.append(
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "plain_text",
+                            "text": f"Translated from {source} to {target} with the help of Straker",
+                        }
+                    ],
+                }
+            )
+        super().__init__(original_text, blocks)
+
+
 class MachineTranslationMessage(SlackMessage):
     """Message showing the list of translation files."""
 
     def __init__(self, tl: str, sl: str, mt_text: str) -> None:
-        mt_label = f"Machine translation result:"
+        mt_label = "Machine translation result:"
         super().__init__(
-            mt_label,
+            f"{mt_label} {mt_text}",
             [
                 {
                     "type": "section",
@@ -2404,20 +2461,5 @@ class MachineTranslationMessage(SlackMessage):
 class InvalidMTResultMessage(TextMessage):
     """The user does not get MT result."""
 
-    def __init__(self, msg: str) -> None:
-        if msg == "match_failed":
-            msg = "Invalid machine translation request, please try Mt source_lang to target_lang translate: sentence."
-        else:
-            msg = f"Your machine translation has some error."
-        super().__init__(
-            msg,
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*{msg}*",
-                    },
-                },
-            ],
-        )
+    def __init__(self) -> None:
+        super().__init__("Error occurred while translating your message")

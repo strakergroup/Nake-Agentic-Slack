@@ -11,7 +11,7 @@ from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from slack_sdk.webhook.webhook_response import WebhookResponse
 from slack_bolt.context.async_context import AsyncBoltContext
-from ray_sdk import RayResponse
+from ray_sdk import RayResponse  # type: ignore
 import httpx
 import re
 
@@ -34,17 +34,20 @@ from .templates.messages import (
     FileListMessage,
     JobTargetsNoIdMessage,
     JobTargetLangMessage,
+    AutoTranslationMessage,
     MachineTranslationMessage,
-    InvalidMTResultMessage
+    InvalidMTResultMessage,
 )
 from .templates.models import NewJobForm
-from .templates.views import new_job_modal
-from .templates.views import job_search_modal
-from .templates.views import sso_form_modal
+from .templates.views import new_job_modal, job_search_modal, sso_form_modal
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
 from ..config import config, domains, Environment
 from ..ray.service import RayService, get_job_predictions
+from ..ray.settings import (
+    get_auto_translate_settings_channels,
+    get_auto_translate_settings_langs,
+)
 from ..watson import watson_message
 
 
@@ -70,15 +73,18 @@ async def respond_to_message(
 
     # process mt
     message_match = re.findall(
-        r'(mt|Mt|mT|MT)\s(\w+)?(\s\w+)?\sto\s(\w+)(\s\w+)?\stranslate:\s?(.*)', message["text"], re.I)
+        r"(mt|Mt|mT|MT)\s(\w+)?(\s\w+)?\sto\s(\w+)(\s\w+)?\stranslate:\s?(.*)",
+        message["text"],
+        re.I,
+    )
 
     if len(message_match) > 0:
         if len(message_match[-1][2].strip()) > 0:
-            mt_sl = message_match[-1][1]+"_"+message_match[-1][2].strip()
+            mt_sl = message_match[-1][1] + "_" + message_match[-1][2].strip()
         else:
             mt_sl = message_match[-1][1]
         if len(message_match[-1][4].strip()) > 0:
-            mt_tl = message_match[-1][3]+"_"+message_match[-1][4].strip()
+            mt_tl = message_match[-1][3] + "_" + message_match[-1][4].strip()
         else:
             mt_tl = message_match[-1][3]
         mt_text = message_match[-1][-1]
@@ -207,6 +213,77 @@ async def respond_to_message(
                 await context.say(response.reply, thread_ts=thread_ts)
 
 
+async def auto_translate_message(
+    context: AsyncBoltContext, ray_client: RayClient, text: str | None, ts: str
+):
+    if not text:
+        return
+    enabled_conversations = get_auto_translate_settings_channels(ray_client)
+    if context.channel_id not in enabled_conversations:
+        return
+    target_langs = get_auto_translate_settings_langs(ray_client)
+    if not target_langs:
+        return
+
+    try:
+        rayService = RayService.get_service(ray_client)
+        responses = await asyncio.gather(
+            *(
+                rayService.get_machine_translation(target_lang=lang, sentence=text)
+                for lang in target_langs
+            )
+        )
+        # Do not translate if the source and target languages are the same.
+        valid_translations = [
+            response.data
+            for response in responses
+            if response.data["source_lang"] != response.data["target_lang"]
+        ]
+        if valid_translations:
+            msg = AutoTranslationMessage(
+                text,
+                translations=[
+                    (
+                        translation["text"],
+                        translation["source_lang"],
+                        translation["target_lang"],
+                    )
+                    for translation in valid_translations
+                ],
+            )
+
+            # TODO Update original message instead of posting a new message.
+            # await context.client.chat_update(
+            #     channel=channel_id, ts=thread_ts, text=msg.text, blocks=msg.blocks
+            # )
+            return await context.client.chat_postMessage(
+                channel=context.channel_id,
+                text=msg.text,
+                blocks=msg.blocks,
+                thread_ts=ts,
+            )
+        else:
+            notify_message("Failed to get machine translation from language cloud API")
+    except Exception as e:
+        notify_exception(e, "Failed to get machine translation from language cloud API")
+    finally:
+        if "responses" in locals():
+            for response in responses:
+                raw_response = response.response
+                try:
+                    response_data = raw_response.json()
+                except Exception:
+                    response_data = raw_response.content.decode() or None
+                context["log"].add_api_log(
+                    status_code=raw_response.status_code,
+                    url=str(raw_response.url),
+                    payload=None,
+                    response=response_data,
+                    headers=dict(raw_response.headers.items()),
+                    version="v3",
+                )
+
+
 async def post_job_status(
     context: AsyncBoltContext,
     ray_client: RayClient,
@@ -318,7 +395,7 @@ async def post_job_details(
         job, response = await RayService.get_service(ray_client).get_quote(job_id)
     else:
         job, response = await RayService.get_service(ray_client).get_job(job_id)
-    # print job
+
     try:
         if job is not None:
             if status == "PENDING_QUOTES":
@@ -1169,9 +1246,10 @@ async def get_mt_translation(
     channel_id = context.channel_id or context.user_id
 
     try:
-        mt_data, response = await RayService.get_service(
-            ray_client
-        ).get_machine_translation(target_lang, source_lang, sentence)
+        response = await RayService.get_service(ray_client).get_machine_translation(
+            target_lang, source_lang, sentence
+        )
+        mt_data = response.data
         if mt_data is not None:
             msg = MachineTranslationMessage(
                 mt_data["target_lang"], mt_data["source_lang"], mt_data["text"]
@@ -1198,19 +1276,19 @@ async def get_mt_translation(
                 )
     except Exception as e:
         notify_exception(e, "Failed to get machine translation from language cloud API")
-
     finally:
-        if response is not None:
+        if "response" in locals():
+            raw_response = response.response
             try:
-                response_data = response.json()
+                response_data = raw_response.json()
             except Exception:
-                response_data = response.content.decode() or None
+                response_data = raw_response.content.decode() or None
             context["log"].add_api_log(
-                status_code=response.status_code,
-                url=str(response.url),
+                status_code=raw_response.status_code,
+                url=str(raw_response.url),
                 payload=None,
                 response=response_data,
-                headers=dict(response.headers.items()),
+                headers=dict(raw_response.headers.items()),
                 version="v3",
             )
 

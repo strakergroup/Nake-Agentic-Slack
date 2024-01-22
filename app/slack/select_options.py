@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Iterable
 from itertools import islice
 import json
 
@@ -52,6 +52,78 @@ async def get_language_options(filter: str | None = None) -> list[dict[str, Any]
         }
         for lang in languages
     ]
+
+
+def get_auto_translate_language_options():
+    """Get the options block for the auto-translate language select input."""
+    # TODO Expand this list
+    return [
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "English",
+            },
+            "value": "en",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "Spanish",
+            },
+            "value": "es",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "French",
+            },
+            "value": "fr",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "German",
+            },
+            "value": "de",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "Italian",
+            },
+            "value": "it",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "Chinese (Simplified)",
+            },
+            "value": "zh-CN",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "Chinese (Traditional)",
+            },
+            "value": "zh-TW",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "Japanese",
+            },
+            "value": "ja",
+        },
+    ]
+
+
+def filter_auto_translate_language_options(languages: Iterable[str]):
+    """Get the auto-translate language options filtered by a list of languages
+    (en, es, fr, etc.).
+    """
+    languages = set(languages)
+    options = get_auto_translate_language_options()
+    return [opt for opt in options if opt["value"] in languages]
 
 
 def map_file_options(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
