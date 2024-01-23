@@ -1,3 +1,4 @@
+import functools
 from typing import Any, Iterable
 from itertools import islice
 import json
@@ -6,6 +7,7 @@ from buglog import notify_exception
 
 from ..redis import redis_conn
 from ..ray import get_languages
+from ..ray.settings import get_auto_translate_languages
 
 
 async def _get_languages_cached() -> list[dict[str, str]]:
@@ -42,9 +44,9 @@ async def get_language_options(filter: str | None = None) -> list[dict[str, Any]
             for lang in languages
             if filter.lower() in lang["name"].lower()
             or filter.lower() in lang["code"].lower()
-        )
+        )  # type: ignore
     # Slack can show a maximum of 100 options.
-    languages = islice(languages, 100)
+    languages = islice(languages, 100)  # type: ignore
     return [
         {
             "text": {"type": "plain_text", "text": lang["name"], "emoji": False},
@@ -54,66 +56,12 @@ async def get_language_options(filter: str | None = None) -> list[dict[str, Any]
     ]
 
 
+@functools.cache
 def get_auto_translate_language_options():
     """Get the options block for the auto-translate language select input."""
-    # TODO Expand this list
     return [
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "English",
-            },
-            "value": "en",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "Spanish",
-            },
-            "value": "es",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "French",
-            },
-            "value": "fr",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "German",
-            },
-            "value": "de",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "Italian",
-            },
-            "value": "it",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "Chinese (Simplified)",
-            },
-            "value": "zh-CN",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "Chinese (Traditional)",
-            },
-            "value": "zh-TW",
-        },
-        {
-            "text": {
-                "type": "plain_text",
-                "text": "Japanese",
-            },
-            "value": "ja",
-        },
+        {"text": {"type": "plain_text", "text": name}, "value": code}
+        for code, name in get_auto_translate_languages()
     ]
 
 

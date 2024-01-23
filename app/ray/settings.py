@@ -1,7 +1,62 @@
+import functools
+from typing import Iterable
 from sqlalchemy import text  # type: ignore
 
 from ..auth.connector import RayClient
 from ..database import engines
+
+
+@functools.cache
+def get_auto_translate_languages() -> list[tuple[str, str]]:
+    """Get the available languages for auto-translation (ISO code and name).
+
+    Returns:
+        list[tuple[str, str]]: The list of languages, tuples with code and label.
+    """
+    return [
+        ("en", "English"),
+        ("es", "Spanish"),
+        ("fr", "French"),
+        ("de", "German"),
+        ("it", "Italian"),
+        ("nl", "Dutch"),
+        ("zh-CN", "Chinese (Simplified)"),
+        ("zh-TW", "Chinese (Traditional)"),
+        ("ja", "Japanese"),
+        ("ko", "Korean"),
+    ]
+
+
+@functools.cache
+def get_auto_translate_language_codes() -> list[str]:
+    """Get the available languages for auto-translation (ISO code only).
+
+    Returns:
+        list[str]: The list of language codes.
+    """
+    return [lang[0] for lang in get_auto_translate_languages()]
+
+
+@functools.cache
+def is_valid_auto_translate_language(language: str) -> bool:
+    """Check if a language code is valid for auto-translation.
+
+    Args:
+        language (str): A language code, e.g. "en", "es", etc.
+    """
+    return language in get_auto_translate_language_codes()
+
+
+def filter_invalid_auto_translate_languages(languages: Iterable[str]) -> list[str]:
+    """Filter and return a list of languages that are valid for auto-translation.
+
+    Args:
+        languages (Iterable[str]): The list of language codes to filter
+
+    Returns:
+        list[str]: The list with invalid languages removed.
+    """
+    return [lang for lang in languages if is_valid_auto_translate_language(lang)]
 
 
 def get_auto_translate_settings_conversations(ray_client: RayClient) -> list[str]:

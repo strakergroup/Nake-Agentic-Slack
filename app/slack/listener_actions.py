@@ -45,6 +45,8 @@ from ..auth.connector import RayClient, approve_pending_groups
 from ..config import config, domains, Environment
 from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
+    is_valid_auto_translate_language,
+    filter_invalid_auto_translate_languages,
     get_auto_translate_settings_conversations,
     get_auto_translate_settings_langs,
 )
@@ -228,9 +230,11 @@ async def auto_translate_message(
     # Check source and target languages and if translation is required.
     target_langs = set(get_auto_translate_settings_langs(ray_client))
     rayService = RayService.get_service(ray_client)
-    source_lang: str = "en"  # Default source language is English
+    source_lang: str = "en"  # Default to English if detected source lang is invalid
     try:
-        source_lang = (await rayService.detect_language(text)).data["language"]
+        detected_source_lang = (await rayService.detect_language(text)).data["language"]
+        if is_valid_auto_translate_language(detected_source_lang):
+            source_lang = detected_source_lang
     except Exception as e:
         notify_exception(e)
     # If message is in a thread, translate to the languages in the thread.
@@ -260,7 +264,9 @@ async def auto_translate_message(
         except Exception as e:
             notify_exception(e, "Failed to get thread replies")
 
-    target_langs = target_langs.difference({source_lang})
+    target_langs = set(
+        filter_invalid_auto_translate_languages(target_langs.difference({source_lang}))
+    )
     if not target_langs:
         return
 
