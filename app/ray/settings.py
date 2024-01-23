@@ -47,6 +47,23 @@ def is_valid_auto_translate_language(language: str) -> bool:
     return language in get_auto_translate_language_codes()
 
 
+@functools.cache
+def get_auto_translate_language_name(language: str) -> str:
+    """Get the name of a language for auto-translation.
+
+    Args:
+        language (str): A language code, e.g. "en", "es", etc.
+
+    Returns:
+        str: The name of the language if valid, else "Unknown".
+    """
+    language = language.casefold()
+    for lang in get_auto_translate_languages():
+        if lang[0].casefold() == language or lang[1].casefold() == language:
+            return lang[1]
+    return "Unknown"
+
+
 def filter_invalid_auto_translate_languages(languages: Iterable[str]) -> list[str]:
     """Filter and return a list of languages that are valid for auto-translation.
 

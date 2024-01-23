@@ -21,6 +21,7 @@ from ...ray.utils import (
     format_job_due_date_slack,
     format_job_prediction,
 )
+from ...ray.settings import get_auto_translate_language_name
 from ...config import config, domains, Environment
 from ...auth.connector import (
     RayClient,
@@ -2406,6 +2407,8 @@ class AutoTranslationMessage(SlackMessage):
             }
         ]
         for translated, source, target in translations:
+            source_lang_name = get_auto_translate_language_name(source)
+            target_lang_name = get_auto_translate_language_name(target)
             blocks.append(
                 {
                     "type": "rich_text",
@@ -2423,7 +2426,7 @@ class AutoTranslationMessage(SlackMessage):
                     "elements": [
                         {
                             "type": "plain_text",
-                            "text": f"Translated from {source} to {target} with the help of Straker",
+                            "text": f"Translated from {source_lang_name} to {target_lang_name} with the help of Straker",
                         }
                     ],
                 }
