@@ -93,12 +93,7 @@ async def message_event(context, message):
     elif message.get("text") and f"<@{context['bot_user_id']}>" not in message["text"]:
         # Do not auto-translate if the bot is mentioned (should default to normal response).
         if await require_ray_client(context, prompt_login=False):
-            await auto_translate_message(
-                context,
-                context["ray"].client,
-                text=message.get("text"),
-                ts=message["ts"],
-            )
+            await auto_translate_message(context, context["ray"].client, message)
     else:
         # Do nothing if the Slack app is not mentioned in group chats and
         # auto-translate is disabled.

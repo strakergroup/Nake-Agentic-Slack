@@ -78,7 +78,7 @@ async def respond_to_message(
         re.I,
     )
 
-    if len(message_match) > 0:
+    if len(message_match) > 0 and await require_ray_client(context, prompt_login=False):
         if len(message_match[-1][2].strip()) > 0:
             mt_sl = message_match[-1][1] + "_" + message_match[-1][2].strip()
         else:
@@ -214,32 +214,67 @@ async def respond_to_message(
 
 
 async def auto_translate_message(
-    context: AsyncBoltContext, ray_client: RayClient, text: str | None, ts: str
+    context: AsyncBoltContext, ray_client: RayClient, message: dict[str, Any]
 ):
+    text: str | None = message.get("text")
+    ts: str = message["ts"]
+    thread_ts: str | None = message.get("thread_ts")
     if not text:
         return
     enabled_conversations = get_auto_translate_settings_conversations(ray_client)
     if context.channel_id not in enabled_conversations:
         return
-    target_langs = get_auto_translate_settings_langs(ray_client)
+
+    # Check source and target languages and if translation is required.
+    target_langs = set(get_auto_translate_settings_langs(ray_client))
+    rayService = RayService.get_service(ray_client)
+    source_lang: str = "en"  # Default source language is English
+    try:
+        source_lang = (await rayService.detect_language(text)).data["language"]
+    except Exception as e:
+        notify_exception(e)
+    # If message is in a thread, translate to the languages in the thread.
+    if thread_ts:
+        try:
+            thread_replies_response = await context.client.conversations_replies(
+                channel=context.channel_id, ts=thread_ts, limit=200
+            )
+            thread_replies: list[dict[str, Any]] = thread_replies_response.get(
+                "messages", []
+            )
+            # Only check last few messages from other users to not spam the API.
+            thread_replies = [
+                msg
+                for msg in thread_replies
+                if msg.get("type") == "message"
+                and msg.get("text")
+                and not msg.get("bot_id")
+                and msg.get("user") != context.user_id
+            ][-5:]
+            # TODO Alternate text extraction after modifiy message changes
+            detect_lang_responses = await asyncio.gather(
+                *(rayService.detect_language(msg["text"]) for msg in thread_replies)
+            )
+            detected_langs = [r.data["language"] for r in detect_lang_responses]
+            target_langs = target_langs.union(detected_langs)
+        except Exception as e:
+            notify_exception(e, "Failed to get thread replies")
+
+    target_langs = target_langs.difference({source_lang})
     if not target_langs:
         return
 
     try:
-        rayService = RayService.get_service(ray_client)
         responses = await asyncio.gather(
             *(
-                rayService.get_machine_translation(target_lang=lang, sentence=text)
+                rayService.get_machine_translation(
+                    target_lang=lang, source_lang=source_lang, sentence=text
+                )
                 for lang in target_langs
             )
         )
-        # Do not translate if the source and target languages are the same.
-        valid_translations = [
-            response.data
-            for response in responses
-            if response.data["source_lang"] != response.data["target_lang"]
-        ]
-        if valid_translations:
+        translations = [response.data for response in responses]
+        if translations:
             msg = AutoTranslationMessage(
                 text,
                 translations=[
@@ -248,7 +283,7 @@ async def auto_translate_message(
                         translation["source_lang"],
                         translation["target_lang"],
                     )
-                    for translation in valid_translations
+                    for translation in translations
                 ],
             )
 
