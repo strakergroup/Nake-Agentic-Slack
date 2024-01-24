@@ -71,28 +71,28 @@ async def respond_to_message(
         return
 
     # process mt
-    # message_match = re.findall(
-    #     r'(mt|Mt|mT|MT)\s(\w+)?(\s\w+)?\sto\s(\w+)(\s\w+)?\stranslate:\s?(.*)', message["text"], re.I)
+    message_match = re.findall(
+        r'(mt|Mt|mT|MT)\s(\w+)?(\s\w+)?\sto\s(\w+)(\s\w+)?\stranslate:\s?(.*)', message["text"], re.I)
 
-    # if len(message_match) > 0:
-    #     if len(message_match[-1][2].strip()) > 0:
-    #         mt_sl = message_match[-1][1]+"_"+message_match[-1][2].strip()
-    #     else:
-    #         mt_sl = message_match[-1][1]
-    #     if len(message_match[-1][4].strip()) > 0:
-    #         mt_tl = message_match[-1][3]+"_"+message_match[-1][4].strip()
-    #     else:
-    #         mt_tl = message_match[-1][3]
-    #     mt_text = message_match[-1][-1]
-    #     await get_mt_translation(
-    #         context,
-    #         context["ray"].client,
-    #         source_lang=mt_sl,
-    #         target_lang=mt_tl,
-    #         sentence=mt_text,
-    #         thread_ts=thread_ts,
-    #     )
-    #     return
+    if len(message_match) > 0:
+        if len(message_match[-1][2].strip()) > 0:
+            mt_sl = message_match[-1][1]+"_"+message_match[-1][2].strip()
+        else:
+            mt_sl = message_match[-1][1]
+        if len(message_match[-1][4].strip()) > 0:
+            mt_tl = message_match[-1][3]+"_"+message_match[-1][4].strip()
+        else:
+            mt_tl = message_match[-1][3]
+        mt_text = message_match[-1][-1]
+        await get_mt_translation(
+            context,
+            context["ray"].client,
+            source_lang=mt_sl,
+            target_lang=mt_tl,
+            sentence=mt_text,
+            thread_ts=thread_ts,
+        )
+        return
 
     response = watson_message(message["text"], context.get("user_id"))
     context["log"].set_watson_log(
