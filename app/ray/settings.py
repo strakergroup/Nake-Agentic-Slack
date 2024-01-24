@@ -7,13 +7,19 @@ from ..database import engines
 
 
 @functools.cache
-def get_auto_translate_languages() -> list[tuple[str, str]]:
+def get_auto_translate_languages(
+    include_variations: bool = False,
+) -> list[tuple[str, str]]:
     """Get the available languages for auto-translation (ISO code and name).
+
+    Args:
+        include_variations (bool, optional): Whether to include variations of
+            languages, e.g. "zh" and "zh-CN". Defaults to False.
 
     Returns:
         list[tuple[str, str]]: The list of languages, tuples with code and label.
     """
-    return [
+    languages = [
         ("en", "English"),
         ("es", "Spanish"),
         ("fr", "French"),
@@ -25,16 +31,26 @@ def get_auto_translate_languages() -> list[tuple[str, str]]:
         ("ja", "Japanese"),
         ("ko", "Korean"),
     ]
+    if include_variations:
+        languages.append(("zh", "Chinese (Simplified)"))
+    return languages
 
 
 @functools.cache
-def get_auto_translate_language_codes() -> list[str]:
+def get_auto_translate_language_codes(include_variations: bool = False) -> list[str]:
     """Get the available languages for auto-translation (ISO code only).
+
+    Args:
+        include_variations (bool, optional): Whether to include variations of
+            languages, e.g. "zh" and "zh-CN". Defaults to False.
 
     Returns:
         list[str]: The list of language codes.
     """
-    return [lang[0] for lang in get_auto_translate_languages()]
+    return [
+        lang[0]
+        for lang in get_auto_translate_languages(include_variations=include_variations)
+    ]
 
 
 @functools.cache
@@ -44,7 +60,7 @@ def is_valid_auto_translate_language(language: str) -> bool:
     Args:
         language (str): A language code, e.g. "en", "es", etc.
     """
-    return language in get_auto_translate_language_codes()
+    return language in get_auto_translate_language_codes(include_variations=True)
 
 
 @functools.cache
@@ -58,7 +74,7 @@ def get_auto_translate_language_name(language: str) -> str:
         str: The name of the language if valid, else "Unknown".
     """
     language = language.casefold()
-    for lang in get_auto_translate_languages():
+    for lang in get_auto_translate_languages(include_variations=True):
         if lang[0].casefold() == language or lang[1].casefold() == language:
             return lang[1]
     return "Unknown"

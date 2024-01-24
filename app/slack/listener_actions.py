@@ -224,7 +224,7 @@ async def auto_translate_message(
     if not text:
         return
     enabled_conversations = get_auto_translate_settings_conversations(ray_client)
-    if context.channel_id not in enabled_conversations:
+    if not context.channel_id or context.channel_id not in enabled_conversations:
         return
 
     # Check source and target languages and if translation is required.
