@@ -280,33 +280,41 @@ async def auto_translate_message(
             )
         )
         translations = [response.data for response in responses]
-        if translations:
-            msg = AutoTranslationMessage(
-                text,
-                translations=[
-                    (
-                        translation["text"],
-                        translation["source_lang"],
-                        translation["target_lang"],
-                    )
-                    for translation in translations
-                ],
-            )
+        msg = AutoTranslationMessage(
+            text,
+            translations=[
+                (
+                    translation["text"],
+                    translation["source_lang"],
+                    translation["target_lang"],
+                )
+                for translation in translations
+            ],
+        )
 
-            # TODO Update original message instead of posting a new message.
-            # await context.client.chat_update(
-            #     channel=channel_id, ts=thread_ts, text=msg.text, blocks=msg.blocks
-            # )
-            return await context.client.chat_postMessage(
-                channel=context.channel_id,
-                text=msg.text,
-                blocks=msg.blocks,
-                thread_ts=ts,
-            )
-        else:
-            notify_message("Failed to get machine translation from language cloud API")
+        # TODO Update original message instead of posting a new message.
+        if context.user_token:
+            try:
+                context.client.token = context.user_token
+                return await context.client.chat_update(
+                    channel=context.channel_id,
+                    ts=ts,
+                    text=text,  # Must use original untranslated text for future detect language
+                    blocks=msg.blocks,
+                )
+            except Exception as e:
+                notify_exception(e, "Failed to update message (auto-translation)")
+                # If updating message fails (e.g. permissions), default to thread reply.
+                context.client.token = context.bot_token
+        # Post a thread reply if the user did not give permission (user token).
+        return await context.client.chat_postMessage(
+            channel=context.channel_id,
+            text=msg.text,
+            blocks=msg.blocks,
+            thread_ts=ts,
+        )
     except Exception as e:
-        notify_exception(e, "Failed to get machine translation from language cloud API")
+        notify_exception(e, "Failed to get machine translation from LanguageCloud API")
     finally:
         if "responses" in locals():
             for response in responses:

@@ -44,6 +44,9 @@ oauth_settings = AsyncOAuthSettings(
         # "links:write",
         # "links:read",
     ],
+    user_scopes=[
+        "chat:write",
+    ],
     installation_store=installation_store,
     state_store=state_store,
     state_validation_enabled=True,
