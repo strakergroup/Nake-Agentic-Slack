@@ -313,10 +313,9 @@ async def auto_translate_message(
             ],
         )
 
-        # TODO Update original message instead of posting a new message.
-        if context.user_token:
+        if ray_client.slack_access_token:
             try:
-                context.client.token = context.user_token
+                context.client.token = ray_client.slack_access_token
                 return await context.client.chat_update(
                     channel=context.channel_id,
                     ts=ts,

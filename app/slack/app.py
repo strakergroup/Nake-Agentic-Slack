@@ -9,13 +9,15 @@ from slack_bolt.oauth.async_callback_options import (
     AsyncFailureArgs,
 )
 from buglog import notify_exception
+
 from .stores import AsyncSQLAlchemyInstallationStore, AsyncSQLAlchemyOAuthStateStore
 from .templates.messages import OnboardingMessage
+from ..config import config
 from ..database import engines
 
 
 installation_store = AsyncSQLAlchemyInstallationStore(
-    client_id=os.getenv("SLACK_CLIENT_ID"),
+    client_id=config.slack_client_id,
     engine=engines["ray_integration"],
     bots_table_name="slack_bots",
     installations_table_name="slack_installations",
@@ -27,8 +29,8 @@ state_store = AsyncSQLAlchemyOAuthStateStore(
 )
 
 oauth_settings = AsyncOAuthSettings(
-    client_id=os.getenv("SLACK_CLIENT_ID"),
-    client_secret=os.getenv("SLACK_CLIENT_SECRET"),
+    client_id=config.slack_client_id,
+    client_secret=config.slack_client_secret.get_secret_value(),
     scopes=[
         "app_mentions:read",
         "channels:history",

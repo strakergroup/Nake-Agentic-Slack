@@ -20,6 +20,8 @@ class StrakerConfig(BaseSettings):
 
     environment: Environment = None
     # Settings from environment variables.
+    slack_client_id: str = Field(env="SLACK_CLIENT_ID", min_length=1)
+    slack_client_secret: SecretStr = Field(env="SLACK_CLIENT_SECRET", min_length=1)
     buglog_listener_url: str | None = Field(None, env="BUGLOG_LISTENER_URL")
     elastic_apm_server_url: str | None = Field(None, env="ELASTIC_APM_SERVER_URL")
     # Derived settings.
@@ -122,17 +124,14 @@ class StrakerConfig(BaseSettings):
             )
             result = conn.execute(
                 sql,
-                {
-                    "name": "languagecloud_api",
-                    "env": values["environment"].value
-                },
+                {"name": "languagecloud_api", "env": values["environment"].value},
             )
             row = result.first()
             if not row:
                 raise AssertionError(
                     "The languagecloud_api integration key is not in the database"
                 )
-            return row[0]
+            return SecretStr(row[0])
 
     class Config:
         allow_mutation = False
