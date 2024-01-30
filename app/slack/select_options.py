@@ -56,6 +56,25 @@ async def get_language_options(filter: str | None = None) -> list[dict[str, Any]
     ]
 
 
+async def get_file_options_cached(channel_id: str) -> list[dict[str, Any]]:
+    key = f"slack-ray-translator:files:{channel_id}"
+    cached = False
+    files = []
+    try:
+        cached = await redis_conn.get(key)
+    except Exception as e:
+        notify_exception(e)
+    if cached:
+        try:
+            files = json.loads(cached)
+            assert isinstance(files, list)
+            return files
+        except Exception as e:
+            notify_exception(e)
+
+    return files
+
+
 @functools.cache
 def get_auto_translate_language_options():
     """Get the options block for the auto-translate language select input."""
@@ -81,16 +100,23 @@ def map_file_options(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
     - https://api.slack.com/reference/block-kit/composition-objects#option.
     """
     max_title_length = 75
+    # sort files by timestamp descending
+    files.sort(key=lambda f: f["timestamp"], reverse=True)
     file_options = []
     for file in files:
         title = file.get("title", "")
+        if not title:
+            continue
         # Options text has max 75 characters.
         if len(title) > max_title_length:
             title = f"{title[:max_title_length - 1]}…"
+        id = file.get("id")
+        if not id or len(id) > max_title_length:
+            continue
         file_options.append(
             {
                 "text": {"type": "plain_text", "text": title, "emoji": False},
-                "value": file.get("id"),
+                "value": id,
             }
         )
     return file_options

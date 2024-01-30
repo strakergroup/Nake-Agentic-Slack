@@ -2,6 +2,7 @@
 commands, etc. from the Slack API.
 """
 
+import asyncio
 import re
 import json
 
@@ -58,7 +59,7 @@ from .templates.messages import (
 )
 from .templates.views import home_view, settings_auto_translate_view
 from .web import files_list_simple, get_bot_accessible_files
-from .select_options import get_language_options, map_file_options
+from .select_options import get_language_options, get_file_options_cached
 from ..auth.connector import (
     connect_ray_account,
     disconnect_ray_account,
@@ -84,12 +85,12 @@ from slack_bolt.context.async_context import AsyncBoltContext
     middleware=[ray_connection],
 )
 @slack_log_decorator
-async def message_event(context, message):
+async def message_event(client, context, message):
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # not channel or group conversations (see the "app_mention" event).
     if message.get("channel_type") == "im" or context["channel_id"][0] in ("D", "U"):
-        await respond_to_message(context, message, use_thread=False)
+        await respond_to_message(client, context, message, use_thread=False)
     elif message.get("text") and f"<@{context['bot_user_id']}>" not in message["text"]:
         # Do not auto-translate if the bot is mentioned (should default to normal response).
         if await require_ray_client(context, prompt_login=False):
@@ -102,12 +103,12 @@ async def message_event(context, message):
 
 @app.event("app_mention", middleware=[ray_connection])
 @slack_log_decorator
-async def app_mention_event(context, event):
+async def app_mention_event(client, context, event):
     # https://api.slack.com/events/app_mention
     # Respond to messages with threads in channel and group chats if mentioned.
     # Remove user mentions from text before processing.
     event["text"] = re.sub(r"<@\w+>", "", event.get("text", "")).strip()
-    await respond_to_message(context, event, use_thread=True)
+    await respond_to_message(client, context, event, use_thread=True)
 
 
 @app.event("app_home_opened", middleware=[ray_connection])
@@ -161,6 +162,9 @@ async def app_uninstalled(context):
 async def new_job_shortcut(ack, shortcut, context, client):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+        asyncio.create_task(
+            files_list_simple(client, channel_id=context["channel_id"], count=120)
+        )
         # Set files in the message as initial values if the bot has access to them.
         init_files = await get_bot_accessible_files(
             client, (f["id"] for f in shortcut["message"].get("files", []))
@@ -342,6 +346,11 @@ async def ray_command(ack, respond, say, command, context, client):
         case ["new"]:
             # Show quote form modal.
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+                asyncio.create_task(
+                    files_list_simple(
+                        client, channel_id=context["channel_id"], count=120
+                    )
+                )
                 await show_quote_form_modal(
                     context,
                     command["trigger_id"],
@@ -515,6 +524,9 @@ async def new_job_action(ack, payload, context, client, body):
         except (SlackApiError, json.JSONDecodeError, KeyError):
             # The payload value does not exist, is malformed, or no access to the files.
             pass
+        asyncio.create_task(
+            files_list_simple(client, channel_id=context["channel_id"], count=120)
+        )
         await show_quote_form_modal(
             context,
             body["trigger_id"],
@@ -763,11 +775,21 @@ async def file_options(ack, payload, client):
     no files available for the new job files input.
     """
     channel_id = payload["action_id"].split("_")[2]
-    # Include a bit more than the max 100 options due to filters.
-    files = await files_list_simple(client, channel_id=channel_id, count=120)
+    # Include a bit more than the max 100 options due to filters
+    # refresh cache this should not be awaited since this can take time. Seems to cause issue with timeout
+    task = asyncio.create_task(
+        files_list_simple(client, channel_id=channel_id, count=120)
+    )
+    # only respond with cached files since time can cause timeout unless files empty
+    files = await get_file_options_cached(channel_id)
+    if not files:
+        files = await task
+    print(files)
     if filter := payload.get("value"):
-        files = [f for f in files if filter.lower().strip() in f["title"].lower()]
-    await ack(options=map_file_options(files[:100]))
+        files = [
+            f for f in files if filter.lower().strip() in f["text"]["text"].lower()
+        ]
+    await ack(options=files[:100])
 
 
 @app.block_action(re.compile(r"batch_list(_\d+)?"), middleware=[ray_connection])
