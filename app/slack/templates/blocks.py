@@ -76,7 +76,9 @@ def home_auth_blocks(
         },
     ]
     if enterprise_id:
-        if enterprise_id == "EUJJ37YFR":
+        # enterprise_id == "E04RDMG8XP1" is for UAT
+        # enterprise_id == "EUJJ37YFR" is for Live IBM Translate
+        if enterprise_id == "E04RDMG8XP1":
             msg[1]["elements"].append(
                 {
                     "type": "button",
@@ -88,7 +90,9 @@ def home_auth_blocks(
                     "action_id": "login_sso",
                 }
             )
-    elif team_id == "T0360HUQKS9":
+    # team_id == "T02FDFCGK" is for UAT
+    # team_id == "T0360HUQKS9" is for Live IBM Translate
+    elif team_id == "T02FDFCGK":
         msg[1]["elements"].append(
             {
                 "type": "button",
