@@ -304,11 +304,7 @@ async def auto_translate_message(
         msg = AutoTranslationMessage(
             text,
             translations=[
-                (
-                    translation["text"],
-                    translation["source_lang"],
-                    translation["target_lang"],
-                )
+                (translation["target_lang"], translation["text"])
                 for translation in translations
             ],
         )

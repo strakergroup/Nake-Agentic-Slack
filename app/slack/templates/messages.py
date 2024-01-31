@@ -2390,25 +2390,19 @@ class AutoTranslationMessage(SlackMessage):
     def __init__(
         self,
         original_text: str,
-        translations: list[tuple[str, str, str]],
+        translations: list[tuple[str, str]],
     ) -> None:
         """Slack message template for an auto-translated message
 
         Args:
             original_text (str | None): The original text.
             translations (list[tuple[str, str, str]]): A list of translations.
-                Each element is a 3-tuple with the translated text, source
-                language, and target language.
+                Each element is a 2-tuple with the target language and translated text.
         """
         blocks: list[dict[str, Any]] = [
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": original_text},
-            }
+            {"type": "section", "text": {"type": "mrkdwn", "text": original_text}}
         ]
-        for translated, source, target in translations:
-            source_lang_name = get_auto_translate_language_name(source)
-            target_lang_name = get_auto_translate_language_name(target)
+        for _, translated in translations:
             blocks.append(
                 {
                     "type": "rich_text",
@@ -2420,17 +2414,18 @@ class AutoTranslationMessage(SlackMessage):
                     ],
                 }
             )
-            blocks.append(
-                {
-                    "type": "context",
-                    "elements": [
-                        {
-                            "type": "plain_text",
-                            "text": f"Translated from {source_lang_name} to {target_lang_name} with the help of Straker",
-                        }
-                    ],
-                }
-            )
+        target_langs = [get_auto_translate_language_name(t[0]) for t in translations]
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "plain_text",
+                        "text": f"Translated to {', '.join(target_langs)} with Straker AI",
+                    }
+                ],
+            }
+        )
         super().__init__(original_text, blocks)
 
 
