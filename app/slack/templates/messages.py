@@ -2389,20 +2389,31 @@ class JobTargetLangMessage(SlackMessage):
 class AutoTranslationMessage(SlackMessage):
     def __init__(
         self,
-        original_text: str,
+        source_text: str,
+        source_language: str,
         translations: list[tuple[str, str]],
+        scores: list[tuple[str, float]] | None = None,
     ) -> None:
         """Slack message template for an auto-translated message
 
         Args:
-            original_text (str | None): The original text.
+            source_text (str | None): The original source text.
+            source_language: str): The source language, e.g. "en", "de".
             translations (list[tuple[str, str, str]]): A list of translations.
                 Each element is a 2-tuple with the target language and translated text.
         """
+        self.source_text = source_text
+        self.source_language = source_language
+        self.translations = translations
+        self.scores = scores
+
+        super().__init__(source_text, self.generate_blocks())
+
+    def generate_blocks(self) -> list[dict[str, Any]]:
         blocks: list[dict[str, Any]] = [
-            {"type": "section", "text": {"type": "mrkdwn", "text": original_text}}
+            {"type": "section", "text": {"type": "mrkdwn", "text": self.source_text}}
         ]
-        for _, translated in translations:
+        for _, translated in self.translations:
             blocks.append(
                 {
                     "type": "rich_text",
@@ -2414,7 +2425,9 @@ class AutoTranslationMessage(SlackMessage):
                     ],
                 }
             )
-        target_langs = [get_auto_translate_language_name(t[0]) for t in translations]
+        target_langs = [
+            get_auto_translate_language_name(t[0]) for t in self.translations
+        ]
         blocks.append(
             {
                 "type": "context",
@@ -2426,7 +2439,35 @@ class AutoTranslationMessage(SlackMessage):
                 ],
             }
         )
-        super().__init__(original_text, blocks)
+        if self.scores:
+            source_lang_full = get_auto_translate_language_name(self.source_language)
+            for lang, score in self.scores:
+                target_lang_full = get_auto_translate_language_name(lang)
+                score_text = f":large_green_circle: {source_lang_full} → {target_lang_full} is accurate"
+                if score < 0.5:
+                    score_text = f":large_red_circle: {source_lang_full} → {target_lang_full} is inaccurate"
+                elif score < 0.8:
+                    score_text = f":large_orange_circle: {source_lang_full} → {target_lang_full} might need checking"
+                blocks.append(
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "plain_text",
+                                "text": score_text,
+                            }
+                        ],
+                    }
+                )
+        return blocks
+
+    def add_translation_scores(
+        self, scores: list[tuple[str, float]] | None
+    ) -> "AutoTranslationMessage":
+        """Return a new message with translation scores added."""
+        return AutoTranslationMessage(
+            self.source_text, self.source_language, self.translations, scores
+        )
 
 
 class MachineTranslationMessage(SlackMessage):

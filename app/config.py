@@ -22,10 +22,11 @@ class StrakerConfig(BaseSettings):
     # Settings from environment variables.
     slack_client_id: str = Field(env="SLACK_CLIENT_ID", min_length=1)
     slack_client_secret: SecretStr = Field(env="SLACK_CLIENT_SECRET", min_length=1)
-    buglog_listener_url: str | None = Field(None, env="BUGLOG_LISTENER_URL")
+    taus_api_key: SecretStr = Field(env="TAUS_API_KEY", min_length=1)
     elastic_apm_server_url: str | None = Field(None, env="ELASTIC_APM_SERVER_URL")
     # Derived settings.
     base_url: HttpUrl = None
+    buglog_listener_url: str = ""
     slack_deltaray_key: SecretBytes = None
     slack_queue_proxy_secret: SecretStr = None
     health_check_password: SecretStr = None
@@ -37,9 +38,6 @@ class StrakerConfig(BaseSettings):
 
     @validator("buglog_listener_url")
     def default_buglog_listener_url(cls, v, values):
-        """Defaults to the standard BugLogHQ URL depending on the environment."""
-        if v:
-            return v
         return f"{domains.buglog}/buglog/listeners/bugLogListenerREST.cfm"
 
     @validator("base_url")
