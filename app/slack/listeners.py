@@ -205,7 +205,7 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                 info_response_json = await context.client.users_info(
                     user=context["user_id"]
                 )
-                if (info_response_json["ok"]):
+                if info_response_json["ok"]:
                     user_info = info_response_json["user"]
                     print(user_info)
                     ray_user_id = connect_ray_account_sso(
@@ -227,12 +227,7 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                         context["ray"],
                     )
                     await ack(response_action="clear")
-                    await client.chat_postMessage(
-                        channel=context["channel_id"],
-                        text=sso_msg.text,
-                        blocks=sso_msg.blocks,
-                        replace_original=True,
-                    )
+                    await respond(text=sso_msg.text, blocks=sso_msg.blocks)
                     data = {
                         "client_id": ray_user_id,
                         "username": user_info["profile"]["email"],
