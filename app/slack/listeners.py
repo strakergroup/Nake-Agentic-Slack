@@ -207,7 +207,6 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                 )
                 if info_response_json["ok"]:
                     user_info = info_response_json["user"]
-                    print(user_info)
                     ray_user_id = connect_ray_account_sso(
                         context["user_id"],
                         context["team_id"],

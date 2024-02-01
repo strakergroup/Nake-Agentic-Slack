@@ -78,7 +78,7 @@ def home_auth_blocks(
     if enterprise_id:
         # enterprise_id == "E04RDMG8XP1" is for UAT
         # enterprise_id == "EUJJ37YFR" is for Live IBM Translate
-        if enterprise_id == "E04RDMG8XP1":
+        if enterprise_id == "EUJJ37YFR":
             msg[1]["elements"].append(
                 {
                     "type": "button",
@@ -92,7 +92,7 @@ def home_auth_blocks(
             )
     # team_id == "T02FDFCGK" is for UAT
     # team_id == "T0360HUQKS9" is for Live IBM Translate
-    elif team_id == "T02FDFCGK":
+    elif team_id == "T0360HUQKS9":
         msg[1]["elements"].append(
             {
                 "type": "button",
