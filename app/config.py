@@ -42,7 +42,7 @@ class StrakerConfig(BaseSettings):
 
     @validator("base_url")
     def default_base_url(cls, v, values):
-        if v:
+        if v and values["environment"] == Environment.local:
             return v.strip("/")
         return domains.slack_ray_translator
 
