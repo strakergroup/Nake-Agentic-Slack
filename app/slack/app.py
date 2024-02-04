@@ -46,11 +46,9 @@ oauth_settings = AsyncOAuthSettings(
         # "links:write",
         # "links:read",
     ],
-    # Request user token individually rather than during installation.
-    # So keep this empty.
-    # user_scopes=[
-    #     "chat:write",
-    # ],
+    user_scopes=[
+        "chat:write",
+    ],
     installation_store=installation_store,
     state_store=state_store,
     state_validation_enabled=True,
