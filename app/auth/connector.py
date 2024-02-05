@@ -809,60 +809,6 @@ def get_language_cloud_connect_url(
     return f"{domains.languagecloud}/app/slack?{urlencode(params)}"
 
 
-async def save_user_access_token(
-    user_id: str,
-    team_id: str,
-    enterprise_id: str | None,
-    user_token: str,
-    scopes: list[str],
-):
-    """Save the user access token to the database after successful Slack OAuth
-    authorisation (user, not bot/Slack app installation).
-
-    Args:
-        user_id (str): Slack user ID.
-        team_id (str): Slack team ID.
-        enterprise_id (str | None): Slack enterprise ID (if applicable).
-        user_token (str): User access token from successful OAuth authorisation.
-        scopes (list[str]): The scopes of the access token.
-    """
-    scopes_string = ",".join(scopes)
-    with engines["ray_integration"].begin() as conn:
-        if enterprise_id:
-            sql = text(
-                """
-                UPDATE slack_deltaray_link SET
-                    slack_team_id = :team_id,
-                    access_token = :access_token,
-                    access_token_scopes = :access_token_scopes
-                WHERE slack_user_id = :user_id
-                AND slack_enterprise_id = :enterprise_id
-                """
-            ).bindparams(
-                user_id=user_id,
-                team_id=team_id,
-                enterprise_id=enterprise_id,
-                access_token=user_token,
-                access_token_scopes=scopes_string,
-            )
-        else:
-            sql = text(
-                """
-                UPDATE slack_deltaray_link SET
-                    access_token = :access_token,
-                    access_token_scopes = :access_token_scopes
-                WHERE slack_user_id = :user_id
-                AND slack_team_id = :team_id
-                """
-            ).bindparams(
-                user_id=user_id,
-                team_id=team_id,
-                access_token=user_token,
-                access_token_scopes=scopes_string,
-            )
-        conn.execute(sql)
-
-
 async def approve_pending_groups(
     admin_client_id: str, pending_client_id: str, pending_client_username: str
 ) -> tuple[str]:

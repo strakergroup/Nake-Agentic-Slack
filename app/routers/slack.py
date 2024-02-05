@@ -1,10 +1,10 @@
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
-from jose.jwt import get_unverified_claims
+from jose.jwt import get_unverified_claims  # type: ignore
 from buglog import notify_exception, notify_message
 
-from ..auth.connector import get_ray_client, save_user_access_token
+from ..auth.connector import get_ray_client
 from ..config import config, domains
 from ..slack import slack_handler
 
@@ -20,6 +20,10 @@ async def slack_openid_connect(request: Request):
     access token. Part of the OpenID Connect process.
     See https://api.slack.com/authentication/sign-in-with-slack
     """
+    # Disable this endpoint for now.
+    # This endpoint was used to authorise Slack SSO to a LanguageCloud account,
+    # but is not needed for now. Add to Slack manifest redirect_urls when re-enabled.
+    return RedirectResponse(f"{config.base_url}/slack/install")
     lc_success_redirect_url = f"{domains.languagecloud}/app/slackopenid?success=1"
     lc_failure_redirect_url = f"{domains.languagecloud}/app/slackopenid?success=0"
     code = request.query_params.get("code")
@@ -92,16 +96,14 @@ async def slack_openid_connect(request: Request):
             severity="ERROR",
         )
         return RedirectResponse(lc_failure_redirect_url)
-
     # TODO Make this work for SSO login
-    await save_user_access_token(
-        user_id=user_id,
-        team_id=team_id,
-        enterprise_id=enterprise_id,
-        user_token=access_token,
-        scopes=["openid", "profile", "email"],  # TODO
-    )
-
+    # await save_user_access_token(
+    #     user_id=user_id,
+    #     team_id=team_id,
+    #     enterprise_id=enterprise_id,
+    #     user_token=access_token,
+    #     scopes=["openid", "profile", "email"],
+    # )
     return RedirectResponse(lc_success_redirect_url)
 
 
