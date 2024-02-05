@@ -1,6 +1,5 @@
 """Templates for individual Slack blocks."""
 
-
 from typing import Any
 from ray_sdk.api.v3.models import Quote
 from ...auth.connector import (
@@ -75,7 +74,9 @@ def home_auth_blocks(
         },
     ]
     if enterprise_id:
-        if enterprise_id == "E04RDMG8XP1":
+        # enterprise_id == "E04RDMG8XP1" is for UAT
+        # enterprise_id == "EUJJ37YFR" is for Live IBM Translate
+        if enterprise_id == "EUJJ37YFR":
             msg[1]["elements"].append(
                 {
                     "type": "button",
@@ -87,7 +88,9 @@ def home_auth_blocks(
                     "action_id": "login_sso",
                 }
             )
-    elif team_id == "T04QVSH7XDF":
+    # team_id == "T02FDFCGK" is for UAT
+    # team_id == "T0360HUQKS9" is for Live IBM Translate
+    elif team_id == "T0360HUQKS9":
         msg[1]["elements"].append(
             {
                 "type": "button",
