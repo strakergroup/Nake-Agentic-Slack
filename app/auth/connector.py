@@ -3,7 +3,6 @@ other services, e.g. Slack, RAY apps.
 """
 
 import asyncio
-from straker_auth.languagecloud import create_languagecloud_id_token
 import time
 import json
 import httpx
@@ -11,9 +10,12 @@ import hashlib
 from uuid import uuid4
 from dataclasses import dataclass
 from urllib.parse import urlencode
-from sqlalchemy import text
-from sqlalchemy.engine import Connection
+from sqlalchemy import text  # type: ignore
+from sqlalchemy.engine import Connection  # type: ignore
+from slack_sdk.oauth.installation_store import Installation
+from straker_auth.languagecloud import create_languagecloud_id_token
 from buglog import notify_exception
+
 from .algorithms import encrypt_aes, hash_hmac_sha1
 from ..config import config, domains
 from ..database import engines
@@ -141,6 +143,68 @@ def get_bot_token(
         ).bindparams(team_id=team_id)
     result = conn.execute(sql).first()
     return result[0] if result else None
+
+
+async def save_user_token_from_installation(
+    installation: Installation,
+) -> RayClient | None:
+    """Saves the Slack user token to a connected LanguageCloud client after a
+    successfull Slack app installation. Does nothing if the Slack user is not
+    connected to a LanguageCloud account.
+
+    Args:
+        installation (Installation): The Slack installation object.
+
+    Returns:
+        RayClient | None: The LC client if the user token was successfully saved,
+            otherwise `None`.
+    """
+    if not installation.user_token or not installation.team_id:
+        return None
+    user = await get_ray_client(
+        installation.user_id, installation.team_id, installation.enterprise_id
+    )
+    if not user:
+        return None
+    scopes_string = (
+        ",".join(installation.user_scopes) if installation.user_scopes else None
+    )
+    with engines["ray_integration"].begin() as conn:
+        if installation.enterprise_id:
+            sql = text(
+                """
+                UPDATE slack_deltaray_link SET
+                    slack_team_id = :team_id,
+                    access_token = :access_token,
+                    access_token_scopes = :access_token_scopes
+                WHERE slack_user_id = :user_id
+                AND slack_enterprise_id = :enterprise_id
+                """
+            ).bindparams(
+                user_id=installation.user_id,
+                team_id=installation.team_id,
+                enterprise_id=installation.enterprise_id,
+                access_token=installation.user_token,
+                access_token_scopes=scopes_string,
+            )
+        else:
+            sql = text(
+                """
+                UPDATE slack_deltaray_link SET
+                    access_token = :access_token,
+                    access_token_scopes = :access_token_scopes
+                WHERE slack_user_id = :user_id
+                AND slack_team_id = :team_id
+                """
+            ).bindparams(
+                user_id=installation.user_id,
+                team_id=installation.team_id,
+                access_token=installation.user_token,
+                access_token_scopes=scopes_string,
+            )
+        conn.execute(sql)
+    user.slack_access_token = installation.user_token
+    return user
 
 
 def get_slack_user(ray_client_id: str) -> SlackUser | None:

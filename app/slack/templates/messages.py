@@ -59,44 +59,52 @@ class OnboardingMessage(SlackMessage):
     """Message to send to onboard a new user."""
 
     def __init__(
-        self, user_id: str, team_id: str, enterprise_id: str | None, channel_id: str
+        self,
+        user_id: str,
+        team_id: str,
+        enterprise_id: str | None,
+        channel_id: str,
+        prompt_login: bool = True,
     ) -> None:
-        super().__init__(
-            "Welcome to RAY Translate for Slack! :tada:",
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "Welcome to RAY Translate for Slack! :tada:",
+        blocks: list[dict[str, Any]] = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "Welcome to RAY Translate for Slack! :tada:",
+                },
+            }
+        ]
+        if prompt_login:
+            blocks.extend(
+                [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "Connect your LanguageCloud account to get details about your translation jobs.",
+                        },
                     },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "Connect your LanguageCloud account to get details about your translation jobs.",
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "Connect LanguageCloud account",
+                                },
+                                "style": "primary",
+                                "url": get_language_cloud_connect_url(
+                                    user_id, team_id, enterprise_id, channel_id
+                                ),
+                                "action_id": "login",
+                            }
+                        ],
                     },
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Connect LanguageCloud account",
-                            },
-                            "style": "primary",
-                            "url": get_language_cloud_connect_url(
-                                user_id, team_id, enterprise_id, channel_id
-                            ),
-                            "action_id": "login",
-                        }
-                    ],
-                },
-            ],
-        )
+                ]
+            )
+        super().__init__("Welcome to RAY Translate for Slack! :tada:", blocks)
 
 
 class LoginMessage(SlackMessage):

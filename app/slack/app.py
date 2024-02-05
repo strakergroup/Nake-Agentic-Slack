@@ -12,6 +12,7 @@ from buglog import notify_exception
 
 from .stores import AsyncSQLAlchemyInstallationStore, AsyncSQLAlchemyOAuthStateStore
 from .templates.messages import OnboardingMessage
+from ..auth.connector import save_user_token_from_installation
 from ..config import config
 from ..database import engines
 
@@ -62,13 +63,22 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
     """
 
     async def _success_handler(self, args: AsyncSuccessArgs) -> BoltResponse:
+        user = None
+        try:
+            user = await save_user_token_from_installation(args.installation)
+        except Exception as e:
+            notify_exception(
+                e, "Slack app: Failed to save user token from installation"
+            )
+
         # Send onboarding message to the user who installed the app.
         app.client.token = args.installation.bot_token
         message = OnboardingMessage(
             args.installation.user_id,
-            args.installation.team_id,
+            args.installation.team_id,  # type: ignore
             args.installation.enterprise_id,
             args.installation.user_id,
+            prompt_login=bool(user),
         )
         await app.client.chat_postMessage(
             channel=args.installation.user_id, blocks=message.blocks, text=message.text
