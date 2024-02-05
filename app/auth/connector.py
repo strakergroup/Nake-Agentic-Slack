@@ -203,8 +203,18 @@ async def save_user_token_from_installation(
                 access_token_scopes=scopes_string,
             )
         conn.execute(sql)
-    user.slack_access_token = installation.user_token
-    return user
+    return RayClient(
+        id=user.id,
+        username=user.username,
+        access_token=user.access_token,
+        slack_user_id=user.slack_user_id,
+        slack_team_id=user.slack_team_id,
+        slack_enterprise_id=user.slack_enterprise_id,
+        slack_access_token=installation.user_token,
+        id_token=user.id_token,
+        planname=user.planname,
+        sso=user.sso,
+    )
 
 
 def get_slack_user(ray_client_id: str) -> SlackUser | None:
