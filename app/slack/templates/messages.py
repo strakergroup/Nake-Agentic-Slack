@@ -593,6 +593,49 @@ class SuccessfulLogoutMessage(SlackMessage):
         )
 
 
+class SlackPermissionsMessage(SlackMessage):
+    """Prompt the user to install the app again to grant user scope permissions,
+    e.g. `chat:write` to allow the app to post/edit messages of the user's behalf.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            message,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": message,
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Allow permissions",
+                            },
+                            "style": "primary",
+                            "url": f"{config.base_url}/slack/install",
+                            "action_id": "link",
+                        }
+                    ],
+                },
+            ],
+        )
+
+    @classmethod
+    def auto_translate_variation(cls):
+        return cls(
+            "To have our app translate your messages by editing your original "
+            "message instead of replying, you need to give the app extra permissions. "
+            "Click the button below to do this."
+        )
+
+
 class JobStatusMessage(SlackMessage):
     """Message showing the status of a translation job."""
 

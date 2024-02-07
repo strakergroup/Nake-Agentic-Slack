@@ -20,6 +20,7 @@ from .templates.messages import (
     HelpMessage,
     LoginMessage,
     LogoutMessage,
+    SlackPermissionsMessage,
     JobStatusNoIdMessage,
     NewJobMessage,
     JobQuotedMessage,
@@ -51,6 +52,7 @@ from ..ray.settings import (
     get_auto_translate_settings_langs,
 )
 from ..watson import watson_message
+from ..cache.timer import auto_translate_permissions_reminder
 from .select_options import get_file_options_cached
 from slack_sdk.web.async_client import AsyncWebClient
 
@@ -352,6 +354,15 @@ async def auto_translate_message(
                 translations=[(t["target_lang"], t["text"]) for t in translations],
             )
         )
+        # If the user has not given permission to edit their messages, post a reminder.
+        if await auto_translate_permissions_reminder(ray_client.id, context.channel_id):
+            permissions_msg = SlackPermissionsMessage.auto_translate_variation()
+            await context.client.chat_postEphemeral(
+                channel=context.channel_id,
+                user=context.user_id,
+                text=permissions_msg.text,
+                blocks=permissions_msg.blocks,
+            )
     except Exception as e:
         notify_exception(e, "Failed to get machine translation from LanguageCloud API")
     finally:
