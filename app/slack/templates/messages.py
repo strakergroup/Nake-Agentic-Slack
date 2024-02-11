@@ -181,7 +181,7 @@ class LoginMessage(SlackMessage):
         if enterprise_id:
             # enterprise_id == "E04RDMG8XP1" is for UAT
             # enterprise_id == "EUJJ37YFR" is for Live IBM Translate
-            if enterprise_id == "EUJJ37YFR" and ray_client is None:
+            if (enterprise_id == "EUJJ37YFR" or enterprise_id == "E04RDMG8XP1") and ray_client is None:
                 msg[1]["elements"].append(
                     {
                         "type": "button",
@@ -194,7 +194,7 @@ class LoginMessage(SlackMessage):
                     }
                 )
             elif (
-                enterprise_id == "EUJJ37YFR"
+                (enterprise_id == "EUJJ37YFR" or enterprise_id == "E04RDMG8XP1")
                 and ray_client is not None
                 and ray_client.sso
             ):
