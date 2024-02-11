@@ -388,7 +388,6 @@ async def get_ray_client(
         team_id (str): The Slack team ID.
         enterprise_id (str | None): The Slack enterprise ID.
     """
-    print("enterprise_id", enterprise_id)
     # First find the client details.
     with engines["ray_integration_readonly"].connect() as conn:
         if enterprise_id:
@@ -423,7 +422,7 @@ async def get_ray_client(
             ).bindparams(user_id=user_id, team_id=team_id)
         result = conn.execute(sql)
         row = result.first()
-        print("Link",row)
+        print("Enterprise_id", enterprise_id, "Link", row)
         if not row:
             return None
         ray_client_id, username = row.member_uuid, row.login
@@ -454,7 +453,7 @@ async def get_ray_client(
         ).bindparams(client_id=ray_client_id)
         result = conn.execute(sql)
         row = result.first()
-        print("API Token",row)
+        print("API Token", row)
         if not row:
             return None
         access_token = row[0]
