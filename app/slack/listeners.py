@@ -221,7 +221,6 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                         context["team_id"],
                         context.get("enterprise_id"),
                     )
-                    print(context["ray"])
                     # Show connection success message
                     sso_msg = SsoConnectionInfoMessage(
                         context["ray"],
