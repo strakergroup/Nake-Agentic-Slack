@@ -393,7 +393,7 @@ async def get_ray_client(
         enterprise_id (str | None): The Slack enterprise ID.
     """
     # First find the client details.
-    with engines["ray_integration_readonly"].connect() as conn:
+    with engines["ray_integration"].connect() as conn:
         if enterprise_id:
             sql = text(
                 """
@@ -447,7 +447,7 @@ async def get_ray_client(
             row.access_token,
         )
     # Now get the access token for authentication.
-    with engines["api_readonly"].connect() as conn:
+    with engines["api"].connect() as conn:
         sql = text(
             """
             SELECT obj_uuid FROM access_token

@@ -175,17 +175,13 @@ async def respond_to_message(
                 msg = NewJobMessage(context["channel_id"], message["ts"])
                 await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
         case "Show_Insights":
-            # TODO Disable insights on production for now.
-            if config.environment != Environment.production:
-                if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
-                    await post_insights(
-                        context,
-                        context["ray"].client,
-                        message["text"],
-                        thread_ts=thread_ts,
-                    )
-            else:
-                await context.say(response.reply, thread_ts=thread_ts)
+            if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
+                await post_insights(
+                    context,
+                    context["ray"].client,
+                    message["text"],
+                    thread_ts=thread_ts,
+                )
         case "Jokes":
             # Delegate jokes to IBM Watson Assistant dialog.
             await context.say(response.reply, thread_ts=thread_ts)
