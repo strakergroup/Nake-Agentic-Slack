@@ -317,7 +317,7 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation.",
+                        "text": "🗂️ New translation job opens the form to upload documents for translation.",
                     },
                     "accessory": {
                         "type": "button",
@@ -408,7 +408,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation.",
+                        "text": "🗂️ New translation job opens the form to upload documents for translation.",
                     },
                     "accessory": {
                         "type": "button",
@@ -1505,7 +1505,7 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation.",
+                        "text": "🗂️ New translation job opens the form to upload documents for translation.",
                     },
                     "accessory": {
                         "type": "button",
