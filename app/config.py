@@ -40,7 +40,7 @@ class StrakerConfig(BaseSettings):
         """Defaults to the standard BugLogHQ URL depending on the environment."""
         if v:
             return v
-        return f"{domains.buglog}/buglog/listeners/bugLogListenerREST.cfm"
+        return f"{domains.buglog}/bugLog/listeners/bugLogListenerREST.cfm"
 
     @validator("base_url")
     def default_base_url(cls, v, values):
@@ -64,9 +64,11 @@ class StrakerConfig(BaseSettings):
                 sql,
                 {
                     "name": "slack_deltaray",
-                    "env": "live"
-                    if values["environment"] == Environment.production
-                    else values["environment"].value,
+                    "env": (
+                        "live"
+                        if values["environment"] == Environment.production
+                        else values["environment"].value
+                    ),
                 },
             )
             row = result.first()
@@ -92,9 +94,11 @@ class StrakerConfig(BaseSettings):
                 sql,
                 {
                     "name": "slack_streams",
-                    "env": "live"
-                    if values["environment"] == Environment.production
-                    else values["environment"].value,
+                    "env": (
+                        "live"
+                        if values["environment"] == Environment.production
+                        else values["environment"].value
+                    ),
                 },
             )
             row = result.first()
