@@ -317,11 +317,11 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation.",
+                        "text": "🗂️ New translation job opens the form to upload documents for translation.",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Quote"},
+                        "text": {"type": "plain_text", "text": "New translation job"},
                         "action_id": "new_job",
                     },
                 },
@@ -408,11 +408,11 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation.",
+                        "text": "🗂️ New translation job opens the form to upload documents for translation.",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Quote"},
+                        "text": {"type": "plain_text", "text": "New translation job"},
                         "action_id": "new_job",
                     },
                 },
@@ -1307,7 +1307,7 @@ class NewJobMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Click here to submit a new translation job",
+                        "text": "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *New translation job* button below",
                     },
                 },
                 {
@@ -1505,11 +1505,11 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation.",
+                        "text": "🗂️ New translation job opens the form to upload documents for translation.",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Quote"},
+                        "text": {"type": "plain_text", "text": "New translation job"},
                         "action_id": "quote",
                     },
                 },
@@ -1583,7 +1583,7 @@ class QuoteMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *Submit a Quote* button below",
+                        "text": "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *New translation job* button below",
                     },
                 },
                 {
@@ -1591,7 +1591,10 @@ class QuoteMessage(SlackMessage):
                     "elements": [
                         {
                             "type": "button",
-                            "text": {"type": "plain_text", "text": "Submit a Quote"},
+                            "text": {
+                                "type": "plain_text",
+                                "text": "New translation job",
+                            },
                             "style": "primary",
                             "action_id": "new_job",
                         }
