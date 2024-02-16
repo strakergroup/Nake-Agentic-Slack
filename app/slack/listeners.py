@@ -30,6 +30,8 @@ from .listener_actions import (
     post_batch_list,
     post_file_list,
     show_sso_form_modal,
+    show_cancel_job_model,
+    cancel_job_process,
 )
 from .logging import slack_log_decorator
 from .templates.models import (
@@ -157,7 +159,8 @@ async def app_uninstalled(context):
 async def new_job_shortcut(ack, shortcut, context, client):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        asyncio.create_task(files_list_simple(client, channel_id=context["channel_id"], count=120))
+        asyncio.create_task(files_list_simple(
+            client, channel_id=context["channel_id"], count=120))
         # Set files in the message as initial values if the bot has access to them.
         init_files = await get_bot_accessible_files(
             client, (f["id"] for f in shortcut["message"].get("files", []))
@@ -355,7 +358,8 @@ async def ray_command(ack, respond, say, command, context, client):
         case ["new"]:
             # Show quote form modal.
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-                asyncio.create_task(files_list_simple(client, channel_id=context["channel_id"], count=120))
+                asyncio.create_task(files_list_simple(
+                    client, channel_id=context["channel_id"], count=120))
                 await show_quote_form_modal(
                     context,
                     command["trigger_id"],
@@ -516,7 +520,8 @@ async def new_job_action(ack, payload, context, client, body):
         except (SlackApiError, json.JSONDecodeError, KeyError):
             # The payload value does not exist, is malformed, or no access to the files.
             pass
-        asyncio.create_task(files_list_simple(client, channel_id=context["channel_id"], count=120))
+        asyncio.create_task(files_list_simple(
+            client, channel_id=context["channel_id"], count=120))
         await show_quote_form_modal(
             context,
             body["trigger_id"],
@@ -740,14 +745,16 @@ async def file_options(ack, payload, client):
     channel_id = payload['action_id'].split('_')[2]
     # Include a bit more than the max 100 options due to filters
     # refresh cache this should not be awaited since this can take time. Seems to cause issue with timeout
-    task = asyncio.create_task(files_list_simple(client, channel_id=channel_id, count=120))
+    task = asyncio.create_task(files_list_simple(
+        client, channel_id=channel_id, count=120))
     # only respond with cached files since time can cause timeout unless files empty
     files = await get_file_options_cached(channel_id)
     if not files:
         files = await task
     print(files)
     if filter := payload.get("value"):
-        files = [f for f in files if filter.lower().strip() in f["text"]['text'].lower()]
+        files = [f for f in files if filter.lower().strip() in f["text"]
+                 ['text'].lower()]
     await ack(options=files[:100])
 
 
@@ -792,6 +799,51 @@ async def file_list_action(ack, payload, context):
             replace_original=replace_original,
         )
 
+
+@app.block_action("cancel_job", middleware=[ray_connection])
+@slack_log_decorator
+async def cancel_job_action(ack, payload, context, client, body):
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+        await show_cancel_job_model(
+            context,
+            body["trigger_id"],
+            context["ray"].client,
+        )
+
+
+@app.view("cancel_job", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_cancel_job(ack, view, context, client):
+    """Get job info. Triggered from the "View More Info" in the job list"""
+    await ack()
+    if await require_ray_client(context, prompt_login=False):
+        try:
+            form = JobSearchForm.parse_slack(view["state"]["values"])
+        except ValidationError as e:
+            errors = convert_pydantic_to_slack_error(e)
+            await ack(response_action="errors", errors=errors)
+            return
+        await ack(response_action="clear")
+        reference = form.reference.strip().lower()
+        # Try searching job by TJ number if the format is correct.
+        if re.fullmatch(r"tj\d+", reference, re.IGNORECASE):
+            job_id = reference.split('tj')[1]
+            await cancel_job_process(context, context["ray"].client, job_id)
+        elif re.fullmatch(r"\d+", reference, re.IGNORECASE):
+            await cancel_job_process(context, context["ray"].client, reference)
+        else:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text="TJ Number is in incorrect format. E.g. TJ123456 or 123456",
+            )
+    else:
+        await ack(response_action="clear")
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            blocks=context["login_prompt"].blocks,
+            text=context["login_prompt"].text,
+        )
 
 # FastAPI will use this to handle Slack API requests.
 slack_handler = AsyncSlackRequestHandler(app)

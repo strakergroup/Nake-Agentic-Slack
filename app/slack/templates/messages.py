@@ -345,6 +345,21 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
+                        "text": "🔴 Cancel your job",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel",
+                        },
+                        "action_id": "cancel_job",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
                         "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*",
                     },
                 },
@@ -1556,6 +1571,21 @@ class HelpMessage(SlackMessage):
                             context.get("enterprise_id"),
                             context["channel_id"],
                         ),
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🔴 Cancel your job",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel",
+                        },
+                        "action_id": "cancel_job",
                     },
                 },
                 {"type": "divider"},

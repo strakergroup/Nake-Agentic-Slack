@@ -41,6 +41,7 @@ from .templates.models import NewJobForm
 from .templates.views import new_job_modal
 from .templates.views import job_search_modal
 from .templates.views import sso_form_modal
+from .templates.views import cancel_job_modal
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
 from ..config import config, domains, Environment
@@ -48,6 +49,7 @@ from ..ray.service import RayService, get_job_predictions
 from ..watson import watson_message
 from .select_options import get_file_options_cached
 from slack_sdk.web.async_client import AsyncWebClient
+
 
 async def respond_to_message(
     client: AsyncWebClient, context: AsyncBoltContext, message: dict[str, Any], *, use_thread: bool = False
@@ -65,7 +67,8 @@ async def respond_to_message(
     # If there is no text, show new job button or ignore the message.
     if not message.get("text"):
         if message.get("files"):
-            asyncio.create_task(files_list_simple(client, channel_id=context['channel_id'], count=120))
+            asyncio.create_task(files_list_simple(
+                client, channel_id=context['channel_id'], count=120))
             msg = NewJobMessage(context["channel_id"], message["ts"])
             await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
         return
@@ -151,7 +154,8 @@ async def respond_to_message(
                 await context.say(JobTargetsNoIdMessage().text, thread_ts=thread_ts)
         case "New_Translation_Job":
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-                asyncio.create_task(files_list_simple(client, channel_id=context['channel_id'], count=120))
+                asyncio.create_task(files_list_simple(
+                    client, channel_id=context['channel_id'], count=120))
                 msg = NewJobMessage(context["channel_id"], message["ts"])
                 await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
         case "Show_Insights":
@@ -166,7 +170,7 @@ async def respond_to_message(
             # Delegate jokes to IBM Watson Assistant dialog.
             await context.say(response.reply, thread_ts=thread_ts)
         case "Machine_Translate":
-        # splict target and source language from the text
+            # splict target and source language from the text
             try:
                 message_match = re.findall(
                     r'(mt|Mt|mT|MT)\s(\w+)?(\s\w+)?\sto\s(\w+)(\s\w+)?\stranslate:\s?(.*)', message["text"], re.I)
@@ -1222,3 +1226,64 @@ async def show_sso_form_modal(context: AsyncBoltContext, trigger_id: str):
         trigger_id=trigger_id,
         view=sso_form_modal(),
     )
+
+
+async def show_cancel_job_model(context: AsyncBoltContext, trigger_id: str, ray_client: RayClient,):
+    ''' Show the cancel job modal view dialog.
+        Args:
+            context (AsyncBoltContext): The context from the listener.
+            trigger_id (str): The trigger ID.
+            ray_client (RayClient): The RAY client details.
+    '''
+    await context.client.views_open(
+        trigger_id=trigger_id,
+        view=cancel_job_modal(
+            ray_client.username,
+        ),
+    )
+
+
+async def cancel_job_process(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    job_id: str
+) -> AsyncSlackResponse:
+    """Tries to get the job details from the RAY API and post the job status
+    to the Slack user. If the user cannot access the job, post another message
+    instead.
+
+    Args:
+        context (AsyncBoltContext): The listener function context.
+        ray_client (RayClient): The RAY client.
+        job_id (str): The ID of the job to get.
+    Raises:
+        AssertionError: The `channel_id` is not given and there is no source channel.
+    """
+    if (
+        not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
+        raise AssertionError("No channel to post to")
+    channel_id = context.channel_id or context.user_id
+    job, response = await RayService.get_service(ray_client).cancel_job(job_id)
+    try:
+        msg = job['message']
+        await context.client.chat_postMessage(
+            channel=context["user_id"],
+            text=msg,
+        )
+    finally:
+        if response is not None:
+            try:
+                response_data = response.json()
+            except Exception:
+                response_data = response.content.decode() or None
+            context["log"].add_api_log(
+                status_code=response.status_code,
+                url=str(response.url),
+                payload=None,
+                response=response_data,
+                headers=dict(response.headers.items()),
+                version="v3",
+            )
