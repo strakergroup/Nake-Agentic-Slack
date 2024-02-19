@@ -655,10 +655,25 @@ async def handle_new_job(ack, view, context, client):
             text=message.text,
             blocks=message.blocks,
         )
-
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=message.text,
+            blocks=message.blocks,
+        )
         # Process files and submit job.
         try:
-            responses = await submit_job(context, context["ray"].client, form)
+            job, responses = await submit_job(context, context["ray"].client, form)
+            if 'job_id' in job:
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=f"Job {job['job_id']} has been submitted successfully.",
+                )
+                message = JobSubmitMessage(form, job['job_id'])
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=message.text,
+                    blocks=message.blocks,
+                )
         except Exception as e:
             if isinstance(e, RayAPIResponseError):
                 try:
@@ -805,11 +820,24 @@ async def file_list_action(ack, payload, context):
 async def cancel_job_action(ack, payload, context, client, body):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        await show_cancel_job_model(
-            context,
-            body["trigger_id"],
-            context["ray"].client,
-        )
+        if "value" in payload:
+            job_info = json.loads(payload["value"])
+            if job_info['job_action'] == 'list':
+                job_id = job_info['job_id'].split('TJ')[1]
+                await cancel_job_process(context, context["ray"].client, job_id=job_id)
+            else:
+                await show_cancel_job_model(
+                    context,
+                    body["trigger_id"],
+                    context["ray"].client,
+                    job_uuid=job_info['job_id'],
+                )
+        else:
+            await show_cancel_job_model(
+                context,
+                body["trigger_id"],
+                context["ray"].client,
+            )
 
 
 @app.view("cancel_job", middleware=[ray_connection])

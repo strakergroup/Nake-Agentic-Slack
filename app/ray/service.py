@@ -248,7 +248,8 @@ class RayService:
     @secured_endpoint
     async def cancel_job(
         self,
-        job_id: str
+        job_id: str = '',
+        job_uuid: str = '',
     ) -> tuple[Job | None, Response | None]:
         """Gets the details of a translation job.
 
@@ -259,7 +260,7 @@ class RayService:
             The job data and the response if they exist.
         """
         try:
-            response = await self._ray.cancel_job(job_id)
+            response = await self._ray.cancel_job(job_id, job_uuid)
             return response.data, response.response
         except RayAuthError as e:
             return None, e.response

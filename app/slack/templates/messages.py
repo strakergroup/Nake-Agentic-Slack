@@ -1239,6 +1239,25 @@ class JobListMessage(SlackMessage):
                             ],
                         },
                     )
+                elif job.status == "PENDING_QUOTES" or job.status == "ORDER_NOW":
+                    jobs_blocks.append(
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": "🔴 Cancel this job",
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "Cancel",
+                                },
+                                "action_id": "cancel_job",
+                                "value": json.dumps({"job_id": job.id, "job_action": "list"}),
+                            },
+                        }
+                    )
                 if formatted_job_prediction != "":
                     jobs_blocks.append(job_prediction_block(formatted_job_prediction))
         else:
@@ -1353,7 +1372,7 @@ class NewJobMessage(SlackMessage):
 class JobSubmitMessage(SlackMessage):
     """Message to send when a new job is submitted."""
 
-    def __init__(self, new_job_form: NewJobForm) -> None:
+    def __init__(self, new_job_form: NewJobForm, job_id: str) -> None:
         super().__init__(
             "Your translation request has been submitted. You will be notified when a job number is assigned.",
             [
@@ -1379,6 +1398,22 @@ class JobSubmitMessage(SlackMessage):
                         "text": "\n".join(
                             f"• {file.title}" for file in new_job_form.files
                         ),
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🔴 Cancel your job",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel",
+                        },
+                        "action_id": "cancel_job",
+                        "value":{"job_id": job_id, "job_action": "submit"} ,
                     },
                 },
             ],

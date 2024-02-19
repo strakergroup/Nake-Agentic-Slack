@@ -1228,7 +1228,7 @@ async def show_sso_form_modal(context: AsyncBoltContext, trigger_id: str):
     )
 
 
-async def show_cancel_job_model(context: AsyncBoltContext, trigger_id: str, ray_client: RayClient,):
+async def show_cancel_job_model(context: AsyncBoltContext, trigger_id: str, ray_client: RayClient):
     ''' Show the cancel job modal view dialog.
         Args:
             context (AsyncBoltContext): The context from the listener.
@@ -1246,7 +1246,8 @@ async def show_cancel_job_model(context: AsyncBoltContext, trigger_id: str, ray_
 async def cancel_job_process(
     context: AsyncBoltContext,
     ray_client: RayClient,
-    job_id: str
+    job_id: str = '',
+    job_uuid: str = '',
 ) -> AsyncSlackResponse:
     """Tries to get the job details from the RAY API and post the job status
     to the Slack user. If the user cannot access the job, post another message
@@ -1255,7 +1256,8 @@ async def cancel_job_process(
     Args:
         context (AsyncBoltContext): The listener function context.
         ray_client (RayClient): The RAY client.
-        job_id (str): The ID of the job to get.
+        job_id (str): The ID of the obj_tp_job to get.
+        job_uuid (str): The UUID of the api human_job table obj_uuid
     Raises:
         AssertionError: The `channel_id` is not given and there is no source channel.
     """
@@ -1266,7 +1268,9 @@ async def cancel_job_process(
     ):
         raise AssertionError("No channel to post to")
     channel_id = context.channel_id or context.user_id
-    job, response = await RayService.get_service(ray_client).cancel_job(job_id)
+
+    job, response = await RayService.get_service(ray_client).cancel_job(job_id, job_uuid)
+
     try:
         msg = job['message']
         await context.client.chat_postMessage(
