@@ -299,7 +299,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🔍 Search allows you to search for a specific Translation Job (TJ). "
+                            ":mag: Search allows you to search for a specific Translation Job (TJ). "
                         ),
                     },
                     "accessory": {
@@ -317,7 +317,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🚦 Jobs provides an update on the status of recently submitted jobs."
+                            ":vertical_traffic_light: Jobs provides an update on the status of recently submitted jobs."
                         ),
                     },
                     "accessory": {
@@ -335,7 +335,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🗂️ Quote opens the form to upload documents for translation."
+                            ":card_index_dividers: Quote opens the form to upload documents for translation."
                         ),
                     },
                     "accessory": {
@@ -349,7 +349,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "📊 Insights uses AI to gather and show data about your translation experience"
+                            ":bar_chart: Insights uses AI to gather and show data about your translation experience"
                         ),
                     },
                     "accessory": {
@@ -381,7 +381,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "📊 Insights uses AI to gather and show data about your translation experience"
+                            ":bar_chart: Insights uses AI to gather and show data about your translation experience"
                         ),
                     },
                     "accessory": {
@@ -441,7 +441,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🔍 Search allows you to search for a specific Translation Job (TJ). "
+                            ":mag: Search allows you to search for a specific Translation Job (TJ). "
                         ),
                     },
                     "accessory": {
@@ -459,7 +459,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🚦 Jobs provides an update on the status of recently submitted jobs."
+                            ":vertical_traffic_light: Jobs provides an update on the status of recently submitted jobs."
                         ),
                     },
                     "accessory": {
@@ -477,7 +477,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🗂️ Quote opens the form to upload documents for translation."
+                            ":card_index_dividers: Quote opens the form to upload documents for translation."
                         ),
                     },
                     "accessory": {
@@ -491,7 +491,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "📊 Insights uses AI to gather and show data about your translation experience"
+                            ":bar_chart: Insights uses AI to gather and show data about your translation experience"
                         ),
                     },
                     "accessory": {
@@ -523,7 +523,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "📊 Insights uses AI to gather and show data about your translation experience"
+                            ":bar_chart: Insights uses AI to gather and show data about your translation experience"
                         ),
                     },
                     "accessory": {
@@ -1686,7 +1686,7 @@ class HelpMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🔍 Status allows you to search for a specific job. "
+                            ":mag: Status allows you to search for a specific job. "
                         ),
                     },
                     "accessory": {
@@ -1700,7 +1700,7 @@ class HelpMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🚦 Jobs provides an update on the status of recently submitted jobs."
+                            ":vertical_traffic_light: Jobs provides an update on the status of recently submitted jobs."
                         ),
                     },
                     "accessory": {
@@ -1714,7 +1714,7 @@ class HelpMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🗂️ Quote opens the form to upload documents for translation."
+                            ":card_index_dividers: Quote opens the form to upload documents for translation."
                         ),
                     },
                     "accessory": {
@@ -1728,7 +1728,7 @@ class HelpMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "📊 Insights uses AI to gather and show data about your translation experience"
+                            ":bar_chart: Insights uses AI to gather and show data about your translation experience"
                         ),
                     },
                     "accessory": {
@@ -1823,7 +1823,7 @@ class WhatsNextMessage(SlackMessage):
     def __init__(self) -> None:
         url = f"<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|{_('Click here')}>"
         super().__init__(
-            "Click here to see the upcoming features of our app",
+            _("Click here to see the upcoming features of our app"),
             [
                 {
                     "type": "section",
@@ -2015,6 +2015,7 @@ class SsoConnectionInfoMessage(SlackMessage):
 class ClientSignupEventMessage(SlackMessage):
     def __init__(self, event: ClientSignupEvent) -> None:
         self.event = event
+        user_url = f"<{domains.languagecloud}|{event.username}>"
         super().__init__(
             "Thank you for signing up to LanguageCloud :tada:",
             [
@@ -2023,7 +2024,7 @@ class ClientSignupEventMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "Thank you for signing up to LanguageCloud <{domains.languagecloud}|{event.username}> :tada:",
+                            "Thank you for signing up to LanguageCloud {user_url} :tada:",
                         ),
                     },
                 },
@@ -2043,16 +2044,17 @@ class ClientSignupEventMessage(SlackMessage):
 class ClientSignupEventAdminMessage(SlackMessage):
     def __init__(self, event: ClientSignupEvent, groups: list[ClientGroup]) -> None:
         self.event = event
+        user_str = f"{event.first_name} {event.last_name} ({event.email})"
         super().__init__(
             _(
-                "A new user has signed up for a LanguageCloud account: {event.first_name} {event.last_name} ({event.email})",
+                "A new user has signed up for a LanguageCloud account: {user_str}",
             )[
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "A new user has signed up for a LanguageCloud account:\n{event.first_name} {event.last_name} ({event.email})",
+                            "A new user has signed up for a LanguageCloud account:\n{user_str}",
                         ),
                     },
                 },

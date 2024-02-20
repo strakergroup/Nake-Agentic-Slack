@@ -1,9 +1,8 @@
 """Slack view templates (modals, home tab)."""
 
-
 from typing import Any
 from slack_bolt.context.async_context import AsyncBoltContext
-
+from app.translate import _
 from .blocks import home_auth_blocks
 from ..select_options import (
     map_file_options,
@@ -25,7 +24,7 @@ def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Welcome to the Straker LanguageCloud App!",
+                    "text": _("Welcome to the Straker LanguageCloud App!"),
                 },
             },
             *home_auth_blocks(
@@ -41,7 +40,9 @@ def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Here are some things to get you started. Also make sure you check out our Help Centre and use our built in chatbot within our app to guide you through the translation process.",
+                    "text": _(
+                        "Here are some things to get you started. Also make sure you check out our Help Centre and use our built in chatbot within our app to guide you through the translation process."
+                    ),
                 },
             },
             {
@@ -52,7 +53,7 @@ def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "⚡️ Create New Job",
+                            "text": _(":zap: Create New Job"),
                         },
                         "style": "primary",
                         "action_id": "quote",
@@ -63,7 +64,7 @@ def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "☀️ Daily Summary",
+                            "text": _(":sunny: Daily Summary"),
                         },
                         "action_id": "daily_summary",
                         "url": message_url,
@@ -73,7 +74,7 @@ def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "📊 Reports/Insights",
+                            "text": _(":bar_chart: Reports/Insights"),
                         },
                         "action_id": "report_insights",
                         "url": message_url,
@@ -83,51 +84,63 @@ def home_view(
             {"type": "divider"},
             {
                 "type": "header",
-                "text": {"type": "plain_text", "text": "Translate Channels"},
+                "text": {"type": "plain_text", "text": _("Translate Channels")},
             },
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences.",
+                    "text": _(
+                        "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
+                    ),
                 },
             },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": ":speech_balloon: Translation Settings",
+            (
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "emoji": True,
+                                "text": _(":speech_balloon: Translation Settings"),
+                            },
+                            "action_id": "settings_auto_translate",
                         },
-                        "action_id": "settings_auto_translate",
+                    ],
+                }
+                if rayConnection.client
+                else {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "_Connect your Straker LanguageCloud account to enable this feature_"
+                        ),
                     },
-                ],
-            }
-            if rayConnection.client
-            else {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "_Connect your Straker LanguageCloud account to enable this feature_",
-                },
-            },
+                }
+            ),
             {"type": "divider"},
             {
                 "type": "header",
-                "text": {"type": "plain_text", "text": "Give us your feedback"},
+                "text": {"type": "plain_text", "text": _("Give us your feedback")},
             },
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest LanguageCloud and Enterprise features, provide updates, and engage with customers like you!",
+                    "text": _(
+                        "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest LanguageCloud and Enterprise features, provide updates, and engage with customers like you!"
+                    ),
                 },
                 "accessory": {
                     "type": "button",
-                    "text": {"type": "plain_text", "text": "Learn More", "emoji": True},
+                    "text": {
+                        "type": "plain_text",
+                        "text": _("Learn More"),
+                        "emoji": True,
+                    },
                     "action_id": "link_0",
                     "url": "https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions",
                 },
@@ -141,7 +154,9 @@ def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "🌐 Visit Straker LanguageCloud",
+                            "text": _(
+                                ":globe_with_meridians: Visit Straker LanguageCloud"
+                            ),
                         },
                         "action_id": "link_1",
                         "url": domains.languagecloud,
@@ -151,7 +166,7 @@ def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "❓Help Centre",
+                            "text": _(":question:Help Centre"),
                         },
                         "action_id": "link_2",
                         "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
@@ -177,15 +192,15 @@ def job_search_modal(
     return {
         "type": "modal",
         "callback_id": "job_search",
-        "title": {"type": "plain_text", "text": "Job Status"},
-        "submit": {"type": "plain_text", "text": "Submit"},
-        "close": {"type": "plain_text", "text": "Close"},
+        "title": {"type": "plain_text", "text": _("Job Status")},
+        "submit": {"type": "plain_text", "text": _("Submit")},
+        "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"You are searching a job as `{client_name}`.",
+                    "text": _("You are searching a job as `{client_name}`."),
                     "verbatim": True,
                 },
             },
@@ -197,14 +212,14 @@ def job_search_modal(
                     "action_id": "reference",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": "Your job reference",
+                        "text": _("Your job reference"),
                         "emoji": True,
                     },
                     "max_length": 100,
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": "Your job reference",
+                    "text": _("Your job reference"),
                     "emoji": True,
                 },
             },
@@ -250,7 +265,7 @@ def new_job_modal(
             "type": "multi_static_select",
             "placeholder": {
                 "type": "plain_text",
-                "text": "Select file(s)",
+                "text": _("Select file(s)"),
                 "emoji": True,
             },
             "options": file_options,
@@ -263,7 +278,7 @@ def new_job_modal(
             "type": "multi_external_select",
             "placeholder": {
                 "type": "plain_text",
-                "text": "Select file(s)",
+                "text": _("Select file(s)"),
                 "emoji": True,
             },
             "action_id": f"file_options_{channel_id}",
@@ -276,15 +291,15 @@ def new_job_modal(
     return {
         "type": "modal",
         "callback_id": "new_job",
-        "title": {"type": "plain_text", "text": "New Translation Job"},
-        "submit": {"type": "plain_text", "text": "Submit"},
-        "close": {"type": "plain_text", "text": "Close"},
+        "title": {"type": "plain_text", "text": _("New Translation Job")},
+        "submit": {"type": "plain_text", "text": _("Submit")},
+        "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"You are submitting a new job as `{client_name}`.",
+                    "text": _("You are submitting a new job as `{client_name}`."),
                     "verbatim": True,
                 },
             },
@@ -294,7 +309,7 @@ def new_job_modal(
                 "element": files_block_element,
                 "label": {
                     "type": "plain_text",
-                    "text": "File(s) to translate",
+                    "text": _("File(s) to translate"),
                     "emoji": True,
                 },
             },
@@ -306,14 +321,14 @@ def new_job_modal(
                     "action_id": "reference",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": "Your job reference",
+                        "text": _("Your job reference"),
                         "emoji": True,
                     },
                     "max_length": 100,
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": "Your reference",
+                    "text": _("Your reference"),
                     "emoji": True,
                 },
                 "optional": True,
@@ -325,7 +340,7 @@ def new_job_modal(
                     "type": "external_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": "Select a source language",
+                        "text": _("Select a source language"),
                         "emoji": True,
                     },
                     "action_id": "language_options",
@@ -333,12 +348,14 @@ def new_job_modal(
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": "Source language",
+                    "text": _("Source language"),
                     "emoji": True,
                 },
                 "hint": {
                     "type": "plain_text",
-                    "text": "What is the original language of the file(s)? Type to show more languages.",
+                    "text": _(
+                        "What is the original language of the file(s)? Type to show more languages."
+                    ),
                 },
             },
             {
@@ -348,7 +365,7 @@ def new_job_modal(
                     "type": "multi_external_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": "Select target language(s)",
+                        "text": _("Select target language(s)"),
                         "emoji": True,
                     },
                     "action_id": "language_options",
@@ -356,12 +373,14 @@ def new_job_modal(
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": "Target language(s)",
+                    "text": _("Target language(s)"),
                     "emoji": True,
                 },
                 "hint": {
                     "type": "plain_text",
-                    "text": "Which language(s) do you want the file(s) to be translated to?",
+                    "text": _(
+                        "Which language(s) do you want the file(s) to be translated to?"
+                    ),
                 },
             },
             {
@@ -371,7 +390,7 @@ def new_job_modal(
                     "type": "external_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": "Select group",
+                        "text": _("Select group"),
                         "emoji": True,
                     },
                     "action_id": "group_options",
@@ -379,12 +398,12 @@ def new_job_modal(
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": "Group",
+                    "text": _("Group"),
                     "emoji": True,
                 },
                 "hint": {
                     "type": "plain_text",
-                    "text": "Which group do you want to submit job for?",
+                    "text": _("Which group do you want to submit job for?"),
                 },
                 "optional": True,
             },
@@ -395,12 +414,12 @@ def new_job_modal(
             #         "type": "datepicker",
             #         "placeholder": {
             #             "type": "plain_text",
-            #             "text": "Select a date",
+            #             "text": _("Select a date"),
             #             "emoji": True,
             #         },
             #         "action_id": "target_date",
             #     },
-            #     "label": {"type": "plain_text", "text": "Target date", "emoji": True},
+            #     "label": {"type": "plain_text", "text": _("Target date", "emoji": True}),
             # },
             {
                 "type": "input",
@@ -409,14 +428,14 @@ def new_job_modal(
                     "type": "static_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": "Select a service",
+                        "text": _("Select a service"),
                         "emoji": True,
                     },
                     "options": [
                         {
                             "text": {
                                 "type": "plain_text",
-                                "text": "Translation",
+                                "text": _("Translation"),
                                 "emoji": False,
                             },
                             "value": "Translation",
@@ -424,7 +443,7 @@ def new_job_modal(
                         {
                             "text": {
                                 "type": "plain_text",
-                                "text": "Translation + Edit",
+                                "text": _("Translation + Edit"),
                                 "emoji": False,
                             },
                             "value": "Translation + Edit",
@@ -432,7 +451,7 @@ def new_job_modal(
                         {
                             "text": {
                                 "type": "plain_text",
-                                "text": "Machine Translation",
+                                "text": _("Machine Translation"),
                                 "emoji": False,
                             },
                             "value": "Machine Translation",
@@ -441,14 +460,14 @@ def new_job_modal(
                     "initial_option": {
                         "text": {
                             "type": "plain_text",
-                            "text": "Translation",
+                            "text": _("Translation"),
                             "emoji": False,
                         },
                         "value": "Translation",
                     },
                     "action_id": "service",
                 },
-                "label": {"type": "plain_text", "text": "Service", "emoji": True},
+                "label": {"type": "plain_text", "text": _("Service"), "emoji": True},
             },
             {
                 "type": "input",
@@ -457,14 +476,14 @@ def new_job_modal(
                     "type": "static_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": "Select a timeframe",
+                        "text": _("Select a timeframe"),
                         "emoji": True,
                     },
                     "options": [
                         {
                             "text": {
                                 "type": "plain_text",
-                                "text": "Within 12 hours",
+                                "text": _("Within 12 hours"),
                                 "emoji": False,
                             },
                             "value": "1",
@@ -472,7 +491,7 @@ def new_job_modal(
                         {
                             "text": {
                                 "type": "plain_text",
-                                "text": "Within 24 hours",
+                                "text": _("Within 24 hours"),
                                 "emoji": False,
                             },
                             "value": "2",
@@ -480,7 +499,7 @@ def new_job_modal(
                         {
                             "text": {
                                 "type": "plain_text",
-                                "text": "Within 36 hours",
+                                "text": _("Within 36 hours"),
                                 "emoji": False,
                             },
                             "value": "3",
@@ -488,7 +507,7 @@ def new_job_modal(
                         {
                             "text": {
                                 "type": "plain_text",
-                                "text": "Within 48 hours",
+                                "text": _("Within 48 hours"),
                                 "emoji": False,
                             },
                             "value": "4",
@@ -496,7 +515,7 @@ def new_job_modal(
                         {
                             "text": {
                                 "type": "plain_text",
-                                "text": "Within 3 days",
+                                "text": _("Within 3 days"),
                                 "emoji": False,
                             },
                             "value": "5",
@@ -504,7 +523,7 @@ def new_job_modal(
                         {
                             "text": {
                                 "type": "plain_text",
-                                "text": "Within 5 days",
+                                "text": _("Within 5 days"),
                                 "emoji": False,
                             },
                             "value": "6",
@@ -512,7 +531,7 @@ def new_job_modal(
                         {
                             "text": {
                                 "type": "plain_text",
-                                "text": "Within 10 days",
+                                "text": _("Within 10 days"),
                                 "emoji": False,
                             },
                             "value": "7",
@@ -520,7 +539,7 @@ def new_job_modal(
                         {
                             "text": {
                                 "type": "plain_text",
-                                "text": "Within 15 days",
+                                "text": _("Within 15 days"),
                                 "emoji": False,
                             },
                             "value": "8",
@@ -529,14 +548,14 @@ def new_job_modal(
                     "initial_option": {
                         "text": {
                             "type": "plain_text",
-                            "text": "Within 3 days",
+                            "text": _("Within 3 days"),
                             "emoji": False,
                         },
                         "value": "5",
                     },
                     "action_id": "timeframe",
                 },
-                "label": {"type": "plain_text", "text": "Timeframe", "emoji": True},
+                "label": {"type": "plain_text", "text": _("Timeframe"), "emoji": True},
             },
             {
                 "type": "input",
@@ -547,7 +566,7 @@ def new_job_modal(
                         {
                             "text": {
                                 "type": "plain_text",
-                                "text": "Yes",
+                                "text": _("Yes"),
                                 "emoji": True,
                             },
                             "value": "1",
@@ -555,7 +574,7 @@ def new_job_modal(
                     ],
                     "action_id": "validation",
                 },
-                "label": {"type": "plain_text", "text": "Validation", "emoji": True},
+                "label": {"type": "plain_text", "text": _("Validation"), "emoji": True},
                 "optional": True,
             },
             {
@@ -569,7 +588,7 @@ def new_job_modal(
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": "Notes",
+                    "text": _("Notes"),
                     "emoji": True,
                 },
                 "optional": True,
@@ -585,7 +604,7 @@ def new_job_modal(
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": "Job Notes",
+                    "text": _("Job Notes"),
                     "emoji": True,
                 },
                 "optional": True,
@@ -598,20 +617,20 @@ def new_job_modal(
             #         "type": "static_select",
             #         "placeholder": {
             #             "type": "plain_text",
-            #             "text": "Select a category",
+            #             "text": _("Select a category"),
             #             "emoji": True,
             #         },
             #         "option_groups": [
             #             {
             #                 "label": {
             #                     "type": "plain_text",
-            #                     "text": "Advertising/Marketing",
+            #                     "text": _("Advertising/Marketing"),
             #                 },
             #                 "options": [
             #                     {
             #                         "text": {
             #                             "type": "plain_text",
-            #                             "text": "Art/Literary",
+            #                             "text": _("Art/Literary"),
             #                             "emoji": False,
             #                         },
             #                         "value": "art_literary",
@@ -619,7 +638,7 @@ def new_job_modal(
             #                     {
             #                         "text": {
             #                             "type": "plain_text",
-            #                             "text": "Cosmetics",
+            #                             "text": _("Cosmetics"),
             #                             "emoji": False,
             #                         },
             #                         "value": "cosmetics",
@@ -627,7 +646,7 @@ def new_job_modal(
             #                     {
             #                         "text": {
             #                             "type": "plain_text",
-            #                             "text": "Cultural",
+            #                             "text": _("Cultural"),
             #                             "emoji": False,
             #                         },
             #                         "value": "cultural",
@@ -637,13 +656,13 @@ def new_job_modal(
             #             {
             #                 "label": {
             #                     "type": "plain_text",
-            #                     "text": "Finance, Business & HR",
+            #                     "text": _("Finance, Business & HR"),
             #                 },
             #                 "options": [
             #                     {
             #                         "text": {
             #                             "type": "plain_text",
-            #                             "text": "Accounting",
+            #                             "text": _("Accounting"),
             #                             "emoji": False,
             #                         },
             #                         "value": "accounting",
@@ -651,7 +670,7 @@ def new_job_modal(
             #                     {
             #                         "text": {
             #                             "type": "plain_text",
-            #                             "text": "Banking",
+            #                             "text": _("Banking"),
             #                             "emoji": False,
             #                         },
             #                         "value": "banking",
@@ -659,7 +678,7 @@ def new_job_modal(
             #                     {
             #                         "text": {
             #                             "type": "plain_text",
-            #                             "text": "Business",
+            #                             "text": _("Business"),
             #                             "emoji": False,
             #                         },
             #                         "value": "business",
@@ -669,7 +688,7 @@ def new_job_modal(
             #         ],
             #         "action_id": "category",
             #     },
-            #     "label": {"type": "plain_text", "text": "Category", "emoji": True},
+            #     "label": {"type": "plain_text", "text": _("Category", "emoji": True}),
             # },
         ],
     }
@@ -684,8 +703,8 @@ def sso_form_modal() -> dict[str, Any]:
         dict: The view dict.
     """
     return {
-        "title": {"type": "plain_text", "text": "Direct Login"},
-        "submit": {"type": "plain_text", "text": "Submit"},
+        "title": {"type": "plain_text", "text": _("Direct Login")},
+        "submit": {"type": "plain_text", "text": _("Submit")},
         "blocks": [
             {
                 "type": "input",
@@ -693,9 +712,9 @@ def sso_form_modal() -> dict[str, Any]:
                 "element": {
                     "type": "email_text_input",
                     "action_id": "email",
-                    "placeholder": {"type": "plain_text", "text": "Email"},
+                    "placeholder": {"type": "plain_text", "text": _("Email")},
                 },
-                "label": {"type": "plain_text", "text": "Email"},
+                "label": {"type": "plain_text", "text": _("Email")},
                 "optional": False,
             },
             {
@@ -704,11 +723,11 @@ def sso_form_modal() -> dict[str, Any]:
                 "element": {
                     "type": "plain_text_input",
                     "action_id": "firstName",
-                    "placeholder": {"type": "plain_text", "text": "First Name"},
+                    "placeholder": {"type": "plain_text", "text": _("First Name")},
                     "min_length": 3,
                     "max_length": 50,
                 },
-                "label": {"type": "plain_text", "text": "First Name"},
+                "label": {"type": "plain_text", "text": _("First Name")},
                 "optional": False,
             },
             {
@@ -717,11 +736,11 @@ def sso_form_modal() -> dict[str, Any]:
                 "element": {
                     "type": "plain_text_input",
                     "action_id": "lastName",
-                    "placeholder": {"type": "plain_text", "text": "Last Name"},
+                    "placeholder": {"type": "plain_text", "text": _("Last Name")},
                     "min_length": 3,
                     "max_length": 50,
                 },
-                "label": {"type": "plain_text", "text": "Last Name"},
+                "label": {"type": "plain_text", "text": _("Last Name")},
                 "optional": False,
             },
         ],
@@ -747,9 +766,9 @@ def settings_auto_translate_view(
     return {
         "type": "modal",
         "callback_id": "settings_auto_translate",
-        "title": {"type": "plain_text", "text": "Translation Settings"},
-        "submit": {"type": "plain_text", "text": "Save"},
-        "close": {"type": "plain_text", "text": "Cancel"},
+        "title": {"type": "plain_text", "text": _("Translation Settings")},
+        "submit": {"type": "plain_text", "text": _("Save")},
+        "close": {"type": "plain_text", "text": _("Cancel")},
         "blocks": [
             {
                 "type": "input",
@@ -757,7 +776,10 @@ def settings_auto_translate_view(
                 "element": {
                     "type": "multi_conversations_select",
                     "action_id": "channels",
-                    "placeholder": {"type": "plain_text", "text": "Select channel(s)"},
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": _("Select channel(s)"),
+                    },
                     "initial_conversations": initial_channels,
                     "filter": {
                         "include": ["public", "private", "mpim"],
@@ -766,12 +788,14 @@ def settings_auto_translate_view(
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": "Channels",
+                    "text": _("Channels"),
                     "emoji": True,
                 },
                 "hint": {
                     "type": "plain_text",
-                    "text": "Important: Straker must be a member in the chosen channel or DM",
+                    "text": _(
+                        "Important: Straker must be a member in the chosen channel or DM"
+                    ),
                 },
                 "optional": True,
             },
@@ -782,7 +806,7 @@ def settings_auto_translate_view(
                     "type": "multi_static_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": "Choose language(s)",
+                        "text": _("Choose language(s)"),
                     },
                     "options": language_options,
                     **(
@@ -793,10 +817,12 @@ def settings_auto_translate_view(
                     "action_id": "languages",
                     "max_selected_items": 3,
                 },
-                "label": {"type": "plain_text", "text": "Language", "emoji": True},
+                "label": {"type": "plain_text", "text": _("Language"), "emoji": True},
                 "hint": {
                     "type": "plain_text",
-                    "text": "Automatically translate messages into these language(s)",
+                    "text": _(
+                        "Automatically translate messages into these language(s)"
+                    ),
                 },
                 "optional": True,
             },
