@@ -293,7 +293,7 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). ",
+                        "text": "🔍 Search allows you to search for specific Translation Jobs (TJs). ",
                     },
                     "accessory": {
                         "type": "button",
@@ -384,7 +384,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). ",
+                        "text": "🔍 Search allows you to search for specific Translation Jobs (TJs). ",
                     },
                     "accessory": {
                         "type": "button",
@@ -1131,7 +1131,6 @@ class JobListMessage(SlackMessage):
                         },
                     }
                 )
-                print(job)
                 if job.status != "COMPLETED" and job.batches != "[]" and job.translated_file == []:
                     jobs_blocks.append(
                         {
@@ -1481,11 +1480,11 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔍 Status allows you to search for a specific job. ",
+                        "text": "🔍 Search allows you to search for specific Translation Jobs (TJs). ",
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Status"},
+                        "text": {"type": "plain_text", "text": "Search"},
                         "action_id": "job_search",
                     },
                 },

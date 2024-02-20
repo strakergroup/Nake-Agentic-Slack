@@ -148,9 +148,17 @@ def job_search_modal(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"You are searching a job as `{client_name}`.",
+                    "text": f"You are searching for job(s) as `{client_name}`.",
                     "verbatim": True,
-                },
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "To search for multiple TJs, enter your TJ number, followed by a comma, then enter your next TJ reference, search for up to 10 TJs at once.",
+                    "verbatim": True,
+                }
             },
             {
                 "type": "input",
@@ -163,7 +171,7 @@ def job_search_modal(
                         "text": "Your job reference",
                         "emoji": True,
                     },
-                    "max_length": 100,
+                    "max_length": 110,
                 },
                 "label": {
                     "type": "plain_text",
