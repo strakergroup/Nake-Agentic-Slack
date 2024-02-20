@@ -2,6 +2,7 @@ import hashlib
 import inspect
 import contextvars
 import re
+import logging
 
 from buglog import notify_exception
 from .database import engines
@@ -45,7 +46,7 @@ class Translator:
                 translation = translation[0]
             else:
                 # log error missing translation
-                print(f"ERROR Missing translation for {self.lang}: ", input)
+                logging.error(f"ERROR Missing translation for {self.lang}: ", input)
                 return input
         # place back the emojis and python variable expansion from the input
         for original, tag in replacements.items():
