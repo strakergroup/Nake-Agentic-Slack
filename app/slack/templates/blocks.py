@@ -5,7 +5,6 @@ from ray_sdk.api.v3.models import Quote
 from ...auth.connector import (
     get_language_cloud_connect_url,
     RayConnection,
-    encrpyt_slack_sso_token,
 )
 from ...config import domains
 from ...ray.utils import (
@@ -13,6 +12,7 @@ from ...ray.utils import (
     format_currency,
     format_currency_symbol,
 )
+from ...translate import _
 
 
 def home_auth_blocks(
@@ -28,9 +28,11 @@ def home_auth_blocks(
     if isinstance(ray_connection, RayConnection) and ray_connection.client:
         super_group_names = [group.name for group in ray_connection.super_group]
         super_group_names_str = ", ".join(super_group_names)
-        text = f"Your Slack account <@{user_id}> is connected with: <{domains.languagecloud}|{ray_connection.client.username}>."
+        user_id_str = f"<@{user_id}>"
+        domain_url = "<{domains.languagecloud}|{ray_connection.client.username}>"
+        text = "Your Slack account {user_id_str} is connected with: {domain_url}."
         if ray_connection.client.sso:
-            text = f"Your Slack account <@{user_id}> is connected with: *{ray_connection.client.username}*."
+            text = "Your Slack account {user_id_str} is connected with: *{ray_connection.client.username}*."
         return [
             {
                 "type": "section",
@@ -43,7 +45,7 @@ def home_auth_blocks(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": text,
+                    "text": _(text),
                 },
             },
         ]
@@ -52,7 +54,9 @@ def home_auth_blocks(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "Connect your LanguageCloud account to get details about your translation jobs.",
+                "text": _(
+                    "Connect your LanguageCloud account to get details about your translation jobs."
+                ),
             },
         },
         {
@@ -62,7 +66,7 @@ def home_auth_blocks(
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": "Connect LanguageCloud account",
+                        "text": _("Connect LanguageCloud account"),
                     },
                     "style": "primary",
                     "url": get_language_cloud_connect_url(
@@ -82,7 +86,7 @@ def home_auth_blocks(
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": "Direct Login",
+                        "text": _("Direct Login"),
                     },
                     "style": "primary",
                     "action_id": "login_sso",
@@ -96,7 +100,7 @@ def home_auth_blocks(
                 "type": "button",
                 "text": {
                     "type": "plain_text",
-                    "text": "Direct Login",
+                    "text": _("Direct Login"),
                 },
                 "style": "primary",
                 "action_id": "login_sso",
@@ -113,7 +117,7 @@ def job_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
                 "type": "button",
                 "text": {
                     "type": "plain_text",
-                    "text": "View this job in LanguageCloud",
+                    "text": _("View this job in LanguageCloud"),
                     "emoji": True,
                 },
                 "style": "primary",
@@ -159,19 +163,19 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
             "fields": [
                 {
                     "type": "mrkdwn",
-                    "text": f"*Source Language:*\n{quote.sl.label}",
+                    "text": _("*Source Language:*\n{quote.sl.label}"),
                 },
                 {
                     "type": "mrkdwn",
-                    "text": f"*Turnaround Time:*\n{turnaround_time}",
+                    "text": _("*Turnaround Time:*\n{turnaround_time}"),
                 },
                 {
                     "type": "mrkdwn",
-                    "text": f"*Service:*\n{quote.service}",
+                    "text": _("*Service:*\n{quote.service}"),
                 },
                 {
                     "type": "mrkdwn",
-                    "text": f"*Client Reference:*\n{quote.client_reference}",
+                    "text": _("*Client Reference:*\n{quote.client_reference}"),
                 },
             ],
         },
@@ -181,7 +185,10 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"*Total Cost ({currency})*: {quote_formatted} {'(incl. tax)' if incl_tax else ''}",
+                "text": _(
+                    "*Total Cost ({currency})*: "
+                    + f"{quote_formatted} {'(incl. tax)' if incl_tax else ''}"
+                ),
             },
         },
         {"type": "divider"},
@@ -193,7 +200,7 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
-                        "text": "Accept Quote",
+                        "text": _("Accept Quote"),
                     },
                     "style": "primary",
                     "url": quote.quote.quote_accept_url,
@@ -216,8 +223,10 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
                         },
                         "text": {
                             "type": "plain_text",
-                            "text": "Are you sure you want to cancel this quote?\n\n"
-                            "This action requires you to be logged in to LanguageCloud.",
+                            "text": _(
+                                "Are you sure you want to cancel this quote?\n\n"
+                                + "This action requires you to be logged in to LanguageCloud."
+                            ),
                         },
                         "confirm": {"type": "plain_text", "text": "Yes"},
                         "deny": {
@@ -230,7 +239,7 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": "View in LanguageCloud",
+                        "text": _("View in LanguageCloud"),
                         "emoji": True,
                     },
                     "url": job_url,
@@ -243,22 +252,28 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
 
 def get_progess_text(predictions: dict) -> str:
     """Returns the progress text for the job."""
-    status = (
-        f"*In Progress Jobs*\n{predictions['in_progress']} job(s) currently in progress"
+    status = _(
+        "*In Progress Jobs*\n{predictions['in_progress']} job(s) currently in progress"
     )
     if predictions["on_time"] and predictions["late"] and predictions["over_due"]:
         aPredictions = []
         if predictions["on_time"]:
             aPredictions.append(
-                f"*In Progress Jobs*\n:large_green_circle: *{predictions['on_time']} job(s)* are predicted to be on-time"
+                _(
+                    "*In Progress Jobs*\n:large_green_circle: *{predictions['on_time']} job(s)* are predicted to be on-time"
+                )
             )
         if predictions["on_time"]:
             aPredictions.append(
-                f"*In Progress Jobs*\n:large_orange_circle: *{predictions['late']} job(s)* have been flagged as caution"
+                _(
+                    "*In Progress Jobs*\n:large_orange_circle: *{predictions['late']} job(s)* have been flagged as caution"
+                )
             )
         if predictions["over_due"]:
             aPredictions.append(
-                f"*In Progress Jobs*\n:large_red_circle: *{predictions['over_due']} job(s)* are overdue"
+                _(
+                    "*In Progress Jobs*\n:large_red_circle: *{predictions['over_due']} job(s)* are overdue"
+                )
             )
         status = "\n".join(aPredictions)
     return status
@@ -270,7 +285,7 @@ def job_prediction_block(prediction: str) -> dict:
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": prediction,
+                "text": _(prediction),
             },
             "accessory": {
                 "type": "button",
@@ -288,7 +303,7 @@ def job_prediction_block(prediction: str) -> dict:
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": prediction,
+                "text": _(prediction),
             },
         }
     else:

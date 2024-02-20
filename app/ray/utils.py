@@ -2,7 +2,7 @@ import math
 import datetime
 from urllib.parse import urlencode
 from babel.numbers import format_currency as babel_format_currency
-
+from app.translate import _
 from ..config import domains
 
 
@@ -149,8 +149,8 @@ def format_job_prediction(prediction: str, target_date: datetime.datetime) -> st
         target_date = target_date.replace(tzinfo=datetime.timezone.utc)
     date_delta = target_date - datetime.datetime.now(datetime.timezone.utc)
     if date_delta.total_seconds() < 0 or prediction == "late":
-        return ":large_orange_circle: May be tracking behind schedule."
+        return _(":large_orange_circle: May be tracking behind schedule.")
     elif prediction == "on time":
-        return ":large_green_circle: Tracking on time"
+        return _(":large_green_circle: Tracking on time")
     else:
         return ""

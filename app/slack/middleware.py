@@ -10,6 +10,8 @@ from buglog import notify_message
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_logger.slack import SlackAppLog
 
+from app.translate import translator_var, Translator
+
 from .app import app
 from .logging import init_slack_app_log
 from .templates.messages import SlackMessage, LoginMessage
@@ -66,6 +68,14 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
         channel_id=context.get("channel_id", context["user_id"]),
         ray_client=context["ray"].client if context["ray"] is not None else None,
     )
+    try:
+        user_info = await context.client.users_info(
+            user=context["user_id"], include_locale=True
+        )
+        translator_var.set(Translator(user_info["user"]["locale"]))
+    except Exception as e:
+        error_message = str(e)
+        print(error_message)
     # Log the RAY client ID if available.
     if "log" in context and isinstance(context["log"], SlackAppLog):
         if context["ray"] is not None:
@@ -79,7 +89,6 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
         if context["ray"] is None or context["ray"].client is None:
             # get slack user info from api and log it
             try:
-                user_info = await context.client.users_info(user=context["user_id"])
                 # insert to db
                 await log_new_user_info(user_info["user"])
             except Exception as e:

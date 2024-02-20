@@ -2,6 +2,7 @@
 
 from typing import Any
 import json
+from app.translate import _
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm
@@ -29,6 +30,7 @@ from ...auth.connector import (
     encrpyt_slack_sso_token,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
+from app.translate import _
 
 
 class TextMessage:
@@ -61,20 +63,22 @@ class OnboardingMessage(SlackMessage):
         self, user_id: str, team_id: str, enterprise_id: str | None, channel_id: str
     ) -> None:
         super().__init__(
-            "Welcome to RAY Translate for Slack! :tada:",
+            _("Welcome to RAY Translate for Slack! :tada:"),
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Welcome to RAY Translate for Slack! :tada:",
+                        "text": _("Welcome to RAY Translate for Slack! :tada:"),
                     },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Connect your LanguageCloud account to get details about your translation jobs.",
+                        "text": _(
+                            "Connect your LanguageCloud account to get details about your translation jobs."
+                        ),
                     },
                 },
                 {
@@ -84,7 +88,7 @@ class OnboardingMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Connect LanguageCloud account",
+                                "text": _("Connect LanguageCloud account"),
                             },
                             "style": "primary",
                             "url": get_language_cloud_connect_url(
@@ -147,17 +151,17 @@ class LoginMessage(SlackMessage):
             block_text = "Connect your LanguageCloud account to view your insights."
         elif isinstance(ray_client, RayClient):
             block_text = (
-                f"Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_client.username}>.\n"
-                "You can connect a different account by clicking this button."
+                "Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_client.username}>.\n"
+                + "You can connect a different account by clicking this button."
             )
             if ray_client.sso:
                 block_text = (
-                    f"Your connected LanguageCloud account is: *{ray_client.username}*."
+                    "Your connected LanguageCloud account is: *{ray_client.username}*."
                 )
         msg = [
             {
                 "type": "section",
-                "text": {"type": "mrkdwn", "text": block_text},
+                "text": {"type": "mrkdwn", "text": _(block_text)},
             },
             {
                 "type": "actions",
@@ -166,7 +170,7 @@ class LoginMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Connect LanguageCloud account",
+                            "text": _("Connect LanguageCloud account"),
                         },
                         "style": "primary",
                         "url": get_language_cloud_connect_url(
@@ -186,7 +190,7 @@ class LoginMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Direct Login",
+                            "text": _("Direct Login"),
                         },
                         "style": "primary",
                         "action_id": "login_sso",
@@ -206,7 +210,7 @@ class LoginMessage(SlackMessage):
                                 "type": "button",
                                 "text": {
                                     "type": "plain_text",
-                                    "text": "Login to LanguageCloud",
+                                    "text": _("Login to LanguageCloud"),
                                 },
                                 "style": "primary",
                                 "url": encrpyt_slack_sso_token(ray_client.username),
@@ -223,7 +227,7 @@ class LoginMessage(SlackMessage):
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": "Direct Login",
+                        "text": _("Direct Login"),
                     },
                     "style": "primary",
                     "action_id": "login_sso",
@@ -239,7 +243,7 @@ class LoginMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Login to LanguageCloud",
+                                "text": _("Login to LanguageCloud"),
                             },
                             "style": "primary",
                             "url": encrpyt_slack_sso_token(ray_client.username),
@@ -284,7 +288,9 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
-                        "text": "Welcome :wave: \n\nChoose an option below to get started.",
+                        "text": _(
+                            "Welcome :wave: \n\nChoose an option below to get started."
+                        ),
                     },
                 },
                 {"type": "divider"},
@@ -292,11 +298,17 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). ",
+                        "text": _(
+                            "🔍 Search allows you to search for a specific Translation Job (TJ). "
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "emoji": True, "text": "Search"},
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Search"),
+                        },
                         "action_id": "job_search",
                     },
                 },
@@ -304,11 +316,17 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs.",
+                        "text": _(
+                            "🚦 Jobs provides an update on the status of recently submitted jobs."
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "emoji": True, "text": "Jobs"},
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Jobs"),
+                        },
                         "action_id": "all_summary",
                     },
                 },
@@ -316,11 +334,13 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation.",
+                        "text": _(
+                            "🗂️ Quote opens the form to upload documents for translation."
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Quote"},
+                        "text": {"type": "plain_text", "text": _("Quote")},
                         "action_id": "new_job",
                     },
                 },
@@ -328,14 +348,16 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
+                        "text": _(
+                            "📊 Insights uses AI to gather and show data about your translation experience"
+                        ),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Insights",
+                            "text": _("Insights"),
                         },
                         "action_id": "report_insights",
                     },
@@ -344,11 +366,13 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*",
+                        "text": _(
+                            "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*"
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Quote"},
+                        "text": {"type": "plain_text", "text": _("Quote")},
                         "action_id": "new_job",
                     },
                 },
@@ -356,14 +380,16 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
+                        "text": _(
+                            "📊 Insights uses AI to gather and show data about your translation experience"
+                        ),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Insights",
+                            "text": _("Insights"),
                         },
                         "action_id": "report_insights",
                     },
@@ -372,7 +398,7 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*",
+                        "text": f"*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|{_('Show more options')}>*",
                     },
                 },
                 {"type": "divider"},
@@ -381,7 +407,9 @@ class WelcomeBackMessage(SlackMessage):
                     "block_id": "sectionBlockOnlyMrkdwn",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*",
+                        "text": _(
+                            "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*"
+                        ),
                     },
                 },
             ],
@@ -402,7 +430,9 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
-                        "text": "Welcome :wave: \n\nChoose an option below to get started.",
+                        "text": _(
+                            "Welcome :wave: \n\nChoose an option below to get started."
+                        ),
                     },
                 },
                 {"type": "divider"},
@@ -410,11 +440,17 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔍 Search allows you to search for a specific Translation Job (TJ). ",
+                        "text": _(
+                            "🔍 Search allows you to search for a specific Translation Job (TJ). "
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "emoji": True, "text": "Search"},
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Search"),
+                        },
                         "action_id": "job_search",
                     },
                 },
@@ -422,11 +458,17 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs.",
+                        "text": _(
+                            "🚦 Jobs provides an update on the status of recently submitted jobs."
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "emoji": True, "text": "Jobs"},
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Jobs"),
+                        },
                         "action_id": "all_summary",
                     },
                 },
@@ -434,11 +476,13 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation.",
+                        "text": _(
+                            "🗂️ Quote opens the form to upload documents for translation."
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Quote"},
+                        "text": {"type": "plain_text", "text": _("Quote")},
                         "action_id": "new_job",
                     },
                 },
@@ -446,14 +490,16 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
+                        "text": _(
+                            "📊 Insights uses AI to gather and show data about your translation experience"
+                        ),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Insights",
+                            "text": _("Insights"),
                         },
                         "action_id": "report_insights",
                     },
@@ -462,11 +508,13 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*",
+                        "text": _(
+                            "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*"
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Quote"},
+                        "text": {"type": "plain_text", "text": _("Quote")},
                         "action_id": "new_job",
                     },
                 },
@@ -474,14 +522,16 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
+                        "text": _(
+                            "📊 Insights uses AI to gather and show data about your translation experience"
+                        ),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "Insights",
+                            "text": _("Insights"),
                         },
                         "action_id": "report_insights",
                     },
@@ -490,7 +540,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*",
+                        "text": f"*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|{_('Show more options')}>*",
                     },
                 },
                 {"type": "divider"},
@@ -499,7 +549,9 @@ class SuccessfulLoginMessage(SlackMessage):
                     "block_id": "sectionBlockOnlyMrkdwn",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*",
+                        "text": _(
+                            "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*"
+                        ),
                     },
                 },
             ],
@@ -510,9 +562,13 @@ class LogoutMessage(SlackMessage):
     """Message with a button disconnect a user's LanguageCloud account."""
 
     def __init__(self, ray_client: RayClient | None = None) -> None:
-        text = f"Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_client.username}>."
+        text = _(
+            "Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_client.username}>."
+        )
         if ray_client.sso:
-            text = f"Click this button to disconnect your LanguageCloud account: *{ray_client.username}*."
+            text = _(
+                "Click this button to disconnect your LanguageCloud account: *{ray_client.username}*."
+            )
         super().__init__(
             "Disconnect your LanguageCloud account",
             [
@@ -520,7 +576,7 @@ class LogoutMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": text,
+                        "text": _(text),
                     },
                 },
                 {
@@ -530,7 +586,7 @@ class LogoutMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Disconnect LanguageCloud account",
+                                "text": _("Disconnect LanguageCloud account"),
                             },
                             "style": "danger",
                             "action_id": "disconnect",
@@ -540,7 +596,7 @@ class LogoutMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Hide this message",
+                                "text": _("Hide this message"),
                             },
                             "action_id": "delete_ephemeral_message",
                         },
@@ -556,13 +612,18 @@ class SuccessfulLogoutMessage(SlackMessage):
     def __init__(
         self, user_id: str, is_sso: bool = False, ray_username: str | None = None
     ) -> None:
-        text = f"Your LanguageCloud account <{domains.languagecloud}|{ray_username}> is now disconnected from <@{user_id}>."
+        # TODO: Translation fix this
+        text = _(
+            "Your LanguageCloud account <{domains.languagecloud}|{ray_username}> is now disconnected from <@{user_id}>."
+        )
         if is_sso:
-            text = f"Your LanguageCloud account *{ray_username}* is now disconnected from <@{user_id}>."
+            text = _(
+                "Your LanguageCloud account *{ray_username}* is now disconnected from <@{user_id}>."
+            )
         block_message = (
             text
             if ray_username
-            else f"Your LanguageCloud account is now disconnected from <@{user_id}>."
+            else _("Your LanguageCloud account is now disconnected from <@{user_id}>.")
         )
         super().__init__(
             "Your LanguageCloud account is now disconnected.",
@@ -578,7 +639,9 @@ class SuccessfulLogoutMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "You can use `/ray connect` to connect your LanguageCloud account again.",
+                        "text": _(
+                            "You can use `/ray connect` to connect your LanguageCloud account again."
+                        ),
                     },
                 },
             ],
@@ -594,22 +657,24 @@ class JobStatusMessage(SlackMessage):
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"The job status for *{job.id}* is below:",
+                    "text": _(
+                        "The job status for *{job.id}* is below:",
+                    ),
                 },
             },
             {
                 "type": "section",
                 "fields": [
-                    {"type": "mrkdwn", "text": "*Status:*"},
-                    {"type": "mrkdwn", "text": format_job_status(job.status)},
-                    {"type": "mrkdwn", "text": "*Source Language:*"},
+                    {"type": "mrkdwn", "text": _("*Status:*")},
+                    {"type": "mrkdwn", "text": _(format_job_status(job.status))},
+                    {"type": "mrkdwn", "text": _("*Source Language:*")},
                     {"type": "mrkdwn", "text": job.sl.name},
-                    {"type": "mrkdwn", "text": "*Target Language:*"},
+                    {"type": "mrkdwn", "text": _("*Target Language:*")},
                     {
                         "type": "mrkdwn",
-                        "text": ", ".join(sorted([lang.name for lang in job.tl])),
+                        "text": _(", ".join(sorted([lang.name for lang in job.tl]))),
                     },
-                    {"type": "mrkdwn", "text": "*Expected Completion Date:*"},
+                    {"type": "mrkdwn", "text": _("*Expected Completion Date:*")},
                     {
                         "type": "mrkdwn",
                         "text": format_job_due_date_slack(
@@ -618,6 +683,7 @@ class JobStatusMessage(SlackMessage):
                     },
                 ],
             },
+            # TODO: Blocks.py translate
             job_link_block(job.uuid, client_id),
         ]
         if (
@@ -634,7 +700,7 @@ class JobStatusMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Show In Progress Files",
+                                "text": _("Show In Progress Files"),
                                 "emoji": True,
                             },
                             "action_id": "batch_list_1",
@@ -664,7 +730,7 @@ class JobStatusMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Show In Progress Files",
+                                "text": _("Show In Progress Files"),
                                 "emoji": True,
                             },
                             "action_id": "batch_list_1",
@@ -681,7 +747,7 @@ class JobStatusMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Show Completed Files",
+                                "text": _("Show Completed Files"),
                                 "emoji": True,
                             },
                             "action_id": "file_list_1",
@@ -707,7 +773,7 @@ class JobStatusMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Show Completed Files",
+                                "text": _("Show Completed Files"),
                                 "emoji": True,
                             },
                             "action_id": "file_list_1",
@@ -731,7 +797,7 @@ class JobStatusMessage(SlackMessage):
                 ),
             )
         super().__init__(
-            f"Job status ({job.id}): {format_job_status(job.status)}",
+            _("Job status ({job.id}): {format_job_status(job.status)}"),
             job_status_block,
         )
 
@@ -745,7 +811,9 @@ class JobDetailsMessage(SlackMessage):
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"The information for <{get_job_url(job.uuid, client_id)}|*{job.id}*> is below:",
+                    "text": _(
+                        "The information for <{get_job_url(job.uuid, client_id)}|*{job.id}*> is below:",
+                    ),
                 },
             },
             {
@@ -753,32 +821,45 @@ class JobDetailsMessage(SlackMessage):
                 "fields": [
                     {
                         "type": "mrkdwn",
-                        "text": f"*Job Status:*\n{format_job_status(job.status)}",
+                        "text": _(
+                            f"*Job Status:*\n{format_job_status(job.status)}",
+                        ),
                     },
                     {
                         "type": "mrkdwn",
-                        "text": f"*Group:*\n{job.group.name if job.group else ''}",
+                        "text": _("*Group:*")
+                        + f"\n{job.group.name if job.group else ''}",
                     },
                     {
                         "type": "mrkdwn",
-                        "text": f"*Due Date/Time*\n{format_job_due_date_slack(job.target_date, job.status, traffic_light=True)}",
+                        "text": _(
+                            "*Due Date/Time*\n{format_job_due_date_slack(job.target_date, job.status, traffic_light=True)}",
+                        ),
                     },
-                    {"type": "mrkdwn", "text": f"*Reference:*\n{job.reference}"},
+                    {"type": "mrkdwn", "text": _("*Reference:*\n{job.reference}")},
                     {
                         "type": "mrkdwn",
-                        "text": f"*Source Language:*\n{job.sl.name}",
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Target Languages:*\n{', '.join(sorted([lang.name for lang in job.tl]))}",
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Valdation*\n{'Yes' if job.validation else 'No'}",
+                        "text": _(
+                            "*Source Language:*\n{job.sl.name}",
+                        ),
                     },
                     {
                         "type": "mrkdwn",
-                        "text": f"*Project Manager*\n{job.project_manager.first_name} {job.project_manager.last_name}",
+                        "text": _(
+                            "*Target Languages:*\n{', '.join(sorted([lang.name for lang in job.tl]))}",
+                        ),
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "*Valdation*\n{'Yes' if job.validation else 'No'}",
+                        ),
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "*Project Manager*\n{job.project_manager.first_name} {job.project_manager.last_name}",
+                        ),
                     },
                 ],
             },
@@ -798,7 +879,7 @@ class JobDetailsMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Show In Progress Files",
+                                "text": _("Show In Progress Files"),
                                 "emoji": True,
                             },
                             "action_id": "batch_list_1",
@@ -828,7 +909,7 @@ class JobDetailsMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Show In Progress Files",
+                                "text": _("Show In Progress Files"),
                                 "emoji": True,
                             },
                             "action_id": "batch_list_1",
@@ -845,7 +926,7 @@ class JobDetailsMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Show Completed Files",
+                                "text": _("Show Completed Files"),
                                 "emoji": True,
                             },
                             "action_id": "file_list_1",
@@ -871,7 +952,7 @@ class JobDetailsMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Show Completed Files",
+                                "text": _("Show Completed Files"),
                                 "emoji": True,
                             },
                             "action_id": "file_list_1",
@@ -904,7 +985,8 @@ class InvalidJobMessage(TextMessage):
     """The user does not have access to the job."""
 
     def __init__(self, job_id: str) -> None:
-        super().__init__(f"Cannot find the job: *{job_id.upper()}*")
+        upper_job_id = job_id.upper()
+        super().__init__(_("Cannot find the job: *{upper_job_id}*"))
 
 
 class JobStatusNoIdMessage(TextMessage):
@@ -914,7 +996,9 @@ class JobStatusNoIdMessage(TextMessage):
 
     def __init__(self) -> None:
         super().__init__(
-            "To check the status of your job, type the reference number (e.g. TJ123456)."
+            _(
+                "To check the status of your job, type the reference number (e.g. TJ123456)."
+            )
         )
 
 
@@ -951,14 +1035,16 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*In Progress Jobs*\n*     {in_progress} Total Job(s)*",
+                        "text": _(
+                            "*In Progress Jobs*\n*     {in_progress} Total Job(s)*",
+                        ),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "View More",
+                            "text": _("View More"),
                         },
                         "action_id": "job_list",
                         "value": "IN_PROGRESS",
@@ -971,14 +1057,16 @@ class JobSummaryMessage(SlackMessage):
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*     {in_progress_count_24} job(s)* accepted in the last 24 hours",
+                            "text": _(
+                                "*     {in_progress_count_24} job(s)* accepted in the last 24 hours",
+                            ),
                         },
                         "accessory": {
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
                                 "emoji": True,
-                                "text": "View More",
+                                "text": _("View More"),
                             },
                             "action_id": "job_list",
                             "value": "IN_PROGRESS:ACCEPTED:24H",
@@ -991,14 +1079,16 @@ class JobSummaryMessage(SlackMessage):
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"*     {in_progress_due} job(s)* due within 24 hours",
+                            "text": _(
+                                "*     {in_progress_due} job(s)* due within 24 hours",
+                            ),
                         },
                         "accessory": {
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
                                 "emoji": True,
-                                "text": "View More",
+                                "text": _("View More"),
                             },
                             "action_id": "job_list",
                             "value": "IN_PROGRESS:DUE:24H",
@@ -1008,15 +1098,28 @@ class JobSummaryMessage(SlackMessage):
 
             if config.environment != Environment.production:
                 if (predictions["on_time"]) > 0:
+                    job_plural = (
+                        "job is" if int(predictions["on_time"]) == 1 else "jobs are"
+                    )
                     sections.append(
                         job_prediction_block(
-                            f"*     :large_green_circle: {predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'}* predicted to be on-time"
+                            _(
+                                "*     :large_green_circle: {predictions['on_time']} {job_plural}* predicted to be on-time"
+                            )
                         )
                     ),
                 if (predictions["late"]) > 0 or (predictions["over_due"]) > 0:
+                    total_late = int(predictions["late"]) + int(predictions["over_due"])
+                    job_plural = (
+                        "job"
+                        if int(predictions["late"]) + int(predictions["over_due"]) == 1
+                        else "jobs"
+                    )
                     sections.append(
                         job_prediction_block(
-                            f"*     :large_orange_circle: {int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'}* may be behind schedule"
+                            (
+                                "*     :large_orange_circle: {total_late} {job_plural}* may be behind schedule"
+                            )
                         )
                     )
         if completed > 0 or all_jobs:
@@ -1025,14 +1128,16 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Completed Jobs*\n*     {completed} job(s)* completed in the past 7 days",
+                        "text": _(
+                            "*Completed Jobs*\n*     {completed} job(s)* completed in the past 7 days",
+                        ),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "View More",
+                            "text": _("View More"),
                         },
                         "action_id": "job_list",
                         "value": "COMPLETED:7D",
@@ -1045,14 +1150,16 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Validation*\n*     {validation} job(s)* currently being validated",
+                        "text": _(
+                            "*Validation*\n*     {validation} job(s)* currently being validated",
+                        ),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "View More",
+                            "text": _("View More"),
                         },
                         "action_id": "job_list",
                         "value": "VALIDATION",
@@ -1065,14 +1172,16 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Pending Quotes*\n*     {pending_quotes} quote(s)* pending",
+                        "text": _(
+                            "*Pending Quotes*\n*     {pending_quotes} quote(s)* pending",
+                        ),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "View More",
+                            "text": _("View More"),
                         },
                         "action_id": "job_list",
                         "value": "PENDING_QUOTES",
@@ -1085,14 +1194,16 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*Order Now*\n*     {order_now} job(s)* to order",
+                        "text": _(
+                            "*Order Now*\n*     {order_now} job(s)* to order",
+                        ),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "View More",
+                            "text": _("View More"),
                         },
                         "action_id": "job_list",
                         "value": "ORDER_NOW",
@@ -1105,7 +1216,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "No jobs found.",
+                        "text": _("No jobs found."),
                     },
                 },
             )
@@ -1130,14 +1241,14 @@ class JobSummaryMessage(SlackMessage):
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": "View All",
+                            "text": _("View All"),
                         },
                         "action_id": "all_summary",
                     },
                 },
             )
         super().__init__(
-            f"In Progress Jobs: {in_progress} jobs currently in progress...",
+            _("In Progress Jobs: {in_progress} jobs currently in progress..."),
             sections,
         )
 
@@ -1159,12 +1270,12 @@ class JobListMessage(SlackMessage):
         # If there is any jobs result
         if jobs:
             for i, job in enumerate(jobs):
-                job_text = f"*{job.id}*"
+                job_text = _("*{job.id}*")
                 if job.reference:
-                    job_text += f"\nRef: {job.reference}"
+                    job_text += _("\nRef: {job.reference}")
 
                 job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
-                job_text += "\nDue: " + format_job_due_date_slack(
+                job_text += _("\nDue: ") + format_job_due_date_slack(
                     job.target_date, job.status, traffic_light=True
                 )
                 prediction = (
@@ -1193,7 +1304,7 @@ class JobListMessage(SlackMessage):
                             "text": {
                                 "type": "plain_text",
                                 "emoji": True,
-                                "text": "View More Info",
+                                "text": _("View More Info"),
                             },
                             "action_id": "show_job_details",
                             "value": json.dumps({"id": job.id, "status": job.status}),
@@ -1213,7 +1324,7 @@ class JobListMessage(SlackMessage):
                                     "type": "button",
                                     "text": {
                                         "type": "plain_text",
-                                        "text": "Show In Progress Files",
+                                        "text": _("Show In Progress Files"),
                                         "emoji": True,
                                     },
                                     "action_id": "batch_list_1",
@@ -1242,7 +1353,7 @@ class JobListMessage(SlackMessage):
                                     "type": "button",
                                     "text": {
                                         "type": "plain_text",
-                                        "text": "Show In Progress Files",
+                                        "text": _("Show In Progress Files"),
                                         "emoji": True,
                                     },
                                     "action_id": "batch_list_1",
@@ -1259,7 +1370,7 @@ class JobListMessage(SlackMessage):
                                     "type": "button",
                                     "text": {
                                         "type": "plain_text",
-                                        "text": "Show Completed Files",
+                                        "text": _("Show Completed Files"),
                                         "emoji": True,
                                     },
                                     "action_id": "file_list_1",
@@ -1284,7 +1395,7 @@ class JobListMessage(SlackMessage):
                                     "type": "button",
                                     "text": {
                                         "type": "plain_text",
-                                        "text": "Show Completed Files",
+                                        "text": _("Show Completed Files"),
                                         "emoji": True,
                                     },
                                     "action_id": "file_list_1",
@@ -1300,6 +1411,7 @@ class JobListMessage(SlackMessage):
                             ],
                         },
                     )
+                # TODO handle prediction blocks
                 if formatted_job_prediction != "":
                     jobs_blocks.append(job_prediction_block(formatted_job_prediction))
         else:
@@ -1308,7 +1420,9 @@ class JobListMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"No jobs found",
+                        "text": _(
+                            "No jobs found",
+                        ),
                     },
                 }
             )
@@ -1322,7 +1436,7 @@ class JobListMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Show previous jobs",
+                            "text": _("Show previous jobs"),
                             "emoji": True,
                         },
                         "action_id": "job_list_paginated_0",
@@ -1342,7 +1456,7 @@ class JobListMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Show more jobs",
+                            "text": _("Show more jobs"),
                             "emoji": True,
                         },
                         "action_id": "job_list_paginated_1",
@@ -1363,7 +1477,9 @@ class JobListMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*{title}*",
+                        "text": _(
+                            "*{title}*",
+                        ),
                     },
                 },
                 *jobs_blocks,
@@ -1383,7 +1499,7 @@ class NewJobMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Click here to submit a new translation job",
+                        "text": _("Click here to submit a new translation job"),
                     },
                 },
                 {
@@ -1393,7 +1509,7 @@ class NewJobMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "New translation job",
+                                "text": _("New translation job"),
                                 "emoji": True,
                             },
                             "action_id": "new_job",
@@ -1415,22 +1531,28 @@ class JobSubmitMessage(SlackMessage):
     """Message to send when a new job is submitted."""
 
     def __init__(self, new_job_form: NewJobForm) -> None:
+        lang_str = ", ".join(f"*{lang.name}*" for lang in new_job_form.target_langs)
         super().__init__(
-            "Your translation request has been submitted. You will be notified when a job number is assigned.",
+            _(
+                "Your translation request has been submitted. You will be notified when a job number is assigned."
+            ),
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": ":tada: Your translation request has been submitted. You will be notified when a job number is assigned.",
+                        "text": _(
+                            ":tada: Your translation request has been submitted. You will be notified when a job number is assigned."
+                        ),
                     },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"The following files will be translated from *{new_job_form.source_lang.name}* "
-                        + f"to {', '.join(f'*{lang.name}*' for lang in new_job_form.target_langs)}:",
+                        "text": _(
+                            "The following files will be translated from *{new_job_form.source_lang.name}* to {lang_str}:"
+                        ),
                     },
                 },
                 {
@@ -1438,7 +1560,7 @@ class JobSubmitMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": "\n".join(
-                            f"• {file.title}" for file in new_job_form.files
+                            (f"• {file.title}" for file in new_job_form.files)
                         ),
                     },
                 },
@@ -1449,13 +1571,14 @@ class JobSubmitMessage(SlackMessage):
 class InsightsMessage(SlackMessage):
     def __init__(self, message: str):
         super().__init__(
-            f":idea: Here are your insights",
-            [
+            _(
+                ":idea: Here are your insights",
+            )[
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": ":idea: *Here are your insights*",
+                        "text": _(":idea: *Here are your insights*"),
                     },
                 },
                 {
@@ -1473,7 +1596,7 @@ class JobCreationMessage(TextMessage):
 
     def __init__(self, job_id: str) -> None:
         super().__init__(
-            f"A new translation job has been created with the job number: `{job_id}`"
+            _("A new translation job has been created with the job number: `{job_id}`")
         )
 
 
@@ -1503,7 +1626,7 @@ class FileTranslatedMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Download",
+                            "text": _("Download"),
                             "emoji": False,
                         },
                         "style": "primary",
@@ -1513,22 +1636,27 @@ class FileTranslatedMessage(SlackMessage):
                 }
             )
         super().__init__(
-            f"Some of your files are translated and ready to be downloaded ({job_id})",
-            [
+            _(
+                "Some of your files are translated and ready to be downloaded ({job_id})",
+            )[
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Some of your files are translated and ready to be downloaded (*{job_id}*)",
+                        "text": _(
+                            "Some of your files are translated and ready to be downloaded (*{job_id}*)",
+                        ),
                     },
                 },
                 {
                     "type": "section",
                     "fields": [
-                        {"type": "mrkdwn", "text": f"*File:*\n{source_file}"},
+                        {"type": "mrkdwn", "text": _("*File:*\n{source_file}")},
                         {
                             "type": "mrkdwn",
-                            "text": f"*Source Language:*\n{source_lang}",
+                            "text": _(
+                                "*Source Language:*\n{source_lang}",
+                            ),
                         },
                     ],
                 },
@@ -1549,7 +1677,7 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Hi there:wave: \n\nHow can we help?",
+                        "text": _("Hi there:wave: \n\nHow can we help?"),
                     },
                 },
                 {"type": "divider"},
@@ -1557,11 +1685,13 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔍 Status allows you to search for a specific job. ",
+                        "text": _(
+                            "🔍 Status allows you to search for a specific job. "
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Status"},
+                        "text": {"type": "plain_text", "text": _("Status")},
                         "action_id": "job_search",
                     },
                 },
@@ -1569,11 +1699,13 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🚦 Jobs provides an update on the status of recently submitted jobs.",
+                        "text": _(
+                            "🚦 Jobs provides an update on the status of recently submitted jobs."
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Jobs"},
+                        "text": {"type": "plain_text", "text": _("Jobs")},
                         "action_id": "all_summary",
                     },
                 },
@@ -1581,11 +1713,13 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🗂️ Quote opens the form to upload documents for translation.",
+                        "text": _(
+                            "🗂️ Quote opens the form to upload documents for translation."
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Quote"},
+                        "text": {"type": "plain_text", "text": _("Quote")},
                         "action_id": "quote",
                     },
                 },
@@ -1593,11 +1727,13 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
+                        "text": _(
+                            "📊 Insights uses AI to gather and show data about your translation experience"
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Insights"},
+                        "text": {"type": "plain_text", "text": _("Insights")},
                         "action_id": "report_insights",
                     },
                 },
@@ -1605,11 +1741,13 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": ":globe_with_meridians: View your LanguageCloud connection.",
+                        "text": _(
+                            ":globe_with_meridians: View your LanguageCloud connection."
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Info"},
+                        "text": {"type": "plain_text", "text": _("Info")},
                         "action_id": "account_info",
                     },
                 },
@@ -1618,13 +1756,13 @@ class HelpMessage(SlackMessage):
                     "block_id": "sectionBlockWithButton",
                     "text": {
                         "type": "mrkdwn",
-                        "text": ":Seedling: Connect your LanguageCloud account",
+                        "text": _(":Seedling: Connect your LanguageCloud account"),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Connect",
+                            "text": _("Connect"),
                         },
                         "url": get_language_cloud_connect_url(
                             context["user_id"],
@@ -1640,7 +1778,9 @@ class HelpMessage(SlackMessage):
                     "elements": [
                         {
                             "type": "mrkdwn",
-                            "text": ":question: Need more information? Ask our chat bot below.\n:tada: New features coming soon `/ray whatsnext`",
+                            "text": _(
+                                ":question: Need more information? Ask our chat bot below.\n:tada: New features coming soon `/ray whatsnext`"
+                            ),
                         }
                     ],
                 },
@@ -1659,7 +1799,9 @@ class QuoteMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *Submit a Quote* button below",
+                        "text": _(
+                            "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *Submit a Quote* button below"
+                        ),
                     },
                 },
                 {
@@ -1667,7 +1809,7 @@ class QuoteMessage(SlackMessage):
                     "elements": [
                         {
                             "type": "button",
-                            "text": {"type": "plain_text", "text": "Submit a Quote"},
+                            "text": {"type": "plain_text", "text": _("Submit a Quote")},
                             "style": "primary",
                             "action_id": "new_job",
                         }
@@ -1679,7 +1821,7 @@ class QuoteMessage(SlackMessage):
 
 class WhatsNextMessage(SlackMessage):
     def __init__(self) -> None:
-        url = "https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features"
+        url = f"<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|{_('Click here')}>"
         super().__init__(
             "Click here to see the upcoming features of our app",
             [
@@ -1687,7 +1829,9 @@ class WhatsNextMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"<{url}|Click here> to see the upcoming features of our app.",
+                        "text": _(
+                            "{url} to see the upcoming features of our app.",
+                        ),
                     },
                 },
             ],
@@ -1709,16 +1853,18 @@ class ConnectionInfoMessage(SlackMessage):
         if ray_connection is not None:
             super_group_names = [group.name for group in ray_connection.super_group]
             super_group_names_str = ", ".join(super_group_names)
-            text = f"Your Slack workspace is connected with: {super_group_names_str}."
+            text = _("Your Slack workspace is connected with: {super_group_names_str}.")
             workspace_block = {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"Your Slack workspace is connected with: *{super_group_names_str}*.",
+                    "text": _(
+                        "Your Slack workspace is connected with: *{super_group_names_str}*.",
+                    ),
                 },
             }
         else:
-            text = "Your Slack workspace is not connected with an organisation yet."
+            text = _("Your Slack workspace is not connected with an organisation yet.")
             workspace_block = {
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": text},
@@ -1726,7 +1872,9 @@ class ConnectionInfoMessage(SlackMessage):
         # Next get Slack user - LanguageCloud account info.
         account_blocks = []
         if ray_connection is not None and ray_connection.client is not None:
-            text = f"Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_connection.client.username}>"
+            text = _(
+                "Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_connection.client.username}>"
+            )
             account_blocks.append(
                 {
                     "type": "section",
@@ -1739,7 +1887,9 @@ class ConnectionInfoMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Click this button to connect your LanguageCloud account.",
+                        "text": _(
+                            "Click this button to connect your LanguageCloud account."
+                        ),
                     },
                 }
             )
@@ -1751,7 +1901,7 @@ class ConnectionInfoMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Connect LanguageCloud account",
+                                "text": _("Connect LanguageCloud account"),
                             },
                             "style": "primary",
                             "url": get_language_cloud_connect_url(
@@ -1773,7 +1923,9 @@ class InvalidCommandMessage(TextMessage):
 
     def __init__(self) -> None:
         super().__init__(
-            ":no_entry_sign: Invalid command. Type `/ray help` for a list of valid commands."
+            _(
+                ":no_entry_sign: Invalid command. Type `/ray help` for a list of valid commands."
+            )
         )
 
 
@@ -1782,7 +1934,7 @@ class ClientApprovedMessage(TextMessage):
 
     def __init__(self, approved_client: str) -> None:
         super().__init__(
-            f"The user {approved_client} has been approved to join your group(s)."
+            _("The user {approved_client} has been approved to join your group(s).")
         )
 
 
@@ -1792,20 +1944,23 @@ class ClientAlreadyApprovedMessage(TextMessage):
     """
 
     def __init__(self, approved_client: str) -> None:
-        super().__init__(f"The user {approved_client} has already been approved.")
+        super().__init__(_("The user {approved_client} has already been approved."))
 
 
 class JobQuotedMessage(SlackMessage):
     def __init__(self, quote: Quote) -> None:
         job_url = get_job_url(quote.uuid, quote.client_id)
         super().__init__(
-            f"Pending Quote: Straker Job Reference {quote.id}",
-            [
+            _(
+                "Pending Quote: Straker Job Reference {quote.id}",
+            )[
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*<{job_url}|Straker Job Reference {quote.id}>*",
+                        "text": _(
+                            "*<{job_url}|Straker Job Reference {quote.id}>*",
+                        ),
                     },
                 },
             ]
@@ -1821,7 +1976,9 @@ class SsoConnectionInfoMessage(SlackMessage):
         ray_connection: RayConnection | None,
     ) -> None:
         if ray_connection is not None and ray_connection.client is not None:
-            text = f"Your connected LanguageCloud account is: *{ray_connection.client.username}*."
+            text = _(
+                "Your connected LanguageCloud account is: *{ray_connection.client.username}*."
+            )
 
         msg = [
             {
@@ -1835,7 +1992,7 @@ class SsoConnectionInfoMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Login to LanguageCloud",
+                            "text": _("Login to LanguageCloud"),
                         },
                         "style": "primary",
                         "url": encrpyt_slack_sso_token(ray_connection.client.username),
@@ -1865,14 +2022,18 @@ class ClientSignupEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Thank you for signing up to LanguageCloud <{domains.languagecloud}|{event.username}> :tada:",
+                        "text": _(
+                            "Thank you for signing up to LanguageCloud <{domains.languagecloud}|{event.username}> :tada:",
+                        ),
                     },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "A notification has been sent to your Admins who will approve your account. You will be notified again once this has been approved.",
+                        "text": _(
+                            "A notification has been sent to your Admins who will approve your account. You will be notified again once this has been approved."
+                        ),
                     },
                 },
             ],
@@ -1883,27 +2044,32 @@ class ClientSignupEventAdminMessage(SlackMessage):
     def __init__(self, event: ClientSignupEvent, groups: list[ClientGroup]) -> None:
         self.event = event
         super().__init__(
-            f"A new user has signed up for a LanguageCloud account: {event.first_name} {event.last_name} ({event.email})",
-            [
+            _(
+                "A new user has signed up for a LanguageCloud account: {event.first_name} {event.last_name} ({event.email})",
+            )[
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"A new user has signed up for a LanguageCloud account:\n{event.first_name} {event.last_name} ({event.email})",
+                        "text": _(
+                            "A new user has signed up for a LanguageCloud account:\n{event.first_name} {event.last_name} ({event.email})",
+                        ),
                     },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Before this user can use RAY Translate for Slack, they require approval for the groups they should be associated with:",
+                        "text": _(
+                            "Before this user can use RAY Translate for Slack, they require approval for the groups they should be associated with:"
+                        ),
                     },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*Group(s)*:\n"
+                        "text": _("*Group(s)*:\n")
                         + "\n".join(group.label for group in groups),
                     },
                 },
@@ -1911,7 +2077,9 @@ class ClientSignupEventAdminMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "To approve this user please click the approve button below, or alternatively if you need to change anything, please log into LanguageCloud to edit their permissions.",
+                        "text": _(
+                            "To approve this user please click the approve button below, or alternatively if you need to change anything, please log into LanguageCloud to edit their permissions."
+                        ),
                     },
                 },
                 {
@@ -1922,7 +2090,7 @@ class ClientSignupEventAdminMessage(SlackMessage):
                             "text": {
                                 "type": "plain_text",
                                 "emoji": True,
-                                "text": "Approve",
+                                "text": _("Approve"),
                             },
                             "style": "primary",
                             "action_id": "approve_pending_client",
@@ -1935,7 +2103,7 @@ class ClientSignupEventAdminMessage(SlackMessage):
                             "text": {
                                 "type": "plain_text",
                                 "emoji": True,
-                                "text": "Log into LanguageCloud",
+                                "text": _("Log into LanguageCloud"),
                             },
                             "url": domains.languagecloud,
                             "action_id": "link",
@@ -1956,7 +2124,9 @@ class ClientApprovedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f":raised_hands: Your LanguageCloud groups have been approved by an Admin:\n\n{groups_text}",
+                        "text": _(
+                            ":raised_hands: Your LanguageCloud groups have been approved by an Admin:\n\n{groups_text}",
+                        ),
                     },
                 },
                 {"type": "divider"},
@@ -1964,14 +2134,18 @@ class ClientApprovedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": ":white_check_mark: You can now access all the features within RAY Translate.",
+                        "text": _(
+                            ":white_check_mark: You can now access all the features within RAY Translate."
+                        ),
                     },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Use `/ray help` to show some ideas of what you can do.",
+                        "text": _(
+                            "Use `/ray help` to show some ideas of what you can do."
+                        ),
                     },
                 },
             ],
@@ -1982,13 +2156,16 @@ class JobStatusChangedEventMessage(SlackMessage):
     def __init__(self, client_id: str, job_uuid: str, job_id: str, status: str) -> None:
         status_formatted = format_job_status(status)
         super().__init__(
-            f"Your translation job {job_id} has changed status to: {status_formatted}",
-            [
+            _(
+                "Your translation job {job_id} has changed status to: {status_formatted}",
+            )[
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Your translation job *{job_id}* has changed status to: {status_formatted}",
+                        "text": _(
+                            "Your translation job *{job_id}* has changed status to: {status_formatted}",
+                        ),
                     },
                 },
                 job_link_block(job_uuid, client_id),
@@ -2013,13 +2190,16 @@ class JobCompletedEventMessage(SlackMessage):
         else:
             target_lang_text = ", ".join(target_languages)
         super().__init__(
-            f"Your files for {job_id} are ready to download :white_check_mark:",
-            [
+            _(
+                "Your files for {job_id} are ready to download :white_check_mark:",
+            )[
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Your files for *{job_id}* in *{target_lang_text}* are ready to download :white_check_mark:",
+                        "text": _(
+                            "Your files for *{job_id}* in *{target_lang_text}* are ready to download :white_check_mark:",
+                        ),
                     },
                 },
                 {
@@ -2029,7 +2209,7 @@ class JobCompletedEventMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": "Show Completed Files",
+                                "text": _("Show Completed Files"),
                                 "emoji": True,
                             },
                             "action_id": "file_list_1",
@@ -2048,7 +2228,9 @@ class JobCompletedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Please log into LanguageCloud below to access your completed files.",
+                        "text": _(
+                            "Please log into LanguageCloud below to access your completed files."
+                        ),
                     },
                 },
                 job_link_block(job_uuid, client_id),
@@ -2058,15 +2240,18 @@ class JobCompletedEventMessage(SlackMessage):
 
 class JobCancelledEventMessage(SlackMessage):
     def __init__(self, client_id: str, job_uuid: str, job_id: str) -> None:
-        job_url = get_job_url(job_uuid, client_id)
+        job_url = f"<{get_job_url(job_uuid, client_id)}|{job_id}>"
         super().__init__(
-            f"Your translation job {job_id} has been cancelled",
-            [
+            _(
+                "Your translation job {job_id} has been cancelled",
+            )[
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Your translation job *<{job_url}|{job_id}>* has been cancelled.",
+                        "text": _(
+                            "Your translation job *{job_url}* has been cancelled.",
+                        ),
                     },
                 },
             ],
@@ -2075,16 +2260,20 @@ class JobCancelledEventMessage(SlackMessage):
 
 class JobQuoteAcceptedEventMessage(SlackMessage):
     def __init__(self, event: JobQuoteAcceptedEvent) -> None:
-        target_date = event.target_date
+        target_date = format_datetime_slack(event.target_date)
         id = event.id
         super().__init__(
-            f"Quote Accepted for {id}. Your job will be completed before {format_datetime_slack(target_date)}.",
+            _(
+                "Quote Accepted for {id}. Your job will be completed before {target_date}."
+            ),
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f":clap: Quote Accepted for *{id}*. Your job will be completed before {format_datetime_slack(target_date)}.",
+                        "text": _(
+                            ":clap: Quote Accepted for *{id}*. Your job will be completed before {target_date}."
+                        ),
                     },
                 },
                 job_link_block(event.uuid, event.client_id),
@@ -2094,15 +2283,18 @@ class JobQuoteAcceptedEventMessage(SlackMessage):
 
 class JobQuoteCancelledEventMessage(SlackMessage):
     def __init__(self, client_id: str, job_uuid: str, job_id: str) -> None:
-        job_url = get_job_url(job_uuid, client_id)
+        job_url = f"<{get_job_url(job_uuid, client_id)}|{job_id}>"
         super().__init__(
-            f"We have cancelled the quote for {job_id}.",
-            [
+            _(
+                "We have cancelled the quote for {job_id}.",
+            )[
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"We have cancelled the quote for *<{job_url}|{job_id}>*.",
+                        "text": _(
+                            "We have cancelled the quote for *{job_url}*.",
+                        ),
                     },
                 },
             ],
@@ -2111,15 +2303,18 @@ class JobQuoteCancelledEventMessage(SlackMessage):
 
 class JobQuotedEventMessage(SlackMessage):
     def __init__(self, event: JobQuoteCreatedEvent) -> None:
-        job_url = get_job_url(event.uuid, event.client_id)
+        job_url = f"<{get_job_url(event.uuid, event.client_id)}|{_('Straker Job Reference')} {event.id}>"
         super().__init__(
-            f"Your quote is now ready :raised_hands: Straker Job Reference {event.id}",
-            [
+            _(
+                "Your quote is now ready :raised_hands: Straker Job Reference {event.id}",
+            )[
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"Your quote is now ready :raised_hands:\n*<{job_url}|Straker Job Reference {event.id}>*",
+                        "text": _(
+                            "Your quote is now ready :raised_hands:\n**",
+                        ),
                     },
                 },
             ]
@@ -2142,7 +2337,7 @@ class JobDelayMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": message,
+                        "text": _(message),
                     },
                 },
             ],
@@ -2153,7 +2348,7 @@ class BatchListMessage(SlackMessage):
     """Message showing the list of in progress files."""
 
     def __init__(self, job: Job, client_id: str) -> None:
-        title = f"The in progress file list for *{job.id}* is below:"
+        title = _("The in progress file list for *{job.id}* is below:")
 
         job_file_block = []
         # Prepare download links prefix
@@ -2206,7 +2401,7 @@ class BatchListMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Show previous files",
+                            "text": _("Show previous files"),
                             "emoji": True,
                         },
                         "action_id": "batch_list_0",
@@ -2226,7 +2421,7 @@ class BatchListMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Show more files",
+                            "text": _("Show more files"),
                             "emoji": True,
                         },
                         "action_id": "batch_list_1",
@@ -2260,7 +2455,7 @@ class FileListMessage(SlackMessage):
     """Message showing the list of translation files."""
 
     def __init__(self, job: Job, client_id: str) -> None:
-        title = f"The completed file list for *{job.id}* is below:"
+        title = _("The completed file list for *{job.id}* is below:")
         job_file_block = []
         for x in job.translated_file:
             url = {
@@ -2274,7 +2469,7 @@ class FileListMessage(SlackMessage):
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
-                        "text": "Download",
+                        "text": _("Download"),
                     },
                     "url": x["download_url"],
                     "action_id": "link",
@@ -2292,7 +2487,7 @@ class FileListMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Show previous files",
+                            "text": _("Show previous files"),
                             "emoji": True,
                         },
                         "action_id": "file_list_0",
@@ -2312,7 +2507,7 @@ class FileListMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Show more files",
+                            "text": _("Show more files"),
                             "emoji": True,
                         },
                         "action_id": "file_list_1",
@@ -2349,8 +2544,9 @@ class ReportInsightsMessage(SlackMessage):
         else:
             message = "Use can use the message pane below to type your insights request using natural language. Get turn around times, cost, or validation quality. An example:\n>Can you tell me how many jobs have been delivered on time in the last 30 days"
         super().__init__(
-            f":idea: Here are your insights",
-            [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
+            _(
+                ":idea: Here are your insights",
+            )[{"type": "section", "text": {"type": "mrkdwn", "text": _(message)}}],
         )
 
 
@@ -2361,7 +2557,9 @@ class JobTargetsNoIdMessage(TextMessage):
 
     def __init__(self) -> None:
         super().__init__(
-            "To check the targets of your job, type the reference number (e.g. TJ123456)."
+            _(
+                "To check the targets of your job, type the reference number (e.g. TJ123456)."
+            )
         )
 
 
@@ -2370,11 +2568,11 @@ class JobTargetLangMessage(SlackMessage):
 
     def __init__(self, job: Job, client_id: str) -> None:
         if job.status == "PENDING_QUOTES":
-            title = f"*{job.id}* waiting for quotation."
+            title = _("*{job.id}* waiting for quotation.")
         elif job.status == "ORDER_NOW":
-            title = f"Job *{job.id}* waiting for order."
+            title = _("Job *{job.id}* waiting for order.")
         else:
-            title = f"Job *{job.id}* no targets information."
+            title = _("Job *{job.id}* no targets information.")
         super().__init__(
             title,
             [
@@ -2424,7 +2622,9 @@ class AutoTranslationMessage(SlackMessage):
                 "elements": [
                     {
                         "type": "plain_text",
-                        "text": f"Translated to {', '.join(target_langs)} with Straker AI",
+                        "text": _(
+                            "Translated to {', '.join(target_langs)} with Straker AI",
+                        ),
                     }
                 ],
             }
@@ -2436,7 +2636,7 @@ class MachineTranslationMessage(SlackMessage):
     """Message showing the list of translation files."""
 
     def __init__(self, tl: str, sl: str, mt_text: str) -> None:
-        mt_label = "Machine translation result:"
+        mt_label = _("Machine translation result:")
         super().__init__(
             f"{mt_label} {mt_text}",
             [
