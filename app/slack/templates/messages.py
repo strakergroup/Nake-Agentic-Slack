@@ -1372,7 +1372,7 @@ class NewJobMessage(SlackMessage):
 class JobSubmitMessage(SlackMessage):
     """Message to send when a new job is submitted."""
 
-    def __init__(self, new_job_form: NewJobForm, job_id: str) -> None:
+    def __init__(self, new_job_form: NewJobForm, job_id: str = '') -> None:
         super().__init__(
             "Your translation request has been submitted. You will be notified when a job number is assigned.",
             [
