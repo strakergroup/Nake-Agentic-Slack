@@ -658,7 +658,7 @@ async def handle_new_job(ack, view, context, client):
 
         # Process files and submit job.
         try:
-            job, response = await submit_job(context, context["ray"].client, form)
+            job, responses = await submit_job(context, context["ray"].client, form)
             if 'job_id' in job:
                 await client.chat_postMessage(
                     channel=context["user_id"],
