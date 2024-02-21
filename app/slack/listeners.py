@@ -649,20 +649,16 @@ async def handle_new_job(ack, view, context, client):
             return
         await ack(response_action="clear")
         # The response is already returned at this point, can do long tasks here.
-        message = JobSubmitMessage(form)
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=message.text,
-            blocks=message.blocks,
-        )
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=message.text,
-            blocks=message.blocks,
-        )
+        # message = JobSubmitMessage(form)
+        # await client.chat_postMessage(
+        #     channel=context["user_id"],
+        #     text=message.text,
+        #     blocks=message.blocks,
+        # )
+
         # Process files and submit job.
         try:
-            job, responses = await submit_job(context, context["ray"].client, form)
+            job, response = await submit_job(context, context["ray"].client, form)
             if 'job_id' in job:
                 await client.chat_postMessage(
                     channel=context["user_id"],
