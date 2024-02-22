@@ -38,7 +38,9 @@ def home_auth_blocks(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"Your Slack workspace is connected with: *{super_group_names_str}*.",
+                    "text": _(
+                        "Your Slack workspace is connected with: *{super_group_names_str}*."
+                    ),
                 },
             },
             {
