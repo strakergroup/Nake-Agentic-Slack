@@ -1413,7 +1413,9 @@ class JobSubmitMessage(SlackMessage):
                             "text": "Cancel",
                         },
                         "action_id": "cancel_job",
-                        "value":{"job_id": job_id, "job_action": "submit"} ,
+                        "value":  json.dumps(
+                            {"job_id": job_id, "job_action": "submit"}
+                        ),
                     },
                 },
             ],

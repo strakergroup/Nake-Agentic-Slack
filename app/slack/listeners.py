@@ -658,13 +658,10 @@ async def handle_new_job(ack, view, context, client):
 
         # Process files and submit job.
         try:
-            job, responses = await submit_job(context, context["ray"].client, form)
-            if 'job_id' in job:
-                await client.chat_postMessage(
-                    channel=context["user_id"],
-                    text=f"Job {job['job_id']} has been submitted successfully.",
-                )
-                message = JobSubmitMessage(form, job['job_id'])
+            responses = await submit_job(context, context["ray"].client, form)
+            result = responses[0].response.json()["Message"]
+            if 'job_id' in result:
+                message = JobSubmitMessage(form, result["job_id"])
                 await client.chat_postMessage(
                     channel=context["user_id"],
                     text=message.text,
@@ -821,6 +818,8 @@ async def cancel_job_action(ack, payload, context, client, body):
             if job_info['job_action'] == 'list':
                 job_id = job_info['job_id'].split('TJ')[1]
                 await cancel_job_process(context, context["ray"].client, job_id=job_id)
+            elif job_info["job_action"] == "submit":
+                await cancel_job_process(context, context["ray"].client, job_uuid=job_info["job_id"])
             else:
                 await show_cancel_job_model(
                     context,
