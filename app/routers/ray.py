@@ -148,11 +148,11 @@ async def api_job_callback(
         if demo_slack_users:
             for slack_user_id in demo_slack_users:
                 await app.client.chat_postMessage(
-                    channel=slack_user_id, text=message.text
+                    channel=slack_user_id, text=message.text, blocks=message.blocks,
                 )
         else:
             await app.client.chat_postMessage(
-                channel=slack_user.user_id, text=message.text
+                channel=slack_user.user_id, text=message.text, blocks=message.blocks,
             )
         return {
             "message": "success",
