@@ -1372,7 +1372,7 @@ class NewJobMessage(SlackMessage):
 class JobSubmitMessage(SlackMessage):
     """Message to send when a new job is submitted."""
 
-    def __init__(self, new_job_form: NewJobForm, job_id: str = '') -> None:
+    def __init__(self, new_job_form: NewJobForm) -> None:
         super().__init__(
             "Your translation request has been submitted. You will be notified when a job number is assigned.",
             [
@@ -1397,24 +1397,6 @@ class JobSubmitMessage(SlackMessage):
                         "type": "mrkdwn",
                         "text": "\n".join(
                             f"• {file.title}" for file in new_job_form.files
-                        ),
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "🔴 Cancel your job",
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Cancel",
-                        },
-                        "action_id": "cancel_job",
-                        "value":  json.dumps(
-                            {"job_id": job_id, "job_action": "submit"}
                         ),
                     },
                 },
@@ -1444,12 +1426,39 @@ class InsightsMessage(SlackMessage):
         )
 
 
-class JobCreationMessage(TextMessage):
+class JobCreationMessage(SlackMessage):
     """A job TJ number is created after submitting a new job (from API v3 callback)."""
 
-    def __init__(self, job_id: str) -> None:
+    def __init__(self, job_id: str = '') -> None:
         super().__init__(
-            f"A new translation job has been created with the job number: `{job_id}`"
+            "New Job Created",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f":tada: A new translation job has been created with the job number: `{job_id}`",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🔴 Cancel your job",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel",
+                        },
+                        "action_id": "cancel_job",
+                        "value": json.dumps(
+                            {"job_id": job_id, "job_action": "list"}
+                        ),
+                    },
+                },
+            ],
         )
 
 

@@ -661,7 +661,7 @@ async def handle_new_job(ack, view, context, client):
             responses = await submit_job(context, context["ray"].client, form)
             result = responses[0].response.json()["Message"]
             if 'job_id' in result:
-                message = JobSubmitMessage(form, result["job_id"])
+                message = JobSubmitMessage(form)
                 await client.chat_postMessage(
                     channel=context["user_id"],
                     text=message.text,
