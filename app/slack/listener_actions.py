@@ -1268,10 +1268,8 @@ async def cancel_job_process(
     ):
         raise AssertionError("No channel to post to")
     channel_id = context.channel_id or context.user_id
-
-    job, response = await RayService.get_service(ray_client).cancel_job(job_id, job_uuid)
-
     try:
+        job, response = await RayService.get_service(ray_client).cancel_job(job_id, job_uuid)
         msg = job['message']
         await context.client.chat_postMessage(
             channel=context["user_id"],
