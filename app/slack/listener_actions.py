@@ -1277,6 +1277,9 @@ async def cancel_job_process(
             channel=context["user_id"],
             text=msg,
         )
+    except Exception as e:
+        notify_exception(e)
+        raise
     finally:
         if response is not None:
             try:
