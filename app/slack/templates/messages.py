@@ -188,7 +188,9 @@ class LoginMessage(SlackMessage):
         if enterprise_id:
             # enterprise_id == "E04RDMG8XP1" is for UAT
             # enterprise_id == "EUJJ37YFR" is for Live IBM Translate
-            if enterprise_id == "EUJJ37YFR" and ray_client is None:
+            if (
+                enterprise_id == "EUJJ37YFR" or enterprise_id == "E04RDMG8XP1"
+            ) and ray_client is None:
                 msg[1]["elements"].append(
                     {
                         "type": "button",
@@ -201,7 +203,7 @@ class LoginMessage(SlackMessage):
                     }
                 )
             elif (
-                enterprise_id == "E04RDMG8XP1"
+                (enterprise_id == "EUJJ37YFR" or enterprise_id == "E04RDMG8XP1")
                 and ray_client is not None
                 and ray_client.sso
             ):
@@ -352,34 +354,6 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*",
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "Quote"},
-                        "action_id": "new_job",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "Insights",
-                        },
-                        "action_id": "report_insights",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
                         "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*",
                     },
                 },
@@ -447,34 +421,6 @@ class SuccessfulLoginMessage(SlackMessage):
                     "accessory": {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "New translation job"},
-                        "action_id": "new_job",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "📊 Insights uses AI to gather and show data about your translation experience",
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "Insights",
-                        },
-                        "action_id": "report_insights",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*",
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "Quote"},
                         "action_id": "new_job",
                     },
                 },
