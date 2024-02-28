@@ -434,6 +434,21 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
+                        "text": "🔴 Cancel your job",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel",
+                        },
+                        "action_id": "cancel_job",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
                         "text": "📊 Insights uses AI to gather and show data about your translation experience",
                     },
                     "accessory": {
