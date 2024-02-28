@@ -172,9 +172,11 @@ class NewJobForm(BaseModel):
                         "selected_options"
                     ]
                 ],
-                group_id=values["group"]["group_options"]["selected_option"]["value"]
-                if values["group"]["group_options"]["selected_option"]
-                else None,
+                group_id=(
+                    values["group"]["group_options"]["selected_option"]["value"]
+                    if values["group"]["group_options"]["selected_option"]
+                    else None
+                ),
                 # target_date=values["target_date"]["target_date"]["selected_date"],
                 service=values["service"]["service"]["selected_option"]["value"],
                 timeframe=values["timeframe"]["timeframe"]["selected_option"]["value"],
@@ -224,7 +226,7 @@ class SsoLoginForm(BaseModel):
 class AutoTranslationSettingsForm(BaseModel):
     """The model for the auto-translation settings form."""
 
-    conversations: list[str]
+    channels: list[str]
     languages: list[str]
 
     @classmethod
@@ -242,7 +244,7 @@ class AutoTranslationSettingsForm(BaseModel):
         """
         try:
             return cls(
-                conversations=[
+                channels=[
                     c for c in values["channels"]["channels"]["selected_conversations"]
                 ],
                 languages=[

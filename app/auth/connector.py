@@ -49,7 +49,7 @@ class RaySuperGroup:
     """The Slack enterprise ID linked to the RAY client."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class RayClient:
     """Dataclass representing a LanguageCloud client."""
 
@@ -67,6 +67,8 @@ class RayClient:
     """The Slack enterprise ID."""
     slack_access_token: str | None
     """The user's Slack access token."""
+    settings_id: int | None
+    """The user's Slack settings ID (`ray_integration.slack_user_settings.id`)."""
     id_token: str | None
     """an ID Token according to the OpenID Connect spec"""
     planname: str | None
@@ -211,6 +213,7 @@ async def save_user_token_from_installation(
         slack_team_id=user.slack_team_id,
         slack_enterprise_id=user.slack_enterprise_id,
         slack_access_token=installation.user_token,
+        settings_id=user.settings_id,
         id_token=user.id_token,
         planname=user.planname,
         sso=user.sso,
@@ -395,12 +398,14 @@ async def get_ray_demo_client(
         sql = text(
             """
             SELECT link.member_uuid, link.slack_enterprise_id, mem.login, mem.email_primary, mem.given_name, mem.family_name,
-            mem.active, mem.groupid, link.access_token
+            mem.active, mem.groupid, link.access_token, settings.id AS settings_id
             FROM slack_deltaray_link link
             INNER JOIN sitemanager.obj_m_member mem
             ON link.member_uuid = mem.obj_uuid
             INNER JOIN slack_demo_users dmem
             ON dmem.member_uuid = link.member_uuid
+            LEFT JOIN slack_user_settings settings
+            ON link.member_uuid = settings.member_uuid
             WHERE mem.active = 1
             AND link.slack_enterprise_id = :slack_enterprise_id
             AND mem.is_deleted = 0
@@ -411,11 +416,18 @@ async def get_ray_demo_client(
         row = result.first()
         if not row:
             return None
-        ray_client_id, username, slack_enterprise_id, slack_access_token = (
+        (
+            ray_client_id,
+            username,
+            slack_enterprise_id,
+            slack_access_token,
+            settings_id,
+        ) = (
             row.member_uuid,
             row.login,
             row.slack_enterprise_id,
             row.access_token,
+            row.settings_id,
         )
         id_token = create_languagecloud_id_token(
             uuid=ray_client_id,
@@ -449,6 +461,7 @@ async def get_ray_demo_client(
         slack_team_id=team_id,
         slack_enterprise_id=slack_enterprise_id,
         slack_access_token=slack_access_token,
+        settings_id=settings_id,
         id_token=id_token,
         planname="Enterprise",
         sso=False,
@@ -472,10 +485,12 @@ async def get_ray_client(
             sql = text(
                 """
                 SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name,
-                mem.active, mem.groupid, link.is_sso, link.access_token
+                mem.active, mem.groupid, link.is_sso, link.access_token, settings.id AS settings_id
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
+                LEFT JOIN slack_user_settings settings
+                ON link.member_uuid = settings.member_uuid
                 WHERE link.slack_user_id = :user_id
                 AND link.slack_enterprise_id = :enterprise_id
                 AND link.is_active = 1
@@ -488,10 +503,12 @@ async def get_ray_client(
             sql = text(
                 """
                 SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name,
-                mem.active, mem.groupid, link.is_sso, link.access_token
+                mem.active, mem.groupid, link.is_sso, link.access_token, settings.id AS settings_id
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
+                LEFT JOIN slack_user_settings settings
+                ON link.member_uuid = settings.member_uuid
                 WHERE link.slack_user_id = :user_id
                 AND link.slack_team_id = :team_id
                 AND link.is_active = 1
@@ -513,12 +530,13 @@ async def get_ray_client(
             aud="languagecloud-api",
             secret=config.languagecloud_api_key.get_secret_value(),
         )
-        ray_client_id, username, groupid, is_sso, slack_access_token = (
+        ray_client_id, username, groupid, is_sso, slack_access_token, settings_id = (
             row.member_uuid,
             row.login,
             row.groupid,
             row.is_sso,
             row.access_token,
+            row.settings_id,
         )
     # Now get the access token for authentication.
     with engines["api"].connect() as conn:
@@ -567,6 +585,7 @@ async def get_ray_client(
         slack_team_id=team_id,
         slack_enterprise_id=enterprise_id,
         slack_access_token=slack_access_token,
+        settings_id=settings_id,
         id_token=id_token,
         planname=plan,
         sso=is_sso,

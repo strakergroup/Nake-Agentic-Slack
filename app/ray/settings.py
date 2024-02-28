@@ -92,23 +92,25 @@ def filter_invalid_auto_translate_languages(languages: Iterable[str]) -> list[st
     return [lang for lang in languages if is_valid_auto_translate_language(lang)]
 
 
-def get_auto_translate_settings_conversations(ray_client: RayClient) -> list[str]:
-    """Get the auto-translate settings (conversations) for a LanugageCloud user.
+def get_auto_translate_settings_channels(ray_client: RayClient) -> list[str]:
+    """Get the auto-translate settings (channels) for a LanugageCloud user.
 
     Returns:
-        list[str]: The list of conversation IDs to auto-translate.
+        list[str]: The list of channel IDs to auto-translate.
     """
-    with engines["ray_integration"].connect() as conn:
+    if ray_client.settings_id is None:
+        return []
+    with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
-            SELECT conversation_id
-            FROM slack_settings_auto_translate_conversations
-            WHERE member_uuid = :member_uuid
+            SELECT channel_id
+            FROM slack_user_settings_auto_translate_channels
+            WHERE settings_id = :settings_id
             """
-        ).bindparams(member_uuid=ray_client.id)
+        ).bindparams(settings_id=ray_client.settings_id)
         result = conn.execute(sql)
-        conversation_ids = [row[0] for row in result]
-    return conversation_ids
+        channel_ids = [row[0] for row in result]
+    return channel_ids
 
 
 def get_auto_translate_settings_langs(ray_client: RayClient) -> list[str]:
@@ -117,65 +119,91 @@ def get_auto_translate_settings_langs(ray_client: RayClient) -> list[str]:
     Returns:
         list[str]: The list of languages to auto-translate to.
     """
-    with engines["ray_integration"].connect() as conn:
+    if ray_client.settings_id is None:
+        return []
+    with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
             SELECT lang
-            FROM slack_settings_auto_translate_langs
-            WHERE member_uuid = :member_uuid
+            FROM slack_user_settings_auto_translate_langs
+            WHERE settings_id = :settings_id
             """
-        ).bindparams(member_uuid=ray_client.id)
+        ).bindparams(settings_id=ray_client.settings_id)
         result = conn.execute(sql)
         langs = [row[0] for row in result]
     return langs
 
 
 def update_auto_translate_settings(
-    ray_client: RayClient, conversations: list[str], languages: list[str]
+    ray_client: RayClient, channels: list[str], languages: list[str]
 ) -> None:
     """Update the auto-translate settings for a LanugageCloud user.
 
     Args:
         ray_client (RayClient): The client to update the settings for
-        conversations (list[str]): The IDs of the conversations to auto-translate.
+        channels (list[str]): The IDs of the channels (conversations) to auto-translate.
         languages (list[str]): The languages to auto-translate to.
     """
     with engines["ray_integration"].begin() as conn:
-        conn.execute(
-            text(
-                """
-                DELETE FROM slack_settings_auto_translate_conversations
-                WHERE member_uuid = :member_uuid
-                """
-            ).bindparams(member_uuid=ray_client.id)
-        )
-        conn.execute(
-            text(
-                """
-                DELETE FROM slack_settings_auto_translate_langs
-                WHERE member_uuid = :member_uuid
-                """
-            ).bindparams(member_uuid=ray_client.id)
-        )
-        for conversation in conversations:
+        if ray_client.settings_id is None:
             conn.execute(
                 text(
                     """
-                    INSERT INTO slack_settings_auto_translate_conversations
-                    (member_uuid, conversation_id)
+                    INSERT INTO slack_user_settings
+                    (member_uuid)
                     VALUES
-                    (:member_uuid, :conversation_id)
+                    (:member_uuid)
                     """
-                ).bindparams(member_uuid=ray_client.id, conversation_id=conversation)
+                ).bindparams(member_uuid=ray_client.id)
+            )
+            settings_id_result = conn.execute(
+                text(
+                    """
+                    SELECT id
+                    FROM slack_user_settings
+                    WHERE member_uuid = :member_uuid
+                    """
+                ).bindparams(member_uuid=ray_client.id)
+            ).first()
+            if settings_id_result:
+                ray_client.settings_id = settings_id_result[0]
+        else:
+            conn.execute(
+                text(
+                    """
+                    DELETE FROM slack_user_settings_auto_translate_channels
+                    WHERE settings_id = :settings_id
+                    """
+                ).bindparams(settings_id=ray_client.settings_id)
+            )
+            conn.execute(
+                text(
+                    """
+                    DELETE FROM slack_user_settings_auto_translate_langs
+                    WHERE settings_id = :settings_id
+                    """
+                ).bindparams(settings_id=ray_client.settings_id)
+            )
+
+        for channel_id in channels:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO slack_user_settings_auto_translate_channels
+                    (settings_id, channel_id)
+                    VALUES
+                    (:settings_id, :channel_id)
+                    """
+                ).bindparams(settings_id=ray_client.settings_id, channel_id=channel_id)
             )
         for lang in languages:
             conn.execute(
                 text(
                     """
-                    INSERT INTO slack_settings_auto_translate_langs
-                    (member_uuid, lang)
+                    INSERT INTO slack_user_settings_auto_translate_langs
+                    (settings_id, lang)
                     VALUES
-                    (:member_uuid, :lang)
+                    (:settings_id, :lang)
                     """
-                ).bindparams(member_uuid=ray_client.id, lang=lang)
+                ).bindparams(settings_id=ray_client.settings_id, lang=lang)
             )

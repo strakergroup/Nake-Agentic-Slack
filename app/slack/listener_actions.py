@@ -49,7 +49,7 @@ from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
     is_valid_auto_translate_language,
     filter_invalid_auto_translate_languages,
-    get_auto_translate_settings_conversations,
+    get_auto_translate_settings_channels,
     get_auto_translate_settings_langs,
 )
 from ..watson import watson_message
@@ -242,7 +242,7 @@ async def auto_translate_message(
     thread_ts: str | None = message.get("thread_ts")
     if not text:
         return
-    enabled_conversations = get_auto_translate_settings_conversations(ray_client)
+    enabled_conversations = get_auto_translate_settings_channels(ray_client)
     if not context.channel_id or context.channel_id not in enabled_conversations:
         return
 
