@@ -1,6 +1,5 @@
 """Slack view templates (modals, home tab)."""
 
-
 from typing import Any
 from slack_bolt.context.async_context import AsyncBoltContext
 
@@ -15,7 +14,7 @@ from ...config import domains
 
 
 def home_view(
-    context: AsyncBoltContext, app_id: str, rayConnection: RayConnection
+    context: AsyncBoltContext, app_id: str, rayConnection: RayConnection | None
 ) -> dict[str, Any]:
     message_url = f"slack://app?team={context['team_id']}&id={app_id}&tab=messages"
     return {
@@ -92,28 +91,30 @@ def home_view(
                     "text": "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences.",
                 },
             },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": ":speech_balloon: Translation Settings",
+            (
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "emoji": True,
+                                "text": ":speech_balloon: Translation Settings",
+                            },
+                            "action_id": "settings_auto_translate",
                         },
-                        "action_id": "settings_auto_translate",
+                    ],
+                }
+                if rayConnection and rayConnection.client
+                else {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "_Connect your Straker LanguageCloud account to enable this feature_",
                     },
-                ],
-            }
-            if rayConnection.client
-            else {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "_Connect your Straker LanguageCloud account to enable this feature_",
-                },
-            },
+                }
+            ),
             {"type": "divider"},
             {
                 "type": "header",
@@ -187,7 +188,7 @@ def job_search_modal(
                     "type": "mrkdwn",
                     "text": f"You are searching for job(s) as `{client_name}`.",
                     "verbatim": True,
-                }
+                },
             },
             {
                 "type": "section",
@@ -195,7 +196,7 @@ def job_search_modal(
                     "type": "mrkdwn",
                     "text": "To search for multiple TJs, enter your TJ number, followed by a comma, then enter your next TJ reference, search for up to 10 TJs at once.",
                     "verbatim": True,
-                }
+                },
             },
             {
                 "type": "input",

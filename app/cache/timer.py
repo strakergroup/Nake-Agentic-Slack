@@ -29,3 +29,15 @@ async def auto_translate_permissions_reminder(client_id: str, channel_id: str) -
     except Exception as e:
         notify_exception(e)
     return True
+
+
+async def clear_auto_translate_permissions_reminder(client_id: str):
+    """Clears the auto-translate permissions reminder for a user. Usually done
+    after the user tries to grant permissions (install the app).
+    """
+    key_prefix = f"slack-ray-translator:timer:auto-translate-permissions:{client_id}:"
+    try:
+        keys = await redis_conn.keys(f"{key_prefix}*")
+        await redis_conn.delete(*keys)
+    except Exception as e:
+        notify_exception(e)

@@ -13,6 +13,7 @@ from buglog import notify_exception
 from .stores import AsyncSQLAlchemyInstallationStore, AsyncSQLAlchemyOAuthStateStore
 from .templates.messages import OnboardingMessage
 from ..auth.connector import save_user_token_from_installation
+from ..cache.timer import clear_auto_translate_permissions_reminder
 from ..config import config
 from ..database import engines
 
@@ -66,6 +67,8 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
         user = None
         try:
             user = await save_user_token_from_installation(args.installation)
+            if user:
+                await clear_auto_translate_permissions_reminder(user.id)
         except Exception as e:
             notify_exception(
                 e, "Slack app: Failed to save user token from installation"
@@ -78,7 +81,7 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
             args.installation.team_id,  # type: ignore
             args.installation.enterprise_id,
             args.installation.user_id,
-            prompt_login=bool(user),
+            prompt_login=user is None,
         )
         await app.client.chat_postMessage(
             channel=args.installation.user_id, blocks=message.blocks, text=message.text

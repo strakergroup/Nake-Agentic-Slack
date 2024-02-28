@@ -141,7 +141,7 @@ async def home_opened(event, action, context, body, say, client):
     # Publish view to home tab.
     await client.views_publish(
         user_id=event.get("user"),
-        view=home_view(context, body["api_app_id"], context["ray"]),
+        view=home_view(context, body["api_app_id"], context.get("ray")),
     )
 
 
