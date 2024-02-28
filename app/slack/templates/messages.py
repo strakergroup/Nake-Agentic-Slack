@@ -177,12 +177,14 @@ class LoginMessage(SlackMessage):
                 ],
             },
         ]
+        if (config.environment == Environment.production):
+            e_id = 'EUJJ37YFR'
+            t_id = 'T0360HUQKS9'
+        else:
+            e_id = "E04RDMG8XP1"
+            t_id = "T02FDFCGK"
         if enterprise_id:
-            # enterprise_id == "E04RDMG8XP1" is for UAT
-            # enterprise_id == "EUJJ37YFR" is for Live IBM Translate
-            if (
-                enterprise_id == "EUJJ37YFR" or enterprise_id == "E04RDMG8XP1"
-            ) and ray_client is None:
+            if (enterprise_id == e_id) and ray_client is None:
                 msg[1]["elements"].append(
                     {
                         "type": "button",
@@ -195,7 +197,7 @@ class LoginMessage(SlackMessage):
                     }
                 )
             elif (
-                (enterprise_id == "EUJJ37YFR" or enterprise_id == "E04RDMG8XP1")
+                (enterprise_id == e_id)
                 and ray_client is not None
                 and ray_client.sso
             ):
@@ -217,9 +219,7 @@ class LoginMessage(SlackMessage):
                         ],
                     },
                 )
-        # team_id == "T02FDFCGK" is for UAT
-        # team_id == "T0360HUQKS9" is for Live IBM Translate
-        elif team_id == "T0360HUQKS9" and ray_client is None:
+        elif team_id == t_id and ray_client is None:
             msg[1]["elements"].append(
                 {
                     "type": "button",
@@ -231,7 +231,7 @@ class LoginMessage(SlackMessage):
                     "action_id": "login_sso",
                 }
             )
-        elif team_id == "T04QVSH7XDF" and ray_client is not None and ray_client.sso:
+        elif team_id == t_id and ray_client is not None and ray_client.sso:
             msg.pop(1)
             msg.append(
                 {
