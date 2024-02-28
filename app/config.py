@@ -22,7 +22,7 @@ class StrakerConfig(BaseSettings):
     # Settings from environment variables.
     slack_client_id: str = Field(env="SLACK_CLIENT_ID", min_length=1)
     slack_client_secret: SecretStr = Field(env="SLACK_CLIENT_SECRET", min_length=1)
-    taus_api_key: SecretStr = Field(env="TAUS_API_KEY", min_length=1)
+    # taus_api_key: SecretStr = Field(env="TAUS_API_KEY", min_length=1)
     elastic_apm_server_url: str | None = Field(None, env="ELASTIC_APM_SERVER_URL")
     # Derived settings.
     base_url: HttpUrl = None
@@ -139,4 +139,4 @@ class StrakerConfig(BaseSettings):
         allow_mutation = False
 
 
-config = StrakerConfig()
+config = StrakerConfig()  # type: ignore

@@ -5,15 +5,16 @@ Slack Bolt listener functions.
 
 import asyncio
 from typing import Any
+import re
 
-from buglog import notify_exception, notify_message
+import httpx
 from slack_sdk.errors import SlackApiError
+from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from slack_sdk.webhook.webhook_response import WebhookResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse  # type: ignore
-import httpx
-import re
+from buglog import notify_exception, notify_message
 
 from .middleware import require_ray_client
 from .templates.messages import (
@@ -54,7 +55,6 @@ from ..ray.settings import (
 from ..watson import watson_message
 from ..cache.timer import auto_translate_permissions_reminder
 from .select_options import get_file_options_cached
-from slack_sdk.web.async_client import AsyncWebClient
 
 
 async def respond_to_message(
@@ -314,41 +314,18 @@ async def auto_translate_message(
                     text=text,  # Must use original untranslated text for future detect language
                     blocks=msg.blocks,
                 )
-                asyncio.create_task(
-                    update_machine_translation_score(
-                        context.client,
-                        channel_id=context.channel_id,
-                        ts=ts,
-                        message=msg,
-                        source_lang=source_lang,
-                        source_text=text,
-                        translations=[
-                            (t["target_lang"], t["text"]) for t in translations
-                        ],
-                    )
-                )
                 return
             except Exception as e:
                 notify_exception(e, "Failed to update message (auto-translation)")
                 # If updating message fails (e.g. permissions), default to thread reply.
                 context.client.token = context.bot_token
+
         # Post a thread reply if the user did not give permission (user token).
-        post_response = await context.client.chat_postMessage(
+        await context.client.chat_postMessage(
             channel=context.channel_id,
             text=msg.text,
             blocks=msg.blocks,
             thread_ts=ts,
-        )
-        asyncio.create_task(
-            update_machine_translation_score(
-                context.client,
-                channel_id=context.channel_id,
-                ts=post_response.data["ts"],
-                message=msg,
-                source_lang=source_lang,
-                source_text=text,
-                translations=[(t["target_lang"], t["text"]) for t in translations],
-            )
         )
         # If the user has not given permission to edit their messages, post a reminder.
         if await auto_translate_permissions_reminder(ray_client.id, context.channel_id):
@@ -369,6 +346,7 @@ async def auto_translate_message(
                     response_data = raw_response.json()
                 except Exception:
                     response_data = raw_response.content.decode() or None
+                # TODO Update logging params
                 context["log"].add_api_log(
                     status_code=raw_response.status_code,
                     url=str(raw_response.url),
@@ -400,6 +378,8 @@ async def update_machine_translation_score(
         translations (list[tuple[str, str]]): List of 2-tuples, including the
             target language and the translated text.
     """
+    # RAY-65319 Disable function for now, re-enable when required.
+    return
     # TODO Update after using live Taus API
     taus_valid_languages = ["en", "fr", "de", "it", "es"]
     translations = [t for t in translations if t[0] in taus_valid_languages]
@@ -415,9 +395,9 @@ async def update_machine_translation_score(
                 ],
                 "metrics": [{"uid": "taus_qe"}, {"uid": "comet_qe"}],
             },
-            headers={
-                "Authorization": f"Bearer {config.taus_api_key.get_secret_value()}"
-            },
+            # headers={
+            #     "Authorization": f"Bearer {config.taus_api_key.get_secret_value()}"
+            # },
         )
         response.raise_for_status()
         data = response.json()
