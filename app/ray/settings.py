@@ -30,6 +30,10 @@ def get_auto_translate_languages(
         ("zh-TW", "Chinese (Traditional)"),
         ("ja", "Japanese"),
         ("ko", "Korean"),
+        ("ar", "Arabic"),
+        ("ru", "Russian"),
+        ("uk", "Ukrainian"),
+        ("be", "Belarusian"),
     ]
     if include_variations:
         languages.append(("zh", "Chinese (Simplified)"))
