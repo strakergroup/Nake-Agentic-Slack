@@ -723,14 +723,14 @@ async def handle_job_search(ack, view, context, client):
             return
         await ack(response_action="clear")
         # The response is already returned at this point, can do long tasks here.
-        reference = form.reference.strip()
+        reference = form.reference.strip().replace(" ", "")
         # Try searching job by TJ number if the format is correct.
-        if re.fullmatch(r"tj\d+", reference, re.IGNORECASE):
+        if re.fullmatch(r"TJ\d+(,\s?TJ\d+)*", reference, re.IGNORECASE):
             await post_job_status(context, context["ray"].client, reference)
-        elif re.fullmatch(r"\d+", reference, re.IGNORECASE):
+        elif re.fullmatch(r"\d+(,\s?\d+)*", reference, re.IGNORECASE):
             await post_job_status(context, context["ray"].client, "TJ" + reference)
         else:
-            client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=context["user_id"],
                 text="TJ Number is in incorrect format. E.g. TJ123456 or 123456",
             )

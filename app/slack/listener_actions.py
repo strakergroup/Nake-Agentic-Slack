@@ -177,17 +177,13 @@ async def respond_to_message(
                 msg = NewJobMessage(context["channel_id"], message["ts"])
                 await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
         case "Show_Insights":
-            # TODO Disable insights on production for now.
-            if config.environment != Environment.production:
-                if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
-                    await post_insights(
-                        context,
-                        context["ray"].client,
-                        message["text"],
-                        thread_ts=thread_ts,
-                    )
-            else:
-                await context.say(response.reply, thread_ts=thread_ts)
+            if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
+                await post_insights(
+                    context,
+                    context["ray"].client,
+                    message["text"],
+                    thread_ts=thread_ts,
+                )
         case "Jokes":
             # Delegate jokes to IBM Watson Assistant dialog.
             await context.say(response.reply, thread_ts=thread_ts)
@@ -480,25 +476,25 @@ async def post_job_status(
     ):
         raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
-
-    job, response = await RayService.get_service(ray_client).get_job(job_id)
+    jobs, response = await RayService.get_service(ray_client).get_job(job_id)
     try:
-        if job is not None:
-            job_prediction = (
-                (await get_job_predictions([job_id]))[0].get("prediction", "")
-                if job.status == "IN_PROGRESS"
-                else ""
-            )
-            msg = JobStatusMessage(job, ray_client.id, job_prediction)
-            if context.response_url:
-                return await context.respond(text=msg.text, blocks=msg.blocks)
-            else:
-                return await context.client.chat_postMessage(
-                    channel=channel_id,
-                    text=msg.text,
-                    blocks=msg.blocks,
-                    thread_ts=thread_ts,
+        if jobs is not None:
+            for job in jobs:
+                job_prediction = (
+                    (await get_job_predictions([job_id]))[0].get("prediction", "")
+                    if job.status == "IN_PROGRESS"
+                    else ""
                 )
+                msg = JobStatusMessage(job, ray_client.id, job_prediction)
+                if context.response_url:
+                    await context.respond(text=msg.text, blocks=msg.blocks)
+                else:
+                    await context.client.chat_postMessage(
+                        channel=channel_id,
+                        text=msg.text,
+                        blocks=msg.blocks,
+                        thread_ts=thread_ts,
+                    )
         else:
             msg = InvalidJobMessage(job_id)
             if context.response_url:
@@ -560,11 +556,10 @@ async def post_job_details(
     if status == "PENDING_QUOTES":
         job, response = await RayService.get_service(ray_client).get_quote(job_id)
     else:
-        job, response = await RayService.get_service(ray_client).get_job(job_id)
-
+        jobs, response = await RayService.get_service(ray_client).get_job(job_id)
     try:
-        if job is not None:
-            if status == "PENDING_QUOTES":
+        if status == "PENDING_QUOTES":
+            if job is not None:
                 msg = JobQuotedMessage(job)
                 if context.response_url:
                     return await context.respond(text=msg.text, blocks=msg.blocks)
@@ -575,32 +570,45 @@ async def post_job_details(
                         blocks=msg.blocks,
                         thread_ts=thread_ts,
                     )
-            # get the job prediction
-            job_prediction = (
-                (await get_job_predictions([job_id]))[0].get("prediction", "")
-                if job.status == "IN_PROGRESS"
-                else ""
-            )
-            msg = JobDetailsMessage(job, ray_client.id, job_prediction)
-            if context.response_url:
-                return await context.respond(text=msg.text, blocks=msg.blocks)
             else:
-                return await context.client.chat_postMessage(
-                    channel=channel_id,
-                    text=msg.text,
-                    blocks=msg.blocks,
-                    thread_ts=thread_ts,
-                )
+                msg = InvalidJobMessage(job_id)
+                if context.response_url:
+                    return await context.respond(text=msg.text)
+                else:
+                    return await context.client.chat_postMessage(
+                        channel=channel_id,
+                        text=msg.text,
+                        thread_ts=thread_ts,
+                    )
         else:
-            msg = InvalidJobMessage(job_id)
-            if context.response_url:
-                return await context.respond(text=msg.text)
+            if jobs is not None:
+                for job in jobs:
+                    # get the job prediction
+                    job_prediction = (
+                        (await get_job_predictions([job_id]))[0].get("prediction", "")
+                        if job.status == "IN_PROGRESS"
+                        else ""
+                    )
+                    msg = JobDetailsMessage(job, ray_client.id, job_prediction)
+                    if context.response_url:
+                        return await context.respond(text=msg.text, blocks=msg.blocks)
+                    else:
+                        return await context.client.chat_postMessage(
+                            channel=channel_id,
+                            text=msg.text,
+                            blocks=msg.blocks,
+                            thread_ts=thread_ts,
+                        )
             else:
-                return await context.client.chat_postMessage(
-                    channel=channel_id,
-                    text=msg.text,
-                    thread_ts=thread_ts,
-                )
+                msg = InvalidJobMessage(job_id)
+                if context.response_url:
+                    return await context.respond(text=msg.text)
+                else:
+                    return await context.client.chat_postMessage(
+                        channel=channel_id,
+                        text=msg.text,
+                        thread_ts=thread_ts,
+                    )
     finally:
         if response is not None:
             try:
@@ -1126,34 +1134,37 @@ async def post_batch_list(
     ):
         raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
-    job, response = await RayService.get_service(ray_client).get_job(
+    jobs, response = await RayService.get_service(ray_client).get_job(
         job_id, page, page_size
     )
 
     try:
-        if job is not None:
-            msg = BatchListMessage(job, ray_client.id)
-            if context.response_url:
-                return await context.respond(
-                    text=msg.text, blocks=msg.blocks, replace_original=replace_original
-                )
+        if jobs is not None:
+            for job in jobs:
+                msg = BatchListMessage(job, ray_client.id)
+                if context.response_url:
+                    return await context.respond(
+                        text=msg.text,
+                        blocks=msg.blocks,
+                        replace_original=replace_original,
+                    )
+                else:
+                    return await context.client.chat_postMessage(
+                        channel=channel_id,
+                        text=msg.text,
+                        blocks=msg.blocks,
+                        thread_ts=thread_ts,
+                    )
             else:
-                return await context.client.chat_postMessage(
-                    channel=channel_id,
-                    text=msg.text,
-                    blocks=msg.blocks,
-                    thread_ts=thread_ts,
-                )
-        else:
-            msg = InvalidJobMessage(job_id)
-            if context.response_url:
-                return await context.respond(text=msg.text)
-            else:
-                return await context.client.chat_postMessage(
-                    channel=channel_id,
-                    text=msg.text,
-                    thread_ts=thread_ts,
-                )
+                msg = InvalidJobMessage(job_id)
+                if context.response_url:
+                    return await context.respond(text=msg.text)
+                else:
+                    return await context.client.chat_postMessage(
+                        channel=channel_id,
+                        text=msg.text,
+                        thread_ts=thread_ts,
+                    )
     finally:
         if response is not None:
             try:
@@ -1204,33 +1215,36 @@ async def post_file_list(
         raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
 
-    job, response = await RayService.get_service(ray_client).get_job(
+    jobs, response = await RayService.get_service(ray_client).get_job(
         job_id, page, page_size
     )
     try:
-        if job is not None:
-            msg = FileListMessage(job, ray_client.id)
-            if context.response_url:
-                return await context.respond(
-                    text=msg.text, blocks=msg.blocks, replace_original=replace_original
-                )
+        if jobs is not None:
+            for job in jobs:
+                msg = FileListMessage(job, ray_client.id)
+                if context.response_url:
+                    return await context.respond(
+                        text=msg.text,
+                        blocks=msg.blocks,
+                        replace_original=replace_original,
+                    )
+                else:
+                    return await context.client.chat_postMessage(
+                        channel=channel_id,
+                        text=msg.text,
+                        blocks=msg.blocks,
+                        thread_ts=thread_ts,
+                    )
             else:
-                return await context.client.chat_postMessage(
-                    channel=channel_id,
-                    text=msg.text,
-                    blocks=msg.blocks,
-                    thread_ts=thread_ts,
-                )
-        else:
-            msg = InvalidJobMessage(job_id)
-            if context.response_url:
-                return await context.respond(text=msg.text)
-            else:
-                return await context.client.chat_postMessage(
-                    channel=channel_id,
-                    text=msg.text,
-                    thread_ts=thread_ts,
-                )
+                msg = InvalidJobMessage(job_id)
+                if context.response_url:
+                    return await context.respond(text=msg.text)
+                else:
+                    return await context.client.chat_postMessage(
+                        channel=channel_id,
+                        text=msg.text,
+                        thread_ts=thread_ts,
+                    )
     finally:
         if response is not None:
             try:
@@ -1271,49 +1285,54 @@ async def post_job_target_lang(
         AssertionError: The `channel_id` is not given and there is no source channel.
     """
     # add check job status then get correct redirection function\
-    job, response = await RayService.get_service(ray_client).get_job(
+    jobs, response = await RayService.get_service(ray_client).get_job(
         job_id, page, page_size
     )
     no_job = False
     try:
-        if job is not None:
-            if len(job.batches):
-                await post_batch_list(
-                    context,
-                    context["ray"].client,
-                    job_id=job_id,
-                    page=1,
-                    page_size=5,
-                )
-            else:
-                no_job = True
+        if jobs is not None:
+            for job in jobs:
+                if len(job.batches):
+                    await post_batch_list(
+                        context,
+                        context["ray"].client,
+                        job_id=job_id,
+                        page=1,
+                        page_size=5,
+                    )
+                else:
+                    no_job = True
 
-            if len(job.translated_file):
-                await post_file_list(
-                    context, context["ray"].client, job_id=job_id, page=1, page_size=5
-                )
-            else:
-                no_job = True
+                if len(job.translated_file):
+                    await post_file_list(
+                        context,
+                        context["ray"].client,
+                        job_id=job_id,
+                        page=1,
+                        page_size=5,
+                    )
+                else:
+                    no_job = True
 
-            if no_job:
-                msg = JobTargetLangMessage(job, ray_client.id)
+                if no_job:
+                    msg = JobTargetLangMessage(job, ray_client.id)
+                    if context.response_url:
+                        return await context.respond(text=msg.text, blocks=msg.blocks)
+                    else:
+                        return await context.client.chat_postMessage(
+                            channel=channel_id,
+                            text=msg.text,
+                            blocks=msg.blocks,
+                        )
+            else:
+                msg = InvalidJobMessage(job_id)
                 if context.response_url:
-                    return await context.respond(text=msg.text, blocks=msg.blocks)
+                    return await context.respond(text=msg.text)
                 else:
                     return await context.client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
-                        blocks=msg.blocks,
                     )
-        else:
-            msg = InvalidJobMessage(job_id)
-            if context.response_url:
-                return await context.respond(text=msg.text)
-            else:
-                return await context.client.chat_postMessage(
-                    channel=channel_id,
-                    text=msg.text,
-                )
     finally:
         if response is not None:
             try:
