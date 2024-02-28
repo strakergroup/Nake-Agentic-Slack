@@ -9,7 +9,7 @@ from ...auth.connector import (
     RayConnection,
     encrpyt_slack_sso_token,
 )
-from ...config import domains
+from ...config import domains, config, Environment
 from ...ray.utils import (
     get_job_url,
     format_currency,
@@ -75,10 +75,14 @@ def home_auth_blocks(
             ],
         },
     ]
+    if (config.environment == Environment.production):
+        e_id = 'EUJJ37YFR'
+        t_id = 'T0360HUQKS9'
+    else:
+        e_id = "E04RDMG8XP1"
+        t_id = "T02FDFCGK"
     if enterprise_id:
-        # enterprise_id == "E04RDMG8XP1" is for UAT
-        # enterprise_id == "EUJJ37YFR" is for Live IBM Translate
-        if enterprise_id == "EUJJ37YFR" or enterprise_id == "E04RDMG8XP1":
+        if enterprise_id == e_id:
             msg[1]["elements"].append(
                 {
                     "type": "button",
@@ -90,9 +94,7 @@ def home_auth_blocks(
                     "action_id": "login_sso",
                 }
             )
-    # team_id == "T02FDFCGK" is for UAT
-    # team_id == "T0360HUQKS9" is for Live IBM Translate
-    elif team_id == "T0360HUQKS9":
+    elif team_id == t_id:
         msg[1]["elements"].append(
             {
                 "type": "button",
