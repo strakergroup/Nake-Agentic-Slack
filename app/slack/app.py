@@ -36,6 +36,7 @@ oauth_settings = AsyncOAuthSettings(
     scopes=[
         "app_mentions:read",
         "channels:history",
+        "channels:join",
         "chat:write",
         "chat:write.public",
         "commands",

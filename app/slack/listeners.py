@@ -761,6 +761,19 @@ async def view_update_auto_translate_settings(ack, view, context, client):
                 channels=form.channels,
                 languages=form.languages,
             )
+
+            # Try to join channel automatically after updating settings.
+            async def join_channel(channel_id: str):
+                try:
+                    await client.conversations_join(channel=channel_id)
+                except SlackApiError:
+                    pass  # Cannot join private channel, or cannot find channel.
+                except Exception as e:
+                    notify_exception(e)
+
+            await asyncio.gather(
+                *[join_channel(channel_id) for channel_id in form.channels]
+            )
         except Exception as e:
             notify_exception(e)
     else:

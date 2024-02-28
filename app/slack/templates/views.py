@@ -751,7 +751,7 @@ def settings_auto_translate_view(
     initial_channels = initial_channels or []
     initial_lang_options = (
         filter_auto_translate_language_options(initial_langs) if initial_langs else []
-    )  # TODO more languages
+    )
 
     return {
         "type": "modal",
@@ -769,7 +769,7 @@ def settings_auto_translate_view(
                     "placeholder": {"type": "plain_text", "text": "Select channel(s)"},
                     "initial_conversations": initial_channels,
                     "filter": {
-                        "include": ["public", "private", "mpim"],
+                        "include": ["public", "private"],
                         "exclude_bot_users": True,
                     },
                 },
