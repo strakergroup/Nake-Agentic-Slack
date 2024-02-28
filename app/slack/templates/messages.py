@@ -329,6 +329,21 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
+                        "text": "🔴 Cancel your job",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel",
+                        },
+                        "action_id": "cancel_job",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
                         "text": "📊 Insights uses AI to gather and show data about your translation experience",
                     },
                     "accessory": {
@@ -345,25 +360,9 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 Cancel your job",
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Cancel",
-                        },
-                        "action_id": "cancel_job",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
                         "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*",
                     },
                 },
-                {"type": "divider"},
                 {"type": "divider"},
                 {
                     "type": "section",
