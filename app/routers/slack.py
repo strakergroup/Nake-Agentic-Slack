@@ -10,7 +10,7 @@ from ..slack import slack_handler
 
 
 # Connect the Slack Bolt endpoints to FastAPI
-router = APIRouter(tags=["slack"])
+router = APIRouter()
 
 
 @router.api_route("/slack/openid/connect", methods=["GET", "POST"])

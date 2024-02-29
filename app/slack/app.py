@@ -126,6 +126,6 @@ oauth_settings.callback_options = RayCallbackOptions(
 
 # Initialise the Slack app.
 app = AsyncApp(
-    signing_secret=os.getenv("SLACK_SIGNING_SECRET"),
+    signing_secret=config.slack_signing_secret.get_secret_value(),
     oauth_settings=oauth_settings,
 )

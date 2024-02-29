@@ -118,14 +118,14 @@ async def require_ray_client(
         return True
 
     if prompt_login:
-        if not isinstance(login_message := context.get("login_prompt"), SlackMessage):
+        if not isinstance(login_message := context.get("login_prompt"), LoginMessage):
             logging.warning('"login_prompt" is not in the context')
             notify_message(
                 'Slack: "login_prompt" is not in the context', severity="WARNING"
             )
             return False
 
-        login_message: LoginMessage = login_message.with_variation(variation)
+        login_message = login_message.with_variation(variation)
         # Send login prompt if no LanguageCloud account is connected.
         if context.respond.response_url:
             await context.respond(

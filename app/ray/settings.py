@@ -1,6 +1,6 @@
 import functools
 from typing import Iterable
-from sqlalchemy import text  # type: ignore
+from sqlalchemy import text
 
 from ..auth.connector import RayClient
 from ..database import engines

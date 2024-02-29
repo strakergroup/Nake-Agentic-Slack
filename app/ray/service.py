@@ -44,7 +44,7 @@ class RayService:
     """
 
     # Cache of RayServices. The key is a tuple of ray_client_id and token.
-    services: dict[tuple[str, str], "RayService"] = {}
+    services: dict[tuple[str, str, str], "RayService"] = {}
 
     def __init__(
         self, ray_client_id: str | None, token: str | None, id_token: str | None

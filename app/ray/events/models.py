@@ -1,6 +1,7 @@
 import datetime
+
 from dateutil.parser import parse
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 
 
 class ClientGroup(BaseModel):
@@ -80,9 +81,12 @@ class JobQuoteAcceptedEvent(BaseModel):
     id: str
     client_id: str
 
-    @validator("target_date", pre=True)
+    @field_validator("target_date", mode="before")
+    @classmethod
     def parse_target_date(cls, v):
         """Convert string to datetime."""
+        if isinstance(v, datetime.datetime):
+            return v
         return parse(v, dayfirst=True)
 
 
@@ -92,7 +96,10 @@ class JobQuoteCancelledEvent(BaseModel):
     id: str
     client_id: str
 
-    @validator("target_date", pre=True)
+    @field_validator("target_date", mode="before")
+    @classmethod
     def parse_target_date(cls, v):
         """Convert string to datetime."""
+        if isinstance(v, datetime.datetime):
+            return v
         return parse(v, dayfirst=True)

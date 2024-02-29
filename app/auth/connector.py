@@ -5,13 +5,14 @@ other services, e.g. Slack, RAY apps.
 import asyncio
 import time
 import json
-import httpx
 import hashlib
 from uuid import uuid4
 from dataclasses import dataclass
 from urllib.parse import urlencode
-from sqlalchemy import text  # type: ignore
-from sqlalchemy.engine import Connection  # type: ignore
+
+import httpx
+from sqlalchemy import text
+from sqlalchemy.engine import Connection
 from slack_sdk.oauth.installation_store import Installation
 from straker_auth.languagecloud import create_languagecloud_id_token
 from buglog import notify_exception
@@ -97,7 +98,7 @@ def validate_queue_proxy_secret(secret: str) -> bool:
     Returns:
         bool: The validation result.
     """
-    return secret == config.slack_queue_proxy_secret
+    return secret == config.slack_queue_proxy_secret.get_secret_value()
 
 
 def validate_api_callback_signature(
@@ -806,7 +807,7 @@ def encrpyt_slack_integration_token(
         "expires": epoch + expire_seconds,
     }
 
-    return encrypt_aes(json.dumps(data), config.slack_deltaray_key)
+    return encrypt_aes(json.dumps(data), config.slack_deltaray_key.get_secret_value())
 
 
 def get_language_cloud_connect_url(
@@ -840,7 +841,7 @@ def get_language_cloud_connect_url(
 
 async def approve_pending_groups(
     admin_client_id: str, pending_client_id: str, pending_client_username: str
-) -> tuple[str]:
+) -> tuple[str, ...]:
     """Approve the pending groups of a new client that the client is an admin of.
     This function will be moved to a REST API in the future.
     """
@@ -1232,5 +1233,9 @@ def encrpyt_slack_sso_token(
         str: The encrypted token.
     """
     data = {"email_id": email_id}
-    params = {"token": encrypt_aes(json.dumps(data), config.slack_deltaray_key)}
+    params = {
+        "token": encrypt_aes(
+            json.dumps(data), config.slack_deltaray_key.get_secret_value()
+        )
+    }
     return f"{domains.languagecloud}/auth/slacksso?{urlencode(params)}"

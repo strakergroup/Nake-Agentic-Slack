@@ -1,5 +1,5 @@
-from typing import Any
-from fastapi import Depends, HTTPException, status
+from typing import Any, Annotated
+from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 
@@ -32,14 +32,14 @@ class RayEventAuth:
     def __init__(
         self,
         event: RayEvent,
-        token: str = Depends(_oauth2_scheme),
+        token: Annotated[str, Depends(_oauth2_scheme)],
     ) -> None:
         self.slack_user: SlackUser | None = None
         self.demo_slack_users = []
 
         is_token_valid = validate_queue_proxy_secret(token)
         if not is_token_valid:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+            raise HTTPException(401)
         # Get the Slack account connected to the RAY client ID.
         if "client_id" in event.data:
             self.slack_user = get_slack_user(event.data["client_id"])

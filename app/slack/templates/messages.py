@@ -459,7 +459,7 @@ class SuccessfulLoginMessage(SlackMessage):
 class LogoutMessage(SlackMessage):
     """Message with a button disconnect a user's LanguageCloud account."""
 
-    def __init__(self, ray_client: RayClient | None = None) -> None:
+    def __init__(self, ray_client: RayClient) -> None:
         text = f"Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_client.username}>."
         if ray_client.sso:
             text = f"Click this button to disconnect your LanguageCloud account: *{ray_client.username}*."
@@ -582,7 +582,7 @@ class JobStatusMessage(SlackMessage):
     """Message showing the status of a translation job."""
 
     def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
-        job_status_block = [
+        job_status_block: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {
@@ -733,7 +733,7 @@ class JobDetailsMessage(SlackMessage):
     """Message showing the details of a translation job."""
 
     def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
-        job_detail_block = [
+        job_detail_block: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {
@@ -1005,7 +1005,7 @@ class JobSummaryMessage(SlackMessage):
                         job_prediction_block(
                             f"*     :large_green_circle: {predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'}* predicted to be on-time"
                         )
-                    ),
+                    )
                 if (predictions["late"]) > 0 or (predictions["over_due"]) > 0:
                     sections.append(
                         job_prediction_block(
@@ -1147,7 +1147,7 @@ class JobListMessage(SlackMessage):
         job_predictions: list[dict],
         client_ref: str = "",
     ) -> None:
-        jobs_blocks = []
+        jobs_blocks: list[dict[str, Any]] = []
 
         # If there is any jobs result
         if jobs:
@@ -1301,12 +1301,12 @@ class JobListMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"No jobs found",
+                        "text": "No jobs found",
                     },
                 }
             )
 
-        pagination_blocks = []
+        pagination_blocks: list[dict[str, Any]] = []
         if jobs and pagination.total_pages > 1:
             pagination_blocks.append({"type": "actions", "elements": []})
             if pagination.page > 1:
@@ -1720,7 +1720,7 @@ class ConnectionInfoMessage(SlackMessage):
                 "text": {"type": "mrkdwn", "text": text},
             }
         # Next get Slack user - LanguageCloud account info.
-        account_blocks = []
+        account_blocks: list[dict[str, Any]] = []
         if ray_connection is not None and ray_connection.client is not None:
             text = f"Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_connection.client.username}>"
             account_blocks.append(
@@ -1814,9 +1814,9 @@ class SsoConnectionInfoMessage(SlackMessage):
 
     def __init__(
         self,
-        ray_connection: RayConnection | None,
+        ray_connection: RayConnection,
     ) -> None:
-        if ray_connection is not None and ray_connection.client is not None:
+        if ray_connection.client is not None:
             text = f"Your connected LanguageCloud account is: *{ray_connection.client.username}*."
 
         msg = [
@@ -1834,6 +1834,7 @@ class SsoConnectionInfoMessage(SlackMessage):
                             "text": "Login to LanguageCloud",
                         },
                         "style": "primary",
+                        # TODO: ray_connection.client could be None
                         "url": encrpyt_slack_sso_token(ray_connection.client.username),
                         "action_id": "login",
                     }
@@ -2151,7 +2152,7 @@ class BatchListMessage(SlackMessage):
     def __init__(self, job: Job, client_id: str) -> None:
         title = f"The in progress file list for *{job.id}* is below:"
 
-        job_file_block = []
+        job_file_block: list[dict[str, Any]] = []
         # Prepare download links prefix
         if config.environment == Environment.production:
             download_prefix = "https://workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
@@ -2193,7 +2194,7 @@ class BatchListMessage(SlackMessage):
             }
         )
 
-        pagination_blocks = []
+        pagination_blocks: list[dict[str, Any]] = []
         if job.pagination.total_pages > 1:
             pagination_blocks.append({"type": "actions", "elements": []})
             if job.pagination.page > 1:
@@ -2257,7 +2258,7 @@ class FileListMessage(SlackMessage):
 
     def __init__(self, job: Job, client_id: str) -> None:
         title = f"The completed file list for *{job.id}* is below:"
-        job_file_block = []
+        job_file_block: list[dict[str, Any]] = []
         for x in job.translated_file:
             url = {
                 "type": "section",
@@ -2279,7 +2280,7 @@ class FileListMessage(SlackMessage):
             }
             job_file_block.insert(2, url)
 
-        pagination_blocks = []
+        pagination_blocks: list[dict[str, Any]] = []
         if job.f_pagination.total_pages > 1:
             pagination_blocks.append({"type": "actions", "elements": []})
             if job.pagination.page > 1:

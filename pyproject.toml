@@ -16,3 +16,6 @@ ignore = ["E501"]
 unfixable = ["B"]
 # Black formatter.
 line-length = 88
+
+[tool.mypy]
+plugins = "sqlalchemy.ext.mypy.plugin"

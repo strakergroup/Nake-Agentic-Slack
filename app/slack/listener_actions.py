@@ -13,7 +13,7 @@ from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from slack_sdk.webhook.webhook_response import WebhookResponse
 from slack_bolt.context.async_context import AsyncBoltContext
-from ray_sdk import RayResponse  # type: ignore
+from ray_sdk import RayResponse
 from buglog import notify_exception, notify_message
 
 from .middleware import require_ray_client
