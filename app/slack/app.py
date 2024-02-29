@@ -12,6 +12,8 @@ from buglog import notify_exception
 
 from .stores import AsyncSQLAlchemyInstallationStore, AsyncSQLAlchemyOAuthStateStore
 from .templates.messages import OnboardingMessage
+from ..auth.connector import save_user_token_from_installation
+from ..cache.timer import clear_auto_translate_permissions_reminder
 from ..config import config
 from ..database import engines
 
@@ -34,6 +36,7 @@ oauth_settings = AsyncOAuthSettings(
     scopes=[
         "app_mentions:read",
         "channels:history",
+        "channels:join",
         "chat:write",
         "chat:write.public",
         "commands",
@@ -46,11 +49,9 @@ oauth_settings = AsyncOAuthSettings(
         # "links:write",
         # "links:read",
     ],
-    # Request user token individually rather than during installation.
-    # So keep this empty.
-    # user_scopes=[
-    #     "chat:write",
-    # ],
+    user_scopes=[
+        "chat:write",
+    ],
     installation_store=installation_store,
     state_store=state_store,
     state_validation_enabled=True,
@@ -64,13 +65,24 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
     """
 
     async def _success_handler(self, args: AsyncSuccessArgs) -> BoltResponse:
+        user = None
+        try:
+            user = await save_user_token_from_installation(args.installation)
+            if user:
+                await clear_auto_translate_permissions_reminder(user.id)
+        except Exception as e:
+            notify_exception(
+                e, "Slack app: Failed to save user token from installation"
+            )
+
         # Send onboarding message to the user who installed the app.
         app.client.token = args.installation.bot_token
         message = OnboardingMessage(
             args.installation.user_id,
-            args.installation.team_id,
+            args.installation.team_id,  # type: ignore
             args.installation.enterprise_id,
             args.installation.user_id,
+            prompt_login=user is None,
         )
         await app.client.chat_postMessage(
             channel=args.installation.user_id, blocks=message.blocks, text=message.text
@@ -114,6 +126,6 @@ oauth_settings.callback_options = RayCallbackOptions(
 
 # Initialise the Slack app.
 app = AsyncApp(
-    signing_secret=os.getenv("SLACK_SIGNING_SECRET"),
+    signing_secret=config.slack_signing_secret.get_secret_value(),
     oauth_settings=oauth_settings,
 )

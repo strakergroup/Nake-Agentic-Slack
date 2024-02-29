@@ -69,7 +69,7 @@ from ..auth.connector import (
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
-    get_auto_translate_settings_conversations,
+    get_auto_translate_settings_channels,
     get_auto_translate_settings_langs,
     update_auto_translate_settings,
 )
@@ -141,7 +141,7 @@ async def home_opened(event, action, context, body, say, client):
     # Publish view to home tab.
     await client.views_publish(
         user_id=event.get("user"),
-        view=home_view(context, body["api_app_id"], context["ray"]),
+        view=home_view(context, body["api_app_id"], context.get("ray")),
     )
 
 
@@ -413,7 +413,7 @@ async def ray_command(ack, respond, say, command, context, client):
 async def show_auto_translate_settings(ack, context, body, client):
     await ack()
     if await require_ray_client(context):
-        channels = get_auto_translate_settings_conversations(context["ray"].client)
+        channels = get_auto_translate_settings_channels(context["ray"].client)
         languages = get_auto_translate_settings_langs(context["ray"].client)
         await client.views_open(
             trigger_id=body["trigger_id"],
@@ -758,8 +758,21 @@ async def view_update_auto_translate_settings(ack, view, context, client):
         try:
             update_auto_translate_settings(
                 context["ray"].client,
-                conversations=form.conversations,
+                channels=form.channels,
                 languages=form.languages,
+            )
+
+            # Try to join channel automatically after updating settings.
+            async def join_channel(channel_id: str):
+                try:
+                    await client.conversations_join(channel=channel_id)
+                except SlackApiError:
+                    pass  # Cannot join private channel, or cannot find channel.
+                except Exception as e:
+                    notify_exception(e)
+
+            await asyncio.gather(
+                *[join_channel(channel_id) for channel_id in form.channels]
             )
         except Exception as e:
             notify_exception(e)

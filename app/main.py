@@ -1,8 +1,6 @@
-from socket import gethostname
-
-import buglog
 from fastapi import FastAPI
 from elasticapm.contrib.starlette import make_apm_client, ElasticAPM
+import buglog
 
 from .config import Environment, config, domains
 from .routers import slack, ray, health
@@ -12,7 +10,7 @@ from .routers import slack, ray, health
 buglog.init(
     listener=config.buglog_listener_url,
     app_name="Slack RAY Translator",
-    hostname=f"{domains.slack_ray_translator.split('//')[1]} ({gethostname()})",
+    hostname=domains.slack_ray_translator,
 )
 
 
@@ -23,9 +21,9 @@ app = FastAPI(
     docs_url="/docs" if config.environment != Environment.production else None,
     redoc_url="/redoc" if config.environment != Environment.production else None,
 )
-app.include_router(slack.router)
-app.include_router(ray.router)
-app.include_router(health.router)
+app.include_router(slack.router, tags=["slack"])
+app.include_router(ray.router, tags=["ray"])
+app.include_router(health.router, tags=["health"])
 
 
 @app.middleware("http")

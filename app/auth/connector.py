@@ -3,17 +3,20 @@ other services, e.g. Slack, RAY apps.
 """
 
 import asyncio
-from straker_auth.languagecloud import create_languagecloud_id_token
 import time
 import json
-import httpx
 import hashlib
 from uuid import uuid4
 from dataclasses import dataclass
 from urllib.parse import urlencode
+
+import httpx
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
+from slack_sdk.oauth.installation_store import Installation
+from straker_auth.languagecloud import create_languagecloud_id_token
 from buglog import notify_exception
+
 from .algorithms import encrypt_aes, hash_hmac_sha1
 from ..config import config, domains
 from ..database import engines
@@ -47,7 +50,7 @@ class RaySuperGroup:
     """The Slack enterprise ID linked to the RAY client."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class RayClient:
     """Dataclass representing a LanguageCloud client."""
 
@@ -65,6 +68,8 @@ class RayClient:
     """The Slack enterprise ID."""
     slack_access_token: str | None
     """The user's Slack access token."""
+    settings_id: int | None
+    """The user's Slack settings ID (`ray_integration.slack_user_settings.id`)."""
     id_token: str | None
     """an ID Token according to the OpenID Connect spec"""
     planname: str | None
@@ -93,7 +98,7 @@ def validate_queue_proxy_secret(secret: str) -> bool:
     Returns:
         bool: The validation result.
     """
-    return secret == config.slack_queue_proxy_secret
+    return secret == config.slack_queue_proxy_secret.get_secret_value()
 
 
 def validate_api_callback_signature(
@@ -141,6 +146,79 @@ def get_bot_token(
         ).bindparams(team_id=team_id)
     result = conn.execute(sql).first()
     return result[0] if result else None
+
+
+async def save_user_token_from_installation(
+    installation: Installation,
+) -> RayClient | None:
+    """Saves the Slack user token to a connected LanguageCloud client after a
+    successfull Slack app installation. Does nothing if the Slack user is not
+    connected to a LanguageCloud account.
+
+    Args:
+        installation (Installation): The Slack installation object.
+
+    Returns:
+        RayClient | None: The LC client if the user token was successfully saved,
+            otherwise `None`.
+    """
+    if not installation.user_token or not installation.team_id:
+        return None
+    user = await get_ray_client(
+        installation.user_id, installation.team_id, installation.enterprise_id
+    )
+    if not user:
+        return None
+    scopes_string = (
+        ",".join(installation.user_scopes) if installation.user_scopes else None
+    )
+    with engines["ray_integration"].begin() as conn:
+        if installation.enterprise_id:
+            sql = text(
+                """
+                UPDATE slack_deltaray_link SET
+                    slack_team_id = :team_id,
+                    access_token = :access_token,
+                    access_token_scopes = :access_token_scopes
+                WHERE slack_user_id = :user_id
+                AND slack_enterprise_id = :enterprise_id
+                """
+            ).bindparams(
+                user_id=installation.user_id,
+                team_id=installation.team_id,
+                enterprise_id=installation.enterprise_id,
+                access_token=installation.user_token,
+                access_token_scopes=scopes_string,
+            )
+        else:
+            sql = text(
+                """
+                UPDATE slack_deltaray_link SET
+                    access_token = :access_token,
+                    access_token_scopes = :access_token_scopes
+                WHERE slack_user_id = :user_id
+                AND slack_team_id = :team_id
+                """
+            ).bindparams(
+                user_id=installation.user_id,
+                team_id=installation.team_id,
+                access_token=installation.user_token,
+                access_token_scopes=scopes_string,
+            )
+        conn.execute(sql)
+    return RayClient(
+        id=user.id,
+        username=user.username,
+        access_token=user.access_token,
+        slack_user_id=user.slack_user_id,
+        slack_team_id=user.slack_team_id,
+        slack_enterprise_id=user.slack_enterprise_id,
+        slack_access_token=installation.user_token,
+        settings_id=user.settings_id,
+        id_token=user.id_token,
+        planname=user.planname,
+        sso=user.sso,
+    )
 
 
 def get_slack_user(ray_client_id: str) -> SlackUser | None:
@@ -321,12 +399,14 @@ async def get_ray_demo_client(
         sql = text(
             """
             SELECT link.member_uuid, link.slack_enterprise_id, mem.login, mem.email_primary, mem.given_name, mem.family_name,
-            mem.active, mem.groupid, link.access_token
+            mem.active, mem.groupid, link.access_token, settings.id AS settings_id
             FROM slack_deltaray_link link
             INNER JOIN sitemanager.obj_m_member mem
             ON link.member_uuid = mem.obj_uuid
             INNER JOIN slack_demo_users dmem
             ON dmem.member_uuid = link.member_uuid
+            LEFT JOIN slack_user_settings settings
+            ON link.member_uuid = settings.member_uuid
             WHERE mem.active = 1
             AND link.slack_enterprise_id = :slack_enterprise_id
             AND mem.is_deleted = 0
@@ -337,11 +417,18 @@ async def get_ray_demo_client(
         row = result.first()
         if not row:
             return None
-        ray_client_id, username, slack_enterprise_id, slack_access_token = (
+        (
+            ray_client_id,
+            username,
+            slack_enterprise_id,
+            slack_access_token,
+            settings_id,
+        ) = (
             row.member_uuid,
             row.login,
             row.slack_enterprise_id,
             row.access_token,
+            row.settings_id,
         )
         id_token = create_languagecloud_id_token(
             uuid=ray_client_id,
@@ -375,6 +462,7 @@ async def get_ray_demo_client(
         slack_team_id=team_id,
         slack_enterprise_id=slack_enterprise_id,
         slack_access_token=slack_access_token,
+        settings_id=settings_id,
         id_token=id_token,
         planname="Enterprise",
         sso=False,
@@ -398,10 +486,12 @@ async def get_ray_client(
             sql = text(
                 """
                 SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name,
-                mem.active, mem.groupid, link.is_sso, link.access_token
+                mem.active, mem.groupid, link.is_sso, link.access_token, settings.id AS settings_id
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
+                LEFT JOIN slack_user_settings settings
+                ON link.member_uuid = settings.member_uuid
                 WHERE link.slack_user_id = :user_id
                 AND link.slack_enterprise_id = :enterprise_id
                 AND link.is_active = 1
@@ -414,10 +504,12 @@ async def get_ray_client(
             sql = text(
                 """
                 SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name,
-                mem.active, mem.groupid, link.is_sso, link.access_token
+                mem.active, mem.groupid, link.is_sso, link.access_token, settings.id AS settings_id
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
                 ON link.member_uuid = mem.obj_uuid
+                LEFT JOIN slack_user_settings settings
+                ON link.member_uuid = settings.member_uuid
                 WHERE link.slack_user_id = :user_id
                 AND link.slack_team_id = :team_id
                 AND link.is_active = 1
@@ -439,12 +531,13 @@ async def get_ray_client(
             aud="languagecloud-api",
             secret=config.languagecloud_api_key.get_secret_value(),
         )
-        ray_client_id, username, groupid, is_sso, slack_access_token = (
+        ray_client_id, username, groupid, is_sso, slack_access_token, settings_id = (
             row.member_uuid,
             row.login,
             row.groupid,
             row.is_sso,
             row.access_token,
+            row.settings_id,
         )
     # Now get the access token for authentication.
     with engines["api"].connect() as conn:
@@ -493,6 +586,7 @@ async def get_ray_client(
         slack_team_id=team_id,
         slack_enterprise_id=enterprise_id,
         slack_access_token=slack_access_token,
+        settings_id=settings_id,
         id_token=id_token,
         planname=plan,
         sso=is_sso,
@@ -713,7 +807,7 @@ def encrpyt_slack_integration_token(
         "expires": epoch + expire_seconds,
     }
 
-    return encrypt_aes(json.dumps(data), config.slack_deltaray_key)
+    return encrypt_aes(json.dumps(data), config.slack_deltaray_key.get_secret_value())
 
 
 def get_language_cloud_connect_url(
@@ -745,63 +839,9 @@ def get_language_cloud_connect_url(
     return f"{domains.languagecloud}/app/slack?{urlencode(params)}"
 
 
-async def save_user_access_token(
-    user_id: str,
-    team_id: str,
-    enterprise_id: str | None,
-    user_token: str,
-    scopes: list[str],
-):
-    """Save the user access token to the database after successful Slack OAuth
-    authorisation (user, not bot/Slack app installation).
-
-    Args:
-        user_id (str): Slack user ID.
-        team_id (str): Slack team ID.
-        enterprise_id (str | None): Slack enterprise ID (if applicable).
-        user_token (str): User access token from successful OAuth authorisation.
-        scopes (list[str]): The scopes of the access token.
-    """
-    scopes_string = ",".join(scopes)
-    with engines["ray_integration"].begin() as conn:
-        if enterprise_id:
-            sql = text(
-                """
-                UPDATE slack_deltaray_link SET
-                    slack_team_id = :team_id,
-                    access_token = :access_token,
-                    access_token_scopes = :access_token_scopes
-                WHERE slack_user_id = :user_id
-                AND slack_enterprise_id = :enterprise_id
-                """
-            ).bindparams(
-                user_id=user_id,
-                team_id=team_id,
-                enterprise_id=enterprise_id,
-                access_token=user_token,
-                access_token_scopes=scopes_string,
-            )
-        else:
-            sql = text(
-                """
-                UPDATE slack_deltaray_link SET
-                    access_token = :access_token,
-                    access_token_scopes = :access_token_scopes
-                WHERE slack_user_id = :user_id
-                AND slack_team_id = :team_id
-                """
-            ).bindparams(
-                user_id=user_id,
-                team_id=team_id,
-                access_token=user_token,
-                access_token_scopes=scopes_string,
-            )
-        conn.execute(sql)
-
-
 async def approve_pending_groups(
     admin_client_id: str, pending_client_id: str, pending_client_username: str
-) -> tuple[str]:
+) -> tuple[str, ...]:
     """Approve the pending groups of a new client that the client is an admin of.
     This function will be moved to a REST API in the future.
     """
@@ -1193,5 +1233,9 @@ def encrpyt_slack_sso_token(
         str: The encrypted token.
     """
     data = {"email_id": email_id}
-    params = {"token": encrypt_aes(json.dumps(data), config.slack_deltaray_key)}
+    params = {
+        "token": encrypt_aes(
+            json.dumps(data), config.slack_deltaray_key.get_secret_value()
+        )
+    }
     return f"{domains.languagecloud}/auth/slacksso?{urlencode(params)}"

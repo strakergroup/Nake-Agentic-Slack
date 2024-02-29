@@ -1,12 +1,24 @@
 import base64
 import hashlib
 
-from pydantic import BaseSettings, Field, HttpUrl, SecretBytes, SecretStr, validator
+from dotenv import load_dotenv
+from pydantic import (
+    Field,
+    HttpUrl,
+    SecretBytes,
+    SecretStr,
+    field_validator,
+    ValidationInfo,
+)
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import text
 from straker_utils.domain import StrakerDomains
-from straker_utils.environment import Environment, get_current_environment
+from straker_utils.environment import Environment
 
 from .database import engines
+
+
+load_dotenv()
 
 
 domains = StrakerDomains.from_environment()
@@ -18,40 +30,37 @@ class StrakerConfig(BaseSettings):
     derived from from the `environment` setting.
     """
 
-    environment: Environment = None
+    model_config = SettingsConfigDict(frozen=True)
+
     # Settings from environment variables.
-    slack_client_id: str = Field(env="SLACK_CLIENT_ID", min_length=1)
-    slack_client_secret: SecretStr = Field(env="SLACK_CLIENT_SECRET", min_length=1)
-    buglog_listener_url: str | None = Field(None, env="BUGLOG_LISTENER_URL")
-    elastic_apm_server_url: str | None = Field(None, env="ELASTIC_APM_SERVER_URL")
+    environment: Environment
+    slack_client_id: str = Field(min_length=1)
+    slack_client_secret: SecretStr = Field(min_length=1)
+    slack_signing_secret: SecretStr = Field(min_length=1)
+    watson_assistant_id: str = Field(min_length=1)
+    watson_environment_id: str = Field(min_length=1)
+    # taus_api_key: SecretStr = Field(min_length=1)
+    elastic_apm_server_url: str | None = None
     # Derived settings.
-    base_url: HttpUrl = None
-    slack_deltaray_key: SecretBytes = None
-    slack_queue_proxy_secret: SecretStr = None
-    health_check_password: SecretStr = None
-    languagecloud_api_key: SecretStr = None
+    base_url: HttpUrl
+    buglog_listener_url: str = ""
+    slack_deltaray_key: SecretBytes = SecretBytes(b"")
+    slack_queue_proxy_secret: SecretStr = SecretStr("")
+    health_check_password: SecretStr = SecretStr("")
+    languagecloud_api_key: SecretStr = SecretStr("")
 
-    @validator("environment", pre=True)
-    def environment_validator(cls, v, values):
-        return get_current_environment()
-
-    @validator("buglog_listener_url")
-    def default_buglog_listener_url(cls, v, values):
-        """Defaults to the standard BugLogHQ URL depending on the environment."""
-        if v:
-            return v
+    @field_validator("buglog_listener_url", mode="before")
+    def default_buglog_listener_url(cls, v):
         return f"{domains.buglog}/bugLog/listeners/bugLogListenerREST.cfm"
 
-    @validator("base_url")
-    def default_base_url(cls, v, values):
-        if v:
+    @field_validator("base_url", mode="before")
+    def default_base_url(cls, v, info: ValidationInfo):
+        if v and info.data["environment"] == Environment.local:
             return v.strip("/")
         return domains.slack_ray_translator
 
-    @validator("slack_deltaray_key")
-    def default_slack_deltaray_key(cls, v, values):
-        if v:
-            return v
+    @field_validator("slack_deltaray_key", mode="before")
+    def default_slack_deltaray_key(cls, v, info: ValidationInfo):
         with engines["ray_integration_readonly"].connect() as conn:
             sql = text(
                 """
@@ -66,22 +75,20 @@ class StrakerConfig(BaseSettings):
                     "name": "slack_deltaray",
                     "env": (
                         "live"
-                        if values["environment"] == Environment.production
-                        else values["environment"].value
+                        if info.data["environment"] == Environment.production
+                        else info.data["environment"].value
                     ),
                 },
             )
             row = result.first()
-            if not row:
-                raise AssertionError(
-                    "The Slack-DeltaRAY integration key is not in the database"
-                )
-            return base64.b64decode(row[0].encode())
+        if not row:
+            raise AssertionError(
+                "The Slack-DeltaRAY integration key is not in the database"
+            )
+        return SecretBytes(base64.b64decode(row[0].encode()))
 
-    @validator("slack_queue_proxy_secret")
-    def default_slack_queue_proxy_secret(cls, v, values):
-        if v:
-            return v
+    @field_validator("slack_queue_proxy_secret", mode="before")
+    def default_slack_queue_proxy_secret(cls, v, info: ValidationInfo):
         with engines["ray_integration_readonly"].connect() as conn:
             sql = text(
                 """
@@ -96,28 +103,28 @@ class StrakerConfig(BaseSettings):
                     "name": "slack_streams",
                     "env": (
                         "live"
-                        if values["environment"] == Environment.production
-                        else values["environment"].value
+                        if info.data["environment"] == Environment.production
+                        else info.data["environment"].value
                     ),
                 },
             )
-            row = result.first()
-            if not row:
-                raise AssertionError(
-                    "The Slack-Streams integration key is not in the database"
-                )
-            return row[0]
+        row = result.first()
+        if not row:
+            raise AssertionError(
+                "The Slack-Streams integration key is not in the database"
+            )
+        return SecretStr(row[0])
 
-    @validator("health_check_password")
-    def default_health_check_password(cls, v, values):
-        return hashlib.sha512(
-            base64.b64encode(values["slack_deltaray_key"])
-        ).hexdigest()
+    @field_validator("health_check_password", mode="before")
+    def default_health_check_password(cls, v, info: ValidationInfo):
+        return SecretStr(
+            hashlib.sha512(
+                base64.b64encode(info.data["slack_deltaray_key"].get_secret_value())
+            ).hexdigest()
+        )
 
-    @validator("languagecloud_api_key")
-    def default_languagecloud_api_key(cls, v, values):
-        if v:
-            return v
+    @field_validator("languagecloud_api_key", mode="before")
+    def default_languagecloud_api_key(cls, v, info: ValidationInfo):
         with engines["ray_integration_readonly"].connect() as conn:
             sql = text(
                 """
@@ -128,17 +135,14 @@ class StrakerConfig(BaseSettings):
             )
             result = conn.execute(
                 sql,
-                {"name": "languagecloud_api", "env": values["environment"].value},
+                {"name": "languagecloud_api", "env": info.data["environment"].value},
             )
             row = result.first()
-            if not row:
-                raise AssertionError(
-                    "The languagecloud_api integration key is not in the database"
-                )
-            return SecretStr(row[0])
-
-    class Config:
-        allow_mutation = False
+        if not row:
+            raise AssertionError(
+                "The languagecloud_api integration key is not in the database"
+            )
+        return SecretStr(row[0])
 
 
-config = StrakerConfig()
+config = StrakerConfig()  # type: ignore

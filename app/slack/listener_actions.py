@@ -5,21 +5,23 @@ Slack Bolt listener functions.
 
 import asyncio
 from typing import Any
+import re
 
-from buglog import notify_exception, notify_message
+import httpx
 from slack_sdk.errors import SlackApiError
+from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from slack_sdk.webhook.webhook_response import WebhookResponse
 from slack_bolt.context.async_context import AsyncBoltContext
-from ray_sdk import RayResponse  # type: ignore
-import httpx
-import re
+from ray_sdk import RayResponse
+from buglog import notify_exception, notify_message
 
 from .middleware import require_ray_client
 from .templates.messages import (
     HelpMessage,
     LoginMessage,
     LogoutMessage,
+    SlackPermissionsMessage,
     JobStatusNoIdMessage,
     NewJobMessage,
     JobQuotedMessage,
@@ -47,12 +49,12 @@ from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
     is_valid_auto_translate_language,
     filter_invalid_auto_translate_languages,
-    get_auto_translate_settings_conversations,
+    get_auto_translate_settings_channels,
     get_auto_translate_settings_langs,
 )
 from ..watson import watson_message
+from ..cache.timer import auto_translate_permissions_reminder
 from .select_options import get_file_options_cached
-from slack_sdk.web.async_client import AsyncWebClient
 
 
 async def respond_to_message(
@@ -240,7 +242,7 @@ async def auto_translate_message(
     thread_ts: str | None = message.get("thread_ts")
     if not text:
         return
-    enabled_conversations = get_auto_translate_settings_conversations(ray_client)
+    enabled_conversations = get_auto_translate_settings_channels(ray_client)
     if not context.channel_id or context.channel_id not in enabled_conversations:
         return
 
@@ -299,32 +301,41 @@ async def auto_translate_message(
         translations = [response.data for response in responses]
         msg = AutoTranslationMessage(
             text,
-            translations=[
-                (translation["target_lang"], translation["text"])
-                for translation in translations
-            ],
+            source_lang,
+            translations=[(t["target_lang"], t["text"]) for t in translations],
         )
 
         if ray_client.slack_access_token:
             try:
                 context.client.token = ray_client.slack_access_token
-                return await context.client.chat_update(
+                await context.client.chat_update(
                     channel=context.channel_id,
                     ts=ts,
                     text=text,  # Must use original untranslated text for future detect language
                     blocks=msg.blocks,
                 )
+                return
             except Exception as e:
                 notify_exception(e, "Failed to update message (auto-translation)")
                 # If updating message fails (e.g. permissions), default to thread reply.
                 context.client.token = context.bot_token
+
         # Post a thread reply if the user did not give permission (user token).
-        return await context.client.chat_postMessage(
+        await context.client.chat_postMessage(
             channel=context.channel_id,
             text=msg.text,
             blocks=msg.blocks,
             thread_ts=ts,
         )
+        # If the user has not given permission to edit their messages, post a reminder.
+        if await auto_translate_permissions_reminder(ray_client.id, context.channel_id):
+            permissions_msg = SlackPermissionsMessage.auto_translate_variation()
+            await context.client.chat_postEphemeral(
+                channel=context.channel_id,
+                user=context.user_id,
+                text=permissions_msg.text,
+                blocks=permissions_msg.blocks,
+            )
     except Exception as e:
         notify_exception(e, "Failed to get machine translation from LanguageCloud API")
     finally:
@@ -335,6 +346,7 @@ async def auto_translate_message(
                     response_data = raw_response.json()
                 except Exception:
                     response_data = raw_response.content.decode() or None
+                # TODO Update logging params
                 context["log"].add_api_log(
                     status_code=raw_response.status_code,
                     url=str(raw_response.url),
@@ -343,6 +355,75 @@ async def auto_translate_message(
                     headers=dict(raw_response.headers.items()),
                     version="v3",
                 )
+
+
+async def update_machine_translation_score(
+    client: AsyncWebClient,
+    channel_id: str,
+    ts: str,
+    message: AutoTranslationMessage,
+    source_lang: str,
+    source_text: str,
+    translations: list[tuple[str, str]],
+):
+    """Get the machine translation score from Taus API and update the auto-translated
+    message to include the score.
+
+    Args:
+        channel_id (str): The channel ID of the message.
+        ts (str): The message ID (ts).
+        message (AutoTranslationMessage): The auto-translated message.
+        source_lang (str): The source language, e.g. "en", "de".
+        source_text (str): The source text
+        translations (list[tuple[str, str]]): List of 2-tuples, including the
+            target language and the translated text.
+    """
+    # RAY-65319 Disable function for now, re-enable when required.
+    return
+    # TODO Update after using live Taus API
+    taus_valid_languages = ["en", "fr", "de", "it", "es"]
+    translations = [t for t in translations if t[0] in taus_valid_languages]
+    if not translations:
+        return
+    try:
+        response = httpx.post(
+            "https://api.sandbox.taus.net/1.0/estimate",
+            json={
+                "source": {"value": source_text, "language": source_lang},
+                "targets": [
+                    {"value": text, "language": lang} for lang, text in translations
+                ],
+                "metrics": [{"uid": "taus_qe"}, {"uid": "comet_qe"}],
+            },
+            # headers={
+            #     "Authorization": f"Bearer {config.taus_api_key.get_secret_value()}"
+            # },
+        )
+        response.raise_for_status()
+        data = response.json()
+        estimates = data["estimates"]
+        metrics = [est["metrics"] for est in estimates]
+        comet_scores: list[float] = [
+            m[0]["value"] if m[0]["uid"] == "comet_qe" else m[1]["value"]
+            for m in metrics
+        ]
+        taus_scores: list[float] = [
+            m[1]["value"] if m[1]["uid"] == "taus_qe" else m[0]["value"]
+            for m in metrics
+        ]
+        # Use Taus scores only for now
+        scores = list(zip([t[0] for t in translations], taus_scores, strict=False))
+        new_msg = message.add_translation_scores(scores)
+        await client.chat_update(
+            channel=channel_id,
+            ts=ts,
+            text=new_msg.text,
+            blocks=new_msg.blocks,
+        )
+    except httpx.HTTPStatusError as e:
+        notify_exception(e)
+    except Exception as e:
+        notify_exception(e)
 
 
 async def post_job_status(
