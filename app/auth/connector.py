@@ -159,16 +159,17 @@ async def save_user_token_from_installation(
         installation (Installation): The Slack installation object.
 
     Returns:
-        RayClient | None: The LC client if the user token was successfully saved,
-            otherwise `None`.
+        RayClient | None: The LC client if the Slack user has a connected LC
+            account, otherwise `None`.
     """
-    if not installation.user_token or not installation.team_id:
-        return None
     user = await get_ray_client(
         installation.user_id, installation.team_id, installation.enterprise_id
     )
     if not user:
         return None
+    if not installation.user_token or not installation.team_id:
+        return user
+
     scopes_string = (
         ",".join(installation.user_scopes) if installation.user_scopes else None
     )

@@ -561,7 +561,7 @@ class SlackPermissionsMessage(SlackMessage):
                                 "text": "Allow permissions",
                             },
                             "style": "primary",
-                            "url": f"{config.base_url}/slack/install",
+                            "url": f"{config.base_url}/slack/install?user_scope=chat:write",
                             "action_id": "link",
                         }
                     ],

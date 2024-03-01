@@ -5,13 +5,14 @@ commands, etc. from the Slack API.
 import asyncio
 import re
 import json
+from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_sdk.errors import SlackApiError
 from ray_sdk import RayAPIResponseError
 from buglog import notify_exception, notify_message
-from datetime import datetime, timedelta
+
 from .app import app
 from .middleware import ray_connection, require_ray_client
 from .listener_actions import (
@@ -60,6 +61,7 @@ from .templates.messages import (
 from .templates.views import home_view, settings_auto_translate_view
 from .web import files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, get_file_options_cached
+from .utils import is_channel_im
 from ..auth.connector import (
     connect_ray_account,
     disconnect_ray_account,
@@ -89,7 +91,7 @@ async def message_event(client, context, message):
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # not channel or group conversations (see the "app_mention" event).
-    if message.get("channel_type") == "im" or context["channel_id"][0] in ("D", "U"):
+    if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
         await respond_to_message(client, context, message, use_thread=False)
     elif message.get("text") and f"<@{context['bot_user_id']}>" not in message["text"]:
         # Do not auto-translate if the bot is mentioned (should default to normal response).

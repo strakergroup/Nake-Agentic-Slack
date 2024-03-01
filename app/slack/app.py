@@ -1,13 +1,16 @@
 import logging
-import os
+from urllib.parse import urlparse, urlencode
+
 from slack_bolt import BoltResponse
 from slack_bolt.async_app import AsyncApp
+from slack_bolt.oauth.async_oauth_flow import AsyncOAuthFlow
 from slack_bolt.oauth.async_oauth_settings import AsyncOAuthSettings
 from slack_bolt.oauth.async_callback_options import (
     DefaultAsyncCallbackOptions,
     AsyncSuccessArgs,
     AsyncFailureArgs,
 )
+from slack_bolt.request.async_request import AsyncBoltRequest
 from buglog import notify_exception
 
 from .stores import AsyncSQLAlchemyInstallationStore, AsyncSQLAlchemyOAuthStateStore
@@ -46,12 +49,11 @@ oauth_settings = AsyncOAuthSettings(
         "mpim:history",
         "users:read",
         "users:read.email",
-        # "links:write",
-        # "links:read",
     ],
-    user_scopes=[
-        "chat:write",
-    ],
+    # Do not ask for user tokens on installation, only when needed.
+    # user_scopes=[
+    #     "chat:write",
+    # ],
     installation_store=installation_store,
     state_store=state_store,
     state_validation_enabled=True,
@@ -76,17 +78,20 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
             )
 
         # Send onboarding message to the user who installed the app.
-        app.client.token = args.installation.bot_token
-        message = OnboardingMessage(
-            args.installation.user_id,
-            args.installation.team_id,  # type: ignore
-            args.installation.enterprise_id,
-            args.installation.user_id,
-            prompt_login=user is None,
-        )
-        await app.client.chat_postMessage(
-            channel=args.installation.user_id, blocks=message.blocks, text=message.text
-        )
+        if args.installation.bot_token:
+            app.client.token = args.installation.bot_token
+            message = OnboardingMessage(
+                args.installation.user_id,
+                args.installation.team_id,
+                args.installation.enterprise_id,
+                args.installation.user_id,
+                prompt_login=user is None,
+            )
+            await app.client.chat_postMessage(
+                channel=args.installation.user_id,
+                blocks=message.blocks,
+                text=message.text,
+            )
         return await super()._success_handler(args)
 
     async def _failure_handler(self, args: AsyncFailureArgs) -> BoltResponse:
@@ -124,8 +129,32 @@ oauth_settings.callback_options = RayCallbackOptions(
 )
 
 
+class RayOauthFlow(AsyncOAuthFlow):
+    async def build_authorize_url(self, state: str, request: AsyncBoltRequest) -> str:
+        url = await super().build_authorize_url(state, request)
+        # Allow specifying the scopes to install in the query params.
+        # E.g. /slack/install?user_scope=chat:write
+        scopes = request.query.get("scope")
+        user_scopes = request.query.get("user_scope")
+        if scopes or user_scopes:
+            parsed_url = urlparse(url)
+            query_params: dict[str, str] = {}
+            for q in parsed_url.query.split("&"):
+                q_pieces = q.split("=")
+                if len(q_pieces) >= 2:
+                    query_params[q_pieces[0]] = q_pieces[1]
+            # Replace the scopes in the authorize URL with the ones from the query params.
+            query_params["scope"] = scopes[0] if scopes else ""
+            query_params["user_scope"] = user_scopes[0] if user_scopes else ""
+            parsed_url = parsed_url._replace(query=urlencode(query_params))
+            url = parsed_url.geturl()
+        return url
+
+
 # Initialise the Slack app.
 app = AsyncApp(
     signing_secret=config.slack_signing_secret.get_secret_value(),
-    oauth_settings=oauth_settings,
+    oauth_flow=RayOauthFlow(
+        logger=logging.getLogger(__name__), settings=oauth_settings
+    ),
 )

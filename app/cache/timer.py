@@ -38,6 +38,7 @@ async def clear_auto_translate_permissions_reminder(client_id: str):
     key_prefix = f"slack-ray-translator:timer:auto-translate-permissions:{client_id}:"
     try:
         keys = await redis_conn.keys(f"{key_prefix}*")
-        await redis_conn.delete(*keys)
+        if keys:
+            await redis_conn.delete(*keys)
     except Exception as e:
         notify_exception(e)
