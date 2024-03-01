@@ -17,6 +17,7 @@ from ray_sdk import RayResponse
 from buglog import notify_exception, notify_message
 
 from .middleware import require_ray_client
+from .utils import unformat_links
 from .templates.messages import (
     HelpMessage,
     LoginMessage,
@@ -246,12 +247,15 @@ async def auto_translate_message(
     if not context.channel_id or context.channel_id not in enabled_conversations:
         return
 
+    unformatted_text = unformat_links(text)
     # Check source and target languages and if translation is required.
     target_langs = set(get_auto_translate_settings_langs(ray_client))
     rayService = RayService.get_service(ray_client)
     source_lang: str = "en"  # Default to English if detected source lang is invalid
     try:
-        detected_source_lang = (await rayService.detect_language(text)).data["language"]
+        detected_source_lang = (
+            await rayService.detect_language(unformatted_text)
+        ).data["language"]
         if is_valid_auto_translate_language(detected_source_lang):
             source_lang = detected_source_lang
     except Exception as e:
@@ -293,7 +297,7 @@ async def auto_translate_message(
         responses = await asyncio.gather(
             *(
                 rayService.get_machine_translation(
-                    target_lang=lang, source_lang=source_lang, sentence=text
+                    target_lang=lang, source_lang=source_lang, sentence=unformatted_text
                 )
                 for lang in target_langs
             )
