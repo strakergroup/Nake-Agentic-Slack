@@ -11,13 +11,64 @@ from ..select_options import (
 )
 from ...auth.connector import RayConnection
 from ...ray.utils import is_min_langugagecloud_plan
-from ...config import domains
+from ...config import config, domains, Environment
 
 
 def home_view(
     context: AsyncBoltContext, app_id: str, rayConnection: RayConnection | None
 ) -> dict[str, Any]:
     message_url = f"slack://app?team={context['team_id']}&id={app_id}&tab=messages"
+    # Hide auto-translation settings in Production until scopes are approved.
+    auto_translate_blocks: list[dict[str, Any]] = [
+        {"type": "divider"},
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "Translate Channels"},
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences.",
+            },
+        },
+        (
+            (
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "emoji": True,
+                                "text": ":speech_balloon: Translation Settings",
+                            },
+                            "action_id": "settings_auto_translate",
+                        },
+                    ],
+                }
+                if is_min_langugagecloud_plan(
+                    rayConnection.client.planname, "Essentials"
+                )
+                else {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "_This feature is only available on an Essentials plan or higher_",
+                    },
+                }
+            )
+            if rayConnection and rayConnection.client
+            else {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "_Connect your Straker LanguageCloud account to enable this feature_",
+                },
+            }
+        ),
+    ]
     return {
         "type": "home",
         "blocks": [
@@ -80,53 +131,10 @@ def home_view(
                     },
                 ],
             },
-            {"type": "divider"},
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": "Translate Channels"},
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences.",
-                },
-            },
-            (
-                (
-                    {
-                        "type": "actions",
-                        "elements": [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": ":speech_balloon: Translation Settings",
-                                },
-                                "action_id": "settings_auto_translate",
-                            },
-                        ],
-                    }
-                    if is_min_langugagecloud_plan(
-                        rayConnection.client.planname, "Essentials"
-                    )
-                    else {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": "_This feature is only available on an Essentials plan or higher_",
-                        },
-                    }
-                )
-                if rayConnection and rayConnection.client
-                else {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "_Connect your Straker LanguageCloud account to enable this feature_",
-                    },
-                }
+            *(
+                auto_translate_blocks
+                if config.environment != Environment.production
+                else []
             ),
             {"type": "divider"},
             {
