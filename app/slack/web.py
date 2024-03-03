@@ -2,17 +2,18 @@
 
 from typing import Any, Iterable
 import os
-from pathlib import Path
-import tempfile
-
 import asyncio
+import json
+import tempfile
 import httpx
-from buglog import notify_exception
+from pathlib import Path
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.errors import SlackApiError
+from buglog import notify_exception
+
 from ..redis import redis_conn
-import json
 from .select_options import map_file_options
+
 
 async def files_list_simple(
     client: AsyncWebClient, channel_id: str, count: int = 100
@@ -34,8 +35,8 @@ async def files_list_simple(
         count=count,
         show_files_hidden_by_limit=False,
     )
-     # Cache files for 1 hour.
-    files = response.get("files", [])
+    # Cache files for 1 hour.
+    files: list[dict[str, Any]] = response.get("files", [])
     files = map_file_options(files)
     try:
         await redis_conn.set(key, json.dumps(files), ex=3600)

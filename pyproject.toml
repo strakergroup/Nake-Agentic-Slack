@@ -1,0 +1,21 @@
+[project]
+name = "slack-ray-translator"
+description = "Straker Translate Slack App"
+version = "1.0.0"
+requires-python = ">= 3.11"
+readme = "README.md"
+authors = [{ name = "Straker", email = "developers@strakertranslations.com" }]
+dependencies = []
+
+[tool.ruff]
+# Enable flake8-bugbear (`B`) rules.
+select = ["E", "F", "B"]
+# Never enforce `E501` (line length violations).
+ignore = ["E501"]
+# Avoid trying to fix flake8-bugbear (`B`) violations.
+unfixable = ["B"]
+# Black formatter.
+line-length = 88
+
+[tool.mypy]
+plugins = "sqlalchemy.ext.mypy.plugin"

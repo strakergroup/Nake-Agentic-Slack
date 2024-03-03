@@ -1,6 +1,4 @@
 """Slack Messages templates."""
-# Ignore line too long lint errors
-# flake8: noqa
 
 from typing import Any
 import json
@@ -22,6 +20,7 @@ from ...ray.utils import (
     format_job_due_date_slack,
     format_job_prediction,
 )
+from ...ray.settings import get_auto_translate_language_name
 from ...config import config, domains, Environment
 from ...auth.connector import (
     RayClient,
@@ -59,44 +58,52 @@ class OnboardingMessage(SlackMessage):
     """Message to send to onboard a new user."""
 
     def __init__(
-        self, user_id: str, team_id: str, enterprise_id: str | None, channel_id: str
+        self,
+        user_id: str,
+        team_id: str,
+        enterprise_id: str | None,
+        channel_id: str,
+        prompt_login: bool = True,
     ) -> None:
-        super().__init__(
-            "Welcome to RAY Translate for Slack! :tada:",
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "Welcome to RAY Translate for Slack! :tada:",
+        blocks: list[dict[str, Any]] = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "Welcome to RAY Translate for Slack! :tada:",
+                },
+            }
+        ]
+        if prompt_login:
+            blocks.extend(
+                [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "Connect your LanguageCloud account to get details about your translation jobs.",
+                        },
                     },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "Connect your LanguageCloud account to get details about your translation jobs.",
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "Connect LanguageCloud account",
+                                },
+                                "style": "primary",
+                                "url": get_language_cloud_connect_url(
+                                    user_id, team_id, enterprise_id, channel_id
+                                ),
+                                "action_id": "login",
+                            }
+                        ],
                     },
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": "Connect LanguageCloud account",
-                            },
-                            "style": "primary",
-                            "url": get_language_cloud_connect_url(
-                                user_id, team_id, enterprise_id, channel_id
-                            ),
-                            "action_id": "login",
-                        }
-                    ],
-                },
-            ],
-        )
+                ]
+            )
+        super().__init__("Welcome to RAY Translate for Slack! :tada:", blocks)
 
 
 class LoginMessage(SlackMessage):
@@ -178,9 +185,9 @@ class LoginMessage(SlackMessage):
                 ],
             },
         ]
-        if (config.environment == Environment.production):
-            e_id = 'EUJJ37YFR'
-            t_id = 'T0360HUQKS9'
+        if config.environment == Environment.production:
+            e_id = "EUJJ37YFR"
+            t_id = "T0360HUQKS9"
         else:
             e_id = "E04RDMG8XP1"
             t_id = "T02FDFCGK"
@@ -197,11 +204,7 @@ class LoginMessage(SlackMessage):
                         "action_id": "login_sso",
                     }
                 )
-            elif (
-                (enterprise_id == e_id)
-                and ray_client is not None
-                and ray_client.sso
-            ):
+            elif (enterprise_id == e_id) and ray_client is not None and ray_client.sso:
                 msg.pop(1)
                 msg.append(
                     {
@@ -280,7 +283,7 @@ class WelcomeBackMessage(SlackMessage):
 
     def __init__(self, user_id: str) -> None:
         super().__init__(
-            ":white_check_mark: Welcome back",
+            "Welcome back :wave:",
             [
                 {
                     "type": "section",
@@ -350,7 +353,6 @@ class WelcomeBackMessage(SlackMessage):
                         "text": "*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|Show more options>*",
                     },
                 },
-                {"type": "divider"},
                 {"type": "divider"},
                 {
                     "type": "section",
@@ -442,7 +444,6 @@ class SuccessfulLoginMessage(SlackMessage):
                     },
                 },
                 {"type": "divider"},
-                {"type": "divider"},
                 {
                     "type": "section",
                     "block_id": "sectionBlockOnlyMrkdwn",
@@ -458,7 +459,7 @@ class SuccessfulLoginMessage(SlackMessage):
 class LogoutMessage(SlackMessage):
     """Message with a button disconnect a user's LanguageCloud account."""
 
-    def __init__(self, ray_client: RayClient | None = None) -> None:
+    def __init__(self, ray_client: RayClient) -> None:
         text = f"Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_client.username}>."
         if ray_client.sso:
             text = f"Click this button to disconnect your LanguageCloud account: *{ray_client.username}*."
@@ -534,11 +535,54 @@ class SuccessfulLogoutMessage(SlackMessage):
         )
 
 
+class SlackPermissionsMessage(SlackMessage):
+    """Prompt the user to install the app again to grant user scope permissions,
+    e.g. `chat:write` to allow the app to post/edit messages of the user's behalf.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            message,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": message,
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "Allow permissions",
+                            },
+                            "style": "primary",
+                            "url": f"{config.base_url}/slack/install?user_scope=chat:write",
+                            "action_id": "link",
+                        }
+                    ],
+                },
+            ],
+        )
+
+    @classmethod
+    def auto_translate_variation(cls):
+        return cls(
+            "To have our app translate your messages by editing your original "
+            "message instead of replying, you need to give the app extra permissions. "
+            "Click the button below to do this."
+        )
+
+
 class JobStatusMessage(SlackMessage):
     """Message showing the status of a translation job."""
 
     def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
-        job_status_block = [
+        job_status_block: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {
@@ -569,7 +613,11 @@ class JobStatusMessage(SlackMessage):
             },
             job_link_block(job.uuid, client_id),
         ]
-        if job.status != "COMPLETED" and job.batches != "[]" and job.translated_file == []:
+        if (
+            job.status != "COMPLETED"
+            and job.batches != "[]"
+            and job.translated_file == []
+        ):
             job_status_block.insert(
                 3,
                 {
@@ -595,7 +643,11 @@ class JobStatusMessage(SlackMessage):
                     ],
                 },
             )
-        if job.status != "COMPLETED" and job.batches != "[]" and job.translated_file != []:
+        if (
+            job.status != "COMPLETED"
+            and job.batches != "[]"
+            and job.translated_file != []
+        ):
             job_status_block.insert(
                 3,
                 {
@@ -634,7 +686,7 @@ class JobStatusMessage(SlackMessage):
                                     "replace_original": False,
                                 }
                             ),
-                        }
+                        },
                     ],
                 },
             )
@@ -681,7 +733,7 @@ class JobDetailsMessage(SlackMessage):
     """Message showing the details of a translation job."""
 
     def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
-        job_detail_block = [
+        job_detail_block: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {
@@ -725,7 +777,11 @@ class JobDetailsMessage(SlackMessage):
             },
             job_link_block(job.uuid, client_id),
         ]
-        if job.status != "COMPLETED" and job.batches != "[]" and job.translated_file == []:
+        if (
+            job.status != "COMPLETED"
+            and job.batches != "[]"
+            and job.translated_file == []
+        ):
             job_detail_block.insert(
                 3,
                 {
@@ -751,7 +807,11 @@ class JobDetailsMessage(SlackMessage):
                     ],
                 },
             )
-        elif job.status != "COMPLETED" and job.batches != "[]" and job.translated_file != []:
+        elif (
+            job.status != "COMPLETED"
+            and job.batches != "[]"
+            and job.translated_file != []
+        ):
             job_detail_block.insert(
                 3,
                 {
@@ -790,7 +850,7 @@ class JobDetailsMessage(SlackMessage):
                                     "replace_original": False,
                                 }
                             ),
-                        }
+                        },
                     ],
                 },
             )
@@ -945,7 +1005,7 @@ class JobSummaryMessage(SlackMessage):
                         job_prediction_block(
                             f"*     :large_green_circle: {predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'}* predicted to be on-time"
                         )
-                    ),
+                    )
                 if (predictions["late"]) > 0 or (predictions["over_due"]) > 0:
                     sections.append(
                         job_prediction_block(
@@ -1087,7 +1147,7 @@ class JobListMessage(SlackMessage):
         job_predictions: list[dict],
         client_ref: str = "",
     ) -> None:
-        jobs_blocks = []
+        jobs_blocks: list[dict[str, Any]] = []
 
         # If there is any jobs result
         if jobs:
@@ -1133,7 +1193,11 @@ class JobListMessage(SlackMessage):
                         },
                     }
                 )
-                if job.status != "COMPLETED" and job.batches != "[]" and job.translated_file == []:
+                if (
+                    job.status != "COMPLETED"
+                    and job.batches != "[]"
+                    and job.translated_file == []
+                ):
                     jobs_blocks.append(
                         {
                             "type": "actions",
@@ -1158,7 +1222,11 @@ class JobListMessage(SlackMessage):
                             ],
                         },
                     )
-                elif job.status != "COMPLETED" and job.batches != "[]" and job.translated_file != []:
+                elif (
+                    job.status != "COMPLETED"
+                    and job.batches != "[]"
+                    and job.translated_file != []
+                ):
                     jobs_blocks.append(
                         {
                             "type": "actions",
@@ -1196,7 +1264,7 @@ class JobListMessage(SlackMessage):
                                             "replace_original": False,
                                         }
                                     ),
-                                }
+                                },
                             ],
                         },
                     )
@@ -1233,12 +1301,12 @@ class JobListMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"No jobs found",
+                        "text": "No jobs found",
                     },
                 }
             )
 
-        pagination_blocks = []
+        pagination_blocks: list[dict[str, Any]] = []
         if jobs and pagination.total_pages > 1:
             pagination_blocks.append({"type": "actions", "elements": []})
             if pagination.page > 1:
@@ -1652,7 +1720,7 @@ class ConnectionInfoMessage(SlackMessage):
                 "text": {"type": "mrkdwn", "text": text},
             }
         # Next get Slack user - LanguageCloud account info.
-        account_blocks = []
+        account_blocks: list[dict[str, Any]] = []
         if ray_connection is not None and ray_connection.client is not None:
             text = f"Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_connection.client.username}>"
             account_blocks.append(
@@ -1746,9 +1814,9 @@ class SsoConnectionInfoMessage(SlackMessage):
 
     def __init__(
         self,
-        ray_connection: RayConnection | None,
+        ray_connection: RayConnection,
     ) -> None:
-        if ray_connection is not None and ray_connection.client is not None:
+        if ray_connection.client is not None:
             text = f"Your connected LanguageCloud account is: *{ray_connection.client.username}*."
 
         msg = [
@@ -1766,6 +1834,7 @@ class SsoConnectionInfoMessage(SlackMessage):
                             "text": "Login to LanguageCloud",
                         },
                         "style": "primary",
+                        # TODO: ray_connection.client could be None
                         "url": encrpyt_slack_sso_token(ray_connection.client.username),
                         "action_id": "login",
                     }
@@ -2083,7 +2152,7 @@ class BatchListMessage(SlackMessage):
     def __init__(self, job: Job, client_id: str) -> None:
         title = f"The in progress file list for *{job.id}* is below:"
 
-        job_file_block = []
+        job_file_block: list[dict[str, Any]] = []
         # Prepare download links prefix
         if config.environment == Environment.production:
             download_prefix = "https://workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
@@ -2125,7 +2194,7 @@ class BatchListMessage(SlackMessage):
             }
         )
 
-        pagination_blocks = []
+        pagination_blocks: list[dict[str, Any]] = []
         if job.pagination.total_pages > 1:
             pagination_blocks.append({"type": "actions", "elements": []})
             if job.pagination.page > 1:
@@ -2189,7 +2258,7 @@ class FileListMessage(SlackMessage):
 
     def __init__(self, job: Job, client_id: str) -> None:
         title = f"The completed file list for *{job.id}* is below:"
-        job_file_block = []
+        job_file_block: list[dict[str, Any]] = []
         for x in job.translated_file:
             url = {
                 "type": "section",
@@ -2211,7 +2280,7 @@ class FileListMessage(SlackMessage):
             }
             job_file_block.insert(2, url)
 
-        pagination_blocks = []
+        pagination_blocks: list[dict[str, Any]] = []
         if job.f_pagination.total_pages > 1:
             pagination_blocks.append({"type": "actions", "elements": []})
             if job.pagination.page > 1:
@@ -2317,13 +2386,97 @@ class JobTargetLangMessage(SlackMessage):
         )
 
 
+class AutoTranslationMessage(SlackMessage):
+    def __init__(
+        self,
+        source_text: str,
+        source_language: str,
+        translations: list[tuple[str, str]],
+        scores: list[tuple[str, float]] | None = None,
+    ) -> None:
+        """Slack message template for an auto-translated message
+
+        Args:
+            source_text (str | None): The original source text.
+            source_language: str): The source language, e.g. "en", "de".
+            translations (list[tuple[str, str, str]]): A list of translations.
+                Each element is a 2-tuple with the target language and translated text.
+        """
+        self.source_text = source_text
+        self.source_language = source_language
+        self.translations = translations
+        self.scores = scores
+
+        super().__init__(source_text, self.generate_blocks())
+
+    def generate_blocks(self) -> list[dict[str, Any]]:
+        blocks: list[dict[str, Any]] = [
+            {"type": "section", "text": {"type": "mrkdwn", "text": self.source_text}}
+        ]
+        for _, translated in self.translations:
+            blocks.append(
+                {
+                    "type": "rich_text",
+                    "elements": [
+                        {
+                            "type": "rich_text_quote",
+                            "elements": [{"type": "text", "text": translated}],
+                        }
+                    ],
+                }
+            )
+        target_langs = [
+            get_auto_translate_language_name(t[0]) for t in self.translations
+        ]
+        blocks.append(
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "plain_text",
+                        "text": f"Translated to {', '.join(target_langs)} with Straker AI",
+                    }
+                ],
+            }
+        )
+        if self.scores:
+            source_lang_full = get_auto_translate_language_name(self.source_language)
+            for lang, score in self.scores:
+                target_lang_full = get_auto_translate_language_name(lang)
+                score_text = f":large_green_circle: {source_lang_full} → {target_lang_full} is accurate"
+                if score < 0.5:
+                    score_text = f":large_red_circle: {source_lang_full} → {target_lang_full} is inaccurate"
+                elif score < 0.8:
+                    score_text = f":large_orange_circle: {source_lang_full} → {target_lang_full} might need checking"
+                blocks.append(
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "plain_text",
+                                "text": score_text,
+                            }
+                        ],
+                    }
+                )
+        return blocks
+
+    def add_translation_scores(
+        self, scores: list[tuple[str, float]] | None
+    ) -> "AutoTranslationMessage":
+        """Return a new message with translation scores added."""
+        return AutoTranslationMessage(
+            self.source_text, self.source_language, self.translations, scores
+        )
+
+
 class MachineTranslationMessage(SlackMessage):
     """Message showing the list of translation files."""
 
     def __init__(self, tl: str, sl: str, mt_text: str) -> None:
-        mt_label = f"Machine translation result:"
+        mt_label = "Machine translation result:"
         super().__init__(
-            mt_label,
+            f"{mt_label} {mt_text}",
             [
                 {
                     "type": "section",
@@ -2346,20 +2499,5 @@ class MachineTranslationMessage(SlackMessage):
 class InvalidMTResultMessage(TextMessage):
     """The user does not get MT result."""
 
-    def __init__(self, msg: str) -> None:
-        if msg == "match_failed":
-            msg = "Invalid machine translation request, please try Mt source_lang to target_lang translate: sentence."
-        else:
-            msg = f"Your machine translation has some error."
-        super().__init__(
-            msg,
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*{msg}*",
-                    },
-                },
-            ],
-        )
+    def __init__(self) -> None:
+        super().__init__("Error occurred while translating your message")

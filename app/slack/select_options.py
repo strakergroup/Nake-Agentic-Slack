@@ -1,4 +1,5 @@
-from typing import Any
+import functools
+from typing import Any, Iterable
 from itertools import islice
 import json
 
@@ -6,6 +7,8 @@ from buglog import notify_exception
 
 from ..redis import redis_conn
 from ..ray import get_languages
+from ..ray.settings import get_auto_translate_languages
+
 
 async def _get_languages_cached() -> list[dict[str, str]]:
     key = "slack-ray-translator:languages"
@@ -41,9 +44,9 @@ async def get_language_options(filter: str | None = None) -> list[dict[str, Any]
             for lang in languages
             if filter.lower() in lang["name"].lower()
             or filter.lower() in lang["code"].lower()
-        )
+        )  # type: ignore
     # Slack can show a maximum of 100 options.
-    languages = islice(languages, 100)
+    languages = islice(languages, 100)  # type: ignore
     return [
         {
             "text": {"type": "plain_text", "text": lang["name"], "emoji": False},
@@ -51,6 +54,7 @@ async def get_language_options(filter: str | None = None) -> list[dict[str, Any]
         }
         for lang in languages
     ]
+
 
 async def get_file_options_cached(channel_id: str) -> list[dict[str, Any]]:
     key = f"slack-ray-translator:files:{channel_id}"
@@ -69,6 +73,25 @@ async def get_file_options_cached(channel_id: str) -> list[dict[str, Any]]:
             notify_exception(e)
 
     return files
+
+
+@functools.cache
+def get_auto_translate_language_options():
+    """Get the options block for the auto-translate language select input."""
+    return [
+        {"text": {"type": "plain_text", "text": name}, "value": code}
+        for code, name in get_auto_translate_languages()
+    ]
+
+
+def filter_auto_translate_language_options(languages: Iterable[str]):
+    """Get the auto-translate language options filtered by a list of languages
+    (en, es, fr, etc.).
+    """
+    languages = set(languages)
+    options = get_auto_translate_language_options()
+    return [opt for opt in options if opt["value"] in languages]
+
 
 def map_file_options(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Maps a list of file objects to a list of select options.
