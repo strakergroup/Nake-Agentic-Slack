@@ -10,6 +10,7 @@ from ..select_options import (
     filter_auto_translate_language_options,
 )
 from ...auth.connector import RayConnection
+from ...ray.utils import is_min_langugagecloud_plan
 from ...config import domains
 
 
@@ -92,20 +93,32 @@ def home_view(
                 },
             },
             (
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "emoji": True,
-                                "text": ":speech_balloon: Translation Settings",
+                (
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": ":speech_balloon: Translation Settings",
+                                },
+                                "action_id": "settings_auto_translate",
                             },
-                            "action_id": "settings_auto_translate",
+                        ],
+                    }
+                    if is_min_langugagecloud_plan(
+                        rayConnection.client.planname, "Essentials"
+                    )
+                    else {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "_This feature is only available on an Essentials plan or higher_",
                         },
-                    ],
-                }
+                    }
+                )
                 if rayConnection and rayConnection.client
                 else {
                     "type": "section",

@@ -53,6 +53,7 @@ from ..ray.settings import (
     get_auto_translate_settings_channels,
     get_auto_translate_settings_langs,
 )
+from ..ray.utils import is_min_langugagecloud_plan
 from ..watson import watson_message
 from ..cache.timer import auto_translate_permissions_reminder
 from .select_options import get_file_options_cached
@@ -242,6 +243,9 @@ async def auto_translate_message(
     ts: str = message["ts"]
     thread_ts: str | None = message.get("thread_ts")
     if not text:
+        return
+    if not is_min_langugagecloud_plan(ray_client.planname, 'Essentials'):
+        # Minimum Essentials plan is required for the auto-translate feature.
         return
     enabled_conversations = get_auto_translate_settings_channels(ray_client)
     if not context.channel_id or context.channel_id not in enabled_conversations:
