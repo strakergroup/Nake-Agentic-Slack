@@ -244,7 +244,7 @@ async def auto_translate_message(
     thread_ts: str | None = message.get("thread_ts")
     if not text:
         return
-    if not is_min_langugagecloud_plan(ray_client.planname, 'Essentials'):
+    if not is_min_langugagecloud_plan(ray_client.planname, "Essentials"):
         # Minimum Essentials plan is required for the auto-translate feature.
         return
     enabled_conversations = get_auto_translate_settings_channels(ray_client)
@@ -264,32 +264,6 @@ async def auto_translate_message(
             source_lang = detected_source_lang
     except Exception as e:
         notify_exception(e)
-    # If message is in a thread, translate to the languages in the thread.
-    if thread_ts:
-        try:
-            thread_replies_response = await context.client.conversations_replies(
-                channel=context.channel_id, ts=thread_ts, limit=200
-            )
-            thread_replies: list[dict[str, Any]] = thread_replies_response.get(
-                "messages", []
-            )
-            # Only check last few messages from other users to not spam the API.
-            thread_replies = [
-                msg
-                for msg in thread_replies
-                if msg.get("type") == "message"
-                and msg.get("text")
-                and not msg.get("bot_id")
-                and msg.get("user") != context.user_id
-            ][-5:]
-            # TODO Alternate text extraction after modifiy message changes
-            detect_lang_responses = await asyncio.gather(
-                *(rayService.detect_language(msg["text"]) for msg in thread_replies)
-            )
-            detected_langs = [r.data["language"] for r in detect_lang_responses]
-            target_langs = target_langs.union(detected_langs)
-        except Exception as e:
-            notify_exception(e, "Failed to get thread replies")
 
     target_langs = set(
         filter_invalid_auto_translate_languages(target_langs.difference({source_lang}))
