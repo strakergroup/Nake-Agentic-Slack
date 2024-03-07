@@ -1270,7 +1270,7 @@ async def cancel_job_process(
     channel_id = context.channel_id or context.user_id
     try:
         job, response = await RayService.get_service(ray_client).cancel_job(job_id, job_uuid)
-        msg = job['message']
+        msg = "TJ"+job_id + "-" + job['message']
         await context.client.chat_postMessage(
             channel=context["user_id"],
             text=msg,
