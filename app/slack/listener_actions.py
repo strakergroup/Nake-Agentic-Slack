@@ -96,7 +96,7 @@ async def respond_to_message(
     if message_match and await require_ray_client(context, prompt_login=False):
         mt_sl = message_match.group(1)
         # TODO: read user lang to default target
-        mt_tl = message_match.group(3)
+        mt_tl = message_match.group(3) or "en"
         mt_text = message_match.group(4)
         await get_mt_translation(
             context,
