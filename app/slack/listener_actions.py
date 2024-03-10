@@ -87,22 +87,17 @@ async def respond_to_message(
         return
 
     # process mt
-    message_match = re.findall(
-        r"(mt|Mt|mT|MT)\s(\w+)?(\s\w+)?\sto\s(\w+)(\s\w+)?\stranslate:\s?(.*)",
+    message_match = re.search(
+        r"mt\s+((\w+\s+)?to\s+(\w+)\s+)?(.*)",
         message["text"],
         re.I,
     )
 
-    if len(message_match) > 0 and await require_ray_client(context, prompt_login=False):
-        if len(message_match[-1][2].strip()) > 0:
-            mt_sl = message_match[-1][1] + "_" + message_match[-1][2].strip()
-        else:
-            mt_sl = message_match[-1][1]
-        if len(message_match[-1][4].strip()) > 0:
-            mt_tl = message_match[-1][3] + "_" + message_match[-1][4].strip()
-        else:
-            mt_tl = message_match[-1][3]
-        mt_text = message_match[-1][-1]
+    if message_match and await require_ray_client(context, prompt_login=False):
+        mt_sl = message_match.group(1)
+        # TODO: read user lang to default target
+        mt_tl = message_match.group(3)
+        mt_text = message_match.group(4)
         await get_mt_translation(
             context,
             context["ray"].client,
@@ -190,6 +185,7 @@ async def respond_to_message(
             # Delegate jokes to IBM Watson Assistant dialog.
             await context.say(response.reply, thread_ts=thread_ts)
         case "Machine_Translate":
+            # TODO: Enable intent for machine translate
             # splict target and source language from the text
             try:
                 message_match = re.findall(
@@ -212,7 +208,7 @@ async def respond_to_message(
                     )
                 else:
                     await context.say(
-                        'Invalid machine translation request. Please try "Mt source language to target language translate: sentence."',
+                        'Invalid machine translation request. Please try "Mt source language to target language: sentence."',
                         thread_ts=thread_ts,
                     )
             except Exception as e:
