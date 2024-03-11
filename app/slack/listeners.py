@@ -278,7 +278,7 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
         if sae.response["error"] == "missing_scope":
             await ack(response_action="clear")
             await respond(
-                text=f"This app requires the 'user_read' scope to access user information. Please grant the necessary permissions and try again. You can reinstall the app from this URL: {config.base_url}/slack/install"
+                text=f"This app requires the 'user_read' scope to access user information. Please grant the necessary permissions and try again. You can reinstall the app from this URL: {config.base_url}slack/install"
             )
         else:
             notify_exception(sae)
