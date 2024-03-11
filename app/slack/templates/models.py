@@ -1,5 +1,13 @@
 from typing import Any
-from pydantic import BaseModel, ValidationError, validator, EmailStr, Field
+
+from pydantic import (
+    BaseModel,
+    ValidationError,
+    Field,
+    EmailStr,
+    field_validator,
+    ValidationInfo,
+)
 from ray_sdk.api.v3.file import is_valid_file_ext
 
 
@@ -15,11 +23,11 @@ def convert_pydantic_to_slack_error(error: ValidationError) -> dict[str, str]:
     Returns:
         dict[str, str]: The error dict for Slack's view_submission event response.
     """
-    slack_errors = {}
+    slack_errors: dict[str, str] = {}
     for e in error.errors():
         # Note: Errors for the same property will be overriden, including errors of
         # multiple items in a list.
-        slack_errors[e["loc"][0]] = e["msg"]
+        slack_errors[str(e["loc"][0])] = e["msg"].removeprefix("Value error, ")
     return slack_errors
 
 
@@ -113,34 +121,24 @@ class NewJobForm(BaseModel):
         else:
             raise ValueError(f"Cannot get workflow from service: {self.service}")
 
-    @validator("target_langs")
-    def validate_target_langs(cls, v):
+    @field_validator("target_langs")
+    @classmethod
+    def validate_target_langs(cls, v: list[RayLanguage], info: ValidationInfo):
         if not v:
             raise ValueError("At least one target language is required")
+        for lang in v:
+            if lang.code == info.data["source_lang"].code:
+                raise ValueError("The source language cannot be a target language")
         return v
 
-    @validator("target_langs", each_item=True)
-    def validate_target_langs_item(cls, v, values):
-        if v.code == values["source_lang"].code:
-            raise ValueError("The source language cannot be a target language")
-        return v
-
-    # @validator("target_date")
-    # def validate_target_date(cls, v):
-    #     if v <= datetime.date.today():
-    #         raise ValueError("The target date must be a future date")
-    #     return v
-
-    @validator("files")
-    def validate_files(cls, v):
+    @field_validator("files")
+    @classmethod
+    def validate_files(cls, v: list[SlackFile]):
         if not v:
             raise ValueError("At least one file is required")
-        return v
-
-    @validator("files", each_item=True)
-    def validate_files_item(cls, v: SlackFile):
-        if not is_valid_file_ext(v.title):
-            raise ValueError(f"File type is not allowed: {v.title}")
+        for file in v:
+            if not is_valid_file_ext(file.title):
+                raise ValueError(f"File type is not allowed: {file.title}")
         return v
 
     @classmethod
@@ -172,9 +170,11 @@ class NewJobForm(BaseModel):
                         "selected_options"
                     ]
                 ],
-                group_id=values["group"]["group_options"]["selected_option"]["value"]
-                if values["group"]["group_options"]["selected_option"]
-                else None,
+                group_id=(
+                    values["group"]["group_options"]["selected_option"]["value"]
+                    if values["group"]["group_options"]["selected_option"]
+                    else None
+                ),
                 # target_date=values["target_date"]["target_date"]["selected_date"],
                 service=values["service"]["service"]["selected_option"]["value"],
                 timeframe=values["timeframe"]["timeframe"]["selected_option"]["value"],
@@ -193,8 +193,12 @@ class SsoLoginForm(BaseModel):
     """The model for a sso login form."""
 
     email: EmailStr
-    firstName: str = Field(min_length=3, max_length=55, regex="^[^*<>\\%$##!();}{\[\]&\"]*$")
-    lastName: str = Field(min_length=3, max_length=55, regex="^[^*<>\\%$##!();}{\[\]&\"]*$")
+    firstName: str = Field(
+        min_length=3, max_length=55, pattern='^[^*<>\\%$##!();}{\[\]&"]*$'
+    )
+    lastName: str = Field(
+        min_length=3, max_length=55, pattern='^[^*<>\\%$##!();}{\[\]&"]*$'
+    )
 
     @classmethod
     def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "SsoLoginForm":
@@ -212,6 +216,39 @@ class SsoLoginForm(BaseModel):
                 email=values["email"]["email"]["value"],
                 firstName=values["firstName"]["firstName"]["value"],
                 lastName=values["lastName"]["lastName"]["value"],
+            )
+        except KeyError as e:
+            raise ValueError("The Slack payload format is incorrect") from e
+
+
+class AutoTranslationSettingsForm(BaseModel):
+    """The model for the auto-translation settings form."""
+
+    channels: list[str]
+    languages: list[str]
+
+    @classmethod
+    def parse_slack(
+        cls, values: dict[str, dict[str, Any]]
+    ) -> "AutoTranslationSettingsForm":
+        """Parses a view submission payload from Slack.
+
+        Args:
+            values (dict): The input values payload from the Slack API
+            (`view["state"]["values"]`).
+
+        Returns:
+            AutoTranslationSettingsForm: An instance parsed and validated from the Slack payload.
+        """
+        try:
+            return cls(
+                channels=[
+                    c for c in values["channels"]["channels"]["selected_conversations"]
+                ],
+                languages=[
+                    opt["value"]
+                    for opt in values["languages"]["languages"]["selected_options"]
+                ],
             )
         except KeyError as e:
             raise ValueError("The Slack payload format is incorrect") from e

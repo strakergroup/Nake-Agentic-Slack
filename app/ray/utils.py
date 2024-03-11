@@ -1,6 +1,8 @@
+from typing import Literal
 import math
 import datetime
 from urllib.parse import urlencode
+
 from babel.numbers import format_currency as babel_format_currency
 
 from ..config import domains
@@ -154,3 +156,31 @@ def format_job_prediction(prediction: str, target_date: datetime.datetime) -> st
         return ":large_green_circle: Tracking on time"
     else:
         return ""
+
+
+def is_min_langugagecloud_plan(
+    plan: str | None,
+    min_plan: Literal["Free", "Essentials", "Growth", "Enterprise"] | None,
+) -> bool:
+    """Checks if the LanguageCloud subscription plan meets the minimum
+    requirements.
+
+    Args:
+        plan (str | None): The plan to check
+        min_plan: The minimum plan required, e.g. "Essentials", "Growth".
+
+    Returns:
+        bool: The plan meets the minimum requirements.
+    """
+    if not min_plan or min_plan.lower() == "free":
+        return True
+    if not plan or plan.lower() == "free":
+        return False
+    if min_plan.lower() == "essentials":
+        return plan.lower() in ["essentials", "growth", "enterprise"]
+    if min_plan.lower() == "growth":
+        return plan.lower() in ["growth", "enterprise"]
+    if min_plan.lower() == "enterprise":
+        return plan.lower() == "enterprise"
+    # Unknown min plan.
+    return False

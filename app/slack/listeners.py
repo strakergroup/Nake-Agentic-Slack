@@ -5,18 +5,19 @@ commands, etc. from the Slack API.
 import asyncio
 import re
 import json
-import httpx
+from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_sdk.errors import SlackApiError
 from ray_sdk import RayAPIResponseError
 from buglog import notify_exception, notify_message
-from datetime import datetime, timedelta
+
 from .app import app
 from .middleware import ray_connection, require_ray_client
 from .listener_actions import (
     respond_to_message,
+    auto_translate_message,
     get_groups,
     post_job_status,
     post_job_details,
@@ -35,10 +36,11 @@ from .listener_actions import (
 )
 from .logging import slack_log_decorator
 from .templates.models import (
+    convert_pydantic_to_slack_error,
     NewJobForm,
     JobSearchForm,
-    convert_pydantic_to_slack_error,
     SsoLoginForm,
+    AutoTranslationSettingsForm,
 )
 from .templates.messages import (
     LoginMessage,
@@ -58,9 +60,10 @@ from .templates.messages import (
     ClientAlreadyApprovedMessage,
     JobDelayMessage,
 )
-from .templates.views import home_view
+from .templates.views import home_view, settings_auto_translate_view
 from .web import files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, get_file_options_cached
+from .utils import is_channel_im
 from ..auth.connector import (
     connect_ray_account,
     disconnect_ray_account,
@@ -69,6 +72,11 @@ from ..auth.connector import (
     get_ray_connection,
 )
 from ..ray.events.parse import get_ray_event_message
+from ..ray.settings import (
+    get_auto_translate_settings_channels,
+    get_auto_translate_settings_langs,
+    update_auto_translate_settings,
+)
 from slack_bolt.context.async_context import AsyncBoltContext
 
 # ---------------------------------------------------------
@@ -85,17 +93,16 @@ async def message_event(client, context, message):
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # not channel or group conversations (see the "app_mention" event).
-    if message.get("channel_type") == "im" or context["channel_id"][0] in ("D", "U"):
+    if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
         await respond_to_message(client, context, message, use_thread=False)
+    elif message.get("text") and f"<@{context['bot_user_id']}>" not in message["text"]:
+        # Do not auto-translate if the bot is mentioned (should default to normal response).
+        if await require_ray_client(context, prompt_login=False):
+            await auto_translate_message(context, context["ray"].client, message)
     else:
-        notify_message(
-            "Slack App message event received from channel",
-            extra={
-                "detail": "This event should not be received from a conversation "
-                "other than a DM with the bot, unsubscribe from message:groups, "
-                "message:channels, and message:mpim"
-            },
-        )
+        # Do nothing if the Slack app is not mentioned in group chats and
+        # auto-translate is disabled.
+        pass
 
 
 @app.event("app_mention", middleware=[ray_connection])
@@ -127,7 +134,7 @@ async def home_opened(event, action, context, body, say, client):
         history_last_24_hours = await client.conversations_history(
             channel=event.get("channel"),
             oldest=int((datetime.now() - timedelta(hours=24)).timestamp()),
-            latest=int(datetime.now().timestamp())
+            latest=int(datetime.now().timestamp()),
         )
         if not history_last_24_hours.get("messages"):
             message = WelcomeBackMessage(context["user_id"])
@@ -138,7 +145,7 @@ async def home_opened(event, action, context, body, say, client):
     # Publish view to home tab.
     await client.views_publish(
         user_id=event.get("user"),
-        view=home_view(context, body["api_app_id"], context["ray"]),
+        view=home_view(context, body["api_app_id"], context.get("ray")),
     )
 
 
@@ -159,8 +166,9 @@ async def app_uninstalled(context):
 async def new_job_shortcut(ack, shortcut, context, client):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        asyncio.create_task(files_list_simple(
-            client, channel_id=context["channel_id"], count=120))
+        asyncio.create_task(
+            files_list_simple(client, channel_id=context["channel_id"], count=120)
+        )
         # Set files in the message as initial values if the bot has access to them.
         init_files = await get_bot_accessible_files(
             client, (f["id"] for f in shortcut["message"].get("files", []))
@@ -358,8 +366,11 @@ async def ray_command(ack, respond, say, command, context, client):
         case ["new"]:
             # Show quote form modal.
             if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-                asyncio.create_task(files_list_simple(
-                    client, channel_id=context["channel_id"], count=120))
+                asyncio.create_task(
+                    files_list_simple(
+                        client, channel_id=context["channel_id"], count=120
+                    )
+                )
                 await show_quote_form_modal(
                     context,
                     command["trigger_id"],
@@ -399,6 +410,19 @@ async def ray_command(ack, respond, say, command, context, client):
         case _:
             # Invalid command.
             await respond(text=InvalidCommandMessage().text)
+
+
+@app.block_action("settings_auto_translate", middleware=[ray_connection])
+@slack_log_decorator
+async def show_auto_translate_settings(ack, context, body, client):
+    await ack()
+    if await require_ray_client(context):
+        channels = get_auto_translate_settings_channels(context["ray"].client)
+        languages = get_auto_translate_settings_langs(context["ray"].client)
+        await client.views_open(
+            trigger_id=body["trigger_id"],
+            view=settings_auto_translate_view(channels, languages),
+        )
 
 
 @app.block_action("show_job_details", middleware=[ray_connection])
@@ -520,8 +544,9 @@ async def new_job_action(ack, payload, context, client, body):
         except (SlackApiError, json.JSONDecodeError, KeyError):
             # The payload value does not exist, is malformed, or no access to the files.
             pass
-        asyncio.create_task(files_list_simple(
-            client, channel_id=context["channel_id"], count=120))
+        asyncio.create_task(
+            files_list_simple(client, channel_id=context["channel_id"], count=120)
+        )
         await show_quote_form_modal(
             context,
             body["trigger_id"],
@@ -710,19 +735,59 @@ async def handle_job_search(ack, view, context, client):
             return
         await ack(response_action="clear")
         # The response is already returned at this point, can do long tasks here.
-        reference = form.reference.strip()
+        reference = form.reference.strip().replace(" ", "")
         # Try searching job by TJ number if the format is correct.
-        if re.fullmatch(r"tj\d+", reference, re.IGNORECASE):
+        if re.fullmatch(r"TJ\d+(,\s?TJ\d+)*", reference, re.IGNORECASE):
             await post_job_status(context, context["ray"].client, reference)
-        elif re.fullmatch(
-            r"\d+", reference, re.IGNORECASE
-        ):
-            await post_job_status(context, context["ray"].client, "TJ"+reference)
+        elif re.fullmatch(r"\d+(,\s?\d+)*", reference, re.IGNORECASE):
+            await post_job_status(context, context["ray"].client, "TJ" + reference)
         else:
-            client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=context["user_id"],
                 text="TJ Number is in incorrect format. E.g. TJ123456 or 123456",
             )
+    else:
+        await ack(response_action="clear")
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            blocks=context["login_prompt"].blocks,
+            text=context["login_prompt"].text,
+        )
+
+
+@app.view("settings_auto_translate", middleware=[ray_connection])
+@slack_log_decorator
+async def view_update_auto_translate_settings(ack, view, context, client):
+    if await require_ray_client(context, prompt_login=False):
+        try:
+            form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
+        except ValidationError as e:
+            errors = convert_pydantic_to_slack_error(e)
+            await ack(response_action="errors", errors=errors)
+            return
+        await ack(response_action="clear")
+
+        try:
+            update_auto_translate_settings(
+                context["ray"].client,
+                channels=form.channels,
+                languages=form.languages,
+            )
+
+            # Try to join channel automatically after updating settings.
+            async def join_channel(channel_id: str):
+                try:
+                    await client.conversations_join(channel=channel_id)
+                except SlackApiError:
+                    pass  # Cannot join private channel, or cannot find channel.
+                except Exception as e:
+                    notify_exception(e)
+
+            await asyncio.gather(
+                *[join_channel(channel_id) for channel_id in form.channels]
+            )
+        except Exception as e:
+            notify_exception(e)
     else:
         await ack(response_action="clear")
         await client.chat_postMessage(
@@ -750,19 +815,21 @@ async def file_options(ack, payload, client):
     """This select options endpoint is used as a backup in case there are
     no files available for the new job files input.
     """
-    channel_id = payload['action_id'].split('_')[2]
+    channel_id = payload["action_id"].split("_")[2]
     # Include a bit more than the max 100 options due to filters
     # refresh cache this should not be awaited since this can take time. Seems to cause issue with timeout
-    task = asyncio.create_task(files_list_simple(
-        client, channel_id=channel_id, count=120))
+    task = asyncio.create_task(
+        files_list_simple(client, channel_id=channel_id, count=120)
+    )
     # only respond with cached files since time can cause timeout unless files empty
     files = await get_file_options_cached(channel_id)
     if not files:
         files = await task
     print(files)
     if filter := payload.get("value"):
-        files = [f for f in files if filter.lower().strip() in f["text"]
-                 ['text'].lower()]
+        files = [
+            f for f in files if filter.lower().strip() in f["text"]["text"].lower()
+        ]
     await ack(options=files[:100])
 
 

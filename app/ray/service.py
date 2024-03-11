@@ -44,7 +44,7 @@ class RayService:
     """
 
     # Cache of RayServices. The key is a tuple of ray_client_id and token.
-    services: dict[tuple[str, str], "RayService"] = {}
+    services: dict[tuple[str, str, str], "RayService"] = {}
 
     def __init__(
         self, ray_client_id: str | None, token: str | None, id_token: str | None
@@ -231,19 +231,22 @@ class RayService:
     @secured_endpoint
     async def get_machine_translation(
         self,
-        target_lang: str | None = None,
+        target_lang: str,
         source_lang: str | None = None,
         sentence: str | None = None,
-    ) -> RayResponse[dict[str, str]]:
-        """Gets the machine translation from the goolge api by correct target and source langauge."""
-        response = await self._ray.get_machine_translation(
+    ):
+        """Gets the machine translation from the Google Translate API by target and source langauge."""
+        return await self._ray.get_machine_translation(
             target_lang=target_lang,
             source_lang=source_lang,
             sentence=sentence,
             app_name="slack",
         )
 
-        return response.data, response.response
+    @secured_endpoint
+    async def detect_language(self, text: str):
+        """Detects the language of a text using the Google Translate API."""
+        return await self._ray.detect_language(text)
 
     @secured_endpoint
     async def cancel_job(

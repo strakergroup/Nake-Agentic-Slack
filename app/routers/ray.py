@@ -1,13 +1,6 @@
-from typing import Any
-from buglog import notify_message
-from fastapi import (
-    APIRouter,
-    HTTPException,
-    Depends,
-    Header,
-    status,
-    Request,
-)
+from typing import Any, Annotated
+from buglog import notify_exception, notify_message
+from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from pydantic import BaseModel, ValidationError
 
 from ..auth.connector import (
@@ -32,27 +25,25 @@ from ..ray.events.models import ClientGroup
 from ..ray.events.logging import post_notification, post_notification_ephemeral
 from dataclasses import replace
 
-router = APIRouter(tags=["ray"])
+
+router = APIRouter()
 
 
 @router.post("/ray/events")
-async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
+async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
     """Receives and responds to an event from the RAY platform."""
     try:
         message = get_ray_event_message(event.event, event.data)
     except ValidationError as e:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            422,
             {
                 "message": f"The event data is invalid for the event type: {event.event}",
                 "detail": e.errors(),
             },
-        )
+        ) from e
     except ValueError:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            f"The event type is invalid: {event.event}",
-        )
+        raise HTTPException(400, f"The event type is invalid: {event.event}") from None
     if message is not None and auth.slack_user is not None:
         # Send login message to the same conversation where it was prompted.
         if isinstance(message, SuccessfulLoginMessage):
@@ -74,10 +65,8 @@ async def ray_events(event: RayEvent, auth: RayEventAuth = Depends()):
                             app.client, event, new_slack_user, message
                         )
                     except Exception as e:
-                        notify_message(
-                            msg="Failed to send notification to send demo message",
-                            severity="WARNING",
-                            extra=e.__cause__,
+                        notify_exception(
+                            e, "Failed to send notification to send demo message"
                         )
             else:
                 await post_notification(app.client, event, auth.slack_user, message)
@@ -114,7 +103,7 @@ async def api_job_callback(
     request: Request,
     client_id: str,
     body: RayCallback,
-    x_straker_signature: str = Header(),
+    x_straker_signature: Annotated[str, Header()],
 ):
     """Callback endpoint for API jobs."""
     # Check if the callback can be linked to a Slack user.
@@ -122,7 +111,7 @@ async def api_job_callback(
     demo_slack_users = get_demo_link(client_id)
     if slack_user is None:
         notify_message("Slack user not found in callback endpoint", severity="WARNING")
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+        raise HTTPException(401)
     # Validate X-Straker-Signature.
     raw_body = await request.body()
     access_tokens = get_client_access_tokens(slack_user.ray_client_id)
@@ -132,7 +121,7 @@ async def api_job_callback(
     )
     if not is_header_valid:
         notify_message("Callback X-Straker-Signature is invalid", severity="WARNING")
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+        raise HTTPException(401)
 
     # Handle job creation and job completed callbacks.
     if "JOB_NUMBER" in body.event_types:
@@ -140,10 +129,7 @@ async def api_job_callback(
             job_data = body.job[0]
             message = JobCreationMessage(job_data["tj_number"])
         except (KeyError, IndexError):
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                "The callback payload format is invalid",
-            )
+            raise HTTPException(422, "The callback payload format is invalid") from None
         app.client.token = slack_user.bot_token
         if demo_slack_users:
             for slack_user_id in demo_slack_users:

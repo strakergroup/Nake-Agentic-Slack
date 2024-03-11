@@ -3,12 +3,15 @@
 The official [Slack App](https://api.slack.com/) for the Straker Translations RAY platform. This app allows clients to view and manage their translation jobs from Slack.
 
 ## Development
+
 ### Requirements
+
 - [Python 3.11](https://www.python.org/)
 - MySQL
 - [Pipenv](https://pipenv.pypa.io/) (if not using Docker)
 
 ### Setup
+
 1. Set up environment variables by copying the `.env.example` to `.env` and writing the configuration for your app.
 
    ```bash
@@ -19,9 +22,10 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
 
 2. Download the credentials of your IBM Watson Assistant service instance and place the file (named `ibm-credentials.env`) in the root directory.
 
-   You can find the service instance in your [resource list](https://cloud.ibm.com/resources) under **Services and software**, the product should be **Watson Assistant**. After opening the service instance page, click the *Download* button in the *Credentials* section.
+   You can find the service instance in your [resource list](https://cloud.ibm.com/resources) under **Services and software**, the product should be **Watson Assistant**. After opening the service instance page, click the _Download_ button in the _Credentials_ section.
 
 3. There are 2 ways to run the app: normally with Pipenv or with Docker.
+
    - ### Without Docker
 
      Create a Pipenv virtual environment and install the dependencies using
@@ -41,6 +45,7 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
    - ### With Docker
 
      You should be able to just run
+
      ```bash
      $ docker compose up -d
      ```
@@ -60,6 +65,7 @@ The official [Slack App](https://api.slack.com/) for the Straker Translations RA
    You can share this URL or embed it in a link on a web page for anyone to install (must have public distribution enabled, Settings -> Manage Distribution). **Make sure the app is secure before making it available to the public.**
 
 ### Dependencies
+
 These are Dependencies you will probably need to set up. Check the repo for readme for setup.
 
 local-redis - this is in the docker repo development/servers/redis/docker-compose.yml
@@ -71,7 +77,9 @@ slack-sdk - If you need to update the sdk you can find repo [here](https://bitbu
 languagecloud-api - On going work to port to using languagecloud-api repo [here](https://bitbucket.org/strakertech/pt-languagecloud-api/)
 
 ### Troubleshooting
+
 #### **ModuleNotFoundError: No module named '...'**
+
 This means that some Python modules (dependencies) are not installed. To fix this, install the dependencies by running
 
 ```bash
@@ -81,6 +89,7 @@ $ pipenv install --dev
 This will create a virtual enviroment and install the dependencies from `Pipfile`.
 
 #### **[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate**
+
 If you are using macOS and installed Python directly from https://www.python.org, you may get an error like this when installing the app to Slack:
 
 ```
@@ -108,7 +117,15 @@ $ pipenv run coverage html       # HTML in htmlcov/
 
 ### Linting and Formatting Code
 
-This package uses [flake8](http://flake8.pycqa.org/en/latest/) for linting and [black](https://black.readthedocs.io/en/stable/) for formatting.
+This package uses [Ruff](https://github.com/astral-sh/ruff) for linting and [Black](https://black.readthedocs.io/en/stable/) for formatting.
+
+### Static Type Checking
+
+We use [mypy](http://mypy-lang.org) to perform static type checks on the codebase and can be run from the command line:
+
+```bash
+$ pipenv run python -m mypy app/**/*.py
+```
 
 ### Slack API fields in env file
 

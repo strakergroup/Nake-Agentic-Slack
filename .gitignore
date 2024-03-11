@@ -18,8 +18,10 @@ ibm-credentials.env
 # Python
 *.py[cod]
 __pycache__/
+*.log
 .pytest_cache/
 .coverage
 .coverage.xml
 htmlcov/
-*.log
+.ruff_cache
+.mypy_cache

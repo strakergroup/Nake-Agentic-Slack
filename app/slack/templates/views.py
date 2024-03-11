@@ -1,20 +1,74 @@
 """Slack view templates (modals, home tab)."""
-# Ignore line too long lint errors
-# flake8: noqa
 
 from typing import Any
 from slack_bolt.context.async_context import AsyncBoltContext
 
 from .blocks import home_auth_blocks
-from ..select_options import map_file_options
+from ..select_options import (
+    map_file_options,
+    get_auto_translate_language_options,
+    filter_auto_translate_language_options,
+)
 from ...auth.connector import RayConnection
-from ...config import domains
+from ...ray.utils import is_min_langugagecloud_plan
+from ...config import config, domains, Environment
 
 
 def home_view(
-    context: AsyncBoltContext, app_id: str, rayConnection: RayConnection
+    context: AsyncBoltContext, app_id: str, rayConnection: RayConnection | None
 ) -> dict[str, Any]:
     message_url = f"slack://app?team={context['team_id']}&id={app_id}&tab=messages"
+    # Hide auto-translation settings in Production until scopes are approved.
+    auto_translate_blocks: list[dict[str, Any]] = [
+        {"type": "divider"},
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "Translate Channels"},
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences.",
+            },
+        },
+        (
+            (
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "emoji": True,
+                                "text": ":speech_balloon: Translation Settings",
+                            },
+                            "action_id": "settings_auto_translate",
+                        },
+                    ],
+                }
+                if is_min_langugagecloud_plan(
+                    rayConnection.client.planname, "Essentials"
+                )
+                else {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "_This feature is only available on an Essentials plan or higher_",
+                    },
+                }
+            )
+            if rayConnection and rayConnection.client
+            else {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "_Connect your Straker LanguageCloud account to enable this feature_",
+                },
+            }
+        ),
+    ]
     return {
         "type": "home",
         "blocks": [
@@ -77,6 +131,11 @@ def home_view(
                     },
                 ],
             },
+            *(
+                auto_translate_blocks
+                if config.environment != Environment.production
+                else []
+            ),
             {"type": "divider"},
             {
                 "type": "header",
@@ -148,7 +207,15 @@ def job_search_modal(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"You are searching a job as `{client_name}`.",
+                    "text": f"You are searching for job(s) as `{client_name}`.",
+                    "verbatim": True,
+                },
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "To search for multiple TJs, enter your TJ number, followed by a comma, then enter your next TJ reference, search for up to 10 TJs at once.",
                     "verbatim": True,
                 },
             },
@@ -163,7 +230,7 @@ def job_search_modal(
                         "text": "Your job reference",
                         "emoji": True,
                     },
-                    "max_length": 100,
+                    "max_length": 110,
                 },
                 "label": {
                     "type": "plain_text",
@@ -198,6 +265,7 @@ def new_job_modal(
         dict: The view dict.
     """
 
+    file_options = file_options or []
     initial_files = (
         map_file_options(initial_files[:max_selected_files]) if initial_files else []
     )
@@ -736,6 +804,79 @@ def cancel_job_modal(
                     "text": "Your job TJ number",
                     "emoji": True,
                 },
+            },
+        ],
+    }
+
+def settings_auto_translate_view(
+    initial_channels: list[str] | None = None, initial_langs: list[str] | None = None
+) -> dict[str, Any]:
+    # TODO: Filter conversations by access?
+    # TODO: Detect message max length
+    # TODO: Detect message formatting, emojis
+    # TODO: 429 rate limiting
+    # TODO: Max characters (5000?)
+    language_options = get_auto_translate_language_options()
+    initial_channels = initial_channels or []
+    initial_lang_options = (
+        filter_auto_translate_language_options(initial_langs) if initial_langs else []
+    )
+
+    return {
+        "type": "modal",
+        "callback_id": "settings_auto_translate",
+        "title": {"type": "plain_text", "text": "Translation Settings"},
+        "submit": {"type": "plain_text", "text": "Save"},
+        "close": {"type": "plain_text", "text": "Cancel"},
+        "blocks": [
+            {
+                "type": "input",
+                "block_id": "channels",
+                "element": {
+                    "type": "multi_conversations_select",
+                    "action_id": "channels",
+                    "placeholder": {"type": "plain_text", "text": "Select channel(s)"},
+                    "initial_conversations": initial_channels,
+                    "filter": {
+                        "include": ["public", "private"],
+                        "exclude_bot_users": True,
+                    },
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Channels",
+                    "emoji": True,
+                },
+                "hint": {
+                    "type": "plain_text",
+                    "text": "Important: Straker must be a member in the chosen channel or DM",
+                },
+                "optional": True,
+            },
+            {
+                "type": "input",
+                "block_id": "languages",
+                "element": {
+                    "type": "multi_static_select",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Choose language(s)",
+                    },
+                    "options": language_options,
+                    **(
+                        {"initial_options": initial_lang_options}
+                        if initial_lang_options
+                        else {}
+                    ),
+                    "action_id": "languages",
+                    "max_selected_items": 3,
+                },
+                "label": {"type": "plain_text", "text": "Language", "emoji": True},
+                "hint": {
+                    "type": "plain_text",
+                    "text": "Automatically translate messages into these language(s)",
+                },
+                "optional": True,
             },
         ],
     }
