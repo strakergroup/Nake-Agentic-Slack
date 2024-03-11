@@ -275,10 +275,7 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                 text="Your organisation requires a Super Group to connect your account to Slack."
             )
     except SlackApiError as sae:
-        if (
-            sae.response["error"] == "missing_scope"
-            and sae.response["needed"] == "user_read"
-        ):
+        if sae.response["error"] == "missing_scope":
             await ack(response_action="clear")
             await respond(
                 text=f"This app requires the 'user_read' scope to access user information. Please grant the necessary permissions and try again. You can reinstall the app from this URL: {config.base_url}/slack/install"
