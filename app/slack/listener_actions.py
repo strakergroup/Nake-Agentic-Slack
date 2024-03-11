@@ -88,7 +88,7 @@ async def respond_to_message(
 
     # process mt
     message_match = re.search(
-        r"mt\s+((\w+\s+)?to\s+(\w+):?\s+)?(.*)",
+        r"mt:?\s+((\w+\s+)?to\s+(\w+):?\s+)?(.*)",
         message["text"],
         re.I,
     )
