@@ -78,6 +78,7 @@ from ..ray.settings import (
     update_auto_translate_settings,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
+from ..config import config
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -207,6 +208,7 @@ async def new_job_shortcut(ack, shortcut, context, client):
 @app.block_action("login_sso", middleware=[ray_connection])
 @slack_log_decorator
 async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view):
+
     try:
         if "channel_id" not in context:
             context["channel_id"] = context["user_id"]
@@ -275,9 +277,17 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                 text="Your organisation requires a Super Group to connect your account to Slack."
             )
     except SlackApiError as sae:
-        notify_exception(sae)
-        await ack()
-        await respond(text="There was an error connecting to Slack, please try again.")
+        if sae.response["error"] == "missing_scope":
+            await ack(response_action="clear")
+            await respond(
+                text=f"This app requires the 'user_read' scope to access user information. Please grant the necessary permissions and try again. You can reinstall the app from this URL: {config.base_url}slack/install"
+            )
+        else:
+            notify_exception(sae)
+            await ack()
+            await respond(
+                text="There was an error retrieving user information. Please try again."
+            )
     except Exception as e:
         notify_exception(e)
         await ack()

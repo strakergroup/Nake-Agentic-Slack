@@ -558,7 +558,7 @@ class SuccessfulLogoutMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "You can use `/ray connect` to connect your LanguageCloud account again.",
+                        "text": "You can use `connect` to connect your LanguageCloud account again.",
                     },
                 },
             ],
