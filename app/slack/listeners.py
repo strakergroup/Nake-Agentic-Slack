@@ -31,6 +31,8 @@ from .listener_actions import (
     post_batch_list,
     post_file_list,
     show_sso_form_modal,
+    show_cancel_job_model,
+    cancel_job_process,
 )
 from .logging import slack_log_decorator
 from .templates.models import (
@@ -682,16 +684,24 @@ async def handle_new_job(ack, view, context, client):
             return
         await ack(response_action="clear")
         # The response is already returned at this point, can do long tasks here.
-        message = JobSubmitMessage(form)
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=message.text,
-            blocks=message.blocks,
-        )
+        # message = JobSubmitMessage(form)
+        # await client.chat_postMessage(
+        #     channel=context["user_id"],
+        #     text=message.text,
+        #     blocks=message.blocks,
+        # )
 
         # Process files and submit job.
         try:
             responses = await submit_job(context, context["ray"].client, form)
+            result = responses[0].response.json()["Message"]
+            if 'job_id' in result:
+                message = JobSubmitMessage(form)
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=message.text,
+                    blocks=message.blocks,
+                )
         except Exception as e:
             if isinstance(e, RayAPIResponseError):
                 try:
@@ -874,6 +884,66 @@ async def file_list_action(ack, payload, context):
             replace_original=replace_original,
         )
 
+
+@app.block_action("cancel_job", middleware=[ray_connection])
+@slack_log_decorator
+async def cancel_job_action(ack, payload, context, client, body):
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+        if "value" in payload:
+            job_info = json.loads(payload["value"])
+            if job_info['job_action'] == 'list':
+                job_id = job_info['job_id'].split('TJ')[1]
+                await cancel_job_process(context, context["ray"].client, job_id=job_id)
+            elif job_info["job_action"] == "submit":
+                await cancel_job_process(context, context["ray"].client, job_uuid=job_info["job_id"])
+            else:
+                await show_cancel_job_model(
+                    context,
+                    body["trigger_id"],
+                    context["ray"].client,
+                    job_uuid=job_info['job_id'],
+                )
+        else:
+            await show_cancel_job_model(
+                context,
+                body["trigger_id"],
+                context["ray"].client,
+            )
+
+
+@app.view("cancel_job", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_cancel_job(ack, view, context, client):
+    """Get job info. Triggered from the "View More Info" in the job list"""
+    await ack()
+    if await require_ray_client(context, prompt_login=False):
+        try:
+            form = JobSearchForm.parse_slack(view["state"]["values"])
+        except ValidationError as e:
+            errors = convert_pydantic_to_slack_error(e)
+            await ack(response_action="errors", errors=errors)
+            return
+        await ack(response_action="clear")
+        reference = form.reference.strip().lower()
+        # Try searching job by TJ number if the format is correct.
+        if re.fullmatch(r"tj\d+", reference, re.IGNORECASE):
+            job_id = reference.split('tj')[1]
+            await cancel_job_process(context, context["ray"].client, job_id)
+        elif re.fullmatch(r"\d+", reference, re.IGNORECASE):
+            await cancel_job_process(context, context["ray"].client, reference)
+        else:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text="TJ Number is in incorrect format. E.g. TJ123456 or 123456",
+            )
+    else:
+        await ack(response_action="clear")
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            blocks=context["login_prompt"].blocks,
+            text=context["login_prompt"].text,
+        )
 
 # FastAPI will use this to handle Slack API requests.
 slack_handler = AsyncSlackRequestHandler(app)

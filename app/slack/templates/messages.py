@@ -334,6 +334,21 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
+                        "text": "🔴 Cancel your job",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel",
+                        },
+                        "action_id": "cancel_job",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
                         "text": "📊 Insights uses AI to gather and show data about your translation experience",
                     },
                     "accessory": {
@@ -418,6 +433,21 @@ class SuccessfulLoginMessage(SlackMessage):
                         "type": "button",
                         "text": {"type": "plain_text", "text": "New translation job"},
                         "action_id": "new_job",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🔴 Cancel your job",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel",
+                        },
+                        "action_id": "cancel_job",
                     },
                 },
                 {
@@ -1293,6 +1323,25 @@ class JobListMessage(SlackMessage):
                             ],
                         },
                     )
+                elif job.status == "PENDING_QUOTES" or job.status == "ORDER_NOW":
+                    jobs_blocks.append(
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": "🔴 Cancel this job",
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "Cancel",
+                                },
+                                "action_id": "cancel_job",
+                                "value": json.dumps({"job_id": job.id, "job_action": "list"}),
+                            },
+                        }
+                    )
                 if formatted_job_prediction != "":
                     jobs_blocks.append(job_prediction_block(formatted_job_prediction))
         else:
@@ -1461,12 +1510,39 @@ class InsightsMessage(SlackMessage):
         )
 
 
-class JobCreationMessage(TextMessage):
+class JobCreationMessage(SlackMessage):
     """A job TJ number is created after submitting a new job (from API v3 callback)."""
 
-    def __init__(self, job_id: str) -> None:
+    def __init__(self, job_id: str = '') -> None:
         super().__init__(
-            f"A new translation job has been created with the job number: `{job_id}`"
+            "New Job Created",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f":tada: A new translation job has been created with the job number: `{job_id}`",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🔴 Cancel your job",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel",
+                        },
+                        "action_id": "cancel_job",
+                        "value": json.dumps(
+                            {"job_id": job_id, "job_action": "list"}
+                        ),
+                    },
+                },
+            ],
         )
 
 
@@ -1625,6 +1701,21 @@ class HelpMessage(SlackMessage):
                             context.get("enterprise_id"),
                             context["channel_id"],
                         ),
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "🔴 Cancel your job",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel",
+                        },
+                        "action_id": "cancel_job",
                     },
                 },
                 {"type": "divider"},

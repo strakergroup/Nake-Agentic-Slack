@@ -42,7 +42,7 @@ from .templates.messages import (
     InvalidMTResultMessage,
 )
 from .templates.models import NewJobForm
-from .templates.views import new_job_modal, job_search_modal, sso_form_modal
+from .templates.views import new_job_modal, job_search_modal, sso_form_modal, cancel_job_modal
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
 from ..config import config, domains, Environment
@@ -57,6 +57,7 @@ from ..ray.utils import is_min_langugagecloud_plan
 from ..watson import watson_message
 from ..cache.timer import auto_translate_permissions_reminder
 from .select_options import get_file_options_cached
+
 
 
 async def respond_to_message(
@@ -1445,3 +1446,69 @@ async def show_sso_form_modal(context: AsyncBoltContext, trigger_id: str):
         trigger_id=trigger_id,
         view=sso_form_modal(),
     )
+
+
+async def show_cancel_job_model(context: AsyncBoltContext, trigger_id: str, ray_client: RayClient):
+    ''' Show the cancel job modal view dialog.
+        Args:
+            context (AsyncBoltContext): The context from the listener.
+            trigger_id (str): The trigger ID.
+            ray_client (RayClient): The RAY client details.
+    '''
+    await context.client.views_open(
+        trigger_id=trigger_id,
+        view=cancel_job_modal(
+            ray_client.username,
+        ),
+    )
+
+
+async def cancel_job_process(
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    job_id: str = '',
+    job_uuid: str = '',
+) -> AsyncSlackResponse:
+    """Tries to get the job details from the RAY API and post the job status
+    to the Slack user. If the user cannot access the job, post another message
+    instead.
+
+    Args:
+        context (AsyncBoltContext): The listener function context.
+        ray_client (RayClient): The RAY client.
+        job_id (str): The ID of the obj_tp_job to get.
+        job_uuid (str): The UUID of the api human_job table obj_uuid
+    Raises:
+        AssertionError: The `channel_id` is not given and there is no source channel.
+    """
+    if (
+        not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
+        raise AssertionError("No channel to post to")
+    channel_id = context.channel_id or context.user_id
+    try:
+        job, response = await RayService.get_service(ray_client).cancel_job(job_id, job_uuid)
+        msg = "TJ"+job_id + "-" + job['message']
+        await context.client.chat_postMessage(
+            channel=context["user_id"],
+            text=msg,
+        )
+    except Exception as e:
+        notify_exception(e)
+        raise
+    finally:
+        if response is not None:
+            try:
+                response_data = response.json()
+            except Exception:
+                response_data = response.content.decode() or None
+            context["log"].add_api_log(
+                status_code=response.status_code,
+                url=str(response.url),
+                payload=None,
+                response=response_data,
+                headers=dict(response.headers.items()),
+                version="v3",
+            )

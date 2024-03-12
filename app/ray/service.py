@@ -248,6 +248,28 @@ class RayService:
         """Detects the language of a text using the Google Translate API."""
         return await self._ray.detect_language(text)
 
+    @secured_endpoint
+    async def cancel_job(
+        self,
+        job_id: str = '',
+        job_uuid: str = '',
+    ) -> tuple[Job | None, Response | None]:
+        """Gets the details of a translation job.
+
+        Args:
+            job_id (str): The reference/ID of the job.
+
+        Returns:
+            The job data and the response if they exist.
+        """
+        try:
+            response = await self._ray.cancel_job(job_id, job_uuid)
+            return response.data, response.response
+        except RayAuthError as e:
+            return None, e.response
+        except RayAPIResponseError as e:
+            return None, e.response
+
     @classmethod
     def get_service(
         cls,

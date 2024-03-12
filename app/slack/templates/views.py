@@ -759,6 +759,54 @@ def sso_form_modal() -> dict[str, Any]:
         "callback_id": "login_sso",
     }
 
+def cancel_job_modal(
+                        client_name: str,
+                    ) -> dict[str, Any]:
+    """The template for the modal to cancel TJ by insert number and submit a search request
+
+    Args:
+        client_name (str): The user's LanguageCloud username.
+
+    Returns:
+        dict: The view dict.
+    """
+
+    return {
+        "type": "modal",
+        "callback_id": "cancel_job",
+        "title": {"type": "plain_text", "text": "Cancel Job"},
+        "submit": {"type": "plain_text", "text": "Submit"},
+        "close": {"type": "plain_text", "text": "Close"},
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"You are cancel a job as `{client_name}`.",
+                    "verbatim": True,
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "reference",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "reference",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Your TJ number",
+                        "emoji": True,
+                    },
+                    "max_length": 100,
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": "Your job TJ number",
+                    "emoji": True,
+                },
+            },
+        ],
+    }
 
 def settings_auto_translate_view(
     initial_channels: list[str] | None = None, initial_langs: list[str] | None = None
