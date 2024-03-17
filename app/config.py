@@ -42,7 +42,7 @@ class StrakerConfig(BaseSettings):
     # taus_api_key: SecretStr = Field(min_length=1)
     elastic_apm_server_url: str | None = None
     # Derived settings.
-    base_url: HttpUrl = None
+    base_url: str = ""  # TODO remove
     buglog_listener_url: str = ""
     slack_deltaray_key: SecretBytes = SecretBytes(b"")
     slack_queue_proxy_secret: SecretStr = SecretStr("")
