@@ -42,7 +42,6 @@ class StrakerConfig(BaseSettings):
     # taus_api_key: SecretStr = Field(min_length=1)
     elastic_apm_server_url: str | None = None
     # Derived settings.
-    base_url: str = ""  # TODO remove
     buglog_listener_url: str = ""
     slack_deltaray_key: SecretBytes = SecretBytes(b"")
     slack_queue_proxy_secret: SecretStr = SecretStr("")
@@ -52,12 +51,6 @@ class StrakerConfig(BaseSettings):
     @field_validator("buglog_listener_url", mode="before")
     def default_buglog_listener_url(cls, v):
         return f"{domains.buglog}/bugLog/listeners/bugLogListenerREST.cfm"
-
-    @field_validator("base_url", mode="before")
-    def default_base_url(cls, v, info: ValidationInfo):
-        if v and info.data["environment"] == Environment.local:
-            return v.strip("/")
-        return domains.slack_ray_translator
 
     @field_validator("slack_deltaray_key", mode="before")
     def default_slack_deltaray_key(cls, v, info: ValidationInfo):

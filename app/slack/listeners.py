@@ -78,7 +78,7 @@ from ..ray.settings import (
     update_auto_translate_settings,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
-from ..config import config
+from ..config import domains
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -280,7 +280,9 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
         if sae.response["error"] == "missing_scope":
             await ack(response_action="clear")
             await respond(
-                text=f"This app requires the 'user_read' scope to access user information. Please grant the necessary permissions and try again. You can reinstall the app from this URL: {config.base_url}slack/install"
+                text="This app requires the 'user_read' scope to access user information. "
+                "Please grant the necessary permissions and try again. You can reinstall the app "
+                f"from this URL: {domains.slack_ray_translator}slack/install"
             )
         else:
             notify_exception(sae)
@@ -695,7 +697,7 @@ async def handle_new_job(ack, view, context, client):
         try:
             responses = await submit_job(context, context["ray"].client, form)
             result = responses[0].response.json()["Message"]
-            if 'job_id' in result:
+            if "job_id" in result:
                 message = JobSubmitMessage(form)
                 await client.chat_postMessage(
                     channel=context["user_id"],
@@ -892,17 +894,19 @@ async def cancel_job_action(ack, payload, context, client, body):
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
         if "value" in payload:
             job_info = json.loads(payload["value"])
-            if job_info['job_action'] == 'list':
-                job_id = job_info['job_id'].split('TJ')[1]
+            if job_info["job_action"] == "list":
+                job_id = job_info["job_id"].split("TJ")[1]
                 await cancel_job_process(context, context["ray"].client, job_id=job_id)
             elif job_info["job_action"] == "submit":
-                await cancel_job_process(context, context["ray"].client, job_uuid=job_info["job_id"])
+                await cancel_job_process(
+                    context, context["ray"].client, job_uuid=job_info["job_id"]
+                )
             else:
                 await show_cancel_job_model(
                     context,
                     body["trigger_id"],
                     context["ray"].client,
-                    job_uuid=job_info['job_id'],
+                    job_uuid=job_info["job_id"],
                 )
         else:
             await show_cancel_job_model(
@@ -928,7 +932,7 @@ async def handle_cancel_job(ack, view, context, client):
         reference = form.reference.strip().lower()
         # Try searching job by TJ number if the format is correct.
         if re.fullmatch(r"tj\d+", reference, re.IGNORECASE):
-            job_id = reference.split('tj')[1]
+            job_id = reference.split("tj")[1]
             await cancel_job_process(context, context["ray"].client, job_id)
         elif re.fullmatch(r"\d+", reference, re.IGNORECASE):
             await cancel_job_process(context, context["ray"].client, reference)
@@ -944,6 +948,7 @@ async def handle_cancel_job(ack, view, context, client):
             blocks=context["login_prompt"].blocks,
             text=context["login_prompt"].text,
         )
+
 
 # FastAPI will use this to handle Slack API requests.
 slack_handler = AsyncSlackRequestHandler(app)

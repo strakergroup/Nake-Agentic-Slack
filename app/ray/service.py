@@ -178,7 +178,7 @@ class RayService:
             list[RayResponse[None]]: The responses of the API requests made.
         """
         callback_uri = "{}/ray/callback?{}".format(
-            config.base_url, urlencode({"client_id": self.ray_client_id})
+            domains.slack_ray_translator, urlencode({"client_id": self.ray_client_id})
         )
         tasks = []
         for path in [p for p in files if p]:
@@ -251,8 +251,8 @@ class RayService:
     @secured_endpoint
     async def cancel_job(
         self,
-        job_id: str = '',
-        job_uuid: str = '',
+        job_id: str = "",
+        job_uuid: str = "",
     ) -> tuple[Job | None, Response | None]:
         """Gets the details of a translation job.
 

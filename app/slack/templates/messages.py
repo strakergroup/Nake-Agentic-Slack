@@ -591,7 +591,7 @@ class SlackPermissionsMessage(SlackMessage):
                                 "text": "Allow permissions",
                             },
                             "style": "primary",
-                            "url": f"{config.base_url}/slack/install?user_scope=chat:write",
+                            "url": f"{domains.slack_ray_translator}/slack/install?user_scope=chat:write",
                             "action_id": "link",
                         }
                     ],
@@ -1338,7 +1338,9 @@ class JobListMessage(SlackMessage):
                                     "text": "Cancel",
                                 },
                                 "action_id": "cancel_job",
-                                "value": json.dumps({"job_id": job.id, "job_action": "list"}),
+                                "value": json.dumps(
+                                    {"job_id": job.id, "job_action": "list"}
+                                ),
                             },
                         }
                     )
@@ -1513,7 +1515,7 @@ class InsightsMessage(SlackMessage):
 class JobCreationMessage(SlackMessage):
     """A job TJ number is created after submitting a new job (from API v3 callback)."""
 
-    def __init__(self, job_id: str = '') -> None:
+    def __init__(self, job_id: str = "") -> None:
         super().__init__(
             "New Job Created",
             [
@@ -1537,9 +1539,7 @@ class JobCreationMessage(SlackMessage):
                             "text": "Cancel",
                         },
                         "action_id": "cancel_job",
-                        "value": json.dumps(
-                            {"job_id": job_id, "job_action": "list"}
-                        ),
+                        "value": json.dumps({"job_id": job_id, "job_action": "list"}),
                     },
                 },
             ],

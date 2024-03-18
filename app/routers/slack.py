@@ -23,7 +23,7 @@ async def slack_openid_connect(request: Request):
     # Disable this endpoint for now.
     # This endpoint was used to authorise Slack SSO to a LanguageCloud account,
     # but is not needed for now. Add to Slack manifest redirect_urls when re-enabled.
-    return RedirectResponse(f"{config.base_url}/slack/install")
+    return RedirectResponse(f"{domains.slack_ray_translator}/slack/install")
     lc_success_redirect_url = f"{domains.languagecloud}/app/slackopenid?success=1"
     lc_failure_redirect_url = f"{domains.languagecloud}/app/slackopenid?success=0"
     code = request.query_params.get("code")
@@ -46,7 +46,7 @@ async def slack_openid_connect(request: Request):
                 "client_id": config.slack_client_id,
                 "client_secret": config.slack_client_secret.get_secret_value(),
                 "code": code,
-                "redirect_uri": f"{config.base_url}/slack/openid/connect",
+                "redirect_uri": f"{domains.slack_ray_translator}/slack/openid/connect",
             },
         )
     try:
