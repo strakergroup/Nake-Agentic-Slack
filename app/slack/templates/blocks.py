@@ -6,7 +6,7 @@ from ...auth.connector import (
     get_language_cloud_connect_url,
     RayConnection,
 )
-from ...config import domains
+from ...config import domains, config, Environment
 from ...ray.utils import (
     get_job_url,
     format_currency,
@@ -79,10 +79,14 @@ def home_auth_blocks(
             ],
         },
     ]
+    if config.environment == Environment.production:
+        e_id = "EUJJ37YFR"
+        t_id = "T0360HUQKS9"
+    else:
+        e_id = "E04RDMG8XP1"
+        t_id = "T02FDFCGK"
     if enterprise_id:
-        # enterprise_id == "E04RDMG8XP1" is for UAT
-        # enterprise_id == "EUJJ37YFR" is for Live IBM Translate
-        if enterprise_id == "EUJJ37YFR":
+        if enterprise_id == e_id:
             msg[1]["elements"].append(
                 {
                     "type": "button",
@@ -94,9 +98,7 @@ def home_auth_blocks(
                     "action_id": "login_sso",
                 }
             )
-    # team_id == "T02FDFCGK" is for UAT
-    # team_id == "T0360HUQKS9" is for Live IBM Translate
-    elif team_id == "T0360HUQKS9":
+    elif team_id == t_id:
         msg[1]["elements"].append(
             {
                 "type": "button",
@@ -139,7 +141,7 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
     # Show "incl. tax" next to the total cost if > the sum of the individual language prices.
     incl_tax = quote.quote.quote != quote.quote.quote_nett
     # Show prices for individual languages (if they exist).
-    lang_price_blocks = []
+    lang_price_blocks: list[dict[str, Any]] = []
     if quote.quote.tl:
         lang_price_blocks = [
             {

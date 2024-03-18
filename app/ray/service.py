@@ -44,7 +44,7 @@ class RayService:
     """
 
     # Cache of RayServices. The key is a tuple of ray_client_id and token.
-    services: dict[tuple[str, str], "RayService"] = {}
+    services: dict[tuple[str, str, str], "RayService"] = {}
 
     def __init__(
         self, ray_client_id: str | None, token: str | None, id_token: str | None
@@ -178,7 +178,7 @@ class RayService:
             list[RayResponse[None]]: The responses of the API requests made.
         """
         callback_uri = "{}/ray/callback?{}".format(
-            config.base_url, urlencode({"client_id": self.ray_client_id})
+            domains.slack_ray_translator, urlencode({"client_id": self.ray_client_id})
         )
         tasks = []
         for path in [p for p in files if p]:
@@ -247,6 +247,28 @@ class RayService:
     async def detect_language(self, text: str):
         """Detects the language of a text using the Google Translate API."""
         return await self._ray.detect_language(text)
+
+    @secured_endpoint
+    async def cancel_job(
+        self,
+        job_id: str = "",
+        job_uuid: str = "",
+    ) -> tuple[Job | None, Response | None]:
+        """Gets the details of a translation job.
+
+        Args:
+            job_id (str): The reference/ID of the job.
+
+        Returns:
+            The job data and the response if they exist.
+        """
+        try:
+            response = await self._ray.cancel_job(job_id, job_uuid)
+            return response.data, response.response
+        except RayAuthError as e:
+            return None, e.response
+        except RayAPIResponseError as e:
+            return None, e.response
 
     @classmethod
     def get_service(

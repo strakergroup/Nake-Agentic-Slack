@@ -60,46 +60,52 @@ class OnboardingMessage(SlackMessage):
     """Message to send to onboard a new user."""
 
     def __init__(
-        self, user_id: str, team_id: str, enterprise_id: str | None, channel_id: str
+        self,
+        user_id: str,
+        team_id: str,
+        enterprise_id: str | None,
+        channel_id: str,
+        prompt_login: bool = True,
     ) -> None:
-        super().__init__(
-            _("Welcome to RAY Translate for Slack! :tada:"),
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _("Welcome to RAY Translate for Slack! :tada:"),
+        blocks: list[dict[str, Any]] = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _("Welcome to RAY Translate for Slack! :tada:"),
+                },
+            }
+        ]
+        if prompt_login:
+            blocks.extend(
+                [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": _("Connect your LanguageCloud account to get details about your translation jobs."),
+                        },
                     },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "Connect your LanguageCloud account to get details about your translation jobs."
-                        ),
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Connect LanguageCloud account"),
+                                },
+                                "style": "primary",
+                                "url": get_language_cloud_connect_url(
+                                    user_id, team_id, enterprise_id, channel_id
+                                ),
+                                "action_id": "login",
+                            }
+                        ],
                     },
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Connect LanguageCloud account"),
-                            },
-                            "style": "primary",
-                            "url": get_language_cloud_connect_url(
-                                user_id, team_id, enterprise_id, channel_id
-                            ),
-                            "action_id": "login",
-                        }
-                    ],
-                },
-            ],
-        )
+                ]
+            )
+        super().__init__("Welcome to RAY Translate for Slack! :tada:", blocks)
 
 
 class LoginMessage(SlackMessage):
@@ -181,10 +187,14 @@ class LoginMessage(SlackMessage):
                 ],
             },
         ]
+        if config.environment == Environment.production:
+            e_id = "EUJJ37YFR"
+            t_id = "T0360HUQKS9"
+        else:
+            e_id = "E04RDMG8XP1"
+            t_id = "T02FDFCGK"
         if enterprise_id:
-            # enterprise_id == "E04RDMG8XP1" is for UAT
-            # enterprise_id == "EUJJ37YFR" is for Live IBM Translate
-            if enterprise_id == "EUJJ37YFR" and ray_client is None:
+            if (enterprise_id == e_id) and ray_client is None:
                 msg[1]["elements"].append(
                     {
                         "type": "button",
@@ -196,11 +206,7 @@ class LoginMessage(SlackMessage):
                         "action_id": "login_sso",
                     }
                 )
-            elif (
-                enterprise_id == "E04RDMG8XP1"
-                and ray_client is not None
-                and ray_client.sso
-            ):
+            elif (enterprise_id == e_id) and ray_client is not None and ray_client.sso:
                 msg.pop(1)
                 msg.append(
                     {
@@ -219,9 +225,7 @@ class LoginMessage(SlackMessage):
                         ],
                     },
                 )
-        # team_id == "T02FDFCGK" is for UAT
-        # team_id == "T0360HUQKS9" is for Live IBM Translate
-        elif team_id == "T0360HUQKS9" and ray_client is None:
+        elif team_id == t_id and ray_client is None:
             msg[1]["elements"].append(
                 {
                     "type": "button",
@@ -233,7 +237,7 @@ class LoginMessage(SlackMessage):
                     "action_id": "login_sso",
                 }
             )
-        elif team_id == "T04QVSH7XDF" and ray_client is not None and ray_client.sso:
+        elif team_id == t_id and ray_client is not None and ray_client.sso:
             msg.pop(1)
             msg.append(
                 {
@@ -298,9 +302,7 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            ":mag: Search allows you to search for a specific Translation Job (TJ). "
-                        ),
+                        "text": _("🔍 Search allows you to search for specific Translation Jobs (TJs). "),
                     },
                     "accessory": {
                         "type": "button",
@@ -334,13 +336,11 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            ":card_index_dividers: Quote opens the form to upload documents for translation."
-                        ),
+                        "text": _("🗂️ New translation job opens the form to upload documents for translation."),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": _("Quote")},
+                        "text": {"type": "plain_text", "text": _("New translation job")},
                         "action_id": "new_job",
                     },
                 },
@@ -348,32 +348,15 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            ":bar_chart: Insights uses AI to gather and show data about your translation experience"
-                        ),
+                        "text": _("🔴 Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "emoji": True,
-                            "text": _("Insights"),
+                            "text": _("Cancel"),
                         },
-                        "action_id": "report_insights",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*"
-                        ),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": _("Quote")},
-                        "action_id": "new_job",
+                        "action_id": "cancel_job",
                     },
                 },
                 {
@@ -440,9 +423,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            ":mag: Search allows you to search for a specific Translation Job (TJ). "
-                        ),
+                        "text": _("🔍 Search allows you to search for specific Translation Jobs (TJs). "),
                     },
                     "accessory": {
                         "type": "button",
@@ -476,13 +457,11 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            ":card_index_dividers: Quote opens the form to upload documents for translation."
-                        ),
+                        "text": _("🗂️ New translation job opens the form to upload documents for translation."),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": _("Quote")},
+                        "text": {"type": "plain_text", "text": _("New translation job")},
                         "action_id": "new_job",
                     },
                 },
@@ -490,32 +469,15 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            ":bar_chart: Insights uses AI to gather and show data about your translation experience"
-                        ),
+                        "text": _("🔴 Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "emoji": True,
-                            "text": _("Insights"),
+                            "text": _("Cancel"),
                         },
-                        "action_id": "report_insights",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "*<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|Show more options>*"
-                        ),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": _("Quote")},
-                        "action_id": "new_job",
+                        "action_id": "cancel_job",
                     },
                 },
                 {
@@ -561,10 +523,8 @@ class SuccessfulLoginMessage(SlackMessage):
 class LogoutMessage(SlackMessage):
     """Message with a button disconnect a user's LanguageCloud account."""
 
-    def __init__(self, ray_client: RayClient | None = None) -> None:
-        text = _(
-            "Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_client.username}>."
-        )
+    def __init__(self, ray_client: RayClient) -> None:
+        text = _("Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_client.username}>.")
         if ray_client.sso:
             text = _(
                 "Click this button to disconnect your LanguageCloud account: *{ray_client.username}*."
@@ -639,12 +599,53 @@ class SuccessfulLogoutMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            "You can use `/ray connect` to connect your LanguageCloud account again."
-                        ),
+                        "text": _("You can use `connect` to connect your LanguageCloud account again."),
                     },
                 },
             ],
+        )
+
+
+class SlackPermissionsMessage(SlackMessage):
+    """Prompt the user to install the app again to grant user scope permissions,
+    e.g. `chat:write` to allow the app to post/edit messages of the user's behalf.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            message,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": message,
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Allow permissions"),
+                            },
+                            "style": "primary",
+                            "url": f"{domains.slack_ray_translator}/slack/install?user_scope=chat:write",
+                            "action_id": "link",
+                        }
+                    ],
+                },
+            ],
+        )
+
+    @classmethod
+    def auto_translate_variation(cls):
+        return cls(
+            "To have our app translate your messages by editing your original "
+            "message instead of replying, you need to give the app extra permissions. "
+            "Click the button below to do this."
         )
 
 
@@ -652,7 +653,7 @@ class JobStatusMessage(SlackMessage):
     """Message showing the status of a translation job."""
 
     def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
-        job_status_block = [
+        job_status_block: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {
@@ -806,7 +807,7 @@ class JobDetailsMessage(SlackMessage):
     """Message showing the details of a translation job."""
 
     def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
-        job_detail_block = [
+        job_detail_block: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {
@@ -1107,7 +1108,7 @@ class JobSummaryMessage(SlackMessage):
                                 "*     :large_green_circle: {predictions['on_time']} {job_plural}* predicted to be on-time"
                             )
                         )
-                    ),
+                    )
                 if (predictions["late"]) > 0 or (predictions["over_due"]) > 0:
                     total_late = int(predictions["late"]) + int(predictions["over_due"])
                     job_plural = (
@@ -1265,7 +1266,7 @@ class JobListMessage(SlackMessage):
         job_predictions: list[dict],
         client_ref: str = "",
     ) -> None:
-        jobs_blocks = []
+        jobs_blocks: list[dict[str, Any]] = []
 
         # If there is any jobs result
         if jobs:
@@ -1411,7 +1412,27 @@ class JobListMessage(SlackMessage):
                             ],
                         },
                     )
-                # TODO handle prediction blocks
+                elif job.status == "PENDING_QUOTES" or job.status == "ORDER_NOW":
+                    jobs_blocks.append(
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _("🔴 Cancel this job"),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Cancel"),
+                                },
+                                "action_id": "cancel_job",
+                                "value": json.dumps(
+                                    {"job_id": job.id, "job_action": "list"}
+                                ),
+                            },
+                        }
+                    )
                 if formatted_job_prediction != "":
                     jobs_blocks.append(job_prediction_block(formatted_job_prediction))
         else:
@@ -1427,7 +1448,7 @@ class JobListMessage(SlackMessage):
                 }
             )
 
-        pagination_blocks = []
+        pagination_blocks: list[dict[str, Any]] = []
         if jobs and pagination.total_pages > 1:
             pagination_blocks.append({"type": "actions", "elements": []})
             if pagination.page > 1:
@@ -1499,7 +1520,7 @@ class NewJobMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("Click here to submit a new translation job"),
+                        "text": _("Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *New translation job* button below"),
                     },
                 },
                 {
@@ -1591,12 +1612,37 @@ class InsightsMessage(SlackMessage):
         )
 
 
-class JobCreationMessage(TextMessage):
+class JobCreationMessage(SlackMessage):
     """A job TJ number is created after submitting a new job (from API v3 callback)."""
 
-    def __init__(self, job_id: str) -> None:
+    def __init__(self, job_id: str = "") -> None:
         super().__init__(
-            _("A new translation job has been created with the job number: `{job_id}`")
+            "New Job Created",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(":tada: A new translation job has been created with the job number: `{job_id}`"),
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _("🔴 Cancel your job"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Cancel"),
+                        },
+                        "action_id": "cancel_job",
+                        "value": json.dumps({"job_id": job_id, "job_action": "list"}),
+                    },
+                },
+            ],
         )
 
 
@@ -1685,13 +1731,11 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            ":mag: Status allows you to search for a specific job. "
-                        ),
+                        "text": _("🔍 Search allows you to search for specific Translation Jobs (TJs). "),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": _("Status")},
+                        "text": {"type": "plain_text", "text": _("Search")},
                         "action_id": "job_search",
                     },
                 },
@@ -1713,13 +1757,11 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            ":card_index_dividers: Quote opens the form to upload documents for translation."
-                        ),
+                        "text": _("🗂️ New translation job opens the form to upload documents for translation."),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": _("Quote")},
+                        "text": {"type": "plain_text", "text": _("New translation job")},
                         "action_id": "quote",
                     },
                 },
@@ -1772,6 +1814,21 @@ class HelpMessage(SlackMessage):
                         ),
                     },
                 },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _("🔴 Cancel your job"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Cancel"),
+                        },
+                        "action_id": "cancel_job",
+                    },
+                },
                 {"type": "divider"},
                 {
                     "type": "context",
@@ -1799,9 +1856,7 @@ class QuoteMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *Submit a Quote* button below"
-                        ),
+                        "text": _("Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *New translation job* button below"),
                     },
                 },
                 {
@@ -1809,7 +1864,10 @@ class QuoteMessage(SlackMessage):
                     "elements": [
                         {
                             "type": "button",
-                            "text": {"type": "plain_text", "text": _("Submit a Quote")},
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("New translation job"),
+                            },
                             "style": "primary",
                             "action_id": "new_job",
                         }
@@ -1870,7 +1928,7 @@ class ConnectionInfoMessage(SlackMessage):
                 "text": {"type": "mrkdwn", "text": text},
             }
         # Next get Slack user - LanguageCloud account info.
-        account_blocks = []
+        account_blocks: list[dict[str, Any]] = []
         if ray_connection is not None and ray_connection.client is not None:
             text = _(
                 "Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_connection.client.username}>"
@@ -1973,12 +2031,10 @@ class SsoConnectionInfoMessage(SlackMessage):
 
     def __init__(
         self,
-        ray_connection: RayConnection | None,
+        ray_connection: RayConnection,
     ) -> None:
-        if ray_connection is not None and ray_connection.client is not None:
-            text = _(
-                "Your connected LanguageCloud account is: *{ray_connection.client.username}*."
-            )
+        if ray_connection.client is not None:
+            text = _("Your connected LanguageCloud account is: *{ray_connection.client.username}*.")
 
         msg = [
             {
@@ -1995,6 +2051,7 @@ class SsoConnectionInfoMessage(SlackMessage):
                             "text": _("Login to LanguageCloud"),
                         },
                         "style": "primary",
+                        # TODO: ray_connection.client could be None
                         "url": encrpyt_slack_sso_token(ray_connection.client.username),
                         "action_id": "login",
                     }
@@ -2352,7 +2409,7 @@ class BatchListMessage(SlackMessage):
     def __init__(self, job: Job, client_id: str) -> None:
         title = _("The in progress file list for *{job.id}* is below:")
 
-        job_file_block = []
+        job_file_block: list[dict[str, Any]] = []
         # Prepare download links prefix
         if config.environment == Environment.production:
             download_prefix = "https://workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
@@ -2394,7 +2451,7 @@ class BatchListMessage(SlackMessage):
             }
         )
 
-        pagination_blocks = []
+        pagination_blocks: list[dict[str, Any]] = []
         if job.pagination.total_pages > 1:
             pagination_blocks.append({"type": "actions", "elements": []})
             if job.pagination.page > 1:
@@ -2458,7 +2515,7 @@ class FileListMessage(SlackMessage):
 
     def __init__(self, job: Job, client_id: str) -> None:
         title = _("The completed file list for *{job.id}* is below:")
-        job_file_block = []
+        job_file_block: list[dict[str, Any]] = []
         for x in job.translated_file:
             url = {
                 "type": "section",
@@ -2480,7 +2537,7 @@ class FileListMessage(SlackMessage):
             }
             job_file_block.insert(2, url)
 
-        pagination_blocks = []
+        pagination_blocks: list[dict[str, Any]] = []
         if job.f_pagination.total_pages > 1:
             pagination_blocks.append({"type": "actions", "elements": []})
             if job.pagination.page > 1:
@@ -2592,20 +2649,31 @@ class JobTargetLangMessage(SlackMessage):
 class AutoTranslationMessage(SlackMessage):
     def __init__(
         self,
-        original_text: str,
+        source_text: str,
+        source_language: str,
         translations: list[tuple[str, str]],
+        scores: list[tuple[str, float]] | None = None,
     ) -> None:
         """Slack message template for an auto-translated message
 
         Args:
-            original_text (str | None): The original text.
+            source_text (str | None): The original source text.
+            source_language: str): The source language, e.g. "en", "de".
             translations (list[tuple[str, str, str]]): A list of translations.
                 Each element is a 2-tuple with the target language and translated text.
         """
+        self.source_text = source_text
+        self.source_language = source_language
+        self.translations = translations
+        self.scores = scores
+
+        super().__init__(source_text, self.generate_blocks())
+
+    def generate_blocks(self) -> list[dict[str, Any]]:
         blocks: list[dict[str, Any]] = [
-            {"type": "section", "text": {"type": "mrkdwn", "text": original_text}}
+            {"type": "section", "text": {"type": "mrkdwn", "text": self.source_text}}
         ]
-        for _, translated in translations:
+        for _, translated in self.translations:
             blocks.append(
                 {
                     "type": "rich_text",
@@ -2617,7 +2685,9 @@ class AutoTranslationMessage(SlackMessage):
                     ],
                 }
             )
-        target_langs = [get_auto_translate_language_name(t[0]) for t in translations]
+        target_langs = [
+            get_auto_translate_language_name(t[0]) for t in self.translations
+        ]
         blocks.append(
             {
                 "type": "context",
@@ -2631,7 +2701,35 @@ class AutoTranslationMessage(SlackMessage):
                 ],
             }
         )
-        super().__init__(original_text, blocks)
+        if self.scores:
+            source_lang_full = get_auto_translate_language_name(self.source_language)
+            for lang, score in self.scores:
+                target_lang_full = get_auto_translate_language_name(lang)
+                score_text = f":large_green_circle: {source_lang_full} → {target_lang_full} is accurate"
+                if score < 0.5:
+                    score_text = f":large_red_circle: {source_lang_full} → {target_lang_full} is inaccurate"
+                elif score < 0.8:
+                    score_text = f":large_orange_circle: {source_lang_full} → {target_lang_full} might need checking"
+                blocks.append(
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "plain_text",
+                                "text": score_text,
+                            }
+                        ],
+                    }
+                )
+        return blocks
+
+    def add_translation_scores(
+        self, scores: list[tuple[str, float]] | None
+    ) -> "AutoTranslationMessage":
+        """Return a new message with translation scores added."""
+        return AutoTranslationMessage(
+            self.source_text, self.source_language, self.translations, scores
+        )
 
 
 class MachineTranslationMessage(SlackMessage):

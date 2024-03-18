@@ -9,26 +9,25 @@ verify_ssl = false
 name = "straker"
 
 [packages]
-python-dotenv = "*"
-fastapi = {extras = ["all"], version = ">=0.99.0,<0.100.0"}
-uvicorn = {extras = ["standard"], version = "*"}
-pydantic = "==1.*"
-elastic-apm = "*"
-slack-bolt = "*"
-aiohttp = "*"
-ibm-watson = "*"
-# Use sqlalchemy 2 after slack-bolt supports it
-sqlalchemy = "~=1.4"
+fastapi = {extras = ["all"], version = "==0.110.*"}
+python-dotenv = "==1.*"
+pydantic = "==2.*"
+pydantic-settings = "*"
+slack-bolt = "==1.*"
+aiohttp = "*" # Required for slack-bolt async
+ibm-watson = "==8.*"
+sqlalchemy = {extras = ["mypy"], version = "==2.*"}
 mysql-connector-python = "*"
-httpx = "*"
-redis = "*"
+httpx = "<1.0"
+redis = "==5.*"
 cryptography = "*"
 python-dateutil = "*"
 babel = "*"
-straker-utils = {version = "==0.1.22", index = "straker"}
-ray-sdk = {version = "==0.4.6", index = "straker"}
-ray-logger = {version = "==0.1.2", index = "straker"}
+elastic-apm = "==6.*"
+straker-utils = {version = "==0.1.24", index = "straker"}
 straker-auth = {version = "==0.1.6", index = "straker"}
+ray-sdk = {version = "==0.5.7", index = "straker"}
+ray-logger = {version = "==0.1.2", index = "straker"}
 buglog = {version = "==0.1.3", index = "straker"}
 
 [dev-packages]
@@ -37,6 +36,7 @@ pytest-asyncio = "*"
 coverage = "*"
 ruff = "*"
 black = "*"
+mypy = "*"
 
 [requires]
 python_version = "3.11"

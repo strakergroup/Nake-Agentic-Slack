@@ -36,7 +36,7 @@ async def files_list_simple(
         show_files_hidden_by_limit=False,
     )
     # Cache files for 1 hour.
-    files = response.get("files", [])
+    files: list[dict[str, Any]] = response.get("files", [])
     files = map_file_options(files)
     try:
         await redis_conn.set(key, json.dumps(files), ex=3600)

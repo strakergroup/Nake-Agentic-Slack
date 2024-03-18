@@ -11,25 +11,22 @@ from ..redis import redis_conn
 from ..slack import app as slack_app
 
 
-# Connect the Slack Bolt endpoints to FastAPI
 router = APIRouter()
 
 
 @router.get("/health")
 async def health_check(response: Response, password: str | None = None):
-    show_details = password == config.health_check_password
-    errors = {}
-    info = {}
+    show_details = password == config.health_check_password.get_secret_value()
+    errors: dict[str, Any] = {}
+    info: dict[str, Any] = {}
 
-    checks = [
+    # Execute tests in parallel.
+    await asyncio.gather(
         _check_database(errors),
         _check_slack_api(errors),
         _check_redis(errors),
         # TODO: Watson
-    ]
-
-    # Execute tests in parallel.
-    await asyncio.gather(*checks)
+    )
 
     result = {
         "message": "There are some issues" if len(errors) else "OK",
@@ -70,6 +67,6 @@ async def _check_slack_api(errors: dict[str, Any]) -> None:
         errors["slack_api"] = str(e)
         return
     if response.status_code != 200:
-        errors[
-            "slack_api"
-        ] = f"api.test returned the status code: {response.status_code}"
+        errors["slack_api"] = (
+            f"api.test returned the status code: {response.status_code}"
+        )

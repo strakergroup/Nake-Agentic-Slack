@@ -10,13 +10,71 @@ from ..select_options import (
     filter_auto_translate_language_options,
 )
 from ...auth.connector import RayConnection
-from ...config import domains
+from ...ray.utils import is_min_langugagecloud_plan
+from ...config import config, domains, Environment
 
 
 def home_view(
-    context: AsyncBoltContext, app_id: str, rayConnection: RayConnection
+    context: AsyncBoltContext, app_id: str, rayConnection: RayConnection | None
 ) -> dict[str, Any]:
     message_url = f"slack://app?team={context['team_id']}&id={app_id}&tab=messages"
+    # Hide auto-translation settings in Production until scopes are approved.
+    auto_translate_blocks: list[dict[str, Any]] = [
+        {"type": "divider"},
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": _("Translate Channels")},
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _(
+                    "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
+                ),
+            },
+        },
+        (
+            (
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "emoji": True,
+                                "text": _(":speech_balloon: Translation Settings"),
+                            },
+                            "action_id": "settings_auto_translate",
+                        },
+                    ],
+                }
+                if is_min_langugagecloud_plan(
+                    rayConnection.client.planname, "Essentials"
+                )
+                else {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "_This feature is only available on an Essentials plan or higher_"
+                        ),
+                    },
+                }
+            )
+            if rayConnection and rayConnection.client
+            else {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "_Connect your Straker LanguageCloud account to enable this feature_"
+                    ),
+                },
+            }
+        ),
+    ]
     return {
         "type": "home",
         "blocks": [
@@ -35,7 +93,10 @@ def home_view(
                 rayConnection,
             ),
             {"type": "divider"},
-            {"type": "header", "text": {"type": "plain_text", "text": "Get started"}},
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": _("Get started")},
+            },
             {
                 "type": "section",
                 "text": {
@@ -81,45 +142,12 @@ def home_view(
                     },
                 ],
             },
-            {"type": "divider"},
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": _("Translate Channels")},
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
-                    ),
-                },
-            },
-            (
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "emoji": True,
-                                "text": _(":speech_balloon: Translation Settings"),
-                            },
-                            "action_id": "settings_auto_translate",
-                        },
-                    ],
-                }
-                if rayConnection.client
-                else {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "_Connect your Straker LanguageCloud account to enable this feature_"
-                        ),
-                    },
-                }
+            *(
+                auto_translate_blocks
+                if config.environment != Environment.production
+                or domains.slack_ray_translator
+                == "https://staging-slack-deltaray.strakertranslations.com"
+                else []
             ),
             {"type": "divider"},
             {
@@ -200,7 +228,17 @@ def job_search_modal(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": _("You are searching a job as `{client_name}`."),
+                    "text": _("You are searching for job(s) as `{client_name}`."),
+                    "verbatim": True,
+                },
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "To search for multiple TJs, enter your TJ number, followed by a comma, then enter your next TJ reference, search for up to 10 TJs at once."
+                    ),
                     "verbatim": True,
                 },
             },
@@ -215,7 +253,7 @@ def job_search_modal(
                         "text": _("Your job reference"),
                         "emoji": True,
                     },
-                    "max_length": 100,
+                    "max_length": 110,
                 },
                 "label": {
                     "type": "plain_text",
@@ -749,10 +787,57 @@ def sso_form_modal() -> dict[str, Any]:
     }
 
 
+def cancel_job_modal(client_name: str) -> dict[str, Any]:
+    """The template for the modal to cancel TJ by insert number and submit a search request
+
+    Args:
+        client_name (str): The user's LanguageCloud username.
+
+    Returns:
+        dict: The view dict.
+    """
+
+    return {
+        "type": "modal",
+        "callback_id": "cancel_job",
+        "title": {"type": "plain_text", "text": _("Cancel Job")},
+        "submit": {"type": "plain_text", "text": _("Submit")},
+        "close": {"type": "plain_text", "text": _("Close")},
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _("You are cancel a job as `{client_name}`."),
+                    "verbatim": True,
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "reference",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "reference",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": _("Your TJ number"),
+                        "emoji": True,
+                    },
+                    "max_length": 100,
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": _("Your job TJ number"),
+                    "emoji": True,
+                },
+            },
+        ],
+    }
+
+
 def settings_auto_translate_view(
     initial_channels: list[str] | None = None, initial_langs: list[str] | None = None
 ) -> dict[str, Any]:
-    # TODO: Filter conversations by access?
     # TODO: Detect message max length
     # TODO: Detect message formatting, emojis
     # TODO: 429 rate limiting
@@ -761,7 +846,7 @@ def settings_auto_translate_view(
     initial_channels = initial_channels or []
     initial_lang_options = (
         filter_auto_translate_language_options(initial_langs) if initial_langs else []
-    )  # TODO more languages
+    )
 
     return {
         "type": "modal",
@@ -782,7 +867,7 @@ def settings_auto_translate_view(
                     },
                     "initial_conversations": initial_channels,
                     "filter": {
-                        "include": ["public", "private", "mpim"],
+                        "include": ["public", "private"],
                         "exclude_bot_users": True,
                     },
                 },

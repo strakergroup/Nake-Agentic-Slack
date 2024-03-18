@@ -5,13 +5,14 @@ commands, etc. from the Slack API.
 import asyncio
 import re
 import json
+from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_sdk.errors import SlackApiError
 from ray_sdk import RayAPIResponseError
 from buglog import notify_exception, notify_message
-from datetime import datetime, timedelta
+
 from .app import app
 from .middleware import ray_connection, require_ray_client
 from .listener_actions import (
@@ -30,6 +31,8 @@ from .listener_actions import (
     post_batch_list,
     post_file_list,
     show_sso_form_modal,
+    show_cancel_job_model,
+    cancel_job_process,
 )
 from .logging import slack_log_decorator
 from .templates.models import (
@@ -60,6 +63,7 @@ from .templates.messages import (
 from .templates.views import home_view, settings_auto_translate_view
 from .web import files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, get_file_options_cached
+from .utils import is_channel_im
 from ..auth.connector import (
     connect_ray_account,
     disconnect_ray_account,
@@ -69,11 +73,12 @@ from ..auth.connector import (
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
-    get_auto_translate_settings_conversations,
+    get_auto_translate_settings_channels,
     get_auto_translate_settings_langs,
     update_auto_translate_settings,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
+from ..config import domains
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -89,7 +94,7 @@ async def message_event(client, context, message):
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # not channel or group conversations (see the "app_mention" event).
-    if message.get("channel_type") == "im" or context["channel_id"][0] in ("D", "U"):
+    if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
         await respond_to_message(client, context, message, use_thread=False)
     elif message.get("text") and f"<@{context['bot_user_id']}>" not in message["text"]:
         # Do not auto-translate if the bot is mentioned (should default to normal response).
@@ -141,7 +146,7 @@ async def home_opened(event, action, context, body, say, client):
     # Publish view to home tab.
     await client.views_publish(
         user_id=event.get("user"),
-        view=home_view(context, body["api_app_id"], context["ray"]),
+        view=home_view(context, body["api_app_id"], context.get("ray")),
     )
 
 
@@ -203,6 +208,7 @@ async def new_job_shortcut(ack, shortcut, context, client):
 @app.block_action("login_sso", middleware=[ray_connection])
 @slack_log_decorator
 async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view):
+
     try:
         if "channel_id" not in context:
             context["channel_id"] = context["user_id"]
@@ -271,9 +277,19 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                 text="Your organisation requires a Super Group to connect your account to Slack."
             )
     except SlackApiError as sae:
-        notify_exception(sae)
-        await ack()
-        await respond(text="There was an error connecting to Slack, please try again.")
+        if sae.response["error"] == "missing_scope":
+            await ack(response_action="clear")
+            await respond(
+                text="This app requires the 'user_read' scope to access user information. "
+                "Please grant the necessary permissions and try again. You can reinstall the app "
+                f"from this URL: {domains.slack_ray_translator}slack/install"
+            )
+        else:
+            notify_exception(sae)
+            await ack()
+            await respond(
+                text="There was an error retrieving user information. Please try again."
+            )
     except Exception as e:
         notify_exception(e)
         await ack()
@@ -413,7 +429,7 @@ async def ray_command(ack, respond, say, command, context, client):
 async def show_auto_translate_settings(ack, context, body, client):
     await ack()
     if await require_ray_client(context):
-        channels = get_auto_translate_settings_conversations(context["ray"].client)
+        channels = get_auto_translate_settings_channels(context["ray"].client)
         languages = get_auto_translate_settings_langs(context["ray"].client)
         await client.views_open(
             trigger_id=body["trigger_id"],
@@ -670,16 +686,24 @@ async def handle_new_job(ack, view, context, client):
             return
         await ack(response_action="clear")
         # The response is already returned at this point, can do long tasks here.
-        message = JobSubmitMessage(form)
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=message.text,
-            blocks=message.blocks,
-        )
+        # message = JobSubmitMessage(form)
+        # await client.chat_postMessage(
+        #     channel=context["user_id"],
+        #     text=message.text,
+        #     blocks=message.blocks,
+        # )
 
         # Process files and submit job.
         try:
             responses = await submit_job(context, context["ray"].client, form)
+            result = responses[0].response.json()["Message"]
+            if "job_id" in result:
+                message = JobSubmitMessage(form)
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=message.text,
+                    blocks=message.blocks,
+                )
         except Exception as e:
             if isinstance(e, RayAPIResponseError):
                 try:
@@ -723,14 +747,14 @@ async def handle_job_search(ack, view, context, client):
             return
         await ack(response_action="clear")
         # The response is already returned at this point, can do long tasks here.
-        reference = form.reference.strip()
+        reference = form.reference.strip().replace(" ", "")
         # Try searching job by TJ number if the format is correct.
-        if re.fullmatch(r"tj\d+", reference, re.IGNORECASE):
+        if re.fullmatch(r"TJ\d+(,\s?TJ\d+)*", reference, re.IGNORECASE):
             await post_job_status(context, context["ray"].client, reference)
-        elif re.fullmatch(r"\d+", reference, re.IGNORECASE):
+        elif re.fullmatch(r"\d+(,\s?\d+)*", reference, re.IGNORECASE):
             await post_job_status(context, context["ray"].client, "TJ" + reference)
         else:
-            client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=context["user_id"],
                 text="TJ Number is in incorrect format. E.g. TJ123456 or 123456",
             )
@@ -758,8 +782,21 @@ async def view_update_auto_translate_settings(ack, view, context, client):
         try:
             update_auto_translate_settings(
                 context["ray"].client,
-                conversations=form.conversations,
+                channels=form.channels,
                 languages=form.languages,
+            )
+
+            # Try to join channel automatically after updating settings.
+            async def join_channel(channel_id: str):
+                try:
+                    await client.conversations_join(channel=channel_id)
+                except SlackApiError:
+                    pass  # Cannot join private channel, or cannot find channel.
+                except Exception as e:
+                    notify_exception(e)
+
+            await asyncio.gather(
+                *[join_channel(channel_id) for channel_id in form.channels]
             )
         except Exception as e:
             notify_exception(e)
@@ -847,6 +884,69 @@ async def file_list_action(ack, payload, context):
             page=page,
             page_size=page_size,
             replace_original=replace_original,
+        )
+
+
+@app.block_action("cancel_job", middleware=[ray_connection])
+@slack_log_decorator
+async def cancel_job_action(ack, payload, context, client, body):
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+        if "value" in payload:
+            job_info = json.loads(payload["value"])
+            if job_info["job_action"] == "list":
+                job_id = job_info["job_id"].split("TJ")[1]
+                await cancel_job_process(context, context["ray"].client, job_id=job_id)
+            elif job_info["job_action"] == "submit":
+                await cancel_job_process(
+                    context, context["ray"].client, job_uuid=job_info["job_id"]
+                )
+            else:
+                await show_cancel_job_model(
+                    context,
+                    body["trigger_id"],
+                    context["ray"].client,
+                    job_uuid=job_info["job_id"],
+                )
+        else:
+            await show_cancel_job_model(
+                context,
+                body["trigger_id"],
+                context["ray"].client,
+            )
+
+
+@app.view("cancel_job", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_cancel_job(ack, view, context, client):
+    """Get job info. Triggered from the "View More Info" in the job list"""
+    await ack()
+    if await require_ray_client(context, prompt_login=False):
+        try:
+            form = JobSearchForm.parse_slack(view["state"]["values"])
+        except ValidationError as e:
+            errors = convert_pydantic_to_slack_error(e)
+            await ack(response_action="errors", errors=errors)
+            return
+        await ack(response_action="clear")
+        reference = form.reference.strip().lower()
+        # Try searching job by TJ number if the format is correct.
+        if re.fullmatch(r"tj\d+", reference, re.IGNORECASE):
+            job_id = reference.split("tj")[1]
+            await cancel_job_process(context, context["ray"].client, job_id)
+        elif re.fullmatch(r"\d+", reference, re.IGNORECASE):
+            await cancel_job_process(context, context["ray"].client, reference)
+        else:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text="TJ Number is in incorrect format. E.g. TJ123456 or 123456",
+            )
+    else:
+        await ack(response_action="clear")
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            blocks=context["login_prompt"].blocks,
+            text=context["login_prompt"].text,
         )
 
 
