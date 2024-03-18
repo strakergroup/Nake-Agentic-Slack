@@ -16,6 +16,8 @@ class Translator:
         self.cache = {}
 
     def translate(self, input):
+        if self.lang.lower().startswith("en"):
+            return input
         if input in self.cache:
             return self.cache[input]
         translation = input
@@ -46,7 +48,7 @@ class Translator:
                 translation = translation[0]
             else:
                 # log error missing translation
-                logging.error(f"ERROR Missing translation for {self.lang}: ", input)
+                logging.warning(f"WARNING Missing translation for {self.lang}: {input}")
                 return input
         # place back the emojis and python variable expansion from the input
         for original, tag in replacements.items():

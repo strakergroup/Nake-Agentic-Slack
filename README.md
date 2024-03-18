@@ -130,3 +130,8 @@ $ pipenv run python -m mypy app/**/*.py
 ### Slack API fields in env file
 
 These can be found once created in step 5 on the app page at https://api.slack.com/apps/
+
+### Translation
+translate.py has methods to use sitemanger.obj_stringtranslator db for translation
+You can use the _() function to translate your strings
+The locale is read from client info
