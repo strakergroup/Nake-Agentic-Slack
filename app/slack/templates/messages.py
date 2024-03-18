@@ -83,7 +83,9 @@ class OnboardingMessage(SlackMessage):
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": _("Connect your LanguageCloud account to get details about your translation jobs."),
+                            "text": _(
+                                "Connect your LanguageCloud account to get details about your translation jobs."
+                            ),
                         },
                     },
                     {
@@ -302,7 +304,9 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🔍 Search allows you to search for specific Translation Jobs (TJs). "),
+                        "text": _(
+                            "🔍 Search allows you to search for specific Translation Jobs (TJs). "
+                        ),
                     },
                     "accessory": {
                         "type": "button",
@@ -336,11 +340,16 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🗂️ New translation job opens the form to upload documents for translation."),
+                        "text": _(
+                            "🗂️ New translation job opens the form to upload documents for translation."
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": _("New translation job")},
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("New translation job"),
+                        },
                         "action_id": "new_job",
                     },
                 },
@@ -423,7 +432,9 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🔍 Search allows you to search for specific Translation Jobs (TJs). "),
+                        "text": _(
+                            "🔍 Search allows you to search for specific Translation Jobs (TJs). "
+                        ),
                     },
                     "accessory": {
                         "type": "button",
@@ -457,11 +468,16 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🗂️ New translation job opens the form to upload documents for translation."),
+                        "text": _(
+                            "🗂️ New translation job opens the form to upload documents for translation."
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": _("New translation job")},
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("New translation job"),
+                        },
                         "action_id": "new_job",
                     },
                 },
@@ -524,7 +540,9 @@ class LogoutMessage(SlackMessage):
     """Message with a button disconnect a user's LanguageCloud account."""
 
     def __init__(self, ray_client: RayClient) -> None:
-        text = _("Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_client.username}>.")
+        text = _(
+            "Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_client.username}>."
+        )
         if ray_client.sso:
             text = _(
                 "Click this button to disconnect your LanguageCloud account: *{ray_client.username}*."
@@ -599,7 +617,9 @@ class SuccessfulLogoutMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("You can use `connect` to connect your LanguageCloud account again."),
+                        "text": _(
+                            "You can use `connect` to connect your LanguageCloud account again."
+                        ),
                     },
                 },
             ],
@@ -1520,7 +1540,9 @@ class NewJobMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *New translation job* button below"),
+                        "text": _(
+                            "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *New translation job* button below"
+                        ),
                     },
                 },
                 {
@@ -1623,7 +1645,9 @@ class JobCreationMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(":tada: A new translation job has been created with the job number: `{job_id}`"),
+                        "text": _(
+                            ":tada: A new translation job has been created with the job number: `{job_id}`"
+                        ),
                     },
                 },
                 {
@@ -1731,7 +1755,9 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🔍 Search allows you to search for specific Translation Jobs (TJs). "),
+                        "text": _(
+                            "🔍 Search allows you to search for specific Translation Jobs (TJs). "
+                        ),
                     },
                     "accessory": {
                         "type": "button",
@@ -1757,11 +1783,16 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🗂️ New translation job opens the form to upload documents for translation."),
+                        "text": _(
+                            "🗂️ New translation job opens the form to upload documents for translation."
+                        ),
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": _("New translation job")},
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("New translation job"),
+                        },
                         "action_id": "quote",
                     },
                 },
@@ -1856,7 +1887,9 @@ class QuoteMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *New translation job* button below"),
+                        "text": _(
+                            "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *New translation job* button below"
+                        ),
                     },
                 },
                 {
@@ -2034,7 +2067,9 @@ class SsoConnectionInfoMessage(SlackMessage):
         ray_connection: RayConnection,
     ) -> None:
         if ray_connection.client is not None:
-            text = _("Your connected LanguageCloud account is: *{ray_connection.client.username}*.")
+            text = _(
+                "Your connected LanguageCloud account is: *{ray_connection.client.username}*."
+            )
 
         msg = [
             {
@@ -2365,8 +2400,9 @@ class JobQuotedEventMessage(SlackMessage):
         job_url = f"<{get_job_url(event.uuid, event.client_id)}|{_('Straker Job Reference')} {event.id}>"
         super().__init__(
             _(
-                "Your quote is now ready :raised_hands: Straker Job Reference {event.id}",
-            )[
+                "Your quote is now ready :raised_hands: Straker Job Reference {event.id}"
+            ),
+            [
                 {
                     "type": "section",
                     "text": {
