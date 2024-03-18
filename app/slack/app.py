@@ -54,7 +54,7 @@ oauth_settings = AsyncOAuthSettings(
         # Disable new scopes until approved for production.
         if config.environment != Environment.production
         or domains.slack_ray_translator
-        == "https://staging-slack-deltaray.strakertranslations.com"
+        == "https://stage-slack-deltaray.strakertranslations.com"
         else [
             "app_mentions:read",
             "chat:write",

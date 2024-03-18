@@ -146,7 +146,7 @@ def home_view(
                 auto_translate_blocks
                 if config.environment != Environment.production
                 or domains.slack_ray_translator
-                == "https://staging-slack-deltaray.strakertranslations.com"
+                == "https://stage-slack-deltaray.strakertranslations.com"
                 else []
             ),
             {"type": "divider"},
