@@ -17,7 +17,7 @@ from .stores import AsyncSQLAlchemyInstallationStore, AsyncSQLAlchemyOAuthStateS
 from .templates.messages import OnboardingMessage
 from ..auth.connector import save_user_token_from_installation
 from ..cache.timer import clear_auto_translate_permissions_reminder
-from ..config import config
+from ..config import Environment, config, domains
 from ..database import engines
 
 
@@ -36,20 +36,35 @@ state_store = AsyncSQLAlchemyOAuthStateStore(
 oauth_settings = AsyncOAuthSettings(
     client_id=config.slack_client_id,
     client_secret=config.slack_client_secret.get_secret_value(),
-    scopes=[
-        "app_mentions:read",
-        "channels:history",
-        "channels:join",
-        "chat:write",
-        "chat:write.public",
-        "commands",
-        "files:read",
-        "groups:history",
-        "im:history",
-        "mpim:history",
-        "users:read",
-        "users:read.email",
-    ],
+    scopes=(
+        [
+            "app_mentions:read",
+            "channels:history",
+            "channels:join",
+            "chat:write",
+            "chat:write.public",
+            "commands",
+            "files:read",
+            "groups:history",
+            "im:history",
+            "mpim:history",
+            "users:read",
+            "users:read.email",
+        ]
+        # Disable new scopes until approved for production.
+        if config.environment != Environment.production
+        or domains.slack_ray_translator
+        == "https://staging-slack-deltaray.strakertranslations.com"
+        else [
+            "app_mentions:read",
+            "chat:write",
+            "chat:write.public",
+            "commands",
+            "files:read",
+            "im:history",
+            "users:read",
+        ]
+    ),
     # Do not ask for user tokens on installation, only when needed.
     # user_scopes=[
     #     "chat:write",

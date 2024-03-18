@@ -134,6 +134,8 @@ def home_view(
             *(
                 auto_translate_blocks
                 if config.environment != Environment.production
+                or domains.slack_ray_translator
+                == "https://staging-slack-deltaray.strakertranslations.com"
                 else []
             ),
             {"type": "divider"},
@@ -759,9 +761,8 @@ def sso_form_modal() -> dict[str, Any]:
         "callback_id": "login_sso",
     }
 
-def cancel_job_modal(
-                        client_name: str,
-                    ) -> dict[str, Any]:
+
+def cancel_job_modal(client_name: str) -> dict[str, Any]:
     """The template for the modal to cancel TJ by insert number and submit a search request
 
     Args:
@@ -808,10 +809,10 @@ def cancel_job_modal(
         ],
     }
 
+
 def settings_auto_translate_view(
     initial_channels: list[str] | None = None, initial_langs: list[str] | None = None
 ) -> dict[str, Any]:
-    # TODO: Filter conversations by access?
     # TODO: Detect message max length
     # TODO: Detect message formatting, emojis
     # TODO: 429 rate limiting
