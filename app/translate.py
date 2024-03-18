@@ -11,9 +11,26 @@ from .redis import redis_sync as redis_conn
 
 
 class Translator:
+    BCP_47_TO_SHORTNAME = None
+
     def __init__(self, lang):
-        self.lang = lang
+        if Translator.BCP_47_TO_SHORTNAME is None:
+            Translator.BCP_47_TO_SHORTNAME = self.generate_language_map()
+        self.lang = Translator.BCP_47_TO_SHORTNAME.get(lang, lang)
         self.cache = {}
+
+    @classmethod
+    def generate_language_map(cls):
+        language_map = {}
+        with engines["translators_readonly"].connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT bcp_47, shortname FROM obj_m_langs WHERE bcp_47 IS NOT NULL AND bcp_47 != ''"
+                )
+            )
+            for row in result:
+                language_map[row[0]] = row[1]
+        return language_map
 
     def translate(self, input):
         if self.lang.lower().startswith("en"):
