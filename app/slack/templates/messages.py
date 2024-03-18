@@ -554,7 +554,7 @@ class LogoutMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(text),
+                        "text": text,
                     },
                 },
                 {
