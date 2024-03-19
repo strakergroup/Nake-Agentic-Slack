@@ -29,7 +29,7 @@ def home_auth_blocks(
         super_group_names = [group.name for group in ray_connection.super_group]
         super_group_names_str = ", ".join(super_group_names)
         user_id_str = f"<@{user_id}>"
-        domain_url = "<{domains.languagecloud}|{ray_connection.client.username}>"
+        domain_url = f"<{domains.languagecloud}|{ray_connection.client.username}>"
         text = "Your Slack account {user_id_str} is connected with: {domain_url}."
         if ray_connection.client.sso:
             text = "Your Slack account {user_id_str} is connected with: *{ray_connection.client.username}*."
