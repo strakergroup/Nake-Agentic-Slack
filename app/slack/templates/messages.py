@@ -693,7 +693,7 @@ class JobStatusMessage(SlackMessage):
                     {"type": "mrkdwn", "text": _("*Target Language:*")},
                     {
                         "type": "mrkdwn",
-                        "text": _(", ".join(sorted([lang.name for lang in job.tl]))),
+                        "text": ", ".join(sorted([lang.name for lang in job.tl])),
                     },
                     {"type": "mrkdwn", "text": _("*Expected Completion Date:*")},
                     {
@@ -818,7 +818,7 @@ class JobStatusMessage(SlackMessage):
                 ),
             )
         super().__init__(
-            _("Job status ({job.id}): {format_job_status(job.status)}"),
+            f"Job status ({job.id}): {format_job_status(job.status)}",
             job_status_block,
         )
 
