@@ -1125,7 +1125,7 @@ class JobSummaryMessage(SlackMessage):
                     sections.append(
                         job_prediction_block(
                             _(
-                                "*     :large_green_circle: {predictions['on_time']} {job_plural}* predicted to be on-time"
+                                f"*     :large_green_circle: {predictions['on_time']} {job_plural}* predicted to be on-time"
                             )
                         )
                     )
@@ -1139,7 +1139,7 @@ class JobSummaryMessage(SlackMessage):
                     sections.append(
                         job_prediction_block(
                             (
-                                "*     :large_orange_circle: {total_late} {job_plural}* may be behind schedule"
+                                f"*     :large_orange_circle: {total_late} {job_plural}* may be behind schedule"
                             )
                         )
                     )
