@@ -1138,7 +1138,7 @@ class JobSummaryMessage(SlackMessage):
                     )
                     sections.append(
                         job_prediction_block(
-                            (
+                            _(
                                 "*     :large_orange_circle: {total_late}"
                                 + f" {job_plural}* may be behind schedule"
                             )
