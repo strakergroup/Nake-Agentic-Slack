@@ -827,13 +827,14 @@ class JobDetailsMessage(SlackMessage):
     """Message showing the details of a translation job."""
 
     def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
+        job_link =f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
         job_detail_block: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "The information for <{get_job_url(job.uuid, client_id)}|*{job.id}*> is below:",
+                        "The information for {job_link} is below:",
                     ),
                 },
             },
@@ -1138,7 +1139,7 @@ class JobSummaryMessage(SlackMessage):
                     )
                     sections.append(
                         job_prediction_block(
-                            (
+                            _(
                                 "*     :large_orange_circle: {total_late}"
                                 + f" {job_plural}* may be behind schedule"
                             )
