@@ -827,7 +827,7 @@ class JobDetailsMessage(SlackMessage):
     """Message showing the details of a translation job."""
 
     def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
-        job_link =f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
+        job_link = f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
         job_detail_block: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -867,11 +867,14 @@ class JobDetailsMessage(SlackMessage):
                     },
                     {
                         "type": "mrkdwn",
-                        "text": _("*Target Languages: ") + "*\n{', '.join(sorted([lang.name for lang in job.tl]))}",
+                        "text": _("*Target Languages: ")
+                        + "*\n{', '.join(sorted([lang.name for lang in job.tl]))}",
                     },
                     {
                         "type": "mrkdwn",
-                        "text": _("*Valdation*") + "\n{'Yes' if job.validation else 'No'}",
+                        "text": _(
+                            f"*Valdation*\n{'Yes' if job.validation else 'No'}",
+                        ),
                     },
                     {
                         "type": "mrkdwn",
@@ -1122,7 +1125,8 @@ class JobSummaryMessage(SlackMessage):
                     sections.append(
                         job_prediction_block(
                             _(
-                                "*     :large_green_circle: {predictions['on_time']}" + f"{job_plural}* predicted to be on-time"
+                                "*     :large_green_circle: {predictions['on_time']}"
+                                + f"{job_plural}* predicted to be on-time"
                             )
                         )
                     )
@@ -1516,9 +1520,7 @@ class JobListMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            "*{title}*",
-                        ),
+                        "text": f"*{title}*",
                     },
                 },
                 *jobs_blocks,
