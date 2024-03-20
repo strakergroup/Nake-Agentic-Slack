@@ -283,7 +283,7 @@ def get_progess_text(predictions: dict) -> str:
     return status
 
 
-def job_prediction_block(prediction: str) -> dict:
+def job_prediction_block(prediction: str, value: int | None) -> dict:
     if "behind schedule" in prediction:
         return {
             "type": "section",
@@ -296,7 +296,7 @@ def job_prediction_block(prediction: str) -> dict:
                 "text": {
                     "type": "plain_text",
                     "emoji": True,
-                    "text": "Why?",
+                    "text": _("Why?"),
                 },
                 "action_id": "delay_info",
                 "value": "delay_info",

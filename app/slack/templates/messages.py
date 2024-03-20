@@ -1124,10 +1124,10 @@ class JobSummaryMessage(SlackMessage):
                     )
                     sections.append(
                         job_prediction_block(
-                            _(
-                                "*     :large_green_circle: {predictions['on_time']}"
+                            (
+                                "*     :large_green_circle: {value}"
                                 + f"{job_plural}* predicted to be on-time"
-                            )
+                            ), predictions['on_time']
                         )
                     )
                 if (predictions["late"]) > 0 or (predictions["over_due"]) > 0:
@@ -1139,10 +1139,10 @@ class JobSummaryMessage(SlackMessage):
                     )
                     sections.append(
                         job_prediction_block(
-                            _(
-                                "*     :large_orange_circle: {total_late}"
+                            (
+                                "*     :large_orange_circle: {value}"
                                 + f" {job_plural}* may be behind schedule"
-                            )
+                            ), total_late
                         )
                     )
         if completed > 0 or all_jobs:
