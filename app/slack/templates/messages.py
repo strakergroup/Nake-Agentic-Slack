@@ -828,6 +828,7 @@ class JobDetailsMessage(SlackMessage):
 
     def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
         job_link = f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
+        job_due_date = format_job_due_date_slack(job.target_date, job.status, traffic_light=True)
         job_detail_block: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -855,7 +856,7 @@ class JobDetailsMessage(SlackMessage):
                     {
                         "type": "mrkdwn",
                         "text": _(
-                            "*Due Date/Time*\n{format_job_due_date_slack(job.target_date, job.status, traffic_light=True)}",
+                            "*Due Date/Time*\n{job_due_date}",
                         ),
                     },
                     {"type": "mrkdwn", "text": _("*Reference:*\n{job.reference}")},
