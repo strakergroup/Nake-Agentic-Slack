@@ -867,15 +867,11 @@ class JobDetailsMessage(SlackMessage):
                     },
                     {
                         "type": "mrkdwn",
-                        "text": _(
-                            "*Target Languages:*\n{', '.join(sorted([lang.name for lang in job.tl]))}",
-                        ),
+                        "text": _("*Target Languages: ") + "*\n{', '.join(sorted([lang.name for lang in job.tl]))}",
                     },
                     {
                         "type": "mrkdwn",
-                        "text": _(
-                            "*Valdation*\n{'Yes' if job.validation else 'No'}",
-                        ),
+                        "text": _("*Valdation*") + "\n{'Yes' if job.validation else 'No'}",
                     },
                     {
                         "type": "mrkdwn",
