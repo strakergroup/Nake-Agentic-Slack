@@ -868,7 +868,7 @@ class JobDetailsMessage(SlackMessage):
                     {
                         "type": "mrkdwn",
                         "text": _("*Target Languages: ")
-                        + "*\n{', '.join(sorted([lang.name for lang in job.tl]))}",
+                        + f"*\n{', '.join(sorted([lang.name for lang in job.tl]))}",
                     },
                     {
                         "type": "mrkdwn",
