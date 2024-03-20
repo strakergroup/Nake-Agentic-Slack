@@ -289,14 +289,14 @@ def job_prediction_block(prediction: str) -> dict:
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": _(prediction),
+                "text": prediction,
             },
             "accessory": {
                 "type": "button",
                 "text": {
                     "type": "plain_text",
                     "emoji": True,
-                    "text": "Why?",
+                    "text": _("Why?"),
                 },
                 "action_id": "delay_info",
                 "value": "delay_info",
@@ -307,7 +307,7 @@ def job_prediction_block(prediction: str) -> dict:
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": _(prediction),
+                "text": prediction,
             },
         }
     else:
