@@ -2729,6 +2729,7 @@ class AutoTranslationMessage(SlackMessage):
         target_langs = [
             get_auto_translate_language_name(t[0]) for t in self.translations
         ]
+        target_langs_string = ", ".join(target_langs)
         blocks.append(
             {
                 "type": "context",
@@ -2736,7 +2737,7 @@ class AutoTranslationMessage(SlackMessage):
                     {
                         "type": "plain_text",
                         "text": _(
-                            "Translated to {', '.join(target_langs)} with Straker AI",
+                            "Translated to {target_langs_string} with Straker AI",
                         ),
                     }
                 ],
