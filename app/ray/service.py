@@ -1,10 +1,10 @@
 import asyncio
-from typing import Any, Callable, Coroutine, Iterable, TypeVar
-from functools import wraps
+from typing import Any, Iterable
 from urllib.parse import urlencode
-from buglog import notify_exception
+
 import httpx
 from httpx import Response
+from buglog import notify_exception
 from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
 from ray_sdk.api.v3.models import (
     Job,
@@ -16,26 +16,7 @@ from ray_sdk.api.v3.models import (
 )
 
 from ..config import config, domains, Environment
-from ..auth.connector import RayClient, encrpyt_slack_integration_token
-
-
-F = TypeVar("F", bound=Callable[..., Coroutine])
-
-
-def secured_endpoint(func: F) -> F:
-    """Decorator that raises an `AssertionError` before the function is
-    called if this RayService is not authenticated (has token + client_id).
-    """
-
-    @wraps(func)
-    async def wrapper(self, *args, **kwargs):
-        if not self.has_credentials():
-            raise AssertionError(
-                f"The RayService does not have credentials for: {func.__name__}"
-            )
-        return await func(self, *args, **kwargs)
-
-    return wrapper
+from ..auth.connector import RayClient
 
 
 class RayService:
@@ -52,7 +33,7 @@ class RayService:
         self._ray_client_id = ray_client_id
         self._ray = RayV3(
             api_token=token,
-            lc_api_id_token=id_token,
+            lc_id_token=id_token,
             base_url=domains.stingray,
             lc_base_url=domains.languagecloud_api,
         )
@@ -67,7 +48,7 @@ class RayService:
 
     @property
     def lc_token(self) -> str | None:
-        return self._ray.lc_api_id_token
+        return self._ray.lc_id_token
 
     def has_credentials(self) -> bool:
         """Returns `True` if this service has a RAY client ID and access token.
@@ -80,13 +61,12 @@ class RayService:
         """Gets the list of available languages for translation."""
         return await self._ray.get_languages()
 
-    @secured_endpoint
     async def get_job(
         self,
         job_id: str,
         page: int = 1,
         page_size: int = 5,
-    ) -> tuple[Job | None, Response | None]:
+    ) -> tuple[list[Job] | None, Response | None]:
         """Gets the details of a translation job.
 
         Args:
@@ -102,8 +82,10 @@ class RayService:
             return None, e.response
         except RayAPIResponseError as e:
             return None, e.response
+        except Exception as e:
+            notify_exception(e)
+            return None, None
 
-    @secured_endpoint
     async def get_job_summary(
         self,
         statuses: list[str],
@@ -123,7 +105,6 @@ class RayService:
             due_before=due_before,
         )
 
-    @secured_endpoint
     async def get_job_list(
         self,
         status: str | None = None,
@@ -149,7 +130,6 @@ class RayService:
             page_size=page_size,
         )
 
-    @secured_endpoint
     async def new_job(
         self,
         files: Iterable[str],
@@ -204,7 +184,6 @@ class RayService:
 
         return result
 
-    @secured_endpoint
     async def get_quote(self, job_id: str) -> tuple[Quote | None, Response | None]:
         """Gets the quote for the job.
 
@@ -222,13 +201,11 @@ class RayService:
         except RayAPIResponseError as e:
             return None, e.response
 
-    @secured_endpoint
     async def get_groups(self) -> list[GroupOptions]:
         """Gets the list of groups."""
         response = await self._ray.get_groups()
         return response.data
 
-    @secured_endpoint
     async def get_machine_translation(
         self,
         target_lang: str,
@@ -243,12 +220,10 @@ class RayService:
             app_name="slack",
         )
 
-    @secured_endpoint
     async def detect_language(self, text: str):
         """Detects the language of a text using the Google Translate API."""
         return await self._ray.detect_language(text)
 
-    @secured_endpoint
     async def cancel_job(
         self,
         job_id: str = "",
@@ -310,8 +285,7 @@ class RayService:
         return cls.services[key]
 
 
-# These functions are for RAY endpoints that do not require authentication.
-
+# These functions are for RAY endpoints that do not require authentication
 
 _noauth_service = RayService(None, None, None)
 
