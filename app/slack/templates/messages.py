@@ -828,7 +828,9 @@ class JobDetailsMessage(SlackMessage):
 
     def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
         job_link = f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
-        job_due_date = format_job_due_date_slack(job.target_date, job.status, traffic_light=True)
+        job_due_date = format_job_due_date_slack(
+            job.target_date, job.status, traffic_light=True
+        )
         job_detail_block: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -1128,7 +1130,8 @@ class JobSummaryMessage(SlackMessage):
                             (
                                 "*     :large_green_circle: {value}"
                                 + f"{job_plural}* predicted to be on-time"
-                            ), predictions['on_time']
+                            ),
+                            predictions["on_time"],
                         )
                     )
                 if (predictions["late"]) > 0 or (predictions["over_due"]) > 0:
@@ -1143,7 +1146,8 @@ class JobSummaryMessage(SlackMessage):
                             (
                                 "*     :large_orange_circle: {value}"
                                 + f" {job_plural}* may be behind schedule"
-                            ), total_late
+                            ),
+                            total_late,
                         )
                     )
         if completed > 0 or all_jobs:
@@ -2710,7 +2714,7 @@ class AutoTranslationMessage(SlackMessage):
         blocks: list[dict[str, Any]] = [
             {"type": "section", "text": {"type": "mrkdwn", "text": self.source_text}}
         ]
-        for _, translated in self.translations:
+        for target_lang, translated in self.translations:
             blocks.append(
                 {
                     "type": "rich_text",
