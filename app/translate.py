@@ -45,7 +45,7 @@ class Translator:
             return cached_translation
         # prepare input for translation by replacing emojis and python varible expansion with x tags
         replacements = {}
-        for i, match in enumerate(re.finditer(r":\w+:|\$\{\w+\}", input)):
+        for i, match in enumerate(re.finditer(r":\w+:|\{\w+\}", input)):
             tag = f"<x id={i+1}>"
             replacements[match.group()] = tag
             translation = translation.replace(match.group(), tag)
