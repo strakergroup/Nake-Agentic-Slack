@@ -808,7 +808,7 @@ def cancel_job_modal(client_name: str) -> dict[str, Any]:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": _("You are cancel a job as `{client_name}`."),
+                    "text": _("You are cancelling a job as `{client_name}`."),
                     "verbatim": True,
                 },
             },
