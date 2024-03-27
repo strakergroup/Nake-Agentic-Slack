@@ -2800,6 +2800,11 @@ class MachineTranslationMessage(SlackMessage):
         )
 
 
+class TranscriptionMessage(TextMessage):
+    def __init__(self) -> None:
+        super().__init__(_("⏱️ Please wait a moment and we will transcribe your file"))
+
+
 class InvalidMTResultMessage(TextMessage):
     """The user does not get MT result."""
 
