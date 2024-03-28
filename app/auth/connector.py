@@ -556,6 +556,7 @@ async def get_ray_client(
             return None
         access_token = row[0]
 
+    # TODO Fix this, sometimes the plan is incorrect.
     # get group subscription plan
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
