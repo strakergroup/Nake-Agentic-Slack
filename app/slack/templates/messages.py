@@ -20,6 +20,7 @@ from ...ray.utils import (
     format_datetime_slack,
     format_job_due_date_slack,
     format_job_prediction,
+    is_min_langugagecloud_plan,
 )
 from ...ray.settings import get_auto_translate_language_name
 from ...config import config, domains, Environment
@@ -2639,7 +2640,7 @@ class FileListMessage(SlackMessage):
 
 class ReportInsightsMessage(SlackMessage):
     def __init__(self, plan: str) -> None:
-        if plan == "Free":
+        if not is_min_langugagecloud_plan(plan, "Essentials"):
             message = "The insights feature is only avaiable on the Growth and Enterprise plans."
         else:
             message = "You can use the message pane below to type your insights request using natural language. Get turn around times, cost, or validation quality. An example:\n>Can you tell me how many jobs have been delivered on time in the last 30 days"

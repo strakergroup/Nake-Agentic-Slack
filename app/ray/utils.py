@@ -172,15 +172,17 @@ def is_min_langugagecloud_plan(
     Returns:
         bool: The plan meets the minimum requirements.
     """
-    if not min_plan or min_plan.lower() == "free":
-        return True
-    if not plan or plan.lower() == "free":
-        return False
-    if min_plan.lower() == "essentials":
-        return plan.lower() in ["essentials", "growth", "enterprise"]
-    if min_plan.lower() == "growth":
-        return plan.lower() in ["growth", "enterprise"]
-    if min_plan.lower() == "enterprise":
-        return plan.lower() == "enterprise"
-    # Unknown min plan.
-    return False
+    # TODO Allow all plans until bug (auth/connector.py) is fixed.
+    return True
+    # if not min_plan or min_plan.lower() == "free":
+    #     return True
+    # if not plan or plan.lower() == "free":
+    #     return False
+    # if min_plan.lower() == "essentials":
+    #     return plan.lower() in ["essentials", "growth", "enterprise"]
+    # if min_plan.lower() == "growth":
+    #     return plan.lower() in ["growth", "enterprise"]
+    # if min_plan.lower() == "enterprise":
+    #     return plan.lower() == "enterprise"
+    # # Unknown min plan.
+    # return False
