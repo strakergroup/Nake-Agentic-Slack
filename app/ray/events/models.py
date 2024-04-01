@@ -103,3 +103,7 @@ class JobQuoteCancelledEvent(BaseModel):
         if isinstance(v, datetime.datetime):
             return v
         return parse(v, dayfirst=True)
+
+
+class JobTranscribedEvent(BaseModel):
+    output_file: str

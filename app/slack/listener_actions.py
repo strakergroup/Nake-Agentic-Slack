@@ -103,9 +103,12 @@ async def respond_to_message(
                                 json={
                                     "data": {
                                         "task_id": "slack-media-task",
-                                        "slack_user_id": context.ray.client.slack_user_id,
                                         "input_url": download_url,
                                         "input_token": token,
+                                        "on_completed": {
+                                            "callback_uri": domains.stream_proxy,
+                                            "data": {"slack_user_id": context.ray.client.slack_user_id}
+                                        },
                                     },
                                     "source": "Straker Translate for Slack",
                                 },

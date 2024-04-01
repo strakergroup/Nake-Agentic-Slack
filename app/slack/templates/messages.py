@@ -2800,6 +2800,33 @@ class MachineTranslationMessage(SlackMessage):
         )
 
 
+class JobTranscribedEventMessage(SlackMessage):
+
+    def __init__(self, output_file: str) -> None:
+        title = _("We have *transcribed* your file and srt can be downloaded below.")
+        # create message which contains the output_file
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{title}*",
+                    },
+                },
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": _("Show more options"),
+                    },
+                    "action_id": "transcode_options",
+                }
+            ],
+        )
+
+
 class TranscriptionMessage(TextMessage):
     def __init__(self) -> None:
         super().__init__(_("⏱️ Please wait a moment and we will transcribe your file"))

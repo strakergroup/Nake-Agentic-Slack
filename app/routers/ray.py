@@ -19,6 +19,7 @@ from ..slack.templates.messages import (
     ClientSignupEventAdminMessage,
     ClientApprovedEventMessage,
     JobCreationMessage,
+    JobTranscribedEventMessage,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.events.models import ClientGroup
@@ -70,6 +71,17 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         )
             else:
                 await post_notification(app.client, event, auth.slack_user, message)
+        elif isinstance(message, JobTranscribedEventMessage):
+            await post_notification_ephemeral(
+                app.client, auth.slack_user.channel_id, event, auth.slack_user, message
+            )
+            with open(event.output_file, "rb") as file_content:
+                await app.client.files_upload(
+                    channels=auth.slack_user.channel_id,
+                    file=file_content,
+                    title="Here is your file",
+                    initial_comment="This is the file you requested.",
+                )
 
     # Send notifications to group admins when a new client signs up.
     if isinstance(message, ClientSignupEventMessage):
@@ -134,11 +146,15 @@ async def api_job_callback(
         if demo_slack_users:
             for slack_user_id in demo_slack_users:
                 await app.client.chat_postMessage(
-                    channel=slack_user_id, text=message.text, blocks=message.blocks,
+                    channel=slack_user_id,
+                    text=message.text,
+                    blocks=message.blocks,
                 )
         else:
             await app.client.chat_postMessage(
-                channel=slack_user.user_id, text=message.text, blocks=message.blocks,
+                channel=slack_user.user_id,
+                text=message.text,
+                blocks=message.blocks,
             )
         return {
             "message": "success",
