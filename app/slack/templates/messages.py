@@ -1620,9 +1620,8 @@ class JobSubmitMessage(SlackMessage):
 class InsightsMessage(SlackMessage):
     def __init__(self, message: str):
         super().__init__(
-            _(
-                ":idea: Here are your insights",
-            )[
+            _(":idea: Here are your insights"),
+            [
                 {
                     "type": "section",
                     "text": {
