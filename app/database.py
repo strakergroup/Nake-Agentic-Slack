@@ -15,6 +15,7 @@ engines = DBEnginePool(
         "api",
         "api_readonly",
         "ray_integration_log",
+        "translators_readonly",
     ),
     dbapi="mysqlconnector",
     # echo=True,  # Uncomment to log SQL queries
