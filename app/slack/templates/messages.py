@@ -305,7 +305,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🔍 Search allows you to search for specific Translation Jobs (TJs). "
+                            "🔍 Search allows you to search for specific Translation Jobs (TJs)."
                         ),
                     },
                     "accessory": {
@@ -540,8 +540,9 @@ class LogoutMessage(SlackMessage):
     """Message with a button disconnect a user's LanguageCloud account."""
 
     def __init__(self, ray_client: RayClient) -> None:
+        user_details = "<{domains.languagecloud}|{ray_client.username}>"
         text = _(
-            "Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_client.username}>."
+            "Click this button to disconnect your LanguageCloud account: {user_details}."
         )
         if ray_client.sso:
             text = _(
@@ -591,17 +592,19 @@ class SuccessfulLogoutMessage(SlackMessage):
         self, user_id: str, is_sso: bool = False, ray_username: str | None = None
     ) -> None:
         # TODO: Translation fix this
+        user_details = "<{domains.languagecloud}|{ray_username}>"
+        user_link = "<@{user_id}>"
         text = _(
-            "Your LanguageCloud account <{domains.languagecloud}|{ray_username}> is now disconnected from <@{user_id}>."
+            "Your LanguageCloud account {user_details} is now disconnected from {user_link}."
         )
         if is_sso:
             text = _(
-                "Your LanguageCloud account *{ray_username}* is now disconnected from <@{user_id}>."
+                "Your LanguageCloud account *{ray_username}* is now disconnected from {user_link}."
             )
         block_message = (
             text
             if ray_username
-            else _("Your LanguageCloud account is now disconnected from <@{user_id}>.")
+            else _("Your LanguageCloud account is now disconnected from {user_link}.")
         )
         super().__init__(
             "Your LanguageCloud account is now disconnected.",
@@ -828,6 +831,7 @@ class JobDetailsMessage(SlackMessage):
 
     def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
         job_link = f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
+        pm_details = "{job.project_manager.first_name} {job.project_manager.last_name}"
         job_due_date = format_job_due_date_slack(
             job.target_date, job.status, traffic_light=True
         )
@@ -847,7 +851,8 @@ class JobDetailsMessage(SlackMessage):
                     {
                         "type": "mrkdwn",
                         "text": _(
-                            f"*Job Status:*\n{format_job_status(job.status)}",
+                            f"*Job Status:*\n",
+                            +f"{format_job_status(job.status)}",
                         ),
                     },
                     {
@@ -870,19 +875,19 @@ class JobDetailsMessage(SlackMessage):
                     },
                     {
                         "type": "mrkdwn",
-                        "text": _("*Target Languages: ")
+                        "text": _("*Target Languages:")
                         + f"*\n{', '.join(sorted([lang.name for lang in job.tl]))}",
                     },
                     {
                         "type": "mrkdwn",
                         "text": _(
-                            f"*Valdation*\n{'Yes' if job.validation else 'No'}",
+                            f"*Validation*\n{'Yes' if job.validation else 'No'}",
                         ),
                     },
                     {
                         "type": "mrkdwn",
                         "text": _(
-                            "*Project Manager*\n{job.project_manager.first_name} {job.project_manager.last_name}",
+                            "*Project Manager*\n{pm_details}",
                         ),
                     },
                 ],
@@ -2424,11 +2429,21 @@ class JobQuotedEventMessage(SlackMessage):
 
 class JobDelayMessage(SlackMessage):
     def __init__(self) -> None:
-        message = "Our LanguageCloud on-time AI prediction model has indicated that your job may be tracking behind schedule.\n\n"
-        message += "Our Project Managers have been notified and will be taking action to ensure that we still meet your due date. "
-        message += "If there is going to be a delay meeting your due dates, our Project Managers or your Account Manager will inform you. "
-        message += "This is only a prediction and should not be taken as an indication that your job is going to be late.\n\n"
-        message += "This status is updated in real time so can change if we predict it is tracking on time again."
+        message = _(
+            "Our LanguageCloud on-time AI prediction model has indicated that your job may be tracking behind schedule.\n\n"
+        )
+        message += _(
+            "Our Project Managers have been notified and will be taking action to ensure that we still meet your due date. "
+        )
+        message += _(
+            "If there is going to be a delay meeting your due dates, our Project Managers or your Account Manager will inform you. "
+        )
+        message += _(
+            "This is only a prediction and should not be taken as an indication that your job is going to be late.\n\n"
+        )
+        message += _(
+            "This status is updated in real time so can change if we predict it is tracking on time again."
+        )
 
         super().__init__(
             message,
@@ -2437,7 +2452,7 @@ class JobDelayMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(message),
+                        "text": message,
                     },
                 },
             ],
