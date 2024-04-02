@@ -4,7 +4,7 @@ import datetime
 from urllib.parse import urlencode
 
 from babel.numbers import format_currency as babel_format_currency
-from app.translate import _
+
 from ..config import domains
 
 

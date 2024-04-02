@@ -33,6 +33,7 @@ async def health_check(response: Response, password: str | None = None):
         "environment": config.environment.value,
         "errors": errors,
         "info": info,
+        "x": 1,  # TODO Indicator, remove later
     }
 
     if errors:

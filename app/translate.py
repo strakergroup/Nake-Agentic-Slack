@@ -8,16 +8,17 @@ from buglog import notify_exception
 from .database import engines
 from sqlalchemy import text
 from .redis import redis_sync as redis_conn
+from .config import Environment, config
 
 
 class Translator:
     BCP_47_TO_SHORTNAME = None
 
-    def __init__(self, lang):
+    def __init__(self, lang: str):
         if Translator.BCP_47_TO_SHORTNAME is None:
             Translator.BCP_47_TO_SHORTNAME = self.generate_language_map()
-        self.lang = Translator.BCP_47_TO_SHORTNAME.get(lang, lang)
-        self.cache = {}
+        self.lang: str = Translator.BCP_47_TO_SHORTNAME.get(lang, lang)
+        self.cache: dict[str, str] = {}
 
     @classmethod
     def generate_language_map(cls):
@@ -32,7 +33,11 @@ class Translator:
                 language_map[row[0]] = row[1]
         return language_map
 
-    def translate(self, input):
+    def translate(self, input: str):
+        if config.environment == Environment.production:
+            # Disable localisation in production until ready.
+            return input
+
         if self.lang.lower().startswith("en"):
             return input
         if input in self.cache:
@@ -80,7 +85,7 @@ class Translator:
 translator_var = contextvars.ContextVar("translator", default=Translator("en"))
 
 
-def _(input):
+def _(input: str):
     translator = translator_var.get()
     frame = inspect.currentframe()
     try:

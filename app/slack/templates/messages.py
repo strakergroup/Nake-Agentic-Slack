@@ -2,7 +2,7 @@
 
 from typing import Any
 import json
-from app.translate import _
+
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm

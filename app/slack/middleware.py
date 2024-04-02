@@ -6,9 +6,9 @@ See https://slack.dev/bolt-python/concepts#listener-middleware.
 from typing import Any
 import logging
 
-from buglog import notify_message
+from buglog import notify_exception, notify_message
 from slack_bolt.context.async_context import AsyncBoltContext
-from ray_logger.slack import SlackAppLog
+from ray_logger.slack import SlackAppLog  # type: ignore
 
 from app.translate import translator_var, Translator
 
@@ -74,8 +74,8 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
         )
         translator_var.set(Translator(user_info["user"]["locale"]))
     except Exception as e:
-        error_message = str(e)
-        print(error_message)
+        print(e)
+        notify_exception(e)
     # Log the RAY client ID if available.
     if "log" in context and isinstance(context["log"], SlackAppLog):
         if context["ray"] is not None:
@@ -92,8 +92,8 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
                 # insert to db
                 await log_new_user_info(user_info["user"])
             except Exception as e:
-                error_message = str(e)
-                print(error_message)
+                print(e)
+                notify_exception(e)
 
     await next()
 
