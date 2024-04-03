@@ -73,7 +73,7 @@ class OnboardingMessage(SlackMessage):
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": _("Welcome to RAY Translate for Slack! :tada:"),
+                    "text": _("Welcome to Straker Translate for Slack! :tada:"),
                 },
             }
         ]
@@ -108,7 +108,7 @@ class OnboardingMessage(SlackMessage):
                     },
                 ]
             )
-        super().__init__("Welcome to RAY Translate for Slack! :tada:", blocks)
+        super().__init__(_("Welcome to Straker Translate for Slack! :tada:"), blocks)
 
 
 class LoginMessage(SlackMessage):
@@ -2140,7 +2140,7 @@ class ClientSignupEventAdminMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "Before this user can use RAY Translate for Slack, they require approval for the groups they should be associated with:"
+                            "Before this user can use Straker Translate for Slack, they require approval for the groups they should be associated with:"
                         ),
                     },
                 },
@@ -2214,7 +2214,7 @@ class ClientApprovedEventMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            ":white_check_mark: You can now access all the features within RAY Translate."
+                            ":white_check_mark: You can now access all the features within Straker Translate."
                         ),
                     },
                 },

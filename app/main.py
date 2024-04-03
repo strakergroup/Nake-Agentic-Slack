@@ -51,4 +51,4 @@ if config.elastic_apm_server_url:
 
 @app.get("/")
 async def root():
-    return {"message": "Slack Ray Translator App"}
+    return {"message": "Straker Translate API"}

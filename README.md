@@ -1,14 +1,14 @@
-# Slack RAY Translator App
+# Straker Translate for Slack
 
-The official [Slack App](https://api.slack.com/) for the Straker Translations RAY platform. This app allows clients to view and manage their translation jobs from Slack.
+The [Slack App](https://api.slack.com/) for Straker LanguageCloud. This app allows clients to view and manage their translation jobs from Slack.
 
 ## Development
 
 ### Requirements
 
 - [Python 3.11](https://www.python.org/)
+- [Pipenv](https://pipenv.pypa.io/)
 - MySQL
-- [Pipenv](https://pipenv.pypa.io/) (if not using Docker)
 
 ### Setup
 
@@ -132,6 +132,7 @@ $ pipenv run python -m mypy app/**/*.py
 These can be found once created in step 5 on the app page at https://api.slack.com/apps/
 
 ### Translation
+
 translate.py has methods to use sitemanger.obj_stringtranslator db for translation
-You can use the _() function to translate your strings
+You can use the \_() function to translate your strings
 The locale is read from client info
