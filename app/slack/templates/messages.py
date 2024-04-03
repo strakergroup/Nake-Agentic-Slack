@@ -1712,8 +1712,9 @@ class FileTranslatedMessage(SlackMessage):
             )
         super().__init__(
             _(
-                "Some of your files are translated and ready to be downloaded ({job_id})",
-            )[
+                "Some of your files are translated and ready to be downloaded ({job_id})"
+            ),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2047,9 +2048,8 @@ class JobQuotedMessage(SlackMessage):
     def __init__(self, quote: Quote) -> None:
         job_url = get_job_url(quote.uuid, quote.client_id)
         super().__init__(
-            _(
-                "Pending Quote: Straker Job Reference {quote.id}",
-            )[
+            _("Pending Quote: Straker Job Reference {quote.id}"),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2143,9 +2143,8 @@ class ClientSignupEventAdminMessage(SlackMessage):
         self.event = event
         user_str = f"{event.first_name} {event.last_name} ({event.email})"
         super().__init__(
-            _(
-                "A new user has signed up for a LanguageCloud account: {user_str}",
-            )[
+            _("A new user has signed up for a LanguageCloud account: {user_str}"),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2256,8 +2255,9 @@ class JobStatusChangedEventMessage(SlackMessage):
         status_formatted = format_job_status(status)
         super().__init__(
             _(
-                "Your translation job {job_id} has changed status to: {status_formatted}",
-            )[
+                "Your translation job {job_id} has changed status to: {status_formatted}"
+            ),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2289,9 +2289,8 @@ class JobCompletedEventMessage(SlackMessage):
         else:
             target_lang_text = ", ".join(target_languages)
         super().__init__(
-            _(
-                "Your files for {job_id} are ready to download :white_check_mark:",
-            )[
+            _("Your files for {job_id} are ready to download :white_check_mark:"),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2341,9 +2340,8 @@ class JobCancelledEventMessage(SlackMessage):
     def __init__(self, client_id: str, job_uuid: str, job_id: str) -> None:
         job_url = f"<{get_job_url(job_uuid, client_id)}|{job_id}>"
         super().__init__(
-            _(
-                "Your translation job {job_id} has been cancelled",
-            )[
+            _("Your translation job {job_id} has been cancelled"),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2384,9 +2382,8 @@ class JobQuoteCancelledEventMessage(SlackMessage):
     def __init__(self, client_id: str, job_uuid: str, job_id: str) -> None:
         job_url = f"<{get_job_url(job_uuid, client_id)}|{job_id}>"
         super().__init__(
-            _(
-                "We have cancelled the quote for {job_id}.",
-            )[
+            _("We have cancelled the quote for {job_id}."),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2644,9 +2641,8 @@ class ReportInsightsMessage(SlackMessage):
         else:
             message = "You can use the message pane below to type your insights request using natural language. Get turn around times, cost, or validation quality. An example:\n>Can you tell me how many jobs have been delivered on time in the last 30 days"
         super().__init__(
-            _(
-                ":idea: Here are your insights",
-            )[{"type": "section", "text": {"type": "mrkdwn", "text": _(message)}}],
+            _(":idea: Here are your insights"),
+            [{"type": "section", "text": {"type": "mrkdwn", "text": _(message)}}],
         )
 
 

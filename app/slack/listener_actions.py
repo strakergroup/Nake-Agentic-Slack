@@ -1337,37 +1337,19 @@ async def post_report_insights(
         raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
 
-    async def send_insights_message():
-        insights_msg = ReportInsightsMessage(ray_client.planname)
-        try:
-            if context.response_url:
-                await context.respond(
-                    text=insights_msg.text, blocks=insights_msg.blocks
-                )
-            else:
-                await context.client.chat_postMessage(
-                    channel=channel_id,
-                    text=insights_msg.text,
-                    blocks=insights_msg.blocks,
-                    thread_ts=thread_ts,
-                )
-        except Exception as e:
-            notify_exception(e, "Failed to get insights from Insights API")
-
-    waiting_msg = ":stopwatch: Please wait as we gather your information..."
-    if context.response_url:
-        response = await context.respond(text=waiting_msg)
-    else:
-        response = await context.client.chat_postMessage(
-            channel=channel_id,
-            text=waiting_msg,
-            thread_ts=thread_ts,
-        )
-
-    # Send insights message async because it might take a long time.
-    asyncio.create_task(send_insights_message())
-
-    return response
+    insights_msg = ReportInsightsMessage(ray_client.planname)
+    try:
+        if context.response_url:
+            await context.respond(text=insights_msg.text, blocks=insights_msg.blocks)
+        else:
+            await context.client.chat_postMessage(
+                channel=channel_id,
+                text=insights_msg.text,
+                blocks=insights_msg.blocks,
+                thread_ts=thread_ts,
+            )
+    except Exception as e:
+        notify_exception(e, "Failed to get insights from Insights API")
 
 
 async def get_mt_translation(
