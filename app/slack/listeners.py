@@ -357,6 +357,25 @@ async def ray_command(ack, respond, command, context, client):
                 msg = LogoutMessage(context["ray"].client)
                 await respond(text=msg.text, blocks=msg.blocks)
 
+        case ['settings']:
+            group_settings = get_auto_translate_group_settings(context)
+            channels = (
+                get_auto_translate_group_settings_channels(group_settings)
+                if group_settings
+                else []
+            )
+            # Allow changing settings if connect LC account OR channel is already enabled.
+            if (context.channel_id in channels) or (await require_ray_client(context)):
+                languages = (
+                    get_auto_translate_group_settings_langs(group_settings)
+                    if group_settings
+                    else []
+                )
+                await client.views_open(
+                    trigger_id=command["trigger_id"],
+                    view=settings_auto_translate_view(channels, languages),
+                )
+
         case ["job", reference, *reference_other]:
             # Get job status or list of jobs.
             if await require_ray_client(context, variation=LoginMessage.GET_JOB):
