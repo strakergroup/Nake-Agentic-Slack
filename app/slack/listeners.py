@@ -75,9 +75,10 @@ from ..auth.connector import (
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
-    get_auto_translate_user_settings_channels,
-    get_auto_translate_user_settings_langs,
-    update_auto_translate_user_settings,
+    get_auto_translate_group_settings,
+    get_auto_translate_group_settings_channels,
+    get_auto_translate_group_settings_langs,
+    update_auto_translate_group_settings,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
 from ..config import domains
@@ -432,9 +433,19 @@ async def ray_command(ack, respond, command, context, client):
 @slack_log_decorator
 async def show_auto_translate_settings(ack, context, body, client):
     await ack()
-    if await require_ray_client(context):
-        channels = get_auto_translate_user_settings_channels(context["ray"].client)
-        languages = get_auto_translate_user_settings_langs(context["ray"].client)
+    group_settings = get_auto_translate_group_settings(context)
+    channels = (
+        get_auto_translate_group_settings_channels(group_settings)
+        if group_settings
+        else []
+    )
+    # Allow changing settings if connect LC account OR channel is already enabled.
+    if (context.channel_id in channels) or (await require_ray_client(context)):
+        languages = (
+            get_auto_translate_group_settings_langs(group_settings)
+            if group_settings
+            else []
+        )
         await client.views_open(
             trigger_id=body["trigger_id"],
             view=settings_auto_translate_view(channels, languages),
@@ -779,44 +790,34 @@ async def handle_job_search(ack, view, context, client):
 
 @app.view("settings_auto_translate", middleware=[ray_connection])
 @slack_log_decorator
-async def view_update_auto_translate_user_settings(ack, view, context, client):
-    if await require_ray_client(context, prompt_login=False):
-        try:
-            form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
-        except ValidationError as e:
-            errors = convert_pydantic_to_slack_error(e)
-            await ack(response_action="errors", errors=errors)
-            return
-        await ack(response_action="clear")
+async def view_update_auto_translate_settings(ack, view, context, client):
+    try:
+        form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
+    except ValidationError as e:
+        errors = convert_pydantic_to_slack_error(e)
+        await ack(response_action="errors", errors=errors)
+        return
+    await ack(response_action="clear")
 
-        try:
-            update_auto_translate_user_settings(
-                context["ray"].client,
-                channels=form.channels,
-                languages=form.languages,
-            )
-
-            # Try to join channel automatically after updating settings.
-            async def join_channel(channel_id: str):
-                try:
-                    await client.conversations_join(channel=channel_id)
-                except SlackApiError:
-                    pass  # Cannot join private channel, or cannot find channel.
-                except Exception as e:
-                    notify_exception(e)
-
-            await asyncio.gather(
-                *[join_channel(channel_id) for channel_id in form.channels]
-            )
-        except Exception as e:
-            notify_exception(e)
-    else:
-        await ack(response_action="clear")
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            blocks=context["login_prompt"].blocks,
-            text=context["login_prompt"].text,
+    try:
+        update_auto_translate_group_settings(
+            context, channels=form.channels, languages=form.languages
         )
+
+        # Try to join channel automatically after updating settings.
+        async def join_channel(channel_id: str):
+            try:
+                await client.conversations_join(channel=channel_id)
+            except SlackApiError:
+                pass  # Cannot join private channel, or cannot find channel.
+            except Exception as e:
+                notify_exception(e)
+
+        await asyncio.gather(
+            *[join_channel(channel_id) for channel_id in form.channels]
+        )
+    except Exception as e:
+        notify_exception(e)
 
 
 @app.options("language_options")

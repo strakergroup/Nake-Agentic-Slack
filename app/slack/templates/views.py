@@ -838,10 +838,9 @@ def cancel_job_modal(client_name: str) -> dict[str, Any]:
 def settings_auto_translate_view(
     initial_channels: list[str] | None = None, initial_langs: list[str] | None = None
 ) -> dict[str, Any]:
-    # TODO: Detect message max length
+    # TODO: Detect message max length (5000)
     # TODO: Detect message formatting, emojis
     # TODO: 429 rate limiting
-    # TODO: Max characters (5000?)
     language_options = get_auto_translate_language_options()
     initial_channels = initial_channels or []
     initial_lang_options = (
@@ -900,7 +899,7 @@ def settings_auto_translate_view(
                         else {}
                     ),
                     "action_id": "languages",
-                    "max_selected_items": 3,
+                    "max_selected_items": 10,
                 },
                 "label": {"type": "plain_text", "text": _("Language"), "emoji": True},
                 "hint": {

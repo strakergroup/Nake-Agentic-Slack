@@ -32,15 +32,23 @@ def get_auto_translate_languages(
         ("fr", "French"),
         ("de", "German"),
         ("it", "Italian"),
+        ("pt", "Portuguese"),
         ("nl", "Dutch"),
+        ("da", "Danish"),
+        ("sv", "Swedish"),
+        ("fi", "Finnish"),
+        ("no", "Norwegian"),
         ("zh-CN", "Chinese (Simplified)"),
         ("zh-TW", "Chinese (Traditional)"),
         ("ja", "Japanese"),
         ("ko", "Korean"),
+        ("vi", "Vietnamese"),
         ("ar", "Arabic"),
+        ("pl", "Polish"),
         ("ru", "Russian"),
         ("uk", "Ukrainian"),
         ("be", "Belarusian"),
+        ("mi", "Maori"),
     ]
     if include_variations:
         languages.append(("zh", "Chinese (Simplified)"))
