@@ -752,7 +752,7 @@ async def post_job_list(
 
         # Truncate client_ref due to DB 100 char limit.
         client_ref = client_ref[:100] if client_ref else ""
-        print("preset", preset)
+
         match preset:
             case "IN_PROGRESS:ACCEPTED:24H":
                 title = "Jobs accepted within the last 24 hours"
