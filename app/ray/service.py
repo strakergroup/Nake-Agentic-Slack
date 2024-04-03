@@ -310,7 +310,7 @@ async def get_job_predictions(job_ids: list[str]) -> list[dict[str, Any]]:
         config.environment == Environment.production
         or config.environment == Environment.local
     ):
-        # Disable predictions on live for now.
+        # TODO: Disable predictions on live for now.
         return job_predictions
     try:
         async with httpx.AsyncClient(timeout=10) as client:

@@ -10,8 +10,6 @@ import re
 import httpx
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
-from slack_sdk.web.async_slack_response import AsyncSlackResponse
-from slack_sdk.webhook.webhook_response import WebhookResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
 from buglog import notify_exception, notify_message
@@ -44,9 +42,6 @@ from .templates.messages import (
 from .templates.models import NewJobForm
 from .templates.views import (
     new_job_modal,
-    job_search_modal,
-    sso_form_modal,
-    cancel_job_modal,
 )
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
@@ -104,6 +99,7 @@ async def respond_to_message(
         mt_tl = message_match.group(3) or "en"
         mt_text = message_match.group(4)
         await get_mt_translation(
+            client,
             context,
             context["ray"].client,
             source_lang=mt_sl,
@@ -130,7 +126,7 @@ async def respond_to_message(
                 thread_ts=thread_ts,
             )
         case "Login":
-            await context.client.chat_postEphemeral(
+            await client.chat_postEphemeral(
                 channel=context["channel_id"],
                 user=context["user_id"],
                 text=context["login_prompt"].text,
@@ -139,7 +135,7 @@ async def respond_to_message(
         case "Logout":
             if await require_ray_client(context):
                 msg = LogoutMessage(context["ray"].client)
-                await context.client.chat_postEphemeral(
+                await client.chat_postEphemeral(
                     channel=context["channel_id"],
                     user=context["user_id"],
                     text=msg.text,
@@ -148,12 +144,13 @@ async def respond_to_message(
         case "Job_Overview":
             if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                 await post_job_summary(
-                    context, context["ray"].client, thread_ts=thread_ts
+                    client, context, context["ray"].client, thread_ts=thread_ts
                 )
         case "Job_Status":
             if tj_number_entity := response.findEntity("tj-number"):
                 if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                     await post_job_status(
+                        client,
                         context,
                         context["ray"].client,
                         tj_number_entity.groups[0],
@@ -165,7 +162,10 @@ async def respond_to_message(
             if tj_number_entity := response.findEntity("tj-number"):
                 if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                     await post_job_target_lang(
-                        context, context["ray"].client, tj_number_entity.groups[0]
+                        client,
+                        context,
+                        context["ray"].client,
+                        tj_number_entity.groups[0],
                     )
             else:
                 await context.say(JobTargetsNoIdMessage().text, thread_ts=thread_ts)
@@ -181,6 +181,7 @@ async def respond_to_message(
         case "Show_Insights":
             if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
                 await post_insights(
+                    client,
                     context,
                     context["ray"].client,
                     message["text"],
@@ -204,6 +205,7 @@ async def respond_to_message(
                     mt_text = message_match[-1][-1]
 
                     await get_mt_translation(
+                        client,
                         context,
                         context["ray"].client,
                         source_lang=mt_sl,
@@ -227,6 +229,7 @@ async def respond_to_message(
                 # Show the job status if only a job id is entered.
                 if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                     await post_job_status(
+                        client,
                         context,
                         context["ray"].client,
                         tj_number_entity.groups[0],
@@ -238,7 +241,10 @@ async def respond_to_message(
 
 
 async def auto_translate_message(
-    context: AsyncBoltContext, ray_client: RayClient, message: dict[str, Any]
+    client: AsyncWebClient,
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    message: dict[str, Any],
 ):
     text: str | None = message.get("text")
     ts: str = message["ts"]
@@ -290,8 +296,8 @@ async def auto_translate_message(
 
         if ray_client.slack_access_token:
             try:
-                context.client.token = ray_client.slack_access_token
-                await context.client.chat_update(
+                client.token = ray_client.slack_access_token
+                await client.chat_update(
                     channel=context.channel_id,
                     ts=ts,
                     text=text,  # Must use original untranslated text for future detect language
@@ -301,10 +307,10 @@ async def auto_translate_message(
             except Exception as e:
                 notify_exception(e, "Failed to update message (auto-translation)")
                 # If updating message fails (e.g. permissions), default to thread reply.
-                context.client.token = context.bot_token
+                client.token = context.bot_token
 
         # Post a thread reply if the user did not give permission (user token).
-        await context.client.chat_postMessage(
+        await client.chat_postMessage(
             channel=context.channel_id,
             text=msg.text,
             blocks=msg.blocks,
@@ -313,7 +319,7 @@ async def auto_translate_message(
         # If the user has not given permission to edit their messages, post a reminder.
         if await auto_translate_permissions_reminder(ray_client.id, context.channel_id):
             permissions_msg = SlackPermissionsMessage.auto_translate_variation()
-            await context.client.chat_postEphemeral(
+            await client.chat_postEphemeral(
                 channel=context.channel_id,
                 user=context.user_id,
                 text=permissions_msg.text,
@@ -410,12 +416,13 @@ async def update_machine_translation_score(
 
 
 async def post_job_status(
+    client: AsyncWebClient,
     context: AsyncBoltContext,
     ray_client: RayClient,
     job_id: str,
     channel_id: str | None = None,
     thread_ts: str | None = None,
-) -> AsyncSlackResponse:
+):
     """Tries to get the job details from the RAY API and post the job status
     to the Slack user. If the user cannot access the job, post another message
     instead.
@@ -452,7 +459,7 @@ async def post_job_status(
                 if context.response_url:
                     await context.respond(text=msg.text, blocks=msg.blocks)
                 else:
-                    await context.client.chat_postMessage(
+                    await client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
                         blocks=msg.blocks,
@@ -463,7 +470,7 @@ async def post_job_status(
             if context.response_url:
                 return await context.respond(text=msg.text)
             else:
-                return await context.client.chat_postMessage(
+                return await client.chat_postMessage(
                     channel=channel_id,
                     text=msg.text,
                     thread_ts=thread_ts,
@@ -485,13 +492,14 @@ async def post_job_status(
 
 
 async def post_job_details(
+    client: AsyncWebClient,
     context: AsyncBoltContext,
     ray_client: RayClient,
     job_id: str,
     status: str,
     channel_id: str | None = None,
     thread_ts: str | None = None,
-) -> AsyncSlackResponse:
+):
     """Tries to get the job details from the RAY API and post the job status
     to the Slack user. If the user cannot access the job, post another message
     instead.
@@ -527,7 +535,7 @@ async def post_job_details(
                 if context.response_url:
                     return await context.respond(text=msg.text, blocks=msg.blocks)
                 else:
-                    return await context.client.chat_postMessage(
+                    return await client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
                         blocks=msg.blocks,
@@ -538,7 +546,7 @@ async def post_job_details(
                 if context.response_url:
                     return await context.respond(text=msg.text)
                 else:
-                    return await context.client.chat_postMessage(
+                    return await client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
                         thread_ts=thread_ts,
@@ -556,7 +564,7 @@ async def post_job_details(
                     if context.response_url:
                         return await context.respond(text=msg.text, blocks=msg.blocks)
                     else:
-                        return await context.client.chat_postMessage(
+                        return await client.chat_postMessage(
                             channel=channel_id,
                             text=msg.text,
                             blocks=msg.blocks,
@@ -567,7 +575,7 @@ async def post_job_details(
                 if context.response_url:
                     return await context.respond(text=msg.text)
                 else:
-                    return await context.client.chat_postMessage(
+                    return await client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
                         thread_ts=thread_ts,
@@ -589,12 +597,13 @@ async def post_job_details(
 
 
 async def post_job_summary(
+    client: AsyncWebClient,
     context: AsyncBoltContext,
     ray_client: RayClient,
     channel_id: str | None = None,
     thread_ts: str | None = None,
     all_jobs: bool = False,
-) -> AsyncSlackResponse:
+):
     """Gets the job summary from the RAY API and posts it to the Slack user.
 
     Args:
@@ -691,7 +700,7 @@ async def post_job_summary(
         if context.response_url:
             return await context.respond(text=msg.text, blocks=msg.blocks)
         else:
-            return await context.client.chat_postMessage(
+            return await client.chat_postMessage(
                 channel=channel_id,
                 text=msg.text,
                 blocks=msg.blocks,
@@ -715,6 +724,7 @@ async def post_job_summary(
 
 
 async def post_job_list(
+    client: AsyncWebClient,
     context: AsyncBoltContext,
     ray_client: RayClient,
     preset: str,
@@ -723,7 +733,7 @@ async def post_job_list(
     page_size: int = 5,
     channel_id: str | None = None,
     replace_original: bool = False,
-) -> AsyncSlackResponse | WebhookResponse | None:
+):
     """Gets the job list from the RAY API and posts it to the Slack user.
     The list of jobs is filtered depending on the `preset` argument.
 
@@ -865,7 +875,7 @@ async def post_job_list(
                 text=msg.text, blocks=msg.blocks, replace_original=replace_original
             )
         else:
-            return await context.client.chat_postEphemeral(
+            return await client.chat_postEphemeral(
                 channel=channel_id,
                 user=context.user_id,
                 text=msg.text,
@@ -890,6 +900,7 @@ async def post_job_list(
 
 
 async def post_insights(
+    client: AsyncWebClient,
     context: AsyncBoltContext,
     ray_client: RayClient,
     prompt: str,
@@ -919,7 +930,7 @@ async def post_insights(
                     text=insights_msg.text, blocks=insights_msg.blocks
                 )
             else:
-                await context.client.chat_postMessage(
+                await client.chat_postMessage(
                     channel=channel_id,
                     text=insights_msg.text,
                     blocks=insights_msg.blocks,
@@ -933,7 +944,7 @@ async def post_insights(
     if context.response_url:
         response = await context.respond(text=waiting_msg)
     else:
-        response = await context.client.chat_postMessage(
+        response = await client.chat_postMessage(
             channel=channel_id,
             text=waiting_msg,
             thread_ts=thread_ts,
@@ -946,6 +957,7 @@ async def post_insights(
 
 
 async def show_quote_form_modal(
+    client: AsyncWebClient,
     context: AsyncBoltContext,
     trigger_id: str,
     ray_client: RayClient,
@@ -976,7 +988,7 @@ async def show_quote_form_modal(
         # Try to get the files from the last n messages to set as the
         # default files in the form dropdown.
         try:
-            response = await context.client.conversations_history(
+            response = await client.conversations_history(
                 channel=context["channel_id"],
                 limit=check_last_messages,
             )
@@ -987,7 +999,7 @@ async def show_quote_form_modal(
         except SlackApiError:
             # Unknown or forbidden conversation (e.g. channel, DM with other user).
             pass
-    await context.client.views_open(
+    await client.views_open(
         trigger_id=trigger_id,
         view=new_job_modal(
             ray_client.username,
@@ -998,33 +1010,14 @@ async def show_quote_form_modal(
     )
 
 
-# Show job search modal view dialog
-async def show_job_search_modal(
-    context: AsyncBoltContext,
-    trigger_id: str,
-    ray_client: RayClient,
-):
-    """Show the job search modal view dialog.
-
-    Args:
-        context (AsyncBoltContext): The context from the listener.
-        trigger_id (str): The trigger ID.
-        ray_client (RayClient): The RAY client details.
-    """
-    await context.client.views_open(
-        trigger_id=trigger_id,
-        view=job_search_modal(
-            ray_client.username,
-        ),
-    )
-
-
 async def submit_job(
-    context: AsyncBoltContext, ray_client: RayClient, form: NewJobForm
+    client: AsyncWebClient, ray_client: RayClient, form: NewJobForm
 ) -> list[RayResponse[None]]:
     """Submit a new job."""
     file_ids = (file.id for file in form.files if file.id)
-    file_paths = await download_files(context.client, file_ids)
+    file_paths = await download_files(client, file_ids)
+    if not file_paths:
+        raise Exception("Failed to download files from the Slack API")
     return await RayService.get_service(ray_client).new_job(
         files=file_paths,
         sl=form.source_lang.code,
@@ -1065,6 +1058,7 @@ async def get_groups(ray_client: RayClient) -> list[dict[str, Any]]:
 
 
 async def post_batch_list(
+    client: AsyncWebClient,
     context: AsyncBoltContext,
     ray_client: RayClient,
     job_id: str,
@@ -1073,7 +1067,7 @@ async def post_batch_list(
     channel_id: str | None = None,
     thread_ts: str | None = None,
     replace_original: bool = False,
-) -> AsyncSlackResponse:
+):
     """Tries to get the batch list from the RAY API and list in progress batches.
     If the user cannot access the job, post another message instead.
 
@@ -1113,7 +1107,7 @@ async def post_batch_list(
                         replace_original=replace_original,
                     )
                 else:
-                    return await context.client.chat_postMessage(
+                    return await client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
                         blocks=msg.blocks,
@@ -1124,7 +1118,7 @@ async def post_batch_list(
                 if context.response_url:
                     return await context.respond(text=msg.text)
                 else:
-                    return await context.client.chat_postMessage(
+                    return await client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
                         thread_ts=thread_ts,
@@ -1146,6 +1140,7 @@ async def post_batch_list(
 
 
 async def post_file_list(
+    client: AsyncWebClient,
     context: AsyncBoltContext,
     ray_client: RayClient,
     job_id: str,
@@ -1154,7 +1149,7 @@ async def post_file_list(
     channel_id: str | None = None,
     thread_ts: str | None = None,
     replace_original: bool = False,
-) -> AsyncSlackResponse:
+):
     """Tries to get the file list from the RAY API and list translated files.
     If the user cannot access the job, post another message
     instead.
@@ -1193,7 +1188,7 @@ async def post_file_list(
                         replace_original=replace_original,
                     )
                 else:
-                    return await context.client.chat_postMessage(
+                    return await client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
                         blocks=msg.blocks,
@@ -1204,7 +1199,7 @@ async def post_file_list(
                 if context.response_url:
                     return await context.respond(text=msg.text)
                 else:
-                    return await context.client.chat_postMessage(
+                    return await client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
                         thread_ts=thread_ts,
@@ -1226,13 +1221,14 @@ async def post_file_list(
 
 
 async def post_job_target_lang(
+    client: AsyncWebClient,
     context: AsyncBoltContext,
     ray_client: RayClient,
     job_id: str,
     page: int = 1,
     page_size: int = 5,
     channel_id: str | None = None,
-) -> AsyncSlackResponse:
+):
     """Tries to get the file list from the RAY API and list translated files, and batch file.
     If the user cannot access the job, post another message
     instead.
@@ -1258,6 +1254,7 @@ async def post_job_target_lang(
             for job in jobs:
                 if len(job.batches):
                     await post_batch_list(
+                        client,
                         context,
                         context["ray"].client,
                         job_id=job_id,
@@ -1269,6 +1266,7 @@ async def post_job_target_lang(
 
                 if len(job.translated_file):
                     await post_file_list(
+                        client,
                         context,
                         context["ray"].client,
                         job_id=job_id,
@@ -1283,7 +1281,7 @@ async def post_job_target_lang(
                     if context.response_url:
                         return await context.respond(text=msg.text, blocks=msg.blocks)
                     else:
-                        return await context.client.chat_postMessage(
+                        return await client.chat_postMessage(
                             channel=channel_id,
                             text=msg.text,
                             blocks=msg.blocks,
@@ -1293,7 +1291,7 @@ async def post_job_target_lang(
                 if context.response_url:
                     return await context.respond(text=msg.text)
                 else:
-                    return await context.client.chat_postMessage(
+                    return await client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
                     )
@@ -1314,6 +1312,7 @@ async def post_job_target_lang(
 
 
 async def post_report_insights(
+    client: AsyncWebClient,
     context: AsyncBoltContext,
     ray_client: RayClient,
     channel_id: str | None = None,
@@ -1342,7 +1341,7 @@ async def post_report_insights(
         if context.response_url:
             await context.respond(text=insights_msg.text, blocks=insights_msg.blocks)
         else:
-            await context.client.chat_postMessage(
+            await client.chat_postMessage(
                 channel=channel_id,
                 text=insights_msg.text,
                 blocks=insights_msg.blocks,
@@ -1353,11 +1352,12 @@ async def post_report_insights(
 
 
 async def get_mt_translation(
+    client: AsyncWebClient,
     context: AsyncBoltContext,
     ray_client: RayClient,
-    target_lang: str | None = None,
-    source_lang: str | None = None,
-    sentence: str | None = None,
+    target_lang: str,
+    source_lang: str,
+    sentence: str,
     thread_ts: str | None = None,
 ):
     """Get google machine translation for sentence by correct language pair.
@@ -1365,9 +1365,9 @@ async def get_mt_translation(
     Args:
         context (AsyncBoltContext): The context from the listener.
         ray_client (RayClient): The RAY client details.
-        source_lan (str | None, optional): The source language use for detect sentence.
-        target_lang (str | None, optional): The target language use for translation.
-        sentence (str | None, optional): The sentence post on RAY need to be translated.
+        target_lang (str): The target language use for translation.
+        source_lang (str): The source language use for detect sentence.
+        sentence (str): The sentence post on RAY need to be translated.
         thread_ts (str | None, optional): The message thread to reply to.
     """
     if not context.channel_id and not context.user_id and not context.response_url:
@@ -1387,7 +1387,7 @@ async def get_mt_translation(
             if context.response_url:
                 return await context.respond(text=msg.text, blocks=msg.blocks)
             else:
-                return await context.client.chat_postMessage(
+                return await client.chat_postMessage(
                     channel=channel_id,
                     text=msg.text,
                     blocks=msg.blocks,
@@ -1398,7 +1398,7 @@ async def get_mt_translation(
             if context.response_url:
                 return await context.respond(text=msg.text)
             else:
-                return await context.client.chat_postMessage(
+                return await client.chat_postMessage(
                     channel=channel_id,
                     text=msg.text,
                     thread_ts=thread_ts,
@@ -1422,42 +1422,13 @@ async def get_mt_translation(
             )
 
 
-async def show_sso_form_modal(context: AsyncBoltContext, trigger_id: str):
-    """Show the quote form (new job form) modal.
-
-    Args:
-        context (AsyncBoltContext): The context from the listener.
-        trigger_id (str): The trigger ID.
-    """
-    await context.client.views_open(
-        trigger_id=trigger_id,
-        view=sso_form_modal(),
-    )
-
-
-async def show_cancel_job_model(
-    context: AsyncBoltContext, trigger_id: str, ray_client: RayClient
-):
-    """Show the cancel job modal view dialog.
-    Args:
-        context (AsyncBoltContext): The context from the listener.
-        trigger_id (str): The trigger ID.
-        ray_client (RayClient): The RAY client details.
-    """
-    await context.client.views_open(
-        trigger_id=trigger_id,
-        view=cancel_job_modal(
-            ray_client.username,
-        ),
-    )
-
-
 async def cancel_job_process(
+    client: AsyncWebClient,
     context: AsyncBoltContext,
     ray_client: RayClient,
     job_id: str = "",
     job_uuid: str = "",
-) -> AsyncSlackResponse:
+):
     """Tries to get the job details from the RAY API and post the job status
     to the Slack user. If the user cannot access the job, post another message
     instead.
@@ -1467,18 +1438,13 @@ async def cancel_job_process(
         ray_client (RayClient): The RAY client.
         job_id (str): The ID of the obj_tp_job to get.
         job_uuid (str): The UUID of the api human_job table obj_uuid
-    Raises:
-        AssertionError: The `channel_id` is not given and there is no source channel.
     """
-    if not context.channel_id and not context.user_id and not context.response_url:
-        raise AssertionError("No channel to post to")
-    channel_id = context.channel_id or context.user_id
     try:
         job, response = await RayService.get_service(ray_client).cancel_job(
             job_id, job_uuid
         )
         msg = "TJ" + job_id + "-" + job["message"]
-        await context.client.chat_postMessage(
+        await client.chat_postMessage(
             channel=context["user_id"],
             text=msg,
         )
@@ -1486,7 +1452,7 @@ async def cancel_job_process(
         notify_exception(e)
         raise
     finally:
-        if response is not None:
+        if "response" in locals() and response is not None:
             try:
                 response_data = response.json()
             except Exception:

@@ -2635,7 +2635,7 @@ class FileListMessage(SlackMessage):
 
 
 class ReportInsightsMessage(SlackMessage):
-    def __init__(self, plan: str) -> None:
+    def __init__(self, plan: str | None) -> None:
         if not is_min_langugagecloud_plan(plan, "Essentials"):
             message = "The insights feature is only avaiable on the Growth and Enterprise plans."
         else:

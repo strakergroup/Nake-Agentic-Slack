@@ -66,7 +66,7 @@ class SlackFile(BaseModel):
 class JobSearchForm(BaseModel):
     """The model for a job search form."""
 
-    reference: str | None = None  # Max 100 chars, validated in view
+    reference: str = ""  # Max 100 chars, validated in view
 
     @classmethod
     def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "JobSearchForm":

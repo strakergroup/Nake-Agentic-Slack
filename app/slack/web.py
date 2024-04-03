@@ -161,5 +161,4 @@ async def download_files(client: AsyncWebClient, files: Iterable[str]) -> list[s
     for exc in [result for result in file_paths if isinstance(result, Exception)]:
         notify_exception(exc)
     # Return successful file download paths.
-    print(f"{file_paths = }")
     return [result for result in file_paths if isinstance(result, str)]

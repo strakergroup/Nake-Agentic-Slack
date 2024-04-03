@@ -24,14 +24,11 @@ from .listener_actions import (
     post_job_summary,
     post_job_list,
     show_quote_form_modal,
-    show_job_search_modal,
     submit_job,
     approve_pending_client,
     post_report_insights,
     post_batch_list,
     post_file_list,
-    show_sso_form_modal,
-    show_cancel_job_model,
     cancel_job_process,
 )
 from .logging import slack_log_decorator
@@ -60,7 +57,13 @@ from .templates.messages import (
     ClientAlreadyApprovedMessage,
     JobDelayMessage,
 )
-from .templates.views import home_view, settings_auto_translate_view
+from .templates.views import (
+    home_view,
+    settings_auto_translate_view,
+    job_search_modal,
+    sso_form_modal,
+    cancel_job_modal,
+)
 from .web import files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, get_file_options_cached
 from .utils import is_channel_im
@@ -99,7 +102,9 @@ async def message_event(client, context, message):
     elif message.get("text") and f"<@{context['bot_user_id']}>" not in message["text"]:
         # Do not auto-translate if the bot is mentioned (should default to normal response).
         if await require_ray_client(context, prompt_login=False):
-            await auto_translate_message(context, context["ray"].client, message)
+            await auto_translate_message(
+                client, context, context["ray"].client, message
+            )
     else:
         # Do nothing if the Slack app is not mentioned in group chats and
         # auto-translate is disabled.
@@ -175,6 +180,7 @@ async def new_job_shortcut(ack, shortcut, context, client):
             client, (f["id"] for f in shortcut["message"].get("files", []))
         )
         await show_quote_form_modal(
+            client,
             context,
             shortcut["trigger_id"],
             context["ray"].client,
@@ -184,10 +190,13 @@ async def new_job_shortcut(ack, shortcut, context, client):
 
 # @app.block_action("login_sso", middleware=[ray_connection])
 # @slack_log_decorator
-# async def login_sso_action(ack, context, body, respond):
+# async def login_sso_action(ack, context, body, respond, client):
 #     if context["ray"].client is None:
 #         await ack()
-#         await show_sso_form_modal(context, body["trigger_id"])
+#         await client.views_open(
+#             trigger_id=body["trigger_id"],
+#             view=sso_form_modal(),
+#         )
 #     else:
 #         await ack()
 #         if context["ray"].client.sso:
@@ -215,9 +224,7 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
         if context["ray"] is not None:
             if context["ray"].client is None:
                 # The API endpoint to get user info
-                info_response_json = await context.client.users_info(
-                    user=context["user_id"]
-                )
+                info_response_json = await client.users_info(user=context["user_id"])
                 if info_response_json["ok"]:
                     user_info = info_response_json["user"]
                     ray_user_id = connect_ray_account_sso(
@@ -300,20 +307,21 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
 
 @app.block_action("job_search", middleware=[ray_connection])
 @slack_log_decorator
-async def job_search_action(ack, payload, context, client, body):
+async def job_search_action(ack, context, client, body):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        await show_job_search_modal(
-            context,
-            body["trigger_id"],
-            context["ray"].client,
+        await client.views_open(
+            trigger_id=body["trigger_id"],
+            view=job_search_modal(
+                context["ray"].client.username,
+            ),
         )
 
 
 @app.command(re.compile(r"\/\w*(ray|straker|lc)\w*"), middleware=[ray_connection])
 @slack_log_decorator
 # Process slash commands.
-async def ray_command(ack, respond, say, command, context, client):
+async def ray_command(ack, respond, command, context, client):
     await ack()
 
     # Strip the text formatting from the command args (not perfect).
@@ -359,11 +367,14 @@ async def ray_command(ack, respond, say, command, context, client):
                 if not reference_other and re.fullmatch(
                     r"tj\d+", reference, re.IGNORECASE
                 ):
-                    await post_job_status(context, context["ray"].client, reference)
+                    await post_job_status(
+                        client, context, context["ray"].client, reference
+                    )
                 # Otherwise, search job by client reference.
                 else:
                     client_reference = command_formatted.removeprefix("job").strip()
                     await post_job_list(
+                        client,
                         context,
                         context["ray"].client,
                         preset="CLIENT_REFERENCE",
@@ -373,7 +384,7 @@ async def ray_command(ack, respond, say, command, context, client):
         case ["jobs"] | ["my", "jobs"]:
             # Get summary of jobs.
             if await require_ray_client(context, variation=LoginMessage.GET_JOB):
-                await post_job_summary(context, context["ray"].client)
+                await post_job_summary(client, context, context["ray"].client)
 
         case ["new"]:
             # Show quote form modal.
@@ -384,6 +395,7 @@ async def ray_command(ack, respond, say, command, context, client):
                     )
                 )
                 await show_quote_form_modal(
+                    client,
                     context,
                     command["trigger_id"],
                     context["ray"].client,
@@ -415,7 +427,9 @@ async def ray_command(ack, respond, say, command, context, client):
             match = re.fullmatch(r"tj\d+", command_text, re.IGNORECASE)
             if match:
                 if await require_ray_client(context, variation=LoginMessage.GET_JOB):
-                    await post_job_status(context, context["ray"].client, command_text)
+                    await post_job_status(
+                        client, context, context["ray"].client, command_text
+                    )
             else:
                 await respond(text=InvalidCommandMessage().text)
 
@@ -439,7 +453,7 @@ async def show_auto_translate_settings(ack, context, body, client):
 
 @app.block_action("show_job_details", middleware=[ray_connection])
 @slack_log_decorator
-async def show_job_details(ack, action, payload, context):
+async def show_job_details(ack, action, payload, context, client):
     """Get job info. Triggered from the "View More Info" in the job list"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -449,7 +463,9 @@ async def show_job_details(ack, action, payload, context):
         except (KeyError, json.JSONDecodeError):
             pass
         else:
-            await post_job_details(context, context["ray"].client, job_id, status)
+            await post_job_details(
+                client, context, context["ray"].client, job_id, status
+            )
 
 
 @app.action("quote", middleware=[ray_connection])
@@ -468,50 +484,50 @@ async def quote(ack, context, client):
 
 @app.action("daily_summary", middleware=[ray_connection])
 @slack_log_decorator
-async def daily_summary(ack, context):
+async def daily_summary(ack, context, client):
     """Get daily summary. Triggered from the Home View Daily Summary button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
-        await post_job_summary(context, context["ray"].client)
+        await post_job_summary(client, context, context["ray"].client)
 
 
 @app.block_action("all_summary", middleware=[ray_connection])
 @slack_log_decorator
-async def all_summary(ack, context):
+async def all_summary(ack, context, client):
     """Get daily summary. Triggered from the Home View Daily Summary button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
         await post_job_summary(
-            context=context, ray_client=context["ray"].client, all_jobs=True
+            client, context=context, ray_client=context["ray"].client, all_jobs=True
         )
 
 
 @app.action("report_insights", middleware=[ray_connection])
 @slack_log_decorator
-async def handle_report_insights_action(ack, context):
+async def handle_report_insights_action(ack, context, client):
     """Get Report and Insights. Triggered from the Home Report Insights button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
-        await post_report_insights(context, context["ray"].client)
+        await post_report_insights(client, context, context["ray"].client)
 
 
 @app.block_action("job_list", middleware=[ray_connection])
 @slack_log_decorator
-async def job_list_action(ack, payload, context):
+async def job_list_action(ack, payload, context, client):
     """Paginated job list. Triggered from the job summary dropdown."""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
         if "selected_option" in payload:
             preset = payload["selected_option"].get("value")
-            await post_job_list(context, context["ray"].client, preset=preset)
+            await post_job_list(client, context, context["ray"].client, preset=preset)
         else:
             preset = payload.get("value")
-            await post_job_list(context, context["ray"].client, preset=preset)
+            await post_job_list(client, context, context["ray"].client, preset=preset)
 
 
 @app.block_action(re.compile(r"job_list_paginated(_\d+)?"), middleware=[ray_connection])
 @slack_log_decorator
-async def job_list_paginated_action(ack, payload, context):
+async def job_list_paginated_action(ack, payload, context, client):
     """Paginated job list. Triggered from the job list "Show more" and
     "Show previous" buttons.
     """
@@ -526,6 +542,7 @@ async def job_list_paginated_action(ack, payload, context):
             pass
         else:
             await post_job_list(
+                client,
                 context,
                 context["ray"].client,
                 preset=preset,
@@ -560,6 +577,7 @@ async def new_job_action(ack, payload, context, client, body):
             files_list_simple(client, channel_id=context["channel_id"], count=120)
         )
         await show_quote_form_modal(
+            client,
             context,
             body["trigger_id"],
             context["ray"].client,
@@ -695,7 +713,7 @@ async def handle_new_job(ack, view, context, client):
 
         # Process files and submit job.
         try:
-            responses = await submit_job(context, context["ray"].client, form)
+            responses = await submit_job(client, context["ray"].client, form)
             result = responses[0].response.json()["Message"]
             if "job_id" in result:
                 message = JobSubmitMessage(form)
@@ -750,9 +768,11 @@ async def handle_job_search(ack, view, context, client):
         reference = form.reference.strip().replace(" ", "")
         # Try searching job by TJ number if the format is correct.
         if re.fullmatch(r"TJ\d+(,\s?TJ\d+)*", reference, re.IGNORECASE):
-            await post_job_status(context, context["ray"].client, reference)
+            await post_job_status(client, context, context["ray"].client, reference)
         elif re.fullmatch(r"\d+(,\s?\d+)*", reference, re.IGNORECASE):
-            await post_job_status(context, context["ray"].client, "TJ" + reference)
+            await post_job_status(
+                client, context, context["ray"].client, "TJ" + reference
+            )
         else:
             await client.chat_postMessage(
                 channel=context["user_id"],
@@ -847,7 +867,7 @@ async def file_options(ack, payload, client):
 
 @app.block_action(re.compile(r"batch_list(_\d+)?"), middleware=[ray_connection])
 @slack_log_decorator
-async def batch_list_action(ack, payload, context):
+async def batch_list_action(ack, payload, context, client):
     """Paginated batch file list. Triggered from the Show In Progress Files button."""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -857,6 +877,7 @@ async def batch_list_action(ack, payload, context):
         page_size = settings["page_size"]
         replace_original = settings["replace_original"]
         await post_batch_list(
+            client,
             context,
             context["ray"].client,
             job_id=job_id,
@@ -868,7 +889,7 @@ async def batch_list_action(ack, payload, context):
 
 @app.block_action(re.compile(r"file_list(_\d+)?"), middleware=[ray_connection])
 @slack_log_decorator
-async def file_list_action(ack, payload, context):
+async def file_list_action(ack, payload, context, client):
     """Paginated file list. Triggered from the Show Files button."""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -878,6 +899,7 @@ async def file_list_action(ack, payload, context):
         page_size = settings["page_size"]
         replace_original = settings["replace_original"]
         await post_file_list(
+            client,
             context,
             context["ray"].client,
             job_id=job_id,
@@ -896,23 +918,22 @@ async def cancel_job_action(ack, payload, context, client, body):
             job_info = json.loads(payload["value"])
             if job_info["job_action"] == "list":
                 job_id = job_info["job_id"].split("TJ")[1]
-                await cancel_job_process(context, context["ray"].client, job_id=job_id)
+                await cancel_job_process(
+                    client, context, context["ray"].client, job_id=job_id
+                )
             elif job_info["job_action"] == "submit":
                 await cancel_job_process(
-                    context, context["ray"].client, job_uuid=job_info["job_id"]
+                    client, context, context["ray"].client, job_uuid=job_info["job_id"]
                 )
             else:
-                await show_cancel_job_model(
-                    context,
-                    body["trigger_id"],
-                    context["ray"].client,
-                    job_uuid=job_info["job_id"],
+                await client.views_open(
+                    trigger_id=body["trigger_id"],
+                    view=cancel_job_modal(context["ray"].client.username),
                 )
         else:
-            await show_cancel_job_model(
-                context,
-                body["trigger_id"],
-                context["ray"].client,
+            await client.views_open(
+                trigger_id=body["trigger_id"],
+                view=cancel_job_modal(context["ray"].client.username),
             )
 
 
@@ -933,9 +954,9 @@ async def handle_cancel_job(ack, view, context, client):
         # Try searching job by TJ number if the format is correct.
         if re.fullmatch(r"tj\d+", reference, re.IGNORECASE):
             job_id = reference.split("tj")[1]
-            await cancel_job_process(context, context["ray"].client, job_id)
+            await cancel_job_process(client, context, context["ray"].client, job_id)
         elif re.fullmatch(r"\d+", reference, re.IGNORECASE):
-            await cancel_job_process(context, context["ray"].client, reference)
+            await cancel_job_process(client, context, context["ray"].client, reference)
         else:
             await client.chat_postMessage(
                 channel=context["user_id"],
