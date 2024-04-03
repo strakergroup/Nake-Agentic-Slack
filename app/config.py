@@ -4,7 +4,6 @@ import hashlib
 from dotenv import load_dotenv
 from pydantic import (
     Field,
-    HttpUrl,
     SecretBytes,
     SecretStr,
     field_validator,
@@ -39,6 +38,7 @@ class StrakerConfig(BaseSettings):
     slack_signing_secret: SecretStr = Field(min_length=1)
     watson_assistant_id: str = Field(min_length=1)
     watson_environment_id: str = Field(min_length=1)
+    google_mt_api_key: SecretStr = SecretStr("")
     # taus_api_key: SecretStr = Field(min_length=1)
     elastic_apm_server_url: str | None = None
     # Derived settings.
@@ -47,6 +47,13 @@ class StrakerConfig(BaseSettings):
     slack_queue_proxy_secret: SecretStr = SecretStr("")
     health_check_password: SecretStr = SecretStr("")
     languagecloud_api_key: SecretStr = SecretStr("")
+
+    @field_validator("google_mt_api_key", mode="after")
+    def validate_google_mt_api_key(cls, v, info: ValidationInfo):
+        if info.data["environment"] in [Environment.production, Environment.uat]:
+            if not v:
+                raise ValueError("GOOGLE_MT_API_KEY must be set in production and uat")
+        return v
 
     @field_validator("buglog_listener_url", mode="before")
     def default_buglog_listener_url(cls, v):

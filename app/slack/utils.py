@@ -21,13 +21,14 @@ def is_channel_im(channel_id: str | None) -> bool:
     )
 
 
-def strip_formatting(text: str) -> str:
+def strip_slack_formatting(text: str) -> str:
     """Strip Slack formatting from a string. Slack uses it's own special form
     of Markdown to format text. This function will remove some of the formatting,
     but is not perfect.
 
     See:
         https://api.slack.com/reference/surfaces/formatting
+        https://api.slack.com/reference/surfaces/formatting#retrieving-messages
 
     Args:
         text (str): The original Slack text.
@@ -38,12 +39,14 @@ def strip_formatting(text: str) -> str:
     # TODO Unit test
     if not text:
         return ""
-    # Blockquote
-    text = re.sub(r"(^|\n)(>|&gt;)\s?", "\n", text).lstrip()
+    # Remove user and channel mentions.
+    text = re.sub(r"<(#C|@U|@W|!).*?>", "", text)
     # Links
     text = unformat_links(text)
+    # Blockquote
+    # text = re.sub(r"(^|\n)(>|&gt;)\s?", "\n", text).lstrip()
     # More if needed...
-    return text
+    return text.strip()
 
 
 def unformat_links(text: str) -> str:

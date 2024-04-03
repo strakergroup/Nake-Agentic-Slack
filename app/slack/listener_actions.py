@@ -15,7 +15,7 @@ from ray_sdk import RayResponse
 from buglog import notify_exception, notify_message
 
 from .middleware import require_ray_client
-from .utils import unformat_links
+from .utils import strip_slack_formatting
 from .templates.messages import (
     HelpMessage,
     LoginMessage,
@@ -54,6 +54,7 @@ from ..ray.settings import (
     get_auto_translate_settings_langs,
 )
 from ..ray.utils import is_min_langugagecloud_plan
+from ..mt.google import get_machine_translations, log_google_api_usage
 from ..watson import watson_message
 from ..cache.timer import auto_translate_permissions_reminder
 from .select_options import get_file_options_cached
@@ -248,7 +249,6 @@ async def auto_translate_message(
 ):
     text: str | None = message.get("text")
     ts: str = message["ts"]
-    thread_ts: str | None = message.get("thread_ts")
     if not text:
         return
     if not is_min_langugagecloud_plan(ray_client.planname, "Essentials"):
@@ -258,42 +258,27 @@ async def auto_translate_message(
     if not context.channel_id or context.channel_id not in enabled_conversations:
         return
 
-    unformatted_text = unformat_links(text)
+    unformatted_text = strip_slack_formatting(text)
     # Check source and target languages and if translation is required.
-    target_langs = set(get_auto_translate_settings_langs(ray_client))
-    rayService = RayService.get_service(ray_client)
-    source_lang: str = "en"  # Default to English if detected source lang is invalid
-    try:
-        detected_source_lang = (
-            await rayService.detect_language(unformatted_text)
-        ).data["language"]
-        if is_valid_auto_translate_language(detected_source_lang):
-            source_lang = detected_source_lang
-    except Exception as e:
-        notify_exception(e)
+    target_langs = list(set(get_auto_translate_settings_langs(ray_client)))
 
-    target_langs = set(
-        filter_invalid_auto_translate_languages(target_langs.difference({source_lang}))
-    )
-    if not target_langs:
+    try:
+        source_lang, translations = await get_machine_translations(
+            unformatted_text, target_langs
+        )
+        translations.pop(source_lang, None)
+        if not translations:
+            return  # Do nothing if nothing translated (source = target)
+    except Exception as e:
+        notify_exception(e, "Slack channel MT failed")
         return
 
+    msg = AutoTranslationMessage(
+        text,
+        source_lang,
+        translations=[(tl, target_text) for tl, target_text in translations.items()],
+    )
     try:
-        responses = await asyncio.gather(
-            *(
-                rayService.get_machine_translation(
-                    target_lang=lang, source_lang=source_lang, sentence=unformatted_text
-                )
-                for lang in target_langs
-            )
-        )
-        translations = [response.data for response in responses]
-        msg = AutoTranslationMessage(
-            text,
-            source_lang,
-            translations=[(t["target_lang"], t["text"]) for t in translations],
-        )
-
         if ray_client.slack_access_token:
             try:
                 client.token = ray_client.slack_access_token
@@ -328,22 +313,11 @@ async def auto_translate_message(
     except Exception as e:
         notify_exception(e, "Failed to get machine translation from LanguageCloud API")
     finally:
-        if "responses" in locals():
-            for response in responses:
-                raw_response = response.response
-                try:
-                    response_data = raw_response.json()
-                except Exception:
-                    response_data = raw_response.content.decode() or None
-                # TODO Update logging params
-                context["log"].add_api_log(
-                    status_code=raw_response.status_code,
-                    url=str(raw_response.url),
-                    payload=None,
-                    response=response_data,
-                    headers=dict(raw_response.headers.items()),
-                    version="v3",
-                )
+        asyncio.create_task(
+            log_google_api_usage(
+                ray_client, unformatted_text, source_lang, translations
+            )
+        )
 
 
 async def update_machine_translation_score(
