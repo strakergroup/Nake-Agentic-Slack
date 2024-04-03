@@ -383,7 +383,7 @@ def command_body(user_id, team_id, app_id, channel_id) -> dict[str, Any]:
         "channel_name": "directmessage",
         "user_id": user_id,
         "user_name": "test.user",
-        "command": "/ray",
+        "command": "/straker",
         "text": "account",  # text could be missing if no text supplied
         "api_app_id": app_id,
         "is_enterprise_install": "false",

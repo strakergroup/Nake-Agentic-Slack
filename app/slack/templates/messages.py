@@ -1873,7 +1873,7 @@ class HelpMessage(SlackMessage):
                         {
                             "type": "mrkdwn",
                             "text": _(
-                                ":question: Need more information? Ask our chat bot below.\n:tada: New features coming soon `/ray whatsnext`"
+                                ":question: Need more information? Ask our chat bot below."
                             ),
                         }
                     ],
@@ -1911,25 +1911,6 @@ class QuoteMessage(SlackMessage):
                             "action_id": "new_job",
                         }
                     ],
-                },
-            ],
-        )
-
-
-class WhatsNextMessage(SlackMessage):
-    def __init__(self) -> None:
-        url = f"<https://help.strakertranslations.com/hc/en-us/articles/10021384538393-Current-Upcoming-Features|{_('Click here')}>"
-        super().__init__(
-            _("Click here to see the upcoming features of our app"),
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "{url} to see the upcoming features of our app.",
-                        ),
-                    },
                 },
             ],
         )
@@ -2016,12 +1997,12 @@ class ConnectionInfoMessage(SlackMessage):
 
 
 class InvalidCommandMessage(TextMessage):
-    """Invalid /ray command."""
+    """Invalid /straker command."""
 
     def __init__(self) -> None:
         super().__init__(
             _(
-                ":no_entry_sign: Invalid command. Type `/ray help` for a list of valid commands."
+                ":no_entry_sign: Invalid command. Type `/straker help` for a list of valid commands."
             )
         )
 
@@ -2242,7 +2223,7 @@ class ClientApprovedEventMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "Use `/ray help` to show some ideas of what you can do."
+                            "Use `/straker help` to show some ideas of what you can do."
                         ),
                     },
                 },

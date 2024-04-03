@@ -49,7 +49,6 @@ from .templates.messages import (
     SuccessfulLogoutMessage,
     JobSubmitMessage,
     HelpMessage,
-    WhatsNextMessage,
     ConnectionInfoMessage,
     SsoConnectionInfoMessage,
     InvalidCommandMessage,
@@ -414,12 +413,6 @@ async def ray_command(ack, respond, command, context, client):
             # Show help message.
             await respond(
                 blocks=HelpMessage(context).blocks, text=HelpMessage(context).text
-            )
-
-        case ["whatsnext"] | ["whats", "next"]:
-            # Show what's next message.
-            await respond(
-                blocks=WhatsNextMessage().blocks, text=WhatsNextMessage().text
             )
 
         case [command_text]:
