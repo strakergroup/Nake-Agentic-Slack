@@ -42,7 +42,12 @@ from .templates.messages import (
     InvalidMTResultMessage,
 )
 from .templates.models import NewJobForm
-from .templates.views import new_job_modal, job_search_modal, sso_form_modal, cancel_job_modal
+from .templates.views import (
+    new_job_modal,
+    job_search_modal,
+    sso_form_modal,
+    cancel_job_modal,
+)
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
 from ..config import config, domains, Environment
@@ -57,7 +62,6 @@ from ..ray.utils import is_min_langugagecloud_plan
 from ..watson import watson_message
 from ..cache.timer import auto_translate_permissions_reminder
 from .select_options import get_file_options_cached
-
 
 
 async def respond_to_message(
@@ -613,9 +617,7 @@ async def post_job_summary(
     channel_id = channel_id or context.channel_id or context.user_id
 
     responses = await asyncio.gather(
-        RayService.get_service(ray_client).get_job_summary(
-            ["IN_PROGRESS", "VALIDATION", "PENDING_QUOTES", "ORDER_NOW"]
-        ),
+        RayService.get_service(ray_client).get_job_summary(["IN_PROGRESS"]),
         RayService.get_service(ray_client).get_job_summary(
             ["COMPLETED"], completed_from=7 * 24
         ),
@@ -625,6 +627,9 @@ async def post_job_summary(
         RayService.get_service(ray_client).get_job_summary(
             ["IN_PROGRESS"], due_before=24
         ),
+        RayService.get_service(ray_client).get_job_summary(["VALIDATION"]),
+        RayService.get_service(ray_client).get_job_summary(["PENDING_QUOTES"]),
+        RayService.get_service(ray_client).get_job_summary(["ORDER_NOW"]),
         return_exceptions=True,
     )
 
@@ -642,9 +647,9 @@ async def post_job_summary(
         in_progress_due = responses[3].data.summary.get("in_progress", 0)
     if isinstance(responses[0], RayResponse):
         in_progress_count = responses[0].data.summary.get("in_progress", 0)
-        validation_count = responses[0].data.summary.get("validation", 0)
-        pending_quotes_count = responses[0].data.summary.get("pending_quotes", 0)
-        order_now_count = responses[0].data.summary.get("order_now", 0)
+        validation_count = responses[4].data.summary.get("validation", 0)
+        pending_quotes_count = responses[5].data.summary.get("pending_quotes", 0)
+        order_now_count = responses[6].data.summary.get("order_now", 0)
         # Get job predictions.
         job_ids: list[str] = []
         for group in responses[0].data.groups:
@@ -747,7 +752,7 @@ async def post_job_list(
 
         # Truncate client_ref due to DB 100 char limit.
         client_ref = client_ref[:100] if client_ref else ""
-
+        print("preset", preset)
         match preset:
             case "IN_PROGRESS:ACCEPTED:24H":
                 title = "Jobs accepted within the last 24 hours"
@@ -1448,13 +1453,15 @@ async def show_sso_form_modal(context: AsyncBoltContext, trigger_id: str):
     )
 
 
-async def show_cancel_job_model(context: AsyncBoltContext, trigger_id: str, ray_client: RayClient):
-    ''' Show the cancel job modal view dialog.
-        Args:
-            context (AsyncBoltContext): The context from the listener.
-            trigger_id (str): The trigger ID.
-            ray_client (RayClient): The RAY client details.
-    '''
+async def show_cancel_job_model(
+    context: AsyncBoltContext, trigger_id: str, ray_client: RayClient
+):
+    """Show the cancel job modal view dialog.
+    Args:
+        context (AsyncBoltContext): The context from the listener.
+        trigger_id (str): The trigger ID.
+        ray_client (RayClient): The RAY client details.
+    """
     await context.client.views_open(
         trigger_id=trigger_id,
         view=cancel_job_modal(
@@ -1466,8 +1473,8 @@ async def show_cancel_job_model(context: AsyncBoltContext, trigger_id: str, ray_
 async def cancel_job_process(
     context: AsyncBoltContext,
     ray_client: RayClient,
-    job_id: str = '',
-    job_uuid: str = '',
+    job_id: str = "",
+    job_uuid: str = "",
 ) -> AsyncSlackResponse:
     """Tries to get the job details from the RAY API and post the job status
     to the Slack user. If the user cannot access the job, post another message
@@ -1481,16 +1488,14 @@ async def cancel_job_process(
     Raises:
         AssertionError: The `channel_id` is not given and there is no source channel.
     """
-    if (
-        not context.channel_id
-        and not context.user_id
-        and not context.response_url
-    ):
+    if not context.channel_id and not context.user_id and not context.response_url:
         raise AssertionError("No channel to post to")
     channel_id = context.channel_id or context.user_id
     try:
-        job, response = await RayService.get_service(ray_client).cancel_job(job_id, job_uuid)
-        msg = "TJ"+job_id + "-" + job['message']
+        job, response = await RayService.get_service(ray_client).cancel_job(
+            job_id, job_uuid
+        )
+        msg = "TJ" + job_id + "-" + job["message"]
         await context.client.chat_postMessage(
             channel=context["user_id"],
             text=msg,
