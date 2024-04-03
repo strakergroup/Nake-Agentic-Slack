@@ -3,19 +3,21 @@ from buglog import notify_exception
 from ..redis import redis_conn
 
 
-async def auto_translate_permissions_reminder(client_id: str, channel_id: str) -> bool:
+async def auto_translate_permissions_reminder(user_id: str, channel_id: str) -> bool:
     """Checks if the reminder for auto-translate permissions has been sent recently.
     If not, this function will return `True` and will return False for the next hour.
     This is to prevent spamming the user with the same reminder.
 
     Args:
-        client_id (str): The LC ID of the user (`sitemanager.obj_m_member.obj_uuid`).
+        user_id (str): The Slack user ID.
         channel_id (str): The Slack channel ID.
 
     Returns:
         bool: The reminder has not been sent recently.
     """
-    key = f"slack-ray-translator:timer:auto-translate-permissions:{client_id}:{channel_id}"
+    key = (
+        f"slack-ray-translator:timer:auto-translate-permissions:{user_id}:{channel_id}"
+    )
     try:
         is_reminder_sent = await redis_conn.exists(key)
         if is_reminder_sent:
@@ -31,11 +33,11 @@ async def auto_translate_permissions_reminder(client_id: str, channel_id: str) -
     return True
 
 
-async def clear_auto_translate_permissions_reminder(client_id: str):
+async def clear_auto_translate_permissions_reminder(user_id: str):
     """Clears the auto-translate permissions reminder for a user. Usually done
     after the user tries to grant permissions (install the app).
     """
-    key_prefix = f"slack-ray-translator:timer:auto-translate-permissions:{client_id}:"
+    key_prefix = f"slack-ray-translator:timer:auto-translate-permissions:{user_id}:"
     try:
         keys = await redis_conn.keys(f"{key_prefix}*")
         if keys:

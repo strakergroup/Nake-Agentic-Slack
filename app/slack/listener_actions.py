@@ -50,8 +50,7 @@ from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
     is_valid_auto_translate_language,
     filter_invalid_auto_translate_languages,
-    get_auto_translate_settings_channels,
-    get_auto_translate_settings_langs,
+    get_auto_translate_langs,
 )
 from ..ray.utils import is_min_langugagecloud_plan
 from ..mt.google import get_machine_translations, log_google_api_usage
@@ -244,24 +243,20 @@ async def respond_to_message(
 async def auto_translate_message(
     client: AsyncWebClient,
     context: AsyncBoltContext,
-    ray_client: RayClient,
     message: dict[str, Any],
 ):
     text: str | None = message.get("text")
     ts: str = message["ts"]
     if not text:
         return
-    if not is_min_langugagecloud_plan(ray_client.planname, "Essentials"):
-        # Minimum Essentials plan is required for the auto-translate feature.
-        return
-    enabled_conversations = get_auto_translate_settings_channels(ray_client)
-    if not context.channel_id or context.channel_id not in enabled_conversations:
+    # if not is_min_langugagecloud_plan(ray_client.planname, "Essentials"):
+    #     # Minimum Essentials plan is required for the auto-translate feature.
+    #     return
+    target_langs = get_auto_translate_langs(context)
+    if not target_langs:
         return
 
     unformatted_text = strip_slack_formatting(text)
-    # Check source and target languages and if translation is required.
-    target_langs = list(set(get_auto_translate_settings_langs(ray_client)))
-
     try:
         source_lang, translations = await get_machine_translations(
             unformatted_text, target_langs
@@ -279,9 +274,9 @@ async def auto_translate_message(
         translations=[(tl, target_text) for tl, target_text in translations.items()],
     )
     try:
-        if ray_client.slack_access_token:
+        if context.user_token:
             try:
-                client.token = ray_client.slack_access_token
+                client.token = context.user_token
                 await client.chat_update(
                     channel=context.channel_id,
                     ts=ts,
@@ -302,7 +297,9 @@ async def auto_translate_message(
             thread_ts=ts,
         )
         # If the user has not given permission to edit their messages, post a reminder.
-        if await auto_translate_permissions_reminder(ray_client.id, context.channel_id):
+        if await auto_translate_permissions_reminder(
+            context.user_id, context.channel_id
+        ):
             permissions_msg = SlackPermissionsMessage.auto_translate_variation()
             await client.chat_postEphemeral(
                 channel=context.channel_id,
@@ -313,9 +310,14 @@ async def auto_translate_message(
     except Exception as e:
         notify_exception(e, "Failed to get machine translation from LanguageCloud API")
     finally:
+        ray_connection = context.get("ray")
+        ray_client = ray_connection.client if ray_connection else None
         asyncio.create_task(
             log_google_api_usage(
-                ray_client, unformatted_text, source_lang, translations
+                ray_client.id if ray_client else context.user_id,
+                unformatted_text,
+                source_lang,
+                translations,
             )
         )
 

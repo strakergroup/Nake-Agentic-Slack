@@ -75,9 +75,9 @@ from ..auth.connector import (
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
-    get_auto_translate_settings_channels,
-    get_auto_translate_settings_langs,
-    update_auto_translate_settings,
+    get_auto_translate_user_settings_channels,
+    get_auto_translate_user_settings_langs,
+    update_auto_translate_user_settings,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
 from ..config import domains
@@ -100,10 +100,7 @@ async def message_event(client, context, message):
         await respond_to_message(client, context, message, use_thread=False)
     elif message.get("text") and f"<@{context['bot_user_id']}>" not in message["text"]:
         # Do not auto-translate if the bot is mentioned (should default to normal response).
-        if await require_ray_client(context, prompt_login=False):
-            await auto_translate_message(
-                client, context, context["ray"].client, message
-            )
+        await auto_translate_message(client, context, message)
     else:
         # Do nothing if the Slack app is not mentioned in group chats and
         # auto-translate is disabled.
@@ -436,8 +433,8 @@ async def ray_command(ack, respond, command, context, client):
 async def show_auto_translate_settings(ack, context, body, client):
     await ack()
     if await require_ray_client(context):
-        channels = get_auto_translate_settings_channels(context["ray"].client)
-        languages = get_auto_translate_settings_langs(context["ray"].client)
+        channels = get_auto_translate_user_settings_channels(context["ray"].client)
+        languages = get_auto_translate_user_settings_langs(context["ray"].client)
         await client.views_open(
             trigger_id=body["trigger_id"],
             view=settings_auto_translate_view(channels, languages),
@@ -782,7 +779,7 @@ async def handle_job_search(ack, view, context, client):
 
 @app.view("settings_auto_translate", middleware=[ray_connection])
 @slack_log_decorator
-async def view_update_auto_translate_settings(ack, view, context, client):
+async def view_update_auto_translate_user_settings(ack, view, context, client):
     if await require_ray_client(context, prompt_login=False):
         try:
             form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
@@ -793,7 +790,7 @@ async def view_update_auto_translate_settings(ack, view, context, client):
         await ack(response_action="clear")
 
         try:
-            update_auto_translate_settings(
+            update_auto_translate_user_settings(
                 context["ray"].client,
                 channels=form.channels,
                 languages=form.languages,

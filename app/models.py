@@ -6,7 +6,9 @@ Full documentation here:
 https://docs.sqlalchemy.org/en/20/orm/declarative_tables.html
 """
 
-from sqlalchemy import JSON
+import datetime
+
+from sqlalchemy import JSON, DateTime, Integer, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -14,10 +16,67 @@ class Base(DeclarativeBase):
     pass
 
 
+class SlackGroupSettings(Base):
+    """Slack settings for a LanguageCloud group.
+
+    Table: `ray_integration.slack_group_settings`
+    """
+
+    __tablename__ = "slack_group_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slack_team_id: Mapped[str] = mapped_column(String(50))
+    slack_enterprise_id: Mapped[str | None] = mapped_column(String(50), unique=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp()
+    )
+    modified_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp()
+    )
+
+
+class SlackAutoTranslateChannelsGroupSettings(Base):
+    """The Slack channels to enable auto-translation for.
+
+    Table: `ray_integration.slack_group_settings_auto_translate_channels`
+    """
+
+    __tablename__ = "slack_group_settings_auto_translate_channels"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    settings_id: Mapped[int] = mapped_column(Integer, index=True)
+    channel_id: Mapped[str] = mapped_column(String(50), index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp()
+    )
+    modified_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp()
+    )
+
+
+class SlackAutoTranslateLangsGroupSettings(Base):
+    """The target languages to translate to for Slack auto-translation.
+
+    Table: `ray_integration.slack_group_settings_auto_translate_langs`
+    """
+
+    __tablename__ = "slack_group_settings_auto_translate_langs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    settings_id: Mapped[int] = mapped_column(Integer, index=True)
+    lang: Mapped[str] = mapped_column(String(50), index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp()
+    )
+    modified_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp()
+    )
+
+
 class GoogleApiLog(Base):
     """The table for logging Google API usage.
 
-    Table: ray_integration_log.google_api_log
+    Table: `ray_integration_log.google_api_log`
     """
 
     __tablename__ = "google_api_log"

@@ -85,8 +85,7 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
         user = None
         try:
             user = await save_user_token_from_installation(args.installation)
-            if user:
-                await clear_auto_translate_permissions_reminder(user.id)
+            await clear_auto_translate_permissions_reminder(args.installation.user_id)
         except Exception as e:
             notify_exception(
                 e, "Slack app: Failed to save user token from installation"

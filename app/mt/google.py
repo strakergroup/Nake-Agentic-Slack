@@ -74,14 +74,17 @@ async def get_machine_translations(
 
 
 async def log_google_api_usage(
-    lc_client: RayClient, text: str, source_lang: str, translations: dict[str, str]
+    user_uuid: str | None,  # LC UUID or Slack user_id
+    text: str,
+    source_lang: str,
+    translations: dict[str, str],
 ) -> None:
     with Session(engines["ray_integration_log"]) as session:
         for target_lang, target_text in translations.items():
             session.add(
                 # Need to rework this, so group IDs don't matter now.
                 GoogleApiLog(
-                    user_uuid=lc_client.id,
+                    user_uuid=user_uuid or "",
                     group_uuid="",
                     super_group_uuid="",
                     app_name="slack",
