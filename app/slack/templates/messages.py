@@ -1626,7 +1626,8 @@ class InsightsMessage(SlackMessage):
         super().__init__(
             _(
                 ":idea: Here are your insights",
-            )[
+            ),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -1718,7 +1719,8 @@ class FileTranslatedMessage(SlackMessage):
         super().__init__(
             _(
                 "Some of your files are translated and ready to be downloaded ({job_id})",
-            )[
+            ),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2054,7 +2056,8 @@ class JobQuotedMessage(SlackMessage):
         super().__init__(
             _(
                 "Pending Quote: Straker Job Reference {quote.id}",
-            )[
+            ),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2150,7 +2153,8 @@ class ClientSignupEventAdminMessage(SlackMessage):
         super().__init__(
             _(
                 "A new user has signed up for a LanguageCloud account: {user_str}",
-            )[
+            ),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2262,7 +2266,8 @@ class JobStatusChangedEventMessage(SlackMessage):
         super().__init__(
             _(
                 "Your translation job {job_id} has changed status to: {status_formatted}",
-            )[
+            ),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2296,7 +2301,8 @@ class JobCompletedEventMessage(SlackMessage):
         super().__init__(
             _(
                 "Your files for {job_id} are ready to download :white_check_mark:",
-            )[
+            ),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2348,7 +2354,8 @@ class JobCancelledEventMessage(SlackMessage):
         super().__init__(
             _(
                 "Your translation job {job_id} has been cancelled",
-            )[
+            ),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2391,7 +2398,8 @@ class JobQuoteCancelledEventMessage(SlackMessage):
         super().__init__(
             _(
                 "We have cancelled the quote for {job_id}.",
-            )[
+            ),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2661,7 +2669,8 @@ class ReportInsightsMessage(SlackMessage):
         super().__init__(
             _(
                 ":idea: Here are your insights",
-            )[{"type": "section", "text": {"type": "mrkdwn", "text": _(message)}}],
+            ),
+            [{"type": "section", "text": {"type": "mrkdwn", "text": _(message)}}],
         )
 
 
