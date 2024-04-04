@@ -851,8 +851,7 @@ class JobDetailsMessage(SlackMessage):
                     {
                         "type": "mrkdwn",
                         "text": _(
-                            f"*Job Status:*\n",
-                            +f"{format_job_status(job.status)}",
+                            f"*Job Status:*\n" + f"{format_job_status(job.status)}",
                         ),
                     },
                     {
