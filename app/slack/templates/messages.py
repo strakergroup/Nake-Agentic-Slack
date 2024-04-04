@@ -592,8 +592,8 @@ class SuccessfulLogoutMessage(SlackMessage):
         self, user_id: str, is_sso: bool = False, ray_username: str | None = None
     ) -> None:
         # TODO: Translation fix this
-        user_details = "<{domains.languagecloud}|{ray_username}>"
-        user_link = "<@{user_id}>"
+        user_details = f"<{domains.languagecloud}|{ray_username}>"
+        user_link = f"<@{user_id}>"
         text = _(
             "Your LanguageCloud account {user_details} is now disconnected from {user_link}."
         )
