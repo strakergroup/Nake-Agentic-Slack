@@ -540,7 +540,7 @@ class LogoutMessage(SlackMessage):
     """Message with a button disconnect a user's LanguageCloud account."""
 
     def __init__(self, ray_client: RayClient) -> None:
-        user_details = "<{domains.languagecloud}|{ray_client.username}>"
+        user_details = f"<{domains.languagecloud}|{ray_client.username}>"
         text = _(
             "Click this button to disconnect your LanguageCloud account: {user_details}."
         )
@@ -831,7 +831,7 @@ class JobDetailsMessage(SlackMessage):
 
     def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
         job_link = f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
-        pm_details = "{job.project_manager.first_name} {job.project_manager.last_name}"
+        pm_details = f"{job.project_manager.first_name} {job.project_manager.last_name}"
         job_due_date = format_job_due_date_slack(
             job.target_date, job.status, traffic_light=True
         )
