@@ -840,15 +840,14 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
             except Exception as e:
                 notify_exception(e)
 
-        try:
-            await asyncio.gather(
-                *[join_channel(channel_id) for channel_id in form.channels]
-            )
-            await asyncio.gather(
-                *[notify_channel(channel_id) for channel_id in form.channels]
-            )
-        except Exception as e:
-            notify_exception(e)
+        await asyncio.gather(
+            *[join_channel(channel_id) for channel_id in form.channels],
+            return_exceptions=True,
+        )
+        await asyncio.gather(
+            *[notify_channel(channel_id) for channel_id in form.channels],
+            return_exceptions=True,
+        )
     except Exception as e:
         notify_exception(e)
 
