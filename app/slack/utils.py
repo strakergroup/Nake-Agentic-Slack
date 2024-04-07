@@ -21,6 +21,27 @@ def is_channel_im(channel_id: str | None) -> bool:
     )
 
 
+def format_strings_display(strings: list[str], and_string: str = "&") -> str:
+    """Format a list of strings for display in human-readable form.
+
+    E.g. English, French and Spanish.
+
+    Args:
+        strings (list[str]): The list of strings to format.
+        and_string (str, optional): The "and" string to use. Defaults to "&".
+
+    Returns:
+        str: The formatted string.
+    """
+    if not strings:
+        return ""
+    if len(strings) == 1:
+        return strings[0]
+    if len(strings) == 2:
+        return f"{strings[0]} {and_string} {strings[1]}"
+    return f"{', '.join(strings[:-1])}, {and_string} {strings[-1]}"
+
+
 def strip_slack_formatting(text: str) -> str:
     """Strip Slack formatting from a string. Slack uses it's own special form
     of Markdown to format text. This function will remove some of the formatting,

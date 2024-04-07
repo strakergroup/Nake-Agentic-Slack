@@ -23,6 +23,7 @@ from ...ray.utils import (
     is_min_langugagecloud_plan,
 )
 from ...ray.settings import get_auto_translate_language_name
+from ..utils import format_strings_display
 from ...config import config, domains, Environment
 from ...auth.connector import (
     RayClient,
@@ -2782,3 +2783,13 @@ class InvalidMTResultMessage(TextMessage):
 
     def __init__(self) -> None:
         super().__init__("Error occurred while translating your message")
+
+
+class AutoTranslateSettingsChangedMessage(TextMessage):
+    """Message to send when the user changes their auto-translate settings."""
+
+    def __init__(self, channel_id: str, langs: list[str]) -> None:
+        langs_string = format_strings_display(
+            [get_auto_translate_language_name(lang) for lang in langs], and_string="and"
+        )
+        super().__init__(f"<#{channel_id}> will be translated into {langs_string}")

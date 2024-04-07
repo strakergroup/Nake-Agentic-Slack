@@ -55,6 +55,7 @@ from .templates.messages import (
     ClientApprovedMessage,
     ClientAlreadyApprovedMessage,
     JobDelayMessage,
+    AutoTranslateSettingsChangedMessage,
 )
 from .templates.views import (
     home_view,
@@ -812,9 +813,21 @@ async def view_update_auto_translate_settings(ack, view, context, client):
             except Exception as e:
                 notify_exception(e)
 
+        async def notify_channel(channel_id: str):
+            try:
+                msg = AutoTranslateSettingsChangedMessage(channel_id, form.languages)
+                await client.chat_postMessage(channel=channel_id, text=msg.text)
+            except SlackApiError:
+                pass  # Must be in channel to post. TODO check other events, e.g. app_mention
+            except Exception as e:
+                notify_exception(e)
+
         try:
             await asyncio.gather(
                 *[join_channel(channel_id) for channel_id in form.channels]
+            )
+            await asyncio.gather(
+                *[notify_channel(channel_id) for channel_id in form.channels]
             )
         except Exception as e:
             notify_exception(e)
