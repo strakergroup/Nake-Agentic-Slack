@@ -2049,7 +2049,8 @@ class JobQuotedMessage(SlackMessage):
         super().__init__(
             _(
                 "Pending Quote: Straker Job Reference {quote.id}",
-            )[
+            ),
+            [
                 {
                     "type": "section",
                     "text": {
@@ -2803,7 +2804,7 @@ class MachineTranslationMessage(SlackMessage):
 class JobTranscribedEventMessage(SlackMessage):
 
     def __init__(self, output_file: str) -> None:
-        title = _("We have *transcribed* your file and srt can be downloaded below.")
+        title = _("We have *transcribed* your file and SRT can be downloaded below.")
         # create message which contains the output_file
         super().__init__(
             title,
@@ -2812,17 +2813,33 @@ class JobTranscribedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*{title}*",
+                        "text": title,
                     },
                 },
                 {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("Show more options"),
-                    },
-                    "action_id": "transcode_options",
-                }
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Download"),
+                                "emoji": False,
+                            },
+                            "action_id": "download_transcribed_file",
+                            "style": "primary",
+                            # "url": f"{domains.slack_ray_translator}/download/{output_file}",
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Show more options"),
+                                "emoji": False,
+                            },
+                        },
+                    ],
+                },
             ],
         )
 

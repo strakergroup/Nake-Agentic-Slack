@@ -79,6 +79,7 @@ from ..ray.settings import (
 )
 from slack_bolt.context.async_context import AsyncBoltContext
 from ..config import domains
+from app import config
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -203,6 +204,23 @@ async def new_job_shortcut(ack, shortcut, context, client):
 #                 channel_id=context["channel_id"],
 #             )
 #         await respond(text=msg.text, blocks=msg.blocks)
+
+
+@app.block_action("download_transcribed_file", middleware=[ray_connection])
+@slack_log_decorator
+async def download_transcribed_file(ack, action, context, client):
+    await ack()
+    if await require_ray_client(context):
+        with open(
+            "/Users/wadenorman-mac/Straker/wb-shared/shared/wb-task/d3956b3a-f587-439f-982a-0adf3c19a224/86e035e1-a3b7-4dad-8d8a-53c3bc8a75f4__9___1_.srt",
+            "rb",
+        ) as file_content:
+            await client.files_upload(
+                channels=context["channel_id"],
+                file=file_content,
+                title="Here is your file",
+                initial_comment="This is the file you requested.",
+            )
 
 
 @app.block_action("login_sso", middleware=[ray_connection])

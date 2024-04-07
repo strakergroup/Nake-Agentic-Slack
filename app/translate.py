@@ -33,7 +33,7 @@ class Translator:
         return language_map
 
     def translate(self, input):
-        if self.lang.lower().startswith("en"):
+        if self.lang.lower().startswith(("en", "us")):
             return input
         if input in self.cache:
             return self.cache[input]

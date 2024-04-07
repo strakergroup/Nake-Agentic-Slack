@@ -47,6 +47,7 @@ class StrakerConfig(BaseSettings):
     slack_queue_proxy_secret: SecretStr = SecretStr("")
     health_check_password: SecretStr = SecretStr("")
     languagecloud_api_key: SecretStr = SecretStr("")
+    path_wb_shared: str = ""
 
     @field_validator("buglog_listener_url", mode="before")
     def default_buglog_listener_url(cls, v):

@@ -1,6 +1,7 @@
 from typing import Any, Annotated
 from buglog import notify_exception, notify_message
 from fastapi import APIRouter, HTTPException, Depends, Header, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
 
 from ..auth.connector import (
@@ -25,26 +26,40 @@ from ..ray.events.parse import get_ray_event_message
 from ..ray.events.models import ClientGroup
 from ..ray.events.logging import post_notification, post_notification_ephemeral
 from dataclasses import replace
+from pathlib import Path
+from ..config import config
 
 
 router = APIRouter()
 
 
+@router.get("/download/{uuid}/{filename}")
+async def download_file(uuid: str, filename: str):
+    # Your code here
+    file_path = Path(config.path_wb_shared).joinpath(
+        "shared", "wb-task", uuid, filename
+    )
+    return FileResponse(file_path)
+
+
 @router.post("/ray/events")
 async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
+    print(event)
     """Receives and responds to an event from the RAY platform."""
-    try:
-        message = get_ray_event_message(event.event, event.data)
-    except ValidationError as e:
-        raise HTTPException(
-            422,
-            {
-                "message": f"The event data is invalid for the event type: {event.event}",
-                "detail": e.errors(),
-            },
-        ) from e
-    except ValueError:
-        raise HTTPException(400, f"The event type is invalid: {event.event}") from None
+    # try:
+    message = get_ray_event_message(event.event, event.data)
+    print(message)
+    print(auth.slack_user)
+    # except ValidationError as e:
+    #     raise HTTPException(
+    #         422,
+    #         {
+    #             "message": f"The event data is invalid for the event type: {event.event}",
+    #             "detail": e.errors(),
+    #         },
+    #     ) from e
+    # except ValueError:
+    #     raise HTTPException(400, f"The event type is invalid: {event.event}") from None
     if message is not None and auth.slack_user is not None:
         # Send login message to the same conversation where it was prompted.
         if isinstance(message, SuccessfulLoginMessage):
@@ -75,12 +90,11 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
             await post_notification_ephemeral(
                 app.client, auth.slack_user.channel_id, event, auth.slack_user, message
             )
-            with open(event.output_file, "rb") as file_content:
-                await app.client.files_upload(
+            with open(event.data.output_file, "rb") as file_content:
+                await app.client.files_upload_v2(
                     channels=auth.slack_user.channel_id,
                     file=file_content,
-                    title="Here is your file",
-                    initial_comment="This is the file you requested.",
+                    title="Transcription",
                 )
 
     # Send notifications to group admins when a new client signs up.

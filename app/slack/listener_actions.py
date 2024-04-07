@@ -3,6 +3,8 @@ This module contains functions for common actions which are executed in
 Slack Bolt listener functions.
 """
 
+import uuid
+
 import asyncio
 from typing import Any
 import re
@@ -20,6 +22,7 @@ from .middleware import require_ray_client
 from .utils import unformat_links
 from .templates.messages import (
     HelpMessage,
+    JobTranscribedEventMessage,
     LoginMessage,
     LogoutMessage,
     SlackPermissionsMessage,
@@ -102,12 +105,14 @@ async def respond_to_message(
                                 f"{domains.stream_proxy}/events/wb_task:media:asr",
                                 json={
                                     "data": {
-                                        "task_id": "slack-media-task",
+                                        "task_id": str(uuid.uuid4()),
                                         "input_url": download_url,
                                         "input_token": token,
                                         "on_completed": {
-                                            "callback_uri": domains.stream_proxy,
-                                            "data": {"slack_user_id": context.ray.client.slack_user_id}
+                                            "callback_uri": f"{domains.stream_proxy}/events/ray:job:transcribed",
+                                            "data": {
+                                                "client_id": context["ray"].client.id
+                                            },
                                         },
                                     },
                                     "source": "Straker Translate for Slack",
