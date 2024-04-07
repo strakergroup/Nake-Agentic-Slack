@@ -299,7 +299,7 @@ def get_auto_translate_settings_and_langs(
                 SlackGroupSettingsTranslationLangs.translation_settings_id
                 == channel_settings.id
             )
-        )
+        ).all()
     return channel_settings, list(results)
 
 
@@ -335,3 +335,42 @@ def update_auto_translate_group_settings(
                     )
                 )
         session.commit()
+
+
+def get_full_group_translation_settings(
+    context: AsyncBoltContext,
+) -> list[tuple[SlackGroupSettingsTranslation, list[str]]]:
+    """Get the group translation settings for all channels.
+
+    Returns:
+        list[tuple[SlackGroupSettingsTranslation, list[str]]]: A list of tuples with
+            the channel settings and the languages to translate to.
+    """
+    # TODO Refactor
+    with Session(engines["ray_integration"]) as session:
+        settings = get_or_create_group_settings(session, context)
+        channel_settings = session.scalars(
+            select(SlackGroupSettingsTranslation)
+            .where(SlackGroupSettingsTranslation.settings_id == settings.id)
+            .order_by(SlackGroupSettingsTranslation.id)
+        ).all()
+        channel_langs = session.scalars(
+            select(SlackGroupSettingsTranslationLangs)
+            .where(
+                SlackGroupSettingsTranslationLangs.translation_settings_id.in_(
+                    [setting.id for setting in channel_settings]
+                )
+            )
+            .order_by(SlackGroupSettingsTranslationLangs.id)
+        ).all()
+        # Map channels to languages.
+        settings_lang_map: dict[
+            int, tuple[SlackGroupSettingsTranslation, list[str]]
+        ] = {setting.id: (setting, []) for setting in channel_settings}
+        for lang in channel_langs:
+            if lang.translation_settings_id in settings_lang_map:
+                settings_lang_map[lang.translation_settings_id][1].append(lang.lang)
+    # Remove channels with no languages.
+    return [
+        (channel, langs) for channel, langs in settings_lang_map.values() if len(langs)
+    ]

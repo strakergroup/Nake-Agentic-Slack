@@ -150,7 +150,7 @@ async def home_opened(event, action, context, body, say, client):
             pass
     # Publish view to home tab.
     await client.views_publish(
-        user_id=event.get("user"),
+        user_id=context["user_id"],
         view=home_view(context, body["api_app_id"], context.get("ray")),
     )
 
@@ -447,16 +447,17 @@ async def ray_command(ack, respond, command, context, client):
 
 @app.block_action("settings_auto_translate", middleware=[ray_connection])
 @slack_log_decorator
-async def show_auto_translate_settings(ack, context, body, client):
+async def show_auto_translate_settings(ack, context, payload, body, client):
     await ack()
-    # TODO could be not channel_id if triggered from home tab
+    channel_id = payload.get("value") or context.channel_id
+    # TODO Could have no channel_id if triggered from home tab.
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
-        context, context.channel_id
+        context, channel_id
     )
     await client.views_open(
         trigger_id=body["trigger_id"],
         view=translation_settings_view(
-            [context.channel_id] if context.channel_id else None,
+            [channel_id] if channel_id else None,
             auto_translate_langs,
             settings.display_format if settings else "thread",
         ),
@@ -801,7 +802,7 @@ async def handle_job_search(ack, view, context, client):
 
 @app.view("settings_auto_translate", middleware=[ray_connection])
 @slack_log_decorator
-async def view_update_auto_translate_settings(ack, view, context, client):
+async def view_update_auto_translate_settings(ack, view, context, body, client):
     try:
         form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
     except ValidationError as e:
@@ -809,13 +810,16 @@ async def view_update_auto_translate_settings(ack, view, context, client):
         await ack(response_action="errors", errors=errors)
         return
     await ack(response_action="clear")
-
     try:
         update_auto_translate_group_settings(
             context,
             channels=form.channels,
             languages=form.languages,
             display_format=form.display_format,
+        )
+        await client.views_publish(
+            user_id=context["user_id"],
+            view=home_view(context, body["api_app_id"], context.get("ray")),
         )
 
         # Try to join channel automatically after updating settings.

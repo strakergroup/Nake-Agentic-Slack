@@ -12,7 +12,12 @@ from ..select_options import (
     filter_auto_translate_language_options,
 )
 from ...auth.connector import RayConnection
+from ...ray.settings import (
+    get_full_group_translation_settings,
+    get_auto_translate_language_name,
+)
 from ...ray.utils import is_min_langugagecloud_plan
+from ...slack.utils import format_strings_display
 from ...config import config, domains, Environment
 from ...models import SlackGroupSettingsTranslation
 
@@ -21,8 +26,9 @@ def home_view(
     context: AsyncBoltContext, app_id: str, rayConnection: RayConnection | None
 ) -> dict[str, Any]:
     message_url = f"slack://app?team={context['team_id']}&id={app_id}&tab=messages"
-    # Hide auto-translation settings in Production until scopes are approved.
-    auto_translate_blocks: list[dict[str, Any]] = [
+    translation_settings = get_full_group_translation_settings(context)
+    # Hide translation settings in Production until scopes are approved.
+    translation_settings_blocks: list[dict[str, Any]] = [
         {"type": "divider"},
         {
             "type": "header",
@@ -37,49 +43,58 @@ def home_view(
                 ),
             },
         },
-        (
-            (
+        {
+            "type": "actions",
+            "elements": [
                 {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "emoji": True,
-                                "text": _(
-                                    ":speech_balloon: Configure translation settings"
-                                ),
-                            },
-                            "action_id": "settings_auto_translate",
-                        },
-                    ],
-                }
-                if is_min_langugagecloud_plan(
-                    rayConnection.client.planname, "Essentials"
-                )
-                else {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": _(":speech_balloon: Configure translation settings"),
+                    },
+                    "action_id": "settings_auto_translate",
+                },
+            ],
+        },
+    ]
+    if len(translation_settings):
+        translation_settings_blocks.extend(
+            [
+                {"type": "divider"},
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Current Translation Settings",
+                    },
+                },
+            ]
+        )
+        for setting, langs in translation_settings:
+            langs_string = format_strings_display(
+                [get_auto_translate_language_name(lang) for lang in langs],
+                and_string="and",
+            )
+            # TODO refactor
+            display_format_string = (
+                "thread replies" if setting.display_format == "thread" else "messages"
+            )
+            translation_settings_blocks.append(
+                {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            "_This feature is only available on an Essentials plan or higher_"
-                        ),
+                        "text": f"<#{setting.channel_id}> will be translated into {langs_string} through in {display_format_string}.",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Edit", "emoji": False},
+                        "value": setting.channel_id,
+                        "action_id": "settings_auto_translate",
                     },
                 }
             )
-            if rayConnection and rayConnection.client
-            else {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "_Connect your Straker LanguageCloud account to enable this feature_"
-                    ),
-                },
-            }
-        ),
-    ]
     return {
         "type": "home",
         "blocks": [
@@ -94,7 +109,7 @@ def home_view(
                 context["user_id"],
                 context["team_id"],
                 context.get("enterprise_id"),
-                context["channel_id"],
+                context.get("channel_id"),  # TODO can be None, e.g. view_submission
                 rayConnection,
             ),
             {"type": "divider"},
@@ -147,7 +162,7 @@ def home_view(
                 ],
             },
             *(
-                auto_translate_blocks
+                translation_settings_blocks
                 if config.environment != Environment.production
                 or domains.slack_ray_translator
                 == "https://stage-slack-deltaray.strakertranslations.com"
@@ -854,6 +869,7 @@ def translation_settings_view(
     # TODO: 429 rate limiting
     language_options = get_auto_translate_language_options()
     display_format_options = translation_display_format_options()
+    # TODO Rethink this, accept single value?
     initial_channels = initial_channels or []
     initial_lang_options = (
         filter_auto_translate_language_options(initial_langs) if initial_langs else []
