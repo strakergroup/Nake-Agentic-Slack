@@ -8,8 +8,8 @@ from ..auth.connector import RayClient
 from ..database import engines
 from ..models import (
     SlackGroupSettings,
-    SlackAutoTranslateChannelsGroupSettings,
     SlackAutoTranslateLangsGroupSettings,
+    SlackAutoTranslateGroupSettings,
 )
 
 
@@ -228,68 +228,71 @@ def update_auto_translate_user_settings(
             )
 
 
-def get_auto_translate_group_settings(
-    context: AsyncBoltContext,
-) -> SlackGroupSettings | None:
+def get_or_create_group_settings(
+    session: Session, context: AsyncBoltContext
+) -> SlackGroupSettings:
     # NOTE: The logic for getting group settings is not stable and WILL change in the future.
     # Please don't touch this file yet
-    with Session(engines["ray_integration_readonly"]) as session:
-        query = select(SlackGroupSettings)
-        if context.enterprise_id:
-            query = query.where(
-                (SlackGroupSettings.slack_enterprise_id == context.enterprise_id)
-                | (SlackGroupSettings.slack_team_id == context.team_id)
-            )
-        else:
-            query = query.where(SlackGroupSettings.slack_team_id == context.team_id)
-        settings = session.scalar(query)
-    return settings
-
-
-def get_or_create_auto_translate_group_settings(
-    context: AsyncBoltContext,
-) -> SlackGroupSettings:
-    settings = get_auto_translate_group_settings(context)
+    query = select(SlackGroupSettings)
+    if context.enterprise_id:
+        query = query.where(
+            # TODO delete team_id filter after enterprise refactor
+            (SlackGroupSettings.slack_enterprise_id == context.enterprise_id)
+            | (SlackGroupSettings.slack_team_id == context.team_id)
+        )
+    else:
+        query = query.where(SlackGroupSettings.slack_team_id == context.team_id)
+    settings = session.scalar(query)
     if settings:
         return settings
-    # Create a settings record if one doesn't exist yet.
-    with Session(engines["ray_integration"]) as session:
-        new_settings = SlackGroupSettings(
-            slack_team_id=context.team_id, slack_enterprise_id=context.enterprise_id
-        )
-        session.add(new_settings)
-        session.commit()
-        session.refresh(new_settings)
+    # Create record if doesn't exist yet.
+    new_settings = SlackGroupSettings(
+        slack_team_id=context.team_id, slack_enterprise_id=context.enterprise_id
+    )
+    session.add(new_settings)
+    session.commit()
+    session.refresh(new_settings)
     return new_settings
 
 
-def get_auto_translate_group_settings_channels(
-    settings: SlackGroupSettings,
-) -> list[str]:
-    """Get the auto-translate settings (channels) for a LanugageCloud group.
+def get_or_create_auto_translate_group_settings(
+    session: Session,
+    context: AsyncBoltContext,
+    channel_id: str,
+) -> SlackAutoTranslateGroupSettings:
+    # TODO streamline this (join)
+    settings = get_or_create_group_settings(session, context)
+    auto_translate_settings = session.scalar(
+        select(SlackAutoTranslateGroupSettings)
+        .where(SlackAutoTranslateGroupSettings.settings_id == settings.id)
+        .where(SlackAutoTranslateGroupSettings.channel_id == channel_id)
+    )
+    if auto_translate_settings:
+        return auto_translate_settings
+    # Create record if doesn't exist yet.
+    new_settings = SlackAutoTranslateGroupSettings(
+        settings_id=settings.id, channel_id=channel_id
+    )
+    session.add(new_settings)
+    session.commit()
+    session.refresh(new_settings)
+    return new_settings
 
-    Returns:
-        list[str]: The list of channel IDs to auto-translate.
-    """
-    with Session(engines["ray_integration_readonly"]) as session:
-        results = session.scalars(
-            select(SlackAutoTranslateChannelsGroupSettings.channel_id).where(
-                SlackAutoTranslateChannelsGroupSettings.settings_id == settings.id
-            )
-        )
-    return list(results)
 
-
-def get_auto_translate_group_settings_langs(settings: SlackGroupSettings) -> list[str]:
-    """Get the auto-translate settings (languages) for a LanugageCloud group.
+def get_auto_translate_langs(context: AsyncBoltContext, channel_id: str) -> list[str]:
+    """Get the auto-translate languages for a channel for a LanugageCloud group.
 
     Returns:
         list[str]: The list of languages to auto-translate to.
     """
-    with Session(engines["ray_integration_readonly"]) as session:
+    with Session(engines["ray_integration"]) as session:
+        channel_settings = get_or_create_auto_translate_group_settings(
+            session, context, channel_id
+        )
         results = session.scalars(
             select(SlackAutoTranslateLangsGroupSettings.lang).where(
-                SlackAutoTranslateLangsGroupSettings.settings_id == settings.id
+                SlackAutoTranslateLangsGroupSettings.auto_translate_settings_id
+                == channel_settings.id
             )
         )
     return list(results)
@@ -298,54 +301,27 @@ def get_auto_translate_group_settings_langs(settings: SlackGroupSettings) -> lis
 def update_auto_translate_group_settings(
     context: AsyncBoltContext, channels: list[str], languages: list[str]
 ) -> None:
-    """Update the auto-translate settings for a LanugageCloud group.
+    """Update the auto-translate settings for a channel for a LanugageCloud group.
 
     Args:
         channels (list[str]): The IDs of the channels (conversations) to auto-translate.
         languages (list[str]): The languages to auto-translate to.
     """
-    settings = get_or_create_auto_translate_group_settings(context)
     with Session(engines["ray_integration"]) as session:
-        session.execute(
-            delete(SlackAutoTranslateChannelsGroupSettings).where(
-                SlackAutoTranslateChannelsGroupSettings.settings_id == settings.id
-            )
-        )
-        session.execute(
-            delete(SlackAutoTranslateLangsGroupSettings).where(
-                SlackAutoTranslateLangsGroupSettings.settings_id == settings.id
-            )
-        )
         for channel_id in channels:
-            session.add(
-                SlackAutoTranslateChannelsGroupSettings(
-                    settings_id=settings.id, channel_id=channel_id
+            channel_settings = get_or_create_auto_translate_group_settings(
+                session, context, channel_id
+            )
+            session.execute(
+                delete(SlackAutoTranslateLangsGroupSettings).where(
+                    SlackAutoTranslateLangsGroupSettings.auto_translate_settings_id
+                    == channel_settings.id
                 )
             )
-        for lang in languages:
-            session.add(
-                SlackAutoTranslateLangsGroupSettings(settings_id=settings.id, lang=lang)
-            )
+            for lang in languages:
+                session.add(
+                    SlackAutoTranslateLangsGroupSettings(
+                        auto_translate_settings_id=channel_settings.id, lang=lang
+                    )
+                )
         session.commit()
-
-
-def get_auto_translate_langs(context: AsyncBoltContext) -> list[str]:
-    """Determine if auto-translate is enabled for the channel and user and
-    return the target languages based on the user and group settings. If not
-    enabled, return an empty list.
-
-    Returns:
-        list[str]: The list of target language Google codes to auto-translate to.
-    """
-    if not context.channel_id:
-        return []
-    # Only check group settings for now, user settings are disabled until ready.
-    group_settings = get_auto_translate_group_settings(context)
-    if not group_settings:
-        return []
-
-    enabled_conversations = get_auto_translate_group_settings_channels(group_settings)
-    if context.channel_id not in enabled_conversations:
-        return []
-
-    return get_auto_translate_group_settings_langs(group_settings)

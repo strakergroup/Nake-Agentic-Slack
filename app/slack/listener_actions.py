@@ -252,7 +252,8 @@ async def auto_translate_message(
     # if not is_min_langugagecloud_plan(ray_client.planname, "Essentials"):
     #     # Minimum Essentials plan is required for the auto-translate feature.
     #     return
-    target_langs = get_auto_translate_langs(context)
+    assert context.channel_id  # TODO enforce this
+    target_langs = get_auto_translate_langs(context, context.channel_id)
     if not target_langs:
         return
 

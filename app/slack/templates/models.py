@@ -251,4 +251,5 @@ class AutoTranslationSettingsForm(BaseModel):
                 ],
             )
         except KeyError as e:
+            # TODO Better error handling
             raise ValueError("The Slack payload format is incorrect") from e

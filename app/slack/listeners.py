@@ -75,9 +75,7 @@ from ..auth.connector import (
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
-    get_auto_translate_group_settings,
-    get_auto_translate_group_settings_channels,
-    get_auto_translate_group_settings_langs,
+    get_auto_translate_langs,
     update_auto_translate_group_settings,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
@@ -96,7 +94,7 @@ from ..config import domains
 async def message_event(client, context, message):
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
-    # not channel or group conversations (see the "app_mention" event).
+    # use threads in channels or group conversations (see the "app_mention" event).
     if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
         await respond_to_message(client, context, message, use_thread=False)
     elif message.get("text") and f"<@{context['bot_user_id']}>" not in message["text"]:
@@ -114,8 +112,12 @@ async def app_mention_event(client, context, event):
     # https://api.slack.com/events/app_mention
     # Respond to messages with threads in channel and group chats if mentioned.
     # Remove user mentions from text before processing.
+    # TODO review this
     event["text"] = re.sub(r"<@\w+>", "", event.get("text", "")).strip()
-    await respond_to_message(client, context, event, use_thread=True)
+    if event["text"]:
+        await respond_to_message(client, context, event, use_thread=True)
+    else:
+        ...  # TODO Show auto-translate settings modal
 
 
 @app.event("app_home_opened", middleware=[ray_connection])
@@ -357,24 +359,14 @@ async def ray_command(ack, respond, command, context, client):
                 msg = LogoutMessage(context["ray"].client)
                 await respond(text=msg.text, blocks=msg.blocks)
 
-        case ['settings']:
-            group_settings = get_auto_translate_group_settings(context)
-            channels = (
-                get_auto_translate_group_settings_channels(group_settings)
-                if group_settings
-                else []
+        case ["translate"]:
+            auto_translate_langs = get_auto_translate_langs(context, context.channel_id)
+            await client.views_open(
+                trigger_id=command["trigger_id"],
+                view=settings_auto_translate_view(
+                    [context.channel_id], auto_translate_langs
+                ),
             )
-            # Allow changing settings if connect LC account OR channel is already enabled.
-            if (context.channel_id in channels) or (await require_ray_client(context)):
-                languages = (
-                    get_auto_translate_group_settings_langs(group_settings)
-                    if group_settings
-                    else []
-                )
-                await client.views_open(
-                    trigger_id=command["trigger_id"],
-                    view=settings_auto_translate_view(channels, languages),
-                )
 
         case ["job", reference, *reference_other]:
             # Get job status or list of jobs.
@@ -452,23 +444,11 @@ async def ray_command(ack, respond, command, context, client):
 @slack_log_decorator
 async def show_auto_translate_settings(ack, context, body, client):
     await ack()
-    group_settings = get_auto_translate_group_settings(context)
-    channels = (
-        get_auto_translate_group_settings_channels(group_settings)
-        if group_settings
-        else []
+    auto_translate_langs = get_auto_translate_langs(context, context.channel_id)
+    await client.views_open(
+        trigger_id=body["trigger_id"],
+        view=settings_auto_translate_view([context.channel_id], auto_translate_langs),
     )
-    # Allow changing settings if connect LC account OR channel is already enabled.
-    if (context.channel_id in channels) or (await require_ray_client(context)):
-        languages = (
-            get_auto_translate_group_settings_langs(group_settings)
-            if group_settings
-            else []
-        )
-        await client.views_open(
-            trigger_id=body["trigger_id"],
-            view=settings_auto_translate_view(channels, languages),
-        )
 
 
 @app.block_action("show_job_details", middleware=[ray_connection])
@@ -832,9 +812,12 @@ async def view_update_auto_translate_settings(ack, view, context, client):
             except Exception as e:
                 notify_exception(e)
 
-        await asyncio.gather(
-            *[join_channel(channel_id) for channel_id in form.channels]
-        )
+        try:
+            await asyncio.gather(
+                *[join_channel(channel_id) for channel_id in form.channels]
+            )
+        except Exception as e:
+            notify_exception(e)
     except Exception as e:
         notify_exception(e)
 

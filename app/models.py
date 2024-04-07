@@ -35,6 +35,25 @@ class SlackGroupSettings(Base):
     )
 
 
+class SlackAutoTranslateGroupSettings(Base):
+    """Auto-translate settings of a Slack channel.
+
+    Table: `ray_integration.slack_group_settings_auto_translate`
+    """
+
+    __tablename__ = "slack_group_settings_auto_translate"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    settings_id: Mapped[int] = mapped_column(Integer, index=True)
+    channel_id: Mapped[str] = mapped_column(String(50), index=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp()
+    )
+    modified_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp()
+    )
+
+
 class SlackAutoTranslateChannelsGroupSettings(Base):
     """The Slack channels to enable auto-translation for.
 
@@ -43,6 +62,7 @@ class SlackAutoTranslateChannelsGroupSettings(Base):
 
     __tablename__ = "slack_group_settings_auto_translate_channels"
 
+    # TODO: might not need this
     id: Mapped[int] = mapped_column(primary_key=True)
     settings_id: Mapped[int] = mapped_column(Integer, index=True)
     channel_id: Mapped[str] = mapped_column(String(50), index=True)
@@ -63,7 +83,7 @@ class SlackAutoTranslateLangsGroupSettings(Base):
     __tablename__ = "slack_group_settings_auto_translate_langs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    settings_id: Mapped[int] = mapped_column(Integer, index=True)
+    auto_translate_settings_id: Mapped[int] = mapped_column(Integer, index=True)
     lang: Mapped[str] = mapped_column(String(50), index=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp()
