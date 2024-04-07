@@ -76,7 +76,7 @@ from ..auth.connector import (
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
-    get_auto_translate_langs,
+    get_auto_translate_settings_and_langs,
     update_auto_translate_group_settings,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
@@ -361,11 +361,15 @@ async def ray_command(ack, respond, command, context, client):
                 await respond(text=msg.text, blocks=msg.blocks)
 
         case ["translate"]:
-            auto_translate_langs = get_auto_translate_langs(context, context.channel_id)
+            settings, auto_translate_langs = get_auto_translate_settings_and_langs(
+                context, context.channel_id
+            )
             await client.views_open(
                 trigger_id=command["trigger_id"],
                 view=settings_auto_translate_view(
-                    [context.channel_id], auto_translate_langs
+                    [context.channel_id],
+                    auto_translate_langs,
+                    settings.display_format if settings else "thread",
                 ),
             )
 
@@ -445,10 +449,16 @@ async def ray_command(ack, respond, command, context, client):
 @slack_log_decorator
 async def show_auto_translate_settings(ack, context, body, client):
     await ack()
-    auto_translate_langs = get_auto_translate_langs(context, context.channel_id)
+    settings, auto_translate_langs = get_auto_translate_settings_and_langs(
+        context, context.channel_id
+    )
     await client.views_open(
         trigger_id=body["trigger_id"],
-        view=settings_auto_translate_view([context.channel_id], auto_translate_langs),
+        view=settings_auto_translate_view(
+            [context.channel_id],
+            auto_translate_langs,
+            settings.display_format if settings else "thread",
+        ),
     )
 
 
@@ -801,7 +811,10 @@ async def view_update_auto_translate_settings(ack, view, context, client):
 
     try:
         update_auto_translate_group_settings(
-            context, channels=form.channels, languages=form.languages
+            context,
+            channels=form.channels,
+            languages=form.languages,
+            display_format=form.display_format,
         )
 
         # Try to join channel automatically after updating settings.

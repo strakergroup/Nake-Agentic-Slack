@@ -50,7 +50,7 @@ from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
     is_valid_auto_translate_language,
     filter_invalid_auto_translate_languages,
-    get_auto_translate_langs,
+    get_auto_translate_settings_and_langs,
 )
 from ..ray.utils import is_min_langugagecloud_plan
 from ..mt.google import get_machine_translations, log_google_api_usage
@@ -246,13 +246,17 @@ async def auto_translate_message(
 ):
     text: str | None = message.get("text")
     ts: str = message["ts"]
+    thread_ts: str | None = message.get("thread_ts")
     if not text:
         return
     # if not is_min_langugagecloud_plan(ray_client.planname, "Essentials"):
     #     # Minimum Essentials plan is required for the auto-translate feature.
     #     return
     assert context.channel_id  # TODO enforce this
-    target_langs = get_auto_translate_langs(context, context.channel_id)
+    settings, target_langs = get_auto_translate_settings_and_langs(
+        context, context.channel_id
+    )
+    assert settings  # TODO Fix typing
     if not target_langs:
         return
 
@@ -274,29 +278,38 @@ async def auto_translate_message(
         translations=[(tl, target_text) for tl, target_text in translations.items()],
     )
     try:
-        # Disable editing users' messages for now.
-        # if context.user_token:
-        #     try:
-        #         client.token = context.user_token
-        #         await client.chat_update(
-        #             channel=context.channel_id,
-        #             ts=ts,
-        #             text=text,  # Must use original untranslated text for future detect language
-        #             blocks=msg.blocks,
-        #         )
-        #         return
-        #     except Exception as e:
-        #         notify_exception(e, "Failed to update message (auto-translation)")
-        #         # If updating message fails (e.g. permissions), default to thread reply.
-        #         client.token = context.bot_token
+        if settings.display_format == "thread":
+            await client.chat_postMessage(
+                channel=context.channel_id,
+                text=msg.text,
+                blocks=msg.blocks,
+                thread_ts=ts,
+            )
+        elif settings.display_format == "message":
+            await client.chat_postMessage(
+                channel=context.channel_id,
+                text=msg.text,
+                blocks=msg.blocks,
+                thread_ts=thread_ts,
+            )
+        else:
+            notify_message("Slack app: Invalid display format")
+            # Disable editing users' messages for now.
+            # if context.user_token:
+            #     try:
+            #         client.token = context.user_token
+            #         await client.chat_update(
+            #             channel=context.channel_id,
+            #             ts=ts,
+            #             text=text,  # Must use original untranslated text for future detect language
+            #             blocks=msg.blocks,
+            #         )
+            #         return
+            #     except Exception as e:
+            #         notify_exception(e, "Failed to update message (auto-translation)")
+            #         # If updating message fails (e.g. permissions), default to thread reply.
+            #         client.token = context.bot_token
 
-        # Post a thread reply if the user did not give permission (user token).
-        await client.chat_postMessage(
-            channel=context.channel_id,
-            text=msg.text,
-            blocks=msg.blocks,
-            thread_ts=ts,
-        )
         # TODO decide what to do with this
         # permissions_msg = SlackPermissionsMessage.auto_translate_variation()
         # await client.chat_postEphemeral(

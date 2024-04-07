@@ -7,8 +7,9 @@ https://docs.sqlalchemy.org/en/20/orm/declarative_tables.html
 """
 
 import datetime
+from typing import TypeAlias, Literal
 
-from sqlalchemy import JSON, DateTime, Integer, String, func
+from sqlalchemy import JSON, DateTime, Enum, Integer, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -35,17 +36,22 @@ class SlackGroupSettings(Base):
     )
 
 
-class SlackAutoTranslateGroupSettings(Base):
+class SlackGroupSettingsTranslation(Base):
     """Auto-translate settings of a Slack channel.
 
-    Table: `ray_integration.slack_group_settings_auto_translate`
+    Table: `ray_integration.slack_group_settings_translation`
     """
 
-    __tablename__ = "slack_group_settings_auto_translate"
+    __tablename__ = "slack_group_settings_translation"
+
+    DisplayFormatType: TypeAlias = Literal["thread", "message", "edit"]
 
     id: Mapped[int] = mapped_column(primary_key=True)
     settings_id: Mapped[int] = mapped_column(Integer, index=True)
     channel_id: Mapped[str] = mapped_column(String(50), index=True)
+    display_format: Mapped[DisplayFormatType] = mapped_column(
+        Enum("thread", "message", "edit"), server_default="thread"
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp()
     )
@@ -74,16 +80,16 @@ class SlackAutoTranslateChannelsGroupSettings(Base):
     )
 
 
-class SlackAutoTranslateLangsGroupSettings(Base):
+class SlackGroupSettingsTranslationLangs(Base):
     """The target languages to translate to for Slack auto-translation.
 
-    Table: `ray_integration.slack_group_settings_auto_translate_langs`
+    Table: `ray_integration.slack_group_settings_translation_langs`
     """
 
-    __tablename__ = "slack_group_settings_auto_translate_langs"
+    __tablename__ = "slack_group_settings_translation_langs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    auto_translate_settings_id: Mapped[int] = mapped_column(Integer, index=True)
+    translation_settings_id: Mapped[int] = mapped_column(Integer, index=True)
     lang: Mapped[str] = mapped_column(String(50), index=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp()

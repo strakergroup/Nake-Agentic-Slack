@@ -7,11 +7,14 @@ from .blocks import home_auth_blocks
 from ..select_options import (
     map_file_options,
     get_auto_translate_language_options,
+    translation_display_format_options,
+    map_translation_display_format_option,
     filter_auto_translate_language_options,
 )
 from ...auth.connector import RayConnection
 from ...ray.utils import is_min_langugagecloud_plan
 from ...config import config, domains, Environment
+from ...models import SlackGroupSettingsTranslation
 
 
 def home_view(
@@ -836,23 +839,28 @@ def cancel_job_modal(client_name: str) -> dict[str, Any]:
 
 
 def settings_auto_translate_view(
-    initial_channels: list[str] | None = None, initial_langs: list[str] | None = None
+    initial_channels: list[str] | None = None,
+    initial_langs: list[str] | None = None,
+    display_format: SlackGroupSettingsTranslation.DisplayFormatType = "thread",
 ) -> dict[str, Any]:
     # TODO: Detect message max length (5000)
     # TODO: Detect message formatting, emojis
     # TODO: 429 rate limiting
     language_options = get_auto_translate_language_options()
+    display_format_options = translation_display_format_options()
     initial_channels = initial_channels or []
     initial_lang_options = (
         filter_auto_translate_language_options(initial_langs) if initial_langs else []
     )
-
+    initial_display_format_option = map_translation_display_format_option(
+        display_format
+    )
     return {
         "type": "modal",
         "callback_id": "settings_auto_translate",
         "title": {"type": "plain_text", "text": _("Translation Settings")},
-        "submit": {"type": "plain_text", "text": _("Save")},
-        "close": {"type": "plain_text", "text": _("Cancel")},
+        "submit": {"type": "plain_text", "text": _("Create")},
+        "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
             {
                 "type": "input",
@@ -862,26 +870,32 @@ def settings_auto_translate_view(
                     "action_id": "channels",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": _("Select channel(s)"),
+                        "text": _("Select channels or DMs"),
                     },
-                    "initial_conversations": initial_channels,
+                    # TODO default_to_current_conversation? Consider when im
+                    **(
+                        {"initial_conversations": initial_channels}
+                        if initial_channels
+                        else {"default_to_current_conversation": True}
+                    ),
                     "filter": {
-                        "include": ["public", "private"],
+                        "include": ["public", "private", "mpim"],
+                        "exclude_external_shared_channels": True,
                         "exclude_bot_users": True,
                     },
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": _("Channels"),
-                    "emoji": True,
+                    "text": _("Channel or DM"),
+                    "emoji": False,
                 },
                 "hint": {
                     "type": "plain_text",
                     "text": _(
-                        "Important: Straker must be a member in the chosen channel or DM"
+                        "Straker Translate must be integrated as an app in the selected channel or DM"
                     ),
                 },
-                "optional": True,
+                "optional": False,
             },
             {
                 "type": "input",
@@ -890,7 +904,7 @@ def settings_auto_translate_view(
                     "type": "multi_static_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": _("Choose language(s)"),
+                        "text": _("Choose languages"),
                     },
                     "options": language_options,
                     **(
@@ -901,14 +915,32 @@ def settings_auto_translate_view(
                     "action_id": "languages",
                     "max_selected_items": 10,
                 },
-                "label": {"type": "plain_text", "text": _("Language"), "emoji": True},
+                "label": {"type": "plain_text", "text": _("Language"), "emoji": False},
                 "hint": {
                     "type": "plain_text",
-                    "text": _(
-                        "Automatically translate messages into these language(s)"
-                    ),
+                    "text": _("Automatically translate messages into these languages"),
                 },
-                "optional": True,
+                "optional": False,
+            },
+            {
+                "type": "input",
+                "block_id": "display_format",
+                "element": {
+                    "type": "static_select",
+                    "options": display_format_options,
+                    "initial_option": initial_display_format_option,
+                    "action_id": "display_format",
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": _("Display Format"),
+                    "emoji": False,
+                },
+                "hint": {
+                    "type": "plain_text",
+                    "text": _("How would you like to see the translated messages?"),
+                },
+                "optional": False,
             },
         ],
     }
