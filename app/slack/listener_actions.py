@@ -55,7 +55,6 @@ from ..ray.settings import (
 from ..ray.utils import is_min_langugagecloud_plan
 from ..mt.google import get_machine_translations, log_google_api_usage
 from ..watson import watson_message
-from ..cache.timer import auto_translate_permissions_reminder
 from .select_options import get_file_options_cached
 
 
@@ -270,25 +269,26 @@ async def auto_translate_message(
         return
 
     msg = AutoTranslationMessage(
-        text,
+        None,
         source_lang,
         translations=[(tl, target_text) for tl, target_text in translations.items()],
     )
     try:
-        if context.user_token:
-            try:
-                client.token = context.user_token
-                await client.chat_update(
-                    channel=context.channel_id,
-                    ts=ts,
-                    text=text,  # Must use original untranslated text for future detect language
-                    blocks=msg.blocks,
-                )
-                return
-            except Exception as e:
-                notify_exception(e, "Failed to update message (auto-translation)")
-                # If updating message fails (e.g. permissions), default to thread reply.
-                client.token = context.bot_token
+        # Disable editing users' messages for now.
+        # if context.user_token:
+        #     try:
+        #         client.token = context.user_token
+        #         await client.chat_update(
+        #             channel=context.channel_id,
+        #             ts=ts,
+        #             text=text,  # Must use original untranslated text for future detect language
+        #             blocks=msg.blocks,
+        #         )
+        #         return
+        #     except Exception as e:
+        #         notify_exception(e, "Failed to update message (auto-translation)")
+        #         # If updating message fails (e.g. permissions), default to thread reply.
+        #         client.token = context.bot_token
 
         # Post a thread reply if the user did not give permission (user token).
         await client.chat_postMessage(
@@ -297,17 +297,14 @@ async def auto_translate_message(
             blocks=msg.blocks,
             thread_ts=ts,
         )
-        # If the user has not given permission to edit their messages, post a reminder.
-        if await auto_translate_permissions_reminder(
-            context.user_id, context.channel_id
-        ):
-            permissions_msg = SlackPermissionsMessage.auto_translate_variation()
-            await client.chat_postEphemeral(
-                channel=context.channel_id,
-                user=context.user_id,
-                text=permissions_msg.text,
-                blocks=permissions_msg.blocks,
-            )
+        # TODO decide what to do with this
+        # permissions_msg = SlackPermissionsMessage.auto_translate_variation()
+        # await client.chat_postEphemeral(
+        #     channel=context.channel_id,
+        #     user=context.user_id,
+        #     text=permissions_msg.text,
+        #     blocks=permissions_msg.blocks,
+        # )
     except Exception as e:
         notify_exception(e, "Failed to get machine translation from LanguageCloud API")
     finally:

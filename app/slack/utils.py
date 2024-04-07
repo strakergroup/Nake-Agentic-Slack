@@ -21,7 +21,7 @@ def is_channel_im(channel_id: str | None) -> bool:
     )
 
 
-def format_strings_display(strings: list[str], and_string: str = "&") -> str:
+def format_strings_display(strings: list[str], *, and_string: str = "&") -> str:
     """Format a list of strings for display in human-readable form.
 
     E.g. English, French and Spanish.

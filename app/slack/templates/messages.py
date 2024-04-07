@@ -2668,7 +2668,7 @@ class JobTargetLangMessage(SlackMessage):
 class AutoTranslationMessage(SlackMessage):
     def __init__(
         self,
-        source_text: str,
+        source_text: str | None,
         source_language: str,
         translations: list[tuple[str, str]],
         scores: list[tuple[str, float]] | None = None,
@@ -2676,22 +2676,29 @@ class AutoTranslationMessage(SlackMessage):
         """Slack message template for an auto-translated message
 
         Args:
-            source_text (str | None): The original source text.
-            source_language: str): The source language, e.g. "en", "de".
-            translations (list[tuple[str, str, str]]): A list of translations.
+            source_text (str | None): The original source text. If empty, do not
+                the source text.
+            source_language (str): The source language, e.g. "en", "de".
+            translations (list[tuple[str, str]]): A list of translations.
                 Each element is a 2-tuple with the target language and translated text.
         """
         self.source_text = source_text
         self.source_language = source_language
         self.translations = translations
         self.scores = scores
-
-        super().__init__(source_text, self.generate_blocks())
+        # TODO what happens when no translations?
+        text = source_text or (self.translations[0][1] if self.translations else "")
+        super().__init__(text, self.generate_blocks())
 
     def generate_blocks(self) -> list[dict[str, Any]]:
-        blocks: list[dict[str, Any]] = [
-            {"type": "section", "text": {"type": "mrkdwn", "text": self.source_text}}
-        ]
+        blocks: list[dict[str, Any]] = []
+        if self.source_text:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": self.source_text},
+                }
+            )
         for target_lang, translated in self.translations:
             blocks.append(
                 {
@@ -2707,16 +2714,14 @@ class AutoTranslationMessage(SlackMessage):
         target_langs = [
             get_auto_translate_language_name(t[0]) for t in self.translations
         ]
-        target_langs_string = ", ".join(target_langs)
+        target_langs_string = format_strings_display(target_langs, and_string="&")
         blocks.append(
             {
                 "type": "context",
                 "elements": [
                     {
                         "type": "plain_text",
-                        "text": _(
-                            "Translated to {target_langs_string} with Straker AI",
-                        ),
+                        "text": f"Translated to {target_langs_string} using Straker AI",
                     }
                 ],
             }
