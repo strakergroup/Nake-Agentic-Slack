@@ -47,7 +47,9 @@ def home_view(
                             "text": {
                                 "type": "plain_text",
                                 "emoji": True,
-                                "text": _(":speech_balloon: Translation Settings"),
+                                "text": _(
+                                    ":speech_balloon: Configure translation settings"
+                                ),
                             },
                             "action_id": "settings_auto_translate",
                         },
@@ -85,7 +87,7 @@ def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": _("Welcome to the Straker LanguageCloud App!"),
+                    "text": _("Welcome to the Straker Translate App!"),
                 },
             },
             *home_auth_blocks(
@@ -98,7 +100,7 @@ def home_view(
             {"type": "divider"},
             {
                 "type": "header",
-                "text": {"type": "plain_text", "text": _("Get started")},
+                "text": {"type": "plain_text", "text": _("Get Started")},
             },
             {
                 "type": "section",
@@ -119,7 +121,6 @@ def home_view(
                             "emoji": True,
                             "text": _(":zap: Create New Job"),
                         },
-                        "style": "primary",
                         "action_id": "quote",
                         "url": message_url,
                     },
@@ -138,7 +139,7 @@ def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _(":bar_chart: Reports/Insights"),
+                            "text": _(":bar_chart: Insights"),
                         },
                         "action_id": "report_insights",
                         "url": message_url,
@@ -165,16 +166,21 @@ def home_view(
                         "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest LanguageCloud and Enterprise features, provide updates, and engage with customers like you!"
                     ),
                 },
-                "accessory": {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("Learn More"),
-                        "emoji": True,
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Learn More"),
+                            "emoji": False,
+                        },
+                        "action_id": "link_0",
+                        "url": "https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions",
                     },
-                    "action_id": "link_0",
-                    "url": "https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions",
-                },
+                ],
             },
             {"type": "divider"},
             {
@@ -197,7 +203,7 @@ def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _(":question:Help Centre"),
+                            "text": _(":question: Help Centre"),
                         },
                         "action_id": "link_2",
                         "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
@@ -838,7 +844,7 @@ def cancel_job_modal(client_name: str) -> dict[str, Any]:
     }
 
 
-def settings_auto_translate_view(
+def translation_settings_view(
     initial_channels: list[str] | None = None,
     initial_langs: list[str] | None = None,
     display_format: SlackGroupSettingsTranslation.DisplayFormatType = "thread",

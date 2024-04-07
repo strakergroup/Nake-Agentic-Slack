@@ -59,7 +59,7 @@ from .templates.messages import (
 )
 from .templates.views import (
     home_view,
-    settings_auto_translate_view,
+    translation_settings_view,
     job_search_modal,
     sso_form_modal,
     cancel_job_modal,
@@ -366,7 +366,7 @@ async def ray_command(ack, respond, command, context, client):
             )
             await client.views_open(
                 trigger_id=command["trigger_id"],
-                view=settings_auto_translate_view(
+                view=translation_settings_view(
                     [context.channel_id],
                     auto_translate_langs,
                     settings.display_format if settings else "thread",
@@ -449,13 +449,14 @@ async def ray_command(ack, respond, command, context, client):
 @slack_log_decorator
 async def show_auto_translate_settings(ack, context, body, client):
     await ack()
+    # TODO could be not channel_id if triggered from home tab
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
         context, context.channel_id
     )
     await client.views_open(
         trigger_id=body["trigger_id"],
-        view=settings_auto_translate_view(
-            [context.channel_id],
+        view=translation_settings_view(
+            [context.channel_id] if context.channel_id else None,
             auto_translate_langs,
             settings.display_format if settings else "thread",
         ),
