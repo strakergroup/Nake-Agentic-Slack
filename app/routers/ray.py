@@ -44,28 +44,39 @@ async def download_file(uuid: str, filename: str):
 
 @router.post("/ray/events")
 async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
-    print(event)
     """Receives and responds to an event from the RAY platform."""
-    # try:
-    message = get_ray_event_message(event.event, event.data)
-    print(message)
-    print(auth.slack_user)
-    # except ValidationError as e:
-    #     raise HTTPException(
-    #         422,
-    #         {
-    #             "message": f"The event data is invalid for the event type: {event.event}",
-    #             "detail": e.errors(),
-    #         },
-    #     ) from e
-    # except ValueError:
-    #     raise HTTPException(400, f"The event type is invalid: {event.event}") from None
+    try:
+        message = get_ray_event_message(event.event, event.data)
+    except ValidationError as e:
+        raise HTTPException(
+            422,
+            {
+                "message": f"The event data is invalid for the event type: {event.event}",
+                "detail": e.errors(),
+            },
+        ) from e
+    except ValueError:
+        raise HTTPException(400, f"The event type is invalid: {event.event}") from None
     if message is not None and auth.slack_user is not None:
         # Send login message to the same conversation where it was prompted.
         if isinstance(message, SuccessfulLoginMessage):
             await post_notification_ephemeral(
                 app.client, auth.slack_user.channel_id, event, auth.slack_user, message
             )
+        elif isinstance(message, JobTranscribedEventMessage):
+            await post_notification_ephemeral(
+                app.client, auth.slack_user.channel_id, event, auth.slack_user, message
+            )
+            with open(
+                f"{config.path_wb_shared}wb-task/{event.data['result']['output_file']}",
+                "rb",
+            ) as file_content:
+                await app.client.files_upload_v2(
+                    channel=auth.slack_user.channel_id,
+                    file=file_content,
+                    title="Here is your file",
+                    initial_comment="This is the file you requested.",
+                )
         elif (
             # Send important messages regardless of subscribed status.
             isinstance(message, (ClientSignupEventMessage, ClientApprovedEventMessage))
@@ -86,16 +97,6 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         )
             else:
                 await post_notification(app.client, event, auth.slack_user, message)
-        elif isinstance(message, JobTranscribedEventMessage):
-            await post_notification_ephemeral(
-                app.client, auth.slack_user.channel_id, event, auth.slack_user, message
-            )
-            with open(event.data.output_file, "rb") as file_content:
-                await app.client.files_upload_v2(
-                    channels=auth.slack_user.channel_id,
-                    file=file_content,
-                    title="Transcription",
-                )
 
     # Send notifications to group admins when a new client signs up.
     if isinstance(message, ClientSignupEventMessage):

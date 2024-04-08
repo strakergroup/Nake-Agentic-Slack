@@ -78,8 +78,7 @@ from ..ray.settings import (
     update_auto_translate_settings,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
-from ..config import domains
-from app import config
+from ..config import config, domains
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -211,12 +210,13 @@ async def new_job_shortcut(ack, shortcut, context, client):
 async def download_transcribed_file(ack, action, context, client):
     await ack()
     if await require_ray_client(context):
+        output_file = action["value"]
         with open(
-            "/Users/wadenorman-mac/Straker/wb-shared/shared/wb-task/d3956b3a-f587-439f-982a-0adf3c19a224/86e035e1-a3b7-4dad-8d8a-53c3bc8a75f4__9___1_.srt",
+            f"{config.path_wb_shared}wb-task/{output_file}",
             "rb",
         ) as file_content:
-            await client.files_upload(
-                channels=context["channel_id"],
+            await client.files_upload_v2(
+                channel=context["channel_id"],
                 file=file_content,
                 title="Here is your file",
                 initial_comment="This is the file you requested.",

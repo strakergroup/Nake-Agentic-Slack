@@ -2828,6 +2828,7 @@ class JobTranscribedEventMessage(SlackMessage):
                             },
                             "action_id": "download_transcribed_file",
                             "style": "primary",
+                            "value": output_file,
                             # "url": f"{domains.slack_ray_translator}/download/{output_file}",
                         },
                         {
