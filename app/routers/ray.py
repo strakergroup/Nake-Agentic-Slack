@@ -1,3 +1,4 @@
+import os
 from typing import Any, Annotated
 from buglog import notify_exception, notify_message
 from fastapi import APIRouter, HTTPException, Depends, Header, Request
@@ -27,7 +28,7 @@ from ..ray.events.models import ClientGroup
 from ..ray.events.logging import post_notification, post_notification_ephemeral
 from dataclasses import replace
 from pathlib import Path
-from ..config import config
+from ..config import config, domains
 
 
 router = APIRouter()
@@ -36,9 +37,7 @@ router = APIRouter()
 @router.get("/download/{uuid}/{filename}")
 async def download_file(uuid: str, filename: str):
     # Your code here
-    file_path = Path(config.path_wb_shared).joinpath(
-        "shared", "wb-task", uuid, filename
-    )
+    file_path = Path(config.path_wb_shared).joinpath("wb-task", uuid, filename)
     return FileResponse(file_path)
 
 
@@ -66,14 +65,28 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
         elif isinstance(message, JobTranscribedEventMessage):
             if event.event == "ray:job:srt:translated":
                 app.client.token = auth.slack_user.bot_token
-                with open(
-                    f"{config.path_wb_shared}{event.data['result']['output_file']}",
-                    "rb",
-                ) as file_content:
-                    await app.client.files_upload_v2(
+                try:
+                    with open(
+                        f"{config.path_wb_shared}{event.data['result']['output_file']}",
+                        "rb",
+                    ) as file_content:
+                        await app.client.files_upload_v2(
+                            channel=auth.slack_user.channel_id,
+                            file=file_content,
+                            title=os.path.basename(event.data["result"]["output_file"]),
+                        )
+                except Exception as e:
+                    # TODO: clean this up
+                    # send link to file when client:write scope does not exist
+                    event.data["result"]["output_file"] = event.data["result"][
+                        "output_file"
+                    ].replace("wb-task/", "")
+                    # extract the final _Targetlang from the output_file filename
+                    target_lang = event.data["result"]["output_file"].split("_")[-1]
+                    await app.client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
-                        file=file_content,
-                        title="Translated srt",
+                        user=auth.slack_user.user_id,
+                        text=f"You can download the {target_lang} AI translation here {domains.slack_ray_translator}/download/{event.data['result']['output_file']}",
                     )
             else:
                 await post_notification_ephemeral(
@@ -83,16 +96,16 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     auth.slack_user,
                     message,
                 )
-                with open(
-                    f"{config.path_wb_shared}wb-task/{event.data['result']['output_file']}",
-                    "rb",
-                ) as file_content:
-                    await app.client.files_upload_v2(
-                        channel=auth.slack_user.channel_id,
-                        file=file_content,
-                        title="Here is your file",
-                        initial_comment="This is the file you requested.",
-                    )
+                # with open(
+                #     f"{config.path_wb_shared}wb-task/{event.data['result']['output_file']}",
+                #     "rb",
+                # ) as file_content:
+                #     await app.client.files_upload_v2(
+                #         channel=auth.slack_user.channel_id,
+                #         file=file_content,
+                #         title="Here is your file",
+                #         initial_comment="This is the file you requested.",
+                #     )
         elif (
             # Send important messages regardless of subscribed status.
             isinstance(message, (ClientSignupEventMessage, ClientApprovedEventMessage))

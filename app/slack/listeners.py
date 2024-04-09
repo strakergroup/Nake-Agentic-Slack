@@ -3,6 +3,7 @@ commands, etc. from the Slack API.
 """
 
 import asyncio
+import os
 import re
 import json
 from datetime import datetime, timedelta
@@ -229,15 +230,22 @@ async def download_transcribed_file(ack, action, context, client):
     await ack()
     if await require_ray_client(context):
         output_file = action["value"]
-        with open(
-            f"{config.path_wb_shared}wb-task/{output_file}",
-            "rb",
-        ) as file_content:
-            await client.files_upload_v2(
+        try:
+            with open(
+                f"{config.path_wb_shared}wb-task/{output_file}",
+                "rb",
+            ) as file_content:
+                await client.files_upload_v2(
+                    channel=context["channel_id"],
+                    file=file_content,
+                    title=os.path.basename(output_file),
+                )
+        except Exception as e:
+            # send download link
+            await client.chat_postEphemeral(
                 channel=context["channel_id"],
-                file=file_content,
-                title="Here is your file",
-                initial_comment="This is the file you requested.",
+                user=context["user_id"],
+                text=f"You can download the file here {domains.slack_ray_translator}/download/{output_file}",
             )
 
 
