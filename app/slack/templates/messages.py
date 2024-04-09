@@ -2801,6 +2801,52 @@ class MachineTranslationMessage(SlackMessage):
         )
 
 
+class SrtTranslateMessage(SlackMessage):
+    """Message to allow user to select language and submit for machine translation"""
+
+    def __init__(self, output_file: str) -> None:
+        title = _("Please select the target language for translation")
+        # create message which contains the output_file of the submit button and contains a input element which is a multi select for language
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "input",
+                    "block_id": output_file,
+                    "label": {
+                        "type": "plain_text",
+                        "text": _("Select languages"),
+                    },
+                    "element": {
+                        "type": "external_select",
+                        "action_id": "language_mt_options",
+                        "min_query_length": 0,
+                        "placeholder": {
+                            "type": "plain_text",
+                            "text": _("Select target language(s)"),
+                        },
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Submit"),
+                                "emoji": False,
+                            },
+                            "action_id": "srt_translate",
+                            "style": "primary",
+                            "value": output_file,
+                        },
+                    ],
+                },
+            ],
+        )
+
+
 class JobTranscribedEventMessage(SlackMessage):
 
     def __init__(self, output_file: str) -> None:
@@ -2835,9 +2881,11 @@ class JobTranscribedEventMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("Show more options"),
+                                "text": _("Translate"),
                                 "emoji": False,
                             },
+                            "action_id": "show_srt_translate_form",
+                            "value": output_file,
                         },
                     ],
                 },

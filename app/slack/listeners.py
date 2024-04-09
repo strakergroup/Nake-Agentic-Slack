@@ -12,6 +12,7 @@ from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_sdk.errors import SlackApiError
 from ray_sdk import RayAPIResponseError
 from buglog import notify_exception, notify_message
+from ..redis import redis_conn
 
 from .app import app
 from .middleware import ray_connection, require_ray_client
@@ -31,6 +32,7 @@ from .listener_actions import (
     post_batch_list,
     post_file_list,
     show_sso_form_modal,
+    srt_translate,
     show_cancel_job_model,
     cancel_job_process,
 )
@@ -50,6 +52,7 @@ from .templates.messages import (
     WelcomeBackMessage,
     SuccessfulLoginMessage,
     SuccessfulLogoutMessage,
+    SrtTranslateMessage,
     JobSubmitMessage,
     HelpMessage,
     WhatsNextMessage,
@@ -205,6 +208,21 @@ async def new_job_shortcut(ack, shortcut, context, client):
 #         await respond(text=msg.text, blocks=msg.blocks)
 
 
+@app.action("show_srt_translate_form", middleware=[ray_connection])
+@slack_log_decorator
+async def show_srt_translate_form(ack, context, action, body, client):
+    await ack()
+    if await require_ray_client(context):
+        output_file = action["value"]
+        # SrtTranslateMessage normal message no modal just message
+        msg = SrtTranslateMessage(output_file)
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=msg.text,
+            blocks=msg.blocks,
+        )
+
+
 @app.block_action("download_transcribed_file", middleware=[ray_connection])
 @slack_log_decorator
 async def download_transcribed_file(ack, action, context, client):
@@ -221,6 +239,23 @@ async def download_transcribed_file(ack, action, context, client):
                 title="Here is your file",
                 initial_comment="This is the file you requested.",
             )
+
+
+@app.action("srt_translate", middleware=[ray_connection])
+@slack_log_decorator
+async def srt_translate_action(ack, action, context, body, say):
+    await ack()
+    if await require_ray_client(context):
+        output_file = action["value"]
+        # get selected language from redis keyed on output_file
+        selected_language = await redis_conn.get(f"output_file_{output_file}")
+        if selected_language:
+            await srt_translate(context, output_file, selected_language)
+            await say(
+                "The file is being translated. You will be notified when it is ready."
+            )
+        else:
+            await say("Please select a language to translate to.")
 
 
 @app.block_action("login_sso", middleware=[ray_connection])
@@ -825,6 +860,21 @@ async def view_update_auto_translate_settings(ack, view, context, client):
             blocks=context["login_prompt"].blocks,
             text=context["login_prompt"].text,
         )
+
+
+@app.action("language_mt_options")
+async def language_mt_options_selected(ack, body):
+    # redis store the selected options keyed by ouputn file
+    await ack()
+    output_file = body["actions"][0]["block_id"]
+    selected_language = body["actions"][0]["selected_option"]["value"]
+    await redis_conn.set(f"output_file_{output_file}", selected_language)
+
+
+@app.options("language_mt_options")
+async def language_mt_options(ack, payload):
+    options = await get_language_options(payload.get("value"))
+    await ack(options=options)
 
 
 @app.options("language_options")

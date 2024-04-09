@@ -64,19 +64,35 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 app.client, auth.slack_user.channel_id, event, auth.slack_user, message
             )
         elif isinstance(message, JobTranscribedEventMessage):
-            await post_notification_ephemeral(
-                app.client, auth.slack_user.channel_id, event, auth.slack_user, message
-            )
-            with open(
-                f"{config.path_wb_shared}wb-task/{event.data['result']['output_file']}",
-                "rb",
-            ) as file_content:
-                await app.client.files_upload_v2(
-                    channel=auth.slack_user.channel_id,
-                    file=file_content,
-                    title="Here is your file",
-                    initial_comment="This is the file you requested.",
+            if event.event == "ray:job:srt:translated":
+                app.client.token = auth.slack_user.bot_token
+                with open(
+                    f"{config.path_wb_shared}{event.data['result']['output_file']}",
+                    "rb",
+                ) as file_content:
+                    await app.client.files_upload_v2(
+                        channel=auth.slack_user.channel_id,
+                        file=file_content,
+                        title="Translated srt",
+                    )
+            else:
+                await post_notification_ephemeral(
+                    app.client,
+                    auth.slack_user.channel_id,
+                    event,
+                    auth.slack_user,
+                    message,
                 )
+                with open(
+                    f"{config.path_wb_shared}wb-task/{event.data['result']['output_file']}",
+                    "rb",
+                ) as file_content:
+                    await app.client.files_upload_v2(
+                        channel=auth.slack_user.channel_id,
+                        file=file_content,
+                        title="Here is your file",
+                        initial_comment="This is the file you requested.",
+                    )
         elif (
             # Send important messages regardless of subscribed status.
             isinstance(message, (ClientSignupEventMessage, ClientApprovedEventMessage))
