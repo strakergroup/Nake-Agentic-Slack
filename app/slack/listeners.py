@@ -232,7 +232,7 @@ async def download_transcribed_file(ack, action, context, client):
         output_file = action["value"]
         try:
             with open(
-                f"{config.path_shared}wb-task/{output_file}",
+                f"{config.path_wb_shared}wb-task/{output_file}",
                 "rb",
             ) as file_content:
                 await client.files_upload_v2(
