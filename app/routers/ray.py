@@ -34,10 +34,11 @@ from ..config import config, domains
 router = APIRouter()
 
 
+# TODO: Secure this. timeout/ token based/ ratelimit
 @router.get("/download/{uuid}/{filename}")
 async def download_file(uuid: str, filename: str):
     # Your code here
-    file_path = Path(config.path_wb_shared).joinpath("wb-task", uuid, filename)
+    file_path = Path(config.path_shared).joinpath("wb-task", uuid, filename)
     return FileResponse(file_path)
 
 
@@ -67,7 +68,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 app.client.token = auth.slack_user.bot_token
                 try:
                     with open(
-                        f"{config.path_wb_shared}{event.data['result']['output_file']}",
+                        f"{config.path_shared}{event.data['result']['output_file']}",
                         "rb",
                     ) as file_content:
                         await app.client.files_upload_v2(
@@ -97,7 +98,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     message,
                 )
                 # with open(
-                #     f"{config.path_wb_shared}wb-task/{event.data['result']['output_file']}",
+                #     f"{config.path_shared}wb-task/{event.data['result']['output_file']}",
                 #     "rb",
                 # ) as file_content:
                 #     await app.client.files_upload_v2(
