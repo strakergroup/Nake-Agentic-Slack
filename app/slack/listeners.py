@@ -879,12 +879,6 @@ async def language_mt_options_selected(ack, body):
     await redis_conn.set(f"output_file_{output_file}", selected_language)
 
 
-@app.options("language_mt_options")
-async def language_mt_options(ack, payload):
-    options = await get_language_options(payload.get("value"))
-    await ack(options=options)
-
-
 @app.options("language_options")
 async def language_options(ack, payload):
     options = await get_language_options(payload.get("value"))

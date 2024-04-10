@@ -2,6 +2,7 @@
 
 from typing import Any
 import json
+from app.slack.select_options import get_auto_translate_language_options
 from app.translate import _
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
@@ -2806,6 +2807,7 @@ class SrtTranslateMessage(SlackMessage):
 
     def __init__(self, output_file: str) -> None:
         title = _("Please select the target language for translation")
+        language_options = get_auto_translate_language_options()
         # create message which contains the output_file of the submit button and contains a input element which is a multi select for language
         super().__init__(
             title,
@@ -2815,16 +2817,16 @@ class SrtTranslateMessage(SlackMessage):
                     "block_id": output_file,
                     "label": {
                         "type": "plain_text",
-                        "text": _("Select languages"),
+                        "text": _("Select language"),
                     },
                     "element": {
-                        "type": "external_select",
-                        "action_id": "language_mt_options",
-                        "min_query_length": 0,
+                        "type": "static_select",
                         "placeholder": {
                             "type": "plain_text",
-                            "text": _("Select target language(s)"),
+                            "text": _("Choose language"),
                         },
+                        "options": language_options,
+                        "action_id": "language_mt_options",
                     },
                 },
                 {
