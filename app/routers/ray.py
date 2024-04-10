@@ -5,6 +5,8 @@ from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
 
+from app.translate import _
+
 from ..auth.connector import (
     SlackUser,
     get_demo_link,
@@ -79,15 +81,16 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 except Exception as e:
                     # TODO: clean this up
                     # send link to file when client:write scope does not exist
-                    event.data["result"]["output_file"] = event.data["result"][
-                        "output_file"
-                    ].replace("wb-task/", "")
+                    output_file = event.data["result"]["output_file"]
+                    output_file = output_file.replace("wb-task/", "")
                     # extract the final _Targetlang from the output_file filename
-                    target_lang = event.data["result"]["output_file"].split("_")[-1]
+                    target_lang = output_file.split("_")[-1]
                     await app.client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
-                        text=f"You can download the {target_lang} AI translation here {domains.slack_ray_translator}/download/{event.data['result']['output_file']}",
+                        text=_(
+                            "You can download the {target_lang} AI translation here {domains.slack_ray_translator}/download/{output_file}"
+                        ),
                     )
             else:
                 await post_notification_ephemeral(

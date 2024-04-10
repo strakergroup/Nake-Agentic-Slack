@@ -13,6 +13,8 @@ from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_sdk.errors import SlackApiError
 from ray_sdk import RayAPIResponseError
 from buglog import notify_exception, notify_message
+
+from app.translate import _
 from ..redis import redis_conn
 
 from .app import app
@@ -245,7 +247,7 @@ async def download_transcribed_file(ack, action, context, client):
             await client.chat_postEphemeral(
                 channel=context["channel_id"],
                 user=context["user_id"],
-                text=f"You can download the file here {domains.slack_ray_translator}/download/{output_file}",
+                text="You can download the file here {domains.slack_ray_translator}/download/{output_file}",
             )
 
 
@@ -260,10 +262,12 @@ async def srt_translate_action(ack, action, context, body, say):
         if selected_language:
             await srt_translate(context, output_file, selected_language)
             await say(
-                "The file is being translated. You will be notified when it is ready."
+                _(
+                    "The file is being translated. You will be notified when it is ready."
+                )
             )
         else:
-            await say("Please select a language to translate to.")
+            await say(_("Please select a language to translate to."))
 
 
 @app.block_action("login_sso", middleware=[ray_connection])
