@@ -2783,6 +2783,103 @@ class MachineTranslationMessage(SlackMessage):
         )
 
 
+class SrtTranslateMessage(SlackMessage):
+    """Message to allow user to select language and submit for machine translation"""
+
+    def __init__(self, output_file: str) -> None:
+        title = _("Please select the target language for translation")
+        # create message which contains the output_file of the submit button and contains a input element which is a multi select for language
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "input",
+                    "block_id": output_file,
+                    "label": {
+                        "type": "plain_text",
+                        "text": _("Select languages"),
+                    },
+                    "element": {
+                        "type": "external_select",
+                        "action_id": "language_mt_options",
+                        "min_query_length": 0,
+                        "placeholder": {
+                            "type": "plain_text",
+                            "text": _("Select target language(s)"),
+                        },
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Submit"),
+                                "emoji": False,
+                            },
+                            "action_id": "srt_translate",
+                            "style": "primary",
+                            "value": output_file,
+                        },
+                    ],
+                },
+            ],
+        )
+
+
+class JobTranscribedEventMessage(SlackMessage):
+
+    def __init__(self, output_file: str) -> None:
+        title = _("We have *transcribed* your file and SRT can be downloaded below.")
+        # create message which contains the output_file
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": title,
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Download"),
+                                "emoji": False,
+                            },
+                            "action_id": "download_transcribed_file",
+                            "style": "primary",
+                            "value": output_file,
+                            # "url": f"{domains.slack_ray_translator}/download/{output_file}",
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Translate"),
+                                "emoji": False,
+                            },
+                            "action_id": "show_srt_translate_form",
+                            "value": output_file,
+                        },
+                    ],
+                },
+            ],
+        )
+
+
+class TranscriptionMessage(TextMessage):
+    def __init__(self) -> None:
+        super().__init__(_("⏱️ Please wait a moment and we will transcribe your file"))
+
+
 class InvalidMTResultMessage(TextMessage):
     """The user does not get MT result."""
 

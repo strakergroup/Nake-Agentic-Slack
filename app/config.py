@@ -47,6 +47,7 @@ class StrakerConfig(BaseSettings):
     slack_queue_proxy_secret: SecretStr = SecretStr("")
     health_check_password: SecretStr = SecretStr("")
     languagecloud_api_key: SecretStr = SecretStr("")
+    path_shared: str = ""
 
     @field_validator("google_mt_api_key", mode="after")
     def validate_google_mt_api_key(cls, v, info: ValidationInfo):

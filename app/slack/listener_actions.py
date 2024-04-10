@@ -3,6 +3,8 @@ This module contains functions for common actions which are executed in
 Slack Bolt listener functions.
 """
 
+import uuid
+
 import asyncio
 from typing import Any
 import re
@@ -18,6 +20,7 @@ from .middleware import require_ray_client
 from .utils import strip_slack_formatting
 from .templates.messages import (
     HelpMessage,
+    JobTranscribedEventMessage,
     LoginMessage,
     LogoutMessage,
     SlackPermissionsMessage,
@@ -38,6 +41,7 @@ from .templates.messages import (
     AutoTranslationMessage,
     MachineTranslationMessage,
     InvalidMTResultMessage,
+    TranscriptionMessage,
 )
 from .templates.models import NewJobForm
 from .templates.views import (
@@ -78,11 +82,55 @@ async def respond_to_message(
     # If there is no text, show new job button or ignore the message.
     if not message.get("text"):
         if message.get("files"):
+            # Trigger file list to enter into cache. So that new job button click does not timeout
             asyncio.create_task(
                 files_list_simple(client, channel_id=context["channel_id"], count=120)
             )
-            msg = NewJobMessage(context["channel_id"], message["ts"])
-            await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
+            # Handle video file
+            for file in message["files"]:
+                if file["filetype"] in ["mp4", "mp3"]:
+                    file_info = await client.files_info(file=file["id"])
+                    download_url = file_info["file"]["url_private"]
+                    token = client.token
+                    # send video to wb consumer
+                    if await require_ray_client(context, prompt_login=False):
+                        async with httpx.AsyncClient() as http:
+                            res = await http.post(
+                                f"{domains.stream_proxy}/events/wb_task:media:asr",
+                                json={
+                                    "data": {
+                                        "task_id": str(uuid.uuid4()),
+                                        "input_url": download_url,
+                                        "input_token": token,
+                                        "on_completed": {
+                                            "callback_uri": f"{domains.stream_proxy}/events/ray:job:transcribed",
+                                            "data": {
+                                                "client_id": context["ray"].client.id
+                                            },
+                                        },
+                                    },
+                                    "source": "Straker Translate for Slack",
+                                },
+                            )
+                        msg = TranscriptionMessage()
+                        await context.say(text=msg.text, thread_ts=thread_ts)
+                        # task_data = {
+                        #     "task_id": str,
+                        #     "input_file": Path,
+                        #     "asr_provider_id": str,
+                        #     "asr_paramaters": {},
+                        #     "on_completed": {
+                        #         "next_task_id": str | None
+                        #         "callback_uri": str | None
+                        #     }
+                        # }
+                        # if error return error
+                        # else return queued message
+                else:
+                    msg = NewJobMessage(context["channel_id"], message["ts"])
+                    await context.say(
+                        text=msg.text, blocks=msg.blocks, thread_ts=thread_ts
+                    )
         return
 
     # process mt
@@ -331,6 +379,42 @@ async def auto_translate_message(
                 translations,
             )
         )
+
+
+async def srt_translate(
+    context: AsyncWebClient, output_file: str, selected_languages: str
+):
+    """Translate the SRT file using the wb-task-consumer.
+
+    Args:
+        client (AsyncWebClient): The Slack client.
+        channel_id (str): The channel ID of the message.
+        output_file (str): The output file name.
+    """
+    if not output_file:
+        return
+    try:
+        async with httpx.AsyncClient() as http:
+            res = await http.post(
+                f"{domains.stream_proxy}/events/wb_task:common:mt",
+                json={
+                    "data": {
+                        "task_id": str(uuid.uuid4()),
+                        "input_file": f"wb-task/{output_file}",
+                        "mt_provider_id": "google",
+                        "mt_parameters": {"target_lang_code": selected_languages},
+                        "on_completed": {
+                            "callback_uri": f"{domains.stream_proxy}/events/ray:job:srt:translated",
+                            "data": {
+                                "client_id": context["ray"].client.id,
+                            },
+                        },
+                    },
+                    "source": "Straker Translate for Slack",
+                },
+            )
+    except Exception as e:
+        notify_exception(e, "Failed to translate SRT file")
 
 
 async def update_machine_translation_score(

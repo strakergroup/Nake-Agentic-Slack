@@ -3,6 +3,7 @@ commands, etc. from the Slack API.
 """
 
 import asyncio
+import os
 import re
 import json
 from datetime import datetime, timedelta
@@ -12,6 +13,7 @@ from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_sdk.errors import SlackApiError
 from ray_sdk import RayAPIResponseError
 from buglog import notify_exception, notify_message
+from ..redis import redis_conn
 
 from .app import app
 from .middleware import ray_connection, require_ray_client
@@ -47,6 +49,7 @@ from .templates.messages import (
     WelcomeBackMessage,
     SuccessfulLoginMessage,
     SuccessfulLogoutMessage,
+    SrtTranslateMessage,
     JobSubmitMessage,
     HelpMessage,
     ConnectionInfoMessage,
@@ -80,7 +83,7 @@ from ..ray.settings import (
     update_auto_translate_group_settings,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
-from ..config import domains
+from ..config import config, domains
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -212,6 +215,63 @@ async def new_job_shortcut(ack, shortcut, context, client):
 #                 channel_id=context["channel_id"],
 #             )
 #         await respond(text=msg.text, blocks=msg.blocks)
+
+
+@app.action("show_srt_translate_form", middleware=[ray_connection])
+@slack_log_decorator
+async def show_srt_translate_form(ack, context, action, body, client):
+    await ack()
+    if await require_ray_client(context):
+        output_file = action["value"]
+        # SrtTranslateMessage normal message no modal just message
+        msg = SrtTranslateMessage(output_file)
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=msg.text,
+            blocks=msg.blocks,
+        )
+
+
+@app.block_action("download_transcribed_file", middleware=[ray_connection])
+@slack_log_decorator
+async def download_transcribed_file(ack, action, context, client):
+    await ack()
+    if await require_ray_client(context):
+        output_file = action["value"]
+        try:
+            with open(
+                f"{config.path_shared}wb-task/{output_file}",
+                "rb",
+            ) as file_content:
+                await client.files_upload_v2(
+                    channel=context["channel_id"],
+                    file=file_content,
+                    title=os.path.basename(output_file),
+                )
+        except Exception as e:
+            # send download link
+            await client.chat_postEphemeral(
+                channel=context["channel_id"],
+                user=context["user_id"],
+                text=f"You can download the file here {domains.slack_ray_translator}/download/{output_file}",
+            )
+
+
+@app.action("srt_translate", middleware=[ray_connection])
+@slack_log_decorator
+async def srt_translate_action(ack, action, context, body, say):
+    await ack()
+    if await require_ray_client(context):
+        output_file = action["value"]
+        # get selected language from redis keyed on output_file
+        selected_language = await redis_conn.get(f"output_file_{output_file}")
+        if selected_language:
+            await srt_translate(context, output_file, selected_language)
+            await say(
+                "The file is being translated. You will be notified when it is ready."
+            )
+        else:
+            await say("Please select a language to translate to.")
 
 
 @app.block_action("login_sso", middleware=[ray_connection])
@@ -850,6 +910,21 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
         )
     except Exception as e:
         notify_exception(e)
+
+
+@app.action("language_mt_options")
+async def language_mt_options_selected(ack, body):
+    # redis store the selected options keyed by ouputn file
+    await ack()
+    output_file = body["actions"][0]["block_id"]
+    selected_language = body["actions"][0]["selected_option"]["value"]
+    await redis_conn.set(f"output_file_{output_file}", selected_language)
+
+
+@app.options("language_mt_options")
+async def language_mt_options(ack, payload):
+    options = await get_language_options(payload.get("value"))
+    await ack(options=options)
 
 
 @app.options("language_options")
