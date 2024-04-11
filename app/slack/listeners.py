@@ -247,7 +247,9 @@ async def download_transcribed_file(ack, action, context, client):
             await client.chat_postEphemeral(
                 channel=context["channel_id"],
                 user=context["user_id"],
-                text="You can download the file here {domains.slack_ray_translator}/download/{output_file}",
+                text=_(
+                    "You can download the file here {domains.slack_ray_translator}/download/{output_file}"
+                ),
             )
 
 
