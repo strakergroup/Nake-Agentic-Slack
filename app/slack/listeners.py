@@ -34,6 +34,7 @@ from .listener_actions import (
     post_batch_list,
     post_file_list,
     cancel_job_process,
+    srt_translate,
 )
 from .logging import slack_log_decorator
 from .templates.models import (
