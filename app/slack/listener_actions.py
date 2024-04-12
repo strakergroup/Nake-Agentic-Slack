@@ -20,7 +20,6 @@ from .middleware import require_ray_client
 from .utils import strip_slack_formatting
 from .templates.messages import (
     HelpMessage,
-    JobTranscribedEventMessage,
     LoginMessage,
     LogoutMessage,
     SlackPermissionsMessage,
@@ -95,7 +94,7 @@ async def respond_to_message(
                     # send video to wb consumer
                     if await require_ray_client(context, prompt_login=False):
                         async with httpx.AsyncClient() as http:
-                            res = await http.post(
+                            await http.post(
                                 f"{domains.stream_proxy}/events/wb_task:media:asr",
                                 json={
                                     "data": {
@@ -114,18 +113,6 @@ async def respond_to_message(
                             )
                         msg = TranscriptionMessage()
                         await context.say(text=msg.text, thread_ts=thread_ts)
-                        # task_data = {
-                        #     "task_id": str,
-                        #     "input_file": Path,
-                        #     "asr_provider_id": str,
-                        #     "asr_paramaters": {},
-                        #     "on_completed": {
-                        #         "next_task_id": str | None
-                        #         "callback_uri": str | None
-                        #     }
-                        # }
-                        # if error return error
-                        # else return queued message
                 else:
                     msg = NewJobMessage(context["channel_id"], message["ts"])
                     await context.say(
