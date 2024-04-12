@@ -3,7 +3,6 @@
 from typing import Any
 import json
 from app.slack.select_options import get_auto_translate_language_options
-from app.translate import _
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm
