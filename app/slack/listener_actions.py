@@ -284,6 +284,9 @@ async def auto_translate_message(
     thread_ts: str | None = message.get("thread_ts")
     if not text:
         return
+    if message.get("subtype") == "bot_message":
+        print("auto_translate bot message")
+        return
     # if not is_min_langugagecloud_plan(ray_client.planname, "Essentials"):
     #     # Minimum Essentials plan is required for the auto-translate feature.
     #     return

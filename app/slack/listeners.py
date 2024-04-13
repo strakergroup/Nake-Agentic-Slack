@@ -99,6 +99,8 @@ from ..config import config, domains
 )
 @slack_log_decorator
 async def message_event(client, context, message):
+    print("message_event")
+    print(f"{message = }")
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # use threads in channels or group conversations (see the "app_mention" event).
@@ -111,6 +113,13 @@ async def message_event(client, context, message):
         # Do nothing if the Slack app is not mentioned in group chats and
         # auto-translate is disabled.
         pass
+
+
+@app.event({"type": "message", "subtype": "bot_message"}, middleware=[ray_connection])
+@slack_log_decorator
+async def bot_message_event(client, context, message):
+    print("bot_message_event")
+    print(f"{message = }")
 
 
 @app.event("app_mention", middleware=[ray_connection])
