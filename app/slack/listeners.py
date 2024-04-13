@@ -115,13 +115,6 @@ async def message_event(client, context, message):
         pass
 
 
-@app.event({"type": "message", "subtype": "bot_message"}, middleware=[ray_connection])
-@slack_log_decorator
-async def bot_message_event(client, context, message):
-    print("bot_message_event")
-    print(f"{message = }")
-
-
 @app.event("app_mention", middleware=[ray_connection])
 @slack_log_decorator
 async def app_mention_event(client, context, event):
