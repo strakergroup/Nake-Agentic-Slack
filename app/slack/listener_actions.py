@@ -285,7 +285,7 @@ async def auto_translate_message(
     if not text:
         return
     if message.get("bot_id"):
-        print("auto_translate bot message")
+        # Do not translate bot messages.
         return
     # if not is_min_langugagecloud_plan(ray_client.planname, "Essentials"):
     #     # Minimum Essentials plan is required for the auto-translate feature.
