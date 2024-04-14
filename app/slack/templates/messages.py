@@ -357,7 +357,7 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🔴 Cancel your job"),
+                        "text": "🔴 " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -485,7 +485,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🔴 Cancel your job"),
+                        "text": "🔴 " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -850,9 +850,8 @@ class JobDetailsMessage(SlackMessage):
                 "fields": [
                     {
                         "type": "mrkdwn",
-                        "text": _(
-                            f"*Job Status:*\n" + f"{format_job_status(job.status)}",
-                        ),
+                        "text": _(f"*Job Status:*\n")
+                        + f"{format_job_status(job.status)}",
                     },
                     {
                         "type": "mrkdwn",
@@ -1449,7 +1448,7 @@ class JobListMessage(SlackMessage):
                             "type": "section",
                             "text": {
                                 "type": "mrkdwn",
-                                "text": _("🔴 Cancel this job"),
+                                "text": "🔴 " + _("Cancel this job"),
                             },
                             "accessory": {
                                 "type": "button",
@@ -1529,7 +1528,7 @@ class JobListMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*{title}*",
+                        "text": _(f"*{title}*"),
                     },
                 },
                 *jobs_blocks,
@@ -1664,7 +1663,7 @@ class JobCreationMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🔴 Cancel your job"),
+                        "text": "🔴 " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -1860,7 +1859,7 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🔴 Cancel your job"),
+                        "text": "🔴 " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -2414,7 +2413,9 @@ class JobQuoteCancelledEventMessage(SlackMessage):
 
 class JobQuotedEventMessage(SlackMessage):
     def __init__(self, event: JobQuoteCreatedEvent) -> None:
-        job_url = f"<{get_job_url(event.uuid, event.client_id)}|{_('Straker Job Reference')} {event.id}>"
+        # job_url = f"<{get_job_url(event.uuid, event.client_id)}|{_('Straker Job Reference')} {event.id}>"
+        job_url = get_job_url(event.uuid, event.client_id)
+        reference = _(f"Straker Job Reference {event.id}")
         super().__init__(
             _(
                 "Your quote is now ready :raised_hands: Straker Job Reference {event.id}"
@@ -2426,7 +2427,8 @@ class JobQuotedEventMessage(SlackMessage):
                         "type": "mrkdwn",
                         "text": _(
                             "Your quote is now ready :raised_hands:\n**",
-                        ),
+                        )
+                        + f"<{job_url}|{reference}>**",
                     },
                 },
             ]
