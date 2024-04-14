@@ -121,7 +121,7 @@ async def app_mention_event(client, context, event):
     # Remove user mentions from text before processing.
     # TODO review this
     event["text"] = re.sub(r"<@\w+>", "", event.get("text", "")).strip()
-    if event["text"]:
+    if event["text"] or event.get("files", []):
         await respond_to_message(client, context, event, use_thread=True)
     else:
         ...  # TODO Show auto-translate settings modal
