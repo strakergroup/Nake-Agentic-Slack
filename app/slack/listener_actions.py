@@ -109,9 +109,7 @@ async def respond_to_message(
                             },
                         )
                     msg = TranscriptionMessage()
-                    await context.say(
-                        text=msg.text, blocks=msg.blocks, thread_ts=thread_ts
-                    )
+                    await context.say(text=msg.text, thread_ts=thread_ts)
             else:
                 msg = NewJobMessage(context["channel_id"], message["ts"])
                 await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
