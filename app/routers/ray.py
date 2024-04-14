@@ -30,7 +30,7 @@ from ..ray.events.models import ClientGroup
 from ..ray.events.logging import post_notification, post_notification_ephemeral
 from dataclasses import replace
 from pathlib import Path
-from ..config import config
+from ..config import config, domains
 
 
 router = APIRouter()

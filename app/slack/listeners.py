@@ -271,6 +271,7 @@ async def srt_translate_action(ack, action, context, body, say):
     if await require_ray_client(context):
         output_file = action["value"]
         # get selected language from redis keyed on output_file
+        # selected from get_auto_translate_language_options
         selected_language = await redis_conn.get(f"output_file_{output_file}")
         if selected_language:
             await srt_translate(context, output_file, selected_language)
