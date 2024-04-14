@@ -79,49 +79,40 @@ async def respond_to_message(
     thread_ts = message.get("thread_ts", message.get("ts")) if use_thread else None
 
     # If there is no text, show new job button or ignore the message.
-    if not message.get("text"):
-        if message.get("files"):
-            # Trigger file list to enter into cache. So that new job button click does not timeout
-            asyncio.create_task(
-                files_list_simple(client, channel_id=context["channel_id"], count=120)
-            )
-            # Handle video file
-            for file in message["files"]:
-                if file["filetype"] in ["mp4", "mp3"]:
-                    file_info = await client.files_info(file=file["id"])
-                    download_url = file_info["file"]["url_private"]
-                    token = client.token
-                    # send video to wb consumer
-                    if await require_ray_client(context, prompt_login=False):
-                        async with httpx.AsyncClient() as http:
-                            await http.post(
-                                f"{domains.stream_proxy}/events/wb_task:media:asr",
-                                json={
-                                    "data": {
-                                        "task_id": str(uuid.uuid4()),
-                                        "input_url": download_url,
-                                        "input_token": token,
-                                        "on_completed": {
-                                            "callback_uri": f"{domains.stream_proxy}/events/ray:job:transcribed",
-                                            "data": {
-                                                "client_id": context["ray"].client.id
-                                            },
-                                        },
+    if message.get("files"):
+        # Trigger file list to enter into cache. So that new job button click does not timeout
+        asyncio.create_task(
+            files_list_simple(client, channel_id=context["channel_id"], count=120)
+        )
+        # Handle video file
+        for file in message["files"]:
+            if file["filetype"] in ["mp4", "mp3"]:
+                file_info = await client.files_info(file=file["id"])
+                download_url = file_info["file"]["url_private"]
+                token = client.token
+                # send video to wb consumer
+                if await require_ray_client(context, prompt_login=False):
+                    async with httpx.AsyncClient() as http:
+                        await http.post(
+                            f"{domains.stream_proxy}/events/wb_task:media:asr",
+                            json={
+                                "data": {
+                                    "task_id": str(uuid.uuid4()),
+                                    "input_url": download_url,
+                                    "input_token": token,
+                                    "on_completed": {
+                                        "callback_uri": f"{domains.stream_proxy}/events/ray:job:transcribed",
+                                        "data": {"client_id": context["ray"].client.id},
                                     },
-                                    "source": "Straker Translate for Slack",
                                 },
-                            )
-                        msg = TranscriptionMessage()
-                        await client.chat_postMessage(
-                            text=msg.text,
-                            channel=context["channel_id"],
-                            thread_ts=thread_ts,
+                                "source": "Straker Translate for Slack",
+                            },
                         )
-                else:
-                    msg = NewJobMessage(context["channel_id"], message["ts"])
-                    await context.say(
-                        text=msg.text, blocks=msg.blocks, thread_ts=thread_ts
-                    )
+                    msg = TranscriptionMessage()
+                    await context.say(text=msg.text, thread_ts=thread_ts)
+            else:
+                msg = NewJobMessage(context["channel_id"], message["ts"])
+                await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
         return
 
     # process mt
