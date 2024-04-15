@@ -316,7 +316,15 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                         context["ray"],
                     )
                     await ack(response_action="clear")
-                    await respond(text=sso_msg.text, blocks=sso_msg.blocks)
+                    if context.response_url:
+                        await respond(text=sso_msg.text, blocks=sso_msg.blocks)
+                    else:
+                        await client.chat_postMessage(
+                            channel=context["channel_id"],
+                            text=sso_msg.text,
+                            blocks=sso_msg.blocks,
+                        )
+
                     data = {
                         "client_id": ray_user_id,
                         "username": user_info["profile"]["email"],
