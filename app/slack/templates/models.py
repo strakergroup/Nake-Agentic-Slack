@@ -118,6 +118,8 @@ class NewJobForm(BaseModel):
                 return "TRANSLATION_REVIEW_VALIDATION"
             else:
                 return "TRANSLATION_REVIEW"
+        elif self.service == "AI Translation":
+            return "AI_TRANSLATION"
         elif self.service == "Machine Translation":
             return "MACHINE_TRANSLATION"
         else:
