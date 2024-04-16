@@ -50,6 +50,12 @@ class RaySuperGroup:
     """The Slack enterprise ID linked to the RAY client."""
 
 
+@dataclass(frozen=True, slots=True)
+class GetCreditBalanceResponse:
+    ai_token: int
+    mt_token: int
+
+
 @dataclass(slots=True)
 class RayClient:
     """Dataclass representing a LanguageCloud client."""
@@ -1241,3 +1247,22 @@ def encrpyt_slack_sso_token(
         )
     }
     return f"{domains.languagecloud}/auth/slacksso?{urlencode(params)}"
+
+
+async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceResponse:
+    """http languagecloud API to get the client tokens."""
+    url = f"{domains.languagecloud_api}/credits/balance"
+    headers = {
+        "Authorization": f"Bearer {languagecloud_api_key}",
+    }
+    try:
+        async with httpx.AsyncClient() as http:
+            response = await http.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            return GetCreditBalanceResponse(
+                ai_token=data["ai_token"], mt_token=data["mt_token"]
+            )
+    except Exception as e:
+        notify_exception(e)
+        return GetCreditBalanceResponse(0, 0)

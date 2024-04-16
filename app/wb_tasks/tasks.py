@@ -59,3 +59,25 @@ async def create_task(
             json={"data": task_data, "source": "Straker Translate for Slack"},
         )
     return "Task created!"
+
+
+async def get_task(task_uuid: str, member_uuid: str) -> dict:
+    """Get task from wb_tasks_consumer_queue table
+
+    Args:
+        task_uuid (str): UUID of the task to get
+
+    Returns:
+        dict: Task data
+    """
+    with engines["sitecommons"].begin() as conn:
+        sql = text(
+            """
+            SELECT task_result FROM wb_task_consumer_queue
+            WHERE obj_uuid = :task_uuid
+            AND member_uuid = :member_uuid
+            """
+        ).bindparams(task_uuid=task_uuid, member_uuid=member_uuid)
+        result = conn.execute(sql).fetchone()
+
+        return result[0] if result else None

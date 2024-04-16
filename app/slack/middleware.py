@@ -17,6 +17,7 @@ from .logging import init_slack_app_log
 from .templates.messages import SlackMessage, LoginMessage
 from ..auth.connector import (
     RayConnection,
+    get_client_tokens,
     get_ray_connection,
     get_ray_connection_demo,
     log_new_user_info,
@@ -152,8 +153,15 @@ async def require_ray_client(
     return False
 
 
-async def require_mt_tokens(context: AsyncBoltContext) -> bool:
+async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
     """Check if the user has the required minimum translation credits to perform the operation"""
-    if context["ray"].client is None:
-        return False
-    return True
+
+    if context["ray"].client is not None:
+        user_tokens = await get_client_tokens(context["ray"].client.id_token)
+        if user_tokens.mt_token >= value:
+            return True
+
+    await context.say(
+        text="You do not have enough translation credits to perform this operation"
+    )
+    return False

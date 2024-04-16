@@ -18,7 +18,7 @@ from buglog import notify_exception, notify_message
 
 from app.wb_tasks.tasks import create_task
 
-from .middleware import require_ray_client
+from .middleware import require_mt_tokens, require_ray_client
 from .utils import strip_slack_formatting
 from .templates.messages import (
     HelpMessage,
@@ -95,17 +95,18 @@ async def respond_to_message(
                 # send video to wb consumer
                 if await require_ray_client(context, prompt_login=False):
                     # TODO: Requires token check
-                    await create_task(
-                        context["ray"].client.id,
-                        "wb_task:media:asr",
-                        "ray:job:transcribed",
-                        {
-                            "input_url": download_url,
-                            "input_token": token,
-                        },
-                    )
-                    msg = TranscriptionMessage()
-                    await context.say(text=msg.text, thread_ts=thread_ts)
+                    if await require_mt_tokens(context):
+                        await create_task(
+                            context["ray"].client.id,
+                            "wb_task:media:asr",
+                            "ray:job:transcribed",
+                            {
+                                "input_url": download_url,
+                                "input_token": token,
+                            },
+                        )
+                        msg = TranscriptionMessage()
+                        await context.say(text=msg.text, thread_ts=thread_ts)
             else:
                 msg = NewJobMessage(context["channel_id"], message["ts"])
                 await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)

@@ -15,6 +15,7 @@ from ray_sdk import RayAPIResponseError
 from buglog import notify_exception, notify_message
 
 from app.translate import _
+from app.wb_tasks.tasks import get_task
 from ..redis import redis_conn
 
 from .app import app
@@ -268,6 +269,10 @@ async def srt_translate_action(ack, action, context, body, say):
     await ack()
     if await require_ray_client(context):
         output_file = action["value"]
+        # get uuid from output_file
+        task_uuid = output_file.split("/")[0]
+        task_result = await get_task(task_uuid, context["ray"].client.id)
+        print(task_result)
         if await require_mt_tokens(context):
             # get selected language from redis keyed on output_file
             # selected from get_auto_translate_language_options
