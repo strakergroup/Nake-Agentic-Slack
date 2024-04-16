@@ -16,6 +16,8 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
 from buglog import notify_exception, notify_message
 
+from app.wb_tasks.tasks import create_task
+
 from .middleware import require_ray_client
 from .utils import strip_slack_formatting
 from .templates.messages import (
@@ -92,22 +94,16 @@ async def respond_to_message(
                 token = client.token
                 # send video to wb consumer
                 if await require_ray_client(context, prompt_login=False):
-                    async with httpx.AsyncClient() as http:
-                        await http.post(
-                            f"{domains.stream_proxy}/events/wb_task:media:asr",
-                            json={
-                                "data": {
-                                    "task_id": str(uuid.uuid4()),
-                                    "input_url": download_url,
-                                    "input_token": token,
-                                    "on_completed": {
-                                        "callback_uri": f"{domains.stream_proxy}/events/ray:job:transcribed",
-                                        "data": {"client_id": context["ray"].client.id},
-                                    },
-                                },
-                                "source": "Straker Translate for Slack",
-                            },
-                        )
+                    # TODO: Requires token check
+                    await create_task(
+                        context["ray"].client.id,
+                        "wb_task:media:asr",
+                        "ray:job:transcribed",
+                        {
+                            "input_url": download_url,
+                            "input_token": token,
+                        },
+                    )
                     msg = TranscriptionMessage()
                     await context.say(text=msg.text, thread_ts=thread_ts)
             else:
@@ -376,25 +372,16 @@ async def srt_translate(
     if not output_file:
         return
     try:
-        async with httpx.AsyncClient() as http:
-            res = await http.post(
-                f"{domains.stream_proxy}/events/wb_task:common:mt",
-                json={
-                    "data": {
-                        "task_id": str(uuid.uuid4()),
-                        "input_file": f"wb-task/{output_file}",
-                        "mt_provider_id": "google",
-                        "mt_parameters": {"target_lang_code": selected_languages},
-                        "on_completed": {
-                            "callback_uri": f"{domains.stream_proxy}/events/ray:job:srt:translated",
-                            "data": {
-                                "client_id": context["ray"].client.id,
-                            },
-                        },
-                    },
-                    "source": "Straker Translate for Slack",
-                },
-            )
+        await create_task(
+            context["ray"].client.id,
+            "wb_task:common:mt",
+            "ray:job:srt:translated",
+            {
+                "input_file": f"wb-task/{output_file}",
+                "mt_provider_id": "google",
+                "mt_parameters": {"target_lang_code": selected_languages},
+            },
+        )
     except Exception as e:
         notify_exception(e, "Failed to translate SRT file")
 

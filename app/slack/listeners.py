@@ -18,7 +18,7 @@ from app.translate import _
 from ..redis import redis_conn
 
 from .app import app
-from .middleware import ray_connection, require_ray_client
+from .middleware import ray_connection, require_ray_client, require_mt_tokens
 from .listener_actions import (
     respond_to_message,
     auto_translate_message,
@@ -268,18 +268,19 @@ async def srt_translate_action(ack, action, context, body, say):
     await ack()
     if await require_ray_client(context):
         output_file = action["value"]
-        # get selected language from redis keyed on output_file
-        # selected from get_auto_translate_language_options
-        selected_language = await redis_conn.get(f"output_file_{output_file}")
-        if selected_language:
-            await srt_translate(context, output_file, selected_language)
-            await say(
-                _(
-                    "The file is being translated. You will be notified when it is ready."
+        if await require_mt_tokens(context):
+            # get selected language from redis keyed on output_file
+            # selected from get_auto_translate_language_options
+            selected_language = await redis_conn.get(f"output_file_{output_file}")
+            if selected_language:
+                await srt_translate(context, output_file, selected_language)
+                await say(
+                    _(
+                        "The file is being translated. You will be notified when it is ready."
+                    )
                 )
-            )
-        else:
-            await say(_("Please select a language to translate to."))
+            else:
+                await say(_("Please select a language to translate to."))
 
 
 @app.block_action("login_sso", middleware=[ray_connection])
