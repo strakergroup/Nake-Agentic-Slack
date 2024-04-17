@@ -9,6 +9,7 @@ import hashlib
 from uuid import uuid4
 from dataclasses import dataclass
 from urllib.parse import urlencode
+import uuid
 
 import httpx
 from sqlalchemy import text
@@ -1266,3 +1267,32 @@ async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceRespo
     except Exception as e:
         notify_exception(e)
         return GetCreditBalanceResponse(0, 0)
+
+
+async def spend_mt_tokens(
+    user: SlackUser,
+    credits: int,
+) -> bool:
+    """Insert into the database obj_m_member_credit_transactions to record transaction"""
+    ray_connection = await get_ray_connection(
+        user.user_id, user.team_id, user.enterprise_id
+    )
+    description = "Machine Translation"
+    with engines["sitemanager"].begin() as conn:
+        sql = text(
+            """
+            INSERT INTO obj_m_member_credit_transactions
+                (uuid, client_uuid, group_uuid, amount, credit_type, transaction_type, description)
+            VALUES
+                (:uuid, :client_uuid, :group_uuid, :amount, :credit_type, :transaction_type, :description)
+            """
+        ).bindparams(
+            uuid=str(uuid.uuid4()),
+            client_uuid=ray_connection.client.id,
+            group_uuid=ray_connection.super_group[0].id,
+            amount=0 - credits,
+            credit_type="mt_token",
+            transaction_type="spend",
+            description=description,
+        )
+        conn.execute(sql)

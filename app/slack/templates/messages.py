@@ -2896,3 +2896,39 @@ class AutoTranslateSettingsChangedMessage(TextMessage):
             [get_auto_translate_language_name(lang) for lang in langs], and_string="and"
         )
         super().__init__(f"<#{channel_id}> will be translated into {langs_string}")
+
+
+class RequiresMtTokenMessage(SlackMessage):
+
+    def __init__(self, tokens: int, required_tokens: int) -> None:
+        title = _(
+            "❗❗You have *{tokens} MT characters* on your account. This job requires *{required_tokens} MT characters*. Please purchase a MT bundle.❗❗"
+        )
+        # create message which contains the output_file
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": title,
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Purchase MT Bundle"),
+                                "emoji": False,
+                            },
+                            "action_id": "button-action",  # Add this line
+                            "url": f"{domains.languagecloud}/checkout/tokens",
+                        },
+                    ],
+                },
+            ],
+        )
