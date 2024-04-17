@@ -70,7 +70,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 app.client.token = auth.slack_user.bot_token
                 try:
                     with open(
-                        f"{config.path_wb_shared}{event.data['result']['output_file']}",
+                        f"{config.path_wb_shared}wb-task/{event.data['result']['output_file']}",
                         "rb",
                     ) as file_content:
                         await app.client.files_upload_v2(
@@ -82,7 +82,6 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     # TODO: clean this up
                     # send link to file when client:write scope does not exist
                     output_file = event.data["result"]["output_file"]
-                    output_file = output_file.replace("wb-task/", "")
                     # extract the final _Targetlang from the output_file filename
                     target_lang = output_file.split("_")[-1]
                     await app.client.chat_postEphemeral(

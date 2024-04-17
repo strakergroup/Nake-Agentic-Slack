@@ -272,8 +272,7 @@ async def srt_translate_action(ack, action, context, body, say):
         # get uuid from output_file
         task_uuid = output_file.split("/")[0]
         task_result = await get_task(task_uuid, context["ray"].client.id)
-        print(task_result)
-        if await require_mt_tokens(context):
+        if await require_mt_tokens(context, task_result["tokens"]):
             # get selected language from redis keyed on output_file
             # selected from get_auto_translate_language_options
             selected_language = await redis_conn.get(f"output_file_{output_file}")

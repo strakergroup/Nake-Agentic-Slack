@@ -80,4 +80,4 @@ async def get_task(task_uuid: str, member_uuid: str) -> dict:
         ).bindparams(task_uuid=task_uuid, member_uuid=member_uuid)
         result = conn.execute(sql).fetchone()
 
-        return result[0] if result else None
+        return json.loads(result[0]) if result else None
