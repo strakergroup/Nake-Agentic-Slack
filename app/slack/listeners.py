@@ -3,6 +3,7 @@ commands, etc. from the Slack API.
 """
 
 import asyncio
+import os
 import re
 import json
 from datetime import datetime, timedelta
@@ -12,6 +13,9 @@ from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_sdk.errors import SlackApiError
 from ray_sdk import RayAPIResponseError
 from buglog import notify_exception, notify_message
+
+from app.translate import _
+from ..redis import redis_conn
 
 from .app import app
 from .middleware import ray_connection, require_ray_client
@@ -30,6 +34,7 @@ from .listener_actions import (
     post_batch_list,
     post_file_list,
     cancel_job_process,
+    srt_translate,
 )
 from .logging import slack_log_decorator
 from .templates.models import (
@@ -47,6 +52,7 @@ from .templates.messages import (
     WelcomeBackMessage,
     SuccessfulLoginMessage,
     SuccessfulLogoutMessage,
+    SrtTranslateMessage,
     JobSubmitMessage,
     HelpMessage,
     ConnectionInfoMessage,
@@ -55,10 +61,11 @@ from .templates.messages import (
     ClientApprovedMessage,
     ClientAlreadyApprovedMessage,
     JobDelayMessage,
+    AutoTranslateSettingsChangedMessage,
 )
 from .templates.views import (
     home_view,
-    settings_auto_translate_view,
+    translation_settings_view,
     job_search_modal,
     sso_form_modal,
     cancel_job_modal,
@@ -75,13 +82,11 @@ from ..auth.connector import (
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
-    get_auto_translate_group_settings,
-    get_auto_translate_group_settings_channels,
-    get_auto_translate_group_settings_langs,
+    get_auto_translate_settings_and_langs,
     update_auto_translate_group_settings,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
-from ..config import domains
+from ..config import config, domains
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -94,9 +99,11 @@ from ..config import domains
 )
 @slack_log_decorator
 async def message_event(client, context, message):
+    print("message_event")
+    print(f"{message = }")
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
-    # not channel or group conversations (see the "app_mention" event).
+    # use threads in channels or group conversations (see the "app_mention" event).
     if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
         await respond_to_message(client, context, message, use_thread=False)
     elif message.get("text") and f"<@{context['bot_user_id']}>" not in message["text"]:
@@ -114,8 +121,12 @@ async def app_mention_event(client, context, event):
     # https://api.slack.com/events/app_mention
     # Respond to messages with threads in channel and group chats if mentioned.
     # Remove user mentions from text before processing.
+    # TODO review this
     event["text"] = re.sub(r"<@\w+>", "", event.get("text", "")).strip()
-    await respond_to_message(client, context, event, use_thread=True)
+    if event["text"] or event.get("files", []):
+        await respond_to_message(client, context, event, use_thread=True)
+    else:
+        ...  # TODO Show auto-translate settings modal
 
 
 @app.event("app_home_opened", middleware=[ray_connection])
@@ -147,7 +158,7 @@ async def home_opened(event, action, context, body, say, client):
             pass
     # Publish view to home tab.
     await client.views_publish(
-        user_id=event.get("user"),
+        user_id=context["user_id"],
         view=home_view(context, body["api_app_id"], context.get("ray")),
     )
 
@@ -209,6 +220,68 @@ async def new_job_shortcut(ack, shortcut, context, client):
 #                 channel_id=context["channel_id"],
 #             )
 #         await respond(text=msg.text, blocks=msg.blocks)
+
+
+@app.action("show_srt_translate_form", middleware=[ray_connection])
+@slack_log_decorator
+async def show_srt_translate_form(ack, context, action, body, client):
+    await ack()
+    if await require_ray_client(context):
+        output_file = action["value"]
+        # SrtTranslateMessage normal message no modal just message
+        msg = SrtTranslateMessage(output_file)
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=msg.text,
+            blocks=msg.blocks,
+        )
+
+
+@app.block_action("download_transcribed_file", middleware=[ray_connection])
+@slack_log_decorator
+async def download_transcribed_file(ack, action, context, client):
+    await ack()
+    if await require_ray_client(context):
+        output_file = action["value"]
+        try:
+            with open(
+                f"{config.path_wb_shared}wb-task/{output_file}",
+                "rb",
+            ) as file_content:
+                await client.files_upload_v2(
+                    channel=context["channel_id"],
+                    file=file_content,
+                    title=os.path.basename(output_file),
+                )
+        except Exception as e:
+            # send download link
+            await client.chat_postEphemeral(
+                channel=context["channel_id"],
+                user=context["user_id"],
+                text=_(
+                    "You can download the file here {domains.slack_ray_translator}/download/{output_file}"
+                ),
+            )
+
+
+@app.action("srt_translate", middleware=[ray_connection])
+@slack_log_decorator
+async def srt_translate_action(ack, action, context, body, say):
+    await ack()
+    if await require_ray_client(context):
+        output_file = action["value"]
+        # get selected language from redis keyed on output_file
+        # selected from get_auto_translate_language_options
+        selected_language = await redis_conn.get(f"output_file_{output_file}")
+        if selected_language:
+            await srt_translate(context, output_file, selected_language)
+            await say(
+                _(
+                    "The file is being translated. You will be notified when it is ready."
+                )
+            )
+        else:
+            await say(_("Please select a language to translate to."))
 
 
 @app.block_action("login_sso", middleware=[ray_connection])
@@ -357,24 +430,18 @@ async def ray_command(ack, respond, command, context, client):
                 msg = LogoutMessage(context["ray"].client)
                 await respond(text=msg.text, blocks=msg.blocks)
 
-        case ['settings']:
-            group_settings = get_auto_translate_group_settings(context)
-            channels = (
-                get_auto_translate_group_settings_channels(group_settings)
-                if group_settings
-                else []
+        case ["translate"]:
+            settings, auto_translate_langs = get_auto_translate_settings_and_langs(
+                context, context.channel_id
             )
-            # Allow changing settings if connect LC account OR channel is already enabled.
-            if (context.channel_id in channels) or (await require_ray_client(context)):
-                languages = (
-                    get_auto_translate_group_settings_langs(group_settings)
-                    if group_settings
-                    else []
-                )
-                await client.views_open(
-                    trigger_id=command["trigger_id"],
-                    view=settings_auto_translate_view(channels, languages),
-                )
+            await client.views_open(
+                trigger_id=command["trigger_id"],
+                view=translation_settings_view(
+                    [context.channel_id],
+                    auto_translate_langs,
+                    settings.display_format if settings else "thread",
+                ),
+            )
 
         case ["job", reference, *reference_other]:
             # Get job status or list of jobs.
@@ -450,25 +517,21 @@ async def ray_command(ack, respond, command, context, client):
 
 @app.block_action("settings_auto_translate", middleware=[ray_connection])
 @slack_log_decorator
-async def show_auto_translate_settings(ack, context, body, client):
+async def show_auto_translate_settings(ack, context, payload, body, client):
     await ack()
-    group_settings = get_auto_translate_group_settings(context)
-    channels = (
-        get_auto_translate_group_settings_channels(group_settings)
-        if group_settings
-        else []
+    channel_id = payload.get("value") or context.channel_id
+    # TODO Could have no channel_id if triggered from home tab.
+    settings, auto_translate_langs = get_auto_translate_settings_and_langs(
+        context, channel_id
     )
-    # Allow changing settings if connect LC account OR channel is already enabled.
-    if (context.channel_id in channels) or (await require_ray_client(context)):
-        languages = (
-            get_auto_translate_group_settings_langs(group_settings)
-            if group_settings
-            else []
-        )
-        await client.views_open(
-            trigger_id=body["trigger_id"],
-            view=settings_auto_translate_view(channels, languages),
-        )
+    await client.views_open(
+        trigger_id=body["trigger_id"],
+        view=translation_settings_view(
+            [channel_id] if channel_id else None,
+            auto_translate_langs,
+            settings.display_format if settings else "thread",
+        ),
+    )
 
 
 @app.block_action("show_job_details", middleware=[ray_connection])
@@ -809,7 +872,7 @@ async def handle_job_search(ack, view, context, client):
 
 @app.view("settings_auto_translate", middleware=[ray_connection])
 @slack_log_decorator
-async def view_update_auto_translate_settings(ack, view, context, client):
+async def view_update_auto_translate_settings(ack, view, context, body, client):
     try:
         form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
     except ValidationError as e:
@@ -817,10 +880,16 @@ async def view_update_auto_translate_settings(ack, view, context, client):
         await ack(response_action="errors", errors=errors)
         return
     await ack(response_action="clear")
-
     try:
         update_auto_translate_group_settings(
-            context, channels=form.channels, languages=form.languages
+            context,
+            channels=form.channels,
+            languages=form.languages,
+            display_format=form.display_format,
+        )
+        await client.views_publish(
+            user_id=context["user_id"],
+            view=home_view(context, body["api_app_id"], context.get("ray")),
         )
 
         # Try to join channel automatically after updating settings.
@@ -832,11 +901,34 @@ async def view_update_auto_translate_settings(ack, view, context, client):
             except Exception as e:
                 notify_exception(e)
 
+        async def notify_channel(channel_id: str):
+            try:
+                msg = AutoTranslateSettingsChangedMessage(channel_id, form.languages)
+                await client.chat_postMessage(channel=channel_id, text=msg.text)
+            except SlackApiError:
+                pass  # Must be in channel to post. TODO check other events, e.g. app_mention
+            except Exception as e:
+                notify_exception(e)
+
         await asyncio.gather(
-            *[join_channel(channel_id) for channel_id in form.channels]
+            *[join_channel(channel_id) for channel_id in form.channels],
+            return_exceptions=True,
+        )
+        await asyncio.gather(
+            *[notify_channel(channel_id) for channel_id in form.channels],
+            return_exceptions=True,
         )
     except Exception as e:
         notify_exception(e)
+
+
+@app.action("language_mt_options")
+async def language_mt_options_selected(ack, body):
+    # redis store the selected options keyed by ouputn file
+    await ack()
+    output_file = body["actions"][0]["block_id"]
+    selected_language = body["actions"][0]["selected_option"]["value"]
+    await redis_conn.set(f"output_file_{output_file}", selected_language)
 
 
 @app.options("language_options")

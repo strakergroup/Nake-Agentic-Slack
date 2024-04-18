@@ -8,6 +8,7 @@ from buglog import notify_exception
 from ..redis import redis_conn
 from ..ray import get_languages
 from ..ray.settings import get_auto_translate_languages
+from ..models import SlackGroupSettingsTranslation
 
 
 async def _get_languages_cached() -> list[dict[str, str]]:
@@ -120,3 +121,38 @@ def map_file_options(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return file_options
+
+
+def translation_display_format_options() -> list[dict[str, Any]]:
+    return [
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "In thread",
+            },
+            "value": "thread",
+        },
+        {
+            "text": {
+                "type": "plain_text",
+                "text": "Message",
+            },
+            "value": "message",
+        },
+    ]
+
+
+def map_translation_display_format_option(
+    value: SlackGroupSettingsTranslation.DisplayFormatType,
+) -> dict[str, Any]:
+    options = translation_display_format_options()
+    for opt in options:
+        if opt["value"] == value:
+            return opt
+    return {
+        "text": {
+            "type": "plain_text",
+            "text": "In thread",
+        },
+        "value": "thread",
+    }

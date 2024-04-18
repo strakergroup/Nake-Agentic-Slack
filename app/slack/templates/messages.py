@@ -2,7 +2,7 @@
 
 from typing import Any
 import json
-
+from app.slack.select_options import get_auto_translate_language_options
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm
@@ -23,6 +23,7 @@ from ...ray.utils import (
     is_min_langugagecloud_plan,
 )
 from ...ray.settings import get_auto_translate_language_name
+from ..utils import format_strings_display
 from ...config import config, domains, Environment
 from ...auth.connector import (
     RayClient,
@@ -2667,7 +2668,7 @@ class JobTargetLangMessage(SlackMessage):
 class AutoTranslationMessage(SlackMessage):
     def __init__(
         self,
-        source_text: str,
+        source_text: str | None,
         source_language: str,
         translations: list[tuple[str, str]],
         scores: list[tuple[str, float]] | None = None,
@@ -2675,22 +2676,29 @@ class AutoTranslationMessage(SlackMessage):
         """Slack message template for an auto-translated message
 
         Args:
-            source_text (str | None): The original source text.
-            source_language: str): The source language, e.g. "en", "de".
-            translations (list[tuple[str, str, str]]): A list of translations.
+            source_text (str | None): The original source text. If empty, do not
+                the source text.
+            source_language (str): The source language, e.g. "en", "de".
+            translations (list[tuple[str, str]]): A list of translations.
                 Each element is a 2-tuple with the target language and translated text.
         """
         self.source_text = source_text
         self.source_language = source_language
         self.translations = translations
         self.scores = scores
-
-        super().__init__(source_text, self.generate_blocks())
+        # TODO what happens when no translations?
+        text = source_text or (self.translations[0][1] if self.translations else "")
+        super().__init__(text, self.generate_blocks())
 
     def generate_blocks(self) -> list[dict[str, Any]]:
-        blocks: list[dict[str, Any]] = [
-            {"type": "section", "text": {"type": "mrkdwn", "text": self.source_text}}
-        ]
+        blocks: list[dict[str, Any]] = []
+        if self.source_text:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": self.source_text},
+                }
+            )
         for target_lang, translated in self.translations:
             blocks.append(
                 {
@@ -2706,16 +2714,14 @@ class AutoTranslationMessage(SlackMessage):
         target_langs = [
             get_auto_translate_language_name(t[0]) for t in self.translations
         ]
-        target_langs_string = ", ".join(target_langs)
+        target_langs_string = format_strings_display(target_langs, and_string="&")
         blocks.append(
             {
                 "type": "context",
                 "elements": [
                     {
                         "type": "plain_text",
-                        "text": _(
-                            "Translated to {target_langs_string} with Straker AI",
-                        ),
+                        "text": f"Translated to {target_langs_string} using Straker AI",
                     }
                 ],
             }
@@ -2777,8 +2783,116 @@ class MachineTranslationMessage(SlackMessage):
         )
 
 
+class SrtTranslateMessage(SlackMessage):
+    """Message to allow user to select language and submit for machine translation"""
+
+    def __init__(self, output_file: str) -> None:
+        title = _("Please select the target language for translation")
+        language_options = get_auto_translate_language_options()
+        # create message which contains the output_file of the submit button and contains a input element which is a multi select for language
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "input",
+                    "block_id": output_file,
+                    "label": {
+                        "type": "plain_text",
+                        "text": _("Select language"),
+                    },
+                    "element": {
+                        "type": "static_select",
+                        "placeholder": {
+                            "type": "plain_text",
+                            "text": _("Choose language"),
+                        },
+                        "options": language_options,
+                        "action_id": "language_mt_options",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Submit"),
+                                "emoji": False,
+                            },
+                            "action_id": "srt_translate",
+                            "style": "primary",
+                            "value": output_file,
+                        },
+                    ],
+                },
+            ],
+        )
+
+
+class JobTranscribedEventMessage(SlackMessage):
+
+    def __init__(self, output_file: str) -> None:
+        title = _("We have *transcribed* your file and SRT can be downloaded below.")
+        # create message which contains the output_file
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": title,
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Download"),
+                                "emoji": False,
+                            },
+                            "action_id": "download_transcribed_file",
+                            "style": "primary",
+                            "value": output_file,
+                            # "url": f"{domains.slack_ray_translator}/download/{output_file}",
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Translate"),
+                                "emoji": False,
+                            },
+                            "action_id": "show_srt_translate_form",
+                            "value": output_file,
+                        },
+                    ],
+                },
+            ],
+        )
+
+
+class TranscriptionMessage(TextMessage):
+    def __init__(self) -> None:
+        super().__init__(_("⏱️ Please wait a moment and we will transcribe your file"))
+
+
 class InvalidMTResultMessage(TextMessage):
     """The user does not get MT result."""
 
     def __init__(self) -> None:
         super().__init__("Error occurred while translating your message")
+
+
+class AutoTranslateSettingsChangedMessage(TextMessage):
+    """Message to send when the user changes their auto-translate settings."""
+
+    def __init__(self, channel_id: str, langs: list[str]) -> None:
+        langs_string = format_strings_display(
+            [get_auto_translate_language_name(lang) for lang in langs], and_string="and"
+        )
+        super().__init__(f"<#{channel_id}> will be translated into {langs_string}")
