@@ -199,7 +199,8 @@ class LoginMessage(SlackMessage):
             t_id = "T02FDFCGK"
         if enterprise_id:
             if (enterprise_id == e_id) and ray_client is None:
-                msg[1]["elements"].append(
+                msg[1]["elements"].insert(
+                    0,
                     {
                         "type": "button",
                         "text": {
@@ -208,7 +209,7 @@ class LoginMessage(SlackMessage):
                         },
                         "style": "primary",
                         "action_id": "login_sso",
-                    }
+                    },
                 )
             elif (enterprise_id == e_id) and ray_client is not None and ray_client.sso:
                 msg.pop(1)
@@ -230,7 +231,8 @@ class LoginMessage(SlackMessage):
                     },
                 )
         elif team_id == t_id and ray_client is None:
-            msg[1]["elements"].append(
+            msg[1]["elements"].insert(
+                0,
                 {
                     "type": "button",
                     "text": {
@@ -239,7 +241,7 @@ class LoginMessage(SlackMessage):
                     },
                     "style": "primary",
                     "action_id": "login_sso",
-                }
+                },
             )
         elif team_id == t_id and ray_client is not None and ray_client.sso:
             msg.pop(1)
