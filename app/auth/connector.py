@@ -9,6 +9,7 @@ import hashlib
 from uuid import uuid4
 from dataclasses import dataclass
 from urllib.parse import urlencode
+import uuid
 
 import httpx
 from sqlalchemy import text
@@ -48,6 +49,12 @@ class RaySuperGroup:
     """The Slack team ID linked to the RAY client."""
     slack_enterprise_id: str | None
     """The Slack enterprise ID linked to the RAY client."""
+
+
+@dataclass(frozen=True, slots=True)
+class GetCreditBalanceResponse:
+    ai_token: int
+    mt_token: int
 
 
 @dataclass(slots=True)
@@ -1241,3 +1248,51 @@ def encrpyt_slack_sso_token(
         )
     }
     return f"{domains.languagecloud}/auth/slacksso?{urlencode(params)}"
+
+
+async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceResponse:
+    """http languagecloud API to get the client tokens."""
+    url = f"{domains.languagecloud_api}/credits/balance"
+    headers = {
+        "Authorization": f"Bearer {languagecloud_api_key}",
+    }
+    try:
+        async with httpx.AsyncClient() as http:
+            response = await http.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            return GetCreditBalanceResponse(
+                ai_token=data["ai_token"], mt_token=data["mt_token"]
+            )
+    except Exception as e:
+        notify_exception(e)
+        return GetCreditBalanceResponse(0, 0)
+
+
+async def spend_mt_tokens(
+    user: SlackUser,
+    credits: int,
+) -> bool:
+    """Insert into the database obj_m_member_credit_transactions to record transaction"""
+    ray_connection = await get_ray_connection(
+        user.user_id, user.team_id, user.enterprise_id
+    )
+    description = "Machine Translation"
+    with engines["sitemanager"].begin() as conn:
+        sql = text(
+            """
+            INSERT INTO obj_m_member_credit_transactions
+                (uuid, client_uuid, group_uuid, amount, credit_type, transaction_type, description)
+            VALUES
+                (:uuid, :client_uuid, :group_uuid, :amount, :credit_type, :transaction_type, :description)
+            """
+        ).bindparams(
+            uuid=str(uuid.uuid4()),
+            client_uuid=ray_connection.client.id,
+            group_uuid=ray_connection.super_group[0].id,
+            amount=0 - credits,
+            credit_type="mt_token",
+            transaction_type="spend",
+            description=description,
+        )
+        conn.execute(sql)

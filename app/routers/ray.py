@@ -6,10 +6,12 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
 
 from app.translate import _
+from app.wb_tasks.tasks import get_task
 
 from ..auth.connector import (
     SlackUser,
     get_demo_link,
+    spend_mt_tokens,
     validate_api_callback_signature,
     get_slack_user,
     get_client_access_tokens,
@@ -67,22 +69,21 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
             )
         elif isinstance(message, JobTranscribedEventMessage):
             if event.event == "ray:job:srt:translated":
+                output_file = event.data["result"]["output_file"]
                 app.client.token = auth.slack_user.bot_token
                 try:
                     with open(
-                        f"{config.path_wb_shared}{event.data['result']['output_file']}",
+                        f"{config.path_wb_shared}wb-task/{output_file}",
                         "rb",
                     ) as file_content:
                         await app.client.files_upload_v2(
                             channel=auth.slack_user.channel_id,
                             file=file_content,
-                            title=os.path.basename(event.data["result"]["output_file"]),
+                            title=os.path.basename(output_file),
                         )
                 except Exception as e:
                     # TODO: clean this up
                     # send link to file when client:write scope does not exist
-                    output_file = event.data["result"]["output_file"]
-                    output_file = output_file.replace("wb-task/", "")
                     # extract the final _Targetlang from the output_file filename
                     target_lang = output_file.split("_")[-1]
                     await app.client.chat_postEphemeral(
@@ -92,6 +93,9 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                             "You can download the {target_lang} AI translation here {domains.slack_ray_translator}/download/{output_file}"
                         ),
                     )
+                task_uuid = output_file.split("/")[0]
+                task_result = await get_task(task_uuid, auth.slack_user.ray_client_id)
+                await spend_mt_tokens(auth.slack_user, task_result["tokens"])
             else:
                 await post_notification_ephemeral(
                     app.client,
@@ -100,16 +104,6 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     auth.slack_user,
                     message,
                 )
-                # with open(
-                #     f"{config.path_shared}wb-task/{event.data['result']['output_file']}",
-                #     "rb",
-                # ) as file_content:
-                #     await app.client.files_upload_v2(
-                #         channel=auth.slack_user.channel_id,
-                #         file=file_content,
-                #         title="Here is your file",
-                #         initial_comment="This is the file you requested.",
-                #     )
         elif (
             # Send important messages regardless of subscribed status.
             isinstance(message, (ClientSignupEventMessage, ClientApprovedEventMessage))

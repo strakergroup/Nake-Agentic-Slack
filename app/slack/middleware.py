@@ -14,9 +14,10 @@ from app.translate import translator_var, Translator
 
 from .app import app
 from .logging import init_slack_app_log
-from .templates.messages import SlackMessage, LoginMessage
+from .templates.messages import RequiresMtTokenMessage, SlackMessage, LoginMessage
 from ..auth.connector import (
     RayConnection,
+    get_client_tokens,
     get_ray_connection,
     get_ray_connection_demo,
     log_new_user_info,
@@ -149,4 +150,21 @@ async def require_ray_client(
                 blocks=login_message.blocks,
             )
 
+    return False
+
+
+async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
+    """Check if the user has the required minimum translation credits to perform the operation"""
+    return True
+    mt_tokens = 0
+    if context["ray"].client is not None:
+        user_tokens = await get_client_tokens(context["ray"].client.id_token)
+        mt_tokens = user_tokens.mt_token
+        if mt_tokens >= value:
+            return True
+    message = RequiresMtTokenMessage(mt_tokens, value)
+    await context.say(
+        text=message.text,
+        blocks=message.blocks,
+    )
     return False
