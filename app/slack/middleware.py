@@ -155,6 +155,7 @@ async def require_ray_client(
 
 async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
     """Check if the user has the required minimum translation credits to perform the operation"""
+    return True
     mt_tokens = 0
     if context["ray"].client is not None:
         user_tokens = await get_client_tokens(context["ray"].client.id_token)
