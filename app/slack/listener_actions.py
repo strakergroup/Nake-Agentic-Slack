@@ -82,35 +82,38 @@ async def respond_to_message(
 
     # If there is no text, show new job button or ignore the message.
     if message.get("files"):
-        # Trigger file list to enter into cache. So that new job button click does not timeout
-        asyncio.create_task(
-            files_list_simple(client, channel_id=context["channel_id"], count=120)
-        )
-        # Handle video file
-        for file in message["files"]:
-            if file["filetype"] in ["mp4", "mp3"]:
-                file_info = await client.files_info(file=file["id"])
-                download_url = file_info["file"]["url_private"]
-                token = client.token
-                # send video to wb consumer
-                if await require_ray_client(context, prompt_login=False):
-                    # TODO: Requires token check
-                    if await require_mt_tokens(context):
-                        await create_task(
-                            context["ray"].client.id,
-                            "wb_task:media:asr",
-                            "ray:job:transcribed",
-                            {
-                                "input_url": download_url,
-                                "input_token": token,
-                            },
-                        )
-                        msg = TranscriptionMessage()
-                        await context.say(text=msg.text, thread_ts=thread_ts)
-            else:
-                msg = NewJobMessage(context["channel_id"], message["ts"])
-                await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
-        return
+        if await require_ray_client(context):
+            # Trigger file list to enter into cache. So that new job button click does not timeout
+            asyncio.create_task(
+                files_list_simple(client, channel_id=context["channel_id"], count=120)
+            )
+            # Handle video file
+            for file in message["files"]:
+                if file["filetype"] in ["mp4", "mp3"]:
+                    file_info = await client.files_info(file=file["id"])
+                    download_url = file_info["file"]["url_private"]
+                    token = client.token
+                    # send video to wb consumer
+                    if await require_ray_client(context, prompt_login=False):
+                        # TODO: Requires token check
+                        if await require_mt_tokens(context):
+                            await create_task(
+                                context["ray"].client.id,
+                                "wb_task:media:asr",
+                                "ray:job:transcribed",
+                                {
+                                    "input_url": download_url,
+                                    "input_token": token,
+                                },
+                            )
+                            msg = TranscriptionMessage()
+                            await context.say(text=msg.text, thread_ts=thread_ts)
+                else:
+                    msg = NewJobMessage(context["channel_id"], message["ts"])
+                    await context.say(
+                        text=msg.text, blocks=msg.blocks, thread_ts=thread_ts
+                    )
+            return
 
     # process mt
     message_match = re.search(
