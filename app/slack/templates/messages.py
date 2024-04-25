@@ -392,6 +392,23 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
+                        "text": _(":blue_book: Learn The Basics"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Help Centre"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+                        "action_id": "link_2",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
                         "text": f"*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|{_('Show more options')}>*",
                     },
                 },
@@ -514,6 +531,23 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": _("Insights"),
                         },
                         "action_id": "report_insights",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(":blue_book: Learn The Basics"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Help Centre"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+                        "action_id": "link_2",
                     },
                 },
                 {
@@ -1865,6 +1899,23 @@ class HelpMessage(SlackMessage):
                             "text": _("Cancel"),
                         },
                         "action_id": "cancel_job",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(":blue_book: Learn The Basics"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Help Centre"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+                        "action_id": "link_2",
                     },
                 },
                 {"type": "divider"},
