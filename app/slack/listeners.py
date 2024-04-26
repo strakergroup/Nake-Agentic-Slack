@@ -690,6 +690,21 @@ async def get_account_info(ack, context, respond):
     await respond(text=msg.text, blocks=msg.blocks)
 
 
+# The "Connect" button short cut in Help Message
+@app.block_action("connect_info", middleware=[ray_connection])
+@slack_log_decorator
+async def get_connect_info(ack, context, respond):
+    await ack()
+    msg = LoginMessage(
+        user_id=context["user_id"],
+        team_id=context["team_id"],
+        enterprise_id=context.get("enterprise_id"),
+        channel_id=context.get("channel_id", context["user_id"]),
+        ray_client=context["ray"].client if context["ray"] is not None else None,
+    )
+    await respond(text=msg.text, blocks=msg.blocks)
+
+
 @app.block_action("delay_info")
 @slack_log_decorator
 async def get_delay_info(ack, respond):
