@@ -43,7 +43,10 @@ router = APIRouter()
 async def download_file(uuid: str, filename: str):
     # Your code here
     file_path = Path(config.path_wb_shared).joinpath("wb-task", uuid, filename)
-    return FileResponse(file_path)
+    return FileResponse(
+        file_path,
+        content_disposition_type="attachment",
+    )
 
 
 @router.post("/ray/events")
