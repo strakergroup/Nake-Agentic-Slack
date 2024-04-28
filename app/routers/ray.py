@@ -100,13 +100,22 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 task_result = await get_task(task_uuid, auth.slack_user.ray_client_id)
                 await spend_mt_tokens(auth.slack_user, task_result["tokens"])
             else:
-                await post_notification_ephemeral(
-                    app.client,
-                    auth.slack_user.channel_id,
-                    event,
-                    auth.slack_user,
-                    message,
-                )
+                if not event.data.get("error"):
+                    await post_notification_ephemeral(
+                        app.client,
+                        auth.slack_user.channel_id,
+                        event,
+                        auth.slack_user,
+                        message,
+                    )
+                else:
+                    await app.client.chat_postEphemeral(
+                        channel=auth.slack_user.channel_id,
+                        user=auth.slack_user.user_id,
+                        text=_(
+                            "This video cannot be sent for transcription as it doesn't have any sound"
+                        ),
+                    )
         elif (
             # Send important messages regardless of subscribed status.
             isinstance(message, (ClientSignupEventMessage, ClientApprovedEventMessage))

@@ -112,6 +112,7 @@ class JobTranscribedPath(BaseModel):
 class JobTranscribedEvent(BaseModel):
     output_file: str
     client_id: str
+    error: str | None = None
 
     @root_validator(pre=True)
     def extract_output_file(cls, values):
