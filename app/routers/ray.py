@@ -46,6 +46,7 @@ async def download_file(uuid: str, filename: str):
     return FileResponse(
         file_path,
         content_disposition_type="attachment",
+        media_type="application/x-subrip",
     )
 
 
