@@ -968,3 +968,23 @@ def translation_settings_view(
             },
         ],
     }
+
+
+def translation_settings_view_error(message: str) -> dict[str, Any]:
+    return {
+        "type": "modal",
+        "title": {
+            "type": "plain_text",
+            "text": _("Translation Settings"),
+        },
+        "close": {"type": "plain_text", "text": _("Close")},
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "plain_text",
+                    "text": _(f"{message}"),
+                },
+            }
+        ],
+    }

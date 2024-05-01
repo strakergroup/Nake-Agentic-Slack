@@ -66,6 +66,7 @@ from .templates.messages import (
 from .templates.views import (
     home_view,
     translation_settings_view,
+    translation_settings_view_error,
     job_search_modal,
     sso_form_modal,
     cancel_job_modal,
@@ -523,14 +524,41 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
         context, channel_id
     )
-    await client.views_open(
-        trigger_id=body["trigger_id"],
-        view=translation_settings_view(
-            [channel_id] if channel_id else None,
-            auto_translate_langs,
-            settings.display_format if settings else "thread",
-        ),
-    )
+    if channel_id:
+        error_msg = "No Permissions!!"
+        try:
+            response = await client.conversations_members(channel=channel_id)
+            if context["user_id"] in response["members"]:
+                await client.views_open(
+                    trigger_id=body["trigger_id"],
+                    view=translation_settings_view(
+                        [channel_id] if channel_id else None,
+                        auto_translate_langs,
+                        settings.display_format if settings else "thread",
+                    ),
+                )
+            else:
+                await client.views_open(
+                    trigger_id=body["trigger_id"],
+                    view=translation_settings_view_error(error_msg),
+                )
+        except SlackApiError as e:
+            if e.response["error"] == "missing_scope":
+                notify_exception(e)
+                error_msg = "Missing Scope!!"
+            await client.views_open(
+                trigger_id=body["trigger_id"],
+                view=translation_settings_view_error(error_msg),
+            )
+    else:
+        await client.views_open(
+            trigger_id=body["trigger_id"],
+            view=translation_settings_view(
+                [channel_id] if channel_id else None,
+                auto_translate_langs,
+                settings.display_format if settings else "thread",
+            ),
+        )
 
 
 @app.block_action("show_job_details", middleware=[ray_connection])
