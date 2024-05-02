@@ -525,13 +525,16 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
         context, channel_id
     )
     if channel_id:
-        error_msg = "No Permissions!!"
+        error_msg = _("You do not have permission to edit this channel!!")
         try:
             # Check if the channel is public or private.
             conver_info = await client.conversations_info(channel=channel_id)
             # Check if the user is a member of the channel.
             response = await client.conversations_members(channel=channel_id)
-            if context["user_id"] in response["members"] or not conver_info["channel"]["is_private"]:
+            if (
+                context["user_id"] in response["members"]
+                or not conver_info["channel"]["is_private"]
+            ):
                 await client.views_open(
                     trigger_id=body["trigger_id"],
                     view=translation_settings_view(
@@ -548,7 +551,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
         except SlackApiError as e:
             if e.response["error"] == "missing_scope":
                 notify_exception(e)
-                error_msg = "Missing Scope!!"
+                error_msg = _("Missing Scope!!")
             await client.views_open(
                 trigger_id=body["trigger_id"],
                 view=translation_settings_view_error(error_msg),
