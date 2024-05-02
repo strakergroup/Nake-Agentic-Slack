@@ -1,6 +1,6 @@
 import functools
 from typing import Iterable
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.orm import Session
 from slack_bolt.context.async_context import AsyncBoltContext
 
@@ -374,3 +374,22 @@ def get_full_group_translation_settings(
     return [
         (channel, langs) for channel, langs in settings_lang_map.values() if len(langs)
     ]
+
+
+def disable_auto_translate_group_settings(
+    channel_id: str,
+    is_disabled: bool,
+) -> None:
+    """Disable/Enable the auto-translate settings for a channel for a LanugageCloud group.
+
+    Args:
+        channel_id str: The ID of the channel (conversations) to auto-translate.
+        is_disabled bool: Whether to disable or enable the auto-translate settings.
+    """
+    with Session(engines["ray_integration"]) as session:
+        session.execute(
+            update(SlackGroupSettingsTranslation)
+            .where(SlackGroupSettingsTranslation.channel_id == channel_id)
+            .values(is_disabled=0 if is_disabled else 1)
+        )
+        session.commit()

@@ -62,6 +62,7 @@ from .templates.messages import (
     ClientAlreadyApprovedMessage,
     JobDelayMessage,
     AutoTranslateSettingsChangedMessage,
+    AutoTranslateSettingsDisabledMessage,
 )
 from .templates.views import (
     home_view,
@@ -84,6 +85,7 @@ from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
     get_auto_translate_settings_and_langs,
     update_auto_translate_group_settings,
+    disable_auto_translate_group_settings,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
 from ..config import config, domains
@@ -531,6 +533,52 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
             settings.display_format if settings else "thread",
         ),
     )
+
+
+@app.block_action("settings_auto_translate_disable", middleware=[ray_connection])
+async def disable_auto_translate_settings(ack, context, payload, body, client):
+    try:
+        channel_info = json.loads(payload["value"])
+        channel_id, is_disabled = (
+            channel_info["channel_id"],
+            channel_info["is_disabled"],
+        )
+        disable_auto_translate_group_settings(channel_id, is_disabled)
+        await ack()
+        await client.views_publish(
+            user_id=context["user_id"],
+            view=home_view(context, body["api_app_id"], context.get("ray")),
+        )
+
+        async def join_channel(channel_id: str):
+            try:
+                await client.conversations_join(channel=channel_id)
+            except SlackApiError:
+                pass  # Cannot join private channel, or cannot find channel.
+            except Exception as e:
+                notify_exception(e)
+
+        async def notify_channel(channel_id: str):
+            try:
+                msg = AutoTranslateSettingsDisabledMessage(
+                    channel_id, "enabled" if is_disabled else "disabled"
+                )
+                await client.chat_postMessage(channel=channel_id, text=msg.text)
+            except SlackApiError:
+                pass  # Must be in channel to post. TODO check other events, e.g. app_mention
+            except Exception as e:
+                notify_exception(e)
+
+        await asyncio.gather(
+            *[join_channel(channel_id)],
+            return_exceptions=True,
+        )
+        await asyncio.gather(
+            *[notify_channel(channel_id)],
+            return_exceptions=True,
+        )
+    except Exception as e:
+        notify_exception(e)
 
 
 @app.block_action("show_job_details", middleware=[ray_connection])
