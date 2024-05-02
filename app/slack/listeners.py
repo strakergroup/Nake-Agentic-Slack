@@ -552,6 +552,8 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
             if e.response["error"] == "missing_scope":
                 notify_exception(e)
                 error_msg = _("Missing Scope!!")
+            elif e.response["error"] == "channel_not_found":
+                error_msg = _("The app is not integrated in this channel!!")
             await client.views_open(
                 trigger_id=body["trigger_id"],
                 view=translation_settings_view_error(error_msg),
