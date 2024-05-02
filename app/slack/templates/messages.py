@@ -1621,13 +1621,13 @@ class JobSubmitMessage(SlackMessage):
 class InsightsMessage(SlackMessage):
     def __init__(self, message: str):
         super().__init__(
-            _(":idea: Here are your insights"),
+            _(":bulb: Here are your insights"),
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(":idea: *Here are your insights*"),
+                        "text": _(":bulb: *Here are your insights*"),
                     },
                 },
                 {
@@ -2623,7 +2623,7 @@ class ReportInsightsMessage(SlackMessage):
         else:
             message = "You can use the message pane below to type your insights request using natural language. Get turn around times, cost, or validation quality. An example:\n>Can you tell me how many jobs have been delivered on time in the last 30 days"
         super().__init__(
-            _(":idea: Here are your insights"),
+            _(":bulb: Here are your insights"),
             [{"type": "section", "text": {"type": "mrkdwn", "text": _(message)}}],
         )
 

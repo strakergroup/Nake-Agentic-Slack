@@ -85,7 +85,7 @@ def home_view(
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"<#{setting.channel_id}> will be translated into {langs_string} through in {display_format_string}.",
+                        "text": f"<#{setting.channel_id}> will be translated into {langs_string} through {display_format_string}.",
                     },
                     "accessory": {
                         "type": "button",
