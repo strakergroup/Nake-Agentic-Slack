@@ -2926,7 +2926,7 @@ class RequiresMtTokenMessage(SlackMessage):
                                 "emoji": False,
                             },
                             "action_id": "button-action",  # Add this line
-                            "url": f"{domains.languagecloud}/checkout/tokens",
+                            "url": f"{domains.languagecloud}/checkout/characters",
                         },
                     ],
                 },
