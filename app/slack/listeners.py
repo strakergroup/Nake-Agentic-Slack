@@ -874,6 +874,20 @@ async def handle_job_search(ack, view, context, client):
 async def view_update_auto_translate_settings(ack, view, context, body, client):
     try:
         form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
+        for c in form.channels:
+            await client.conversations_info(channel=c)
+    except SlackApiError as e:
+        if e.response["error"] == "channel_not_found":
+            error_msg = _(
+                "Please /invite @Straker Translate to the private channels in order to enable channel translation."
+            )
+            await ack(
+                response_action="errors",
+                errors={"channels": error_msg},
+            )
+        if e.response["error"] == "missing_scope":
+            await ack(response_action="errors", errors={"channels": "missing_scope."})
+        return
     except ValidationError as e:
         errors = convert_pydantic_to_slack_error(e)
         await ack(response_action="errors", errors=errors)
