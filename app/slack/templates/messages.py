@@ -2896,3 +2896,10 @@ class AutoTranslateSettingsChangedMessage(TextMessage):
             [get_auto_translate_language_name(lang) for lang in langs], and_string="and"
         )
         super().__init__(f"<#{channel_id}> will be translated into {langs_string}")
+
+
+class AutoTranslateSettingsDisabledMessage(TextMessage):
+    """Message to send when the user disable/enable their auto-translate settings."""
+
+    def __init__(self, channel_id: str, is_disabled: str) -> None:
+        super().__init__(f"<#{channel_id}> Translation Settings has been {is_disabled}.")
