@@ -75,7 +75,7 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
         user_locale = user_info["user"]["locale"]
         if (
             user_info["user"]["tz"] == "Canada/Eastern"
-            and user_info["user"]["locale"] == "fr_CA"
+            and user_info["user"]["locale"] == "fr_FR"
         ):
             user_locale = "fr-CA"
         translator_var.set(Translator(user_locale))
