@@ -2891,15 +2891,22 @@ class InvalidMTResultMessage(TextMessage):
 class AutoTranslateSettingsChangedMessage(TextMessage):
     """Message to send when the user changes their auto-translate settings."""
 
-    def __init__(self, channel_id: str, langs: list[str]) -> None:
+    def __init__(self, channel_id: str, langs: list[str], display_format: str) -> None:
         langs_string = format_strings_display(
             [get_auto_translate_language_name(lang) for lang in langs], and_string="and"
         )
-        super().__init__(f"<#{channel_id}> will be translated into {langs_string}")
+        display_format_string = (
+            "thread replies" if display_format == "thread" else "messages"
+        )
+        super().__init__(
+            f"<#{channel_id}> will be translated into {langs_string} through {display_format_string}"
+        )
 
 
 class AutoTranslateSettingsDisabledMessage(TextMessage):
     """Message to send when the user disable/enable their auto-translate settings."""
 
     def __init__(self, channel_id: str, is_disabled: str) -> None:
-        super().__init__(f"<#{channel_id}> Translation Settings has been {is_disabled}.")
+        super().__init__(
+            f"<#{channel_id}> Translation Settings has been {is_disabled}."
+        )
