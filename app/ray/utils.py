@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 from babel.numbers import format_currency as babel_format_currency
 
 from ..config import domains
+from slack_sdk.web.async_client import AsyncWebClient
 
 
 def get_job_url(job_uuid: str, client_id: str | None = None) -> str:

@@ -3,6 +3,8 @@ This module contains functions for common actions which are executed in
 Slack Bolt listener functions.
 """
 
+import uuid
+
 import asyncio
 from typing import Any
 import re
@@ -14,7 +16,9 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
 from buglog import notify_exception, notify_message
 
-from .middleware import require_ray_client
+from app.wb_tasks.tasks import create_task
+
+from .middleware import require_mt_tokens, require_ray_client
 from .utils import strip_slack_formatting
 from .templates.messages import (
     HelpMessage,
@@ -38,6 +42,7 @@ from .templates.messages import (
     AutoTranslationMessage,
     MachineTranslationMessage,
     InvalidMTResultMessage,
+    TranscriptionMessage,
 )
 from .templates.models import NewJobForm
 from .templates.views import (
@@ -50,12 +55,11 @@ from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
     is_valid_auto_translate_language,
     filter_invalid_auto_translate_languages,
-    get_auto_translate_langs,
+    get_auto_translate_settings_and_langs,
 )
 from ..ray.utils import is_min_langugagecloud_plan
 from ..mt.google import get_machine_translations, log_google_api_usage
 from ..watson import watson_message
-from ..cache.timer import auto_translate_permissions_reminder
 from .select_options import get_file_options_cached
 
 
@@ -77,14 +81,39 @@ async def respond_to_message(
     thread_ts = message.get("thread_ts", message.get("ts")) if use_thread else None
 
     # If there is no text, show new job button or ignore the message.
-    if not message.get("text"):
-        if message.get("files"):
+    if message.get("files"):
+        if await require_ray_client(context):
+            # Trigger file list to enter into cache. So that new job button click does not timeout
             asyncio.create_task(
                 files_list_simple(client, channel_id=context["channel_id"], count=120)
             )
-            msg = NewJobMessage(context["channel_id"], message["ts"])
-            await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
-        return
+            # Handle video file
+            for file in message["files"]:
+                if file["filetype"] in ["mp4", "mp3"]:
+                    file_info = await client.files_info(file=file["id"])
+                    download_url = file_info["file"]["url_private"]
+                    token = client.token
+                    # send video to wb consumer
+                    if await require_ray_client(context, prompt_login=False):
+                        # TODO: Requires token check
+                        if await require_mt_tokens(context):
+                            await create_task(
+                                context["ray"].client.id,
+                                "wb_task:media:asr",
+                                "ray:job:transcribed",
+                                {
+                                    "input_url": download_url,
+                                    "input_token": token,
+                                },
+                            )
+                            msg = TranscriptionMessage()
+                            await context.say(text=msg.text, thread_ts=thread_ts)
+                else:
+                    msg = NewJobMessage(context["channel_id"], message["ts"])
+                    await context.say(
+                        text=msg.text, blocks=msg.blocks, thread_ts=thread_ts
+                    )
+            return
 
     # process mt
     message_match = re.search(
@@ -247,12 +276,20 @@ async def auto_translate_message(
 ):
     text: str | None = message.get("text")
     ts: str = message["ts"]
+    thread_ts: str | None = message.get("thread_ts")
     if not text:
+        return
+    if message.get("bot_id"):
+        # Do not translate bot messages.
         return
     # if not is_min_langugagecloud_plan(ray_client.planname, "Essentials"):
     #     # Minimum Essentials plan is required for the auto-translate feature.
     #     return
-    target_langs = get_auto_translate_langs(context)
+    assert context.channel_id  # TODO enforce this
+    settings, target_langs = get_auto_translate_settings_and_langs(
+        context, context.channel_id
+    )
+    assert settings  # TODO Fix typing
     if not target_langs:
         return
 
@@ -269,44 +306,51 @@ async def auto_translate_message(
         return
 
     msg = AutoTranslationMessage(
-        text,
+        None,
         source_lang,
         translations=[(tl, target_text) for tl, target_text in translations.items()],
     )
     try:
-        if context.user_token:
-            try:
-                client.token = context.user_token
-                await client.chat_update(
-                    channel=context.channel_id,
-                    ts=ts,
-                    text=text,  # Must use original untranslated text for future detect language
-                    blocks=msg.blocks,
-                )
-                return
-            except Exception as e:
-                notify_exception(e, "Failed to update message (auto-translation)")
-                # If updating message fails (e.g. permissions), default to thread reply.
-                client.token = context.bot_token
-
-        # Post a thread reply if the user did not give permission (user token).
-        await client.chat_postMessage(
-            channel=context.channel_id,
-            text=msg.text,
-            blocks=msg.blocks,
-            thread_ts=ts,
-        )
-        # If the user has not given permission to edit their messages, post a reminder.
-        if await auto_translate_permissions_reminder(
-            context.user_id, context.channel_id
-        ):
-            permissions_msg = SlackPermissionsMessage.auto_translate_variation()
-            await client.chat_postEphemeral(
+        if settings.display_format == "thread":
+            await client.chat_postMessage(
                 channel=context.channel_id,
-                user=context.user_id,
-                text=permissions_msg.text,
-                blocks=permissions_msg.blocks,
+                text=msg.text,
+                blocks=msg.blocks,
+                thread_ts=ts,
             )
+        elif settings.display_format == "message":
+            await client.chat_postMessage(
+                channel=context.channel_id,
+                text=msg.text,
+                blocks=msg.blocks,
+                thread_ts=thread_ts,
+            )
+        else:
+            notify_message("Slack app: Invalid display format")
+            # Disable editing users' messages for now.
+            # if context.user_token:
+            #     try:
+            #         client.token = context.user_token
+            #         await client.chat_update(
+            #             channel=context.channel_id,
+            #             ts=ts,
+            #             text=text,  # Must use original untranslated text for future detect language
+            #             blocks=msg.blocks,
+            #         )
+            #         return
+            #     except Exception as e:
+            #         notify_exception(e, "Failed to update message (auto-translation)")
+            #         # If updating message fails (e.g. permissions), default to thread reply.
+            #         client.token = context.bot_token
+
+        # TODO decide what to do with this
+        # permissions_msg = SlackPermissionsMessage.auto_translate_variation()
+        # await client.chat_postEphemeral(
+        #     channel=context.channel_id,
+        #     user=context.user_id,
+        #     text=permissions_msg.text,
+        #     blocks=permissions_msg.blocks,
+        # )
     except Exception as e:
         notify_exception(e, "Failed to get machine translation from LanguageCloud API")
     finally:
@@ -320,6 +364,33 @@ async def auto_translate_message(
                 translations,
             )
         )
+
+
+async def srt_translate(
+    context: AsyncWebClient, output_file: str, selected_languages: str
+):
+    """Translate the SRT file using the wb-task-consumer.
+
+    Args:
+        client (AsyncWebClient): The Slack client.
+        channel_id (str): The channel ID of the message.
+        output_file (str): The output file name.
+    """
+    if not output_file:
+        return
+    try:
+        await create_task(
+            context["ray"].client.id,
+            "wb_task:common:mt",
+            "ray:job:srt:translated",
+            {
+                "input_file": f"wb-task/{output_file}",
+                "mt_provider_id": "google",
+                "mt_parameters": {"target_lang_code": selected_languages},
+            },
+        )
+    except Exception as e:
+        notify_exception(e, "Failed to translate SRT file")
 
 
 async def update_machine_translation_score(

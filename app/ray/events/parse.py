@@ -8,6 +8,7 @@ from .models import (
     JobQuoteCreatedEvent,
     JobQuoteAcceptedEvent,
     JobQuoteCancelledEvent,
+    JobTranscribedEvent,
 )
 from ...slack.templates.messages import (
     SlackMessage,
@@ -20,6 +21,7 @@ from ...slack.templates.messages import (
     JobQuotedEventMessage,
     JobQuoteAcceptedEventMessage,
     JobQuoteCancelledEventMessage,
+    JobTranscribedEventMessage,
 )
 
 
@@ -87,4 +89,9 @@ def get_ray_event_message(
         return JobQuoteCancelledEventMessage(
             client_id=event6.client_id, job_uuid=event6.uuid, job_id=event6.id
         )
+    elif event_type == "ray:job:transcribed" or event_type == "ray:job:srt:translated":
+        event7 = JobTranscribedEvent.model_validate(event_data)
+        # send message which contains event.output_file
+        return JobTranscribedEventMessage(event7.output_file)
+
     raise ValueError(f"Invalid RAY event type: {event_type}")

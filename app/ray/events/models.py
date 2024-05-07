@@ -1,7 +1,7 @@
 import datetime
 
 from dateutil.parser import parse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, root_validator
 
 
 class ClientGroup(BaseModel):
@@ -103,3 +103,20 @@ class JobQuoteCancelledEvent(BaseModel):
         if isinstance(v, datetime.datetime):
             return v
         return parse(v, dayfirst=True)
+
+
+class JobTranscribedPath(BaseModel):
+    output_file: str
+
+
+class JobTranscribedEvent(BaseModel):
+    output_file: str
+    client_id: str
+    error: str | None = None
+
+    @root_validator(pre=True)
+    def extract_output_file(cls, values):
+        result = values.get("result")
+        if result:
+            values["output_file"] = result.get("output_file")
+        return values

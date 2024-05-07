@@ -7,19 +7,28 @@ from .blocks import home_auth_blocks
 from ..select_options import (
     map_file_options,
     get_auto_translate_language_options,
+    translation_display_format_options,
+    map_translation_display_format_option,
     filter_auto_translate_language_options,
 )
 from ...auth.connector import RayConnection
+from ...ray.settings import (
+    get_full_group_translation_settings,
+    get_auto_translate_language_name,
+)
 from ...ray.utils import is_min_langugagecloud_plan
+from ...slack.utils import format_strings_display
 from ...config import config, domains, Environment
+from ...models import SlackGroupSettingsTranslation
 
 
 def home_view(
     context: AsyncBoltContext, app_id: str, rayConnection: RayConnection | None
 ) -> dict[str, Any]:
     message_url = f"slack://app?team={context['team_id']}&id={app_id}&tab=messages"
-    # Hide auto-translation settings in Production until scopes are approved.
-    auto_translate_blocks: list[dict[str, Any]] = [
+    translation_settings = get_full_group_translation_settings(context)
+    # Hide translation settings in Production until scopes are approved.
+    translation_settings_blocks: list[dict[str, Any]] = [
         {"type": "divider"},
         {
             "type": "header",
@@ -34,47 +43,58 @@ def home_view(
                 ),
             },
         },
-        (
-            (
+        {
+            "type": "actions",
+            "elements": [
                 {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "emoji": True,
-                                "text": _(":speech_balloon: Translation Settings"),
-                            },
-                            "action_id": "settings_auto_translate",
-                        },
-                    ],
-                }
-                if is_min_langugagecloud_plan(
-                    rayConnection.client.planname, "Essentials"
-                )
-                else {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": _(":speech_balloon: Configure translation settings"),
+                    },
+                    "action_id": "settings_auto_translate",
+                },
+            ],
+        },
+    ]
+    if len(translation_settings):
+        translation_settings_blocks.extend(
+            [
+                {"type": "divider"},
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Current Translation Settings",
+                    },
+                },
+            ]
+        )
+        for setting, langs in translation_settings:
+            langs_string = format_strings_display(
+                [get_auto_translate_language_name(lang) for lang in langs],
+                and_string="and",
+            )
+            # TODO refactor
+            display_format_string = (
+                "thread replies" if setting.display_format == "thread" else "messages"
+            )
+            translation_settings_blocks.append(
+                {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            "_This feature is only available on an Essentials plan or higher_"
-                        ),
+                        "text": f"<#{setting.channel_id}> will be translated into {langs_string} through in {display_format_string}.",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "Edit", "emoji": False},
+                        "value": setting.channel_id,
+                        "action_id": "settings_auto_translate",
                     },
                 }
             )
-            if rayConnection and rayConnection.client
-            else {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "_Connect your Straker LanguageCloud account to enable this feature_"
-                    ),
-                },
-            }
-        ),
-    ]
     return {
         "type": "home",
         "blocks": [
@@ -82,20 +102,20 @@ def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": _("Welcome to the Straker LanguageCloud App!"),
+                    "text": _("Welcome to the Straker Translate App!"),
                 },
             },
             *home_auth_blocks(
                 context["user_id"],
                 context["team_id"],
                 context.get("enterprise_id"),
-                context["channel_id"],
+                context.get("channel_id"),  # TODO can be None, e.g. view_submission
                 rayConnection,
             ),
             {"type": "divider"},
             {
                 "type": "header",
-                "text": {"type": "plain_text", "text": _("Get started")},
+                "text": {"type": "plain_text", "text": _("Get Started")},
             },
             {
                 "type": "section",
@@ -116,7 +136,6 @@ def home_view(
                             "emoji": True,
                             "text": _(":zap: Create New Job"),
                         },
-                        "style": "primary",
                         "action_id": "quote",
                         "url": message_url,
                     },
@@ -135,7 +154,7 @@ def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _(":bar_chart: Reports/Insights"),
+                            "text": _(":bar_chart: Insights"),
                         },
                         "action_id": "report_insights",
                         "url": message_url,
@@ -143,10 +162,12 @@ def home_view(
                 ],
             },
             *(
-                auto_translate_blocks
+                translation_settings_blocks
                 if config.environment != Environment.production
                 or domains.slack_ray_translator
                 == "https://stage-slack-deltaray.strakertranslations.com"
+                or domains.slack_ray_translator
+                == "https://temp-slack-deltaray.strakertranslations.com"
                 else []
             ),
             {"type": "divider"},
@@ -162,16 +183,21 @@ def home_view(
                         "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest LanguageCloud and Enterprise features, provide updates, and engage with customers like you!"
                     ),
                 },
-                "accessory": {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("Learn More"),
-                        "emoji": True,
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Learn More"),
+                            "emoji": False,
+                        },
+                        "action_id": "link_0",
+                        "url": "https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions",
                     },
-                    "action_id": "link_0",
-                    "url": "https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions",
-                },
+                ],
             },
             {"type": "divider"},
             {
@@ -194,7 +220,7 @@ def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _(":question:Help Centre"),
+                            "text": _(":question: Help Centre"),
                         },
                         "action_id": "link_2",
                         "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
@@ -835,24 +861,30 @@ def cancel_job_modal(client_name: str) -> dict[str, Any]:
     }
 
 
-def settings_auto_translate_view(
-    initial_channels: list[str] | None = None, initial_langs: list[str] | None = None
+def translation_settings_view(
+    initial_channels: list[str] | None = None,
+    initial_langs: list[str] | None = None,
+    display_format: SlackGroupSettingsTranslation.DisplayFormatType = "thread",
 ) -> dict[str, Any]:
     # TODO: Detect message max length (5000)
     # TODO: Detect message formatting, emojis
     # TODO: 429 rate limiting
     language_options = get_auto_translate_language_options()
+    display_format_options = translation_display_format_options()
+    # TODO Rethink this, accept single value?
     initial_channels = initial_channels or []
     initial_lang_options = (
         filter_auto_translate_language_options(initial_langs) if initial_langs else []
     )
-
+    initial_display_format_option = map_translation_display_format_option(
+        display_format
+    )
     return {
         "type": "modal",
         "callback_id": "settings_auto_translate",
         "title": {"type": "plain_text", "text": _("Translation Settings")},
-        "submit": {"type": "plain_text", "text": _("Save")},
-        "close": {"type": "plain_text", "text": _("Cancel")},
+        "submit": {"type": "plain_text", "text": _("Create")},
+        "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
             {
                 "type": "input",
@@ -862,26 +894,32 @@ def settings_auto_translate_view(
                     "action_id": "channels",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": _("Select channel(s)"),
+                        "text": _("Select channels or DMs"),
                     },
-                    "initial_conversations": initial_channels,
+                    # TODO default_to_current_conversation? Consider when im
+                    **(
+                        {"initial_conversations": initial_channels}
+                        if initial_channels
+                        else {"default_to_current_conversation": True}
+                    ),
                     "filter": {
-                        "include": ["public", "private"],
+                        "include": ["public", "private", "mpim"],
+                        "exclude_external_shared_channels": True,
                         "exclude_bot_users": True,
                     },
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": _("Channels"),
-                    "emoji": True,
+                    "text": _("Channel or DM"),
+                    "emoji": False,
                 },
                 "hint": {
                     "type": "plain_text",
                     "text": _(
-                        "Important: Straker must be a member in the chosen channel or DM"
+                        "Straker Translate must be integrated as an app in the selected channel or DM"
                     ),
                 },
-                "optional": True,
+                "optional": False,
             },
             {
                 "type": "input",
@@ -890,7 +928,7 @@ def settings_auto_translate_view(
                     "type": "multi_static_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": _("Choose language(s)"),
+                        "text": _("Choose languages"),
                     },
                     "options": language_options,
                     **(
@@ -901,14 +939,32 @@ def settings_auto_translate_view(
                     "action_id": "languages",
                     "max_selected_items": 10,
                 },
-                "label": {"type": "plain_text", "text": _("Language"), "emoji": True},
+                "label": {"type": "plain_text", "text": _("Language"), "emoji": False},
                 "hint": {
                     "type": "plain_text",
-                    "text": _(
-                        "Automatically translate messages into these language(s)"
-                    ),
+                    "text": _("Automatically translate messages into these languages"),
                 },
-                "optional": True,
+                "optional": False,
+            },
+            {
+                "type": "input",
+                "block_id": "display_format",
+                "element": {
+                    "type": "static_select",
+                    "options": display_format_options,
+                    "initial_option": initial_display_format_option,
+                    "action_id": "display_format",
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": _("Display Format"),
+                    "emoji": False,
+                },
+                "hint": {
+                    "type": "plain_text",
+                    "text": _("How would you like to see the translated messages?"),
+                },
+                "optional": False,
             },
         ],
     }
