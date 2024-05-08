@@ -161,7 +161,7 @@ async def home_opened(event, action, context, body, say, client):
     # Publish view to home tab.
     await client.views_publish(
         user_id=context["user_id"],
-        view=home_view(context, body["api_app_id"], context.get("ray")),
+        view=await home_view(context, body["api_app_id"], context.get("ray")),
     )
 
 
@@ -547,7 +547,7 @@ async def disable_auto_translate_settings(ack, context, payload, body, client):
         await ack()
         await client.views_publish(
             user_id=context["user_id"],
-            view=home_view(context, body["api_app_id"], context.get("ray")),
+            view=await home_view(context, body["api_app_id"], context.get("ray")),
         )
 
         async def join_channel(channel_id: str):
@@ -925,7 +925,7 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
     except SlackApiError as e:
         if e.response["error"] == "channel_not_found":
             error_msg = _(
-                "Please /invite @Straker Translate to the private channels in order to enable channel translation."
+                "Please /invite @Straker to the private channels in order to enable channel translation."
             )
             await ack(
                 response_action="errors",
@@ -951,7 +951,7 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
         )
         await client.views_publish(
             user_id=context["user_id"],
-            view=home_view(context, body["api_app_id"], context.get("ray")),
+            view=await home_view(context, body["api_app_id"], context.get("ray")),
         )
 
         # Try to join channel automatically after updating settings.
