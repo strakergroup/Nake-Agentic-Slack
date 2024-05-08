@@ -551,7 +551,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
         except SlackApiError as e:
             if e.response["error"] == "missing_scope":
                 notify_exception(e)
-                error_msg = _("Missing Scope!!")
+                error_msg = _("Please reinstall the app")
             elif e.response["error"] == "channel_not_found":
                 error_msg = _("The bot is not integrated in this channel!!")
             await client.views_open(
