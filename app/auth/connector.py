@@ -1311,3 +1311,21 @@ async def spend_mt_tokens(
             description=description,
         )
         conn.execute(sql)
+
+
+async def get_client_type(client_id: str, group_id: str) -> str:
+    """Get the client type for a group. Owner Admin or Normal client"""
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT client_type
+            FROM obj_m_mglink
+            WHERE memberid = :client_id
+            AND groupid = :group_id
+            """
+        ).bindparams(client_id=client_id, group_id=group_id)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return None
+    return row.client_type

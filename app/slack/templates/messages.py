@@ -2932,3 +2932,24 @@ class RequiresMtTokenMessage(SlackMessage):
                 },
             ],
         )
+
+
+class RequiresMtTokenAdminMessage(SlackMessage):
+
+    def __init__(self, tokens: int, required_tokens: int) -> None:
+        title = _(
+            "❗❗You have *{tokens} MT characters* on your group account. This job requires *{required_tokens} MT characters*. Please contact your group admin to purchase more❗❗"
+        )
+        # create message which contains the output_file
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": title,
+                    },
+                },
+            ],
+        )
