@@ -63,6 +63,7 @@ from .templates.messages import (
     ClientAlreadyApprovedMessage,
     JobDelayMessage,
     AutoTranslateSettingsChangedMessage,
+    AutoTranslateSettingsDisabledMessage,
 )
 from .templates.views import (
     home_view,
@@ -85,6 +86,7 @@ from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
     get_auto_translate_settings_and_langs,
     update_auto_translate_group_settings,
+    disable_auto_translate_group_settings,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
 from ..config import config, domains
@@ -539,6 +541,52 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
     )
 
 
+@app.block_action("settings_auto_translate_disable", middleware=[ray_connection])
+async def disable_auto_translate_settings(ack, context, payload, body, client):
+    try:
+        channel_info = json.loads(payload["value"])
+        channel_id, is_disabled = (
+            channel_info["channel_id"],
+            channel_info["is_disabled"],
+        )
+        disable_auto_translate_group_settings(channel_id, is_disabled)
+        await ack()
+        await client.views_publish(
+            user_id=context["user_id"],
+            view=home_view(context, body["api_app_id"], context.get("ray")),
+        )
+
+        async def join_channel(channel_id: str):
+            try:
+                await client.conversations_join(channel=channel_id)
+            except SlackApiError:
+                pass  # Cannot join private channel, or cannot find channel.
+            except Exception as e:
+                notify_exception(e)
+
+        async def notify_channel(channel_id: str):
+            try:
+                msg = AutoTranslateSettingsDisabledMessage(
+                    channel_id, "enabled" if is_disabled else "disabled"
+                )
+                await client.chat_postMessage(channel=channel_id, text=msg.text)
+            except SlackApiError:
+                pass  # Must be in channel to post. TODO check other events, e.g. app_mention
+            except Exception as e:
+                notify_exception(e)
+
+        await asyncio.gather(
+            *[join_channel(channel_id)],
+            return_exceptions=True,
+        )
+        await asyncio.gather(
+            *[notify_channel(channel_id)],
+            return_exceptions=True,
+        )
+    except Exception as e:
+        notify_exception(e)
+
+
 @app.block_action("show_job_details", middleware=[ray_connection])
 @slack_log_decorator
 async def show_job_details(ack, action, payload, context, client):
@@ -880,6 +928,20 @@ async def handle_job_search(ack, view, context, client):
 async def view_update_auto_translate_settings(ack, view, context, body, client):
     try:
         form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
+        for c in form.channels:
+            await client.conversations_info(channel=c)
+    except SlackApiError as e:
+        if e.response["error"] == "channel_not_found":
+            error_msg = _(
+                "Please /invite @Straker Translate to the private channels in order to enable channel translation."
+            )
+            await ack(
+                response_action="errors",
+                errors={"channels": error_msg},
+            )
+        if e.response["error"] == "missing_scope":
+            await ack(response_action="errors", errors={"channels": "missing_scope."})
+        return
     except ValidationError as e:
         errors = convert_pydantic_to_slack_error(e)
         await ack(response_action="errors", errors=errors)
@@ -908,7 +970,7 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
 
         async def notify_channel(channel_id: str):
             try:
-                msg = AutoTranslateSettingsChangedMessage(channel_id, form.languages)
+                msg = AutoTranslateSettingsChangedMessage(channel_id, form.languages, form.display_format)
                 await client.chat_postMessage(channel=channel_id, text=msg.text)
             except SlackApiError:
                 pass  # Must be in channel to post. TODO check other events, e.g. app_mention

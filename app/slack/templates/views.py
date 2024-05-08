@@ -20,6 +20,7 @@ from ...ray.utils import is_min_langugagecloud_plan
 from ...slack.utils import format_strings_display
 from ...config import config, domains, Environment
 from ...models import SlackGroupSettingsTranslation
+import json
 
 
 def home_view(
@@ -80,20 +81,58 @@ def home_view(
             display_format_string = (
                 "thread replies" if setting.display_format == "thread" else "messages"
             )
-            translation_settings_blocks.append(
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"<#{setting.channel_id}> will be translated into {langs_string} through in {display_format_string}.",
+            translation_settings_blocks.extend(
+                [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"<#{setting.channel_id}> will be translated into {langs_string} through {display_format_string}.",
+                        },
+                        # "accessory": {
+                        #     "type": "button",
+                        #     "text": {"type": "plain_text", "text": "Edit", "emoji": False},
+                        #     "value": setting.channel_id,
+                        #     "action_id": "settings_auto_translate",
+                        # },
                     },
-                    "accessory": {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "Edit", "emoji": False},
-                        "value": setting.channel_id,
-                        "action_id": "settings_auto_translate",
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Edit"),
+                                    "emoji": False,
+                                },
+                                "value": setting.channel_id,
+                                "action_id": "settings_auto_translate",
+                            },
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": (
+                                        _("Enable")
+                                        if setting.is_disabled == 1
+                                        else _("Disable")
+                                    ),
+                                    "emoji": False,
+                                },
+                                "value": json.dumps(
+                                    {
+                                        "channel_id": setting.channel_id,
+                                        "is_disabled": (
+                                            True if setting.is_disabled == 1 else False
+                                        ),
+                                    }
+                                ),
+                                "action_id": "settings_auto_translate_disable",
+                            },
+                        ],
                     },
-                }
+                ]
             )
     return {
         "type": "home",
