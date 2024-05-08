@@ -2899,7 +2899,7 @@ class AutoTranslateSettingsChangedMessage(TextMessage):
             "thread replies" if display_format == "thread" else "messages"
         )
         super().__init__(
-            f"<#{channel_id}> will be translated into {langs_string} through {display_format_string}"
+            f"Messages sent in <#{channel_id}> will be translated into {langs_string} through {display_format_string} in real-time."
         )
 
 

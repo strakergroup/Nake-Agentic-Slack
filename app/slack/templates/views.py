@@ -23,11 +23,36 @@ from ...models import SlackGroupSettingsTranslation
 import json
 
 
-def home_view(
+async def home_view(
     context: AsyncBoltContext, app_id: str, rayConnection: RayConnection | None
 ) -> dict[str, Any]:
+    assert context.client
     message_url = f"slack://app?team={context['team_id']}&id={app_id}&tab=messages"
     translation_settings = get_full_group_translation_settings(context)
+    visible_translation_settings: list[
+        tuple[SlackGroupSettingsTranslation, list[str]]
+    ] = []
+    # Filter conversations by accessible by user.
+    if translation_settings:
+        next_cursor = ""
+        # Use cursor to loop through all conversations.
+        while True:
+            conversations = await context.client.conversations_list(
+                exclude_archived=True,
+                types="public_channel,private_channel",
+                limit=1000,
+                cursor=next_cursor or None,
+            )
+            channel_ids = [channel["id"] for channel in conversations["channels"]]
+            for translation_setting in translation_settings:
+                if translation_setting[0].channel_id in channel_ids:
+                    visible_translation_settings.append(translation_setting)
+            if len(translation_settings) == len(visible_translation_settings):
+                break
+            if conversations.get("response_metadata", {}).get("next_cursor"):  # type: ignore
+                next_cursor = conversations["response_metadata"]["next_cursor"]
+            else:
+                break
     # Hide translation settings in Production until scopes are approved.
     translation_settings_blocks: list[dict[str, Any]] = [
         {"type": "divider"},
@@ -59,7 +84,7 @@ def home_view(
             ],
         },
     ]
-    if len(translation_settings):
+    if len(visible_translation_settings):
         translation_settings_blocks.extend(
             [
                 {"type": "divider"},
@@ -72,7 +97,7 @@ def home_view(
                 },
             ]
         )
-        for setting, langs in translation_settings:
+        for setting, langs in visible_translation_settings:
             langs_string = format_strings_display(
                 [get_auto_translate_language_name(lang) for lang in langs],
                 and_string="and",
