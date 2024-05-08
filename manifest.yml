@@ -65,12 +65,14 @@ oauth_config:
       - app_mentions:read
       - channels:history
       - channels:join
+      - channels:read
       - chat:write
       - chat:write.public
       - commands
       - files:read
       - files:write
       - groups:history
+      - groups:read
       - im:history
       - mpim:history
       - users:read

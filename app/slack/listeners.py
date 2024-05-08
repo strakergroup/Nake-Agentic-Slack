@@ -545,11 +545,11 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
 async def disable_auto_translate_settings(ack, context, payload, body, client):
     try:
         channel_info = json.loads(payload["value"])
-        channel_id, is_disabled = (
-            channel_info["channel_id"],
-            channel_info["is_disabled"],
-        )
-        disable_auto_translate_group_settings(channel_id, is_disabled)
+        channel_id = channel_info.get("channel_id")
+        if not channel_id:
+            notify_message("Channel ID not found in payload", extra=payload)
+            return
+        disable_auto_translate_group_settings(context, channel_id)
         await ack()
         await client.views_publish(
             user_id=context["user_id"],
@@ -566,9 +566,7 @@ async def disable_auto_translate_settings(ack, context, payload, body, client):
 
         async def notify_channel(channel_id: str):
             try:
-                msg = AutoTranslateSettingsDisabledMessage(
-                    channel_id, "enabled" if is_disabled else "disabled"
-                )
+                msg = AutoTranslateSettingsDisabledMessage(channel_id)
                 await client.chat_postMessage(channel=channel_id, text=msg.text)
             except SlackApiError:
                 pass  # Must be in channel to post. TODO check other events, e.g. app_mention
@@ -940,7 +938,10 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
                 errors={"channels": error_msg},
             )
         if e.response["error"] == "missing_scope":
-            await ack(response_action="errors", errors={"channels": "missing_scope."})
+            await ack(
+                response_action="errors",
+                errors={"channels": "Please reinstall the app"},
+            )
         return
     except ValidationError as e:
         errors = convert_pydantic_to_slack_error(e)
@@ -970,7 +971,9 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
 
         async def notify_channel(channel_id: str):
             try:
-                msg = AutoTranslateSettingsChangedMessage(channel_id, form.languages, form.display_format)
+                msg = AutoTranslateSettingsChangedMessage(
+                    channel_id, form.languages, form.display_format
+                )
                 await client.chat_postMessage(channel=channel_id, text=msg.text)
             except SlackApiError:
                 pass  # Must be in channel to post. TODO check other events, e.g. app_mention

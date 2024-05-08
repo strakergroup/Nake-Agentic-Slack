@@ -52,7 +52,7 @@ def home_view(
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
-                        "text": _(":speech_balloon: Configure translation settings"),
+                        "text": _(":speech_balloon: Translation settings"),
                     },
                     "action_id": "settings_auto_translate",
                 },
@@ -113,21 +113,10 @@ def home_view(
                                 "type": "button",
                                 "text": {
                                     "type": "plain_text",
-                                    "text": (
-                                        _("Enable")
-                                        if setting.is_disabled == 1
-                                        else _("Disable")
-                                    ),
+                                    "text": _("Disable"),
                                     "emoji": False,
                                 },
-                                "value": json.dumps(
-                                    {
-                                        "channel_id": setting.channel_id,
-                                        "is_disabled": (
-                                            True if setting.is_disabled == 1 else False
-                                        ),
-                                    }
-                                ),
+                                "value": json.dumps({"channel_id": setting.channel_id}),
                                 "action_id": "settings_auto_translate_disable",
                             },
                         ],
@@ -205,8 +194,6 @@ def home_view(
                 if config.environment != Environment.production
                 or domains.slack_ray_translator
                 == "https://stage-slack-deltaray.strakertranslations.com"
-                or domains.slack_ray_translator
-                == "https://temp-slack-deltaray.strakertranslations.com"
                 else []
             ),
             {"type": "divider"},

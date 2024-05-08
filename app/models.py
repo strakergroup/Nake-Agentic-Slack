@@ -58,7 +58,6 @@ class SlackGroupSettingsTranslation(Base):
     modified_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp()
     )
-    is_disabled: Mapped[bool] = mapped_column(Integer, server_default="0")
 
 
 class SlackAutoTranslateChannelsGroupSettings(Base):

@@ -40,11 +40,13 @@ oauth_settings = AsyncOAuthSettings(
             "app_mentions:read",
             "channels:history",
             "channels:join",
+            "channels:read",
             "chat:write",
             "chat:write.public",
             "commands",
             "files:read",
             "groups:history",
+            "groups:read",
             "im:history",
             "mpim:history",
             "users:read",
@@ -54,8 +56,6 @@ oauth_settings = AsyncOAuthSettings(
         if config.environment != Environment.production
         or domains.slack_ray_translator
         == "https://stage-slack-deltaray.strakertranslations.com"
-        or domains.slack_ray_translator
-        == "https://temp-slack-deltaray.strakertranslations.com"
         else [
             "app_mentions:read",
             "chat:write",
