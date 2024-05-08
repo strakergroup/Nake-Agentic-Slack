@@ -75,6 +75,12 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
             if event.event == "ray:job:srt:translated":
                 output_file = event.data["result"]["output_file"]
                 app.client.token = auth.slack_user.bot_token
+                task_uuid = output_file.split("/")[0]
+                task_result = await get_task(task_uuid, auth.slack_user.ray_client_id)
+                token_count = task_result.get("tokens")
+                token_consumption_message = _(
+                    "You have used {token_count} MT characters."
+                )
                 try:
                     with open(
                         f"{config.path_wb_shared}wb-task/{output_file}",
@@ -83,6 +89,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         await app.client.files_upload_v2(
                             channel=auth.slack_user.channel_id,
                             file=file_content,
+                            initial_comment=token_consumption_message,
                             title=os.path.basename(output_file),
                         )
                 except Exception as e:
@@ -94,12 +101,11 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
                         text=_(
-                            "You can download the {target_lang} AI translation here {domains.slack_ray_translator}/download/{output_file}"
+                            "{token_consumption_message} You can download the {target_lang} AI translation here {domains.slack_ray_translator}/download/{output_file}"
                         ),
                     )
-                task_uuid = output_file.split("/")[0]
-                task_result = await get_task(task_uuid, auth.slack_user.ray_client_id)
-                await spend_mt_tokens(auth.slack_user, task_result["tokens"])
+
+                await spend_mt_tokens(auth.slack_user, token_count)
             else:
                 if not event.data.get("error"):
                     await post_notification_ephemeral(

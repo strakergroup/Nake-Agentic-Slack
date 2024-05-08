@@ -14,10 +14,16 @@ from app.translate import translator_var, Translator
 
 from .app import app
 from .logging import init_slack_app_log
-from .templates.messages import RequiresMtTokenMessage, SlackMessage, LoginMessage
+from .templates.messages import (
+    RequiresMtTokenAdminMessage,
+    RequiresMtTokenMessage,
+    SlackMessage,
+    LoginMessage,
+)
 from ..auth.connector import (
     RayConnection,
     get_client_tokens,
+    get_client_type,
     get_ray_connection,
     get_ray_connection_demo,
     log_new_user_info,
@@ -161,9 +167,19 @@ async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
         mt_tokens = user_tokens.mt_token
         if mt_tokens >= value:
             return True
-    message = RequiresMtTokenMessage(mt_tokens, value)
-    await context.say(
-        text=message.text,
-        blocks=message.blocks,
+    client_type = await get_client_type(
+        context["ray"].client.id, context["ray"].client.user_group_id
     )
+    if client_type in ["Admin", "Owner"]:
+        message = RequiresMtTokenMessage(mt_tokens, value)
+        await context.say(
+            text=message.text,
+            blocks=message.blocks,
+        )
+    else:
+        message = RequiresMtTokenAdminMessage(mt_tokens, value)
+        await context.say(
+            text=message.text,
+            blocks=message.blocks,
+        )
     return False

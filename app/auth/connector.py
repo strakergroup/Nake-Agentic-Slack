@@ -65,6 +65,8 @@ class RayClient:
     """The RAY client UUID (`obj_m_member.obj_uuid`)."""
     username: str
     """The RAY client username (`obj_m_member.login`)."""
+    user_group_id: str
+    """The RAY client default group UUID (`obj_m_member.groupid`)."""
     access_token: str
     """The API token linked to the client."""
     slack_user_id: str
@@ -427,12 +429,14 @@ async def get_ray_demo_client(
             return None
         (
             ray_client_id,
+            user_group_id,
             username,
             slack_enterprise_id,
             slack_access_token,
             settings_id,
         ) = (
             row.member_uuid,
+            row.groupid,
             row.login,
             row.slack_enterprise_id,
             row.access_token,
@@ -464,6 +468,7 @@ async def get_ray_demo_client(
         access_token = row[0]
     return RayClient(
         id=ray_client_id,
+        user_group_id=user_group_id,
         username=username,
         access_token=access_token,
         slack_user_id=user_id,
@@ -539,8 +544,17 @@ async def get_ray_client(
             aud="languagecloud-api",
             secret=config.languagecloud_api_key.get_secret_value(),
         )
-        ray_client_id, username, groupid, is_sso, slack_access_token, settings_id = (
+        (
+            ray_client_id,
+            user_group_id,
+            username,
+            groupid,
+            is_sso,
+            slack_access_token,
+            settings_id,
+        ) = (
             row.member_uuid,
+            row.groupid,
             row.login,
             row.groupid,
             row.is_sso,
@@ -589,6 +603,7 @@ async def get_ray_client(
             plan = row[0].plan_name
     return RayClient(
         id=ray_client_id,
+        user_group_id=user_group_id,
         username=username,
         access_token=access_token,
         slack_user_id=user_id,
@@ -1289,10 +1304,28 @@ async def spend_mt_tokens(
         ).bindparams(
             uuid=str(uuid.uuid4()),
             client_uuid=ray_connection.client.id,
-            group_uuid=ray_connection.super_group[0].id,
+            group_uuid=ray_connection.client.user_group_id,
             amount=0 - credits,
             credit_type="mt_token",
             transaction_type="spend",
             description=description,
         )
         conn.execute(sql)
+
+
+async def get_client_type(client_id: str, group_id: str) -> str:
+    """Get the client type for a group. Owner Admin or Normal client"""
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT client_type
+            FROM obj_m_mglink
+            WHERE memberid = :client_id
+            AND groupid = :group_id
+            """
+        ).bindparams(client_id=client_id, group_id=group_id)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return None
+    return row.client_type
