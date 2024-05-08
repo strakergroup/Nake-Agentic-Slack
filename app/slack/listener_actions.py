@@ -316,14 +316,14 @@ async def auto_translate_message(
         translations=[(tl, target_text) for tl, target_text in translations.items()],
     )
     try:
-        if settings.display_format == "thread" and not settings.is_disabled:
+        if settings.display_format == "thread":
             await client.chat_postMessage(
                 channel=context.channel_id,
                 text=msg.text,
                 blocks=msg.blocks,
                 thread_ts=ts,
             )
-        elif settings.display_format == "message" and not settings.is_disabled:
+        elif settings.display_format == "message":
             await client.chat_postMessage(
                 channel=context.channel_id,
                 text=msg.text,

@@ -337,6 +337,28 @@ def update_auto_translate_group_settings(
         session.commit()
 
 
+def disable_auto_translate_group_settings(
+    context: AsyncBoltContext, channel_id: str
+) -> None:
+    """Disable the auto-translate settings for a channel for a LanugageCloud group
+    by deleting the languages for that channel.
+
+    Args:
+        channel_id str: The ID of the channel (conversations) to auto-translate.
+    """
+    with Session(engines["ray_integration"]) as session:
+        channel_settings = get_or_create_auto_translate_group_settings(
+            session, context, channel_id
+        )
+        session.execute(
+            delete(SlackGroupSettingsTranslationLangs).where(
+                SlackGroupSettingsTranslationLangs.translation_settings_id
+                == channel_settings.id
+            )
+        )
+        session.commit()
+
+
 def get_full_group_translation_settings(
     context: AsyncBoltContext,
 ) -> list[tuple[SlackGroupSettingsTranslation, list[str]]]:
@@ -374,22 +396,3 @@ def get_full_group_translation_settings(
     return [
         (channel, langs) for channel, langs in settings_lang_map.values() if len(langs)
     ]
-
-
-def disable_auto_translate_group_settings(
-    channel_id: str,
-    is_disabled: bool,
-) -> None:
-    """Disable/Enable the auto-translate settings for a channel for a LanugageCloud group.
-
-    Args:
-        channel_id str: The ID of the channel (conversations) to auto-translate.
-        is_disabled bool: Whether to disable or enable the auto-translate settings.
-    """
-    with Session(engines["ray_integration"]) as session:
-        session.execute(
-            update(SlackGroupSettingsTranslation)
-            .where(SlackGroupSettingsTranslation.channel_id == channel_id)
-            .values(is_disabled=0 if is_disabled else 1)
-        )
-        session.commit()
