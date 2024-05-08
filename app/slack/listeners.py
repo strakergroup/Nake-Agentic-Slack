@@ -926,12 +926,12 @@ async def cancel_job_action(ack, payload, context, client, body):
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
         if "value" in payload:
             job_info = json.loads(payload["value"])
-            if job_info["job_action"] == "list":
+            if job_info.get("job_action") == "list":
                 job_id = job_info["job_id"].split("TJ")[1]
                 await cancel_job_process(
                     client, context, context["ray"].client, job_id=job_id
                 )
-            elif job_info["job_action"] == "submit":
+            elif job_info.get("job_action") == "submit":
                 await cancel_job_process(
                     client, context, context["ray"].client, job_uuid=job_info["job_id"]
                 )
