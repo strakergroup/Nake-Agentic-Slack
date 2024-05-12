@@ -1499,8 +1499,8 @@ async def job_tj_cancel(
                     channel=context["user_id"],
                     text=msg,
                 )
-            else:
-                msg = job_id.upper() + "-" + 'Job can not be cancel, please contact your project manager.'
+            elif job.status != "CANCELLED":
+                msg = job_id.upper() + "-" + 'Job cannot be cancel, please contact your project manager.'
                 await client.chat_postMessage(
                     channel=context["user_id"],
                     text=msg,
