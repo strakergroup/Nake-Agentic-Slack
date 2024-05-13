@@ -1437,7 +1437,7 @@ async def cancel_job_process(
         job, response = await RayService.get_service(ray_client).cancel_job(
             job_id, job_uuid
         )
-        msg = "TJ" + job_id + "-" + job["message"]
+        msg = "TJ" + job_id + " - " + job["message"]
         await client.chat_postMessage(
             channel=context["user_id"],
             text=msg,
@@ -1480,31 +1480,38 @@ async def job_tj_cancel(
     """
     try:
         jobs, response = await RayService.get_service(ray_client).get_job(job_id)
-        for job in jobs:
-            if job.status == "LEAD":
-                jobdetail = {
-                    "job_id": job_id.upper(),
-                    "status": job.status,
-                    "sourcelang": job.sl,
-                    "targetlang": job.tl,
-                }
-                msg = CancelTJMessage(context["channel_id"], jobdetail)
-                if context.response_url:
-                    await context.respond(text=msg.text, blocks=msg.blocks)
-                else:
-                    await client.chat_postMessage(channel=context["user_id"], text=msg.text, blocks=msg.blocks)
-            elif job.status == "CANCELLED":
-                msg = job_id.upper() + "-" + 'This job has already been cancelled.'
-                await client.chat_postMessage(
-                    channel=context["user_id"],
-                    text=msg,
-                )
-            elif job.status != "CANCELLED":
-                msg = job_id.upper() + "-" + 'Job cannot be cancel, please contact your project manager.'
-                await client.chat_postMessage(
-                    channel=context["user_id"],
-                    text=msg,
-                )
+        if jobs is not None:
+            for job in jobs:
+                if job.status == "LEAD":
+                    jobdetail = {
+                        "job_id": job_id.upper(),
+                        "status": job.status,
+                        "sourcelang": job.sl,
+                        "targetlang": job.tl,
+                    }
+                    msg = CancelTJMessage(context["channel_id"], jobdetail)
+                    if context.response_url:
+                        await context.respond(text=msg.text, blocks=msg.blocks)
+                    else:
+                        await client.chat_postMessage(channel=context["user_id"], text=msg.text, blocks=msg.blocks)
+                elif job.status == "CANCELLED":
+                    msg = job_id.upper() + " - " + 'This job has already been cancelled.'
+                    await client.chat_postMessage(
+                        channel=context["user_id"],
+                        text=msg,
+                    )
+                elif job.status != "CANCELLED":
+                    msg = job_id.upper() + " - " + 'This job has already been started. Please contact the Project Manager to cancel this job.'
+                    await client.chat_postMessage(
+                        channel=context["user_id"],
+                        text=msg,
+                    )
+        else:
+            msg = job_id.upper() + " - " + 'This job does not exist. Please check the job ID and try again.'
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=msg,
+            )
     except Exception as e:
         notify_exception(e)
         raise
