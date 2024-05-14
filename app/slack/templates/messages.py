@@ -1880,12 +1880,7 @@ class HelpMessage(SlackMessage):
                             "type": "plain_text",
                             "text": _("Connect"),
                         },
-                        "url": get_language_cloud_connect_url(
-                            context["user_id"],
-                            context["team_id"],
-                            context.get("enterprise_id"),
-                            context["channel_id"],
-                        ),
+                        "action_id": "connect_info",
                     },
                 },
                 {
