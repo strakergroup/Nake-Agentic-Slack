@@ -571,12 +571,12 @@ async def post_job_details(
         raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
 
-    if status == "PENDING_QUOTES":
+    if status == "ORDER_NOW":
         job, response = await RayService.get_service(ray_client).get_quote(job_id)
     else:
         jobs, response = await RayService.get_service(ray_client).get_job(job_id)
     try:
-        if status == "PENDING_QUOTES":
+        if status == "ORDER_NOW":
             if job is not None:
                 msg = JobQuotedMessage(job)
                 if context.response_url:
