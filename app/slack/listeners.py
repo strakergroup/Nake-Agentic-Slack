@@ -68,6 +68,7 @@ from .templates.messages import (
 from .templates.views import (
     home_view,
     translation_settings_view,
+    translation_settings_view_error,
     job_search_modal,
     sso_form_modal,
     cancel_job_modal,
@@ -531,14 +532,49 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
         context, channel_id
     )
-    await client.views_open(
-        trigger_id=body["trigger_id"],
-        view=translation_settings_view(
-            [channel_id] if channel_id else None,
-            auto_translate_langs,
-            settings.display_format if settings else "thread",
-        ),
-    )
+    if channel_id:
+        error_msg = _("You do not have permission to edit this channel!!")
+        try:
+            # Check if the channel is public or private.
+            conver_info = await client.conversations_info(channel=channel_id)
+            # Check if the user is a member of the channel.
+            response = await client.conversations_members(channel=channel_id)
+            if (
+                context["user_id"] in response["members"]
+                or not conver_info["channel"]["is_private"]
+            ):
+                await client.views_open(
+                    trigger_id=body["trigger_id"],
+                    view=translation_settings_view(
+                        [channel_id] if channel_id else None,
+                        auto_translate_langs,
+                        settings.display_format if settings else "thread",
+                    ),
+                )
+            else:
+                await client.views_open(
+                    trigger_id=body["trigger_id"],
+                    view=translation_settings_view_error(error_msg),
+                )
+        except SlackApiError as e:
+            if e.response["error"] == "missing_scope":
+                notify_exception(e)
+                error_msg = _("Please reinstall the app")
+            elif e.response["error"] == "channel_not_found":
+                error_msg = _("The bot is not integrated in this channel!!")
+            await client.views_open(
+                trigger_id=body["trigger_id"],
+                view=translation_settings_view_error(error_msg),
+            )
+    else:
+        await client.views_open(
+            trigger_id=body["trigger_id"],
+            view=translation_settings_view(
+                [channel_id] if channel_id else None,
+                auto_translate_langs,
+                settings.display_format if settings else "thread",
+            ),
+        )
 
 
 @app.block_action("settings_auto_translate_disable", middleware=[ray_connection])

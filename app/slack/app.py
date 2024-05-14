@@ -51,6 +51,8 @@ oauth_settings = AsyncOAuthSettings(
             "mpim:history",
             "users:read",
             "users:read.email",
+            "channels:read",
+            "groups:read",
         ]
         # Disable new scopes until approved for production.
         if config.environment != Environment.production
