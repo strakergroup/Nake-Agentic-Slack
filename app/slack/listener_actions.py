@@ -87,9 +87,14 @@ async def respond_to_message(
             asyncio.create_task(
                 files_list_simple(client, channel_id=context["channel_id"], count=120)
             )
+            is_video_mt_enabled = (
+                config.environment != Environment.production
+                or domains.slack_ray_translator
+                == "https://stage-slack-deltaray.strakertranslations.com"
+            )
             # Handle video file
             for file in message["files"]:
-                if file["filetype"] in ["mp4", "mp3"]:
+                if file["filetype"] in ["mp4", "mp3"] and is_video_mt_enabled:
                     file_info = await client.files_info(file=file["id"])
                     download_url = file_info["file"]["url_private"]
                     token = client.token
