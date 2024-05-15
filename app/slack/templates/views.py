@@ -54,36 +54,7 @@ async def home_view(
             else:
                 break
     # Hide translation settings in Production until scopes are approved.
-    translation_settings_blocks: list[dict[str, Any]] = [
-        {"type": "divider"},
-        {
-            "type": "header",
-            "text": {"type": "plain_text", "text": _("Translate Channels")},
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": _(
-                    "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
-                ),
-            },
-        },
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": _(":speech_balloon: Translation settings"),
-                    },
-                    "action_id": "settings_auto_translate",
-                },
-            ],
-        },
-    ]
+    translation_settings_blocks: list[dict[str, Any]] = []
     if len(visible_translation_settings):
         translation_settings_blocks.extend(
             [
@@ -214,13 +185,35 @@ async def home_view(
                     },
                 ],
             },
-            *(
-                translation_settings_blocks
-                if config.environment != Environment.production
-                or domains.slack_ray_translator
-                == "https://stage-slack-deltaray.strakertranslations.com"
-                else []
-            ),
+            {"type": "divider"},
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": _("Translate Channels")},
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
+                    ),
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _(":speech_balloon: Translation settings"),
+                        },
+                        "action_id": "settings_auto_translate",
+                    },
+                ],
+            },
+            *translation_settings_blocks,
             {"type": "divider"},
             {
                 "type": "header",

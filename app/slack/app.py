@@ -45,6 +45,7 @@ oauth_settings = AsyncOAuthSettings(
             "chat:write.public",
             "commands",
             "files:read",
+            "files:write",
             "groups:history",
             "groups:read",
             "im:history",
@@ -60,12 +61,21 @@ oauth_settings = AsyncOAuthSettings(
         == "https://stage-slack-deltaray.strakertranslations.com"
         else [
             "app_mentions:read",
+            "channels:history",
+            "channels:join",
+            "channels:read",
             "chat:write",
             "chat:write.public",
             "commands",
             "files:read",
+            "groups:history",
+            "groups:read",
             "im:history",
+            "mpim:history",
             "users:read",
+            "users:read.email",
+            "channels:read",
+            "groups:read",
         ]
     ),
     # Do not ask for user tokens on installation, only when needed.
