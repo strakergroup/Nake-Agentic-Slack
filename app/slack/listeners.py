@@ -103,8 +103,6 @@ from ..config import config, domains
 )
 @slack_log_decorator
 async def message_event(client, context, message):
-    print("message_event")
-    print(f"{message = }")
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # use threads in channels or group conversations (see the "app_mention" event).
