@@ -120,6 +120,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         initial_comment=token_consumption_message,
                         title=target_lang + "_" + output_file.name,
                     )
+                await spend_mt_tokens(auth.slack_user, token_count)
         elif isinstance(message, JobTranscribedEventMessage):
             if event.event == "ray:job:srt:translated":
                 output_file = event.data["result"]["output_file"]
