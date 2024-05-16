@@ -1,6 +1,7 @@
 from typing import Any
 
 from .models import (
+    MtFileReponseSchema,
     SlackAccountConnectedEvent,
     ClientSignupEvent,
     ClientApprovedEvent,
@@ -11,6 +12,7 @@ from .models import (
     JobTranscribedEvent,
 )
 from ...slack.templates.messages import (
+    DocMtMessage,
     SlackMessage,
     SuccessfulLoginMessage,
     ClientSignupEventMessage,
@@ -93,5 +95,7 @@ def get_ray_event_message(
         event7 = JobTranscribedEvent.model_validate(event_data)
         # send message which contains event.output_file
         return JobTranscribedEventMessage(event7.output_file)
-
+    elif event_type == "verify:slack:document:translated":
+        event8 = MtFileReponseSchema.model_validate(event_data)
+        return DocMtMessage()
     raise ValueError(f"Invalid RAY event type: {event_type}")

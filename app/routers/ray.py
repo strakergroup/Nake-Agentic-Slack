@@ -10,6 +10,7 @@ from app.wb_tasks.tasks import get_task
 
 from ..auth.connector import (
     SlackUser,
+    get_client_type,
     get_demo_link,
     spend_mt_tokens,
     validate_api_callback_signature,
@@ -20,6 +21,9 @@ from ..auth.connector import (
 from ..dependencies import RayEventAuth, RayEvent
 from ..slack import app
 from ..slack.templates.messages import (
+    DocMtMessage,
+    RequiresMtTokenAdminMessage,
+    RequiresMtTokenMessage,
     SuccessfulLoginMessage,
     ClientSignupEventMessage,
     ClientSignupEventAdminMessage,
@@ -28,7 +32,11 @@ from ..slack.templates.messages import (
     JobTranscribedEventMessage,
 )
 from ..ray.events.parse import get_ray_event_message
-from ..ray.events.models import ClientGroup
+from ..ray.events.models import (
+    ClientGroup,
+    MtErrorResponseSchema,
+    MtSuccessResponseSchema,
+)
 from ..ray.events.logging import post_notification, post_notification_ephemeral
 from dataclasses import replace
 from pathlib import Path
@@ -71,6 +79,47 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
             await post_notification_ephemeral(
                 app.client, auth.slack_user.channel_id, event, auth.slack_user, message
             )
+        elif isinstance(message, DocMtMessage):
+            try:
+                event_data = MtErrorResponseSchema.model_validate(event.data)
+                if event_data.error_type == "insufficient_balance":
+                    # Send message to user that they need to purchase tokens
+                    client_type = await get_client_type(
+                        auth.slack_user.ray_client_id,
+                        auth.slack_user.ray_user_group_id,
+                    )
+                    token_balance = event_data.error_data.get("balance")
+                    required = event_data.error_data.get("required")
+                    if client_type in ["Admin", "Owner"]:
+                        message = RequiresMtTokenMessage(token_balance, required)
+                    else:
+                        message = RequiresMtTokenAdminMessage(token_balance, required)
+                await post_notification_ephemeral(
+                    app.client,
+                    auth.slack_user.channel_id,
+                    event,
+                    auth.slack_user,
+                    message,
+                )
+            except ValidationError:
+                app.client.token = auth.slack_user.bot_token
+                event_data = MtSuccessResponseSchema.model_validate(event.data)
+                output_file = Path(config.path_shared).joinpath(event_data.file_path)
+                token_count = event_data.tokens
+                target_lang = event_data.target_language
+                token_consumption_message = _(
+                    "You have used {token_count} MT characters."
+                )
+                with open(
+                    output_file,
+                    "rb",
+                ) as file_content:
+                    await app.client.files_upload_v2(
+                        channel=auth.slack_user.channel_id,
+                        file=file_content,
+                        initial_comment=token_consumption_message,
+                        title=target_lang + "_" + output_file.name,
+                    )
         elif isinstance(message, JobTranscribedEventMessage):
             if event.event == "ray:job:srt:translated":
                 output_file = event.data["result"]["output_file"]
@@ -160,6 +209,9 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 groups=groups,
             )
             await post_notification(app.client, event, user, admin_message)
+    elif not auth.slack_user:
+        notify_message("Slack user not found in events endpoint", severity="WARNING")
+        raise HTTPException(401)
 
     return {"message": "success", "data": {"event": event.event}}
 

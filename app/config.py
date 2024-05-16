@@ -48,6 +48,7 @@ class StrakerConfig(BaseSettings):
     health_check_password: SecretStr = SecretStr("")
     languagecloud_api_key: SecretStr = SecretStr("")
     path_wb_shared: str = ""
+    path_shared: str = ""
 
     @field_validator("google_mt_api_key", mode="after")
     def validate_google_mt_api_key(cls, v, info: ValidationInfo):
