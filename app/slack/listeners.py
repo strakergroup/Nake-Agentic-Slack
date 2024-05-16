@@ -21,6 +21,7 @@ from ..redis import redis_conn
 from .app import app
 from .middleware import ray_connection, require_ray_client, require_mt_tokens
 from .listener_actions import (
+    document_machine_translate,
     respond_to_message,
     auto_translate_message,
     get_groups,
@@ -46,6 +47,7 @@ from .templates.models import (
     AutoTranslationSettingsForm,
 )
 from .templates.messages import (
+    DocumentMTJobMessage,
     LoginMessage,
     LogoutMessage,
     OnboardingMessage,
@@ -234,6 +236,48 @@ async def show_srt_translate_form(ack, context, action, body, client):
             text=msg.text,
             blocks=msg.blocks,
         )
+
+
+# document_mt_job
+@app.action("document_mt_job", middleware=[ray_connection])
+@slack_log_decorator
+async def document_mt_job_action(ack, context, action, body, client):
+    await ack()
+    if await require_ray_client(context):
+        output_file = action["value"]
+        print(output_file)
+        # Perform the necessary actions to document the MT job
+        msg = DocumentMTJobMessage(output_file)
+        # Add your code here
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=msg.text,
+            blocks=msg.blocks,
+        )
+
+
+@app.action("document_mt_submit", middleware=[ray_connection])
+@slack_log_decorator
+async def document_mt_submit_action(ack, action, context, body, say, client):
+    await ack()
+    if await require_ray_client(context):
+        output_file = action["value"]
+        # get uuid from output_file
+        if await require_mt_tokens(context, 1):
+            # get selected language from redis keyed on output_file
+            # selected from get_auto_translate_language_options
+            selected_language = await redis_conn.get(f"output_file_{output_file}")
+            if selected_language:
+                await document_machine_translate(
+                    client, context, output_file, selected_language
+                )
+                await say(
+                    _(
+                        "The file is being translated. You will be notified when it is ready."
+                    )
+                )
+            else:
+                await say(_("Please select a language to translate to."))
 
 
 @app.block_action("download_transcribed_file", middleware=[ray_connection])

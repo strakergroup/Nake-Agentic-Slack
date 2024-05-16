@@ -16,6 +16,7 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
 from buglog import notify_exception, notify_message
 
+from app.ray.events.models import MtFileRequestSchema
 from app.wb_tasks.tasks import create_task
 
 from .middleware import require_mt_tokens, require_ray_client
@@ -109,7 +110,9 @@ async def respond_to_message(
                             msg = TranscriptionMessage()
                             await context.say(text=msg.text, thread_ts=thread_ts)
                 else:
-                    msg = NewJobMessage(context["channel_id"], message["ts"])
+                    msg = NewJobMessage(
+                        context["channel_id"], message["ts"], file["id"]
+                    )
                     await context.say(
                         text=msg.text, blocks=msg.blocks, thread_ts=thread_ts
                     )
@@ -386,6 +389,46 @@ async def srt_translate(
                 "mt_parameters": {"target_lang_code": selected_languages},
             },
         )
+    except Exception as e:
+        notify_exception(e, "Failed to translate SRT file")
+
+
+async def document_machine_translate(
+    client: AsyncWebClient,
+    context: AsyncBoltContext,
+    file_id: str,
+    selected_language: str,
+):
+    """Translate the Document using verify-task-consumer
+
+    Args:
+        client (AsyncWebClient): The Slack client.
+        channel_id (str): The channel ID of the message.
+        output_file (str): The output file name.
+    """
+    if not file_id:
+        return
+    try:
+        file_info = await client.files_info(file=file_id)
+        download_url = file_info["file"]["url_private"]
+        token = client.token
+        task_data = MtFileRequestSchema.model_validate(
+            {
+                "download_url": download_url,
+                "file_name": file_info["file"]["title"],
+                "file_token": token,
+                "client_id": context["ray"].client.id,
+                "target_language": selected_language,
+            }
+        )
+        async with httpx.AsyncClient() as http:
+            await http.post(
+                f"{domains.stream_proxy}/events/slack:job:machine:translate",
+                json={
+                    "data": task_data.model_dump(),
+                    "source": "Straker Translate for Slack",
+                },
+            )
     except Exception as e:
         notify_exception(e, "Failed to translate SRT file")
 
