@@ -52,6 +52,7 @@ def get_auto_translate_languages(
     ]
     if include_variations:
         languages.append(("zh", "Chinese (Simplified)"))
+    languages = sorted(languages, key=lambda language: language[1])
     return languages
 
 
