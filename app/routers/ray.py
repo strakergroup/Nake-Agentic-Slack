@@ -132,8 +132,11 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     "You have used {token_count} MT characters."
                 )
                 try:
+                    file_read = Path(config.path_wb_shared).joinpath(
+                        "wb-task", output_file
+                    )
                     with open(
-                        f"{config.path_wb_shared}wb-task/{output_file}",
+                        file_read,
                         "rb",
                     ) as file_content:
                         await app.client.files_upload_v2(
@@ -145,7 +148,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 except Exception as e:
                     # TODO: clean this up
                     # send link to file when client:write scope does not exist
-                    # extract the final _Targetlang from the output_file filename
+                    # extract the final _Targetlang from the output_file filfename
                     target_lang = output_file.split("_")[-1]
                     await app.client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
