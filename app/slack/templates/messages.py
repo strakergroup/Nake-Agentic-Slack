@@ -1574,21 +1574,23 @@ class NewJobMessage(SlackMessage):
                                 ),
                             }
                         ]
-                        + [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Machine Translate"),
-                                    "emoji": True,
-                                },
-                                "action_id": "document_mt_job",
-                                "style": "primary",
-                                "value": file_id,
-                            }
-                        ]
-                        if file_id
-                        else []
+                        + (
+                            [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("Machine Translate"),
+                                        "emoji": True,
+                                    },
+                                    "action_id": "document_mt_job",
+                                    "style": "primary",
+                                    "value": file_id,
+                                }
+                            ]
+                            if file_id
+                            else []
+                        )
                     ),
                 },
             ],
