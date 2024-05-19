@@ -3031,6 +3031,15 @@ class RequiresMtTokenMessage(SlackMessage):
         title = _(
             "❗❗You have *{tokens} MT characters* on your account. This job requires *{required_tokens} MT characters*. Please purchase a MT bundle.❗❗"
         )
+        if tokens <= 0 and required_tokens == 1:
+            title = _(
+                "❗❗Your group account has no MT characters. Please purchase a MT bundle.❗❗"
+            )
+        elif tokens <= 0:
+            title = _(
+                "❗❗Your group account has no MT characters. This job requires *{required_tokens} MT characters*. Please purchase a MT bundle.❗❗"
+            )
+
         # create message which contains the output_file
         super().__init__(
             title,
@@ -3063,10 +3072,18 @@ class RequiresMtTokenMessage(SlackMessage):
 
 class RequiresMtTokenAdminMessage(SlackMessage):
 
-    def __init__(self, tokens: int, required_tokens: int) -> None:
+    def __init__(self, tokens: int, required_tokens: int, admin=False) -> None:
         title = _(
             "❗❗You have *{tokens} MT characters* on your group account. This job requires *{required_tokens} MT characters*. Please contact your group admin to purchase more❗❗"
         )
+        if tokens <= 0 and required_tokens == 1:
+            title = _(
+                "❗❗Your group account has no MT characters. Please contact your group admin to purchase more❗❗"
+            )
+        elif tokens <= 0:
+            title = _(
+                "❗❗Your group account has no MT characters. This job requires *{required_tokens} MT characters*. Please contact your group admin to purchase more❗❗"
+            )
         # create message which contains the output_file
         super().__init__(
             title,
