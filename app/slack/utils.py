@@ -105,3 +105,40 @@ def unformat_links(text: str) -> str:
     text = re.sub(r"&lt;", "<", text)
     text = re.sub(r"&gt;", ">", text)
     return text
+
+
+def escape_slack_emoji(text: str):
+    """Escape Slack emoji characters in text.
+
+    Args:
+        text (str): The text to escape.
+
+    Returns:
+        str: The text with Slack emoji characters escaped.
+    """
+    # Slack uses :emoji: syntax for emoji. If the text contains :emoji:,
+    # to prevent translation replace with <x i={i}> where i is the source index.
+    emojis = re.findall(r":\w+:", text)
+    for i, emoji in enumerate(emojis):
+        text = text.replace(emoji, f"<x i={i}/>")
+    return text
+
+
+def unescape_slack_emoji(translated_text: str, source_text: str) -> str:
+    """Unescape Slack emoji characters in text.
+
+    Args:
+        translated_text (str): The text to unescape form google translate.
+
+    Returns:
+        str: The text with Slack emoji characters escaped.
+    """
+    # Slack uses :emoji: syntax for emoji. If the text contains :emoji:,
+    # place back the emojis from the source text. Based on the i index value of the x tag
+    # Find all :emoji: in the source text
+    emojis = re.findall(r":\w+:", source_text)
+
+    # Replace <x i={i}> with the original :emoji: from the source text
+    for i, emoji in enumerate(emojis):
+        translated_text = translated_text.replace(f"<x i={i}/>", emoji)
+    return translated_text
