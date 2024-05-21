@@ -106,15 +106,19 @@ async def message_event(client, context, message):
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # use threads in channels or group conversations (see the "app_mention" event).
-    if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
-        await respond_to_message(client, context, message, use_thread=False)
-    elif message.get("text") and f"<@{context['bot_user_id']}>" not in message["text"]:
-        # Do not auto-translate if the bot is mentioned (should default to normal response).
-        await auto_translate_message(client, context, message)
-    else:
-        # Do nothing if the Slack app is not mentioned in group chats and
-        # auto-translate is disabled.
-        pass
+    if not context["is_bot"]:
+        if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
+            await respond_to_message(client, context, message, use_thread=False)
+        elif (
+            message.get("text")
+            and f"<@{context['bot_user_id']}>" not in message["text"]
+        ):
+            # Do not auto-translate if the bot is mentioned (should default to normal response).
+            await auto_translate_message(client, context, message)
+        else:
+            # Do nothing if the Slack app is not mentioned in group chats and
+            # auto-translate is disabled.
+            pass
 
 
 @app.event("app_mention", middleware=[ray_connection])
@@ -123,12 +127,11 @@ async def app_mention_event(client, context, event):
     # https://api.slack.com/events/app_mention
     # Respond to messages with threads in channel and group chats if mentioned.
     # Remove user mentions from text before processing.
-    # TODO review this
-    event["text"] = re.sub(r"<@\w+>", "", event.get("text", "")).strip()
-    if event["text"] or event.get("files", []):
-        await respond_to_message(client, context, event, use_thread=True)
-    else:
-        ...  # TODO Show auto-translate settings modal
+    if not context["is_bot"]:
+        if event["text"] or event.get("files", []):
+            await respond_to_message(client, context, event, use_thread=True)
+        else:
+            ...  # TODO Show auto-translate settings modal
 
 
 @app.event("app_home_opened", middleware=[ray_connection])
