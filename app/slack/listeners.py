@@ -4,6 +4,7 @@ commands, etc. from the Slack API.
 
 import asyncio
 import os
+from pathlib import Path
 import re
 import json
 from datetime import datetime, timedelta
@@ -287,14 +288,15 @@ async def download_transcribed_file(ack, action, context, client):
     if await require_ray_client(context):
         output_file = action["value"]
         try:
+            file_path = Path(config.path_wb_shared).joinpath("wb-task", output_file)
             with open(
-                f"{config.path_wb_shared}wb-task/{output_file}",
+                file_path,
                 "rb",
             ) as file_content:
                 await client.files_upload_v2(
                     channel=context["channel_id"],
                     file=file_content,
-                    title=os.path.basename(output_file),
+                    title=file_path.name,
                 )
         except Exception as e:
             # send download link
