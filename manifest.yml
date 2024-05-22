@@ -61,17 +61,18 @@ oauth_config:
   redirect_urls:
     - <YOUR_DOMAIN>/slack/oauth_redirect
   scopes:
-    user:
-      - chat:write
     bot:
       - app_mentions:read
       - channels:history
       - channels:join
+      - channels:read
       - chat:write
       - chat:write.public
       - commands
       - files:read
+      - files:write
       - groups:history
+      - groups:read
       - im:history
       - mpim:history
       - users:read

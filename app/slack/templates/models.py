@@ -10,6 +10,8 @@ from pydantic import (
 )
 from ray_sdk.api.v3.file import is_valid_file_ext
 
+from ...models import SlackGroupSettingsTranslation
+
 
 def convert_pydantic_to_slack_error(error: ValidationError) -> dict[str, str]:
     """Creates a Slack view error dict from pydantic's ValidationError.
@@ -116,6 +118,8 @@ class NewJobForm(BaseModel):
                 return "TRANSLATION_REVIEW_VALIDATION"
             else:
                 return "TRANSLATION_REVIEW"
+        elif self.service == "AI Translation":
+            return "AI_TRANSLATION"
         elif self.service == "Machine Translation":
             return "MACHINE_TRANSLATION"
         else:
@@ -226,6 +230,7 @@ class AutoTranslationSettingsForm(BaseModel):
 
     channels: list[str]
     languages: list[str]
+    display_format: SlackGroupSettingsTranslation.DisplayFormatType
 
     @classmethod
     def parse_slack(
@@ -249,6 +254,10 @@ class AutoTranslationSettingsForm(BaseModel):
                     opt["value"]
                     for opt in values["languages"]["languages"]["selected_options"]
                 ],
+                display_format=values["display_format"]["display_format"][
+                    "selected_option"
+                ]["value"],
             )
         except KeyError as e:
+            # TODO Better error handling
             raise ValueError("The Slack payload format is incorrect") from e

@@ -19,7 +19,7 @@ def home_auth_blocks(
     user_id: str,
     team_id: str,
     enterprise_id: str | None,
-    channel_id: str,
+    channel_id: str | None,
     ray_connection: RayConnection | None,
 ) -> list[dict[str, Any]]:
     """The blocks in the Home tab which displays the LanguageCloud connection
@@ -72,7 +72,7 @@ def home_auth_blocks(
                     },
                     "style": "primary",
                     "url": get_language_cloud_connect_url(
-                        user_id, team_id, enterprise_id, channel_id
+                        user_id, team_id, enterprise_id, channel_id or user_id
                     ),
                     "action_id": "login",
                 }
@@ -87,7 +87,8 @@ def home_auth_blocks(
         t_id = "T02FDFCGK"
     if enterprise_id:
         if enterprise_id == e_id:
-            msg[1]["elements"].append(
+            msg[1]["elements"].insert(
+                0,
                 {
                     "type": "button",
                     "text": {
@@ -96,10 +97,11 @@ def home_auth_blocks(
                     },
                     "style": "primary",
                     "action_id": "login_sso",
-                }
+                },
             )
     elif team_id == t_id:
-        msg[1]["elements"].append(
+        msg[1]["elements"].insert(
+            0,
             {
                 "type": "button",
                 "text": {
@@ -108,7 +110,7 @@ def home_auth_blocks(
                 },
                 "style": "primary",
                 "action_id": "login_sso",
-            }
+            },
         )
     return msg
 

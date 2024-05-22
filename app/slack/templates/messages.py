@@ -2,7 +2,7 @@
 
 from typing import Any
 import json
-
+from app.slack.select_options import get_auto_translate_language_options
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm
@@ -23,6 +23,7 @@ from ...ray.utils import (
     is_min_langugagecloud_plan,
 )
 from ...ray.settings import get_auto_translate_language_name
+from ..utils import format_strings_display
 from ...config import config, domains, Environment
 from ...auth.connector import (
     RayClient,
@@ -200,7 +201,8 @@ class LoginMessage(SlackMessage):
             t_id = "T02FDFCGK"
         if enterprise_id:
             if (enterprise_id == e_id) and ray_client is None:
-                msg[1]["elements"].append(
+                msg[1]["elements"].insert(
+                    0,
                     {
                         "type": "button",
                         "text": {
@@ -209,7 +211,7 @@ class LoginMessage(SlackMessage):
                         },
                         "style": "primary",
                         "action_id": "login_sso",
-                    }
+                    },
                 )
             elif (enterprise_id == e_id) and ray_client is not None and ray_client.sso:
                 msg.pop(1)
@@ -231,7 +233,8 @@ class LoginMessage(SlackMessage):
                     },
                 )
         elif team_id == t_id and ray_client is None:
-            msg[1]["elements"].append(
+            msg[1]["elements"].insert(
+                0,
                 {
                     "type": "button",
                     "text": {
@@ -240,7 +243,7 @@ class LoginMessage(SlackMessage):
                     },
                     "style": "primary",
                     "action_id": "login_sso",
-                }
+                },
             )
         elif team_id == t_id and ray_client is not None and ray_client.sso:
             msg.pop(1)
@@ -393,6 +396,23 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
+                        "text": _(":blue_book: Learn The Basics"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Help Centre"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+                        "action_id": "link_2",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
                         "text": f"*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|{_('Show more options')}>*",
                     },
                 },
@@ -515,6 +535,23 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": _("Insights"),
                         },
                         "action_id": "report_insights",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(":blue_book: Learn The Basics"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Help Centre"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+                        "action_id": "link_2",
                     },
                 },
                 {
@@ -1622,13 +1659,13 @@ class JobSubmitMessage(SlackMessage):
 class InsightsMessage(SlackMessage):
     def __init__(self, message: str):
         super().__init__(
-            _(":idea: Here are your insights"),
+            _(":bulb: Here are your insights"),
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(":idea: *Here are your insights*"),
+                        "text": _(":bulb: *Here are your insights*"),
                     },
                 },
                 {
@@ -1845,12 +1882,7 @@ class HelpMessage(SlackMessage):
                             "type": "plain_text",
                             "text": _("Connect"),
                         },
-                        "url": get_language_cloud_connect_url(
-                            context["user_id"],
-                            context["team_id"],
-                            context.get("enterprise_id"),
-                            context["channel_id"],
-                        ),
+                        "action_id": "connect_info",
                     },
                 },
                 {
@@ -1866,6 +1898,23 @@ class HelpMessage(SlackMessage):
                             "text": _("Cancel"),
                         },
                         "action_id": "cancel_job",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(":blue_book: Learn The Basics"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Help Centre"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+                        "action_id": "link_2",
                     },
                 },
                 {"type": "divider"},
@@ -2624,7 +2673,7 @@ class ReportInsightsMessage(SlackMessage):
         else:
             message = "You can use the message pane below to type your insights request using natural language. Get turn around times, cost, or validation quality. An example:\n>Can you tell me how many jobs have been delivered on time in the last 30 days"
         super().__init__(
-            _(":idea: Here are your insights"),
+            _(":bulb: Here are your insights"),
             [{"type": "section", "text": {"type": "mrkdwn", "text": _(message)}}],
         )
 
@@ -2669,7 +2718,7 @@ class JobTargetLangMessage(SlackMessage):
 class AutoTranslationMessage(SlackMessage):
     def __init__(
         self,
-        source_text: str,
+        source_text: str | None,
         source_language: str,
         translations: list[tuple[str, str]],
         scores: list[tuple[str, float]] | None = None,
@@ -2677,22 +2726,29 @@ class AutoTranslationMessage(SlackMessage):
         """Slack message template for an auto-translated message
 
         Args:
-            source_text (str | None): The original source text.
-            source_language: str): The source language, e.g. "en", "de".
-            translations (list[tuple[str, str, str]]): A list of translations.
+            source_text (str | None): The original source text. If empty, do not
+                the source text.
+            source_language (str): The source language, e.g. "en", "de".
+            translations (list[tuple[str, str]]): A list of translations.
                 Each element is a 2-tuple with the target language and translated text.
         """
         self.source_text = source_text
         self.source_language = source_language
         self.translations = translations
         self.scores = scores
-
-        super().__init__(source_text, self.generate_blocks())
+        # TODO what happens when no translations?
+        text = source_text or (self.translations[0][1] if self.translations else "")
+        super().__init__(text, self.generate_blocks())
 
     def generate_blocks(self) -> list[dict[str, Any]]:
-        blocks: list[dict[str, Any]] = [
-            {"type": "section", "text": {"type": "mrkdwn", "text": self.source_text}}
-        ]
+        blocks: list[dict[str, Any]] = []
+        if self.source_text:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": self.source_text},
+                }
+            )
         for target_lang, translated in self.translations:
             blocks.append(
                 {
@@ -2708,16 +2764,14 @@ class AutoTranslationMessage(SlackMessage):
         target_langs = [
             get_auto_translate_language_name(t[0]) for t in self.translations
         ]
-        target_langs_string = ", ".join(target_langs)
+        target_langs_string = format_strings_display(target_langs, and_string="&")
         blocks.append(
             {
                 "type": "context",
                 "elements": [
                     {
                         "type": "plain_text",
-                        "text": _(
-                            "Translated to {target_langs_string} with Straker AI",
-                        ),
+                        "text": f"Translated to {target_langs_string} using Straker AI",
                     }
                 ],
             }
@@ -2777,6 +2831,104 @@ class MachineTranslationMessage(SlackMessage):
                 },
             ],
         )
+
+
+class SrtTranslateMessage(SlackMessage):
+    """Message to allow user to select language and submit for machine translation"""
+
+    def __init__(self, output_file: str) -> None:
+        title = _("Please select the target language for translation")
+        language_options = get_auto_translate_language_options()
+        # create message which contains the output_file of the submit button and contains a input element which is a multi select for language
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "input",
+                    "block_id": output_file,
+                    "label": {
+                        "type": "plain_text",
+                        "text": _("Select language"),
+                    },
+                    "element": {
+                        "type": "static_select",
+                        "placeholder": {
+                            "type": "plain_text",
+                            "text": _("Choose language"),
+                        },
+                        "options": language_options,
+                        "action_id": "language_mt_options",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Submit"),
+                                "emoji": False,
+                            },
+                            "action_id": "srt_translate",
+                            "style": "primary",
+                            "value": output_file,
+                        },
+                    ],
+                },
+            ],
+        )
+
+
+class JobTranscribedEventMessage(SlackMessage):
+
+    def __init__(self, output_file: str) -> None:
+        title = _("We have *transcribed* your file and SRT can be downloaded below.")
+        # create message which contains the output_file
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": title,
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Download"),
+                                "emoji": False,
+                            },
+                            "action_id": "download_transcribed_file",
+                            "style": "primary",
+                            "value": output_file,
+                            # "url": f"{domains.slack_ray_translator}/download/{output_file}",
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Translate"),
+                                "emoji": False,
+                            },
+                            "action_id": "show_srt_translate_form",
+                            "value": output_file,
+                        },
+                    ],
+                },
+            ],
+        )
+
+
+class TranscriptionMessage(TextMessage):
+    def __init__(self) -> None:
+        super().__init__(_("⏱️ Please wait a moment and we will transcribe your file"))
 
 
 class InvalidMTResultMessage(TextMessage):
@@ -2883,6 +3035,85 @@ class CancelTJMessage(SlackMessage):
                         ),
                         "action_id": "cancel_job",
                     }
+                },
+            ],
+        )
+
+
+class AutoTranslateSettingsChangedMessage(TextMessage):
+    """Message to send when the user changes their auto-translate settings."""
+
+    def __init__(self, channel_id: str, langs: list[str], display_format: str) -> None:
+        langs_string = format_strings_display(
+            [get_auto_translate_language_name(lang) for lang in langs], and_string="and"
+        )
+        display_format_string = (
+            "thread replies" if display_format == "thread" else "messages"
+        )
+        super().__init__(
+            f"The bot will respond to messages sent in <#{channel_id}> which will be translated into {langs_string} through {display_format_string} in real-time."
+        )
+
+
+class AutoTranslateSettingsDisabledMessage(TextMessage):
+    """Message to send when the user disable/enable their auto-translate settings."""
+
+    def __init__(self, channel_id: str) -> None:
+        super().__init__(f"<#{channel_id}> Translation settings have been disabled.")
+
+
+class RequiresMtTokenMessage(SlackMessage):
+
+    def __init__(self, tokens: int, required_tokens: int) -> None:
+        title = _(
+            "❗❗You have *{tokens} MT characters* on your account. This job requires *{required_tokens} MT characters*. Please purchase a MT bundle.❗❗"
+        )
+        # create message which contains the output_file
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": title,
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Purchase MT Bundle"),
+                                "emoji": False,
+                            },
+                            "action_id": "button-action",  # Add this line
+                            "url": f"{domains.languagecloud}/checkout/characters",
+                        },
+                    ],
+                },
+            ],
+        )
+
+
+class RequiresMtTokenAdminMessage(SlackMessage):
+
+    def __init__(self, tokens: int, required_tokens: int) -> None:
+        title = _(
+            "❗❗You have *{tokens} MT characters* on your group account. This job requires *{required_tokens} MT characters*. Please contact your group admin to purchase more❗❗"
+        )
+        # create message which contains the output_file
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": title,
+                    },
                 },
             ],
         )

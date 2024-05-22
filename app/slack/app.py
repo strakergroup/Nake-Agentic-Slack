@@ -16,7 +16,6 @@ from buglog import notify_exception
 from .stores import AsyncSQLAlchemyInstallationStore, AsyncSQLAlchemyOAuthStateStore
 from .templates.messages import OnboardingMessage
 from ..auth.connector import save_user_token_from_installation
-from ..cache.timer import clear_auto_translate_permissions_reminder
 from ..config import Environment, config, domains
 from ..database import engines
 
@@ -41,15 +40,20 @@ oauth_settings = AsyncOAuthSettings(
             "app_mentions:read",
             "channels:history",
             "channels:join",
+            "channels:read",
             "chat:write",
             "chat:write.public",
             "commands",
             "files:read",
+            "files:write",
             "groups:history",
+            "groups:read",
             "im:history",
             "mpim:history",
             "users:read",
             "users:read.email",
+            "channels:read",
+            "groups:read",
         ]
         # Disable new scopes until approved for production.
         if config.environment != Environment.production
@@ -57,12 +61,21 @@ oauth_settings = AsyncOAuthSettings(
         == "https://stage-slack-deltaray.strakertranslations.com"
         else [
             "app_mentions:read",
+            "channels:history",
+            "channels:join",
+            "channels:read",
             "chat:write",
             "chat:write.public",
             "commands",
             "files:read",
+            "groups:history",
+            "groups:read",
             "im:history",
+            "mpim:history",
             "users:read",
+            "users:read.email",
+            "channels:read",
+            "groups:read",
         ]
     ),
     # Do not ask for user tokens on installation, only when needed.
@@ -85,7 +98,6 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
         user = None
         try:
             user = await save_user_token_from_installation(args.installation)
-            await clear_auto_translate_permissions_reminder(args.installation.user_id)
         except Exception as e:
             notify_exception(
                 e, "Slack app: Failed to save user token from installation"
