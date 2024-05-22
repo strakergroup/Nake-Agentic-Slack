@@ -42,11 +42,14 @@ from .templates.messages import (
     AutoTranslationMessage,
     MachineTranslationMessage,
     InvalidMTResultMessage,
+    CancelTJMessage,
+    CancelJobMessage,
     TranscriptionMessage,
 )
 from .templates.models import NewJobForm
 from .templates.views import (
     new_job_modal,
+    cancel_job_modal,
 )
 from .web import files_list_simple, download_files
 from ..auth.connector import RayClient, approve_pending_groups
@@ -258,6 +261,21 @@ async def respond_to_message(
                 notify_exception(
                     e, "Failed to get machine translation from watson response"
                 )
+        case "Cancel":
+            cancel_content = message["text"].lower().split("cancel")
+            is_tj = re.findall(r"tj\d+", cancel_content[1].lower(), re.IGNORECASE)
+            if len(is_tj) > 0:
+                # Cancel th job
+                await job_tj_cancel(client, context, context["ray"].client, is_tj[0])
+            else:
+                if await require_ray_client(context, variation=LoginMessage.CANCEL_JOB):
+                    asyncio.create_task(
+                        files_list_simple(
+                            client, channel_id=context["channel_id"], count=120
+                        )
+                    )
+                    msg = CancelJobMessage(context["channel_id"], message["ts"])
+                    await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
         case _:
             if tj_number_entity := response.findEntity("tj-number"):
                 # Show the job status if only a job id is entered.
@@ -1495,11 +1513,75 @@ async def cancel_job_process(
         job, response = await RayService.get_service(ray_client).cancel_job(
             job_id, job_uuid
         )
-        msg = "TJ" + job_id + "-" + job["message"]
+        msg = "TJ" + job_id + " - " + job["message"]
         await client.chat_postMessage(
             channel=context["user_id"],
             text=msg,
         )
+    except Exception as e:
+        notify_exception(e)
+        raise
+    finally:
+        if "response" in locals() and response is not None:
+            try:
+                response_data = response.json()
+            except Exception:
+                response_data = response.content.decode() or None
+            context["log"].add_api_log(
+                status_code=response.status_code,
+                url=str(response.url),
+                payload=None,
+                response=response_data,
+                headers=dict(response.headers.items()),
+                version="v3",
+            )
+
+
+async def job_tj_cancel(
+    client: AsyncWebClient,
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    job_id: str = "",
+):
+
+    """Tries to get the job details from the RAY API and post the job status
+    to the Slack user. If the user cannot access the job, post another message
+    instead.
+
+    Args:
+        context (AsyncBoltContext): The listener function context.
+        ray_client (RayClient): The RAY client.
+        job_id (str): The ID of the obj_tp_job to get.
+        job_uuid (str): The UUID of the api human_job table obj_uuid
+    """
+    try:
+        jobs, response = await RayService.get_service(ray_client).get_job(job_id)
+        if jobs is not None:
+            for job in jobs:
+                if job.status == "CANCELLED":
+                    msg = job_id.upper() + " - " + 'This job has already been cancelled.'
+                    await client.chat_postMessage(
+                        channel=context["user_id"],
+                        text=msg,
+                    )
+                else:
+                    jobdetail = {
+                        "job_id": job_id.upper(),
+                        "status": job.status,
+                        "sourcelang": job.sl,
+                        "targetlang": job.tl,
+                    }
+                    msg = CancelTJMessage(context["channel_id"], jobdetail)
+                    if context.response_url:
+                        await context.respond(text=msg.text, blocks=msg.blocks)
+                    else:
+                        await client.chat_postMessage(channel=context["user_id"], text=msg.text, blocks=msg.blocks)
+        else:
+            msg = job_id.upper() + " - " + 'This job does not exist. Please check the job ID and try again.'
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=msg,
+            )
     except Exception as e:
         notify_exception(e)
         raise
