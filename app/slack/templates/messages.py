@@ -119,7 +119,6 @@ class LoginMessage(SlackMessage):
     NEW_JOB = "new_job"
     INSIGHTS = "insights"
     CANCEL_JOB = "cancel_job"
-
     def __init__(
         self,
         user_id: str,
@@ -160,6 +159,8 @@ class LoginMessage(SlackMessage):
             )
         elif variation == self.INSIGHTS:
             block_text = "Connect your LanguageCloud account to view your insights."
+        elif variation == self.CANCEL_JOB:
+            block_text = "Connect your LanguageCloud account to cancel your job."
         elif isinstance(ray_client, RayClient):
             block_text = (
                 "Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_client.username}>.\n"
@@ -2999,6 +3000,108 @@ class InvalidMTResultMessage(TextMessage):
 
     def __init__(self) -> None:
         super().__init__("Error occurred while translating your message")
+
+
+class CancelJobMessage(SlackMessage):
+        """Message with a button to open the cancel job modal."""
+
+        def __init__(self, channel_id: str, timestamp: str) -> None:
+            super().__init__(
+                "Cancel a translation job",
+                [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": _(
+                                "Click the *Cancel translation job* button below"
+                            ),
+                        },
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Cancel translation job"),
+                                    "emoji": True,
+                                },
+                                "action_id": "cancel_job",
+                                "style": "primary",
+                                "value": json.dumps(
+                                    {
+                                        "channel_id": channel_id,
+                                        "ts": timestamp,
+                                    }
+                                ),
+                            }
+                        ],
+                    },
+                ],
+            )
+
+
+class CancelTJMessage(SlackMessage):
+    """A summary of the client's jobs, number of jobs in each status. Has buttons
+    to display the individual job IDs for each status and timeframe.
+    """
+
+    def __init__(self, channel_id: str, jobdetail) -> None:
+        target_labels = [target.label for target in jobdetail['targetlang']]
+        super().__init__(
+            "Cancel a translation job",
+            [
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": f" Cancel  {jobdetail['job_id']}",
+                    }
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Status:*\n {jobdetail['status']}"
+                        }
+                    ]
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Source:*\n {jobdetail['sourcelang'].label}"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Target:*\n {', '.join(target_labels)}"
+                        }
+                    ]
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Please confirm to cancel this job."
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel Job",
+                        },
+                        "value": json.dumps(
+                            {"job_id": jobdetail['job_id'], "job_action": "list"}
+                        ),
+                        "action_id": "cancel_job",
+                    }
+                },
+            ],
+        )
 
 
 class AutoTranslateSettingsChangedMessage(TextMessage):
