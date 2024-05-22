@@ -412,6 +412,15 @@ def new_job_modal(
                 },
             },
             {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "For more support information, visit <https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Straker-Translate-functions|our website>."
+                    }
+                ]
+            },
+            {
                 "type": "input",
                 "block_id": "files",
                 "element": files_block_element,
