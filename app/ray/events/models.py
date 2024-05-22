@@ -139,7 +139,7 @@ class MtFileRequestSchema(BaseModel):
 
 
 class MtSuccessResponseSchema(BaseModel):
-    file_path: str
+    file_id: str
     tokens: int
     client_id: str
     target_language: str
