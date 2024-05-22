@@ -120,7 +120,7 @@ def escape_slack_emoji(text: str):
     # to prevent translation replace with <x i={i}> where i is the source index.
     emojis = re.findall(r":\w+:", text)
     for i, emoji in enumerate(emojis):
-        text = text.replace(emoji, f"<x i={i}/>")
+        text = text.replace(emoji, f"<x i={i}/>", 1)
     return text
 
 
@@ -137,7 +137,10 @@ def unescape_slack_emoji(translated_text: str, source_text: str) -> str:
     # place back the emojis from the source text. Based on the i index value of the x tag
     # Find all :emoji: in the source text
     emojis = re.findall(r":\w+:", source_text)
-
+    # ensure translated text has spacing removed
+    translated_text = re.sub(
+        r"<\s*x\s*i\s*=\s*{i}\s*/>", r"<x i={i}/>", translated_text
+    )
     # Replace <x i={i}> with the original :emoji: from the source text
     for i, emoji in enumerate(emojis):
         translated_text = translated_text.replace(f"<x i={i}/>", emoji)
