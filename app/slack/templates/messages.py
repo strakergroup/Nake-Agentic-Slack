@@ -2750,15 +2750,13 @@ class AutoTranslationMessage(SlackMessage):
                 }
             )
         for target_lang, translated in self.translations:
+            quoted_translated = "\n".join(
+                ["> " + line for line in translated.split("\n")]
+            )
             blocks.append(
                 {
-                    "type": "rich_text",
-                    "elements": [
-                        {
-                            "type": "rich_text_quote",
-                            "elements": [{"type": "text", "text": translated}],
-                        }
-                    ],
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": quoted_translated},
                 }
             )
         target_langs = [

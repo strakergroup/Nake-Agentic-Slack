@@ -76,9 +76,11 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
         ray_client=context["ray"].client if context["ray"] is not None else None,
     )
     try:
+        context["is_bot"] = True
         user_info = await context.client.users_info(
             user=context["user_id"], include_locale=True
         )
+        context["is_bot"] = user_info["user"]["is_bot"]
         translator_var.set(Translator(user_info["user"]["locale"]))
     except Exception as e:
         print(e)

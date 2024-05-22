@@ -19,7 +19,7 @@ from buglog import notify_exception, notify_message
 from app.wb_tasks.tasks import create_task
 
 from .middleware import require_mt_tokens, require_ray_client
-from .utils import strip_slack_formatting
+from .utils import escape_slack_emoji, unescape_slack_emoji
 from .templates.messages import (
     HelpMessage,
     LoginMessage,
@@ -315,8 +315,7 @@ async def auto_translate_message(
     assert settings  # TODO Fix typing
     if not target_langs:
         return
-
-    unformatted_text = strip_slack_formatting(text)
+    unformatted_text = escape_slack_emoji(text)
     try:
         source_lang, translations = await get_machine_translations(
             unformatted_text, target_langs
@@ -331,7 +330,10 @@ async def auto_translate_message(
     msg = AutoTranslationMessage(
         None,
         source_lang,
-        translations=[(tl, target_text) for tl, target_text in translations.items()],
+        translations=[
+            (tl, unescape_slack_emoji(target_text, text))
+            for tl, target_text in translations.items()
+        ],
     )
     try:
         if settings.display_format == "thread":
