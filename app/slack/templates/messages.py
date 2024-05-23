@@ -2806,7 +2806,7 @@ class MachineTranslationMessage(SlackMessage):
 class SrtTranslateMessage(SlackMessage):
     """Message to allow user to select language and submit for machine translation"""
 
-    def __init__(self, output_file: str) -> None:
+    def __init__(self, task_uuid: str) -> None:
         title = _("Please select the target language for translation")
         language_options = get_auto_translate_language_options()
         # create message which contains the output_file of the submit button and contains a input element which is a multi select for language
@@ -2815,7 +2815,7 @@ class SrtTranslateMessage(SlackMessage):
             [
                 {
                     "type": "input",
-                    "block_id": output_file,
+                    "block_id": task_uuid,
                     "label": {
                         "type": "plain_text",
                         "text": _("Select language"),
@@ -2842,7 +2842,7 @@ class SrtTranslateMessage(SlackMessage):
                             },
                             "action_id": "srt_translate",
                             "style": "primary",
-                            "value": output_file,
+                            "value": task_uuid,
                         },
                     ],
                 },
@@ -2899,7 +2899,7 @@ class DocumentMTJobMessage(SlackMessage):
 
 class JobTranscribedEventMessage(SlackMessage):
 
-    def __init__(self, output_file: str) -> None:
+    def __init__(self, task_uuid: str) -> None:
         title = _("We have *transcribed* your file and SRT can be downloaded below.")
         # create message which contains the output_file
         super().__init__(
@@ -2924,8 +2924,7 @@ class JobTranscribedEventMessage(SlackMessage):
                             },
                             "action_id": "download_transcribed_file",
                             "style": "primary",
-                            "value": output_file,
-                            # "url": f"{domains.slack_ray_translator}/download/{output_file}",
+                            "value": task_uuid,
                         },
                         {
                             "type": "button",
@@ -2935,7 +2934,7 @@ class JobTranscribedEventMessage(SlackMessage):
                                 "emoji": False,
                             },
                             "action_id": "show_srt_translate_form",
-                            "value": output_file,
+                            "value": task_uuid,
                         },
                     ],
                 },

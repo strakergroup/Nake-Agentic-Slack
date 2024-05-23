@@ -3,7 +3,12 @@ from enum import Enum
 from typing import Any, Dict, Union
 
 from dateutil.parser import parse
-from pydantic import BaseModel, RootModel, field_validator, root_validator
+from pydantic import (
+    BaseModel,
+    RootModel,
+    field_validator,
+    model_validator,
+)
 
 
 class ClientGroup(BaseModel):
@@ -112,15 +117,15 @@ class JobTranscribedPath(BaseModel):
 
 
 class JobTranscribedEvent(BaseModel):
-    output_file: str
+    task_uuid: str
     client_id: str
     error: str | None = None
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     def extract_output_file(cls, values):
         result = values.get("result")
         if result:
-            values["output_file"] = result.get("output_file")
+            values["task_uuid"] = result.get("task_uuid")
         return values
 
 
@@ -131,9 +136,7 @@ class MtErrorTypes(str, Enum):
 
 
 class MtFileRequestSchema(BaseModel):
-    download_url: str
-    file_name: str
-    file_token: str
+    file_id: str
     client_id: str
     target_language: str
 

@@ -209,3 +209,27 @@ def download_from_file_server(file_id: str):
         "file": BytesIO(response.content),
     }
     return file_result
+
+
+def upload_to_file_server(file_path: str) -> str:
+    """
+    Upload the file to sup-file-api and return the file ID.
+    """
+    file_id = ""
+    with open(file_path, "rb") as f:
+        # Make the PUT request
+        response = requests.put(domains.file_api + "/gridfs", files={"file": f})
+
+    # If the request was successful
+    if response.status_code == 200:
+        # Parse the response as JSON
+        data = response.json()
+
+        # Extract the file ID from the response
+        file_id = data.get("id")
+        if not file_id:
+            raise ValueError("Response does not contain a 'id' field")
+    else:
+        response.raise_for_status()
+
+    return file_id
