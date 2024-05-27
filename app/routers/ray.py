@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
 
+from app.ray.utils import download_from_file_server
 from app.translate import _
 from app.wb_tasks.tasks import get_task
 
@@ -44,18 +45,6 @@ from ..config import config, domains
 
 
 router = APIRouter()
-
-
-# TODO: Secure this. timeout/ token based/ ratelimit
-@router.get("/download/{uuid}/{filename}")
-async def download_file(uuid: str, filename: str):
-    # Your code here
-    file_path = Path(config.path_wb_shared).joinpath("wb-task", uuid, filename)
-    return FileResponse(
-        file_path,
-        content_disposition_type="attachment",
-        media_type="application/x-subrip",
-    )
 
 
 @router.post("/ray/events")
@@ -104,78 +93,36 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
             except ValidationError:
                 app.client.token = auth.slack_user.bot_token
                 event_data = MtSuccessResponseSchema.model_validate(event.data)
-                output_file = Path(config.path_shared).joinpath(event_data.file_path)
+                output_file = download_from_file_server(event_data.file_id)
                 token_count = event_data.tokens
                 target_lang = event_data.target_language
                 token_consumption_message = _(
                     "You have used {token_count} MT characters."
                 )
-                with open(
-                    output_file,
-                    "rb",
-                ) as file_content:
-                    await app.client.files_upload_v2(
-                        channel=auth.slack_user.channel_id,
-                        file=file_content,
-                        initial_comment=token_consumption_message,
-                        title=target_lang + "_" + output_file.name,
-                    )
+                await app.client.files_upload_v2(
+                    channel=auth.slack_user.channel_id,
+                    file=output_file.get("file"),
+                    initial_comment=token_consumption_message,
+                    title=target_lang + "_" + output_file.get("file_name"),
+                )
                 await spend_mt_tokens(auth.slack_user, token_count)
         elif isinstance(message, JobTranscribedEventMessage):
-            if event.event == "ray:job:srt:translated":
-                output_file = event.data["result"]["output_file"]
-                app.client.token = auth.slack_user.bot_token
-                task_uuid = output_file.split("/")[0]
-                task_result = await get_task(task_uuid, auth.slack_user.ray_client_id)
-                token_count = task_result.get("tokens")
-                token_consumption_message = _(
-                    "You have used {token_count} MT characters."
+            if not event.data.get("error"):
+                await post_notification_ephemeral(
+                    app.client,
+                    auth.slack_user.channel_id,
+                    event,
+                    auth.slack_user,
+                    message,
                 )
-                try:
-                    file_read = Path(config.path_wb_shared).joinpath(
-                        "wb-task", output_file
-                    )
-                    with open(
-                        file_read,
-                        "rb",
-                    ) as file_content:
-                        await app.client.files_upload_v2(
-                            channel=auth.slack_user.channel_id,
-                            file=file_content,
-                            initial_comment=token_consumption_message,
-                            title=os.path.basename(output_file),
-                        )
-                except Exception as e:
-                    # TODO: clean this up
-                    # send link to file when client:write scope does not exist
-                    # extract the final _Targetlang from the output_file filfename
-                    target_lang = output_file.split("_")[-1]
-                    await app.client.chat_postEphemeral(
-                        channel=auth.slack_user.channel_id,
-                        user=auth.slack_user.user_id,
-                        text=_(
-                            "{token_consumption_message} You can download the {target_lang} AI translation here {domains.slack_ray_translator}/download/{output_file}"
-                        ),
-                    )
-
-                await spend_mt_tokens(auth.slack_user, token_count)
             else:
-                if not event.data.get("error"):
-                    await post_notification_ephemeral(
-                        app.client,
-                        auth.slack_user.channel_id,
-                        event,
-                        auth.slack_user,
-                        message,
-                    )
-                else:
-                    await app.client.chat_postEphemeral(
-                        channel=auth.slack_user.channel_id,
-                        user=auth.slack_user.user_id,
-                        text=_(
-                            "This video cannot be sent for transcription as it doesn't have any sound"
-                        ),
-                    )
+                await app.client.chat_postEphemeral(
+                    channel=auth.slack_user.channel_id,
+                    user=auth.slack_user.user_id,
+                    text=_(
+                        "This video cannot be sent for transcription as it doesn't have any sound"
+                    ),
+                )
         elif (
             # Send important messages regardless of subscribed status.
             isinstance(message, (ClientSignupEventMessage, ClientApprovedEventMessage))

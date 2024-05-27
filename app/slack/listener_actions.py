@@ -394,33 +394,6 @@ async def auto_translate_message(
         )
 
 
-async def srt_translate(
-    context: AsyncWebClient, output_file: str, selected_languages: str
-):
-    """Translate the SRT file using the wb-task-consumer.
-
-    Args:
-        client (AsyncWebClient): The Slack client.
-        channel_id (str): The channel ID of the message.
-        output_file (str): The output file name.
-    """
-    if not output_file:
-        return
-    try:
-        await create_task(
-            context["ray"].client.id,
-            "wb_task:common:mt",
-            "ray:job:srt:translated",
-            {
-                "input_file": f"wb-task/{output_file}",
-                "mt_provider_id": "google",
-                "mt_parameters": {"target_lang_code": selected_languages},
-            },
-        )
-    except Exception as e:
-        notify_exception(e, "Failed to translate SRT file")
-
-
 async def document_machine_translate(
     client: AsyncWebClient,
     context: AsyncBoltContext,
@@ -437,14 +410,11 @@ async def document_machine_translate(
     if not file_id:
         return
     try:
-        file_info = await client.files_info(file=file_id)
-        download_url = file_info["file"]["url_private"]
-        token = client.token
+        # file_info = await client.files_info(file=slack_file_id)
+        # download_url = file_info["file"]["url_private"]
         task_data = MtFileRequestSchema.model_validate(
             {
-                "download_url": download_url,
-                "file_name": file_info["file"]["title"],
-                "file_token": token,
+                "file_id": file_id,
                 "client_id": context["ray"].client.id,
                 "target_language": selected_language,
             }

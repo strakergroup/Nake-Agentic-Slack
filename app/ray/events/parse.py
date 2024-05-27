@@ -91,10 +91,10 @@ def get_ray_event_message(
         return JobQuoteCancelledEventMessage(
             client_id=event6.client_id, job_uuid=event6.uuid, job_id=event6.id
         )
-    elif event_type == "ray:job:transcribed" or event_type == "ray:job:srt:translated":
+    elif event_type == "ray:job:transcribed":
         event7 = JobTranscribedEvent.model_validate(event_data)
         # send message which contains event.output_file
-        return JobTranscribedEventMessage(event7.output_file)
+        return JobTranscribedEventMessage(event7.task_uuid)
     elif event_type == "verify:slack:document:translated":
         event8 = MtFileReponseSchema.model_validate(event_data)
         return DocMtMessage()
