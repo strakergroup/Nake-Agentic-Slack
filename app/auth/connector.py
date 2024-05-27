@@ -1127,20 +1127,21 @@ def create_slack_deltaray_link_sso(user_data: str, member_id: str):
             """
             SELECT slack_user_id
             FROM slack_deltaray_link
-            WHERE slack_user_id = :slack_user_id
+            WHERE (slack_user_id = :slack_user_id or member_uuid = :member_uuid)
             AND slack_team_id = :slack_team_id
             AND is_active = 0
             """
         ).bindparams(
             slack_user_id=json_data.get("user_id"),
             slack_team_id=json_data.get("team_id"),
+            member_uuid=member_id,
         )
         if json_data.get("enterprise_id") is not None:
             sqlSlackAccount = text(
                 """
                 SELECT slack_user_id
                 FROM slack_deltaray_link
-                WHERE slack_user_id = :slack_user_id
+                WHERE (slack_user_id = :slack_user_id or member_uuid = :member_uuid)
                 AND (slack_enterprise_id = :slack_enterprise_id OR slack_team_id = :slack_team_id)
                 AND is_active = 0
                 """
@@ -1148,6 +1149,7 @@ def create_slack_deltaray_link_sso(user_data: str, member_id: str):
                 slack_user_id=json_data.get("user_id"),
                 slack_team_id=json_data.get("team_id"),
                 slack_enterprise_id=json_data.get("enterprise_id"),
+                member_uuid=member_id,
             )
         resultSlackAccount = conn.execute(sqlSlackAccount).first()
     if resultSlackAccount is not None:
@@ -1165,7 +1167,7 @@ def create_slack_deltaray_link_sso(user_data: str, member_id: str):
                         is_active = 1,
                         is_sso = 1,
                         activated_at = now()
-                    WHERE slack_user_id = :user_id
+                    WHERE (slack_user_id = :user_id or member_uuid = :member_uuid)
                     AND (
                         slack_team_id = :team_id
                         OR slack_enterprise_id = :enterprise_id
