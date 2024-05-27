@@ -1130,6 +1130,7 @@ def create_slack_deltaray_link_sso(user_data: str, member_id: str):
             """
         ).bindparams(member_uuid=member_id)
         conn.execute(sqlSlackDelete)
+        conn.commit()
     with engines["ray_integration_readonly"].connect() as conn:
         sqlSlackAccount = text(
             """
