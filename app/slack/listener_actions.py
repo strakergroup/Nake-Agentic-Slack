@@ -1662,7 +1662,3 @@ async def resendMT(
 
         return
 
-
-@functools.cache
-def mt_cache(thread_ts, request_ts):
-    return (thread_ts, request_ts)
