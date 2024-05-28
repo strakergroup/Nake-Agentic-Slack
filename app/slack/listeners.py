@@ -36,6 +36,7 @@ from .listener_actions import (
     post_file_list,
     cancel_job_process,
     srt_translate,
+    resendMT,
 )
 from .logging import slack_log_decorator
 from .templates.models import (
@@ -1201,6 +1202,30 @@ async def handle_cancel_job(ack, view, context, client):
             blocks=context["login_prompt"].blocks,
             text=context["login_prompt"].text,
         )
+
+
+@app.event(
+    {"type": "message", "subtype": "message_changed"},
+    middleware=[ray_connection],
+)
+@slack_log_decorator
+async def message_changed_event(client, context, message):
+    if message.get("subtype") == "message_changed":
+        if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
+            try:
+                await resendMT(client, context, message, use_thread=False)
+            except Exception as e:
+                print(e)
+        elif (
+            message["message"].get("text")
+            and f"<@{context['bot_user_id']}>" not in message["message"]["text"]
+        ):
+            # Do not auto-translate if the bot is mentioned (should default to normal response).
+            await auto_translate_message(client, context, message["message"])
+        else:
+            # Do nothing if the Slack app is not mentioned in group chats and
+            # auto-translate is disabled.
+            pass
 
 
 # FastAPI will use this to handle Slack API requests.

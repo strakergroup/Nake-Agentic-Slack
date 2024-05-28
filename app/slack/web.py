@@ -162,3 +162,43 @@ async def download_files(client: AsyncWebClient, files: Iterable[str]) -> list[s
         notify_exception(exc)
     # Return successful file download paths.
     return [result for result in file_paths if isinstance(result, str)]
+
+
+async def set_mt_ts_edit(
+    client: AsyncWebClient, channel_id: str,  thread_ts_dict: dict, count: int = 100,
+) -> list[dict[str, Any]]:
+    """A helper method to get the thread_ts from the bot message.
+
+    Args:
+        client (AsyncWebClient): The Slack WebClient instance (with auth token).
+        channel_id (str | None, optional): The channel to filter by. Defaults to None.
+        count (int, optional): The max number of thread to get. Defaults to 20.
+        thread_ts_dict (dict): The dictionary of thread_ts id for mt send and get message.
+    Returns:
+        list[dict[str, Any]]: _description_
+    """
+    key = f"slack-ray-translator:mt_ts:{channel_id}"
+    try:
+        await redis_conn.set(key, json.dumps(thread_ts_dict), ex=3600)
+    except Exception as e:
+        notify_exception(e)
+    return thread_ts_dict
+
+
+async def get_mt_ts_cached(channel_id: str) -> list[dict[str, Any]]:
+    key = f"slack-ray-translator:mt_ts:{channel_id}"
+    cached = False
+    mt_timestamp = []
+    try:
+        cached = await redis_conn.get(key)
+    except Exception as e:
+        notify_exception(e)
+    if cached:
+        try:
+            mt_timestamp = json.loads(cached)
+            assert isinstance(mt_timestamp, dict)
+            return mt_timestamp
+        except Exception as e:
+            notify_exception(e)
+
+    return mt_timestamp

@@ -8,7 +8,7 @@ import uuid
 import asyncio
 from typing import Any
 import re
-
+import functools
 import httpx
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
@@ -51,7 +51,7 @@ from .templates.views import (
     new_job_modal,
     cancel_job_modal,
 )
-from .web import files_list_simple, download_files
+from .web import files_list_simple, download_files, get_mt_ts_cached, set_mt_ts_edit
 from ..auth.connector import RayClient, approve_pending_groups
 from ..config import config, domains, Environment
 from ..ray.service import RayService, get_job_predictions
@@ -142,7 +142,7 @@ async def respond_to_message(
             source_lang=mt_sl,
             target_lang=mt_tl,
             sentence=mt_text,
-            thread_ts=thread_ts,
+            thread_ts=message["ts"] if "ts" in message else None,
         )
         return
 
@@ -1431,6 +1431,7 @@ async def get_mt_translation(
     source_lang: str,
     sentence: str,
     thread_ts: str | None = None,
+    is_edit: bool = False,
 ):
     """Get google machine translation for sentence by correct language pair.
 
@@ -1445,7 +1446,6 @@ async def get_mt_translation(
     if not context.channel_id and not context.user_id and not context.response_url:
         raise AssertionError("No channel to post to")
     channel_id = context.channel_id or context.user_id
-
     try:
         response = await RayService.get_service(ray_client).get_machine_translation(
             target_lang, source_lang, sentence
@@ -1455,16 +1455,37 @@ async def get_mt_translation(
             msg = MachineTranslationMessage(
                 mt_data["target_lang"], mt_data["source_lang"], mt_data["text"]
             )
-
             if context.response_url:
                 return await context.respond(text=msg.text, blocks=msg.blocks)
             else:
-                return await client.chat_postMessage(
-                    channel=channel_id,
-                    text=msg.text,
-                    blocks=msg.blocks,
-                    thread_ts=thread_ts,
-                )
+                if is_edit:
+                    try:
+                        await client.chat_update(
+                            channel=channel_id,
+                            text=msg.text,
+                            blocks=msg.blocks,
+                            ts=thread_ts,
+                        )
+                    except Exception as e:
+                        print(e)
+                else:
+                    try:
+                        request = await client.chat_postMessage(
+                            channel=channel_id,
+                            text=msg.text,
+                            blocks=msg.blocks,
+                            thread_ts=thread_ts
+                        )
+                        mt_ts = []
+                        cacheBlock = {}
+                        cacheBlock["mtSendTs"] = thread_ts
+                        cacheBlock["mtGetTs"] = request['ts']
+                        mt_ts.append(cacheBlock)
+                        asyncio.create_task(
+                            set_mt_ts_edit(channel_id=channel_id, client=client, thread_ts_dict=mt_ts, count=100)
+                        )
+                    except Exception as e:
+                        print(e)
         else:
             msg = InvalidMTResultMessage()
             if context.response_url:
@@ -1476,6 +1497,7 @@ async def get_mt_translation(
                     thread_ts=thread_ts,
                 )
     except Exception as e:
+        print(e)
         notify_exception(e, "Failed to get machine translation from language cloud API")
     finally:
         if "response" in locals():
@@ -1601,3 +1623,46 @@ async def job_tj_cancel(
                 headers=dict(response.headers.items()),
                 version="v3",
             )
+
+
+async def resendMT(
+    client: AsyncWebClient,
+    context: AsyncBoltContext,
+    message: dict[str, Any],
+    *,
+    use_thread: bool = False,
+):
+    # process mt
+    message_match = re.search(
+        r"mt:?\s+((\w+\s+)?to\s+(\w+):?\s+)?(.*)",
+        message['message']["text"],
+        re.I,
+    )
+
+    if message_match and await require_ray_client(context, prompt_login=False):
+        mt_sl = message_match.group(2)
+        # TODO: read user lang to default target
+        mt_tl = message_match.group(3) or "en"
+        mt_text = message_match.group(4)
+        # print("met-w--", )
+
+        try:
+            await get_mt_translation(
+                client,
+                context,
+                context["ray"].client,
+                source_lang=mt_sl,
+                target_lang=mt_tl,
+                sentence=mt_text,
+                thread_ts=message['message']['latest_reply'],
+                is_edit=True,
+            )
+        except Exception as e:
+            print(e)
+
+        return
+
+
+@functools.cache
+def mt_cache(thread_ts, request_ts):
+    return (thread_ts, request_ts)
