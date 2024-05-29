@@ -347,7 +347,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🗂️ New translation job opens the form to upload documents for translation."
+                            "🗂️ Click 'New translation job' to select documents uploaded through the message box below. Note this will send the selected document off for translation."
                         ),
                     },
                     "accessory": {
@@ -492,7 +492,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🗂️ New translation job opens the form to upload documents for translation."
+                            "🗂️ Click 'New translation job' to select documents uploaded through the message box below.\n Note this will send the selected document off for translation."
                         ),
                     },
                     "accessory": {
@@ -1848,7 +1848,7 @@ class HelpMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🗂️ New translation job opens the form to upload documents for translation."
+                            "🗂️ Click 'New translation job' to select documents uploaded through the message box below. Note this will send the selected document off for translation."
                         ),
                     },
                     "accessory": {
