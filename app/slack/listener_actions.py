@@ -135,15 +135,16 @@ async def respond_to_message(
         # TODO: read user lang to default target
         mt_tl = message_match.group(3) or "en"
         mt_text = message_match.group(4)
-        await get_mt_translation(
-            client,
-            context,
-            context["ray"].client,
-            source_lang=mt_sl,
-            target_lang=mt_tl,
-            sentence=mt_text,
-            thread_ts=thread_ts,
-        )
+        if await require_mt_tokens(context, len(mt_text)):
+            await get_mt_translation(
+                client,
+                context,
+                context["ray"].client,
+                source_lang=mt_sl,
+                target_lang=mt_tl,
+                sentence=mt_text,
+                thread_ts=thread_ts,
+            )
         return
 
     response = watson_message(message["text"], context.get("user_id"))
@@ -240,16 +241,16 @@ async def respond_to_message(
                     mt_sl = message_match[-1][1] + message_match[-1][2]
                     mt_tl = message_match[-1][3] + message_match[-1][4]
                     mt_text = message_match[-1][-1]
-
-                    await get_mt_translation(
-                        client,
-                        context,
-                        context["ray"].client,
-                        source_lang=mt_sl,
-                        target_lang=mt_tl,
-                        sentence=mt_text[1],
-                        thread_ts=thread_ts,
-                    )
+                    if await require_mt_tokens(context, len(mt_text)):
+                        await get_mt_translation(
+                            client,
+                            context,
+                            context["ray"].client,
+                            source_lang=mt_sl,
+                            target_lang=mt_tl,
+                            sentence=mt_text[1],
+                            thread_ts=thread_ts,
+                        )
                 else:
                     await context.say(
                         'Invalid machine translation request. Please try "Mt source language to target language: sentence."',
@@ -275,7 +276,9 @@ async def respond_to_message(
                         )
                     )
                     msg = CancelJobMessage(context["channel_id"], message["ts"])
-                    await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
+                    await context.say(
+                        text=msg.text, blocks=msg.blocks, thread_ts=thread_ts
+                    )
         case _:
             if tj_number_entity := response.findEntity("tj-number"):
                 # Show the job status if only a job id is entered.
@@ -1545,7 +1548,6 @@ async def job_tj_cancel(
     ray_client: RayClient,
     job_id: str = "",
 ):
-
     """Tries to get the job details from the RAY API and post the job status
     to the Slack user. If the user cannot access the job, post another message
     instead.
@@ -1561,7 +1563,9 @@ async def job_tj_cancel(
         if jobs is not None:
             for job in jobs:
                 if job.status == "CANCELLED":
-                    msg = job_id.upper() + " - " + 'This job has already been cancelled.'
+                    msg = (
+                        job_id.upper() + " - " + "This job has already been cancelled."
+                    )
                     await client.chat_postMessage(
                         channel=context["user_id"],
                         text=msg,
@@ -1577,9 +1581,15 @@ async def job_tj_cancel(
                     if context.response_url:
                         await context.respond(text=msg.text, blocks=msg.blocks)
                     else:
-                        await client.chat_postMessage(channel=context["user_id"], text=msg.text, blocks=msg.blocks)
+                        await client.chat_postMessage(
+                            channel=context["user_id"], text=msg.text, blocks=msg.blocks
+                        )
         else:
-            msg = job_id.upper() + " - " + 'This job does not exist. Please check the job ID and try again.'
+            msg = (
+                job_id.upper()
+                + " - "
+                + "This job does not exist. Please check the job ID and try again."
+            )
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=msg,
