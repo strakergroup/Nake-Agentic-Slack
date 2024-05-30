@@ -117,7 +117,8 @@ async def message_event(client, context, message):
             and f"<@{context['bot_user_id']}>" not in message["text"]
         ):
             # Do not auto-translate if the bot is mentioned (should default to normal response).
-            await auto_translate_message(client, context, message)
+            if await require_mt_tokens(context, len(message.get("text", ""))):
+                await auto_translate_message(client, context, message)
         else:
             # Do nothing if the Slack app is not mentioned in group chats and
             # auto-translate is disabled.

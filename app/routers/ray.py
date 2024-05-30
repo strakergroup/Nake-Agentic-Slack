@@ -97,7 +97,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 token_count = event_data.tokens
                 target_lang = event_data.target_language
                 token_consumption_message = _(
-                    "You have used {token_count} MT characters."
+                    "You have used {token_count} AI characters."
                 )
                 await app.client.files_upload_v2(
                     channel=auth.slack_user.channel_id,

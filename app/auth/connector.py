@@ -3,6 +3,7 @@ other services, e.g. Slack, RAY apps.
 """
 
 import asyncio
+import math
 import time
 import json
 import hashlib
@@ -1295,6 +1296,8 @@ async def spend_mt_tokens(
         user.user_id, user.team_id, user.enterprise_id
     )
     description = "Machine Translation"
+    mt_scale = 0.1
+    amount = math.ceil(credits * mt_scale)
     with engines["sitemanager"].begin() as conn:
         sql = text(
             """
@@ -1307,8 +1310,8 @@ async def spend_mt_tokens(
             uuid=str(uuid.uuid4()),
             client_uuid=ray_connection.client.id,
             group_uuid=ray_connection.client.user_group_id,
-            amount=0 - credits,
-            credit_type="mt_token",
+            amount=0 - amount,
+            credit_type="ai_token",
             transaction_type="spend",
             description=description,
         )

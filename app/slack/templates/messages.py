@@ -119,6 +119,7 @@ class LoginMessage(SlackMessage):
     NEW_JOB = "new_job"
     INSIGHTS = "insights"
     CANCEL_JOB = "cancel_job"
+
     def __init__(
         self,
         user_id: str,
@@ -3002,44 +3003,42 @@ class InvalidMTResultMessage(TextMessage):
 
 
 class CancelJobMessage(SlackMessage):
-        """Message with a button to open the cancel job modal."""
+    """Message with a button to open the cancel job modal."""
 
-        def __init__(self, channel_id: str, timestamp: str) -> None:
-            super().__init__(
-                "Cancel a translation job",
-                [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": _(
-                                "Click the *Cancel translation job* button below"
+    def __init__(self, channel_id: str, timestamp: str) -> None:
+        super().__init__(
+            "Cancel a translation job",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _("Click the *Cancel translation job* button below"),
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Cancel translation job"),
+                                "emoji": True,
+                            },
+                            "action_id": "cancel_job",
+                            "style": "primary",
+                            "value": json.dumps(
+                                {
+                                    "channel_id": channel_id,
+                                    "ts": timestamp,
+                                }
                             ),
-                        },
-                    },
-                    {
-                        "type": "actions",
-                        "elements": [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Cancel translation job"),
-                                    "emoji": True,
-                                },
-                                "action_id": "cancel_job",
-                                "style": "primary",
-                                "value": json.dumps(
-                                    {
-                                        "channel_id": channel_id,
-                                        "ts": timestamp,
-                                    }
-                                ),
-                            }
-                        ],
-                    },
-                ],
-            )
+                        }
+                    ],
+                },
+            ],
+        )
 
 
 class CancelTJMessage(SlackMessage):
@@ -3048,7 +3047,7 @@ class CancelTJMessage(SlackMessage):
     """
 
     def __init__(self, channel_id: str, jobdetail) -> None:
-        target_labels = [target.label for target in jobdetail['targetlang']]
+        target_labels = [target.label for target in jobdetail["targetlang"]]
         super().__init__(
             "Cancel a translation job",
             [
@@ -3057,35 +3056,32 @@ class CancelTJMessage(SlackMessage):
                     "text": {
                         "type": "plain_text",
                         "text": f" Cancel  {jobdetail['job_id']}",
-                    }
+                    },
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {"type": "mrkdwn", "text": f"*Status:*\n {jobdetail['status']}"}
+                    ],
                 },
                 {
                     "type": "section",
                     "fields": [
                         {
                             "type": "mrkdwn",
-                            "text": f"*Status:*\n {jobdetail['status']}"
-                        }
-                    ]
-                },
-                {
-                    "type": "section",
-                    "fields": [
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Source:*\n {jobdetail['sourcelang'].label}"
+                            "text": f"*Source:*\n {jobdetail['sourcelang'].label}",
                         },
                         {
                             "type": "mrkdwn",
-                            "text": f"*Target:*\n {', '.join(target_labels)}"
-                        }
-                    ]
+                            "text": f"*Target:*\n {', '.join(target_labels)}",
+                        },
+                    ],
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Please confirm to cancel this job."
+                        "text": "Please confirm to cancel this job.",
                     },
                     "accessory": {
                         "type": "button",
@@ -3094,10 +3090,10 @@ class CancelTJMessage(SlackMessage):
                             "text": "Cancel Job",
                         },
                         "value": json.dumps(
-                            {"job_id": jobdetail['job_id'], "job_action": "list"}
+                            {"job_id": jobdetail["job_id"], "job_action": "list"}
                         ),
                         "action_id": "cancel_job",
-                    }
+                    },
                 },
             ],
         )
@@ -3129,7 +3125,7 @@ class RequiresMtTokenMessage(SlackMessage):
 
     def __init__(self, tokens: int, required_tokens: int) -> None:
         title = _(
-            "❗❗You have *{tokens} MT characters* on your account. This job requires *{required_tokens} MT characters*. Please purchase a MT bundle.❗❗"
+            "❗❗You have *{tokens} AI tokens* on your account. This job requires *{required_tokens} AI tokens*. Please purchase a tokens.❗❗"
         )
         if tokens <= 0 and required_tokens == 1:
             title = _(
@@ -3158,11 +3154,11 @@ class RequiresMtTokenMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("Purchase MT Bundle"),
+                                "text": _("Purchase AIs Tokens"),
                                 "emoji": False,
                             },
                             "action_id": "button-action",  # Add this line
-                            "url": f"{domains.languagecloud}/checkout/characters",
+                            "url": f"{domains.languagecloud}/checkout/tokens",
                         },
                     ],
                 },
@@ -3174,7 +3170,7 @@ class RequiresMtTokenAdminMessage(SlackMessage):
 
     def __init__(self, tokens: int, required_tokens: int, admin=False) -> None:
         title = _(
-            "❗❗You have *{tokens} MT characters* on your group account. This job requires *{required_tokens} MT characters*. Please contact your group admin to purchase more❗❗"
+            "❗❗You have *{tokens} AI tokens* on your group account. This job requires *{required_tokens} AI tokens*. Please contact your group admin to purchase more❗❗"
         )
         if tokens <= 0 and required_tokens == 1:
             title = _(
