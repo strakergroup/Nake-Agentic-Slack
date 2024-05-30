@@ -79,7 +79,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 task_result = await get_task(task_uuid, auth.slack_user.ray_client_id)
                 token_count = task_result.get("tokens")
                 token_consumption_message = _(
-                    "You have used {token_count} MT characters."
+                    "You have used {token_count} AI characters."
                 )
                 try:
                     with open(
