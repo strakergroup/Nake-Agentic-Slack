@@ -1290,7 +1290,7 @@ async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceRespo
 async def spend_mt_tokens(
     user: SlackUser,
     credits: int,
-) -> bool:
+) -> int:
     """Insert into the database obj_m_member_credit_transactions to record transaction"""
     ray_connection = await get_ray_connection(
         user.user_id, user.team_id, user.enterprise_id
@@ -1316,6 +1316,8 @@ async def spend_mt_tokens(
             description=description,
         )
         conn.execute(sql)
+
+    return amount
 
 
 async def get_client_type(client_id: str, group_id: str) -> str:

@@ -95,6 +95,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 event_data = MtSuccessResponseSchema.model_validate(event.data)
                 output_file = download_from_file_server(event_data.file_id)
                 token_count = event_data.tokens
+                token_count = await spend_mt_tokens(auth.slack_user, token_count)
                 target_lang = event_data.target_language
                 token_consumption_message = _(
                     "You have used {token_count} AI characters."
@@ -105,7 +106,6 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     initial_comment=token_consumption_message,
                     title=target_lang + "_" + output_file.get("file_name"),
                 )
-                await spend_mt_tokens(auth.slack_user, token_count)
         elif isinstance(message, JobTranscribedEventMessage):
             if not event.data.get("error"):
                 await post_notification_ephemeral(
