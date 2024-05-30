@@ -78,9 +78,8 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 task_uuid = output_file.split("/")[0]
                 task_result = await get_task(task_uuid, auth.slack_user.ray_client_id)
                 token_count = task_result.get("tokens")
-                token_consumption_message = _(
-                    "You have used {token_count} AI characters."
-                )
+                token_count = await spend_mt_tokens(auth.slack_user, token_count)
+                token_consumption_message = _("You have used {token_count} AI tokens.")
                 try:
                     with open(
                         f"{config.path_wb_shared}wb-task/{output_file}",
@@ -104,8 +103,6 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                             "{token_consumption_message} You can download the {target_lang} AI translation here {domains.slack_ray_translator}/download/{output_file}"
                         ),
                     )
-
-                await spend_mt_tokens(auth.slack_user, token_count)
             else:
                 if not event.data.get("error"):
                     await post_notification_ephemeral(
