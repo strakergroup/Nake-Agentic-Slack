@@ -1331,3 +1331,4 @@ async def get_client_type(client_id: str, group_id: str) -> str:
         if not row:
             return None
     return row.client_type
+
