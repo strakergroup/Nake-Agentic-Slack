@@ -583,8 +583,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
     team_id = channel_info.get("team_id")
     token = client.token
     with engines["ray_integration_readonly"].connect() as conn:
-        token = get_bot_token(conn, team_id, context.get("enterprise_id"))
-        client.token = token
+        token = get_bot_token(conn, team_id)
         if token:
             client.token = token
     # TODO Could have no channel_id if triggered from home tab.
@@ -1039,8 +1038,9 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
     try:
         team_id = view["private_metadata"]
         with engines["ray_integration_readonly"].connect() as conn:
-            token = get_bot_token(conn, team_id, context.get("enterprise_id"))
-            client.token = token
+            token = get_bot_token(conn, team_id)
+            if token:
+                client.token = token
         form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
         for c in form.channels:
             await client.conversations_info(channel=c)
