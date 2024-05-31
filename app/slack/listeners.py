@@ -299,9 +299,6 @@ async def download_transcribed_file(ack, action, context, client):
     if await require_ray_client(context):
         task_uuid = action["value"]
         task_result = await get_task(task_uuid, context["ray"].client.id)
-        print(task_result)
-        print(task_uuid)
-        print(task_result["file_id"])
         file_id = task_result["file_id"]
         file = download_from_file_server(file_id)
         await client.files_upload_v2(
@@ -581,10 +578,8 @@ async def ray_command(ack, respond, command, context, client):
 async def show_auto_translate_settings(ack, context, payload, body, client):
     await ack()
     channel_info = json.loads(payload["value"])
-    print(channel_info)
     channel_id = channel_info.get("channel_id")
     team_id = channel_info.get("team_id")
-    print(team_id)
     token = client.token
     with engines["ray_integration_readonly"].connect() as conn:
         token = get_bot_token(conn, team_id, context.get("enterprise_id"))
@@ -1044,9 +1039,7 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
         team_id = view["private_metadata"]
         with engines["ray_integration_readonly"].connect() as conn:
             token = get_bot_token(conn, team_id, context.get("enterprise_id"))
-            print(client.token)
             client.token = token
-            print(token)
         form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
         for c in form.channels:
             await client.conversations_info(channel=c)
@@ -1151,7 +1144,6 @@ async def file_options(ack, payload, client):
     files = await get_file_options_cached(channel_id)
     if not files:
         files = await task
-    print(files)
     if filter := payload.get("value"):
         files = [
             f for f in files if filter.lower().strip() in f["text"]["text"].lower()
