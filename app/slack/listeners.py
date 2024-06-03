@@ -116,9 +116,9 @@ async def message_event(client, context, message):
         ):
             credits = len(message.get("text", ""))
             # Do not auto-translate if the bot is mentioned (should default to normal response).
-            if await require_mt_tokens(context, credits):
-                await auto_translate_message(client, context, message)
-                await spend_mt_tokens(credits=credits, ray_connection=context["ray"])
+            # if await require_mt_tokens(context, credits):
+            await auto_translate_message(client, context, message)
+            # await spend_mt_tokens(credits=credits, ray_connection=context["ray"])
         else:
             # Do nothing if the Slack app is not mentioned in group chats and
             # auto-translate is disabled.
