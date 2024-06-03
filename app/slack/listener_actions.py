@@ -296,6 +296,7 @@ async def auto_translate_message(
     client: AsyncWebClient,
     context: AsyncBoltContext,
     message: dict[str, Any],
+    is_edit: bool = False,
 ):
     text: str | None = message.get("text")
     ts: str = message["ts"]
@@ -337,19 +338,41 @@ async def auto_translate_message(
     )
     try:
         if settings.display_format == "thread":
-            await client.chat_postMessage(
-                channel=context.channel_id,
-                text=msg.text,
-                blocks=msg.blocks,
-                thread_ts=ts,
-            )
+            if is_edit:
+                latest_ts = message.get("latest_reply")
+                await client.chat_update(
+                    channel=context.channel_id,
+                    text=msg.text,
+                    blocks=msg.blocks,
+                    ts=latest_ts,
+                )
+            else:
+                await client.chat_postMessage(
+                    channel=context.channel_id,
+                    text=msg.text,
+                    blocks=msg.blocks,
+                    thread_ts=ts,
+                )
         elif settings.display_format == "message":
-            await client.chat_postMessage(
-                channel=context.channel_id,
-                text=msg.text,
-                blocks=msg.blocks,
-                thread_ts=thread_ts,
-            )
+            if is_edit:
+                timestamp = await get_mt_ts_cached(ts)
+                await client.chat_update(
+                    channel=context.channel_id,
+                    text=msg.text,
+                    blocks=msg.blocks,
+                    ts=timestamp,
+                )
+            else:
+                request = await client.chat_postMessage(
+                    channel=context.channel_id,
+                    text=msg.text,
+                    blocks=msg.blocks,
+                    thread_ts=thread_ts,
+                )
+                # save timestamp to cache
+                asyncio.create_task(
+                    set_mt_ts_edit(client, send_ts=ts, reply_ts=request['ts'], count=100)
+                )
         else:
             notify_message("Slack app: Invalid display format")
             # Disable editing users' messages for now.
@@ -1476,14 +1499,6 @@ async def get_mt_translation(
                             blocks=msg.blocks,
                             thread_ts=thread_ts
                         )
-                        mt_ts = []
-                        cacheBlock = {}
-                        cacheBlock["mtSendTs"] = thread_ts
-                        cacheBlock["mtGetTs"] = request['ts']
-                        mt_ts.append(cacheBlock)
-                        asyncio.create_task(
-                            set_mt_ts_edit(channel_id=channel_id, client=client, thread_ts_dict=mt_ts, count=100)
-                        )
                     except Exception as e:
                         print(e)
         else:
@@ -1644,8 +1659,6 @@ async def resendMT(
         # TODO: read user lang to default target
         mt_tl = message_match.group(3) or "en"
         mt_text = message_match.group(4)
-        # print("met-w--", )
-
         try:
             await get_mt_translation(
                 client,

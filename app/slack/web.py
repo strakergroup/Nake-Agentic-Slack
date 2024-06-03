@@ -165,8 +165,8 @@ async def download_files(client: AsyncWebClient, files: Iterable[str]) -> list[s
 
 
 async def set_mt_ts_edit(
-    client: AsyncWebClient, channel_id: str,  thread_ts_dict: dict, count: int = 100,
-) -> list[dict[str, Any]]:
+    client: AsyncWebClient, send_ts: str,  reply_ts: str, count: int = 100,
+):
     """A helper method to get the thread_ts from the bot message.
 
     Args:
@@ -177,18 +177,18 @@ async def set_mt_ts_edit(
     Returns:
         list[dict[str, Any]]: _description_
     """
-    key = f"slack-ray-translator:mt_ts:{channel_id}"
+    key = f"slack-ray-translator:mt_ts:{send_ts}"
     try:
-        await redis_conn.set(key, json.dumps(thread_ts_dict), ex=3600)
+        await redis_conn.set(key, json.dumps(reply_ts), ex=3600)
     except Exception as e:
         notify_exception(e)
-    return thread_ts_dict
+    return reply_ts
 
 
-async def get_mt_ts_cached(channel_id: str) -> list[dict[str, Any]]:
-    key = f"slack-ray-translator:mt_ts:{channel_id}"
+async def get_mt_ts_cached(send_ts: str) -> str:
+    key = f"slack-ray-translator:mt_ts:{send_ts}"
     cached = False
-    mt_timestamp = []
+    mt_timestamp = ''
     try:
         cached = await redis_conn.get(key)
     except Exception as e:
