@@ -1286,13 +1286,15 @@ async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceRespo
 
 
 async def spend_mt_tokens(
-    user: SlackUser,
     credits: int,
+    user: SlackUser = None,
+    ray_connection: RayConnection = None,
 ) -> int:
     """Insert into the database obj_m_member_credit_transactions to record transaction"""
-    ray_connection = await get_ray_connection(
-        user.user_id, user.team_id, user.enterprise_id
-    )
+    if ray_connection is None:
+        ray_connection = await get_ray_connection(
+            user.user_id, user.team_id, user.enterprise_id
+        )
     description = "Machine Translation"
     mt_scale = 0.1
     amount = math.ceil(credits * mt_scale)

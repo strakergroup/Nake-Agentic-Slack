@@ -52,7 +52,7 @@ from .templates.views import (
     cancel_job_modal,
 )
 from .web import files_list_simple, download_files
-from ..auth.connector import RayClient, approve_pending_groups
+from ..auth.connector import RayClient, approve_pending_groups, spend_mt_tokens
 from ..config import config, domains, Environment
 from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
@@ -145,6 +145,7 @@ async def respond_to_message(
                 sentence=mt_text,
                 thread_ts=thread_ts,
             )
+            await spend_mt_tokens(credits=len(mt_text), ray_connection=context["ray"])
         return
 
     response = watson_message(message["text"], context.get("user_id"))

@@ -82,6 +82,7 @@ from ..auth.connector import (
     disconnect_ray_super_group_and_users,
     connect_ray_account_sso,
     get_ray_connection,
+    spend_mt_tokens,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
@@ -113,9 +114,11 @@ async def message_event(client, context, message):
             message.get("text")
             and f"<@{context['bot_user_id']}>" not in message["text"]
         ):
+            credits = len(message.get("text", ""))
             # Do not auto-translate if the bot is mentioned (should default to normal response).
-            if await require_mt_tokens(context, len(message.get("text", ""))):
+            if await require_mt_tokens(context, credits):
                 await auto_translate_message(client, context, message)
+                await spend_mt_tokens(credits=credits, ray_connection=context["ray"])
         else:
             # Do nothing if the Slack app is not mentioned in group chats and
             # auto-translate is disabled.
