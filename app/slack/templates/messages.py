@@ -347,7 +347,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🗂️ Click 'New translation job' to select documents uploaded through the message box below.\n Note: This will send the selected document off for translation."
+                            "🗂️ Click 'New translation job' to select documents uploaded through the message box below.\n Note: This will create a new translation job."
                         ),
                     },
                     "accessory": {
@@ -492,7 +492,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🗂️ Click 'New translation job' to select documents uploaded through the message box below.\n Note: This will send the selected document off for translation."
+                            "🗂️ Click 'New translation job' to select documents uploaded through the message box below.\n Note: This will create a new translation job."
                         ),
                     },
                     "accessory": {
@@ -1848,7 +1848,7 @@ class HelpMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🗂️ Click 'New translation job' to select documents uploaded through the message box below.\n Note: This will send the selected document off for translation."
+                            "🗂️ Click 'New translation job' to select documents uploaded through the message box below.\n Note: This will create a new translation job."
                         ),
                     },
                     "accessory": {
