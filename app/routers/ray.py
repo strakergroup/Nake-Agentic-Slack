@@ -5,11 +5,13 @@ from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
 
+from app.ray.utils import download_from_file_server
 from app.translate import _
 from app.wb_tasks.tasks import get_task
 
 from ..auth.connector import (
     SlackUser,
+    get_client_type,
     get_demo_link,
     spend_mt_tokens,
     validate_api_callback_signature,
@@ -20,6 +22,9 @@ from ..auth.connector import (
 from ..dependencies import RayEventAuth, RayEvent
 from ..slack import app
 from ..slack.templates.messages import (
+    DocMtMessage,
+    RequiresMtTokenAdminMessage,
+    RequiresMtTokenMessage,
     SuccessfulLoginMessage,
     ClientSignupEventMessage,
     ClientSignupEventAdminMessage,
@@ -28,7 +33,11 @@ from ..slack.templates.messages import (
     JobTranscribedEventMessage,
 )
 from ..ray.events.parse import get_ray_event_message
-from ..ray.events.models import ClientGroup
+from ..ray.events.models import (
+    ClientGroup,
+    MtErrorResponseSchema,
+    MtSuccessResponseSchema,
+)
 from ..ray.events.logging import post_notification, post_notification_ephemeral
 from dataclasses import replace
 from pathlib import Path
@@ -36,18 +45,6 @@ from ..config import config, domains
 
 
 router = APIRouter()
-
-
-# TODO: Secure this. timeout/ token based/ ratelimit
-@router.get("/download/{uuid}/{filename}")
-async def download_file(uuid: str, filename: str):
-    # Your code here
-    file_path = Path(config.path_wb_shared).joinpath("wb-task", uuid, filename)
-    return FileResponse(
-        file_path,
-        content_disposition_type="attachment",
-        media_type="application/x-subrip",
-    )
 
 
 @router.post("/ray/events")
@@ -71,57 +68,61 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
             await post_notification_ephemeral(
                 app.client, auth.slack_user.channel_id, event, auth.slack_user, message
             )
-        elif isinstance(message, JobTranscribedEventMessage):
-            if event.event == "ray:job:srt:translated":
-                output_file = event.data["result"]["output_file"]
+        elif isinstance(message, DocMtMessage):
+            try:
+                event_data = MtErrorResponseSchema.model_validate(event.data)
+                if event_data.error_type == "insufficient_balance":
+                    # Send message to user that they need to purchase tokens
+                    client_type = await get_client_type(
+                        auth.slack_user.ray_client_id,
+                        auth.slack_user.ray_user_group_id,
+                    )
+                    token_balance = event_data.error_data.get("balance")
+                    required = event_data.error_data.get("required")
+                    if client_type in ["Admin", "Owner"]:
+                        message = RequiresMtTokenMessage(token_balance, required)
+                    else:
+                        message = RequiresMtTokenAdminMessage(token_balance, required)
+                await post_notification_ephemeral(
+                    app.client,
+                    auth.slack_user.channel_id,
+                    event,
+                    auth.slack_user,
+                    message,
+                )
+            except ValidationError:
                 app.client.token = auth.slack_user.bot_token
-                task_uuid = output_file.split("/")[0]
-                task_result = await get_task(task_uuid, auth.slack_user.ray_client_id)
-                token_count = task_result.get("tokens")
+                event_data = MtSuccessResponseSchema.model_validate(event.data)
+                output_file = download_from_file_server(event_data.file_id)
+                token_count = event_data.tokens
                 token_count = await spend_mt_tokens(
                     user=auth.slack_user, credits=token_count
                 )
+                target_lang = event_data.target_language
                 token_consumption_message = _("You have used {token_count} AI tokens.")
-                try:
-                    with open(
-                        f"{config.path_wb_shared}wb-task/{output_file}",
-                        "rb",
-                    ) as file_content:
-                        await app.client.files_upload_v2(
-                            channel=auth.slack_user.channel_id,
-                            file=file_content,
-                            initial_comment=token_consumption_message,
-                            title=os.path.basename(output_file),
-                        )
-                except Exception as e:
-                    # TODO: clean this up
-                    # send link to file when client:write scope does not exist
-                    # extract the final _Targetlang from the output_file filename
-                    target_lang = output_file.split("_")[-1]
-                    await app.client.chat_postEphemeral(
-                        channel=auth.slack_user.channel_id,
-                        user=auth.slack_user.user_id,
-                        text=_(
-                            "{token_consumption_message} You can download the {target_lang} AI translation here {domains.slack_ray_translator}/download/{output_file}"
-                        ),
-                    )
+                await app.client.files_upload_v2(
+                    channel=auth.slack_user.channel_id,
+                    file=output_file.get("file"),
+                    initial_comment=token_consumption_message,
+                    title=target_lang + "_" + output_file.get("file_name"),
+                )
+        elif isinstance(message, JobTranscribedEventMessage):
+            if not event.data.get("error"):
+                await post_notification_ephemeral(
+                    app.client,
+                    auth.slack_user.channel_id,
+                    event,
+                    auth.slack_user,
+                    message,
+                )
             else:
-                if not event.data.get("error"):
-                    await post_notification_ephemeral(
-                        app.client,
-                        auth.slack_user.channel_id,
-                        event,
-                        auth.slack_user,
-                        message,
-                    )
-                else:
-                    await app.client.chat_postEphemeral(
-                        channel=auth.slack_user.channel_id,
-                        user=auth.slack_user.user_id,
-                        text=_(
-                            "This video cannot be sent for transcription as it doesn't have any sound"
-                        ),
-                    )
+                await app.client.chat_postEphemeral(
+                    channel=auth.slack_user.channel_id,
+                    user=auth.slack_user.user_id,
+                    text=_(
+                        "This video cannot be sent for transcription as it doesn't have any sound"
+                    ),
+                )
         elif (
             # Send important messages regardless of subscribed status.
             isinstance(message, (ClientSignupEventMessage, ClientApprovedEventMessage))
@@ -159,6 +160,9 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 groups=groups,
             )
             await post_notification(app.client, event, user, admin_message)
+    elif not auth.slack_user:
+        notify_message("Slack user not found in events endpoint", severity="WARNING")
+        raise HTTPException(401)
 
     return {"message": "success", "data": {"event": event.event}}
 

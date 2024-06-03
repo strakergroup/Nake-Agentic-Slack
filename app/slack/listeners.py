@@ -4,9 +4,11 @@ commands, etc. from the Slack API.
 
 import asyncio
 import os
+from pathlib import Path
 import re
 import json
 from datetime import datetime, timedelta
+from ..database import engines
 
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
@@ -14,6 +16,7 @@ from slack_sdk.errors import SlackApiError
 from ray_sdk import RayAPIResponseError
 from buglog import notify_exception, notify_message
 
+from app.ray.utils import download_from_file_server, upload_to_file_server
 from app.translate import _
 from app.wb_tasks.tasks import get_task
 from ..redis import redis_conn
@@ -21,6 +24,7 @@ from ..redis import redis_conn
 from .app import app
 from .middleware import ray_connection, require_ray_client, require_mt_tokens
 from .listener_actions import (
+    document_machine_translate,
     respond_to_message,
     auto_translate_message,
     get_groups,
@@ -35,7 +39,6 @@ from .listener_actions import (
     post_batch_list,
     post_file_list,
     cancel_job_process,
-    srt_translate,
 )
 from .logging import slack_log_decorator
 from .templates.models import (
@@ -46,6 +49,7 @@ from .templates.models import (
     AutoTranslationSettingsForm,
 )
 from .templates.messages import (
+    DocumentMTJobMessage,
     LoginMessage,
     LogoutMessage,
     OnboardingMessage,
@@ -73,7 +77,7 @@ from .templates.views import (
     sso_form_modal,
     cancel_job_modal,
 )
-from .web import files_list_simple, get_bot_accessible_files
+from .web import download_file, files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, get_file_options_cached
 from .utils import is_channel_im
 from ..auth.connector import (
@@ -81,6 +85,7 @@ from ..auth.connector import (
     disconnect_ray_account,
     disconnect_ray_super_group_and_users,
     connect_ray_account_sso,
+    get_bot_token,
     get_ray_connection,
     spend_mt_tokens,
 )
@@ -236,9 +241,9 @@ async def new_job_shortcut(ack, shortcut, context, client):
 async def show_srt_translate_form(ack, context, action, body, client):
     await ack()
     if await require_ray_client(context):
-        output_file = action["value"]
+        task_uuid = action["value"]
         # SrtTranslateMessage normal message no modal just message
-        msg = SrtTranslateMessage(output_file)
+        msg = SrtTranslateMessage(task_uuid)
         await client.chat_postMessage(
             channel=context["user_id"],
             text=msg.text,
@@ -246,48 +251,83 @@ async def show_srt_translate_form(ack, context, action, body, client):
         )
 
 
+# document_mt_job
+@app.action("document_mt_job", middleware=[ray_connection])
+@slack_log_decorator
+async def document_mt_job_action(ack, context, action, body, client):
+    await ack()
+    if await require_ray_client(context):
+        output_file = action["value"]
+        # Perform the necessary actions to document the MT job
+        msg = DocumentMTJobMessage(output_file)
+        # Add your code here
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=msg.text,
+            blocks=msg.blocks,
+        )
+
+
+@app.action("document_mt_submit", middleware=[ray_connection])
+@slack_log_decorator
+async def document_mt_submit_action(ack, action, context, body, say, client):
+    await ack()
+    if await require_ray_client(context):
+        slack_file_id = action["value"]
+        # get uuid from output_file
+        if await require_mt_tokens(context, 1):
+            # get selected language from redis keyed on output_file
+            # selected from get_auto_translate_language_options
+            selected_language = await redis_conn.get(f"output_file_{slack_file_id}")
+            if selected_language:
+                input_file = await download_file(
+                    client=client, file_id=slack_file_id, http=None
+                )
+                input_file_id = upload_to_file_server(input_file)
+                await document_machine_translate(
+                    client, context, input_file_id, selected_language
+                )
+                await say(
+                    _(
+                        "The file is being translated. You will be notified when it is ready."
+                    )
+                )
+            else:
+                await say(_("Please select a language to translate to."))
+
+
 @app.block_action("download_transcribed_file", middleware=[ray_connection])
 @slack_log_decorator
 async def download_transcribed_file(ack, action, context, client):
     await ack()
     if await require_ray_client(context):
-        output_file = action["value"]
-        try:
-            with open(
-                f"{config.path_wb_shared}wb-task/{output_file}",
-                "rb",
-            ) as file_content:
-                await client.files_upload_v2(
-                    channel=context["channel_id"],
-                    file=file_content,
-                    title=os.path.basename(output_file),
-                )
-        except Exception as e:
-            # send download link
-            await client.chat_postEphemeral(
-                channel=context["channel_id"],
-                user=context["user_id"],
-                text=_(
-                    "You can download the file here {domains.slack_ray_translator}/download/{output_file}"
-                ),
-            )
+        task_uuid = action["value"]
+        task_result = await get_task(task_uuid, context["ray"].client.id)
+        file_id = task_result["file_id"]
+        file = download_from_file_server(file_id)
+        await client.files_upload_v2(
+            channel=context["channel_id"],
+            file=file["file"],
+            title=file["file_name"],
+        )
 
 
 @app.action("srt_translate", middleware=[ray_connection])
 @slack_log_decorator
-async def srt_translate_action(ack, action, context, body, say):
+async def srt_translate_action(ack, action, context, body, say, client):
     await ack()
     if await require_ray_client(context):
-        output_file = action["value"]
+        task_uuid = action["value"]
         # get uuid from output_file
-        task_uuid = output_file.split("/")[0]
         task_result = await get_task(task_uuid, context["ray"].client.id)
         if await require_mt_tokens(context, task_result["tokens"]):
             # get selected language from redis keyed on output_file
             # selected from get_auto_translate_language_options
-            selected_language = await redis_conn.get(f"output_file_{output_file}")
+            selected_language = await redis_conn.get(f"output_file_{task_uuid}")
             if selected_language:
-                await srt_translate(context, output_file, selected_language)
+                await document_machine_translate(
+                    client, context, task_result["file_id"], selected_language
+                )
                 await say(
                     _(
                         "The file is being translated. You will be notified when it is ready."
@@ -461,6 +501,7 @@ async def ray_command(ack, respond, command, context, client):
                     [context.channel_id],
                     auto_translate_langs,
                     settings.display_format if settings else "thread",
+                    team_id=context.team_id,
                 ),
             )
 
@@ -540,7 +581,14 @@ async def ray_command(ack, respond, command, context, client):
 @slack_log_decorator
 async def show_auto_translate_settings(ack, context, payload, body, client):
     await ack()
-    channel_id = payload.get("value") or context.channel_id
+    channel_info = json.loads(payload["value"])
+    channel_id = channel_info.get("channel_id")
+    team_id = channel_info.get("team_id")
+    token = client.token
+    with engines["ray_integration_readonly"].connect() as conn:
+        token = get_bot_token(conn, team_id)
+        if token:
+            client.token = token
     # TODO Could have no channel_id if triggered from home tab.
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
         context, channel_id
@@ -562,6 +610,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
                         [channel_id] if channel_id else None,
                         auto_translate_langs,
                         settings.display_format if settings else "thread",
+                        team_id=team_id,
                     ),
                 )
             else:
@@ -586,6 +635,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
                 [channel_id] if channel_id else None,
                 auto_translate_langs,
                 settings.display_format if settings else "thread",
+                team_id=team_id,
             ),
         )
 
@@ -989,6 +1039,11 @@ async def handle_job_search(ack, view, context, client):
 @slack_log_decorator
 async def view_update_auto_translate_settings(ack, view, context, body, client):
     try:
+        team_id = view["private_metadata"]
+        with engines["ray_integration_readonly"].connect() as conn:
+            token = get_bot_token(conn, team_id)
+            if token:
+                client.token = token
         form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
         for c in form.channels:
             await client.conversations_info(channel=c)
@@ -1060,9 +1115,9 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
 async def language_mt_options_selected(ack, body):
     # redis store the selected options keyed by ouputn file
     await ack()
-    output_file = body["actions"][0]["block_id"]
+    file_id = body["actions"][0]["block_id"]
     selected_language = body["actions"][0]["selected_option"]["value"]
-    await redis_conn.set(f"output_file_{output_file}", selected_language)
+    await redis_conn.set(f"output_file_{file_id}", selected_language)
 
 
 @app.options("language_options")
@@ -1093,7 +1148,6 @@ async def file_options(ack, payload, client):
     files = await get_file_options_cached(channel_id)
     if not files:
         files = await task
-    print(files)
     if filter := payload.get("value"):
         files = [
             f for f in files if filter.lower().strip() in f["text"]["text"].lower()
