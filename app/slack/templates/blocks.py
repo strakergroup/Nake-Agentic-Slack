@@ -101,6 +101,7 @@ def home_auth_blocks(
         )
     else:
         msg[1]["elements"].insert(
+            0,
             {
                 "type": "button",
                 "text": {
@@ -112,7 +113,7 @@ def home_auth_blocks(
                     user_id, team_id, enterprise_id, channel_id or user_id
                 ),
                 "action_id": "login",
-            }
+            },
         ),
     return msg
 
