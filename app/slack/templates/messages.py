@@ -202,6 +202,7 @@ class LoginMessage(SlackMessage):
             t_id = "T02FDFCGK"
         if enterprise_id:
             if (enterprise_id == e_id) and ray_client is None:
+                msg[1]["elements"].pop()
                 msg[1]["elements"].insert(
                     0,
                     {
@@ -234,6 +235,7 @@ class LoginMessage(SlackMessage):
                     },
                 )
         elif team_id == t_id and ray_client is None:
+            msg[1]["elements"].pop()
             msg[1]["elements"].insert(
                 0,
                 {

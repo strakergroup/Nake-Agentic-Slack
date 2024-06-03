@@ -63,20 +63,7 @@ def home_auth_blocks(
         },
         {
             "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("Connect LanguageCloud account"),
-                    },
-                    "style": "primary",
-                    "url": get_language_cloud_connect_url(
-                        user_id, team_id, enterprise_id, channel_id or user_id
-                    ),
-                    "action_id": "login",
-                }
-            ],
+            "elements": [],
         },
     ]
     if config.environment == Environment.production:
@@ -112,6 +99,22 @@ def home_auth_blocks(
                 "action_id": "login_sso",
             },
         )
+    else:
+        msg[1]["elements"].insert(
+            0,
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": _("Connect LanguageCloud account"),
+                },
+                "style": "primary",
+                "url": get_language_cloud_connect_url(
+                    user_id, team_id, enterprise_id, channel_id or user_id
+                ),
+                "action_id": "login",
+            },
+        ),
     return msg
 
 
