@@ -416,9 +416,9 @@ def new_job_modal(
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": "For more support information, visit <https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Straker-Translate-functions|our website>."
+                        "text": "For more support information, visit <https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Straker-Translate-functions|our website>.",
                     }
-                ]
+                ],
             },
             {
                 "type": "input",
@@ -564,14 +564,6 @@ def new_job_modal(
                                 "emoji": False,
                             },
                             "value": "Translation + Edit",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Machine Translation"),
-                                "emoji": False,
-                            },
-                            "value": "Machine Translation",
                         },
                     ],
                     "initial_option": {
