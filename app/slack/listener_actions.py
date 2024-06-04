@@ -339,19 +339,23 @@ async def auto_translate_message(
     try:
         if settings.display_format == "thread":
             if is_edit:
-                latest_ts = message.get("latest_reply")
+                timestamp = await get_mt_ts_cached(ts)
                 await client.chat_update(
                     channel=context.channel_id,
                     text=msg.text,
                     blocks=msg.blocks,
-                    ts=latest_ts,
+                    ts=timestamp,
                 )
             else:
-                await client.chat_postMessage(
+                request = await client.chat_postMessage(
                     channel=context.channel_id,
                     text=msg.text,
                     blocks=msg.blocks,
                     thread_ts=ts,
+                )
+                # save timestamp to cache
+                asyncio.create_task(
+                    set_mt_ts_edit(client, send_ts=ts, reply_ts=request['ts'], count=100)
                 )
         elif settings.display_format == "message":
             if is_edit:
