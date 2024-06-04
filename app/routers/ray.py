@@ -99,11 +99,13 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 token_consumption_message = _(
                     "You have used {token_count} MT characters."
                 )
+                title = target_lang + "_" + output_file.get("file_name")
                 await app.client.files_upload_v2(
                     channel=auth.slack_user.channel_id,
                     file=output_file.get("file"),
                     initial_comment=token_consumption_message,
-                    title=target_lang + "_" + output_file.get("file_name"),
+                    title=title,
+                    filename=title,
                 )
                 await spend_mt_tokens(auth.slack_user, token_count)
         elif isinstance(message, JobTranscribedEventMessage):

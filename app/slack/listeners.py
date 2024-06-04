@@ -297,15 +297,13 @@ async def download_transcribed_file(ack, action, context, client):
     if await require_ray_client(context):
         task_uuid = action["value"]
         task_result = await get_task(task_uuid, context["ray"].client.id)
-        print(task_result)
-        print(task_uuid)
-        print(task_result["file_id"])
         file_id = task_result["file_id"]
         file = download_from_file_server(file_id)
         await client.files_upload_v2(
             channel=context["channel_id"],
             file=file["file"],
             title=file["file_name"],
+            filename=file["file_name"],
         )
 
 
