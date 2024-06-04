@@ -1577,7 +1577,7 @@ class JobListMessage(SlackMessage):
 class NewJobMessage(SlackMessage):
     """Message with a button to open the new job modal."""
 
-    def __init__(self, channel_id: str, timestamp: str) -> None:
+    def __init__(self, channel_id: str, timestamp: str, file_id: str = "") -> None:
         super().__init__(
             "Submit a new translation job",
             [
@@ -1592,24 +1592,43 @@ class NewJobMessage(SlackMessage):
                 },
                 {
                     "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("New translation job"),
-                                "emoji": True,
-                            },
-                            "action_id": "new_job",
-                            "style": "primary",
-                            "value": json.dumps(
+                    "elements": (
+                        [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("New translation job"),
+                                    "emoji": True,
+                                },
+                                "action_id": "new_job",
+                                "style": "primary",
+                                "value": json.dumps(
+                                    {
+                                        "channel_id": channel_id,
+                                        "ts": timestamp,
+                                    }
+                                ),
+                            }
+                        ]
+                        + (
+                            [
                                 {
-                                    "channel_id": channel_id,
-                                    "ts": timestamp,
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("Machine Translate"),
+                                        "emoji": True,
+                                    },
+                                    "action_id": "document_mt_job",
+                                    "style": "primary",
+                                    "value": file_id,
                                 }
-                            ),
-                        }
-                    ],
+                            ]
+                            if file_id
+                            else []
+                        )
+                    ),
                 },
             ],
         )
@@ -2834,6 +2853,53 @@ class MachineTranslationMessage(SlackMessage):
 class SrtTranslateMessage(SlackMessage):
     """Message to allow user to select language and submit for machine translation"""
 
+    def __init__(self, task_uuid: str) -> None:
+        title = _("Please select the target language for translation")
+        language_options = get_auto_translate_language_options()
+        # create message which contains the output_file of the submit button and contains a input element which is a multi select for language
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "input",
+                    "block_id": task_uuid,
+                    "label": {
+                        "type": "plain_text",
+                        "text": _("Select language"),
+                    },
+                    "element": {
+                        "type": "static_select",
+                        "placeholder": {
+                            "type": "plain_text",
+                            "text": _("Choose language"),
+                        },
+                        "options": language_options,
+                        "action_id": "language_mt_options",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Submit"),
+                                "emoji": False,
+                            },
+                            "action_id": "srt_translate",
+                            "style": "primary",
+                            "value": task_uuid,
+                        },
+                    ],
+                },
+            ],
+        )
+
+
+class DocumentMTJobMessage(SlackMessage):
+    """Message to allow user to select language and submit for machine translation"""
+
     def __init__(self, output_file: str) -> None:
         title = _("Please select the target language for translation")
         language_options = get_auto_translate_language_options()
@@ -2868,7 +2934,7 @@ class SrtTranslateMessage(SlackMessage):
                                 "text": _("Submit"),
                                 "emoji": False,
                             },
-                            "action_id": "srt_translate",
+                            "action_id": "document_mt_submit",
                             "style": "primary",
                             "value": output_file,
                         },
@@ -2880,7 +2946,7 @@ class SrtTranslateMessage(SlackMessage):
 
 class JobTranscribedEventMessage(SlackMessage):
 
-    def __init__(self, output_file: str) -> None:
+    def __init__(self, task_uuid: str) -> None:
         title = _("We have *transcribed* your file and SRT can be downloaded below.")
         # create message which contains the output_file
         super().__init__(
@@ -2905,8 +2971,7 @@ class JobTranscribedEventMessage(SlackMessage):
                             },
                             "action_id": "download_transcribed_file",
                             "style": "primary",
-                            "value": output_file,
-                            # "url": f"{domains.slack_ray_translator}/download/{output_file}",
+                            "value": task_uuid,
                         },
                         {
                             "type": "button",
@@ -2916,7 +2981,7 @@ class JobTranscribedEventMessage(SlackMessage):
                                 "emoji": False,
                             },
                             "action_id": "show_srt_translate_form",
-                            "value": output_file,
+                            "value": task_uuid,
                         },
                     ],
                 },
@@ -3066,6 +3131,15 @@ class RequiresMtTokenMessage(SlackMessage):
         title = _(
             "❗❗You have *{tokens} MT characters* on your account. This job requires *{required_tokens} MT characters*. Please purchase a MT bundle.❗❗"
         )
+        if tokens <= 0 and required_tokens == 1:
+            title = _(
+                "❗❗Your group account has no MT characters. Please purchase a MT bundle.❗❗"
+            )
+        elif tokens <= 0:
+            title = _(
+                "❗❗Your group account has no MT characters. This job requires *{required_tokens} MT characters*. Please purchase a MT bundle.❗❗"
+            )
+
         # create message which contains the output_file
         super().__init__(
             title,
@@ -3098,10 +3172,18 @@ class RequiresMtTokenMessage(SlackMessage):
 
 class RequiresMtTokenAdminMessage(SlackMessage):
 
-    def __init__(self, tokens: int, required_tokens: int) -> None:
+    def __init__(self, tokens: int, required_tokens: int, admin=False) -> None:
         title = _(
             "❗❗You have *{tokens} MT characters* on your group account. This job requires *{required_tokens} MT characters*. Please contact your group admin to purchase more❗❗"
         )
+        if tokens <= 0 and required_tokens == 1:
+            title = _(
+                "❗❗Your group account has no MT characters. Please contact your group admin to purchase more❗❗"
+            )
+        elif tokens <= 0:
+            title = _(
+                "❗❗Your group account has no MT characters. This job requires *{required_tokens} MT characters*. Please contact your group admin to purchase more❗❗"
+            )
         # create message which contains the output_file
         super().__init__(
             title,
@@ -3111,6 +3193,121 @@ class RequiresMtTokenAdminMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": title,
+                    },
+                },
+            ],
+        )
+
+
+class CancelJobMessage(SlackMessage):
+    """Message with a button to open the cancel job modal."""
+
+    def __init__(self, channel_id: str, timestamp: str) -> None:
+        super().__init__(
+            "Cancel a translation job",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _("Click the *Cancel translation job* button below"),
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Cancel translation job"),
+                                "emoji": True,
+                            },
+                            "action_id": "cancel_job",
+                            "style": "primary",
+                            "value": json.dumps(
+                                {
+                                    "channel_id": channel_id,
+                                    "ts": timestamp,
+                                }
+                            ),
+                        }
+                    ],
+                },
+            ],
+        )
+
+
+class DocMtMessage(SlackMessage):
+    """Message verify consumer event response"""
+
+    def __init__(self) -> None:
+        super().__init__(
+            _("Verify the translation"),
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _("Error occurred while translating your document"),
+                    },
+                }
+            ],
+        )
+
+
+class CancelTJMessage(SlackMessage):
+    """A summary of the client's jobs, number of jobs in each status. Has buttons
+    to display the individual job IDs for each status and timeframe.
+    """
+
+    def __init__(self, channel_id: str, jobdetail) -> None:
+        target_labels = [target.label for target in jobdetail["targetlang"]]
+        super().__init__(
+            "Cancel a translation job",
+            [
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": f" Cancel  {jobdetail['job_id']}",
+                    },
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {"type": "mrkdwn", "text": f"*Status:*\n {jobdetail['status']}"}
+                    ],
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Source:*\n {jobdetail['sourcelang'].label}",
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Target:*\n {', '.join(target_labels)}",
+                        },
+                    ],
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Please confirm to cancel this job.",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel Job",
+                        },
+                        "value": json.dumps(
+                            {"job_id": jobdetail["job_id"], "job_action": "list"}
+                        ),
+                        "action_id": "cancel_job",
                     },
                 },
             ],
