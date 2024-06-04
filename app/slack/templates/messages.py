@@ -119,7 +119,6 @@ class LoginMessage(SlackMessage):
     NEW_JOB = "new_job"
     INSIGHTS = "insights"
     CANCEL_JOB = "cancel_job"
-
     def __init__(
         self,
         user_id: str,

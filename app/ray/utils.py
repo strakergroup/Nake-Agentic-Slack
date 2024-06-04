@@ -2,7 +2,7 @@ from cgi import parse_header
 from typing import Literal
 import math
 import datetime
-from urllib.parse import urlencode
+from urllib.parse import urlencode, unquote
 
 from babel.numbers import format_currency as babel_format_currency
 import requests
@@ -192,6 +192,20 @@ def is_min_langugagecloud_plan(
     # return False
 
 
+def get_filename_from_header(header):
+    """
+    Extract filename from content-disposition header
+    """
+    value, params = parse_header(header)
+    filename = params.get("filename*")
+    if filename:
+        encoding, _, filename = filename.split("'", 2)
+        filename = unquote(filename, encoding=encoding)
+    else:
+        filename = params.get("filename")
+    return filename
+
+
 def download_from_file_server(file_id: str):
     """Downloads a file from the file server."""
 
@@ -203,9 +217,9 @@ def download_from_file_server(file_id: str):
     content_disposition = response.headers.get("Content-Disposition")
 
     # Parse the header to get the filename
-    value, params = parse_header(content_disposition)
+    filename = get_filename_from_header(content_disposition)
     file_result = {
-        "file_name": params.get("filename"),
+        "file_name": filename,
         "file": BytesIO(response.content),
     }
     return file_result

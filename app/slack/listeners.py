@@ -309,6 +309,7 @@ async def download_transcribed_file(ack, action, context, client):
             channel=context["channel_id"],
             file=file["file"],
             title=file["file_name"],
+            filename=file["file_name"],
         )
 
 

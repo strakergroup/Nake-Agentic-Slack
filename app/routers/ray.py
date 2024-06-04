@@ -98,13 +98,15 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 token_count = await spend_mt_tokens(
                     user=auth.slack_user, credits=token_count
                 )
+                title = target_lang + "_" + output_file.get("file_name")
                 target_lang = event_data.target_language
                 token_consumption_message = _("You have used {token_count} AI tokens.")
                 await app.client.files_upload_v2(
                     channel=auth.slack_user.channel_id,
                     file=output_file.get("file"),
                     initial_comment=token_consumption_message,
-                    title=target_lang + "_" + output_file.get("file_name"),
+                    title=title,
+                    filename=title,
                 )
         elif isinstance(message, JobTranscribedEventMessage):
             if not event.data.get("error"):
