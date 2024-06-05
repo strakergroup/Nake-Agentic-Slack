@@ -3126,15 +3126,13 @@ class RequiresMtTokenMessage(SlackMessage):
 
     def __init__(self, tokens: int, required_tokens: int) -> None:
         title = _(
-            "❗❗You have *{tokens} AI tokens* on your account. This job requires *{required_tokens} AI tokens*. Please purchase a tokens.❗❗"
+            "You have *{tokens} AI tokens* on your account. This job requires *{required_tokens} AI tokens*. Please purchase tokens."
         )
         if tokens <= 0 and required_tokens == 1:
-            title = _(
-                "❗❗Your group account has no MT characters. Please purchase a MT bundle.❗❗"
-            )
+            title = _("Your group account has no AI tokens. Please purchase tokens.")
         elif tokens <= 0:
             title = _(
-                "❗❗Your group account has no MT characters. This job requires *{required_tokens} MT characters*. Please purchase a MT bundle.❗❗"
+                "Your group account has no AI tokens. This job requires *{required_tokens} AI tokens*. Please purchase tokens."
             )
 
         # create message which contains the output_file
@@ -3155,7 +3153,7 @@ class RequiresMtTokenMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("Purchase AIs Tokens"),
+                                "text": _("Purchase AI Tokens"),
                                 "emoji": False,
                             },
                             "action_id": "button-action",  # Add this line
@@ -3169,17 +3167,15 @@ class RequiresMtTokenMessage(SlackMessage):
 
 class RequiresMtTokenAdminMessage(SlackMessage):
 
-    def __init__(self, tokens: int, required_tokens: int, admin=False) -> None:
+    def __init__(self, tokens: int, required_tokens: int) -> None:
         title = _(
-            "❗❗You have *{tokens} AI tokens* on your group account. This job requires *{required_tokens} AI tokens*. Please contact your group admin to purchase more❗❗"
+            "You have *{tokens} AI tokens* on your group account. This job requires *{required_tokens} AI tokens*. Please contact your group admin to purchase more"
         )
         if tokens <= 0 and required_tokens == 1:
-            title = _(
-                "❗❗Your group account has no MT characters. Please contact your group admin to purchase more❗❗"
-            )
+            title = _("Your group has no AI Tokens. Please purchase AI Tokens")
         elif tokens <= 0:
             title = _(
-                "❗❗Your group account has no MT characters. This job requires *{required_tokens} MT characters*. Please contact your group admin to purchase more❗❗"
+                "Your group has no AI Tokens. This job requires *{required_tokens} AI tokens*. Please contact your group admin to purchase more"
             )
         # create message which contains the output_file
         super().__init__(
