@@ -62,6 +62,7 @@ from ..ray.settings import (
 )
 from ..ray.utils import is_min_langugagecloud_plan
 from ..mt.google import get_machine_translations, log_google_api_usage
+from ..mt.microsoft import get_microsoft_machine_translations
 from ..watson import watson_message
 from .select_options import get_file_options_cached
 
@@ -124,7 +125,7 @@ async def respond_to_message(
             return
     # process mt
     message_match = re.search(
-        r"mt:?\s+((\w+\s+)?to\s+([\w-]+):?\s+)?(.*)",
+        r"mt:?\s+(([\w-]+\s+)?to\s+([\w-]+):?\s+)?(.*)",
         message["text"],
         re.I,
     )
@@ -1446,13 +1447,35 @@ async def get_mt_translation(
     channel_id = context.channel_id or context.user_id
 
     try:
-        response = await RayService.get_service(ray_client).get_machine_translation(
-            target_lang, source_lang, sentence
-        )
-        mt_data = response.data
+        hyphenated_langs = await hyphen_exists_in_langs([target_lang])
+        if(hyphenated_langs):
+            unformatted_text = escape_slack_emoji(sentence)
+            source_lang, translations = await get_microsoft_machine_translations(
+                unformatted_text, target_lang
+                )
+            translations.pop(source_lang, None)
+            formatted_text = unescape_slack_emoji(translations[target_lang], sentence);
+            response = {
+                'data' : {
+                    'source_lang': source_lang,
+                    'target_lang': target_lang,
+                    'text': formatted_text
+                }
+             }
+        else:
+             print("hyphen does not exists")
+             response = await RayService.get_service(ray_client).get_machine_translation(
+                target_lang, source_lang, sentence
+             )   
+        
+        if(not hyphenated_langs):
+            mt_data = response.data
+        else:
+            mt_data = response['data']
+        print("mt_data:", mt_data)
         if mt_data is not None:
             msg = MachineTranslationMessage(
-                mt_data["target_lang"], mt_data["source_lang"], mt_data["text"]
+                mt_data["target_lang"].replace('-', ''), mt_data["source_lang"], mt_data["text"]
             )
 
             if context.response_url:
@@ -1477,7 +1500,8 @@ async def get_mt_translation(
     except Exception as e:
         notify_exception(e, "Failed to get machine translation from language cloud API")
     finally:
-        if "response" in locals():
+        # todo need to add logging
+        if "response" in locals() and not await hyphen_exists_in_langs([target_lang]):
             raw_response = response.response
             try:
                 response_data = raw_response.json()
@@ -1492,6 +1516,12 @@ async def get_mt_translation(
                 version="v3",
             )
 
+async def hyphen_exists_in_langs(target_langs):
+    for lang in target_langs:
+        print("lang:",lang)
+        if '-' in lang:
+            return True
+    return False
 
 async def cancel_job_process(
     client: AsyncWebClient,
