@@ -357,7 +357,7 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 " + _("Cancel your job"),
+                        "text": _("🔴 Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -485,7 +485,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 " + _("Cancel your job"),
+                        "text": _("🔴 Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -1663,7 +1663,7 @@ class JobCreationMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 " + _("Cancel your job"),
+                        "text": _("🔴 Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -1859,7 +1859,7 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 " + _("Cancel your job"),
+                        "text": _("🔴 Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
