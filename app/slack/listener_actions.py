@@ -62,7 +62,7 @@ from ..ray.settings import (
 )
 from ..ray.utils import is_min_langugagecloud_plan
 from ..mt.google import get_machine_translations, log_google_api_usage
-from ..mt.microsoft import get_microsoft_machine_translations
+from ..mt.microsoft import get_microsoft_machine_translations, log_microsoft_api_usage
 from ..watson import watson_message
 from .select_options import get_file_options_cached
 
@@ -1463,7 +1463,6 @@ async def get_mt_translation(
                 }
              }
         else:
-             print("hyphen does not exists")
              response = await RayService.get_service(ray_client).get_machine_translation(
                 target_lang, source_lang, sentence
              )   
@@ -1472,7 +1471,6 @@ async def get_mt_translation(
             mt_data = response.data
         else:
             mt_data = response['data']
-        print("mt_data:", mt_data)
         if mt_data is not None:
             msg = MachineTranslationMessage(
                 mt_data["target_lang"].replace('-', ''), mt_data["source_lang"], mt_data["text"]
@@ -1501,7 +1499,7 @@ async def get_mt_translation(
         notify_exception(e, "Failed to get machine translation from language cloud API")
     finally:
         # todo need to add logging
-        if "response" in locals() and not await hyphen_exists_in_langs([target_lang]):
+        if "response" in locals() and not hyphenated_langs:
             raw_response = response.response
             try:
                 response_data = raw_response.json()
@@ -1515,10 +1513,20 @@ async def get_mt_translation(
                 headers=dict(raw_response.headers.items()),
                 version="v3",
             )
+        else:
+            ray_connection = context.get("ray")
+            ray_client = ray_connection.client if ray_connection else None
+            asyncio.create_task(
+                log_microsoft_api_usage(
+                    ray_client.id if ray_client else context.user_id,
+                    unformatted_text,
+                    source_lang,
+                    translations,
+                )
+            )
 
 async def hyphen_exists_in_langs(target_langs):
     for lang in target_langs:
-        print("lang:",lang)
         if '-' in lang:
             return True
     return False

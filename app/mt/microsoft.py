@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from buglog import notify_exception
 from ..auth.connector import RayClient
 from ..config import config
-from ..models import GoogleApiLog
+from ..models import MicrosoftApiLog
 from ..database import engines
 
 
@@ -36,7 +36,6 @@ def get_credentials_for_access_token():
 
 def get_access_token(refresh=False):
     cache_key = "access-token"
-    print('cache:',cache)
     creds = get_credentials_for_access_token()
     if not refresh and cache_key in cache:
         return cache[cache_key]
@@ -76,10 +75,8 @@ async def get_microsoft_machine_translations(
     https://docs.microsoft.com/en-us/azure/cognitive-services/translator/reference/v3-0-translate
     https://docs.microsoft.com/en-us/azure/cognitive-services/translator/reference/v3-0-detect
     """
-    print("Microsoft get_machine_translation")
     access_token = get_access_token()
     text = text[:5000]  # Microsoft translate supports max 5000 characters
-    print('text:',text)
     if isinstance(target_lang, str):
         target_lang = [target_lang]
     
@@ -104,3 +101,29 @@ async def get_microsoft_machine_translations(
         else:
             translations[tl] = result
     return source_lang, translations
+
+async def log_microsoft_api_usage(
+    user_uuid: str | None,  # LC UUID or Slack user_id
+    text: str,
+    source_lang: str,
+    translations: dict[str, str],
+) -> None:
+    with Session(engines["ray_integration_log"]) as session:
+        for target_lang, target_text in translations.items():
+            session.add(
+                # Need to rework this, so group IDs don't matter now.
+                MicrosoftApiLog(
+                    user_uuid=user_uuid or "",
+                    group_uuid="",
+                    super_group_uuid="",
+                    app_name="slack",
+                    sl=source_lang,
+                    tl=target_lang,
+                    source_text=text,
+                    target_text=target_text,
+                    response=None,
+                    word_count=len(text.split()),
+                    character_count=len(text),
+                )
+            )
+        session.commit()
