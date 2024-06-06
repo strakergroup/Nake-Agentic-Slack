@@ -102,7 +102,12 @@ async def home_view(
                                     "text": _("Edit"),
                                     "emoji": False,
                                 },
-                                "value": setting.channel_id,
+                                "value": json.dumps(
+                                    {
+                                        "channel_id": setting.channel_id,
+                                        "team_id": context["team_id"],
+                                    }
+                                ),
                                 "action_id": "settings_auto_translate",
                             },
                             {
@@ -112,7 +117,12 @@ async def home_view(
                                     "text": _("Disable"),
                                     "emoji": False,
                                 },
-                                "value": json.dumps({"channel_id": setting.channel_id}),
+                                "value": json.dumps(
+                                    {
+                                        "channel_id": setting.channel_id,
+                                        "team_id": context["team_id"],
+                                    }
+                                ),
                                 "action_id": "settings_auto_translate_disable",
                             },
                         ],
@@ -209,6 +219,11 @@ async def home_view(
                             "emoji": True,
                             "text": _(":speech_balloon: Translation settings"),
                         },
+                        "value": json.dumps(
+                            {
+                                "team_id": context["team_id"],
+                            }
+                        ),
                         "action_id": "settings_auto_translate",
                     },
                 ],
@@ -399,7 +414,7 @@ def new_job_modal(
     return {
         "type": "modal",
         "callback_id": "new_job",
-        "title": {"type": "plain_text", "text": _("New Translation Job")},
+        "title": {"type": "plain_text", "text": _("New Job")},
         "submit": {"type": "plain_text", "text": _("Submit")},
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
@@ -416,9 +431,9 @@ def new_job_modal(
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": "For more support information, visit <https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Straker-Translate-functions|our website>."
+                        "text": "For more support information, visit <https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Straker-Translate-functions|our website>.",
                     }
-                ]
+                ],
             },
             {
                 "type": "input",
@@ -918,7 +933,9 @@ def translation_settings_view(
     initial_channels: list[str] | None = None,
     initial_langs: list[str] | None = None,
     display_format: SlackGroupSettingsTranslation.DisplayFormatType = "thread",
+    team_id: str | None = None,
 ) -> dict[str, Any]:
+    print(team_id)
     # TODO: Detect message max length (5000)
     # TODO: Detect message formatting, emojis
     # TODO: 429 rate limiting
@@ -938,6 +955,7 @@ def translation_settings_view(
         "title": {"type": "plain_text", "text": _("Translation Settings")},
         "submit": {"type": "plain_text", "text": _("Create")},
         "close": {"type": "plain_text", "text": _("Close")},
+        "private_metadata": team_id,
         "blocks": [
             {
                 "type": "input",

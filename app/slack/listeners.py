@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import json
 from datetime import datetime, timedelta
+from ..database import engines
 
 from pydantic import ValidationError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
@@ -84,6 +85,7 @@ from ..auth.connector import (
     disconnect_ray_account,
     disconnect_ray_super_group_and_users,
     connect_ray_account_sso,
+    get_bot_token,
     get_ray_connection,
 )
 from ..ray.events.parse import get_ray_event_message
@@ -496,6 +498,7 @@ async def ray_command(ack, respond, command, context, client):
                     [context.channel_id],
                     auto_translate_langs,
                     settings.display_format if settings else "thread",
+                    team_id=context.team_id,
                 ),
             )
 
@@ -575,7 +578,14 @@ async def ray_command(ack, respond, command, context, client):
 @slack_log_decorator
 async def show_auto_translate_settings(ack, context, payload, body, client):
     await ack()
-    channel_id = payload.get("value") or context.channel_id
+    channel_info = json.loads(payload["value"])
+    channel_id = channel_info.get("channel_id")
+    team_id = channel_info.get("team_id")
+    token = client.token
+    with engines["ray_integration_readonly"].connect() as conn:
+        token = get_bot_token(conn, team_id)
+        if token:
+            client.token = token
     # TODO Could have no channel_id if triggered from home tab.
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
         context, channel_id
@@ -597,6 +607,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
                         [channel_id] if channel_id else None,
                         auto_translate_langs,
                         settings.display_format if settings else "thread",
+                        team_id=team_id,
                     ),
                 )
             else:
@@ -621,6 +632,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
                 [channel_id] if channel_id else None,
                 auto_translate_langs,
                 settings.display_format if settings else "thread",
+                team_id=team_id,
             ),
         )
 
@@ -1024,6 +1036,11 @@ async def handle_job_search(ack, view, context, client):
 @slack_log_decorator
 async def view_update_auto_translate_settings(ack, view, context, body, client):
     try:
+        team_id = view["private_metadata"]
+        with engines["ray_integration_readonly"].connect() as conn:
+            token = get_bot_token(conn, team_id)
+            if token:
+                client.token = token
         form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
         for c in form.channels:
             await client.conversations_info(channel=c)
@@ -1128,7 +1145,6 @@ async def file_options(ack, payload, client):
     files = await get_file_options_cached(channel_id)
     if not files:
         files = await task
-    print(files)
     if filter := payload.get("value"):
         files = [
             f for f in files if filter.lower().strip() in f["text"]["text"].lower()
