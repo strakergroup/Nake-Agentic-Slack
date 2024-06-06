@@ -1491,7 +1491,7 @@ class JobListMessage(SlackMessage):
                             "type": "section",
                             "text": {
                                 "type": "mrkdwn",
-                                "text": "🔴 " + _("Cancel this job"),
+                                "text": _("🔴 Cancel this job"),
                             },
                             "accessory": {
                                 "type": "button",
