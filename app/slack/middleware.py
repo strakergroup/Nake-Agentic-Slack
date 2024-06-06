@@ -81,7 +81,17 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
             user=context["user_id"], include_locale=True
         )
         context["is_bot"] = user_info["user"]["is_bot"]
-        translator_var.set(Translator(user_info["user"]["locale"]))
+        if "user" in user_info and "locale" in user_info["user"]:
+            user_locale = user_info["user"]["locale"]
+        if (
+            user_info["user"]["tz"] == "America/Chicago"
+            or user_info["user"]["tz"] == "America/New_York"
+            or user_info["user"]["tz"] == "America/Denver"
+            or user_info["user"]["tz"] == "America/Los_Angeles"
+            or user_info["user"]["tz"] == "America/Regina"
+        ) and user_info["user"]["locale"] == "fr-FR":
+            user_locale = "fr-CA"
+        translator_var.set(Translator(user_locale))
     except Exception as e:
         print(e)
         notify_exception(e)
