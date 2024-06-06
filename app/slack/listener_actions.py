@@ -1527,7 +1527,7 @@ async def get_mt_translation(
 
 async def send_to_microsoft(target_langs):
     for lang in target_langs:
-        if lang == 'fr-ca':
+        if lang.lower() == 'fr-ca':
             return True
     return False
 
