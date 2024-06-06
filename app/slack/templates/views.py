@@ -414,7 +414,7 @@ def new_job_modal(
     return {
         "type": "modal",
         "callback_id": "new_job",
-        "title": {"type": "plain_text", "text": _("New Translation Job")},
+        "title": {"type": "plain_text", "text": _("New Job")},
         "submit": {"type": "plain_text", "text": _("Submit")},
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
