@@ -1447,7 +1447,7 @@ async def get_mt_translation(
     channel_id = context.channel_id or context.user_id
 
     try:
-        hyphenated_langs = await hyphen_exists_in_langs([target_lang])
+        hyphenated_langs = await send_to_microsoft([target_lang])
         if(hyphenated_langs):
             unformatted_text = escape_slack_emoji(sentence)
             source_lang, translations = await get_microsoft_machine_translations(
@@ -1525,9 +1525,9 @@ async def get_mt_translation(
                 )
             )
 
-async def hyphen_exists_in_langs(target_langs):
+async def send_to_microsoft(target_langs):
     for lang in target_langs:
-        if '-' in lang:
+        if lang == 'fr-ca':
             return True
     return False
 
