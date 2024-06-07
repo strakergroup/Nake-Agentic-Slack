@@ -4,6 +4,7 @@ from buglog import notify_exception, notify_message
 from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
+from app.translate import translator_var, Translator
 
 from app.ray.utils import download_from_file_server
 from app.translate import _
@@ -51,6 +52,21 @@ router = APIRouter()
 async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
     """Receives and responds to an event from the RAY platform."""
     try:
+        app.client.token = auth.slack_user.bot_token
+        user_info = await app.client.users_info(
+            user=auth.slack_user.user_id, include_locale=True
+        )
+        if "user" in user_info and "locale" in user_info["user"]:
+            user_locale = user_info["user"]["locale"]
+        if (
+            user_info["user"]["tz"] == "America/Chicago"
+            or user_info["user"]["tz"] == "America/New_York"
+            or user_info["user"]["tz"] == "America/Denver"
+            or user_info["user"]["tz"] == "America/Los_Angeles"
+            or user_info["user"]["tz"] == "America/Regina"
+        ) and user_info["user"]["locale"] == "fr-FR":
+            user_locale = "fr-CA"
+        translator_var.set(Translator(user_locale))
         message = get_ray_event_message(event.event, event.data)
     except ValidationError as e:
         raise HTTPException(
