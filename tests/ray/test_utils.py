@@ -5,6 +5,7 @@ import datetime
 import app  # Bug - circular import
 import app.ray.utils
 from app.config import domains
+from app.translate import _, translator_var, Translator
 
 
 def test_get_job_url():
@@ -94,3 +95,11 @@ def test_format_job_due_date_slack():
     assert not app.ray.utils.format_job_due_date_slack(
         target_date=yesterday, job_status="IN_PROGRESS", traffic_light=False
     ).startswith(":")
+
+
+def test_translations():
+    translator = translator_var.set(Translator("jp"))
+    user_details = "test"
+    user_link = "test"
+    input = "Your LanguageCloud account {user_details} is now disconnected from {user_link}."
+    assert _(input) != input
