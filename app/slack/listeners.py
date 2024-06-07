@@ -846,7 +846,7 @@ async def get_connect_info(ack, context, respond):
     await respond(text=msg.text, blocks=msg.blocks)
 
 
-@app.block_action("delay_info")
+@app.block_action("delay_info", middleware=[ray_connection])
 @slack_log_decorator
 async def get_delay_info(ack, respond):
     await ack()
@@ -907,7 +907,7 @@ async def login_account_action(ack, action, context, respond):
         )
 
 
-@app.block_action("disconnect")
+@app.block_action("disconnect", middleware=[ray_connection])
 async def disconnect_account_action(ack, action, context, respond):
     await ack()
     # Get connection info before disconnecting.
