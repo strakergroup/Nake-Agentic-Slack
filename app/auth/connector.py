@@ -1124,6 +1124,15 @@ def create_client_access_tokens(client_id: str, type: str = "public"):
 
 def create_slack_deltaray_link_sso(user_data: str, member_id: str):
     json_data = json.loads(user_data)
+    with engines["ray_integration"].connect() as conn:
+        sqlSlackDelete = text(
+            """
+            DELETE FROM slack_deltaray_link
+            WHERE member_uuid = :member_uuid
+            """
+        ).bindparams(member_uuid=member_id)
+        conn.execute(sqlSlackDelete)
+        conn.commit()
     with engines["ray_integration_readonly"].connect() as conn:
         sqlSlackAccount = text(
             """
@@ -1167,7 +1176,7 @@ def create_slack_deltaray_link_sso(user_data: str, member_id: str):
                         is_active = 1,
                         is_sso = 1,
                         activated_at = now()
-                    WHERE slack_user_id = :user_id
+                    WHERE (slack_user_id = :user_id)
                     AND (
                         slack_team_id = :team_id
                         OR slack_enterprise_id = :enterprise_id
