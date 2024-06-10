@@ -278,7 +278,9 @@ async def respond_to_message(
                         )
                     )
                     msg = CancelJobMessage(context["channel_id"], message["ts"])
-                    await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
+                    await context.say(
+                        text=msg.text, blocks=msg.blocks, thread_ts=thread_ts
+                    )
         case _:
             if tj_number_entity := response.findEntity("tj-number"):
                 # Show the job status if only a job id is entered.
@@ -1490,13 +1492,16 @@ async def get_mt_translation(
     channel_id = context.channel_id or context.user_id
 
     try:
+        input = escape_slack_emoji(sentence)
         response = await RayService.get_service(ray_client).get_machine_translation(
-            target_lang, source_lang, sentence
+            target_lang, source_lang, input
         )
         mt_data = response.data
         if mt_data is not None:
             msg = MachineTranslationMessage(
-                mt_data["target_lang"], mt_data["source_lang"], mt_data["text"]
+                mt_data["target_lang"],
+                mt_data["source_lang"],
+                unescape_slack_emoji(mt_data["text"], sentence),
             )
 
             if context.response_url:
@@ -1588,7 +1593,6 @@ async def job_tj_cancel(
     ray_client: RayClient,
     job_id: str = "",
 ):
-
     """Tries to get the job details from the RAY API and post the job status
     to the Slack user. If the user cannot access the job, post another message
     instead.
@@ -1604,7 +1608,9 @@ async def job_tj_cancel(
         if jobs is not None:
             for job in jobs:
                 if job.status == "CANCELLED":
-                    msg = job_id.upper() + " - " + 'This job has already been cancelled.'
+                    msg = (
+                        job_id.upper() + " - " + "This job has already been cancelled."
+                    )
                     await client.chat_postMessage(
                         channel=context["user_id"],
                         text=msg,
@@ -1620,9 +1626,15 @@ async def job_tj_cancel(
                     if context.response_url:
                         await context.respond(text=msg.text, blocks=msg.blocks)
                     else:
-                        await client.chat_postMessage(channel=context["user_id"], text=msg.text, blocks=msg.blocks)
+                        await client.chat_postMessage(
+                            channel=context["user_id"], text=msg.text, blocks=msg.blocks
+                        )
         else:
-            msg = job_id.upper() + " - " + 'This job does not exist. Please check the job ID and try again.'
+            msg = (
+                job_id.upper()
+                + " - "
+                + "This job does not exist. Please check the job ID and try again."
+            )
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=msg,
