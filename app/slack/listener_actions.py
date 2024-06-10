@@ -166,12 +166,25 @@ async def respond_to_message(
                 thread_ts=thread_ts,
             )
         case "Login":
+            msg = LoginMessage(
+                user_id=context["user_id"],
+                team_id=context["team_id"],
+                enterprise_id=context.get("enterprise_id"),
+                channel_id=context.get("channel_id", context["user_id"]),
+                ray_client=context["ray"].client if context["ray"] is not None else None,
+            )
             await client.chat_postEphemeral(
                 channel=context["channel_id"],
                 user=context["user_id"],
-                text=context["login_prompt"].text,
-                blocks=context["login_prompt"].blocks,
+                text=msg.text,
+                blocks=msg.blocks,
             )
+            # await client.chat_postEphemeral(
+            #     channel=context["channel_id"],
+            #     user=context["user_id"],
+            #     text=context["login_prompt"].text,
+            #     blocks=context["login_prompt"].blocks,
+            # )
         case "Logout":
             if await require_ray_client(context):
                 msg = LogoutMessage(context["ray"].client)

@@ -162,10 +162,10 @@ class LoginMessage(SlackMessage):
         elif variation == self.CANCEL_JOB:
             block_text = "Connect your LanguageCloud account to cancel your job."
         elif isinstance(ray_client, RayClient):
-            user_details = f"<{domains.languagecloud}|{ray_client.username}>"
+            user_details = f"<<{domains.languagecloud}|{ray_client.username}>>"
             block_text = (
-                "Your connected LanguageCloud account is: <{user_details}>.\n"
-                + "You can connect a different account by clicking this button."
+                "Your connected LanguageCloud account is: {user_details}. "
+                + "\nYou can connect a different account by clicking this button."
             )
             if ray_client.sso:
                 block_text = (
