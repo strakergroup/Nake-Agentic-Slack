@@ -907,7 +907,7 @@ async def login_account_action(ack, action, context, respond):
         )
 
 
-@app.block_action("disconnect")
+@app.block_action("disconnect", middleware=[ray_connection])
 async def disconnect_account_action(ack, action, context, respond):
     await ack()
     # Get connection info before disconnecting.
