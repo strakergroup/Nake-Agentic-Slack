@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
 from app.translate import translator_var, Translator
 
-from app.ray.utils import download_from_file_server
+from app.ray.utils import download_from_file_server, set_user_language
 from app.translate import _
 from app.wb_tasks.tasks import get_task
 
@@ -56,17 +56,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
         user_info = await app.client.users_info(
             user=auth.slack_user.user_id, include_locale=True
         )
-        if "user" in user_info and "locale" in user_info["user"]:
-            user_locale = user_info["user"]["locale"]
-        if (
-            user_info["user"]["tz"] == "America/Chicago"
-            or user_info["user"]["tz"] == "America/New_York"
-            or user_info["user"]["tz"] == "America/Denver"
-            or user_info["user"]["tz"] == "America/Los_Angeles"
-            or user_info["user"]["tz"] == "America/Regina"
-        ) and user_info["user"]["locale"] == "fr-FR":
-            user_locale = "fr-CA"
-        translator_var.set(Translator(user_locale))
+        set_user_language(user_info)
         message = get_ray_event_message(event.event, event.data)
     except ValidationError as e:
         raise HTTPException(
@@ -204,6 +194,11 @@ async def api_job_callback(
     if slack_user is None:
         notify_message("Slack user not found in callback endpoint", severity="WARNING")
         raise HTTPException(401)
+    app.client.token = slack_user.bot_token
+    user_info = await app.client.users_info(
+        user=slack_user.user_id, include_locale=True
+    )
+    set_user_language(user_info)
     # Validate X-Straker-Signature.
     raw_body = await request.body()
     access_tokens = get_client_access_tokens(slack_user.ray_client_id)
