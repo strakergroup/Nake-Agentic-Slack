@@ -1192,7 +1192,7 @@ class JobSummaryMessage(SlackMessage):
                         job_prediction_block(
                             (
                                 "*     {emorji} {value}"
-                                + f"{job_plural}* may be behind schedule"
+                                + f" {job_plural}* may be behind schedule"
                             ),
                             total_late,
                             ':large_orange_circle:',
