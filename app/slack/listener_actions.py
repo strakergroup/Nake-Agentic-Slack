@@ -128,7 +128,7 @@ async def respond_to_message(
             return
     # process mt
     message_match = re.search(
-        r"mt:?\s+(([\w-]+\s+)?to\s+([\w-]+):?\s+)?(.*)",
+        r"mt:?\s+(([\w-]+)\s+to\s+([\w-]+):?\s+)?(.*)",
         message["text"],
         re.I,
     )
@@ -1480,14 +1480,14 @@ async def get_mt_translation(
     channel_id = context.channel_id or context.user_id
 
     try:
-        microsoft_langs = await send_to_microsoft([target_lang])
-        if(microsoft_langs):
+        split_langs = await split_languages([target_lang])
+        if split_langs['microsoft']:
             unformatted_text = escape_slack_emoji(sentence)
             source_lang, translations = await get_microsoft_machine_translations(
-                unformatted_text, target_lang
+                unformatted_text, split_langs['microsoft']
                 )
             translations.pop(source_lang, None)
-            formatted_text = unescape_slack_emoji(translations[target_lang], sentence);
+            formatted_text = unescape_slack_emoji(translations[split_langs['microsoft'][0]], sentence);
             response = {
                 'data' : {
                     'source_lang': source_lang,
@@ -1496,11 +1496,10 @@ async def get_mt_translation(
                 }
              }
         else:
-             response = await RayService.get_service(ray_client).get_machine_translation(
-                target_lang, source_lang, sentence
-             )   
-        
-        if(not microsoft_langs):
+            response = await RayService.get_service(ray_client).get_machine_translation(
+               target_lang, source_lang, sentence
+            )   
+        if not split_langs['microsoft']:
             mt_data = response.data
         else:
             mt_data = response['data']
@@ -1531,46 +1530,40 @@ async def get_mt_translation(
     except Exception as e:
         notify_exception(e, "Failed to get machine translation from language cloud API")
     finally:
-        # todo need to add logging
-        if "response" in locals() and not microsoft_langs:
-            raw_response = response.response
-            try:
-                response_data = raw_response.json()
-            except Exception:
-                response_data = raw_response.content.decode() or None
-            context["log"].add_api_log(
-                status_code=raw_response.status_code,
-                url=str(raw_response.url),
-                payload=None,
-                response=response_data,
-                headers=dict(raw_response.headers.items()),
-                version="v3",
-            )
-        else:
-            ray_connection = context.get("ray")
-            ray_client = ray_connection.client if ray_connection else None
-            asyncio.create_task(
-                log_microsoft_api_usage(
-                    ray_client.id if ray_client else context.user_id,
-                    unformatted_text,
-                    source_lang,
-                    translations,
+                # todo need to add logging
+        if "response" in locals():
+            if not split_langs['microsoft']:
+                raw_response = response.response
+                try:
+                    response_data = raw_response.json()
+                except Exception:
+                    response_data = raw_response.content.decode() or None
+                context["log"].add_api_log(
+                    status_code=raw_response.status_code,
+                    url=str(raw_response.url),
+                    payload=None,
+                    response=response_data,
+                    headers=dict(raw_response.headers.items()),
+                    version="v3",
                 )
-            )
-# used for single language mt
-async def send_to_microsoft(target_langs):
-    for lang in target_langs:
-        if lang.lower() == 'fr-ca':
-            return True
-    return False
+            elif "unformatted_text" in locals() and "translations" in locals():
+                ray_connection = context.get("ray")
+                ray_client = ray_connection.client if ray_connection else None
+                asyncio.create_task(
+                    log_microsoft_api_usage(
+                        ray_client.id if ray_client else context.user_id,
+                        unformatted_text,
+                        source_lang,
+                        translations,
+                    )
+                )
 
-# used for multiple language mt
 async def split_languages(target_langs):
-    microsoft_languages = ['fr-CA']
+    microsoft_languages = {'fr-ca': 'fr-ca', 'french-canada': 'fr-ca', 'french-canadian': 'fr-ca'}
     result = {'microsoft': [], 'google': []}
     for lang in target_langs:
-        if lang.lower() in [language.lower() for language in microsoft_languages]:
-            result['microsoft'].append(lang)
+        if lang.lower() in microsoft_languages:
+            result['microsoft'].append(microsoft_languages[lang.lower()])
         else:
             result['google'].append(lang)
     return result
