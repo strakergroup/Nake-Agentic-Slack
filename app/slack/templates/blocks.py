@@ -292,7 +292,8 @@ def get_progess_text(predictions: dict) -> str:
     return status
 
 
-def job_prediction_block(prediction: str, value: int = 0) -> dict:
+def job_prediction_block(prediction: str, value: int = 0, emorji: str = ':large_orange_circle:') -> dict:
+    print("prediction", prediction)
     if "behind schedule" in prediction:
         return {
             "type": "section",

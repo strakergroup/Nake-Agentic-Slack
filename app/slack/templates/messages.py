@@ -163,9 +163,10 @@ class LoginMessage(SlackMessage):
         elif variation == self.CANCEL_JOB:
             block_text = "Connect your LanguageCloud account to cancel your job."
         elif isinstance(ray_client, RayClient):
+            user_details = f"<<{domains.languagecloud}|{ray_client.username}>>"
             block_text = (
-                "Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_client.username}>.\n"
-                + "You can connect a different account by clicking this button."
+                "Your connected LanguageCloud account is: {user_details}. "
+                + "\nYou can connect a different account by clicking this button."
             )
             if ray_client.sso:
                 block_text = (
@@ -295,6 +296,7 @@ class WelcomeBackMessage(SlackMessage):
     """
 
     def __init__(self, user_id: str) -> None:
+        waveEmoji = f"<:wave:>"
         super().__init__(
             "Welcome back :wave:",
             [
@@ -304,7 +306,7 @@ class WelcomeBackMessage(SlackMessage):
                         "type": "plain_text",
                         "emoji": True,
                         "text": _(
-                            "Welcome :wave: \n\nChoose an option below to get started."
+                            "Welcome {waveEmoji} \n\nChoose an option below to get started."
                         ),
                     },
                 },
@@ -440,6 +442,7 @@ class SuccessfulLoginMessage(SlackMessage):
     """
 
     def __init__(self, user_id: str, ray_username: str) -> None:
+        waveEmoji = f"<:wave:>"
         super().__init__(
             ":white_check_mark: Login was successful!",
             [
@@ -449,7 +452,7 @@ class SuccessfulLoginMessage(SlackMessage):
                         "type": "plain_text",
                         "emoji": True,
                         "text": _(
-                            "Welcome :wave: \n\nChoose an option below to get started."
+                            "Welcome {waveEmoji} \n\nChoose an option below to get started."
                         ),
                     },
                 },
@@ -1174,10 +1177,11 @@ class JobSummaryMessage(SlackMessage):
                     sections.append(
                         job_prediction_block(
                             (
-                                "*     :large_green_circle: {value}"
-                                + f"{job_plural}* predicted to be on-time"
+                                "*     {emorji} {value}"
+                                + f" {job_plural}* predicted to be on-time"
                             ),
                             predictions["on_time"],
+                            ":large_green_circle:",
                         )
                     )
                 if (predictions["late"]) > 0 or (predictions["over_due"]) > 0:
@@ -1190,10 +1194,11 @@ class JobSummaryMessage(SlackMessage):
                     sections.append(
                         job_prediction_block(
                             (
-                                "*     :large_orange_circle: {value}"
+                                "*     {emorji} {value}"
                                 + f" {job_plural}* may be behind schedule"
                             ),
                             total_late,
+                            ':large_orange_circle:',
                         )
                     )
         if completed > 0 or all_jobs:
@@ -2026,8 +2031,9 @@ class ConnectionInfoMessage(SlackMessage):
         # Next get Slack user - LanguageCloud account info.
         account_blocks: list[dict[str, Any]] = []
         if ray_connection is not None and ray_connection.client is not None:
+            user_details = f"<{domains.languagecloud}|{ray_client.username}>"
             text = _(
-                "Your connected LanguageCloud account is: <{domains.languagecloud}|{ray_connection.client.username}>"
+                "Your connected LanguageCloud account is: <{user_details}>"
             )
             account_blocks.append(
                 {
