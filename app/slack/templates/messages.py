@@ -293,7 +293,7 @@ class WelcomeBackMessage(SlackMessage):
     """
 
     def __init__(self, user_id: str) -> None:
-        waveEmoji = f"<:wave:>"
+        waveEmoji = f":wave:"
         super().__init__(
             "Welcome back :wave:",
             [
@@ -1709,6 +1709,7 @@ class JobCreationMessage(SlackMessage):
     """A job TJ number is created after submitting a new job (from API v3 callback)."""
 
     def __init__(self, job_id: str = "") -> None:
+        tadeEmoji = f":tada:"
         super().__init__(
             "New Job Created",
             [
@@ -1717,7 +1718,7 @@ class JobCreationMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            ":tada: A new translation job has been created with the job number: `{job_id}`"
+                            "{tadeEmoji} A new translation job has been created with the job number: `{job_id}`"
                         ),
                     },
                 },
