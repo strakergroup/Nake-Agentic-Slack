@@ -35,6 +35,7 @@ class SlackUser:
     bot_token: str
     ray_client_id: str
     ray_username: str
+    ray_user_group_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,7 +242,7 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
         sql = text(
             """
             SELECT link.slack_user_id,link.slack_team_id,link.slack_enterprise_id,
-                link.slack_channel_id,link.is_subscribed,mem.login
+                link.slack_channel_id,link.is_subscribed,mem.login,mem.groupid
             FROM slack_deltaray_link link
             INNER JOIN sitemanager.obj_m_member mem
             ON link.member_uuid = mem.obj_uuid
@@ -268,6 +269,7 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
                     bot_token=bot_token,
                     ray_client_id=ray_client_id,
                     ray_username=row.login,
+                    ray_user_group_id=row.groupid,
                 )
     return None
 
@@ -1329,3 +1331,4 @@ async def get_client_type(client_id: str, group_id: str) -> str:
         if not row:
             return None
     return row.client_type
+

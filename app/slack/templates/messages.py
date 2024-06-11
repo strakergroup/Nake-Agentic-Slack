@@ -311,7 +311,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🔍 Search allows you to search for specific Translation Jobs (TJs). "
+                            "🔍 Search allows you to search for specific Translation Jobs (TJs)."
                         ),
                     },
                     "accessory": {
@@ -347,7 +347,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🗂️ New translation job opens the form to upload documents for translation."
+                            "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
                         ),
                     },
                     "accessory": {
@@ -363,7 +363,7 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🔴 Cancel your job"),
+                        "text": "🔴 " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -492,7 +492,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🗂️ New translation job opens the form to upload documents for translation."
+                            "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
                         ),
                     },
                     "accessory": {
@@ -508,7 +508,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🔴 Cancel your job"),
+                        "text": "🔴 " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -580,8 +580,9 @@ class LogoutMessage(SlackMessage):
     """Message with a button disconnect a user's LanguageCloud account."""
 
     def __init__(self, ray_client: RayClient) -> None:
+        user_details = f"<{domains.languagecloud}|{ray_client.username}>"
         text = _(
-            "Click this button to disconnect your LanguageCloud account: <{domains.languagecloud}|{ray_client.username}>."
+            "Click this button to disconnect your LanguageCloud account: {user_details}."
         )
         if ray_client.sso:
             text = _(
@@ -631,17 +632,19 @@ class SuccessfulLogoutMessage(SlackMessage):
         self, user_id: str, is_sso: bool = False, ray_username: str | None = None
     ) -> None:
         # TODO: Translation fix this
+        user_details = f"<{domains.languagecloud}|{ray_username}>"
+        user_link = f"<@{user_id}>"
         text = _(
-            "Your LanguageCloud account <{domains.languagecloud}|{ray_username}> is now disconnected from <@{user_id}>."
+            "Your LanguageCloud account {user_details} is now disconnected from {user_link}."
         )
         if is_sso:
             text = _(
-                "Your LanguageCloud account *{ray_username}* is now disconnected from <@{user_id}>."
+                "Your LanguageCloud account *{ray_username}* is now disconnected from {user_link}."
             )
         block_message = (
             text
             if ray_username
-            else _("Your LanguageCloud account is now disconnected from <@{user_id}>.")
+            else _("Your LanguageCloud account is now disconnected from {user_link}.")
         )
         super().__init__(
             "Your LanguageCloud account is now disconnected.",
@@ -868,6 +871,7 @@ class JobDetailsMessage(SlackMessage):
 
     def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
         job_link = f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
+        pm_details = f"{job.project_manager.first_name} {job.project_manager.last_name}"
         job_due_date = format_job_due_date_slack(
             job.target_date, job.status, traffic_light=True
         )
@@ -886,9 +890,8 @@ class JobDetailsMessage(SlackMessage):
                 "fields": [
                     {
                         "type": "mrkdwn",
-                        "text": _(
-                            f"*Job Status:*\n{format_job_status(job.status)}",
-                        ),
+                        "text": _(f"*Job Status:*\n")
+                        + f"{format_job_status(job.status)}",
                     },
                     {
                         "type": "mrkdwn",
@@ -910,19 +913,19 @@ class JobDetailsMessage(SlackMessage):
                     },
                     {
                         "type": "mrkdwn",
-                        "text": _("*Target Languages: ")
+                        "text": _("*Target Languages:")
                         + f"*\n{', '.join(sorted([lang.name for lang in job.tl]))}",
                     },
                     {
                         "type": "mrkdwn",
                         "text": _(
-                            f"*Valdation*\n{'Yes' if job.validation else 'No'}",
+                            f"*Validation*\n{'Yes' if job.validation else 'No'}",
                         ),
                     },
                     {
                         "type": "mrkdwn",
                         "text": _(
-                            "*Project Manager*\n{job.project_manager.first_name} {job.project_manager.last_name}",
+                            "*Project Manager*\n{pm_details}",
                         ),
                     },
                 ],
@@ -1565,7 +1568,7 @@ class JobListMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*{title}*",
+                        "text": _(f"*{title}*"),
                     },
                 },
                 *jobs_blocks,
@@ -1577,7 +1580,7 @@ class JobListMessage(SlackMessage):
 class NewJobMessage(SlackMessage):
     """Message with a button to open the new job modal."""
 
-    def __init__(self, channel_id: str, timestamp: str) -> None:
+    def __init__(self, channel_id: str, timestamp: str, file_id: str = "") -> None:
         super().__init__(
             "Submit a new translation job",
             [
@@ -1592,24 +1595,43 @@ class NewJobMessage(SlackMessage):
                 },
                 {
                     "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("New translation job"),
-                                "emoji": True,
-                            },
-                            "action_id": "new_job",
-                            "style": "primary",
-                            "value": json.dumps(
+                    "elements": (
+                        [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("New translation job"),
+                                    "emoji": True,
+                                },
+                                "action_id": "new_job",
+                                "style": "primary",
+                                "value": json.dumps(
+                                    {
+                                        "channel_id": channel_id,
+                                        "ts": timestamp,
+                                    }
+                                ),
+                            }
+                        ]
+                        + (
+                            [
                                 {
-                                    "channel_id": channel_id,
-                                    "ts": timestamp,
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("Machine Translate"),
+                                        "emoji": True,
+                                    },
+                                    "action_id": "document_mt_job",
+                                    "style": "primary",
+                                    "value": file_id,
                                 }
-                            ),
-                        }
-                    ],
+                            ]
+                            if file_id
+                            else []
+                        )
+                    ),
                 },
             ],
         )
@@ -1698,7 +1720,7 @@ class JobCreationMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🔴 Cancel your job"),
+                        "text": "🔴 " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -1829,7 +1851,7 @@ class HelpMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🗂️ New translation job opens the form to upload documents for translation."
+                            "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
                         ),
                     },
                     "accessory": {
@@ -1889,7 +1911,7 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("🔴 Cancel your job"),
+                        "text": "🔴 " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -2431,7 +2453,9 @@ class JobQuoteCancelledEventMessage(SlackMessage):
 
 class JobQuotedEventMessage(SlackMessage):
     def __init__(self, event: JobQuoteCreatedEvent) -> None:
-        job_url = f"<{get_job_url(event.uuid, event.client_id)}|{_('Straker Job Reference')} {event.id}>"
+        # job_url = f"<{get_job_url(event.uuid, event.client_id)}|{_('Straker Job Reference')} {event.id}>"
+        job_url = get_job_url(event.uuid, event.client_id)
+        reference = _(f"Straker Job Reference {event.id}")
         super().__init__(
             _(
                 "Your quote is now ready :raised_hands: Straker Job Reference {event.id}"
@@ -2443,7 +2467,8 @@ class JobQuotedEventMessage(SlackMessage):
                         "type": "mrkdwn",
                         "text": _(
                             "Your quote is now ready :raised_hands:\n**",
-                        ),
+                        )
+                        + f"<{job_url}|{reference}>**",
                     },
                 },
             ]
@@ -2453,11 +2478,21 @@ class JobQuotedEventMessage(SlackMessage):
 
 class JobDelayMessage(SlackMessage):
     def __init__(self) -> None:
-        message = "Our LanguageCloud on-time AI prediction model has indicated that your job may be tracking behind schedule.\n\n"
-        message += "Our Project Managers have been notified and will be taking action to ensure that we still meet your due date. "
-        message += "If there is going to be a delay meeting your due dates, our Project Managers or your Account Manager will inform you. "
-        message += "This is only a prediction and should not be taken as an indication that your job is going to be late.\n\n"
-        message += "This status is updated in real time so can change if we predict it is tracking on time again."
+        message = _(
+            "Our LanguageCloud on-time AI prediction model has indicated that your job may be tracking behind schedule.\n\n"
+        )
+        message += _(
+            "Our Project Managers have been notified and will be taking action to ensure that we still meet your due date. "
+        )
+        message += _(
+            "If there is going to be a delay meeting your due dates, our Project Managers or your Account Manager will inform you. "
+        )
+        message += _(
+            "This is only a prediction and should not be taken as an indication that your job is going to be late.\n\n"
+        )
+        message += _(
+            "This status is updated in real time so can change if we predict it is tracking on time again."
+        )
 
         super().__init__(
             message,
@@ -2466,7 +2501,7 @@ class JobDelayMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(message),
+                        "text": message,
                     },
                 },
             ],
@@ -2834,6 +2869,53 @@ class MachineTranslationMessage(SlackMessage):
 class SrtTranslateMessage(SlackMessage):
     """Message to allow user to select language and submit for machine translation"""
 
+    def __init__(self, task_uuid: str) -> None:
+        title = _("Please select the target language for translation")
+        language_options = get_auto_translate_language_options()
+        # create message which contains the output_file of the submit button and contains a input element which is a multi select for language
+        super().__init__(
+            title,
+            [
+                {
+                    "type": "input",
+                    "block_id": task_uuid,
+                    "label": {
+                        "type": "plain_text",
+                        "text": _("Select language"),
+                    },
+                    "element": {
+                        "type": "static_select",
+                        "placeholder": {
+                            "type": "plain_text",
+                            "text": _("Choose language"),
+                        },
+                        "options": language_options,
+                        "action_id": "language_mt_options",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Submit"),
+                                "emoji": False,
+                            },
+                            "action_id": "srt_translate",
+                            "style": "primary",
+                            "value": task_uuid,
+                        },
+                    ],
+                },
+            ],
+        )
+
+
+class DocumentMTJobMessage(SlackMessage):
+    """Message to allow user to select language and submit for machine translation"""
+
     def __init__(self, output_file: str) -> None:
         title = _("Please select the target language for translation")
         language_options = get_auto_translate_language_options()
@@ -2868,7 +2950,7 @@ class SrtTranslateMessage(SlackMessage):
                                 "text": _("Submit"),
                                 "emoji": False,
                             },
-                            "action_id": "srt_translate",
+                            "action_id": "document_mt_submit",
                             "style": "primary",
                             "value": output_file,
                         },
@@ -2880,7 +2962,7 @@ class SrtTranslateMessage(SlackMessage):
 
 class JobTranscribedEventMessage(SlackMessage):
 
-    def __init__(self, output_file: str) -> None:
+    def __init__(self, task_uuid: str) -> None:
         title = _("We have *transcribed* your file and SRT can be downloaded below.")
         # create message which contains the output_file
         super().__init__(
@@ -2905,8 +2987,7 @@ class JobTranscribedEventMessage(SlackMessage):
                             },
                             "action_id": "download_transcribed_file",
                             "style": "primary",
-                            "value": output_file,
-                            # "url": f"{domains.slack_ray_translator}/download/{output_file}",
+                            "value": task_uuid,
                         },
                         {
                             "type": "button",
@@ -2916,7 +2997,7 @@ class JobTranscribedEventMessage(SlackMessage):
                                 "emoji": False,
                             },
                             "action_id": "show_srt_translate_form",
-                            "value": output_file,
+                            "value": task_uuid,
                         },
                     ],
                 },
@@ -3066,6 +3147,15 @@ class RequiresMtTokenMessage(SlackMessage):
         title = _(
             "❗❗You have *{tokens} MT characters* on your account. This job requires *{required_tokens} MT characters*. Please purchase a MT bundle.❗❗"
         )
+        if tokens <= 0 and required_tokens == 1:
+            title = _(
+                "❗❗Your group account has no MT characters. Please purchase a MT bundle.❗❗"
+            )
+        elif tokens <= 0:
+            title = _(
+                "❗❗Your group account has no MT characters. This job requires *{required_tokens} MT characters*. Please purchase a MT bundle.❗❗"
+            )
+
         # create message which contains the output_file
         super().__init__(
             title,
@@ -3098,10 +3188,18 @@ class RequiresMtTokenMessage(SlackMessage):
 
 class RequiresMtTokenAdminMessage(SlackMessage):
 
-    def __init__(self, tokens: int, required_tokens: int) -> None:
+    def __init__(self, tokens: int, required_tokens: int, admin=False) -> None:
         title = _(
             "❗❗You have *{tokens} MT characters* on your group account. This job requires *{required_tokens} MT characters*. Please contact your group admin to purchase more❗❗"
         )
+        if tokens <= 0 and required_tokens == 1:
+            title = _(
+                "❗❗Your group account has no MT characters. Please contact your group admin to purchase more❗❗"
+            )
+        elif tokens <= 0:
+            title = _(
+                "❗❗Your group account has no MT characters. This job requires *{required_tokens} MT characters*. Please contact your group admin to purchase more❗❗"
+            )
         # create message which contains the output_file
         super().__init__(
             title,
@@ -3111,6 +3209,121 @@ class RequiresMtTokenAdminMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": title,
+                    },
+                },
+            ],
+        )
+
+
+class CancelJobMessage(SlackMessage):
+    """Message with a button to open the cancel job modal."""
+
+    def __init__(self, channel_id: str, timestamp: str) -> None:
+        super().__init__(
+            "Cancel a translation job",
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _("Click the *Cancel translation job* button below"),
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Cancel translation job"),
+                                "emoji": True,
+                            },
+                            "action_id": "cancel_job",
+                            "style": "primary",
+                            "value": json.dumps(
+                                {
+                                    "channel_id": channel_id,
+                                    "ts": timestamp,
+                                }
+                            ),
+                        }
+                    ],
+                },
+            ],
+        )
+
+
+class DocMtMessage(SlackMessage):
+    """Message verify consumer event response"""
+
+    def __init__(self) -> None:
+        super().__init__(
+            _("Verify the translation"),
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _("Error occurred while translating your document"),
+                    },
+                }
+            ],
+        )
+
+
+class CancelTJMessage(SlackMessage):
+    """A summary of the client's jobs, number of jobs in each status. Has buttons
+    to display the individual job IDs for each status and timeframe.
+    """
+
+    def __init__(self, channel_id: str, jobdetail) -> None:
+        target_labels = [target.label for target in jobdetail["targetlang"]]
+        super().__init__(
+            "Cancel a translation job",
+            [
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": f" Cancel  {jobdetail['job_id']}",
+                    },
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {"type": "mrkdwn", "text": f"*Status:*\n {jobdetail['status']}"}
+                    ],
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Source:*\n {jobdetail['sourcelang'].label}",
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Target:*\n {', '.join(target_labels)}",
+                        },
+                    ],
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "Please confirm to cancel this job.",
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Cancel Job",
+                        },
+                        "value": json.dumps(
+                            {"job_id": jobdetail["job_id"], "job_action": "list"}
+                        ),
+                        "action_id": "cancel_job",
                     },
                 },
             ],
