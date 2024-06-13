@@ -9,7 +9,13 @@ The [Slack App](https://api.slack.com/) for Straker LanguageCloud. This app allo
 - [Python 3.11](https://www.python.org/)
 - [Pipenv](https://pipenv.pypa.io/)
 - MySQL
-
+- MongoDB (docker compose)
+- [pt-languagecloud-api](https://bitbucket.org/strakertech/pt-languagecloud-api)
+- Redis (in docker-compose)
+- [redis-stream-proxy](https://bitbucket.org/strakertech/redis-stream-proxy-api/) Called by other apps to send events to slack
+- [redis-slack-consumer](https://bitbucket.org/strakertech/redis-slack-consumer) proccesses events
+- [wb-task-consumer](https://bitbucket.org/strakertech/wb-task-consumer/) used for transcribing of video posted to slack
+- [verify-task-consumer](https://bitbucket.org/strakertech/pt-verify-consumer/) used for document machine translatin
 ### Setup
 
 1. Set up environment variables by copying the `.env.example` to `.env` and writing the configuration for your app.
