@@ -2492,7 +2492,7 @@ class JobDelayMessage(SlackMessage):
             "Our Project Managers have been notified and will be taking action to ensure that we still meet your due date. "
         )
         message += _(
-            "If there is going to be a delay meeting your due dates, our Project Managers or your Account Manager will inform you. "
+            " If there is going to be a delay meeting your due dates, our Project Managers or your Account Manager will inform you. "
         )
         message += _(
             "This is only a prediction and should not be taken as an indication that your job is going to be late.\n\n"
