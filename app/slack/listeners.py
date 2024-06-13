@@ -588,19 +588,21 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
     token = client.token
     with engines["ray_integration_readonly"].connect() as conn:
         token = get_bot_token(conn, team_id)
-        if token:
-            client.token = token
     # TODO Could have no channel_id if triggered from home tab.
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
         context, channel_id
     )
+
     if channel_id:
         error_msg = _("You do not have permission to edit this channel!!")
         try:
             # Check if the channel is public or private.
+            old_token = client.token
+            client.token = token
             conver_info = await client.conversations_info(channel=channel_id)
             # Check if the user is a member of the channel.
             response = await client.conversations_members(channel=channel_id)
+            client.token = old_token
             if (
                 context["user_id"] in response["members"]
                 or not conver_info["channel"]["is_private"]
