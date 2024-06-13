@@ -439,7 +439,7 @@ class SuccessfulLoginMessage(SlackMessage):
     """
 
     def __init__(self, user_id: str, ray_username: str) -> None:
-        waveEmoji = f"<:wave:>"
+        waveEmoji = f":wave:"
         super().__init__(
             ":white_check_mark: Login was successful!",
             [
