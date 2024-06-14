@@ -24,6 +24,7 @@ from .templates.messages import (
 from ..auth.connector import (
     RayConnection,
     get_client_tokens,
+    get_group_tokens,
     get_client_type,
     get_ray_connection,
     get_ray_connection_demo,
@@ -168,6 +169,12 @@ async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
     if context["ray"].client is not None:
         user_tokens = await get_client_tokens(context["ray"].client.id_token)
         ai_tokens = user_tokens.ai_token
+        if ai_tokens >= value:
+            return True
+    elif context["ray"].super_group is not None:
+        print(context["ray"].super_group)
+        client_tokens = await get_group_tokens(context["ray"].super_group[0].id)
+        ai_tokens = client_tokens.ai_token
         if ai_tokens >= value:
             return True
     client_type = await get_client_type(
