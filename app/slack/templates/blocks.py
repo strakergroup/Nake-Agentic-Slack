@@ -138,7 +138,7 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
     currency = format_currency_symbol(quote.quote.currency)
     quote_formatted = format_currency(quote.quote.quote, quote.quote.currency)
     turnaround_time = (
-        f"within {quote.turnaround_days} days" if quote.turnaround_days > 0 else ""
+        _("within {quote.turnaround_days} days") if quote.turnaround_days > 0 else ""
     )
     # Show "incl. tax" next to the total cost if > the sum of the individual language prices.
     incl_tax = quote.quote.quote != quote.quote.quote_nett
@@ -189,12 +189,12 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
         *lang_price_blocks,
         {
             "type": "section",
+            
             "text": {
                 "type": "mrkdwn",
                 "text": _(
                     "*Total Cost ({currency})*: "
-                    + f"{quote_formatted} {'(incl. tax)' if incl_tax else ''}"
-                ),
+                ) + f"{quote_formatted} {'(incl. tax)' if incl_tax else ''}"
             },
         },
         {"type": "divider"},
