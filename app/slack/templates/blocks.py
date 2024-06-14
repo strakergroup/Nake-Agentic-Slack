@@ -217,7 +217,7 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
-                        "text": "Cancel",
+                        "text": _("Cancel"),
                     },
                     "style": "danger",
                     "url": quote.quote.quote_cancel_url,
