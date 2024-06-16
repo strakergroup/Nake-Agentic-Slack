@@ -3,6 +3,7 @@ other services, e.g. Slack, RAY apps.
 """
 
 import asyncio
+import math
 import time
 import json
 import hashlib
@@ -12,7 +13,7 @@ from urllib.parse import urlencode
 import uuid
 
 import httpx
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.engine import Connection
 from slack_sdk.oauth.installation_store import Installation
 from straker_auth.languagecloud import create_languagecloud_id_token
@@ -1295,15 +1296,58 @@ async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceRespo
         return GetCreditBalanceResponse(0, 0)
 
 
+async def get_group_tokens(super_group_uuid: str) -> GetCreditBalanceResponse:
+    """read sitemanager.obj_m_member_credit_transactions to get the group tokens balance."""
+    list_group_uuid = []
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT group_uuid
+            FROM super_group_glink
+            WHERE super_group_uuid = :super_group_uuid
+            """
+        ).bindparams(super_group_uuid=super_group_uuid)
+        result = conn.execute(sql)
+        rows = result.fetchall()
+        for row in rows:
+            list_group_uuid.append(row.group_uuid)
+    # first get
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT SUM(amount) AS total
+            FROM obj_m_member_credit_transactions
+            WHERE group_uuid IN :group_uuids
+            AND credit_type = 'ai_token'
+            """
+        ).bindparams(bindparam("group_uuids", expanding=True))
+        result = conn.execute(sql, {"group_uuids": list_group_uuid})
+        row = result.first()
+        if not row:
+            return GetCreditBalanceResponse(0, 0)
+    return GetCreditBalanceResponse(ai_token=row.total, mt_token=0)
+
+
 async def spend_mt_tokens(
-    user: SlackUser,
     credits: int,
-) -> bool:
+    user: SlackUser = None,
+    ray_connection: RayConnection = None,
+) -> int:
     """Insert into the database obj_m_member_credit_transactions to record transaction"""
-    ray_connection = await get_ray_connection(
-        user.user_id, user.team_id, user.enterprise_id
-    )
+    if ray_connection is None:
+        ray_connection = await get_ray_connection(
+            user.user_id, user.team_id, user.enterprise_id
+        )
+    # If no client spend under super group
+    if ray_connection.client is None:
+        client_uuid = ray_connection.super_group[0].id
+        group_uuid = ray_connection.super_group[0].id
+    else:
+        client_uuid = ray_connection.client.id
+        group_uuid = ray_connection.client.user_group_id
     description = "Machine Translation"
+    mt_scale = 0.1
+    amount = math.ceil(credits * mt_scale)
     with engines["sitemanager"].begin() as conn:
         sql = text(
             """
@@ -1314,14 +1358,16 @@ async def spend_mt_tokens(
             """
         ).bindparams(
             uuid=str(uuid.uuid4()),
-            client_uuid=ray_connection.client.id,
-            group_uuid=ray_connection.client.user_group_id,
-            amount=0 - credits,
-            credit_type="mt_token",
+            client_uuid=client_uuid,
+            group_uuid=group_uuid,
+            amount=0 - amount,
+            credit_type="ai_token",
             transaction_type="spend",
             description=description,
         )
         conn.execute(sql)
+
+    return amount
 
 
 async def get_client_type(client_id: str, group_id: str) -> str:
