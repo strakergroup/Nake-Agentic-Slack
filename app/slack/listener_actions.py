@@ -133,22 +133,23 @@ async def respond_to_message(
         re.I,
     )
 
-    if message_match and await require_ray_client(context, prompt_login=False):
-        mt_sl = message_match.group(2)
-        # TODO: read user lang to default target
-        mt_tl = message_match.group(3) or "en"
-        mt_text = message_match.group(4)
-        if await require_mt_tokens(context, len(mt_text)):
-            await get_mt_translation(
-                client,
-                context,
-                context["ray"].client,
-                source_lang=mt_sl,
-                target_lang=mt_tl,
-                sentence=mt_text,
-                thread_ts=thread_ts,
-            )
-            await spend_mt_tokens(credits=len(mt_text), ray_connection=context["ray"])
+    if message_match:
+        if await require_ray_client(context):
+            mt_sl = message_match.group(2)
+            # TODO: read user lang to default target
+            mt_tl = message_match.group(3) or "en"
+            mt_text = message_match.group(4)
+            if await require_mt_tokens(context, len(mt_text)):
+                await get_mt_translation(
+                    client,
+                    context,
+                    context["ray"].client,
+                    source_lang=mt_sl,
+                    target_lang=mt_tl,
+                    sentence=mt_text,
+                    thread_ts=thread_ts,
+                )
+                await spend_mt_tokens(credits=len(mt_text), ray_connection=context["ray"])
         return
 
     response = watson_message(message["text"], context.get("user_id"))
