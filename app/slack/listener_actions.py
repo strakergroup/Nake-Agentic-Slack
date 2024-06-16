@@ -1478,13 +1478,16 @@ async def get_mt_translation(
     channel_id = context.channel_id or context.user_id
 
     try:
+        input = escape_slack_emoji(sentence)
         response = await RayService.get_service(ray_client).get_machine_translation(
-            target_lang, source_lang, sentence
+            target_lang, source_lang, input
         )
         mt_data = response.data
         if mt_data is not None:
             msg = MachineTranslationMessage(
-                mt_data["target_lang"], mt_data["source_lang"], mt_data["text"]
+                mt_data["target_lang"],
+                mt_data["source_lang"],
+                unescape_slack_emoji(mt_data["text"], sentence),
             )
 
             if context.response_url:
