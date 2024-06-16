@@ -1,7 +1,14 @@
 import datetime
+from enum import Enum
+from typing import Any, Dict, Union
 
 from dateutil.parser import parse
-from pydantic import BaseModel, field_validator, root_validator
+from pydantic import (
+    BaseModel,
+    RootModel,
+    field_validator,
+    model_validator,
+)
 
 
 class ClientGroup(BaseModel):
@@ -110,13 +117,43 @@ class JobTranscribedPath(BaseModel):
 
 
 class JobTranscribedEvent(BaseModel):
-    output_file: str
+    task_uuid: str
     client_id: str
     error: str | None = None
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     def extract_output_file(cls, values):
         result = values.get("result")
         if result:
-            values["output_file"] = result.get("output_file")
+            values["task_uuid"] = result.get("task_uuid")
         return values
+
+
+class MtErrorTypes(str, Enum):
+    INSUFFICIENT_BALANCE = "insufficient_balance"
+    SAMPLE_TEXT_NOT_FOUND = "sample_text_not_found"
+    OTHER = "other"
+
+
+class MtFileRequestSchema(BaseModel):
+    file_id: str
+    client_id: str
+    target_language: str
+
+
+class MtSuccessResponseSchema(BaseModel):
+    file_id: str
+    tokens: int
+    client_id: str
+    target_language: str
+
+
+class MtErrorResponseSchema(BaseModel):
+    error: bool
+    client_id: str
+    error_type: MtErrorTypes
+    error_data: Dict[str, Any]
+
+
+class MtFileReponseSchema(RootModel):
+    root: Union[MtSuccessResponseSchema, MtErrorResponseSchema]
