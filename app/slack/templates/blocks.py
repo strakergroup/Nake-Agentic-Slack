@@ -63,20 +63,7 @@ def home_auth_blocks(
         },
         {
             "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("Connect LanguageCloud account"),
-                    },
-                    "style": "primary",
-                    "url": get_language_cloud_connect_url(
-                        user_id, team_id, enterprise_id, channel_id or user_id
-                    ),
-                    "action_id": "login",
-                }
-            ],
+            "elements": [],
         },
     ]
     if config.environment == Environment.production:
@@ -112,6 +99,22 @@ def home_auth_blocks(
                 "action_id": "login_sso",
             },
         )
+    else:
+        msg[1]["elements"].insert(
+            0,
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": _("Connect LanguageCloud account"),
+                },
+                "style": "primary",
+                "url": get_language_cloud_connect_url(
+                    user_id, team_id, enterprise_id, channel_id or user_id
+                ),
+                "action_id": "login",
+            },
+        ),
     return msg
 
 
@@ -138,7 +141,7 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
     currency = format_currency_symbol(quote.quote.currency)
     quote_formatted = format_currency(quote.quote.quote, quote.quote.currency)
     turnaround_time = (
-        f"within {quote.turnaround_days} days" if quote.turnaround_days > 0 else ""
+        _("within {quote.turnaround_days} days") if quote.turnaround_days > 0 else ""
     )
     # Show "incl. tax" next to the total cost if > the sum of the individual language prices.
     incl_tax = quote.quote.quote != quote.quote.quote_nett
@@ -189,12 +192,12 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
         *lang_price_blocks,
         {
             "type": "section",
+            
             "text": {
                 "type": "mrkdwn",
                 "text": _(
                     "*Total Cost ({currency})*: "
-                    + f"{quote_formatted} {'(incl. tax)' if incl_tax else ''}"
-                ),
+                ) + f"{quote_formatted} {'(incl. tax)' if incl_tax else ''}"
             },
         },
         {"type": "divider"},
@@ -217,7 +220,7 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
-                        "text": "Cancel",
+                        "text": _("Cancel"),
                     },
                     "style": "danger",
                     "url": quote.quote.quote_cancel_url,
@@ -289,7 +292,8 @@ def get_progess_text(predictions: dict) -> str:
     return status
 
 
-def job_prediction_block(prediction: str, value: int = 0) -> dict:
+def job_prediction_block(prediction: str, value: int = 0, emorji: str = ':large_orange_circle:') -> dict:
+    print("prediction", prediction)
     if "behind schedule" in prediction:
         return {
             "type": "section",

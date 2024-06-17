@@ -87,6 +87,7 @@ from ..auth.connector import (
     connect_ray_account_sso,
     get_bot_token,
     get_ray_connection,
+    spend_mt_tokens,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
@@ -119,7 +120,10 @@ async def message_event(client, context, message):
             and f"<@{context['bot_user_id']}>" not in message["text"]
         ):
             # Do not auto-translate if the bot is mentioned (should default to normal response).
-            await auto_translate_message(client, context, message)
+            credits = len(message.get("text", ""))
+            if await require_mt_tokens(context, credits):
+                await auto_translate_message(client, context, message)
+                await spend_mt_tokens(credits=credits, ray_connection=context["ray"])
         else:
             # Do nothing if the Slack app is not mentioned in group chats and
             # auto-translate is disabled.
@@ -305,6 +309,7 @@ async def download_transcribed_file(ack, action, context, client):
             channel=context["channel_id"],
             file=file["file"],
             title=file["file_name"],
+            filename=file["file_name"],
         )
 
 
@@ -583,19 +588,21 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
     token = client.token
     with engines["ray_integration_readonly"].connect() as conn:
         token = get_bot_token(conn, team_id)
-        if token:
-            client.token = token
     # TODO Could have no channel_id if triggered from home tab.
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
         context, channel_id
     )
+
     if channel_id:
         error_msg = _("You do not have permission to edit this channel!!")
         try:
             # Check if the channel is public or private.
+            old_token = client.token
+            client.token = token
             conver_info = await client.conversations_info(channel=channel_id)
             # Check if the user is a member of the channel.
             response = await client.conversations_members(channel=channel_id)
+            client.token = old_token
             if (
                 context["user_id"] in response["members"]
                 or not conver_info["channel"]["is_private"]
@@ -846,7 +853,7 @@ async def get_connect_info(ack, context, respond):
     await respond(text=msg.text, blocks=msg.blocks)
 
 
-@app.block_action("delay_info")
+@app.block_action("delay_info", middleware=[ray_connection])
 @slack_log_decorator
 async def get_delay_info(ack, respond):
     await ack()
@@ -907,7 +914,7 @@ async def login_account_action(ack, action, context, respond):
         )
 
 
-@app.block_action("disconnect")
+@app.block_action("disconnect", middleware=[ray_connection])
 async def disconnect_account_action(ack, action, context, respond):
     await ack()
     # Get connection info before disconnecting.
