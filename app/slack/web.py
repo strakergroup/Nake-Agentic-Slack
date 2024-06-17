@@ -118,7 +118,9 @@ async def download_file(
         http = httpx.AsyncClient()
     try:
         response = await http.get(
-            download_url, headers={"Authorization": f"Bearer {client.token}"}
+            download_url,
+            headers={"Authorization": f"Bearer {client.token}"},
+            follow_redirects=True,
         )
         response.raise_for_status()
     except httpx.HTTPStatusError:

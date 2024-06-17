@@ -10,6 +10,7 @@ from buglog import notify_exception, notify_message
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_logger.slack import SlackAppLog  # type: ignore
 
+from app.ray.utils import set_user_language
 from app.translate import translator_var, Translator
 
 from .app import app
@@ -23,6 +24,7 @@ from .templates.messages import (
 from ..auth.connector import (
     RayConnection,
     get_client_tokens,
+    get_group_tokens,
     get_client_type,
     get_ray_connection,
     get_ray_connection_demo,
@@ -81,17 +83,7 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
             user=context["user_id"], include_locale=True
         )
         context["is_bot"] = user_info["user"]["is_bot"]
-        if "user" in user_info and "locale" in user_info["user"]:
-            user_locale = user_info["user"]["locale"]
-        if (
-            user_info["user"]["tz"] == "America/Chicago"
-            or user_info["user"]["tz"] == "America/New_York"
-            or user_info["user"]["tz"] == "America/Denver"
-            or user_info["user"]["tz"] == "America/Los_Angeles"
-            or user_info["user"]["tz"] == "America/Regina"
-        ) and user_info["user"]["locale"] == "fr-FR":
-            user_locale = "fr-CA"
-        translator_var.set(Translator(user_locale))
+        set_user_language(user_info)
     except Exception as e:
         print(e)
         notify_exception(e)
@@ -173,23 +165,29 @@ async def require_ray_client(
 
 async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
     """Check if the user has the required minimum translation credits to perform the operation"""
-    mt_tokens = 0
+    ai_tokens = 0
     if context["ray"].client is not None:
         user_tokens = await get_client_tokens(context["ray"].client.id_token)
-        mt_tokens = user_tokens.mt_token
-        if mt_tokens >= value:
+        ai_tokens = user_tokens.ai_token
+        if ai_tokens >= value:
+            return True
+    elif context["ray"].super_group is not None:
+        print(context["ray"].super_group)
+        client_tokens = await get_group_tokens(context["ray"].super_group[0].id)
+        ai_tokens = client_tokens.ai_token
+        if ai_tokens >= value:
             return True
     client_type = await get_client_type(
         context["ray"].client.id, context["ray"].client.user_group_id
     )
     if client_type in ["Admin", "Owner"]:
-        message = RequiresMtTokenMessage(mt_tokens, value)
+        message = RequiresMtTokenMessage(ai_tokens, value)
         await context.say(
             text=message.text,
             blocks=message.blocks,
         )
     else:
-        message = RequiresMtTokenAdminMessage(mt_tokens, value)
+        message = RequiresMtTokenAdminMessage(ai_tokens, value)
         await context.say(
             text=message.text,
             blocks=message.blocks,

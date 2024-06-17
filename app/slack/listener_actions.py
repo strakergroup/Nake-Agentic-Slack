@@ -53,7 +53,7 @@ from .templates.views import (
     cancel_job_modal,
 )
 from .web import files_list_simple, download_files, get_mt_ts_cached, set_mt_ts_edit
-from ..auth.connector import RayClient, approve_pending_groups
+from ..auth.connector import RayClient, approve_pending_groups, spend_mt_tokens
 from ..config import config, domains, Environment
 from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
@@ -63,6 +63,7 @@ from ..ray.settings import (
 )
 from ..ray.utils import is_min_langugagecloud_plan
 from ..mt.google import get_machine_translations, log_google_api_usage
+from ..mt.microsoft import get_microsoft_machine_translations, log_microsoft_api_usage
 from ..watson import watson_message
 from .select_options import get_file_options_cached
 
@@ -125,28 +126,32 @@ async def respond_to_message(
                         text=msg.text, blocks=msg.blocks, thread_ts=thread_ts
                     )
             return
-
     # process mt
     message_match = re.search(
-        r"mt:?\s+((\w+\s+)?to\s+(\w+):?\s+)?(.*)",
+        r"mt:?(?:\s+([\w-]+))?\s+to\s+([\w-]+):?\s+(.*)",
         message["text"],
         re.I,
     )
 
-    if message_match and await require_ray_client(context, prompt_login=False):
-        mt_sl = message_match.group(2)
-        # TODO: read user lang to default target
-        mt_tl = message_match.group(3) or "en"
-        mt_text = message_match.group(4)
-        await get_mt_translation(
-            client,
-            context,
-            context["ray"].client,
-            source_lang=mt_sl,
-            target_lang=mt_tl,
-            sentence=mt_text,
-            thread_ts=message["ts"] if "ts" in message else None,
-        )
+    if message_match:
+        if await require_ray_client(context):
+            mt_sl = message_match.group(1) or ""
+            # TODO: read user lang to default target
+            mt_tl = message_match.group(2) or "en"
+            mt_text = message_match.group(3)
+            if await require_mt_tokens(context, len(mt_text)):
+                await get_mt_translation(
+                    client,
+                    context,
+                    context["ray"].client,
+                    source_lang=mt_sl,
+                    target_lang=mt_tl,
+                    sentence=mt_text,
+                    thread_ts=thread_ts,
+                )
+                await spend_mt_tokens(
+                    credits=len(mt_text), ray_connection=context["ray"]
+                )
         return
 
     response = watson_message(message["text"], context.get("user_id"))
@@ -166,12 +171,27 @@ async def respond_to_message(
                 thread_ts=thread_ts,
             )
         case "Login":
+            msg = LoginMessage(
+                user_id=context["user_id"],
+                team_id=context["team_id"],
+                enterprise_id=context.get("enterprise_id"),
+                channel_id=context.get("channel_id", context["user_id"]),
+                ray_client=(
+                    context["ray"].client if context["ray"] is not None else None
+                ),
+            )
             await client.chat_postEphemeral(
                 channel=context["channel_id"],
                 user=context["user_id"],
-                text=context["login_prompt"].text,
-                blocks=context["login_prompt"].blocks,
+                text=msg.text,
+                blocks=msg.blocks,
             )
+            # await client.chat_postEphemeral(
+            #     channel=context["channel_id"],
+            #     user=context["user_id"],
+            #     text=context["login_prompt"].text,
+            #     blocks=context["login_prompt"].blocks,
+            # )
         case "Logout":
             if await require_ray_client(context):
                 msg = LogoutMessage(context["ray"].client)
@@ -243,16 +263,16 @@ async def respond_to_message(
                     mt_sl = message_match[-1][1] + message_match[-1][2]
                     mt_tl = message_match[-1][3] + message_match[-1][4]
                     mt_text = message_match[-1][-1]
-
-                    await get_mt_translation(
-                        client,
-                        context,
-                        context["ray"].client,
-                        source_lang=mt_sl,
-                        target_lang=mt_tl,
-                        sentence=mt_text[1],
-                        thread_ts=thread_ts,
-                    )
+                    if await require_mt_tokens(context, len(mt_text)):
+                        await get_mt_translation(
+                            client,
+                            context,
+                            context["ray"].client,
+                            source_lang=mt_sl,
+                            target_lang=mt_tl,
+                            sentence=mt_text[1],
+                            thread_ts=thread_ts,
+                        )
                 else:
                     await context.say(
                         'Invalid machine translation request. Please try "Mt source language to target language: sentence."',
@@ -278,7 +298,9 @@ async def respond_to_message(
                         )
                     )
                     msg = CancelJobMessage(context["channel_id"], message["ts"])
-                    await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
+                    await context.say(
+                        text=msg.text, blocks=msg.blocks, thread_ts=thread_ts
+                    )
         case _:
             if tj_number_entity := response.findEntity("tj-number"):
                 # Show the job status if only a job id is entered.
@@ -321,10 +343,22 @@ async def auto_translate_message(
         return
     unformatted_text = escape_slack_emoji(text)
     try:
-        source_lang, translations = await get_machine_translations(
-            unformatted_text, target_langs
-        )
-        translations.pop(source_lang, None)
+        split_langs = await split_languages(target_langs)
+        translations = {}
+        if split_langs["microsoft"]:
+            source_lang, translationsMicrosoft = (
+                await get_microsoft_machine_translations(
+                    unformatted_text, split_langs["microsoft"]
+                )
+            )
+            translationsMicrosoft.pop(source_lang, None)
+            translations.update(translationsMicrosoft)
+        if split_langs["google"]:
+            source_lang, translationsGoogle = await get_machine_translations(
+                unformatted_text, split_langs["google"]
+            )
+            translationsGoogle.pop(source_lang, None)
+            translations.update(translationsGoogle)
         if not translations:
             return  # Do nothing if nothing translated (source = target)
     except Exception as e:
@@ -407,18 +441,31 @@ async def auto_translate_message(
         #     blocks=permissions_msg.blocks,
         # )
     except Exception as e:
-        notify_exception(e, "Failed to get machine translation from LanguageCloud API")
+        notify_exception(
+            e,
+            "Failed to get machine translation from LanguageCloud API or Microsoft API",
+        )
     finally:
         ray_connection = context.get("ray")
         ray_client = ray_connection.client if ray_connection else None
-        asyncio.create_task(
-            log_google_api_usage(
-                ray_client.id if ray_client else context.user_id,
-                unformatted_text,
-                source_lang,
-                translations,
+        if split_langs["microsoft"]:
+            asyncio.create_task(
+                log_microsoft_api_usage(
+                    ray_client.id if ray_client else context.user_id,
+                    unformatted_text,
+                    source_lang,
+                    translationsMicrosoft,
+                )
             )
-        )
+        if split_langs["google"]:
+            asyncio.create_task(
+                log_google_api_usage(
+                    ray_client.id if ray_client else context.user_id,
+                    unformatted_text,
+                    source_lang,
+                    translationsGoogle,
+                )
+            )
 
 
 async def document_machine_translate(
@@ -1487,13 +1534,37 @@ async def get_mt_translation(
         raise AssertionError("No channel to post to")
     channel_id = context.channel_id or context.user_id
     try:
-        response = await RayService.get_service(ray_client).get_machine_translation(
-            target_lang, source_lang, sentence
-        )
-        mt_data = response.data
+        input = escape_slack_emoji(sentence)
+        split_langs = await split_languages([target_lang])
+        if split_langs["microsoft"]:
+            unformatted_text = input
+            source_lang, translations = await get_microsoft_machine_translations(
+                unformatted_text, split_langs["microsoft"]
+            )
+            translations.pop(source_lang, None)
+            formatted_text = unescape_slack_emoji(
+                translations[split_langs["microsoft"][0]], sentence
+            )
+            response = {
+                "data": {
+                    "source_lang": source_lang,
+                    "target_lang": target_lang,
+                    "text": formatted_text,
+                }
+            }
+        else:
+            response = await RayService.get_service(ray_client).get_machine_translation(
+                target_lang, source_lang, input
+            )
+        if not split_langs["microsoft"]:
+            mt_data = response.data
+        else:
+            mt_data = response["data"]
         if mt_data is not None:
             msg = MachineTranslationMessage(
-                mt_data["target_lang"], mt_data["source_lang"], mt_data["text"]
+                mt_data["target_lang"].replace("-", ""),
+                mt_data["source_lang"],
+                unescape_slack_emoji(mt_data["text"], sentence),
             )
             if context.response_url:
                 return await context.respond(text=msg.text, blocks=msg.blocks)
@@ -1532,20 +1603,48 @@ async def get_mt_translation(
         print(e)
         notify_exception(e, "Failed to get machine translation from language cloud API")
     finally:
+        # todo need to add logging
         if "response" in locals():
-            raw_response = response.response
-            try:
-                response_data = raw_response.json()
-            except Exception:
-                response_data = raw_response.content.decode() or None
-            context["log"].add_api_log(
-                status_code=raw_response.status_code,
-                url=str(raw_response.url),
-                payload=None,
-                response=response_data,
-                headers=dict(raw_response.headers.items()),
-                version="v3",
-            )
+            if not split_langs["microsoft"]:
+                raw_response = response.response
+                try:
+                    response_data = raw_response.json()
+                except Exception:
+                    response_data = raw_response.content.decode() or None
+                context["log"].add_api_log(
+                    status_code=raw_response.status_code,
+                    url=str(raw_response.url),
+                    payload=None,
+                    response=response_data,
+                    headers=dict(raw_response.headers.items()),
+                    version="v3",
+                )
+            elif "unformatted_text" in locals() and "translations" in locals():
+                ray_connection = context.get("ray")
+                ray_client = ray_connection.client if ray_connection else None
+                asyncio.create_task(
+                    log_microsoft_api_usage(
+                        ray_client.id if ray_client else context.user_id,
+                        unformatted_text,
+                        source_lang,
+                        translations,
+                    )
+                )
+
+
+async def split_languages(target_langs):
+    microsoft_languages = {
+        "fr-ca": "fr-ca",
+        "french-canada": "fr-ca",
+        "french-canadian": "fr-ca",
+    }
+    result = {"microsoft": [], "google": []}
+    for lang in target_langs:
+        if lang.lower() in microsoft_languages:
+            result["microsoft"].append(microsoft_languages[lang.lower()])
+        else:
+            result["google"].append(lang)
+    return result
 
 
 async def cancel_job_process(
@@ -1599,7 +1698,6 @@ async def job_tj_cancel(
     ray_client: RayClient,
     job_id: str = "",
 ):
-
     """Tries to get the job details from the RAY API and post the job status
     to the Slack user. If the user cannot access the job, post another message
     instead.
@@ -1615,7 +1713,9 @@ async def job_tj_cancel(
         if jobs is not None:
             for job in jobs:
                 if job.status == "CANCELLED":
-                    msg = job_id.upper() + " - " + 'This job has already been cancelled.'
+                    msg = (
+                        job_id.upper() + " - " + "This job has already been cancelled."
+                    )
                     await client.chat_postMessage(
                         channel=context["user_id"],
                         text=msg,
@@ -1631,9 +1731,15 @@ async def job_tj_cancel(
                     if context.response_url:
                         await context.respond(text=msg.text, blocks=msg.blocks)
                     else:
-                        await client.chat_postMessage(channel=context["user_id"], text=msg.text, blocks=msg.blocks)
+                        await client.chat_postMessage(
+                            channel=context["user_id"], text=msg.text, blocks=msg.blocks
+                        )
         else:
-            msg = job_id.upper() + " - " + 'This job does not exist. Please check the job ID and try again.'
+            msg = (
+                job_id.upper()
+                + " - "
+                + "This job does not exist. Please check the job ID and try again."
+            )
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=msg,
