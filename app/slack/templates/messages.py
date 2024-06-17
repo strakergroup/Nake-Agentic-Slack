@@ -296,7 +296,7 @@ class WelcomeBackMessage(SlackMessage):
     """
 
     def __init__(self, user_id: str) -> None:
-        waveEmoji = f"<:wave:>"
+        waveEmoji = f":wave:"
         super().__init__(
             "Welcome back :wave:",
             [
@@ -442,7 +442,7 @@ class SuccessfulLoginMessage(SlackMessage):
     """
 
     def __init__(self, user_id: str, ray_username: str) -> None:
-        waveEmoji = f"<:wave:>"
+        waveEmoji = f":wave:"
         super().__init__(
             ":white_check_mark: Login was successful!",
             [
@@ -1712,6 +1712,7 @@ class JobCreationMessage(SlackMessage):
     """A job TJ number is created after submitting a new job (from API v3 callback)."""
 
     def __init__(self, job_id: str = "") -> None:
+        tadeEmoji = f":tada:"
         super().__init__(
             "New Job Created",
             [
@@ -1720,7 +1721,7 @@ class JobCreationMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            ":tada: A new translation job has been created with the job number: `{job_id}`"
+                            "{tadeEmoji} A new translation job has been created with the job number: `{job_id}`"
                         ),
                     },
                 },
@@ -2494,7 +2495,7 @@ class JobDelayMessage(SlackMessage):
             "Our Project Managers have been notified and will be taking action to ensure that we still meet your due date. "
         )
         message += _(
-            "If there is going to be a delay meeting your due dates, our Project Managers or your Account Manager will inform you. "
+            " If there is going to be a delay meeting your due dates, our Project Managers or your Account Manager will inform you. "
         )
         message += _(
             "This is only a prediction and should not be taken as an indication that your job is going to be late.\n\n"
