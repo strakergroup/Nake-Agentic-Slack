@@ -1498,6 +1498,7 @@ async def get_mt_translation(
     channel_id = context.channel_id or context.user_id
 
     try:
+        input = escape_slack_emoji(sentence)
         split_langs = await split_languages([target_lang])
         if split_langs['microsoft']:
             unformatted_text = input
