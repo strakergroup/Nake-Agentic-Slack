@@ -10,6 +10,7 @@ from buglog import notify_exception, notify_message
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_logger.slack import SlackAppLog  # type: ignore
 
+from app.ray.utils import set_user_language
 from app.translate import translator_var, Translator
 
 from .app import app
@@ -82,17 +83,7 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
             user=context["user_id"], include_locale=True
         )
         context["is_bot"] = user_info["user"]["is_bot"]
-        if "user" in user_info and "locale" in user_info["user"]:
-            user_locale = user_info["user"]["locale"]
-        if (
-            user_info["user"]["tz"] == "America/Chicago"
-            or user_info["user"]["tz"] == "America/New_York"
-            or user_info["user"]["tz"] == "America/Denver"
-            or user_info["user"]["tz"] == "America/Los_Angeles"
-            or user_info["user"]["tz"] == "America/Regina"
-        ) and user_info["user"]["locale"] == "fr-FR":
-            user_locale = "fr-CA"
-        translator_var.set(Translator(user_locale))
+        set_user_language(user_info)
     except Exception as e:
         print(e)
         notify_exception(e)

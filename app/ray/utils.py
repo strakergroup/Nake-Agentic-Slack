@@ -7,6 +7,8 @@ from urllib.parse import urlencode, unquote
 from babel.numbers import format_currency as babel_format_currency
 import requests
 
+from app.translate import Translator, translator_var
+
 from ..config import domains
 from slack_sdk.web.async_client import AsyncWebClient
 from io import BytesIO
@@ -247,3 +249,20 @@ def upload_to_file_server(file_path: str) -> str:
         response.raise_for_status()
 
     return file_id
+
+
+def set_user_language(user_info):
+    user_locale = "en"
+    if "user" in user_info and "locale" in user_info["user"]:
+        user_locale = user_info["user"]["locale"]
+    if user_info["user"]["locale"] == "fr-FR":
+        if (
+            user_info["user"]["tz"] == "America/Chicago"
+            or user_info["user"]["tz"] == "America/New_York"
+            or user_info["user"]["tz"] == "America/Denver"
+            or user_info["user"]["tz"] == "America/Los_Angeles"
+            or user_info["user"]["tz"] == "America/Regina"
+            or user_info["user"]["tz"] == "America/Halifax"
+        ):
+            user_locale = "fr-CA"
+    translator_var.set(Translator(user_locale))
