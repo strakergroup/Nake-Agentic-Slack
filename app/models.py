@@ -119,3 +119,24 @@ class GoogleApiLog(Base):
     response: Mapped[dict | None] = mapped_column(JSON)
     word_count: Mapped[int]
     character_count: Mapped[int]
+
+class MicrosoftApiLog(Base):
+    """The table for logging Microsoft API usage.
+
+    Table: `ray_integration_log.microsoft_api_log`
+    """
+
+    __tablename__ = "microsoft_api_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_uuid: Mapped[str]
+    group_uuid: Mapped[str]
+    super_group_uuid: Mapped[str]
+    app_name: Mapped[str | None]
+    sl: Mapped[str | None]
+    tl: Mapped[str | None]
+    source_text: Mapped[str | None]
+    target_text: Mapped[str | None]
+    response: Mapped[dict | None] = mapped_column(JSON)
+    word_count: Mapped[int]
+    character_count: Mapped[int]
