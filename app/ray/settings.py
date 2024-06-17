@@ -30,6 +30,7 @@ def get_auto_translate_languages(
         ("en", "English"),
         ("es", "Spanish"),
         ("fr", "French"),
+        ("fr-CA", "French (Canadian)"),
         ("de", "German"),
         ("it", "Italian"),
         ("pt", "Portuguese"),
