@@ -34,9 +34,6 @@ class Translator:
         return language_map
 
     def translate(self, input: str):
-        if config.environment == Environment.production:
-            # Disable localisation in production until ready.
-            return input
 
         if self.lang.lower().startswith("en"):
             return input
