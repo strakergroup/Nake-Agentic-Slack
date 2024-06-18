@@ -72,20 +72,19 @@ def home_auth_blocks(
     else:
         e_id = "E04RDMG8XP1"
         t_id = "T02FDFCGK"
-    if enterprise_id:
-        if enterprise_id == e_id:
-            msg[1]["elements"].insert(
-                0,
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("Direct Login"),
-                    },
-                    "style": "primary",
-                    "action_id": "login_sso",
+    if enterprise_id and enterprise_id == e_id:
+        msg[1]["elements"].insert(
+            0,
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": _("Direct Login"),
                 },
-            )
+                "style": "primary",
+                "action_id": "login_sso",
+            },
+        )
     elif team_id == t_id:
         msg[1]["elements"].insert(
             0,
