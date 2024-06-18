@@ -42,9 +42,9 @@ class Translator:
         translation = input
         # check redis for translation
         input_hash = hashlib.sha256(input.encode()).hexdigest()
-        cached_translation = redis_conn.get(f"translation:{self.lang}:{input_hash}")
-        if cached_translation:
-            return cached_translation
+        # cached_translation = redis_conn.get(f"translation:{self.lang}:{input_hash}")
+        # if cached_translation:
+        #     return cached_translation
         # prepare input for translation by replacing emojis and python varible expansion with x tags
         replacements = {}
         for i, match in enumerate(re.finditer(r":\w+:|\{.*?\}", input)):
@@ -73,8 +73,8 @@ class Translator:
         for original, tag in replacements.items():
             translation = translation.replace(tag, original)
             # cache in redis
-        if translation != input:
-            redis_conn.set(f"translation:{self.lang}:{input_hash}", translation)
+        # if translation != input:
+        # redis_conn.set(f"translation:{self.lang}:{input_hash}", translation)
         self.cache[input] = translation
         return translation
 
