@@ -1778,10 +1778,10 @@ async def resendMT(
     )
 
     if message_match and await require_ray_client(context, prompt_login=False):
-        mt_sl = message_match.group(2)
+        mt_sl = message_match.group(1) or ""
         # TODO: read user lang to default target
-        mt_tl = message_match.group(3) or "en"
-        mt_text = message_match.group(4)
+        mt_tl = message_match.group(2) or "en"
+        mt_text = message_match.group(3)
         try:
             if await require_mt_tokens(context, len(mt_text)):
                 await get_mt_translation(
@@ -1791,7 +1791,7 @@ async def resendMT(
                     source_lang=mt_sl,
                     target_lang=mt_tl,
                     sentence=mt_text,
-                    thread_ts=message['message']['latest_reply'],
+                    thread_ts=message['message'],
                     is_edit=True,
                 )
 
