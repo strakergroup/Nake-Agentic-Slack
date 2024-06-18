@@ -1772,7 +1772,7 @@ async def resendMT(
 ):
     # process mt
     message_match = re.search(
-        r"mt:?\s+((\w+\s+)?to\s+(\w+):?\s+)?(.*)",
+        r"mt:?(?:\s+([\w-]+))?\s+to\s+([\w-]+):?\s+(.*)",
         message['message']["text"],
         re.I,
     )
@@ -1783,16 +1783,21 @@ async def resendMT(
         mt_tl = message_match.group(3) or "en"
         mt_text = message_match.group(4)
         try:
-            await get_mt_translation(
-                client,
-                context,
-                context["ray"].client,
-                source_lang=mt_sl,
-                target_lang=mt_tl,
-                sentence=mt_text,
-                thread_ts=message['message']['latest_reply'],
-                is_edit=True,
-            )
+            if await require_mt_tokens(context, len(mt_text)):
+                await get_mt_translation(
+                    client,
+                    context,
+                    context["ray"].client,
+                    source_lang=mt_sl,
+                    target_lang=mt_tl,
+                    sentence=mt_text,
+                    thread_ts=message['message']['latest_reply'],
+                    is_edit=True,
+                )
+
+                await spend_mt_tokens(
+                    credits=len(mt_text), ray_connection=context["ray"]
+                )
         except Exception as e:
             print(e)
 
