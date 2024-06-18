@@ -20,6 +20,7 @@ from ...ray.utils import (
     format_datetime_slack,
     format_job_due_date_slack,
     format_job_prediction,
+    is_ibm_enterprise,
     is_min_langugagecloud_plan,
 )
 from ...ray.settings import get_auto_translate_language_name
@@ -216,25 +217,25 @@ class LoginMessage(SlackMessage):
                         "action_id": "login_sso",
                     },
                 )
-            elif (enterprise_id == e_id) and ray_client is not None and ray_client.sso:
-                msg.pop(1)
-                msg.append(
-                    {
-                        "type": "actions",
-                        "elements": [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Login to LanguageCloud"),
-                                },
-                                "style": "primary",
-                                "url": encrpyt_slack_sso_token(ray_client.username),
-                                "action_id": "login",
-                            }
-                        ],
-                    },
-                )
+            # elif (enterprise_id == e_id) and ray_client is not None and ray_client.sso:
+            #     msg.pop(1)
+            #     msg.append(
+            #         {
+            #             "type": "actions",
+            #             "elements": [
+            #                 {
+            #                     "type": "button",
+            #                     "text": {
+            #                         "type": "plain_text",
+            #                         "text": _("Login to LanguageCloud"),
+            #                     },
+            #                     "style": "primary",
+            #                     "url": encrpyt_slack_sso_token(ray_client.username),
+            #                     "action_id": "login",
+            #                 }
+            #             ],
+            #         },
+            #     )
         elif team_id == t_id and ray_client is None:
             msg[1]["elements"].pop()
             msg[1]["elements"].insert(
@@ -249,25 +250,25 @@ class LoginMessage(SlackMessage):
                     "action_id": "login_sso",
                 },
             )
-        elif team_id == t_id and ray_client is not None and ray_client.sso:
-            msg.pop(1)
-            msg.append(
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Login to LanguageCloud"),
-                            },
-                            "style": "primary",
-                            "url": encrpyt_slack_sso_token(ray_client.username),
-                            "action_id": "login",
-                        }
-                    ],
-                },
-            )
+        # elif team_id == t_id and ray_client is not None and ray_client.sso:
+        #     msg.pop(1)
+        #     msg.append(
+        #         {
+        #             "type": "actions",
+        #             "elements": [
+        #                 {
+        #                     "type": "button",
+        #                     "text": {
+        #                         "type": "plain_text",
+        #                         "text": _("Login to LanguageCloud"),
+        #                     },
+        #                     "style": "primary",
+        #                     "url": encrpyt_slack_sso_token(ray_client.username),
+        #                     "action_id": "login",
+        #                 }
+        #             ],
+        #         },
+        #     )
         super().__init__(
             "Connect your LanguageCloud account",
             msg,
@@ -1198,7 +1199,7 @@ class JobSummaryMessage(SlackMessage):
                                 + f" {job_plural}* may be behind schedule"
                             ),
                             total_late,
-                            ':large_orange_circle:',
+                            ":large_orange_circle:",
                         )
                     )
         if completed > 0 or all_jobs:
@@ -2008,6 +2009,7 @@ class ConnectionInfoMessage(SlackMessage):
         team_id: str,
         enterprise_id: str | None,
         channel_id: str,
+        is_ibm=False,
     ) -> None:
         # First get Slack workspace - super group info.
         if ray_connection is not None:
@@ -2032,10 +2034,8 @@ class ConnectionInfoMessage(SlackMessage):
         # Next get Slack user - LanguageCloud account info.
         account_blocks: list[dict[str, Any]] = []
         if ray_connection is not None and ray_connection.client is not None:
-            user_details = f"<{domains.languagecloud}|{ray_client.username}>"
-            text = _(
-                "Your connected LanguageCloud account is: <{user_details}>"
-            )
+            user_details = f"<{domains.languagecloud}|{ray_connection.client.username}>"
+            text = _("Your connected LanguageCloud account is: <{user_details}>")
             account_blocks.append(
                 {
                     "type": "section",
@@ -2058,18 +2058,32 @@ class ConnectionInfoMessage(SlackMessage):
                 {
                     "type": "actions",
                     "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Connect LanguageCloud account"),
-                            },
-                            "style": "primary",
-                            "url": get_language_cloud_connect_url(
-                                user_id, team_id, enterprise_id, channel_id
+                        (
+                            (
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("Connect LanguageCloud account"),
+                                    },
+                                    "style": "primary",
+                                    "url": get_language_cloud_connect_url(
+                                        user_id, team_id, enterprise_id, channel_id
+                                    ),
+                                    "action_id": "login",
+                                }
+                                if is_ibm
+                                else {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("Direct Login"),
+                                    },
+                                    "style": "primary",
+                                    "action_id": "login_sso",
+                                }
                             ),
-                            "action_id": "login",
-                        }
+                        )
                     ],
                 }
             )
@@ -2134,12 +2148,12 @@ class SsoConnectionInfoMessage(SlackMessage):
     def __init__(
         self,
         ray_connection: RayConnection,
+        is_ibm=False,
     ) -> None:
         if ray_connection.client is not None:
             text = _(
                 "Your connected LanguageCloud account is: *{ray_connection.client.username}*."
             )
-
         msg = [
             {
                 "type": "section",
@@ -2147,19 +2161,25 @@ class SsoConnectionInfoMessage(SlackMessage):
             },
             {
                 "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("Login to LanguageCloud"),
-                        },
-                        "style": "primary",
-                        # TODO: ray_connection.client could be None
-                        "url": encrpyt_slack_sso_token(ray_connection.client.username),
-                        "action_id": "login",
-                    }
-                ],
+                "elements": (
+                    [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Login to LanguageCloud"),
+                            },
+                            "style": "primary",
+                            # TODO: ray_connection.client could be None
+                            "url": encrpyt_slack_sso_token(
+                                ray_connection.client.username
+                            ),
+                            "action_id": "login",
+                        }
+                    ]
+                    if is_ibm
+                    else []
+                ),
             },
         ]
         super().__init__(
