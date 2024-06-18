@@ -192,12 +192,10 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
         *lang_price_blocks,
         {
             "type": "section",
-            
             "text": {
                 "type": "mrkdwn",
-                "text": _(
-                    "*Total Cost ({currency})*: "
-                ) + f"{quote_formatted} {'(incl. tax)' if incl_tax else ''}"
+                "text": _("*Total Cost ({currency})*: ")
+                + f"{quote_formatted} {'(incl. tax)' if incl_tax else ''}",
             },
         },
         {"type": "divider"},
@@ -292,7 +290,9 @@ def get_progess_text(predictions: dict) -> str:
     return status
 
 
-def job_prediction_block(prediction: str, value: int = 0, emorji: str = ':large_orange_circle:') -> dict:
+def job_prediction_block(
+    prediction: str, value: int = 0, emorji: str = ":large_orange_circle:"
+) -> dict:
     print("prediction", prediction)
     if "behind schedule" in prediction:
         return {

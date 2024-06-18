@@ -4,6 +4,9 @@ import math
 import datetime
 from urllib.parse import urlencode, unquote
 
+from app.auth.connector import RayClient
+from ..config import config, domains, Environment
+
 from babel.numbers import format_currency as babel_format_currency
 import requests
 
@@ -266,3 +269,21 @@ def set_user_language(user_info):
         ):
             user_locale = "fr-CA"
     translator_var.set(Translator(user_locale))
+
+
+def is_ibm_enterprise(
+    team_id: str,
+    enterprise_id: str | None,
+):
+    """Check if the user is in ibm enterpirse or workspace."""
+    if config.environment == Environment.production:
+        e_id = "EUJJ37YFR"
+        t_id = "T0360HUQKS9"
+    else:
+        e_id = "E04RDMG8XP1"
+        t_id = "T02FDFCGK"
+
+    if enterprise_id == e_id or team_id == t_id:
+        return True
+
+    return False

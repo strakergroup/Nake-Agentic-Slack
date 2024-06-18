@@ -16,7 +16,7 @@ from slack_sdk.errors import SlackApiError
 from ray_sdk import RayAPIResponseError
 from buglog import notify_exception, notify_message
 
-from app.ray.utils import download_from_file_server, upload_to_file_server
+from app.ray.utils import download_from_file_server, is_ibm_enterprise, upload_to_file_server
 from app.translate import _
 from app.wb_tasks.tasks import get_task
 from ..redis import redis_conn
@@ -400,6 +400,11 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                 if context["ray"].client.sso:
                     msg = SsoConnectionInfoMessage(
                         context["ray"],
+                        is_ibm=(
+                            is_ibm_enterprise(
+                                context["team_id"], context.get("enterprise_id")
+                            )
+                        ),
                     )
                 # need else block if triggered from old message
                 else:
@@ -409,6 +414,9 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                         team_id=context["team_id"],
                         enterprise_id=context.get("enterprise_id"),
                         channel_id=context["channel_id"],
+                        is_ibm=is_ibm_enterprise(
+                            context["team_id"], context.get("enterprise_id")
+                        )
                     )
                 await respond(text=msg.text, blocks=msg.blocks)
         else:
