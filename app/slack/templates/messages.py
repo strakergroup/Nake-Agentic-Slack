@@ -217,6 +217,8 @@ class LoginMessage(SlackMessage):
                         "action_id": "login_sso",
                     },
                 )
+            else:
+                msg[1]["elements"].pop()
             # elif (enterprise_id == e_id) and ray_client is not None and ray_client.sso:
             #     msg.pop(1)
             #     msg.append(
@@ -250,6 +252,8 @@ class LoginMessage(SlackMessage):
                     "action_id": "login_sso",
                 },
             )
+        else:
+            msg[1]["elements"].pop()
         # elif team_id == t_id and ray_client is not None and ray_client.sso:
         #     msg.pop(1)
         #     msg.append(
