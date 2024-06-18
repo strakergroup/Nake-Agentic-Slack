@@ -13,6 +13,8 @@ from slack_bolt.oauth.async_callback_options import (
 from slack_bolt.request.async_request import AsyncBoltRequest
 from buglog import notify_exception
 
+from app.ray.utils import is_ibm_enterprise
+
 from .stores import AsyncSQLAlchemyInstallationStore, AsyncSQLAlchemyOAuthStateStore
 from .templates.messages import OnboardingMessage
 from ..auth.connector import save_user_token_from_installation
@@ -111,7 +113,10 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
                 args.installation.team_id,
                 args.installation.enterprise_id,
                 args.installation.user_id,
-                prompt_login=user is None,
+                prompt_login=user is None
+                and not is_ibm_enterprise(
+                    args.installation.team_id, args.installation.enterprise_id
+                ),
             )
             await app.client.chat_postMessage(
                 channel=args.installation.user_id,
