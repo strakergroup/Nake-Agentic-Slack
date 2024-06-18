@@ -1791,7 +1791,7 @@ async def resendMT(
                     source_lang=mt_sl,
                     target_lang=mt_tl,
                     sentence=mt_text,
-                    thread_ts=message['message'],
+                    thread_ts=message['message']['latest_reply'],
                     is_edit=True,
                 )
 
