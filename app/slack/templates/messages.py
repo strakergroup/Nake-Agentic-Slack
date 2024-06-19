@@ -203,22 +203,23 @@ class LoginMessage(SlackMessage):
             e_id = "E04RDMG8XP1"
             t_id = "T02FDFCGK"
         if enterprise_id:
-            if (enterprise_id == e_id) and ray_client is None:
-                msg[1]["elements"].pop()
-                msg[1]["elements"].insert(
-                    0,
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("Direct Login"),
+            if enterprise_id == e_id:
+                if ray_client is None:
+                    msg[1]["elements"].pop()
+                    msg[1]["elements"].insert(
+                        0,
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Direct Login"),
+                            },
+                            "style": "primary",
+                            "action_id": "login_sso",
                         },
-                        "style": "primary",
-                        "action_id": "login_sso",
-                    },
-                )
-            else:
-                msg.pop()
+                    )
+                else:
+                    msg.pop()
             # elif (enterprise_id == e_id) and ray_client is not None and ray_client.sso:
             #     msg.pop(1)
             #     msg.append(
@@ -238,22 +239,23 @@ class LoginMessage(SlackMessage):
             #             ],
             #         },
             #     )
-        elif team_id == t_id and ray_client is None:
-            msg[1]["elements"].pop()
-            msg[1]["elements"].insert(
-                0,
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("Direct Login"),
+        elif team_id == t_id:
+            if ray_client is None:
+                msg[1]["elements"].pop()
+                msg[1]["elements"].insert(
+                    0,
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Direct Login"),
+                        },
+                        "style": "primary",
+                        "action_id": "login_sso",
                     },
-                    "style": "primary",
-                    "action_id": "login_sso",
-                },
-            )
-        else:
-            msg.pop()
+                )
+            else:
+                msg.pop()
         # elif team_id == t_id and ray_client is not None and ray_client.sso:
         #     msg.pop(1)
         #     msg.append(
