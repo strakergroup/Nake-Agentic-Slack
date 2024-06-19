@@ -63,7 +63,7 @@ async def home_view(
                     "type": "header",
                     "text": {
                         "type": "plain_text",
-                        "text": "Current Translation Settings",
+                        "text": _("Current Translation Settings"),
                     },
                 },
             ]
@@ -217,7 +217,9 @@ async def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _(":speech_balloon: Translation settings"),
+                            "text": _(
+                                ":speech_balloon: Translation settings"
+                            ),
                         },
                         "value": json.dumps(
                             {
