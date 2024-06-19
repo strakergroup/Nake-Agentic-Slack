@@ -217,9 +217,7 @@ async def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _(
-                                ":speech_balloon: Translation settings"
-                            ),
+                            "text": ":speech_balloon: " + _("Translation settings"),
                         },
                         "value": json.dumps(
                             {
