@@ -95,7 +95,7 @@ async def home_view(
                         "type": "header",
                         "text": {
                             "type": "plain_text",
-                            "text": "Current Translation Settings",
+                            "text": _("Current Translation Settings"),
                         },
                     },
                 ]
@@ -233,6 +233,36 @@ async def home_view(
             {
                 "type": "header",
                 "text": {"type": "plain_text", "text": _("Translate Channels")},
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
+                    ),
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _(
+                                ":speech_balloon: Translation settings"
+                            ),
+                        },
+                        "value": json.dumps(
+                            {
+                                "team_id": context["team_id"],
+                            }
+                        ),
+                        "action_id": "settings_auto_translate",
+                    },
+                ],
             },
             *translation_settings_blocks,
             {"type": "divider"},
