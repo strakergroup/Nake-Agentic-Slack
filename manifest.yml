@@ -53,13 +53,13 @@ features:
       description: Submit a new translation job
   slash_commands:
     - command: /straker
-      url: https://slowly-curious-kodiak.ngrok-free.app/slack/events
+      url: <YOUR_DOMAIN>/slack/events
       description: Job Status, Daily Summary, Submit a New Job
       usage_hint: "[job reference], my jobs, new"
       should_escape: false
 oauth_config:
   redirect_urls:
-    - https://slowly-curious-kodiak.ngrok-free.app/slack/oauth_redirect
+    - <YOUR_DOMAIN>/slack/oauth_redirect
   scopes:
     bot:
       - app_mentions:read
@@ -79,7 +79,7 @@ oauth_config:
       - users:read.email
 settings:
   event_subscriptions:
-    request_url: https://slowly-curious-kodiak.ngrok-free.app/slack/events
+    request_url: <YOUR_DOMAIN>/slack/events
     bot_events:
       - app_home_opened
       - app_mention
@@ -90,8 +90,8 @@ settings:
       - message.mpim
   interactivity:
     is_enabled: true
-    request_url: https://slowly-curious-kodiak.ngrok-free.app/slack/events
-    message_menu_options_url: https://slowly-curious-kodiak.ngrok-free.app/slack/events
+    request_url: <YOUR_DOMAIN>/slack/events
+    message_menu_options_url: <YOUR_DOMAIN>/slack/events
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false
