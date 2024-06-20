@@ -11,6 +11,7 @@ from ...ray.utils import (
     get_job_url,
     format_currency,
     format_currency_symbol,
+    is_ibm_enterprise,
 )
 from ...translate import _
 
@@ -30,9 +31,9 @@ def home_auth_blocks(
         super_group_names_str = ", ".join(super_group_names)
         user_id_str = f"<@{user_id}>"
         domain_url = f"<{domains.languagecloud}|{ray_connection.client.username}>"
-        text = _("Your Slack account {user_id_str} is connected with: {domain_url}.")
+        text = "Your Slack account {user_id_str} is connected with: {domain_url}."
         if ray_connection.client.sso:
-            text = _("Your Slack account {user_id_str} is connected with: *{ray_connection.client.username}*.")
+            text = "Your Slack account {user_id_str} is connected with: *{ray_connection.client.username}*."
         return [
             {
                 "type": "section",
@@ -66,26 +67,7 @@ def home_auth_blocks(
             "elements": [],
         },
     ]
-    if config.environment == Environment.production:
-        e_id = "EUJJ37YFR"
-        t_id = "T0360HUQKS9"
-    else:
-        e_id = "E04RDMG8XP1"
-        t_id = "T02FDFCGK"
-    if enterprise_id and enterprise_id == e_id:
-        msg[1]["elements"].insert(
-            0,
-            {
-                "type": "button",
-                "text": {
-                    "type": "plain_text",
-                    "text": _("Direct Login"),
-                },
-                "style": "primary",
-                "action_id": "login_sso",
-            },
-        )
-    elif team_id == t_id:
+    if is_ibm_enterprise(team_id, enterprise_id):
         msg[1]["elements"].insert(
             0,
             {

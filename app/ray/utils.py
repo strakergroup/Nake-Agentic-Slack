@@ -276,14 +276,19 @@ def is_ibm_enterprise(
     enterprise_id: str | None,
 ):
     """Check if the user is in ibm enterpirse or workspace."""
-    if config.environment == Environment.production:
-        e_id = "EUJJ37YFR"
-        t_id = "T0360HUQKS9"
-    else:
-        e_id = "E04RDMG8XP1"
-        t_id = "T02FDFCGK"
+    # if config.environment == Environment.production:
+    e_id = "EUJJ37YFR"
+    t_id = "T0360HUQKS9"
+    # else:
+    se_id = "E04RDMG8XP1"
+    st_id = "T02FDFCGK"
 
-    if enterprise_id == e_id or team_id == t_id:
+    if (
+        enterprise_id == e_id
+        or team_id == t_id
+        or enterprise_id == se_id
+        or team_id == st_id
+    ):
         return True
 
     return False
