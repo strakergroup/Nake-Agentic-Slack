@@ -2015,7 +2015,7 @@ class ConnectionInfoMessage(SlackMessage):
                                     ),
                                     "action_id": "login",
                                 }
-                                if is_ibm
+                                if not is_ibm
                                 else {
                                     "type": "button",
                                     "text": {
@@ -2102,29 +2102,33 @@ class SsoConnectionInfoMessage(SlackMessage):
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": text},
             },
-            {
-                "type": "actions",
-                "elements": (
-                    [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Login to LanguageCloud"),
-                            },
-                            "style": "primary",
-                            # TODO: ray_connection.client could be None
-                            "url": encrpyt_slack_sso_token(
-                                ray_connection.client.username
-                            ),
-                            "action_id": "login",
-                        }
-                    ]
-                    if is_ibm
-                    else []
-                ),
-            },
         ]
+        msg.extend(
+            [
+                {
+                    "type": "actions",
+                    "elements": (
+                        [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Login to LanguageCloud"),
+                                },
+                                "style": "primary",
+                                # TODO: ray_connection.client could be None
+                                "url": encrpyt_slack_sso_token(
+                                    ray_connection.client.username
+                                ),
+                                "action_id": "login",
+                            }
+                        ]
+                    ),
+                }
+            ]
+            if not is_ibm
+            else []
+        )
         super().__init__(
             "Login to LanguageCloud",
             msg,
