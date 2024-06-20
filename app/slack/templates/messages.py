@@ -196,85 +196,22 @@ class LoginMessage(SlackMessage):
                 ],
             },
         ]
-        if config.environment == Environment.production:
-            e_id = "EUJJ37YFR"
-            t_id = "T0360HUQKS9"
-        else:
-            e_id = "E04RDMG8XP1"
-            t_id = "T02FDFCGK"
-        if enterprise_id:
-            if enterprise_id == e_id:
-                if ray_client is None:
-                    msg[1]["elements"].pop()
-                    msg[1]["elements"].insert(
-                        0,
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Direct Login"),
-                            },
-                            "style": "primary",
-                            "action_id": "login_sso",
-                        },
-                    )
-                else:
-                    msg.pop()
-            # elif (enterprise_id == e_id) and ray_client is not None and ray_client.sso:
-            #     msg.pop(1)
-            #     msg.append(
-            #         {
-            #             "type": "actions",
-            #             "elements": [
-            #                 {
-            #                     "type": "button",
-            #                     "text": {
-            #                         "type": "plain_text",
-            #                         "text": _("Login to LanguageCloud"),
-            #                     },
-            #                     "style": "primary",
-            #                     "url": encrpyt_slack_sso_token(ray_client.username),
-            #                     "action_id": "login",
-            #                 }
-            #             ],
-            #         },
-            #     )
-        elif team_id == t_id:
-            if ray_client is None:
-                msg[1]["elements"].pop()
-                msg[1]["elements"].insert(
-                    0,
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("Direct Login"),
-                        },
-                        "style": "primary",
-                        "action_id": "login_sso",
+        if is_ibm_enterprise(team_id, enterprise_id):
+            msg[1]["elements"].pop()
+            msg[1]["elements"].insert(
+                0,
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": _("Direct Login"),
                     },
-                )
-            else:
-                msg.pop()
-        # elif team_id == t_id and ray_client is not None and ray_client.sso:
-        #     msg.pop(1)
-        #     msg.append(
-        #         {
-        #             "type": "actions",
-        #             "elements": [
-        #                 {
-        #                     "type": "button",
-        #                     "text": {
-        #                         "type": "plain_text",
-        #                         "text": _("Login to LanguageCloud"),
-        #                     },
-        #                     "style": "primary",
-        #                     "url": encrpyt_slack_sso_token(ray_client.username),
-        #                     "action_id": "login",
-        #                 }
-        #             ],
-        #         },
-        #     )
+                    "style": "primary",
+                    "action_id": "login_sso",
+                },
+            )
+        else:
+            msg.pop()
         super().__init__(
             "Connect your LanguageCloud account",
             msg,
