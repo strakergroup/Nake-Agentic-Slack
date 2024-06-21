@@ -1033,6 +1033,7 @@ def connect_ray_account_sso(
         return member_id
     else:
         member_id = result1.first().obj_uuid
+        create_client_access_tokens(client_id=member_id, type="public")
         create_slack_deltaray_link_sso(
             user_data=json.dumps(slack_data), member_id=member_id
         )
@@ -1101,16 +1102,27 @@ def create_client_and_mglink(
 def create_client_access_tokens(client_id: str, type: str = "public"):
     """Create API access tokens of a RAY client."""
     with engines["api"].connect() as conn:
-        sql = text(
+        # Check if an access token for the account_id already exists
+        sql_check = text(
             """
-                INSERT INTO access_token
-                    (obj_uuid, account_id, active, `type`, application_id, created_at)
-                VALUES
-                    (:obj_uuid, :account_id, 1, :type, '', now())
+                SELECT 1 FROM access_token
+                WHERE account_id = :account_id
             """
-        ).bindparams(obj_uuid=str(uuid4()).upper(), account_id=client_id, type=type)
-        conn.execute(sql)
-        conn.commit()
+        ).bindparams(account_id=client_id)
+        result = conn.execute(sql_check).fetchone()
+
+        # If an access token for the account_id does not exist, insert a new one
+        if result is None:
+            sql_insert = text(
+                """
+                    INSERT INTO access_token
+                        (obj_uuid, account_id, active, `type`, application_id, created_at)
+                    VALUES
+                        (:obj_uuid, :account_id, 1, :type, '', now())
+                """
+            ).bindparams(obj_uuid=str(uuid4()).upper(), account_id=client_id, type=type)
+            conn.execute(sql_insert)
+            conn.commit()
     # Enable API Access
     with engines["sitemanager"].connect() as conn:
         sqlMemUpdate = text(
