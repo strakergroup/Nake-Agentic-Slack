@@ -20,7 +20,7 @@ from straker_auth.languagecloud import create_languagecloud_id_token
 from buglog import notify_exception
 
 from .algorithms import encrypt_aes, hash_hmac_sha1
-from ..config import config, domains
+from ..config import config, domains, Environment
 from ..database import engines
 
 
@@ -1047,6 +1047,11 @@ def create_client_and_mglink(
     group_id = "0D750948-74A8-4932-B344-0880BDCB5215"
     if user_data.get("enterprise_id") == "E04RDMG8XP1":
         group_id = "173231FA-D524-42BF-9AF3F4834CAA88A0"
+        if (
+            config.environment != Environment.production
+            and config.environment != Environment.local
+        ):
+            group_id = "B988B8ED-142B-465E-9CCE-831A0D92DD1D"
     json_data = json.loads(user_data)
     password = "secret".encode("utf-8")  # Convert the password to bytes
     hash_object = hashlib.sha512(password)
