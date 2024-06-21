@@ -3,6 +3,7 @@
 See https://slack.dev/bolt-python/concepts#listener-middleware.
 """
 
+import math
 from typing import Any
 import logging
 
@@ -166,6 +167,8 @@ async def require_ray_client(
 async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
     """Check if the user has the required minimum translation credits to perform the operation"""
     ai_tokens = 0
+    mt_scale = 0.1
+    value = math.ceil(value * mt_scale)
     if context["ray"].client is not None:
         user_tokens = await get_client_tokens(context["ray"].client.id_token)
         ai_tokens = user_tokens.ai_token
