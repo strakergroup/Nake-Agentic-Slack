@@ -1021,7 +1021,6 @@ def connect_ray_account_sso(
         create_client_and_mglink(
             user_data=json.dumps(slack_data),
             member_id=member_id,
-            group_id="173231FA-D524-42BF-9AF3F4834CAA88A0",
         )
         # Create log
         # crete_slack_logs_sso(user_data=json.dumps(slack_data), member_id=member_id, message="New User")
@@ -1043,8 +1042,10 @@ def connect_ray_account_sso(
 def create_client_and_mglink(
     user_data: str,
     member_id: str,
-    group_id: str = "173231FA-D524-42BF-9AF3F4834CAA88A0",
 ):
+    group_id = "0D750948-74A8-4932-B344-0880BDCB5215"
+    if user_data.get("enterprise_id") == "E04RDMG8XP1":
+        group_id = "173231FA-D524-42BF-9AF3F4834CAA88A0"
     json_data = json.loads(user_data)
     password = "secret".encode("utf-8")  # Convert the password to bytes
     hash_object = hashlib.sha512(password)
