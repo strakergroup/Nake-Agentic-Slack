@@ -1531,7 +1531,7 @@ class JobListMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(f"*{title}*"),
+                        "text": f"*{title}*",
                     },
                 },
                 *jobs_blocks,
