@@ -2430,8 +2430,8 @@ class JobQuoteAcceptedEventMessage(SlackMessage):
         super().__init__(
             _(
                 "Quote Accepted for {id}. Your job will be completed before {target_date}.",
-                blocks,
             ),
+            blocks,
         )
 
 
@@ -2479,7 +2479,7 @@ class JobQuotedEventMessage(SlackMessage):
                     },
                 },
             ]
-            + quote_message_block(event, job_url),
+            + quote_message_block(event, job_url, is_ibm),
         )
 
 
@@ -3213,45 +3213,6 @@ class RequiresMtTokenAdminMessage(SlackMessage):
         )
 
 
-class CancelJobMessage(SlackMessage):
-    """Message with a button to open the cancel job modal."""
-
-    def __init__(self, channel_id: str, timestamp: str) -> None:
-        super().__init__(
-            "Cancel a translation job",
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _("Click the *Cancel translation job* button below"),
-                    },
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Cancel translation job"),
-                                "emoji": True,
-                            },
-                            "action_id": "cancel_job",
-                            "style": "primary",
-                            "value": json.dumps(
-                                {
-                                    "channel_id": channel_id,
-                                    "ts": timestamp,
-                                }
-                            ),
-                        }
-                    ],
-                },
-            ],
-        )
-
-
 class DocMtMessage(SlackMessage):
     """Message verify consumer event response"""
 
@@ -3266,63 +3227,5 @@ class DocMtMessage(SlackMessage):
                         "text": _("Error occurred while translating your document"),
                     },
                 }
-            ],
-        )
-
-
-class CancelTJMessage(SlackMessage):
-    """A summary of the client's jobs, number of jobs in each status. Has buttons
-    to display the individual job IDs for each status and timeframe.
-    """
-
-    def __init__(self, channel_id: str, jobdetail) -> None:
-        target_labels = [target.label for target in jobdetail["targetlang"]]
-        super().__init__(
-            "Cancel a translation job",
-            [
-                {
-                    "type": "header",
-                    "text": {
-                        "type": "plain_text",
-                        "text": f" Cancel  {jobdetail['job_id']}",
-                    },
-                },
-                {
-                    "type": "section",
-                    "fields": [
-                        {"type": "mrkdwn", "text": f"*Status:*\n {jobdetail['status']}"}
-                    ],
-                },
-                {
-                    "type": "section",
-                    "fields": [
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Source:*\n {jobdetail['sourcelang'].label}",
-                        },
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Target:*\n {', '.join(target_labels)}",
-                        },
-                    ],
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "Please confirm to cancel this job.",
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Cancel Job",
-                        },
-                        "value": json.dumps(
-                            {"job_id": jobdetail["job_id"], "job_action": "list"}
-                        ),
-                        "action_id": "cancel_job",
-                    },
-                },
             ],
         )

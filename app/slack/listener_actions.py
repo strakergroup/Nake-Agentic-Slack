@@ -673,9 +673,7 @@ async def post_job_details(
             if job is not None:
                 msg = JobQuotedMessage(
                     job,
-                    is_ibm_enterprise(
-                        context.team_id, context.get("enterprise_id", "")
-                    ),
+                    is_ibm_enterprise(context.team_id, context.get("enterprise_id")),
                 )
                 if context.response_url:
                     return await context.respond(text=msg.text, blocks=msg.blocks)
@@ -711,7 +709,7 @@ async def post_job_details(
                         job_prediction,
                         is_ibm_enterprise(
                             team_id=context["team_id"],
-                            enterprise_id=context.get("enterprise_id", ""),
+                            enterprise_id=context.get("enterprise_id"),
                         ),
                     )
                     if context.response_url:

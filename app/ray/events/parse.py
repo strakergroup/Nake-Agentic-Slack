@@ -40,9 +40,9 @@ def get_ray_event_message(
         pydantic.ValidationError: The data format for the event type is invalid.
         ValueError: The event type is invalid.
     """
-    is_ibm = slack_user and is_ibm_enterprise(
-        slack_user.team_id, slack_user.enterprise_id
-    )
+    is_ibm = False
+    if slack_user:
+        is_ibm = is_ibm_enterprise(slack_user.team_id, slack_user.enterprise_id)
     if event_type == "ray:slack:account_connected":
         event0 = SlackAccountConnectedEvent.model_validate(event_data)
         return SuccessfulLoginMessage(event0.user_id, event0.username)
