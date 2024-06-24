@@ -57,7 +57,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
             user=auth.slack_user.user_id, include_locale=True
         )
         set_user_language(user_info)
-        message = get_ray_event_message(event.event, event.data)
+        message = get_ray_event_message(event.event, event.data, auth.slack_user)
     except ValidationError as e:
         raise HTTPException(
             422,

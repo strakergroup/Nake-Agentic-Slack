@@ -61,7 +61,7 @@ from ..ray.settings import (
     filter_invalid_auto_translate_languages,
     get_auto_translate_settings_and_langs,
 )
-from ..ray.utils import is_min_langugagecloud_plan
+from ..ray.utils import is_ibm_enterprise, is_min_langugagecloud_plan
 from ..mt.google import get_machine_translations, log_google_api_usage
 from ..mt.microsoft import get_microsoft_machine_translations, log_microsoft_api_usage
 from ..watson import watson_message
@@ -587,7 +587,15 @@ async def post_job_status(
                     if job.status == "IN_PROGRESS"
                     else ""
                 )
-                msg = JobStatusMessage(job, ray_client.id, job_prediction)
+                msg = JobStatusMessage(
+                    job,
+                    ray_client.id,
+                    is_ibm_enterprise(
+                        team_id=context.team_id,
+                        enterprise_id=context.get("enterprise_id"),
+                    ),
+                    job_prediction,
+                )
                 if context.response_url:
                     await context.respond(text=msg.text, blocks=msg.blocks)
                 else:
@@ -663,7 +671,12 @@ async def post_job_details(
     try:
         if status == "ORDER_NOW":
             if job is not None:
-                msg = JobQuotedMessage(job)
+                msg = JobQuotedMessage(
+                    job,
+                    is_ibm_enterprise(
+                        context.team_id, context.get("enterprise_id", "")
+                    ),
+                )
                 if context.response_url:
                     return await context.respond(text=msg.text, blocks=msg.blocks)
                 else:
@@ -692,7 +705,15 @@ async def post_job_details(
                         if job.status == "IN_PROGRESS"
                         else ""
                     )
-                    msg = JobDetailsMessage(job, ray_client.id, job_prediction)
+                    msg = JobDetailsMessage(
+                        job,
+                        ray_client.id,
+                        job_prediction,
+                        is_ibm_enterprise(
+                            team_id=context["team_id"],
+                            enterprise_id=context.get("enterprise_id", ""),
+                        ),
+                    )
                     if context.response_url:
                         return await context.respond(text=msg.text, blocks=msg.blocks)
                     else:

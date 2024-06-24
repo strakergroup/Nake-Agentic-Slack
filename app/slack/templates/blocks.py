@@ -33,7 +33,9 @@ def home_auth_blocks(
         domain_url = f"<{domains.languagecloud}|{ray_connection.client.username}>"
         text = _("Your Slack account {user_id_str} is connected with: {domain_url}.")
         if ray_connection.client.sso:
-            text = _("Your Slack account {user_id_str} is connected with: *{ray_connection.client.username}*.")
+            text = _(
+                "Your Slack account {user_id_str} is connected with: *{ray_connection.client.username}*."
+            )
         return [
             {
                 "type": "section",
@@ -118,7 +120,9 @@ def job_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
     }
 
 
-def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
+def quote_message_block(
+    quote: Quote, job_url: str, is_ibm: bool
+) -> list[dict[str, Any]]:
     currency = format_currency_symbol(quote.quote.currency)
     quote_formatted = format_currency(quote.quote.quote, quote.quote.currency)
     turnaround_time = (
@@ -147,6 +151,61 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
                     "text": f"*{lang.label}:*\n{lang_price_formatted}",
                 }
             )
+    actions_block = [
+        {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "emoji": True,
+                "text": _("Accept Quote"),
+            },
+            "style": "primary",
+            "url": quote.quote.quote_accept_url,
+            "action_id": "link",
+        },
+        {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "emoji": True,
+                "text": _("Cancel"),
+            },
+            "style": "danger",
+            "url": quote.quote.quote_cancel_url,
+            "action_id": "link_1",
+            "confirm": {
+                "title": {
+                    "type": "plain_text",
+                    "text": "Cancel Quote",
+                },
+                "text": {
+                    "type": "plain_text",
+                    "text": _(
+                        "Are you sure you want to cancel this quote?\n\n"
+                        + "This action requires you to be logged in to LanguageCloud."
+                    ),
+                },
+                "confirm": {"type": "plain_text", "text": "Yes"},
+                "deny": {
+                    "type": "plain_text",
+                    "text": "No",
+                },
+            },
+        },
+    ]
+    if not is_ibm:
+        actions_block.append(
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": _("View in LanguageCloud"),
+                    "emoji": True,
+                },
+                "url": job_url,
+                "action_id": "link_2",
+            },
+        )
     return [
         {
             "type": "section",
@@ -180,61 +239,7 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
             },
         },
         {"type": "divider"},
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": _("Accept Quote"),
-                    },
-                    "style": "primary",
-                    "url": quote.quote.quote_accept_url,
-                    "action_id": "link",
-                },
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": _("Cancel"),
-                    },
-                    "style": "danger",
-                    "url": quote.quote.quote_cancel_url,
-                    "action_id": "link_1",
-                    "confirm": {
-                        "title": {
-                            "type": "plain_text",
-                            "text": "Cancel Quote",
-                        },
-                        "text": {
-                            "type": "plain_text",
-                            "text": _(
-                                "Are you sure you want to cancel this quote?\n\n"
-                                + "This action requires you to be logged in to LanguageCloud."
-                            ),
-                        },
-                        "confirm": {"type": "plain_text", "text": "Yes"},
-                        "deny": {
-                            "type": "plain_text",
-                            "text": "No",
-                        },
-                    },
-                },
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("View in LanguageCloud"),
-                        "emoji": True,
-                    },
-                    "url": job_url,
-                    "action_id": "link_2",
-                },
-            ],
-        },
+        {"type": "actions", "elements": actions_block},
     ]
 
 
