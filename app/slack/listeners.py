@@ -394,7 +394,7 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                         "channel_id": context["channel_id"],
                         "enterprise_id": context.get("enterprise_id"),
                     }
-                    msg = get_ray_event_message("ray:slack:account_connected", data)
+                    msg = get_ray_event_message("ray:slack:account_connected", data, None)
                     await ack(response_action="clear")
                     await client.chat_postMessage(
                         channel=context["user_id"],
