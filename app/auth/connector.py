@@ -393,6 +393,36 @@ async def get_ray_super_group(
     ]
 
 
+def is_ibm_super_group(
+    enterprise_id: str | None = None,
+) -> bool:
+    """Gets the LanguageCloud super group linked to the Slack workspace if an active
+    link exists, otherwise returns None.
+
+    Args:
+        team_id (str): The ID of the team.
+    """
+    with engines["ray_integration_readonly"].connect() as conn:
+        if enterprise_id:
+            sql = text(
+                """
+                SELECT link.super_group_uuid, g.label
+                FROM slack_super_group_link link
+                INNER JOIN sitemanager.obj_m_group g
+                ON link.super_group_uuid = g.obj_uuid
+                WHERE link.slack_enterprise_id = :enterprise_id
+                AND link.is_active = 1
+                AND link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
+                """
+            ).bindparams(enterprise_id=enterprise_id)
+        result = conn.execute(sql)
+        rows = result.fetchall()
+        print(rows)
+        if not rows:
+            return False
+    return True
+
+
 async def get_ray_demo_client(
     user_id: str, team_id: str, slack_enterprise_id: str
 ) -> RayClient | None:
