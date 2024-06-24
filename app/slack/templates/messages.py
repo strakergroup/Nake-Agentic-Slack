@@ -178,40 +178,45 @@ class LoginMessage(SlackMessage):
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": _(block_text)},
             },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("Connect LanguageCloud account"),
-                        },
-                        "style": "primary",
-                        "url": get_language_cloud_connect_url(
-                            user_id, team_id, enterprise_id, channel_id
-                        ),
-                        "action_id": "login",
-                    }
-                ],
-            },
         ]
-        if is_ibm_enterprise(team_id, enterprise_id):
-            msg[1]["elements"].pop()
-            msg[1]["elements"].insert(
-                0,
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("Direct Login"),
-                    },
-                    "style": "primary",
-                    "action_id": "login_sso",
-                },
-            )
-        else:
-            msg.pop()
+        if not isinstance(ray_client, RayClient):
+            if is_ibm_enterprise(team_id, enterprise_id):
+                msg.append(
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Direct Login"),
+                                },
+                                "style": "primary",
+                                "action_id": "login_sso",
+                            },
+                        ],
+                    }
+                )
+            else:
+                msg.append(
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Connect LanguageCloud account"),
+                                },
+                                "style": "primary",
+                                "url": get_language_cloud_connect_url(
+                                    user_id, team_id, enterprise_id, channel_id
+                                ),
+                                "action_id": "login",
+                            }
+                        ],
+                    }
+                )
         super().__init__(
             "Connect your LanguageCloud account",
             msg,
