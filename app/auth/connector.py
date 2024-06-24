@@ -417,7 +417,6 @@ def is_ibm_super_group(
             ).bindparams(enterprise_id=enterprise_id)
         result = conn.execute(sql)
         rows = result.fetchall()
-        print(rows)
         if not rows:
             return False
     return True
