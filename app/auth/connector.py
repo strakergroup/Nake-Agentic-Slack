@@ -239,7 +239,7 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
     Args:
         ray_client_id (str): The LanguageCloud user ID.
     """
-    with engines["ray_integration_readonly"].connect() as conn:
+    with engines["ray_integration"].connect() as conn:
         sql = text(
             """
             SELECT link.slack_user_id,link.slack_team_id,link.slack_enterprise_id,
@@ -1152,7 +1152,7 @@ def create_slack_deltaray_link_sso(user_data: str, member_id: str):
         ).bindparams(member_uuid=member_id)
         conn.execute(sqlSlackDelete)
         conn.commit()
-    with engines["ray_integration_readonly"].connect() as conn:
+    with engines["ray_integration"].connect() as conn:
         sqlSlackAccount = text(
             """
             SELECT slack_user_id
