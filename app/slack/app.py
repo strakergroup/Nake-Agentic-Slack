@@ -70,6 +70,7 @@ oauth_settings = AsyncOAuthSettings(
             "chat:write.public",
             "commands",
             "files:read",
+            "files:write",
             "groups:history",
             "groups:read",
             "im:history",
