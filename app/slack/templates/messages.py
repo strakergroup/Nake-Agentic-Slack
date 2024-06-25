@@ -829,7 +829,11 @@ class JobDetailsMessage(SlackMessage):
     def __init__(
         self, job: Job, client_id: str, is_ibm: bool, job_prediction: str = ""
     ) -> None:
-        job_link = f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
+        job_link = (
+            f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
+            if not is_ibm
+            else f"*{job.id}*"
+        )
         pm_details = f"{job.project_manager.first_name} {job.project_manager.last_name}"
         job_due_date = format_job_due_date_slack(
             job.target_date, job.status, traffic_light=True
@@ -2084,6 +2088,11 @@ class ClientAlreadyApprovedMessage(TextMessage):
 class JobQuotedMessage(SlackMessage):
     def __init__(self, quote: Quote, is_ibm: bool) -> None:
         job_url = get_job_url(quote.uuid, quote.client_id)
+        formatted_url = (
+            "*<{job_url}|Straker Job Reference {quote.id}>*"
+            if not is_ibm
+            else f"*Straker Job Reference {quote.id}*"
+        )
         super().__init__(
             _("Pending Quote: Straker Job Reference {quote.id}"),
             [
@@ -2092,7 +2101,7 @@ class JobQuotedMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "*<{job_url}|Straker Job Reference {quote.id}>*",
+                            formatted_url,
                         ),
                     },
                 },
@@ -2377,17 +2386,19 @@ class JobCompletedEventMessage(SlackMessage):
                     }
                 ],
             },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "Please log into LanguageCloud below to access your completed files."
-                    ),
-                },
-            },
         ]
         if not is_ibm:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "Please log into LanguageCloud below to access your completed files."
+                        ),
+                    },
+                }
+            )
             blocks.append(
                 job_link_block(job_uuid, client_id),
             )

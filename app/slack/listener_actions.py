@@ -740,11 +740,11 @@ async def post_job_details(
                     msg = JobDetailsMessage(
                         job,
                         ray_client.id,
-                        job_prediction,
                         is_ibm_enterprise(
                             team_id=context["team_id"],
                             enterprise_id=context.get("enterprise_id"),
                         ),
+                        job_prediction,
                     )
                     if context.response_url:
                         return await context.respond(text=msg.text, blocks=msg.blocks)
