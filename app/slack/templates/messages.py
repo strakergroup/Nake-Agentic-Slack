@@ -178,40 +178,45 @@ class LoginMessage(SlackMessage):
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": _(block_text)},
             },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("Connect LanguageCloud account"),
-                        },
-                        "style": "primary",
-                        "url": get_language_cloud_connect_url(
-                            user_id, team_id, enterprise_id, channel_id
-                        ),
-                        "action_id": "login",
-                    }
-                ],
-            },
         ]
-        if is_ibm_enterprise(team_id, enterprise_id):
-            msg[1]["elements"].pop()
-            msg[1]["elements"].insert(
-                0,
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("Direct Login"),
-                    },
-                    "style": "primary",
-                    "action_id": "login_sso",
-                },
-            )
-        else:
-            msg.pop()
+        if not isinstance(ray_client, RayClient):
+            if is_ibm_enterprise(team_id, enterprise_id):
+                msg.append(
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Direct Login"),
+                                },
+                                "style": "primary",
+                                "action_id": "login_sso",
+                            },
+                        ],
+                    }
+                )
+            else:
+                msg.append(
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Connect LanguageCloud account"),
+                                },
+                                "style": "primary",
+                                "url": get_language_cloud_connect_url(
+                                    user_id, team_id, enterprise_id, channel_id
+                                ),
+                                "action_id": "login",
+                            }
+                        ],
+                    }
+                )
         super().__init__(
             "Connect your LanguageCloud account",
             msg,
@@ -665,7 +670,9 @@ class SlackPermissionsMessage(SlackMessage):
 class JobStatusMessage(SlackMessage):
     """Message showing the status of a translation job."""
 
-    def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
+    def __init__(
+        self, job: Job, client_id: str, is_ibm: bool, job_prediction: str = ""
+    ) -> None:
         job_status_block: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -697,9 +704,9 @@ class JobStatusMessage(SlackMessage):
                     },
                 ],
             },
-            # TODO: Blocks.py translate
-            job_link_block(job.uuid, client_id),
         ]
+        if not is_ibm:
+            job_status_block.append(job_link_block(job.uuid, client_id)),
         if (
             job.status != "COMPLETED"
             and job.batches != "[]"
@@ -819,8 +826,14 @@ class JobStatusMessage(SlackMessage):
 class JobDetailsMessage(SlackMessage):
     """Message showing the details of a translation job."""
 
-    def __init__(self, job: Job, client_id: str, job_prediction: str = "") -> None:
-        job_link = f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
+    def __init__(
+        self, job: Job, client_id: str, is_ibm: bool, job_prediction: str = ""
+    ) -> None:
+        job_link = (
+            f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
+            if not is_ibm
+            else f"*{job.id}*"
+        )
         pm_details = f"{job.project_manager.first_name} {job.project_manager.last_name}"
         job_due_date = format_job_due_date_slack(
             job.target_date, job.status, traffic_light=True
@@ -880,8 +893,10 @@ class JobDetailsMessage(SlackMessage):
                     },
                 ],
             },
-            job_link_block(job.uuid, client_id),
         ]
+        if not is_ibm:
+            job_detail_block.append(job_link_block(job.uuid, client_id)),
+
         if (
             job.status != "COMPLETED"
             and job.batches != "[]"
@@ -1978,7 +1993,12 @@ class ConnectionInfoMessage(SlackMessage):
         account_blocks: list[dict[str, Any]] = []
         if ray_connection is not None and ray_connection.client is not None:
             user_details = f"<{domains.languagecloud}|{ray_connection.client.username}>"
-            text = _("Your connected LanguageCloud account is: <{user_details}>")
+            if is_ibm_enterprise(enterprise_id=enterprise_id, team_id=team_id):
+                text = _(
+                    "Your connected LanguageCloud account is: {ray_connection.client.username}"
+                )
+            else:
+                text = _("Your connected LanguageCloud account is: <{user_details}>")
             account_blocks.append(
                 {
                     "type": "section",
@@ -2066,8 +2086,13 @@ class ClientAlreadyApprovedMessage(TextMessage):
 
 
 class JobQuotedMessage(SlackMessage):
-    def __init__(self, quote: Quote) -> None:
+    def __init__(self, quote: Quote, is_ibm: bool) -> None:
         job_url = get_job_url(quote.uuid, quote.client_id)
+        formatted_url = (
+            "*<{job_url}|Straker Job Reference {quote.id}>*"
+            if not is_ibm
+            else f"*Straker Job Reference {quote.id}*"
+        )
         super().__init__(
             _("Pending Quote: Straker Job Reference {quote.id}"),
             [
@@ -2076,12 +2101,12 @@ class JobQuotedMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "*<{job_url}|Straker Job Reference {quote.id}>*",
+                            formatted_url,
                         ),
                     },
                 },
             ]
-            + quote_message_block(quote, job_url),
+            + quote_message_block(quote, job_url, is_ibm),
         )
 
 
@@ -2143,7 +2168,6 @@ class SsoConnectionInfoMessage(SlackMessage):
 class ClientSignupEventMessage(SlackMessage):
     def __init__(self, event: ClientSignupEvent) -> None:
         self.event = event
-        user_url = f"<{domains.languagecloud}|{event.username}>"
         super().__init__(
             "Thank you for signing up to LanguageCloud :tada:",
             [
@@ -2152,7 +2176,7 @@ class ClientSignupEventMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "Thank you for signing up to LanguageCloud {user_url} :tada:",
+                            "Thank you for signing up to LanguageCloud {event.username} :tada:",
                         ),
                     },
                 },
@@ -2282,30 +2306,41 @@ class ClientApprovedEventMessage(SlackMessage):
 
 
 class JobStatusChangedEventMessage(SlackMessage):
-    def __init__(self, client_id: str, job_uuid: str, job_id: str, status: str) -> None:
+    def __init__(
+        self, client_id: str, job_uuid: str, job_id: str, status: str, is_ibm: bool
+    ) -> None:
         status_formatted = format_job_status(status)
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "Your translation job *{job_id}* has changed status to: {status_formatted}",
+                    ),
+                },
+            },
+        ]
+        if not is_ibm:
+            blocks.append(
+                job_link_block(job_uuid, client_id),
+            )
         super().__init__(
             _(
                 "Your translation job {job_id} has changed status to: {status_formatted}"
             ),
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "Your translation job *{job_id}* has changed status to: {status_formatted}",
-                        ),
-                    },
-                },
-                job_link_block(job_uuid, client_id),
-            ],
+            blocks,
         )
 
 
 class JobCompletedEventMessage(SlackMessage):
     def __init__(
-        self, client_id: str, job_uuid: str, job_id: str, target_languages: list[str]
+        self,
+        client_id: str,
+        job_uuid: str,
+        job_id: str,
+        target_languages: list[str],
+        is_ibm: bool,
     ) -> None:
         """Notification sent to the client when a translation job is completed.
 
@@ -2319,40 +2354,41 @@ class JobCompletedEventMessage(SlackMessage):
             target_lang_text = ", ".join(target_languages[:2]) + ", and more"
         else:
             target_lang_text = ", ".join(target_languages)
-        super().__init__(
-            _("Your files for {job_id} are ready to download :white_check_mark:"),
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "Your files for *{job_id}* in *{target_lang_text}* are ready to download :white_check_mark:",
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "Your files for *{job_id}* in *{target_lang_text}* are ready to download :white_check_mark:",
+                    ),
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Show Completed Files"),
+                            "emoji": True,
+                        },
+                        "action_id": "file_list_1",
+                        "value": json.dumps(
+                            {
+                                "id": job_id,
+                                "page": 1,
+                                "page_size": 5,
+                                "replace_original": False,
+                            }
                         ),
-                    },
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Show Completed Files"),
-                                "emoji": True,
-                            },
-                            "action_id": "file_list_1",
-                            "value": json.dumps(
-                                {
-                                    "id": job_id,
-                                    "page": 1,
-                                    "page_size": 5,
-                                    "replace_original": False,
-                                }
-                            ),
-                        }
-                    ],
-                },
+                    }
+                ],
+            },
+        ]
+        if not is_ibm:
+            blocks.append(
                 {
                     "type": "section",
                     "text": {
@@ -2361,15 +2397,19 @@ class JobCompletedEventMessage(SlackMessage):
                             "Please log into LanguageCloud below to access your completed files."
                         ),
                     },
-                },
+                }
+            )
+            blocks.append(
                 job_link_block(job_uuid, client_id),
-            ],
+            )
+        super().__init__(
+            _("Your files for {job_id} are ready to download :white_check_mark:"),
+            blocks,
         )
 
 
 class JobCancelledEventMessage(SlackMessage):
     def __init__(self, client_id: str, job_uuid: str, job_id: str) -> None:
-        job_url = f"<{get_job_url(job_uuid, client_id)}|{job_id}>"
         super().__init__(
             _("Your translation job {job_id} has been cancelled"),
             [
@@ -2378,7 +2418,7 @@ class JobCancelledEventMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "Your translation job *{job_url}* has been cancelled.",
+                            "Your translation job *{job_id}* has been cancelled.",
                         ),
                     },
                 },
@@ -2387,31 +2427,37 @@ class JobCancelledEventMessage(SlackMessage):
 
 
 class JobQuoteAcceptedEventMessage(SlackMessage):
-    def __init__(self, event: JobQuoteAcceptedEvent) -> None:
+    def __init__(self, event: JobQuoteAcceptedEvent, is_ibm: bool) -> None:
         target_date = format_datetime_slack(event.target_date)
         id = event.id
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        ":clap: Quote Accepted for *{id}*. Your job will be completed before {target_date}."
+                    ),
+                },
+            },
+        ]
+        if not is_ibm:
+            blocks.append(job_link_block(event.uuid, event.client_id)),
         super().__init__(
             _(
-                "Quote Accepted for {id}. Your job will be completed before {target_date}."
+                "Quote Accepted for {id}. Your job will be completed before {target_date}.",
             ),
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            ":clap: Quote Accepted for *{id}*. Your job will be completed before {target_date}."
-                        ),
-                    },
-                },
-                job_link_block(event.uuid, event.client_id),
-            ],
+            blocks,
         )
 
 
 class JobQuoteCancelledEventMessage(SlackMessage):
-    def __init__(self, client_id: str, job_uuid: str, job_id: str) -> None:
-        job_url = f"<{get_job_url(job_uuid, client_id)}|{job_id}>"
+    def __init__(
+        self, client_id: str, job_uuid: str, job_id: str, is_ibm: bool
+    ) -> None:
+        job_url = (
+            f"<{get_job_url(job_uuid, client_id)}|{job_id}>" if not is_ibm else job_id
+        )
         super().__init__(
             _("We have cancelled the quote for {job_id}."),
             [
@@ -2429,7 +2475,7 @@ class JobQuoteCancelledEventMessage(SlackMessage):
 
 
 class JobQuotedEventMessage(SlackMessage):
-    def __init__(self, event: JobQuoteCreatedEvent) -> None:
+    def __init__(self, event: JobQuoteCreatedEvent, is_ibm: bool) -> None:
         # job_url = f"<{get_job_url(event.uuid, event.client_id)}|{_('Straker Job Reference')} {event.id}>"
         job_url = get_job_url(event.uuid, event.client_id)
         reference = _(f"Straker Job Reference {event.id}")
@@ -2442,14 +2488,18 @@ class JobQuotedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            "Your quote is now ready :raised_hands:\n**",
-                        )
-                        + f"<{job_url}|{reference}>**",
+                        "text": (
+                            _(
+                                "Your quote is now ready :raised_hands:\n**",
+                            )
+                            + f"<{job_url}|{reference}>**"
+                            if not is_ibm
+                            else reference if is_ibm else f"{reference}"
+                        ),
                     },
                 },
             ]
-            + quote_message_block(event, job_url),
+            + quote_message_block(event, job_url, is_ibm),
         )
 
 
@@ -3183,45 +3233,6 @@ class RequiresMtTokenAdminMessage(SlackMessage):
         )
 
 
-class CancelJobMessage(SlackMessage):
-    """Message with a button to open the cancel job modal."""
-
-    def __init__(self, channel_id: str, timestamp: str) -> None:
-        super().__init__(
-            "Cancel a translation job",
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _("Click the *Cancel translation job* button below"),
-                    },
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Cancel translation job"),
-                                "emoji": True,
-                            },
-                            "action_id": "cancel_job",
-                            "style": "primary",
-                            "value": json.dumps(
-                                {
-                                    "channel_id": channel_id,
-                                    "ts": timestamp,
-                                }
-                            ),
-                        }
-                    ],
-                },
-            ],
-        )
-
-
 class DocMtMessage(SlackMessage):
     """Message verify consumer event response"""
 
@@ -3236,63 +3247,5 @@ class DocMtMessage(SlackMessage):
                         "text": _("Error occurred while translating your document"),
                     },
                 }
-            ],
-        )
-
-
-class CancelTJMessage(SlackMessage):
-    """A summary of the client's jobs, number of jobs in each status. Has buttons
-    to display the individual job IDs for each status and timeframe.
-    """
-
-    def __init__(self, channel_id: str, jobdetail) -> None:
-        target_labels = [target.label for target in jobdetail["targetlang"]]
-        super().__init__(
-            "Cancel a translation job",
-            [
-                {
-                    "type": "header",
-                    "text": {
-                        "type": "plain_text",
-                        "text": f" Cancel  {jobdetail['job_id']}",
-                    },
-                },
-                {
-                    "type": "section",
-                    "fields": [
-                        {"type": "mrkdwn", "text": f"*Status:*\n {jobdetail['status']}"}
-                    ],
-                },
-                {
-                    "type": "section",
-                    "fields": [
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Source:*\n {jobdetail['sourcelang'].label}",
-                        },
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*Target:*\n {', '.join(target_labels)}",
-                        },
-                    ],
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": "Please confirm to cancel this job.",
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "Cancel Job",
-                        },
-                        "value": json.dumps(
-                            {"job_id": jobdetail["job_id"], "job_action": "list"}
-                        ),
-                        "action_id": "cancel_job",
-                    },
-                },
             ],
         )
