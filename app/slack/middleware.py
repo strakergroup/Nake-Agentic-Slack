@@ -184,13 +184,17 @@ async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
     )
     if client_type in ["Admin", "Owner"]:
         message = RequiresMtTokenMessage(ai_tokens, value)
-        await context.say(
+        await context.client.chat_postEphemeral(
+            channel=context.get("channel_id") or context.get("user_id"),
+            user=context.get("user_id"),
             text=message.text,
             blocks=message.blocks,
         )
     else:
         message = RequiresMtTokenAdminMessage(ai_tokens, value)
-        await context.say(
+        await context.client.chat_postEphemeral(
+            channel=context.get("channel_id") or context.get("user_id"),
+            user=context.get("user_id"),
             text=message.text,
             blocks=message.blocks,
         )
