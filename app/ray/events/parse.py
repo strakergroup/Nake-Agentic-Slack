@@ -85,7 +85,10 @@ def get_ray_event_message(
                 )
             case "CANCELLED":
                 return JobCancelledEventMessage(
-                    client_id=event3.client_id, job_uuid=event3.uuid, job_id=event3.id
+                    client_id=event3.client_id,
+                    job_uuid=event3.uuid,
+                    job_id=event3.id,
+                    is_ibm=is_ibm,
                 )
         return None
     elif event_type == "ray:job:quote_created":
@@ -95,7 +98,7 @@ def get_ray_event_message(
         event5 = JobQuoteAcceptedEvent.model_validate(event_data)
         return JobQuoteAcceptedEventMessage(event5, is_ibm)
     elif event_type == "ray:job:quote_cancelled":
-        event6 = JobQuoteCancelledEvent.model_validate(event_data)
+        event6 = JobQuoteCancelledEvent.model_validate(event_data, is_ibm)
         return JobQuoteCancelledEventMessage(
             client_id=event6.client_id,
             job_uuid=event6.uuid,
