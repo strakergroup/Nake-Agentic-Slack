@@ -16,7 +16,7 @@ from ...ray.settings import (
     get_full_group_translation_settings,
     get_auto_translate_language_name,
 )
-from ...ray.utils import is_min_langugagecloud_plan
+from ...ray.utils import is_ibm_enterprise, is_min_langugagecloud_plan
 from ...slack.utils import format_strings_display
 from ...config import config, domains, Environment
 from ...models import SlackGroupSettingsTranslation
@@ -32,6 +32,31 @@ async def home_view(
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str]]
     ] = []
+    footer_blocks = [
+        {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "emoji": True,
+                "text": _(":question: Help Centre"),
+            },
+            "action_id": "link_2",
+            "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+        },
+    ]
+    if not is_ibm_enterprise(context.team_id, context.enterprise_id):
+        footer_blocks.append(
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "emoji": True,
+                    "text": _(":globe_with_meridians: Visit Straker LanguageCloud"),
+                },
+                "action_id": "link_1",
+                "url": domains.languagecloud,
+            },
+        )
     # Filter conversations by accessible by user.
     if translation_settings:
         next_cursor = ""
@@ -265,33 +290,7 @@ async def home_view(
                 ],
             },
             {"type": "divider"},
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _(
-                                ":globe_with_meridians: Visit Straker LanguageCloud"
-                            ),
-                        },
-                        "action_id": "link_1",
-                        "url": domains.languagecloud,
-                    },
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _(":question: Help Centre"),
-                        },
-                        "action_id": "link_2",
-                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
-                    },
-                ],
-            },
+            {"type": "actions", "elements": footer_blocks},
         ],
     }
 

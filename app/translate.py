@@ -35,7 +35,7 @@ class Translator:
 
     def translate(self, input: str):
 
-        if self.lang.lower().startswith("en"):
+        if self.lang.lower().startswith(("en", "gb", "us")):
             return input
         if input in self.cache:
             return self.cache[input]
