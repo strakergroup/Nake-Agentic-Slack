@@ -344,6 +344,9 @@ async def auto_translate_message(
     assert settings  # TODO Fix typing
     if not target_langs:
         return
+    required_tokens = len(text) * len(target_langs)
+    if not await require_mt_tokens(context, required_tokens):
+        return
     unformatted_text = escape_slack_emoji(text)
     try:
         split_langs = await split_languages(target_langs)
@@ -434,7 +437,7 @@ async def auto_translate_message(
             #         notify_exception(e, "Failed to update message (auto-translation)")
             #         # If updating message fails (e.g. permissions), default to thread reply.
             #         client.token = context.bot_token
-
+        await spend_mt_tokens(credits=required_tokens, ray_connection=context["ray"])
         # TODO decide what to do with this
         # permissions_msg = SlackPermissionsMessage.auto_translate_variation()
         # await client.chat_postEphemeral(
@@ -443,6 +446,7 @@ async def auto_translate_message(
         #     text=permissions_msg.text,
         #     blocks=permissions_msg.blocks,
         # )
+
     except Exception as e:
         notify_exception(
             e,
