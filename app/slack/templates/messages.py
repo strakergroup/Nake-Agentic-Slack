@@ -2452,8 +2452,12 @@ class JobQuoteAcceptedEventMessage(SlackMessage):
 
 
 class JobQuoteCancelledEventMessage(SlackMessage):
-    def __init__(self, client_id: str, job_uuid: str, job_id: str) -> None:
-        job_url = f"<{get_job_url(job_uuid, client_id)}|{job_id}>"
+    def __init__(
+        self, client_id: str, job_uuid: str, job_id: str, is_ibm: bool
+    ) -> None:
+        job_url = (
+            f"<{get_job_url(job_uuid, client_id)}|{job_id}>" if not is_ibm else job_id
+        )
         super().__init__(
             _("We have cancelled the quote for {job_id}."),
             [
@@ -2489,8 +2493,8 @@ class JobQuotedEventMessage(SlackMessage):
                                 "Your quote is now ready :raised_hands:\n**",
                             )
                             + f"<{job_url}|{reference}>**"
-                            if is_ibm
-                            else f"{reference}"
+                            if not is_ibm
+                            else reference if is_ibm else f"{reference}"
                         ),
                     },
                 },
