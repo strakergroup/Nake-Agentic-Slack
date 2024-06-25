@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 
 from babel.numbers import format_currency as babel_format_currency
 import requests
+from app.translate import _
 
 from ..config import domains
 from slack_sdk.web.async_client import AsyncWebClient
@@ -59,28 +60,28 @@ def format_job_status(status: str) -> str:
         return ""
     match status.strip().upper():
         case "LEAD":
-            return "Quote Requested"
+            return _("Quote Requested")
         case "IN_PROGRESS":
-            return "In Progress"
+            return _("In Progress")
         case "VALIDATION":
-            return "In Validation"
+            return _("In Validation")
         case "CANCELLED":
-            return "Cancelled"
+            return _("Cancelled")
         case "CLIENT_CANCELLED":
-            return "Client Cancelled"
+            return _("Client Cancelled")
         case "CLOSED":
-            return "Closed"
+            return _("Closed")
         case "WAITING":
-            return "Waiting"
+            return _("Waiting")
         case "REFUNDED":
-            return "Refunded"
+            return _("Refunded")
         case "COMPLETED":
-            return "Completed"
+            return _("Completed")
         # Derived statuses.
         case "PENDING_QUOTES":  # status = "LEAD" + quote <= 1
-            return "Quote Requested"
+            return _("Quote Requested")
         case "ORDER_NOW":  # status = "LEAD" + quote > 1
-            return "Order Now"
+            return _("Order Now")
         case _:
             return status.strip()
 

@@ -1020,7 +1020,7 @@ async def handle_job_search(ack, view, context, client):
         else:
             await client.chat_postMessage(
                 channel=context["user_id"],
-                text="TJ Number is in incorrect format. E.g. TJ123456 or 123456",
+                text=_("TJ Number is in incorrect format. E.g. TJ123456 or 123456"),
             )
     else:
         await ack(response_action="clear")
@@ -1246,7 +1246,7 @@ async def handle_cancel_job(ack, view, context, client):
         else:
             await client.chat_postMessage(
                 channel=context["user_id"],
-                text="TJ Number is in incorrect format. E.g. TJ123456 or 123456",
+                text=_("TJ Number is in incorrect format. E.g. TJ123456 or 123456"),
             )
     else:
         await ack(response_action="clear")

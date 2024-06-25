@@ -29,6 +29,8 @@ async def home_view(
     assert context.client
     message_url = f"slack://app?team={context['team_id']}&id={app_id}&tab=messages"
     translation_settings = get_full_group_translation_settings(context)
+    barEmoji = f":bar_chart:"
+    speechEmoji = f":speech_balloon:"
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str]]
     ] = []
@@ -77,13 +79,16 @@ async def home_view(
             display_format_string = (
                 "thread replies" if setting.display_format == "thread" else "messages"
             )
+            display_formate_translated = _(display_format_string)
+            message_channel = _("<#{setting.channel_id}> will be translated into ") + langs_string + _(" through ") + display_formate_translated + _(".")
+            print(message_channel)
             translation_settings_blocks.extend(
                 [
                     {
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"<#{setting.channel_id}> will be translated into {langs_string} through {display_format_string}.",
+                            "text": f"{message_channel}",
                         },
                         # "accessory": {
                         #     "type": "button",
@@ -188,7 +193,7 @@ async def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _(":bar_chart: Insights"),
+                            "text": _("{barEmoji} Insights"),
                         },
                         "action_id": "report_insights",
                         "url": message_url,
@@ -217,7 +222,7 @@ async def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _(":speech_balloon: Translation settings"),
+                            "text": _("{speechEmoji} Translation settings"),
                         },
                         "value": json.dumps(
                             {
@@ -382,7 +387,7 @@ def new_job_modal(
         if not any(file["value"] == opt["value"] for opt in file_options):
             file_options.insert(0, file)
     file_options = file_options[:100]
-
+    website_url = "https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Straker-Translate-functions"
     if file_options:
         files_block_element = {
             "type": "multi_static_select",
@@ -431,7 +436,7 @@ def new_job_modal(
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": "For more support information, visit <https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Straker-Translate-functions|our website>.",
+                        "text": _("For more support information, visit our <{website_url}|website>."),
                     }
                 ],
             },

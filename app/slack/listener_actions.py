@@ -18,6 +18,7 @@ from buglog import notify_exception, notify_message
 
 from app.ray.events.models import MtFileRequestSchema
 from app.wb_tasks.tasks import create_task
+from app.translate import _
 
 from .middleware import require_mt_tokens, require_ray_client
 from .utils import escape_slack_emoji, unescape_slack_emoji
@@ -850,7 +851,7 @@ async def post_job_list(
 
         match preset:
             case "IN_PROGRESS:ACCEPTED:24H":
-                title = "Jobs accepted within the last 24 hours"
+                title = _("Jobs accepted within the last 24 hours")
                 response = await RayService.get_service(ray_client).get_job_list(
                     status="IN_PROGRESS",
                     started_from=24,
@@ -858,17 +859,17 @@ async def post_job_list(
                     page_size=page_size,
                 )
             case "IN_PROGRESS:DUE:24H":
-                title = "Jobs due within the next 24 hours"
+                title = _("Jobs due within the next 24 hours")
                 response = await RayService.get_service(ray_client).get_job_list(
                     status="IN_PROGRESS", due_before=24, page=page, page_size=page_size
                 )
             case "IN_PROGRESS":
-                title = "All jobs in progress"
+                title = _("All jobs in progress")
                 response = await RayService.get_service(ray_client).get_job_list(
                     status="IN_PROGRESS", page=page, page_size=page_size
                 )
             case "COMPLETED:24H":
-                title = "Jobs completed within the last 24 hours"
+                title = _("Jobs completed within the last 24 hours")
                 response = await RayService.get_service(ray_client).get_job_list(
                     status="COMPLETED",
                     completed_from=24,
@@ -876,7 +877,7 @@ async def post_job_list(
                     page_size=page_size,
                 )
             case "COMPLETED:48H":
-                title = "Jobs completed within the last 48 hours"
+                title = _("Jobs completed within the last 48 hours")
                 response = await RayService.get_service(ray_client).get_job_list(
                     status="COMPLETED",
                     completed_from=48,
@@ -884,7 +885,7 @@ async def post_job_list(
                     page_size=page_size,
                 )
             case "COMPLETED:7D":
-                title = "Jobs completed within the last 7 days"
+                title = _("Jobs completed within the last 7 days")
                 response = await RayService.get_service(ray_client).get_job_list(
                     status="COMPLETED",
                     completed_from=24 * 7,
@@ -892,12 +893,12 @@ async def post_job_list(
                     page_size=page_size,
                 )
             case "VALIDATION":
-                title = "All jobs in validation"
+                title = _("All jobs in validation")
                 response = await RayService.get_service(ray_client).get_job_list(
                     status="VALIDATION", page=page, page_size=page_size
                 )
             case "PENDING_QUOTES:24H":
-                title = "Pending quotes from the last 24 hours"
+                title = _("Pending quotes from the last 24 hours")
                 response = await RayService.get_service(ray_client).get_job_list(
                     status="PENDING_QUOTES",
                     from_hours=24,
@@ -905,17 +906,17 @@ async def post_job_list(
                     page_size=page_size,
                 )
             case "PENDING_QUOTES":
-                title = "All pending quotes"
+                title = _("All pending quotes")
                 response = await RayService.get_service(ray_client).get_job_list(
                     status="PENDING_QUOTES", page=page, page_size=page_size
                 )
             case "ORDER_NOW:24H":
-                title = "Jobs quoted from the last 24 hours"
+                title = _("Jobs quoted from the last 24 hours")
                 response = await RayService.get_service(ray_client).get_job_list(
                     status="ORDER_NOW", quoted_from=24, page=page, page_size=page_size
                 )
             case "ORDER_NOW:7D":
-                title = "Jobs quoted from the last 7 days"
+                title = _("Jobs quoted from the last 7 days")
                 response = await RayService.get_service(ray_client).get_job_list(
                     status="ORDER_NOW",
                     quoted_from=24 * 7,
@@ -923,12 +924,13 @@ async def post_job_list(
                     page_size=page_size,
                 )
             case "ORDER_NOW":
-                title = "All jobs quoted"
+                title = _("All jobs quoted")
                 response = await RayService.get_service(ray_client).get_job_list(
                     status="ORDER_NOW", page=page, page_size=page_size
                 )
             case "CLIENT_REFERENCE":
-                title = f"Reference: {client_ref}"
+                title_translation_str = _("Reference:")
+                title = f"{title_translation_str} {client_ref}"
                 response = await RayService.get_service(ray_client).get_job_list(
                     client_ref=client_ref, page=page, page_size=page_size
                 )

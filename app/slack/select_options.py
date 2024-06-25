@@ -9,6 +9,7 @@ from ..redis import redis_conn
 from ..ray import get_languages
 from ..ray.settings import get_auto_translate_languages
 from ..models import SlackGroupSettingsTranslation
+from app.translate import _
 
 
 async def _get_languages_cached() -> list[dict[str, str]]:
@@ -128,14 +129,14 @@ def translation_display_format_options() -> list[dict[str, Any]]:
         {
             "text": {
                 "type": "plain_text",
-                "text": "In thread",
+                "text": _("In thread"),
             },
             "value": "thread",
         },
         {
             "text": {
                 "type": "plain_text",
-                "text": "Message",
+                "text": _("Message"),
             },
             "value": "message",
         },
@@ -152,7 +153,7 @@ def map_translation_display_format_option(
     return {
         "text": {
             "type": "plain_text",
-            "text": "In thread",
+            "text": _("In thread"),
         },
         "value": "thread",
     }
