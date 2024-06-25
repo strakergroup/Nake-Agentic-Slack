@@ -93,14 +93,9 @@ async def respond_to_message(
             asyncio.create_task(
                 files_list_simple(client, channel_id=context["channel_id"], count=120)
             )
-            is_video_mt_enabled = (
-                config.environment != Environment.production
-                or domains.slack_ray_translator
-                == "https://stage-slack-deltaray.strakertranslations.com"
-            )
             # Handle video file
             for file in message["files"]:
-                if file["filetype"] in ["mp4", "mp3"] and is_video_mt_enabled:
+                if file["filetype"] in ["mp4", "mp3"]:
                     file_info = await client.files_info(file=file["id"])
                     download_url = file_info["file"]["url_private"]
                     token = client.token
@@ -398,7 +393,9 @@ async def auto_translate_message(
                 )
                 # save timestamp to cache
                 asyncio.create_task(
-                    set_mt_ts_edit(client, send_ts=ts, reply_ts=request['ts'], count=100)
+                    set_mt_ts_edit(
+                        client, send_ts=ts, reply_ts=request["ts"], count=100
+                    )
                 )
         elif settings.display_format == "message":
             if is_edit:
@@ -418,7 +415,9 @@ async def auto_translate_message(
                 )
                 # save timestamp to cache
                 asyncio.create_task(
-                    set_mt_ts_edit(client, send_ts=ts, reply_ts=request['ts'], count=100)
+                    set_mt_ts_edit(
+                        client, send_ts=ts, reply_ts=request["ts"], count=100
+                    )
                 )
         else:
             notify_message("Slack app: Invalid display format")
@@ -1611,7 +1610,7 @@ async def get_mt_translation(
                             channel=channel_id,
                             text=msg.text,
                             blocks=msg.blocks,
-                            thread_ts=thread_ts
+                            thread_ts=thread_ts,
                         )
                     except Exception as e:
                         print(e)
@@ -1799,7 +1798,7 @@ async def resendMT(
     # process mt
     message_match = re.search(
         r"mt:?(?:\s+([\w-]+))?\s+to\s+([\w-]+):?\s+(.*)",
-        message['message']["text"],
+        message["message"]["text"],
         re.I,
     )
 
@@ -1817,7 +1816,7 @@ async def resendMT(
                     source_lang=mt_sl,
                     target_lang=mt_tl,
                     sentence=mt_text,
-                    thread_ts=message['message']['latest_reply'],
+                    thread_ts=message["message"]["latest_reply"],
                     is_edit=True,
                 )
 
@@ -1828,4 +1827,3 @@ async def resendMT(
             print(e)
 
         return
-
