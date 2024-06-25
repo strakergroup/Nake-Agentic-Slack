@@ -118,7 +118,9 @@ async def download_file(
         http = httpx.AsyncClient()
     try:
         response = await http.get(
-            download_url, headers={"Authorization": f"Bearer {client.token}"}
+            download_url,
+            headers={"Authorization": f"Bearer {client.token}"},
+            follow_redirects=True,
         )
         response.raise_for_status()
     except httpx.HTTPStatusError:
@@ -162,3 +164,43 @@ async def download_files(client: AsyncWebClient, files: Iterable[str]) -> list[s
         notify_exception(exc)
     # Return successful file download paths.
     return [result for result in file_paths if isinstance(result, str)]
+
+
+async def set_mt_ts_edit(
+    client: AsyncWebClient, send_ts: str,  reply_ts: str, count: int = 100,
+):
+    """A helper method to get the thread_ts from the bot message.
+
+    Args:
+        client (AsyncWebClient): The Slack WebClient instance (with auth token).
+        channel_id (str | None, optional): The channel to filter by. Defaults to None.
+        count (int, optional): The max number of thread to get. Defaults to 20.
+        thread_ts_dict (dict): The dictionary of thread_ts id for mt send and get message.
+    Returns:
+        list[dict[str, Any]]: _description_
+    """
+    key = f"slack-ray-translator:mt_ts:{send_ts}"
+    try:
+        await redis_conn.set(key, json.dumps(reply_ts), ex=3600)
+    except Exception as e:
+        notify_exception(e)
+    return reply_ts
+
+
+async def get_mt_ts_cached(send_ts: str) -> str:
+    key = f"slack-ray-translator:mt_ts:{send_ts}"
+    cached = False
+    mt_timestamp = ''
+    try:
+        cached = await redis_conn.get(key)
+    except Exception as e:
+        notify_exception(e)
+    if cached:
+        try:
+            mt_timestamp = json.loads(cached)
+            assert isinstance(mt_timestamp, dict)
+            return mt_timestamp
+        except Exception as e:
+            notify_exception(e)
+
+    return mt_timestamp

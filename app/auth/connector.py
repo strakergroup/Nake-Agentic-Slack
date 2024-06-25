@@ -3,6 +3,7 @@ other services, e.g. Slack, RAY apps.
 """
 
 import asyncio
+import math
 import time
 import json
 import hashlib
@@ -12,14 +13,14 @@ from urllib.parse import urlencode
 import uuid
 
 import httpx
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.engine import Connection
 from slack_sdk.oauth.installation_store import Installation
 from straker_auth.languagecloud import create_languagecloud_id_token
 from buglog import notify_exception
 
 from .algorithms import encrypt_aes, hash_hmac_sha1
-from ..config import config, domains
+from ..config import config, domains, Environment
 from ..database import engines
 
 
@@ -238,7 +239,7 @@ def get_slack_user(ray_client_id: str) -> SlackUser | None:
     Args:
         ray_client_id (str): The LanguageCloud user ID.
     """
-    with engines["ray_integration_readonly"].connect() as conn:
+    with engines["ray_integration"].connect() as conn:
         sql = text(
             """
             SELECT link.slack_user_id,link.slack_team_id,link.slack_enterprise_id,
@@ -390,6 +391,35 @@ async def get_ray_super_group(
         )
         for row in rows
     ]
+
+
+def is_ibm_super_group(
+    enterprise_id: str | None = None,
+) -> bool:
+    """Gets the LanguageCloud super group linked to the Slack workspace if an active
+    link exists, otherwise returns None.
+
+    Args:
+        team_id (str): The ID of the team.
+    """
+    with engines["ray_integration_readonly"].connect() as conn:
+        if enterprise_id:
+            sql = text(
+                """
+                SELECT link.super_group_uuid, g.label
+                FROM slack_super_group_link link
+                INNER JOIN sitemanager.obj_m_group g
+                ON link.super_group_uuid = g.obj_uuid
+                WHERE link.slack_enterprise_id = :enterprise_id
+                AND link.is_active = 1
+                AND link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
+                """
+            ).bindparams(enterprise_id=enterprise_id)
+        result = conn.execute(sql)
+        rows = result.fetchall()
+        if not rows:
+            return False
+    return True
 
 
 async def get_ray_demo_client(
@@ -1020,7 +1050,6 @@ def connect_ray_account_sso(
         create_client_and_mglink(
             user_data=json.dumps(slack_data),
             member_id=member_id,
-            group_id="173231FA-D524-42BF-9AF3F4834CAA88A0",
         )
         # Create log
         # crete_slack_logs_sso(user_data=json.dumps(slack_data), member_id=member_id, message="New User")
@@ -1033,6 +1062,7 @@ def connect_ray_account_sso(
         return member_id
     else:
         member_id = result1.first().obj_uuid
+        create_client_access_tokens(client_id=member_id, type="public")
         create_slack_deltaray_link_sso(
             user_data=json.dumps(slack_data), member_id=member_id
         )
@@ -1042,9 +1072,16 @@ def connect_ray_account_sso(
 def create_client_and_mglink(
     user_data: str,
     member_id: str,
-    group_id: str = "173231FA-D524-42BF-9AF3F4834CAA88A0",
 ):
     json_data = json.loads(user_data)
+    group_id = "0D750948-74A8-4932-B344-0880BDCB5215"
+    if json_data.get("enterprise_id") == "E04RDMG8XP1":
+        group_id = "173231FA-D524-42BF-9AF3F4834CAA88A0"
+        if (
+            config.environment != Environment.production
+            and config.environment != Environment.local
+        ):
+            group_id = "B988B8ED-142B-465E-9CCE-831A0D92DD1D"
     password = "secret".encode("utf-8")  # Convert the password to bytes
     hash_object = hashlib.sha512(password)
     with engines["sitemanager"].connect() as conn:
@@ -1099,16 +1136,27 @@ def create_client_and_mglink(
 def create_client_access_tokens(client_id: str, type: str = "public"):
     """Create API access tokens of a RAY client."""
     with engines["api"].connect() as conn:
-        sql = text(
+        # Check if an access token for the account_id already exists
+        sql_check = text(
             """
-                INSERT INTO access_token
-                    (obj_uuid, account_id, active, `type`, application_id, created_at)
-                VALUES
-                    (:obj_uuid, :account_id, 1, :type, '', now())
+                SELECT 1 FROM access_token
+                WHERE account_id = :account_id
             """
-        ).bindparams(obj_uuid=str(uuid4()).upper(), account_id=client_id, type=type)
-        conn.execute(sql)
-        conn.commit()
+        ).bindparams(account_id=client_id)
+        result = conn.execute(sql_check).fetchone()
+
+        # If an access token for the account_id does not exist, insert a new one
+        if result is None:
+            sql_insert = text(
+                """
+                    INSERT INTO access_token
+                        (obj_uuid, account_id, active, `type`, application_id, created_at)
+                    VALUES
+                        (:obj_uuid, :account_id, 1, :type, '', now())
+                """
+            ).bindparams(obj_uuid=str(uuid4()).upper(), account_id=client_id, type=type)
+            conn.execute(sql_insert)
+            conn.commit()
     # Enable API Access
     with engines["sitemanager"].connect() as conn:
         sqlMemUpdate = text(
@@ -1124,7 +1172,16 @@ def create_client_access_tokens(client_id: str, type: str = "public"):
 
 def create_slack_deltaray_link_sso(user_data: str, member_id: str):
     json_data = json.loads(user_data)
-    with engines["ray_integration_readonly"].connect() as conn:
+    with engines["ray_integration"].connect() as conn:
+        sqlSlackDelete = text(
+            """
+            DELETE FROM slack_deltaray_link
+            WHERE member_uuid = :member_uuid
+            """
+        ).bindparams(member_uuid=member_id)
+        conn.execute(sqlSlackDelete)
+        conn.commit()
+    with engines["ray_integration"].connect() as conn:
         sqlSlackAccount = text(
             """
             SELECT slack_user_id
@@ -1167,7 +1224,7 @@ def create_slack_deltaray_link_sso(user_data: str, member_id: str):
                         is_active = 1,
                         is_sso = 1,
                         activated_at = now()
-                    WHERE slack_user_id = :user_id
+                    WHERE (slack_user_id = :user_id)
                     AND (
                         slack_team_id = :team_id
                         OR slack_enterprise_id = :enterprise_id
@@ -1286,15 +1343,58 @@ async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceRespo
         return GetCreditBalanceResponse(0, 0)
 
 
+async def get_group_tokens(super_group_uuid: str) -> GetCreditBalanceResponse:
+    """read sitemanager.obj_m_member_credit_transactions to get the group tokens balance."""
+    list_group_uuid = []
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT group_uuid
+            FROM super_group_glink
+            WHERE super_group_uuid = :super_group_uuid
+            """
+        ).bindparams(super_group_uuid=super_group_uuid)
+        result = conn.execute(sql)
+        rows = result.fetchall()
+        for row in rows:
+            list_group_uuid.append(row.group_uuid)
+    # first get
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT SUM(amount) AS total
+            FROM obj_m_member_credit_transactions
+            WHERE group_uuid IN :group_uuids
+            AND credit_type = 'ai_token'
+            """
+        ).bindparams(bindparam("group_uuids", expanding=True))
+        result = conn.execute(sql, {"group_uuids": list_group_uuid})
+        row = result.first()
+        if not row:
+            return GetCreditBalanceResponse(0, 0)
+    return GetCreditBalanceResponse(ai_token=row.total, mt_token=0)
+
+
 async def spend_mt_tokens(
-    user: SlackUser,
     credits: int,
-) -> bool:
+    user: SlackUser = None,
+    ray_connection: RayConnection = None,
+) -> int:
     """Insert into the database obj_m_member_credit_transactions to record transaction"""
-    ray_connection = await get_ray_connection(
-        user.user_id, user.team_id, user.enterprise_id
-    )
+    if ray_connection is None:
+        ray_connection = await get_ray_connection(
+            user.user_id, user.team_id, user.enterprise_id
+        )
+    # If no client spend under super group
+    if ray_connection.client is None:
+        client_uuid = ray_connection.super_group[0].id
+        group_uuid = ray_connection.super_group[0].id
+    else:
+        client_uuid = ray_connection.client.id
+        group_uuid = ray_connection.client.user_group_id
     description = "Machine Translation"
+    mt_scale = 0.1
+    amount = math.ceil(credits * mt_scale)
     with engines["sitemanager"].begin() as conn:
         sql = text(
             """
@@ -1305,14 +1405,16 @@ async def spend_mt_tokens(
             """
         ).bindparams(
             uuid=str(uuid.uuid4()),
-            client_uuid=ray_connection.client.id,
-            group_uuid=ray_connection.client.user_group_id,
-            amount=0 - credits,
-            credit_type="mt_token",
+            client_uuid=client_uuid,
+            group_uuid=group_uuid,
+            amount=0 - amount,
+            credit_type="ai_token",
             transaction_type="spend",
             description=description,
         )
         conn.execute(sql)
+
+    return amount
 
 
 async def get_client_type(client_id: str, group_id: str) -> str:
@@ -1331,4 +1433,3 @@ async def get_client_type(client_id: str, group_id: str) -> str:
         if not row:
             return None
     return row.client_type
-

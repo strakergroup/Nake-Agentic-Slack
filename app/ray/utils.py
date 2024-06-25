@@ -1,12 +1,18 @@
+import asyncio
 from cgi import parse_header
 from typing import Literal
 import math
 import datetime
-from urllib.parse import urlencode
+from urllib.parse import urlencode, unquote
+
+from app.auth.connector import RayClient, is_ibm_super_group
+from ..config import config, domains, Environment
 
 from babel.numbers import format_currency as babel_format_currency
 import requests
 from app.translate import _
+
+from app.translate import Translator, translator_var
 
 from ..config import domains
 from slack_sdk.web.async_client import AsyncWebClient
@@ -193,6 +199,20 @@ def is_min_langugagecloud_plan(
     # return False
 
 
+def get_filename_from_header(header):
+    """
+    Extract filename from content-disposition header
+    """
+    value, params = parse_header(header)
+    filename = params.get("filename*")
+    if filename:
+        encoding, _, filename = filename.split("'", 2)
+        filename = unquote(filename, encoding=encoding)
+    else:
+        filename = params.get("filename")
+    return filename
+
+
 def download_from_file_server(file_id: str):
     """Downloads a file from the file server."""
 
@@ -204,9 +224,9 @@ def download_from_file_server(file_id: str):
     content_disposition = response.headers.get("Content-Disposition")
 
     # Parse the header to get the filename
-    value, params = parse_header(content_disposition)
+    filename = get_filename_from_header(content_disposition)
     file_result = {
-        "file_name": params.get("filename"),
+        "file_name": filename,
         "file": BytesIO(response.content),
     }
     return file_result
@@ -234,3 +254,48 @@ def upload_to_file_server(file_path: str) -> str:
         response.raise_for_status()
 
     return file_id
+
+
+def set_user_language(user_info):
+    user_locale = "en"
+    if "user" in user_info and "locale" in user_info["user"]:
+        user_locale = user_info["user"]["locale"]
+    if user_info["user"]["locale"] == "fr-FR":
+        if (
+            user_info["user"]["tz"] == "America/Chicago"
+            or user_info["user"]["tz"] == "America/New_York"
+            or user_info["user"]["tz"] == "America/Denver"
+            or user_info["user"]["tz"] == "America/Los_Angeles"
+            or user_info["user"]["tz"] == "America/Regina"
+            or user_info["user"]["tz"] == "America/Halifax"
+        ):
+            user_locale = "fr-CA"
+    translator_var.set(Translator(user_locale))
+
+
+# TODO: Maybe add to middleware
+def is_ibm_enterprise(
+    team_id: str,
+    enterprise_id: str | None,
+):
+    """Check if the user is in ibm enterpirse or workspace."""
+    # if config.environment == Environment.production:
+    e_id = "EUJJ37YFR"
+    t_id = "T0360HUQKS9"
+    # else:
+    se_id = "E04RDMG8XP1"
+    st_id = "T02FDFCGK"
+    if (
+        enterprise_id == e_id
+        or team_id == t_id
+        or enterprise_id == se_id
+        or team_id == st_id
+    ) and team_id != "T04D0JGE2HH":
+        return True
+    try:
+        # TODO: Maybe add to middleware
+        if is_ibm_super_group(enterprise_id):
+            return True
+    except Exception as e:
+        print(f"Error checking ibm group{e}")
+    return False

@@ -1,5 +1,8 @@
 from typing import Any
 
+from app.auth.connector import SlackUser
+from app.ray.utils import is_ibm_enterprise
+
 from .models import (
     MtFileReponseSchema,
     SlackAccountConnectedEvent,
@@ -28,7 +31,7 @@ from ...slack.templates.messages import (
 
 
 def get_ray_event_message(
-    event_type: str, event_data: dict[str, Any]
+    event_type: str, event_data: dict[str, Any], slack_user: SlackUser | None
 ) -> SlackMessage | None:
     """Gets the SlackMessage based on the event type. Returns None if no Slack
     message should be sent for the particular event.
@@ -37,6 +40,9 @@ def get_ray_event_message(
         pydantic.ValidationError: The data format for the event type is invalid.
         ValueError: The event type is invalid.
     """
+    is_ibm = False
+    if slack_user:
+        is_ibm = is_ibm_enterprise(slack_user.team_id, slack_user.enterprise_id)
     if event_type == "ray:slack:account_connected":
         event0 = SlackAccountConnectedEvent.model_validate(event_data)
         return SuccessfulLoginMessage(event0.user_id, event0.username)
@@ -67,6 +73,7 @@ def get_ray_event_message(
                     job_uuid=event3.uuid,
                     job_id=event3.id,
                     status=event3.status,
+                    is_ibm=is_ibm,
                 )
             case "COMPLETED":
                 return JobCompletedEventMessage(
@@ -74,22 +81,29 @@ def get_ray_event_message(
                     job_uuid=event3.uuid,
                     job_id=event3.id,
                     target_languages=[lang.label for lang in event3.tl],
+                    is_ibm=is_ibm,
                 )
             case "CANCELLED":
                 return JobCancelledEventMessage(
-                    client_id=event3.client_id, job_uuid=event3.uuid, job_id=event3.id
+                    client_id=event3.client_id,
+                    job_uuid=event3.uuid,
+                    job_id=event3.id,
+                    is_ibm=is_ibm,
                 )
         return None
     elif event_type == "ray:job:quote_created":
         event4 = JobQuoteCreatedEvent.model_validate(event_data)
-        return JobQuotedEventMessage(event4)
+        return JobQuotedEventMessage(event4, is_ibm)
     elif event_type == "ray:job:quote_accepted":
         event5 = JobQuoteAcceptedEvent.model_validate(event_data)
-        return JobQuoteAcceptedEventMessage(event5)
+        return JobQuoteAcceptedEventMessage(event5, is_ibm)
     elif event_type == "ray:job:quote_cancelled":
-        event6 = JobQuoteCancelledEvent.model_validate(event_data)
+        event6 = JobQuoteCancelledEvent.model_validate(event_data, is_ibm)
         return JobQuoteCancelledEventMessage(
-            client_id=event6.client_id, job_uuid=event6.uuid, job_id=event6.id
+            client_id=event6.client_id,
+            job_uuid=event6.uuid,
+            job_id=event6.id,
+            is_ibm=is_ibm,
         )
     elif event_type == "ray:job:transcribed":
         event7 = JobTranscribedEvent.model_validate(event_data)

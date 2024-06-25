@@ -16,7 +16,7 @@ from ...ray.settings import (
     get_full_group_translation_settings,
     get_auto_translate_language_name,
 )
-from ...ray.utils import is_min_langugagecloud_plan
+from ...ray.utils import is_ibm_enterprise, is_min_langugagecloud_plan
 from ...slack.utils import format_strings_display
 from ...config import config, domains, Environment
 from ...models import SlackGroupSettingsTranslation
@@ -34,6 +34,31 @@ async def home_view(
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str]]
     ] = []
+    footer_blocks = [
+        {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "emoji": True,
+                "text": _(":question: Help Centre"),
+            },
+            "action_id": "link_2",
+            "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+        },
+    ]
+    if not is_ibm_enterprise(context.team_id, context.enterprise_id):
+        footer_blocks.append(
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "emoji": True,
+                    "text": _(":globe_with_meridians: Visit Straker LanguageCloud"),
+                },
+                "action_id": "link_1",
+                "url": domains.languagecloud,
+            },
+        )
     # Filter conversations by accessible by user.
     if translation_settings:
         next_cursor = ""
@@ -56,84 +81,115 @@ async def home_view(
             else:
                 break
     # Hide translation settings in Production until scopes are approved.
-    translation_settings_blocks: list[dict[str, Any]] = []
-    if len(visible_translation_settings):
-        translation_settings_blocks.extend(
-            [
-                {"type": "divider"},
-                {
-                    "type": "header",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "Current Translation Settings",
+    translation_settings_blocks: list[dict[str, Any]] = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _(
+                    "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
+                ),
+            },
+        },
+    ]
+    if isinstance(rayConnection, RayConnection) and rayConnection.client:
+        translation_settings_blocks.append(
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _(":speech_balloon: Translation settings"),
+                        },
+                        "value": json.dumps(
+                            {
+                                "team_id": context["team_id"],
+                            }
+                        ),
+                        "action_id": "settings_auto_translate",
                     },
-                },
-            ]
+                ],
+            },
         )
-        for setting, langs in visible_translation_settings:
-            langs_string = format_strings_display(
-                [get_auto_translate_language_name(lang) for lang in langs],
-                and_string="and",
-            )
-            # TODO refactor
-            display_format_string = (
-                "thread replies" if setting.display_format == "thread" else "messages"
-            )
-            display_formate_translated = _(display_format_string)
-            message_channel = _("<#{setting.channel_id}> will be translated into ") + langs_string + _(" through ") + display_formate_translated + _(".")
-            print(message_channel)
+        if len(visible_translation_settings):
             translation_settings_blocks.extend(
                 [
+                    {"type": "divider"},
                     {
-                        "type": "section",
+                        "type": "header",
                         "text": {
-                            "type": "mrkdwn",
-                            "text": f"{message_channel}",
+                            "type": "plain_text",
+                            "text": _("Current Translation Settings"),
                         },
-                        # "accessory": {
-                        #     "type": "button",
-                        #     "text": {"type": "plain_text", "text": "Edit", "emoji": False},
-                        #     "value": setting.channel_id,
-                        #     "action_id": "settings_auto_translate",
-                        # },
-                    },
-                    {
-                        "type": "actions",
-                        "elements": [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Edit"),
-                                    "emoji": False,
-                                },
-                                "value": json.dumps(
-                                    {
-                                        "channel_id": setting.channel_id,
-                                        "team_id": context["team_id"],
-                                    }
-                                ),
-                                "action_id": "settings_auto_translate",
-                            },
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Disable"),
-                                    "emoji": False,
-                                },
-                                "value": json.dumps(
-                                    {
-                                        "channel_id": setting.channel_id,
-                                        "team_id": context["team_id"],
-                                    }
-                                ),
-                                "action_id": "settings_auto_translate_disable",
-                            },
-                        ],
                     },
                 ]
             )
+            for setting, langs in visible_translation_settings:
+                langs_string = format_strings_display(
+                    [get_auto_translate_language_name(lang) for lang in langs],
+                    and_string="and",
+                )
+                # TODO refactor
+                display_format_string = (
+                    "thread replies"
+                    if setting.display_format == "thread"
+                    else "messages"
+                )
+                translation_settings_blocks.extend(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"<#{setting.channel_id}> will be translated into {langs_string} through {display_format_string}.",
+                            },
+                            # "accessory": {
+                            #     "type": "button",
+                            #     "text": {"type": "plain_text", "text": "Edit", "emoji": False},
+                            #     "value": setting.channel_id,
+                            #     "action_id": "settings_auto_translate",
+                            # },
+                        },
+                        {
+                            "type": "actions",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("Edit"),
+                                        "emoji": False,
+                                    },
+                                    "value": json.dumps(
+                                        {
+                                            "channel_id": setting.channel_id,
+                                            "team_id": context["team_id"],
+                                        }
+                                    ),
+                                    "action_id": "settings_auto_translate",
+                                },
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("Disable"),
+                                        "emoji": False,
+                                    },
+                                    "value": json.dumps(
+                                        {
+                                            "channel_id": setting.channel_id,
+                                            "team_id": context["team_id"],
+                                        }
+                                    ),
+                                    "action_id": "settings_auto_translate_disable",
+                                },
+                            ],
+                        },
+                    ]
+                )
     return {
         "type": "home",
         "blocks": [
@@ -205,34 +261,6 @@ async def home_view(
                 "type": "header",
                 "text": {"type": "plain_text", "text": _("Translate Channels")},
             },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
-                    ),
-                },
-            },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _("{speechEmoji} Translation settings"),
-                        },
-                        "value": json.dumps(
-                            {
-                                "team_id": context["team_id"],
-                            }
-                        ),
-                        "action_id": "settings_auto_translate",
-                    },
-                ],
-            },
             *translation_settings_blocks,
             {"type": "divider"},
             {
@@ -264,33 +292,7 @@ async def home_view(
                 ],
             },
             {"type": "divider"},
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _(
-                                ":globe_with_meridians: Visit Straker LanguageCloud"
-                            ),
-                        },
-                        "action_id": "link_1",
-                        "url": domains.languagecloud,
-                    },
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _(":question: Help Centre"),
-                        },
-                        "action_id": "link_2",
-                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
-                    },
-                ],
-            },
+            {"type": "actions", "elements": footer_blocks},
         ],
     }
 
@@ -584,14 +586,6 @@ def new_job_modal(
                                 "emoji": False,
                             },
                             "value": "Translation + Edit",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Machine Translation"),
-                                "emoji": False,
-                            },
-                            "value": "Machine Translation",
                         },
                     ],
                     "initial_option": {

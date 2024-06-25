@@ -4,8 +4,9 @@ from buglog import notify_exception, notify_message
 from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
+from app.translate import translator_var, Translator
 
-from app.ray.utils import download_from_file_server
+from app.ray.utils import download_from_file_server, set_user_language
 from app.translate import _
 from app.wb_tasks.tasks import get_task
 
@@ -51,7 +52,12 @@ router = APIRouter()
 async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
     """Receives and responds to an event from the RAY platform."""
     try:
-        message = get_ray_event_message(event.event, event.data)
+        app.client.token = auth.slack_user.bot_token
+        user_info = await app.client.users_info(
+            user=auth.slack_user.user_id, include_locale=True
+        )
+        set_user_language(user_info)
+        message = get_ray_event_message(event.event, event.data, auth.slack_user)
     except ValidationError as e:
         raise HTTPException(
             422,
@@ -95,17 +101,19 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 event_data = MtSuccessResponseSchema.model_validate(event.data)
                 output_file = download_from_file_server(event_data.file_id)
                 token_count = event_data.tokens
-                target_lang = event_data.target_language
-                token_consumption_message = _(
-                    "You have used {token_count} MT characters."
+                token_count = await spend_mt_tokens(
+                    user=auth.slack_user, credits=token_count
                 )
+                target_lang = event_data.target_language
+                title = target_lang + "_" + output_file.get("file_name")
+                token_consumption_message = _("You have used {token_count} AI tokens.")
                 await app.client.files_upload_v2(
                     channel=auth.slack_user.channel_id,
                     file=output_file.get("file"),
                     initial_comment=token_consumption_message,
-                    title=target_lang + "_" + output_file.get("file_name"),
+                    title=title,
+                    filename=title,
                 )
-                await spend_mt_tokens(auth.slack_user, token_count)
         elif isinstance(message, JobTranscribedEventMessage):
             if not event.data.get("error"):
                 await post_notification_ephemeral(
@@ -188,6 +196,11 @@ async def api_job_callback(
     if slack_user is None:
         notify_message("Slack user not found in callback endpoint", severity="WARNING")
         raise HTTPException(401)
+    app.client.token = slack_user.bot_token
+    user_info = await app.client.users_info(
+        user=slack_user.user_id, include_locale=True
+    )
+    set_user_language(user_info)
     # Validate X-Straker-Signature.
     raw_body = await request.body()
     access_tokens = get_client_access_tokens(slack_user.ray_client_id)

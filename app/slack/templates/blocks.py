@@ -11,6 +11,7 @@ from ...ray.utils import (
     get_job_url,
     format_currency,
     format_currency_symbol,
+    is_ibm_enterprise,
 )
 from ...translate import _
 
@@ -30,9 +31,11 @@ def home_auth_blocks(
         super_group_names_str = ", ".join(super_group_names)
         user_id_str = f"<@{user_id}>"
         domain_url = f"<{domains.languagecloud}|{ray_connection.client.username}>"
-        text = "Your Slack account {user_id_str} is connected with: {domain_url}."
+        text = _("Your Slack account {user_id_str} is connected with: {domain_url}.")
         if ray_connection.client.sso:
-            text = "Your Slack account {user_id_str} is connected with: *{ray_connection.client.username}*."
+            text = _(
+                "Your Slack account {user_id_str} is connected with: *{ray_connection.client.username}*."
+            )
         return [
             {
                 "type": "section",
@@ -63,43 +66,10 @@ def home_auth_blocks(
         },
         {
             "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("Connect LanguageCloud account"),
-                    },
-                    "style": "primary",
-                    "url": get_language_cloud_connect_url(
-                        user_id, team_id, enterprise_id, channel_id or user_id
-                    ),
-                    "action_id": "login",
-                }
-            ],
+            "elements": [],
         },
     ]
-    if config.environment == Environment.production:
-        e_id = "EUJJ37YFR"
-        t_id = "T0360HUQKS9"
-    else:
-        e_id = "E04RDMG8XP1"
-        t_id = "T02FDFCGK"
-    if enterprise_id:
-        if enterprise_id == e_id:
-            msg[1]["elements"].insert(
-                0,
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("Direct Login"),
-                    },
-                    "style": "primary",
-                    "action_id": "login_sso",
-                },
-            )
-    elif team_id == t_id:
+    if is_ibm_enterprise(team_id, enterprise_id):
         msg[1]["elements"].insert(
             0,
             {
@@ -112,6 +82,22 @@ def home_auth_blocks(
                 "action_id": "login_sso",
             },
         )
+    else:
+        msg[1]["elements"].insert(
+            0,
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": _("Connect LanguageCloud account"),
+                },
+                "style": "primary",
+                "url": get_language_cloud_connect_url(
+                    user_id, team_id, enterprise_id, channel_id or user_id
+                ),
+                "action_id": "login",
+            },
+        ),
     return msg
 
 
@@ -134,11 +120,13 @@ def job_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
     }
 
 
-def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
+def quote_message_block(
+    quote: Quote, job_url: str, is_ibm: bool
+) -> list[dict[str, Any]]:
     currency = format_currency_symbol(quote.quote.currency)
     quote_formatted = format_currency(quote.quote.quote, quote.quote.currency)
     turnaround_time = (
-        f"within {quote.turnaround_days} days" if quote.turnaround_days > 0 else ""
+        _("within {quote.turnaround_days} days") if quote.turnaround_days > 0 else ""
     )
     # Show "incl. tax" next to the total cost if > the sum of the individual language prices.
     incl_tax = quote.quote.quote != quote.quote.quote_nett
@@ -163,6 +151,61 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
                     "text": f"*{lang.label}:*\n{lang_price_formatted}",
                 }
             )
+    actions_block = [
+        {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "emoji": True,
+                "text": _("Accept Quote"),
+            },
+            "style": "primary",
+            "url": quote.quote.quote_accept_url,
+            "action_id": "link",
+        },
+        {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "emoji": True,
+                "text": _("Cancel"),
+            },
+            "style": "danger",
+            "url": quote.quote.quote_cancel_url,
+            "action_id": "link_1",
+            "confirm": {
+                "title": {
+                    "type": "plain_text",
+                    "text": "Cancel Quote",
+                },
+                "text": {
+                    "type": "plain_text",
+                    "text": _(
+                        "Are you sure you want to cancel this quote?\n\n"
+                        + "This action requires you to be logged in to LanguageCloud."
+                    ),
+                },
+                "confirm": {"type": "plain_text", "text": "Yes"},
+                "deny": {
+                    "type": "plain_text",
+                    "text": "No",
+                },
+            },
+        },
+    ]
+    if not is_ibm:
+        actions_block.append(
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": _("View in LanguageCloud"),
+                    "emoji": True,
+                },
+                "url": job_url,
+                "action_id": "link_2",
+            },
+        )
     return [
         {
             "type": "section",
@@ -191,68 +234,12 @@ def quote_message_block(quote: Quote, job_url: str) -> list[dict[str, Any]]:
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": _(
-                    "*Total Cost ({currency})*: "
-                    + f"{quote_formatted} {'(incl. tax)' if incl_tax else ''}"
-                ),
+                "text": _("*Total Cost ({currency})*: ")
+                + f"{quote_formatted} {'(incl. tax)' if incl_tax else ''}",
             },
         },
         {"type": "divider"},
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": _("Accept Quote"),
-                    },
-                    "style": "primary",
-                    "url": quote.quote.quote_accept_url,
-                    "action_id": "link",
-                },
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": "Cancel",
-                    },
-                    "style": "danger",
-                    "url": quote.quote.quote_cancel_url,
-                    "action_id": "link_1",
-                    "confirm": {
-                        "title": {
-                            "type": "plain_text",
-                            "text": "Cancel Quote",
-                        },
-                        "text": {
-                            "type": "plain_text",
-                            "text": _(
-                                "Are you sure you want to cancel this quote?\n\n"
-                                + "This action requires you to be logged in to LanguageCloud."
-                            ),
-                        },
-                        "confirm": {"type": "plain_text", "text": "Yes"},
-                        "deny": {
-                            "type": "plain_text",
-                            "text": "No",
-                        },
-                    },
-                },
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("View in LanguageCloud"),
-                        "emoji": True,
-                    },
-                    "url": job_url,
-                    "action_id": "link_2",
-                },
-            ],
-        },
+        {"type": "actions", "elements": actions_block},
     ]
 
 
@@ -289,7 +276,10 @@ def get_progess_text(predictions: dict) -> str:
     return status
 
 
-def job_prediction_block(prediction: str, value: int = 0) -> dict:
+def job_prediction_block(
+    prediction: str, value: int = 0, emorji: str = ":large_orange_circle:"
+) -> dict:
+    print("prediction", prediction)
     if "behind schedule" in prediction:
         return {
             "type": "section",
