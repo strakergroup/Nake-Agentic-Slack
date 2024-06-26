@@ -50,7 +50,7 @@ def home_auth_blocks(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": _(text),
+                    "text": text,
                 },
             },
         ]

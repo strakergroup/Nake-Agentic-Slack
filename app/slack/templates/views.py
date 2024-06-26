@@ -34,13 +34,14 @@ async def home_view(
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str]]
     ] = []
+    questionEmoji = f":question:"
     footer_blocks = [
         {
             "type": "button",
             "text": {
                 "type": "plain_text",
                 "emoji": True,
-                "text": _(":question: Help Centre"),
+                "text": _("{questionEmoji} Help Centre"),
             },
             "action_id": "link_2",
             "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
@@ -133,18 +134,19 @@ async def home_view(
                     and_string="and",
                 )
                 # TODO refactor
-                display_format_string = (
+                display_format_string = _(
                     "thread replies"
                     if setting.display_format == "thread"
                     else "messages"
                 )
+                message_trans = _("will be translated into {langs_string} through {display_format_string}")
                 translation_settings_blocks.extend(
                     [
                         {
                             "type": "section",
                             "text": {
                                 "type": "mrkdwn",
-                                "text": f"<#{setting.channel_id}> will be translated into {langs_string} through {display_format_string}.",
+                                "text": f"<#{setting.channel_id}> {message_trans}.",
                             },
                             # "accessory": {
                             #     "type": "button",
