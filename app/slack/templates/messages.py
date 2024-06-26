@@ -1587,7 +1587,7 @@ class NewJobMessage(SlackMessage):
                                     "type": "button",
                                     "text": {
                                         "type": "plain_text",
-                                        "text": _("Machine Translate"),
+                                        "text": _("AI Translate"),
                                         "emoji": True,
                                     },
                                     "action_id": "document_mt_job",
@@ -3020,7 +3020,7 @@ class JobTranscribedEventMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("Translate"),
+                                "text": _("AI Translate"),
                                 "emoji": False,
                             },
                             "action_id": "show_srt_translate_form",
