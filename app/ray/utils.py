@@ -126,12 +126,12 @@ def format_job_due_date_slack(
     if target_date.tzinfo is None:
         target_date = target_date.replace(tzinfo=datetime.timezone.utc)
     date_delta = target_date - datetime.datetime.now(datetime.timezone.utc)
+    hourtime = math.ceil(date_delta.total_seconds() / 3600)
     formatted_date = (
-        f"in {math.ceil(date_delta.total_seconds() / 3600)} hour(s)"
+        _("in {hourtime} hour(s)")
         if 0 < date_delta.total_seconds() < 48 * 3600
         else format_datetime_slack(target_date)
     )
-
     if traffic_light and job_status == "IN_PROGRESS":
         if datetime.datetime.now(datetime.timezone.utc) >= target_date:
             return f"{formatted_date}"
