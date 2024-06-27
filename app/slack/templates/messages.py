@@ -3197,7 +3197,7 @@ class RequiresMtTokenMessage(SlackMessage):
                                 "text": _("Purchase AI Tokens"),
                                 "emoji": False,
                             },
-                            "action_id": "button-action",  # Add this line
+                            "action_id": "link_1",
                             "url": f"{domains.languagecloud}/checkout/tokens",
                         },
                     ],
