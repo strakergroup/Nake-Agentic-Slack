@@ -145,10 +145,11 @@ def quote_message_block(
                 quote.quote.tl[lang.code].price if lang.code in quote.quote.tl else 0.0
             )
             lang_price_formatted = format_currency(lang_price, quote.quote.currency)
+            target_lang = _(lang.label)
             lang_price_blocks[0]["fields"].append(
                 {
                     "type": "mrkdwn",
-                    "text": f"*{lang.label}:*\n{lang_price_formatted}",
+                    "text": f"*{target_lang}:*\n{lang_price_formatted}",
                 }
             )
     actions_block = [
@@ -206,13 +207,15 @@ def quote_message_block(
                 "action_id": "link_2",
             },
         )
+    source_lang = _(quote.sl.label)
+    service_tra = _(quote.service)
     return [
         {
             "type": "section",
             "fields": [
                 {
                     "type": "mrkdwn",
-                    "text": _("*Source Language:*\n{quote.sl.label}"),
+                    "text": _("*Source Language:*\n{source_lang}"),
                 },
                 {
                     "type": "mrkdwn",
@@ -220,7 +223,7 @@ def quote_message_block(
                 },
                 {
                     "type": "mrkdwn",
-                    "text": _("*Service:*\n{quote.service}"),
+                    "text": _("*Service:*\n{service_tra}"),
                 },
                 {
                     "type": "mrkdwn",
@@ -279,7 +282,6 @@ def get_progess_text(predictions: dict) -> str:
 def job_prediction_block(
     prediction: str, value: int = 0, emorji: str = ":large_orange_circle:"
 ) -> dict:
-    print("prediction", prediction)
     if "behind schedule" in prediction:
         return {
             "type": "section",

@@ -51,7 +51,7 @@ async def get_language_options(filter: str | None = None) -> list[dict[str, Any]
     languages = islice(languages, 100)  # type: ignore
     return [
         {
-            "text": {"type": "plain_text", "text": lang["name"], "emoji": False},
+            "text": {"type": "plain_text", "text": _(lang["name"]), "emoji": False},
             "value": lang["code"],
         }
         for lang in languages

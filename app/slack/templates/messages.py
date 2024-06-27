@@ -838,6 +838,7 @@ class JobDetailsMessage(SlackMessage):
         job_due_date = format_job_due_date_slack(
             job.target_date, job.status, traffic_light=True
         )
+        source_lang = _(job.sl.name)
         job_detail_block: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -871,7 +872,7 @@ class JobDetailsMessage(SlackMessage):
                     {
                         "type": "mrkdwn",
                         "text": _(
-                            "*Source Language:*\n{job.sl.name}",
+                            "*Source Language:*\n{source_lang}",
                         ),
                     },
                     {
@@ -2091,7 +2092,7 @@ class JobQuotedMessage(SlackMessage):
         formatted_url = (
             "*<{job_url}|Straker Job Reference {quote.id}>*"
             if not is_ibm
-            else f"*Straker Job Reference {quote.id}*"
+            else "*Straker Job Reference {quote.id}*"
         )
         super().__init__(
             _("Pending Quote: Straker Job Reference {quote.id}"),
@@ -3097,13 +3098,13 @@ class CancelTJMessage(SlackMessage):
                     "type": "header",
                     "text": {
                         "type": "plain_text",
-                        "text": f" Cancel  {jobdetail['job_id']}",
+                        "text": _("Cancel {jobdetail['job_id']}"),
                     },
                 },
                 {
                     "type": "section",
                     "fields": [
-                        {"type": "mrkdwn", "text": f"*Status:*\n {jobdetail['status']}"}
+                        {"type": "mrkdwn", "text": _("*Status:*\n {jobdetail['status']}")}
                     ],
                 },
                 {
@@ -3111,11 +3112,11 @@ class CancelTJMessage(SlackMessage):
                     "fields": [
                         {
                             "type": "mrkdwn",
-                            "text": f"*Source:*\n {jobdetail['sourcelang'].label}",
+                            "text": _("*Source:*\n {jobdetail['sourcelang'].label}"),
                         },
                         {
                             "type": "mrkdwn",
-                            "text": f"*Target:*\n {', '.join(target_labels)}",
+                            "text": _("*Target:*\n {', '.join(target_labels)}"),
                         },
                     ],
                 },
@@ -3123,13 +3124,13 @@ class CancelTJMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Please confirm to cancel this job.",
+                        "text": _("Please confirm to cancel this job."),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Cancel Job",
+                            "text": "_(Cancel Job)",
                         },
                         "value": json.dumps(
                             {"job_id": jobdetail["job_id"], "job_action": "list"}
@@ -3152,7 +3153,7 @@ class AutoTranslateSettingsChangedMessage(TextMessage):
             "thread replies" if display_format == "thread" else "messages"
         )
         super().__init__(
-            f"The bot will respond to messages sent in <#{channel_id}> which will be translated into {langs_string} through {display_format_string} in real-time."
+            _("The bot will respond to messages sent in <#{channel_id}> which will be translated into {langs_string} through {display_format_string} in real-time.")
         )
 
 
@@ -3160,7 +3161,7 @@ class AutoTranslateSettingsDisabledMessage(TextMessage):
     """Message to send when the user disable/enable their auto-translate settings."""
 
     def __init__(self, channel_id: str) -> None:
-        super().__init__(f"<#{channel_id}> Translation settings have been disabled.")
+        super().__init__(_("<#{channel_id}> Translation settings have been disabled."))
 
 
 class RequiresMtTokenMessage(SlackMessage):
