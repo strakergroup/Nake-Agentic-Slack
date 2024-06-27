@@ -19,6 +19,7 @@ from buglog import notify_exception, notify_message
 from app.ray.events.models import MtFileRequestSchema
 from app.translate import _
 from app.wb_tasks.tasks import create_task
+from app.translate import _
 
 from .middleware import require_mt_tokens, require_ray_client
 from .utils import escape_slack_emoji, unescape_slack_emoji
@@ -1027,7 +1028,7 @@ async def post_job_list(
                     status="ORDER_NOW", page=page, page_size=page_size
                 )
             case "CLIENT_REFERENCE":
-                title = _("Reference: ") + client_ref
+                title = _("Reference:") + client_ref
                 response = await RayService.get_service(ray_client).get_job_list(
                     client_ref=client_ref, page=page, page_size=page_size
                 )

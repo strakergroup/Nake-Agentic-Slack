@@ -11,7 +11,7 @@ from ..models import (
     SlackGroupSettingsTranslationLangs,
     SlackGroupSettingsTranslation,
 )
-
+from app.translate import _
 
 @functools.cache
 def get_auto_translate_languages(
@@ -97,7 +97,7 @@ def get_auto_translate_language_name(language: str) -> str:
     language = language.casefold()
     for lang in get_auto_translate_languages(include_variations=True):
         if lang[0].casefold() == language or lang[1].casefold() == language:
-            return lang[1]
+            return _(lang[1])
     return "Unknown"
 
 

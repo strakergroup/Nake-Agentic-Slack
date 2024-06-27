@@ -10,6 +10,7 @@ from ..config import config, domains, Environment
 
 from babel.numbers import format_currency as babel_format_currency
 import requests
+from app.translate import _
 
 from app.translate import Translator, translator_var
 
@@ -65,28 +66,28 @@ def format_job_status(status: str) -> str:
         return ""
     match status.strip().upper():
         case "LEAD":
-            return "Quote Requested"
+            return _("Quote Requested")
         case "IN_PROGRESS":
-            return "In Progress"
+            return _("In Progress")
         case "VALIDATION":
-            return "In Validation"
+            return _("In Validation")
         case "CANCELLED":
-            return "Cancelled"
+            return _("Cancelled")
         case "CLIENT_CANCELLED":
-            return "Client Cancelled"
+            return _("Client Cancelled")
         case "CLOSED":
-            return "Closed"
+            return _("Closed")
         case "WAITING":
-            return "Waiting"
+            return _("Waiting")
         case "REFUNDED":
-            return "Refunded"
+            return _("Refunded")
         case "COMPLETED":
-            return "Completed"
+            return _("Completed")
         # Derived statuses.
         case "PENDING_QUOTES":  # status = "LEAD" + quote <= 1
-            return "Quote Requested"
+            return _("Quote Requested")
         case "ORDER_NOW":  # status = "LEAD" + quote > 1
-            return "Order Now"
+            return _("Order Now")
         case _:
             return status.strip()
 
@@ -125,12 +126,12 @@ def format_job_due_date_slack(
     if target_date.tzinfo is None:
         target_date = target_date.replace(tzinfo=datetime.timezone.utc)
     date_delta = target_date - datetime.datetime.now(datetime.timezone.utc)
+    hourtime = math.ceil(date_delta.total_seconds() / 3600)
     formatted_date = (
-        f"in {math.ceil(date_delta.total_seconds() / 3600)} hour(s)"
+        _("in {hourtime} hour(s)")
         if 0 < date_delta.total_seconds() < 48 * 3600
         else format_datetime_slack(target_date)
     )
-
     if traffic_light and job_status == "IN_PROGRESS":
         if datetime.datetime.now(datetime.timezone.utc) >= target_date:
             return f"{formatted_date}"
