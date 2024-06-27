@@ -151,12 +151,16 @@ async def home_opened(event, action, context, body, say, client):
     # https://api.slack.com/events/app_home_opened
     # Send an onboarding message if the app home is opened for the first time.
     history = await client.conversations_history(channel=event.get("channel"), limit=1)
+    is_ibm = is_ibm_enterprise(
+        team_id=context["team_id"], enterprise_id=context.get("enterprise_id")
+    )
     if not history.get("messages"):
         message = OnboardingMessage(
             context["user_id"],
             context["team_id"],
             context.get("enterprise_id"),
             event.get("channel"),
+            not is_ibm,
         )
         await say(blocks=message.blocks, text=message.text)
     # Send a welcome message if the app home has been idle for 24 hours
@@ -394,7 +398,9 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                         "channel_id": context["channel_id"],
                         "enterprise_id": context.get("enterprise_id"),
                     }
-                    msg = get_ray_event_message("ray:slack:account_connected", data, None)
+                    msg = get_ray_event_message(
+                        "ray:slack:account_connected", data, None
+                    )
                     await ack(response_action="clear")
                     await client.chat_postMessage(
                         channel=context["user_id"],
