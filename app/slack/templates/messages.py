@@ -838,6 +838,7 @@ class JobDetailsMessage(SlackMessage):
         job_due_date = format_job_due_date_slack(
             job.target_date, job.status, traffic_light=True
         )
+        source_lang = _(job.sl.name)
         job_detail_block: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -871,7 +872,7 @@ class JobDetailsMessage(SlackMessage):
                     {
                         "type": "mrkdwn",
                         "text": _(
-                            "*Source Language:*\n{job.sl.name}",
+                            "*Source Language:*\n{source_lang}",
                         ),
                     },
                     {
@@ -2091,7 +2092,7 @@ class JobQuotedMessage(SlackMessage):
         formatted_url = (
             "*<{job_url}|Straker Job Reference {quote.id}>*"
             if not is_ibm
-            else f"*Straker Job Reference {quote.id}*"
+            else "*Straker Job Reference {quote.id}*"
         )
         super().__init__(
             _("Pending Quote: Straker Job Reference {quote.id}"),
