@@ -311,7 +311,7 @@ async def respond_to_message(
                     )
             elif response.reply:
                 # Default to Watson Assistant fallback response if no other matches.
-                await context.say(response.reply, thread_ts=thread_ts)
+                await context.say(_(response.reply), thread_ts=thread_ts)
 
 
 async def auto_translate_message(
