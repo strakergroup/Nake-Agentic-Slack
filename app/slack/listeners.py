@@ -1074,7 +1074,7 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
     except SlackApiError as e:
         if e.response["error"] == "channel_not_found":
             error_msg = _(
-                "Please /invite @Straker to the private channels in order to enable channel translation."
+                "Please /invite @Straker Translate to the private channels in order to enable channel translation."
             )
             await ack(
                 response_action="errors",

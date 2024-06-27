@@ -164,35 +164,35 @@ def quote_message_block(
             "url": quote.quote.quote_accept_url,
             "action_id": "link",
         },
-        {
-            "type": "button",
-            "text": {
-                "type": "plain_text",
-                "emoji": True,
-                "text": _("Cancel"),
-            },
-            "style": "danger",
-            "url": quote.quote.quote_cancel_url,
-            "action_id": "link_1",
-            "confirm": {
-                "title": {
-                    "type": "plain_text",
-                    "text": "Cancel Quote",
-                },
-                "text": {
-                    "type": "plain_text",
-                    "text": _(
-                        "Are you sure you want to cancel this quote?\n\n"
-                        + "This action requires you to be logged in to LanguageCloud."
-                    ),
-                },
-                "confirm": {"type": "plain_text", "text": "Yes"},
-                "deny": {
-                    "type": "plain_text",
-                    "text": "No",
-                },
-            },
-        },
+        # {
+        #     "type": "button",
+        #     "text": {
+        #         "type": "plain_text",
+        #         "emoji": True,
+        #         "text": _("Cancel"),
+        #     },
+        #     "style": "danger",
+        #     "url": quote.quote.quote_cancel_url,
+        #     "action_id": "link_1",
+        #     "confirm": {
+        #         "title": {
+        #             "type": "plain_text",
+        #             "text": "Cancel Quote",
+        #         },
+        #         "text": {
+        #             "type": "plain_text",
+        #             "text": _(
+        #                 "Are you sure you want to cancel this quote?\n\n"
+        #                 + "This action requires you to be logged in to LanguageCloud."
+        #             ),
+        #         },
+        #         "confirm": {"type": "plain_text", "text": "Yes"},
+        #         "deny": {
+        #             "type": "plain_text",
+        #             "text": "No",
+        #         },
+        #     },
+        # },
     ]
     if not is_ibm:
         actions_block.append(

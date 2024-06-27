@@ -6,7 +6,11 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
 from app.translate import translator_var, Translator
 
-from app.ray.utils import download_from_file_server, set_user_language
+from app.ray.utils import (
+    download_from_file_server,
+    is_ibm_enterprise,
+    set_user_language,
+)
 from app.translate import _
 from app.wb_tasks.tasks import get_task
 
@@ -85,10 +89,14 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     )
                     token_balance = event_data.error_data.get("balance")
                     required = event_data.error_data.get("required")
-                    if client_type in ["Admin", "Owner"]:
+
+                    if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
+                        auth.slack_user.team_id, auth.slack_user.enterprise_id
+                    ):
                         message = RequiresMtTokenMessage(token_balance, required)
                     else:
                         message = RequiresMtTokenAdminMessage(token_balance, required)
+
                 await post_notification_ephemeral(
                     app.client,
                     auth.slack_user.channel_id,

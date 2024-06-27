@@ -11,7 +11,7 @@ from buglog import notify_exception, notify_message
 from slack_bolt.context.async_context import AsyncBoltContext
 from ray_logger.slack import SlackAppLog  # type: ignore
 
-from app.ray.utils import set_user_language
+from app.ray.utils import is_ibm_enterprise, set_user_language
 from app.translate import translator_var, Translator
 
 from .app import app
@@ -182,7 +182,9 @@ async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
     client_type = await get_client_type(
         context["ray"].client.id, context["ray"].client.user_group_id
     )
-    if client_type in ["Admin", "Owner"]:
+    if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
+        team_id=context["team_id"], enterprise_id=context.get("enterprise_id")
+    ):
         message = RequiresMtTokenMessage(ai_tokens, value)
         await context.client.chat_postEphemeral(
             channel=context.get("channel_id") or context.get("user_id"),
