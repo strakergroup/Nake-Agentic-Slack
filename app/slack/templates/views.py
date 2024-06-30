@@ -133,6 +133,7 @@ async def home_view(
                     [get_auto_translate_language_name(lang) for lang in langs],
                     and_string="and",
                 )
+                langs_string = langs_string.lower()
                 # TODO refactor
                 display_format_string = _(
                     "thread replies"
