@@ -1129,7 +1129,7 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
         notify_exception(e)
 
 
-@app.action("language_mt_options")
+@app.action("language_mt_options", middleware=[ray_connection])
 async def language_mt_options_selected(ack, body):
     # redis store the selected options keyed by ouputn file
     await ack()
@@ -1138,7 +1138,7 @@ async def language_mt_options_selected(ack, body):
     await redis_conn.set(f"output_file_{file_id}", selected_language)
 
 
-@app.options("language_options")
+@app.options("language_options", middleware=[ray_connection])
 async def language_options(ack, payload):
     options = await get_language_options(payload.get("value"))
     await ack(options=options)
