@@ -3090,7 +3090,12 @@ class CancelTJMessage(SlackMessage):
     """
 
     def __init__(self, channel_id: str, jobdetail) -> None:
-        target_labels = [target.label for target in jobdetail["targetlang"]]
+
+        target_labels = [_(target.label) for target in jobdetail["targetlang"]]
+        jobid = jobdetail["job_id"]
+        jobstatus = jobdetail['status']
+        sl = _(jobdetail['sourcelang'].label)
+        tl = ', '.join(target_labels)
         super().__init__(
             "Cancel a translation job",
             [
@@ -3098,13 +3103,13 @@ class CancelTJMessage(SlackMessage):
                     "type": "header",
                     "text": {
                         "type": "plain_text",
-                        "text": _("Cancel {jobdetail['job_id']}"),
+                        "text": _("Cancel  {jobid}"),
                     },
                 },
                 {
                     "type": "section",
                     "fields": [
-                        {"type": "mrkdwn", "text": _("*Status:*\n {jobdetail['status']}")}
+                        {"type": "mrkdwn", "text": _("*Status:*\n {jobstatus}")}
                     ],
                 },
                 {
@@ -3112,11 +3117,11 @@ class CancelTJMessage(SlackMessage):
                     "fields": [
                         {
                             "type": "mrkdwn",
-                            "text": _("*Source:*\n {jobdetail['sourcelang'].label}"),
+                            "text": _("*Source:*\n {sl}"),
                         },
                         {
                             "type": "mrkdwn",
-                            "text": _("*Target:*\n {', '.join(target_labels)}"),
+                            "text": _("*Target:*\n {tl}"),
                         },
                     ],
                 },
@@ -3130,7 +3135,7 @@ class CancelTJMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "_(Cancel Job)",
+                            "text": _("Cancel Job"),
                         },
                         "value": json.dumps(
                             {"job_id": jobdetail["job_id"], "job_action": "list"}
