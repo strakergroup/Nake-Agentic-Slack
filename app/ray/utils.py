@@ -285,13 +285,13 @@ def is_ibm_enterprise(
     # else:
     se_id = "E04RDMG8XP1"
     st_id = "T02FDFCGK"
-    if (
-        enterprise_id == e_id
-        or team_id == t_id
-        or enterprise_id == se_id
-        or team_id == st_id
-    ) and team_id != "T04D0JGE2HH":
-        return True
+    # if (
+    #     enterprise_id == e_id
+    #     or team_id == t_id
+    #     or enterprise_id == se_id
+    #     or team_id == st_id
+    # ) and team_id != "T04D0JGE2HH":
+    #     return True
     try:
         # TODO: Maybe add to middleware
         if is_ibm_super_group(enterprise_id):
