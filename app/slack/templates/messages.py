@@ -2946,7 +2946,6 @@ class DocumentMTJobMessage(SlackMessage):
 
     def __init__(self, output_file: str) -> None:
         title = _("Please select the target language for translation")
-        get_auto_translate_language_options.cache_clear()
         language_options = get_auto_translate_language_options()
         # create message which contains the output_file of the submit button and contains a input element which is a multi select for language
         super().__init__(
