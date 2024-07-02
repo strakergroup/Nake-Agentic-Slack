@@ -412,7 +412,10 @@ def is_ibm_super_group(
                 ON link.super_group_uuid = g.obj_uuid
                 WHERE link.slack_enterprise_id = :enterprise_id
                 AND link.is_active = 1
-                AND link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
+                AND (
+                    link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
+                    OR link.super_group_uuid = '13D8D894-3DC5-49DC-9DD0-AD9EA537E597'
+                )
                 """
             ).bindparams(enterprise_id=enterprise_id)
         result = conn.execute(sql)
