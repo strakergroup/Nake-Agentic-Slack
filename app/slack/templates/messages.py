@@ -70,12 +70,13 @@ class OnboardingMessage(SlackMessage):
         channel_id: str,
         prompt_login: bool = True,
     ) -> None:
+        tadaEmoji = f":tada:"
         blocks: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": _("Welcome to Straker Translate for Slack! :tada:"),
+                    "text": _("Welcome to Straker Translate for Slack! {tadaEmoji}"),
                 },
             }
         ]
