@@ -3093,7 +3093,7 @@ class CancelTJMessage(SlackMessage):
 
         target_labels = [_(target.label) for target in jobdetail["targetlang"]]
         jobid = jobdetail["job_id"]
-        jobstatus = jobdetail['status']
+        jobstatus = _(format_job_status(jobdetail['status']))
         sl = _(jobdetail['sourcelang'].label)
         tl = ', '.join(target_labels)
         super().__init__(
