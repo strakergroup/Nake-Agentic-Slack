@@ -86,6 +86,7 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
         context["is_bot"] = user_info["user"]["is_bot"]
         set_user_language(user_info)
     except Exception as e:
+        context["is_bot"] = False
         print(e)
         notify_exception(e)
     # Log the RAY client ID if available.
