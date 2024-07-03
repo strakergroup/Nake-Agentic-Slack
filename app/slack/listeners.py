@@ -123,10 +123,10 @@ async def message_event(client, context, message):
         )
         if token:
             if token != client.token:
-                client.token = token
                 print("token different")
                 print(client.token)
                 print(token)
+                client.token = token
             else:
                 print("token same")
         else:
