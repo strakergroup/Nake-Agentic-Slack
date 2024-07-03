@@ -117,6 +117,20 @@ async def message_event(client, context, message):
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # use threads in channels or group conversations (see the "app_mention" event).
+    with engines["ray_integration_readonly"].connect() as conn:
+        token = get_bot_token(
+            conn=conn, team_id="", enterprise_id=context.get("enterprise_id")
+        )
+        if token:
+            if token != client.token:
+                client.token = token
+                print("token different")
+                print(client.token)
+                print(token)
+            else:
+                print("token same")
+        else:
+            print("no token")
     if not context["is_bot"]:
         if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
             await respond_to_message(client, context, message, use_thread=False)

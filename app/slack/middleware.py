@@ -65,6 +65,7 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
     context["ray"] = await get_ray_connection(
         context["user_id"], context["team_id"], context.get("enterprise_id")
     )
+
     if context["ray"] is None or context["ray"].client is None:
         demo_connection = await get_ray_connection_demo(
             context["user_id"], context["team_id"], context.get("enterprise_id")
@@ -79,7 +80,7 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
         ray_client=context["ray"].client if context["ray"] is not None else None,
     )
     try:
-        context["is_bot"] = True
+        context["is_bot"] = False
         user_info = await context.client.users_info(
             user=context["user_id"], include_locale=True
         )
