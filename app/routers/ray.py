@@ -56,6 +56,7 @@ router = APIRouter()
 async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
     """Receives and responds to an event from the RAY platform."""
     try:
+        message = None
         if auth.slack_user:
             app.client.token = auth.slack_user.bot_token
             user_info = await app.client.users_info(
