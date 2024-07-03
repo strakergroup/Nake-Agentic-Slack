@@ -456,7 +456,7 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
             await respond(
                 text="This app requires the 'user_read' scope to access user information. "
                 "Please grant the necessary permissions and try again. You can reinstall the app "
-                f"from this URL: {domains.slack_ray_translator}slack/install"
+                f"from this URL: {domains.slack_ray_translator}/slack/install"
             )
         else:
             notify_exception(sae)
