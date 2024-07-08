@@ -65,7 +65,6 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
     context["ray"] = await get_ray_connection(
         context["user_id"], context["team_id"], context.get("enterprise_id")
     )
-
     if context["ray"] is None or context["ray"].client is None:
         demo_connection = await get_ray_connection_demo(
             context["user_id"], context["team_id"], context.get("enterprise_id")
@@ -88,7 +87,6 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
         set_user_language(user_info)
     except Exception as e:
         context["is_bot"] = False
-        print(e)
         notify_exception(e)
     # Log the RAY client ID if available.
     if "log" in context and isinstance(context["log"], SlackAppLog):
