@@ -1,4 +1,5 @@
 import re
+from app.translate import _
 
 
 def is_channel_im(channel_id: str | None) -> bool:
@@ -33,6 +34,7 @@ def format_strings_display(strings: list[str], *, and_string: str = "&") -> str:
     Returns:
         str: The formatted string.
     """
+    and_string = _(and_string)
     if not strings:
         return ""
     if len(strings) == 1:
