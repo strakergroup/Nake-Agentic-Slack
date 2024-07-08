@@ -118,11 +118,10 @@ async def message_event(client, context, message, body):
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # use threads in channels or group conversations (see the "app_mention" event).
     if not context["is_bot"]:
-
         if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
             with engines["ray_integration_readonly"].connect() as conn:
                 # extract team id from body
-                body_team_id = (body.get("event", {}).get("team_id"),)
+                body_team_id = body.get("event", {}).get("team")
                 if body_team_id:
                     token = get_bot_token(
                         conn=conn,

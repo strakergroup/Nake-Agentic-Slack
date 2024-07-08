@@ -142,10 +142,11 @@ def get_bot_token(
             """
             SELECT bot_token FROM slack_bots
             WHERE enterprise_id = :enterprise_id
+            AND team_id = :team_id
             ORDER BY id DESC
             LIMIT 1
             """
-        ).bindparams(enterprise_id=enterprise_id)
+        ).bindparams(enterprise_id=enterprise_id, team_id=team_id)
     else:
         sql = text(
             """
