@@ -77,7 +77,6 @@ async def get_file_options_cached(channel_id: str) -> list[dict[str, Any]]:
     return files
 
 
-@functools.cache
 def get_auto_translate_language_options():
     """Get the options block for the auto-translate language select input."""
     return [
