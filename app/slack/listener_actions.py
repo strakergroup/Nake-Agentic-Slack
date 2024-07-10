@@ -38,6 +38,7 @@ from .templates.messages import (
     JobDetailsMessage,
     InsightsMessage,
     ReportInsightsMessage,
+    AIHelperMessage,
     BatchListMessage,
     FileListMessage,
     JobTargetsNoIdMessage,
@@ -164,6 +165,7 @@ async def respond_to_message(
         intents=response.data["output"]["intents"],
         entities=response.data["output"]["entities"],
     )
+
     match response.intent:
         case "General_About_You" | "General_Agent_Capabilities" | "General_Greetings":
             await context.say(
@@ -314,8 +316,12 @@ async def respond_to_message(
                         thread_ts=thread_ts,
                     )
             elif response.reply:
+                help_site = 'https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack'
+                none_msg = _("I didn't understand, please refer to the <{help_site}|help docs>")
+                reply = none_msg if response.intent is None else _(response.reply)
+                print(_(reply))
                 # Default to Watson Assistant fallback response if no other matches.
-                await context.say(_(response.reply), thread_ts=thread_ts)
+                await context.say(reply, thread_ts=thread_ts)
 
 
 async def auto_translate_message(
@@ -1538,6 +1544,45 @@ async def post_report_insights(
             )
     except Exception as e:
         notify_exception(e, "Failed to get insights from Insights API")
+
+
+async def ai_translate_help(
+    client: AsyncWebClient,
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    channel_id: str | None = None,
+    thread_ts: str | None = None,
+):
+    """Show Insight message modal.
+
+    Args:
+        context (AsyncBoltContext): The context from the listener.
+        ray_client (RayClient): The RAY client details.
+        channel_id (str | None, optional): The channel to post the message to.
+            If not given, posts to the source channel.
+        thread_ts (str | None, optional): The message thread to reply to.
+    """
+    if (
+        not channel_id
+        and not context.channel_id
+        and not context.user_id
+        and not context.response_url
+    ):
+        raise AssertionError("No channel to post to")
+    channel_id = channel_id or context.channel_id or context.user_id
+    ai_helper_msg = AIHelperMessage()
+    try:
+        if context.response_url:
+            await context.respond(text=ai_helper_msg.text, blocks=ai_helper_msg.blocks)
+        else:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=ai_helper_msg.text,
+                blocks=ai_helper_msg.blocks,
+                thread_ts=thread_ts,
+            )
+    except Exception as e:
+        notify_exception(e, "Failed to get AI Translate help message")
 
 
 async def get_mt_translation(
