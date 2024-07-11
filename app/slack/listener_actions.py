@@ -501,6 +501,7 @@ async def document_machine_translate(
             {
                 "file_id": file_id,
                 "client_id": context["ray"].client.id,
+                "channel_id": context["channel_id"],
                 "target_language": selected_language,
             }
         )
