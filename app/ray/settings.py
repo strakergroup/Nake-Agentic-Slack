@@ -13,7 +13,7 @@ from ..models import (
 )
 from app.translate import _
 
-@functools.cache
+
 def get_auto_translate_languages(
     include_variations: bool = False,
 ) -> list[tuple[str, str]]:
@@ -53,6 +53,10 @@ def get_auto_translate_languages(
     ]
     if include_variations:
         languages.append(("zh", "Chinese (Simplified)"))
+
+    languages = [
+        (lang[0], _(lang[1])) for lang in languages
+    ]
     languages = sorted(languages, key=lambda language: language[1])
     return languages
 
@@ -96,7 +100,7 @@ def get_auto_translate_language_name(language: str) -> str:
     language = language.casefold()
     for lang in get_auto_translate_languages(include_variations=True):
         if lang[0].casefold() == language or lang[1].casefold() == language:
-            return _(lang[1])
+            return lang[1]
     return "Unknown"
 
 
