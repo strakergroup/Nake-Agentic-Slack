@@ -3151,23 +3151,25 @@ class CancelTJMessage(SlackMessage):
 class AutoTranslateSettingsChangedMessage(TextMessage):
     """Message to send when the user changes their auto-translate settings."""
 
-    def __init__(self, channel_id: str, langs: list[str], display_format: str) -> None:
+    def __init__(self, user_id: str, channel_id: str, langs: list[str], display_format: str) -> None:
         langs_string = format_strings_display(
             [get_auto_translate_language_name(lang) for lang in langs], and_string="and"
         )
         display_format_string = (
             "thread replies" if display_format == "thread" else "messages"
         )
+        user_mention = f"<@{user_id}>"
         super().__init__(
-            _("The bot will respond to messages sent in <#{channel_id}> which will be translated into {langs_string} through {display_format_string} in real-time.")
+            _("Translation settings updated by {user_mention}. The bot will respond to messages sent in <#{channel_id}> which will be translated into {langs_string} through {display_format_string} in real-time.")
         )
 
 
 class AutoTranslateSettingsDisabledMessage(TextMessage):
     """Message to send when the user disable/enable their auto-translate settings."""
 
-    def __init__(self, channel_id: str) -> None:
-        super().__init__(_("<#{channel_id}> Translation settings have been disabled."))
+    def __init__(self, user_id: str, channel_id: str) -> None:
+        user_mention = f"<@{user_id}>"
+        super().__init__(_("<#{channel_id}> Translation settings have been disabled by {user_mention}."))
 
 
 class RequiresMtTokenMessage(SlackMessage):

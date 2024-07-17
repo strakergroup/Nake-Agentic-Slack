@@ -708,7 +708,9 @@ async def disable_auto_translate_settings(ack, context, payload, body, client):
 
         async def notify_channel(channel_id: str):
             try:
-                msg = AutoTranslateSettingsDisabledMessage(channel_id)
+                msg = AutoTranslateSettingsDisabledMessage(
+                    context["user_id"], channel_id
+                )
                 await client.chat_postMessage(channel=channel_id, text=msg.text)
             except SlackApiError:
                 pass  # Must be in channel to post. TODO check other events, e.g. app_mention
@@ -1134,7 +1136,7 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
         async def notify_channel(channel_id: str):
             try:
                 msg = AutoTranslateSettingsChangedMessage(
-                    channel_id, form.languages, form.display_format
+                    context["user_id"], channel_id, form.languages, form.display_format
                 )
                 await client.chat_postMessage(channel=channel_id, text=msg.text)
             except SlackApiError:

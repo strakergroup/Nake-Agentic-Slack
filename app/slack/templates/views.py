@@ -140,7 +140,9 @@ async def home_view(
                     if setting.display_format == "thread"
                     else "messages"
                 )
-                message_trans = _("will be translated into {langs_string} through {display_format_string}")
+                message_trans = _(
+                    "will be translated into {langs_string} through {display_format_string}"
+                )
                 translation_settings_blocks.extend(
                     [
                         {
@@ -441,7 +443,9 @@ def new_job_modal(
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": _("For more support information, visit our <{website_url}|website>."),
+                        "text": _(
+                            "For more support information, visit our <{website_url}|website>."
+                        ),
                     }
                 ],
             },
@@ -937,7 +941,6 @@ def translation_settings_view(
     display_format: SlackGroupSettingsTranslation.DisplayFormatType = "thread",
     team_id: str | None = None,
 ) -> dict[str, Any]:
-    print(team_id)
     # TODO: Detect message max length (5000)
     # TODO: Detect message formatting, emojis
     # TODO: 429 rate limiting
