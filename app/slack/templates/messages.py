@@ -3094,9 +3094,9 @@ class CancelTJMessage(SlackMessage):
 
         target_labels = [_(target.label) for target in jobdetail["targetlang"]]
         jobid = jobdetail["job_id"]
-        jobstatus = _(format_job_status(jobdetail['status']))
-        sl = _(jobdetail['sourcelang'].label)
-        tl = ', '.join(target_labels)
+        jobstatus = _(format_job_status(jobdetail["status"]))
+        sl = _(jobdetail["sourcelang"].label)
+        tl = ", ".join(target_labels)
         super().__init__(
             "Cancel a translation job",
             [
@@ -3151,7 +3151,9 @@ class CancelTJMessage(SlackMessage):
 class AutoTranslateSettingsChangedMessage(TextMessage):
     """Message to send when the user changes their auto-translate settings."""
 
-    def __init__(self, user_id: str, channel_id: str, langs: list[str], display_format: str) -> None:
+    def __init__(
+        self, user_id: str, channel_id: str, langs: list[str], display_format: str
+    ) -> None:
         langs_string = format_strings_display(
             [get_auto_translate_language_name(lang) for lang in langs], and_string="and"
         )
@@ -3160,7 +3162,9 @@ class AutoTranslateSettingsChangedMessage(TextMessage):
         )
         user_mention = f"<@{user_id}>"
         super().__init__(
-            _("Translation settings updated by {user_mention}. The bot will respond to messages sent in <#{channel_id}> which will be translated into {langs_string} through {display_format_string} in real-time.")
+            _(
+                "{user_mention} has changed the translation settings. The bot will respond to messages sent in <#{channel_id}> which will be translated into {langs_string} through {display_format_string} in real-time."
+            )
         )
 
 
@@ -3169,7 +3173,11 @@ class AutoTranslateSettingsDisabledMessage(TextMessage):
 
     def __init__(self, user_id: str, channel_id: str) -> None:
         user_mention = f"<@{user_id}>"
-        super().__init__(_("<#{channel_id}> Translation settings have been disabled by {user_mention}."))
+        super().__init__(
+            _(
+                "<#{channel_id}> Translation settings have been disabled by {user_mention}."
+            )
+        )
 
 
 class RequiresMtTokenMessage(SlackMessage):
