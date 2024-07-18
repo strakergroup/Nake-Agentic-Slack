@@ -2846,7 +2846,7 @@ class ReportInsightsMessage(SlackMessage):
 
 class AIHelperMessage(SlackMessage):
     def __init__(self) -> None:
-        direcmt_uri = 'https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack'
+        directmt_uri = 'https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack'
         channelmt_uri = 'https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack'
         message = _("Click me to learn Straker <{direcmt_uri}|Direct MT> and <{channelmt_uri}|Channel Translations>.")
         bookEmoji = ":books:"
