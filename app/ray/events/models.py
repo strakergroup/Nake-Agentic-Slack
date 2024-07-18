@@ -138,6 +138,7 @@ class MtErrorTypes(str, Enum):
 class MtFileRequestSchema(BaseModel):
     file_id: str
     client_id: str
+    channel_id: str
     target_language: str
 
 
@@ -146,11 +147,13 @@ class MtSuccessResponseSchema(BaseModel):
     tokens: int
     client_id: str
     target_language: str
+    channel_id: str
 
 
 class MtErrorResponseSchema(BaseModel):
     error: bool
     client_id: str
+    channel_id: str
     error_type: MtErrorTypes
     error_data: Dict[str, Any]
 

@@ -84,7 +84,6 @@ def is_valid_auto_translate_language(language: str) -> bool:
     return language in get_auto_translate_language_codes(include_variations=True)
 
 
-@functools.cache
 def get_auto_translate_language_name(language: str) -> str:
     """Get the name of a language for auto-translation.
 

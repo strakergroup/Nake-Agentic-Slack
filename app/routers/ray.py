@@ -101,7 +101,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
 
                 await post_notification_ephemeral(
                     app.client,
-                    auth.slack_user.channel_id,
+                    event_data.channel_id,
                     event,
                     auth.slack_user,
                     message,
@@ -118,7 +118,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 title = target_lang + "_" + output_file.get("file_name")
                 token_consumption_message = _("You have used {token_count} AI tokens.")
                 await app.client.files_upload_v2(
-                    channel=auth.slack_user.channel_id,
+                    channel=event_data.channel_id,
                     file=output_file.get("file"),
                     initial_comment=token_consumption_message,
                     title=title,
@@ -126,9 +126,8 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 )
         elif isinstance(message, JobTranscribedEventMessage):
             if not event.data.get("error"):
-                await post_notification_ephemeral(
+                await post_notification(
                     app.client,
-                    auth.slack_user.channel_id,
                     event,
                     auth.slack_user,
                     message,
