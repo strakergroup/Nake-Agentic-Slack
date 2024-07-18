@@ -40,6 +40,7 @@ from .listener_actions import (
     submit_job,
     approve_pending_client,
     post_report_insights,
+    ai_translate_help,
     post_batch_list,
     post_file_list,
     cancel_job_process,
@@ -787,6 +788,15 @@ async def handle_report_insights_action(ack, context, client):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
         await post_report_insights(client, context, context["ray"].client)
+
+
+@app.action("ai_translate_help", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_ai_translate_help_action(ack, context, client):
+    """Get ai translate help link. Triggered from the Home AI Translate help button"""
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        await ai_translate_help(client, context, context["ray"].client)
 
 
 @app.block_action("job_list", middleware=[ray_connection])

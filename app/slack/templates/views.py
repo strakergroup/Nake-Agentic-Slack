@@ -30,6 +30,7 @@ async def home_view(
     message_url = f"slack://app?team={context['team_id']}&id={app_id}&tab=messages"
     translation_settings = get_full_group_translation_settings(context)
     barEmoji = f":bar_chart:"
+    helpEmoji = f":question:"
     speechEmoji = f":speech_balloon:"
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str]]
@@ -257,6 +258,16 @@ async def home_view(
                             "text": _("{barEmoji} Insights"),
                         },
                         "action_id": "report_insights",
+                        "url": message_url,
+                    },
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("{helpEmoji} AI Translate Help"),
+                        },
+                        "action_id": "ai_translate_help",
                         "url": message_url,
                     },
                 ],
