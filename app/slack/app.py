@@ -89,6 +89,7 @@ oauth_settings = AsyncOAuthSettings(
     state_store=state_store,
     state_validation_enabled=True,
     install_page_rendering_enabled=False,
+    installation_store_bot_only=True,
 )
 
 
