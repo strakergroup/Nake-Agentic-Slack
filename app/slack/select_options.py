@@ -49,9 +49,15 @@ async def get_language_options(filter: str | None = None) -> list[dict[str, Any]
         )  # type: ignore
     # Slack can show a maximum of 100 options.
     languages = islice(languages, 100)  # type: ignore
+
+    # translated languages name and reorder by translated words
+    languages = [
+        {"code": lang["code"], "name": _(lang["name"])} for lang in languages
+    ]
+    languages.sort(key=lambda lang: lang["name"].lower())
     return [
         {
-            "text": {"type": "plain_text", "text": _(lang["name"]), "emoji": False},
+            "text": {"type": "plain_text", "text": lang["name"], "emoji": False},
             "value": lang["code"],
         }
         for lang in languages
@@ -80,7 +86,7 @@ async def get_file_options_cached(channel_id: str) -> list[dict[str, Any]]:
 def get_auto_translate_language_options():
     """Get the options block for the auto-translate language select input."""
     return [
-        {"text": {"type": "plain_text", "text": _(name)}, "value": code}
+        {"text": {"type": "plain_text", "text": name}, "value": code}
         for code, name in get_auto_translate_languages()
     ]
 
