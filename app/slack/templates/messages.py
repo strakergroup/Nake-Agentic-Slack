@@ -3163,7 +3163,7 @@ class AutoTranslateSettingsChangedMessage(TextMessage):
         user_mention = f"<@{user_id}>"
         super().__init__(
             _(
-                "{user_mention} has changed the translation settings. The bot will respond to messages sent in <#{channel_id}> which will be translated into {langs_string} through {display_format_string} in real-time."
+                "{user_mention} has changed the translation settings. The bot will respond to messages sent in <#{channel_id}> which will be translated into {langs_string} through" + display_format_string + " in real-time."
             )
         )
 
