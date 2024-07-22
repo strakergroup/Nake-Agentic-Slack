@@ -366,37 +366,34 @@ class WelcomeBackMessage(SlackMessage):
                 },
                 {
                     "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(":dart: Learn Direct MT")
-                    },
+                    "text": {"type": "mrkdwn", "text": _(":dart: Learn Direct MT")},
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _("Direct MT Help")
+                            "text": _("Direct MT Help"),
                         },
                         "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
-                        "action_id": "link_direct_mt"
-                    }
+                        "action_id": "link_direct_mt",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(":books: Learn AI Channel Translations")
+                        "text": _(":books: Learn AI Channel Translations"),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _("Channel Translations Help")
+                            "text": _("Channel Translations Help"),
                         },
                         "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
-                        "action_id": "link_channel_translations"
-                    }
+                        "action_id": "link_channel_translations",
+                    },
                 },
                 {
                     "type": "section",
@@ -546,37 +543,34 @@ class SuccessfulLoginMessage(SlackMessage):
                 },
                 {
                     "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(":dart: Learn Direct MT")
-                    },
+                    "text": {"type": "mrkdwn", "text": _(":dart: Learn Direct MT")},
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _("Direct MT Help")
+                            "text": _("Direct MT Help"),
                         },
                         "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
-                        "action_id": "link_direct_mt"
-                    }
+                        "action_id": "link_direct_mt",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(":books: Learn AI Channel Translations")
+                        "text": _(":books: Learn AI Channel Translations"),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _("Channel Translations Help")
+                            "text": _("Channel Translations Help"),
                         },
                         "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
-                        "action_id": "link_channel_translations"
-                    }
+                        "action_id": "link_channel_translations",
+                    },
                 },
                 {
                     "type": "section",
@@ -1979,37 +1973,34 @@ class HelpMessage(SlackMessage):
                 },
                 {
                     "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(":dart: Learn Direct MT")
-                    },
+                    "text": {"type": "mrkdwn", "text": _(":dart: Learn Direct MT")},
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _("Direct MT Help")
+                            "text": _("Direct MT Help"),
                         },
                         "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
-                        "action_id": "link_direct_mt"
-                    }
+                        "action_id": "link_direct_mt",
+                    },
                 },
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(":books: Learn AI Channel Translations")
+                        "text": _(":books: Learn AI Channel Translations"),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _("Channel Translations Help")
+                            "text": _("Channel Translations Help"),
                         },
                         "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
-                        "action_id": "link_channel_translations"
-                    }
+                        "action_id": "link_channel_translations",
+                    },
                 },
                 {"type": "divider"},
                 {
@@ -2846,9 +2837,11 @@ class ReportInsightsMessage(SlackMessage):
 
 class AIHelperMessage(SlackMessage):
     def __init__(self) -> None:
-        directmt_uri = 'https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack'
-        channelmt_uri = 'https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack'
-        message = _("Click me to learn Straker <{directmt_uri}|Direct MT> and <{channelmt_uri}|Channel Translations>.")
+        directmt_uri = "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack"
+        channelmt_uri = "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack"
+        message = _(
+            "Click me to learn Straker <{directmt_uri}|Direct MT> and <{channelmt_uri}|Channel Translations>."
+        )
         bookEmoji = ":books:"
         super().__init__(
             _("{bookEmoji} Learn AI Channel Translations"),
@@ -3277,7 +3270,9 @@ class AutoTranslateSettingsChangedMessage(TextMessage):
         user_mention = f"<@{user_id}>"
         super().__init__(
             _(
-                "{user_mention} has changed the translation settings. The bot will respond to messages sent in <#{channel_id}> which will be translated into {langs_string} through" + display_format_string + " in real-time."
+                "{user_mention} has changed the translation settings. The bot will respond to messages sent in <#{channel_id}> which will be translated into {langs_string} through "
+                + display_format_string
+                + " in real-time."
             )
         )
 
