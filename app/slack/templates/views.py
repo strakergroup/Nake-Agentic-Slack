@@ -968,7 +968,7 @@ def translation_settings_view(
     return {
         "type": "modal",
         "callback_id": "settings_auto_translate",
-        "title": {"type": "plain_text", "text": _("Translation Settings")},
+        "title": {"type": "plain_text", "text": _("Translation Settings")[:24]},
         "submit": {"type": "plain_text", "text": _("Create")},
         "close": {"type": "plain_text", "text": _("Close")},
         "private_metadata": team_id,
@@ -1062,7 +1062,7 @@ def translation_settings_view_error(message: str) -> dict[str, Any]:
         "type": "modal",
         "title": {
             "type": "plain_text",
-            "text": _("Translation Settings"),
+            "text": _("Translation Settings")[:24],
         },
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
