@@ -88,7 +88,6 @@ def get_ray_event_message(
                     client_id=event3.client_id,
                     job_uuid=event3.uuid,
                     job_id=event3.id,
-                    is_ibm=is_ibm,
                 )
         return None
     elif event_type == "ray:job:quote_created":
