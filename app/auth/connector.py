@@ -1445,7 +1445,7 @@ def get_job_group_quote_settings(job_id: str):
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
             """
-            SELECT api_enabled, auto_accept_quote
+            SELECT api_enabled
             FROM obj_m_group g
             JOIN franchise.obj_tp_job j
             ON g.obj_uuid = j.groupid
@@ -1456,4 +1456,4 @@ def get_job_group_quote_settings(job_id: str):
         row = result.first()
         if not row:
             return False
-    return row.api_enabled and row.auto_accept_quote
+    return row.api_enabled
