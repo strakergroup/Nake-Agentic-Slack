@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 import datetime
 
 import app  # Bug - circular import
+from app.auth.connector import get_job_group_quote_settings
 import app.ray.utils
 from app.config import domains
 from app.translate import _, translator_var, Translator
@@ -103,3 +104,11 @@ def test_translations():
     user_link = "test"
     input = "Your LanguageCloud account {user_details} is now disconnected from {user_link}."
     assert _(input) != input
+
+
+def test_get_job_group_quote_settings():
+    # Assuming 'test_job_uuid' exists in your test database and is associated with a job group
+    test_job_uuid = "989A1445-B699-41F4-8E1C-105FD530E450"
+    settings = get_job_group_quote_settings(test_job_uuid)
+    assert settings is not None  # Adjust this assertion based on expected results
+    print(settings)

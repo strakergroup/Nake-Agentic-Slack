@@ -18,6 +18,7 @@ from ..auth.connector import (
     SlackUser,
     get_client_type,
     get_demo_link,
+    get_job_group_quote_settings,
     spend_mt_tokens,
     validate_api_callback_signature,
     get_slack_user,
@@ -225,7 +226,11 @@ async def api_job_callback(
     if "JOB_NUMBER" in body.event_types:
         try:
             job_data = body.job[0]
-            message = JobCreationMessage(job_data["tj_number"])
+            is_auto_quote = True
+            if is_ibm_enterprise(slack_user.team_id, slack_user.enterprise_id):
+                is_auto_quote = False
+                is_auto_quote = get_job_group_quote_settings(job_data["tj_number"][2:])
+                message = JobCreationMessage(job_data["tj_number"], is_auto_quote)
         except (KeyError, IndexError):
             raise HTTPException(422, "The callback payload format is invalid") from None
         app.client.token = slack_user.bot_token

@@ -1437,3 +1437,23 @@ async def get_client_type(client_id: str, group_id: str) -> str:
         if not row:
             return None
     return row.client_type
+
+
+def get_job_group_quote_settings(job_id: str):
+    """Get the quote settings for the job group."""
+    print(job_id)
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT api_enabled, auto_accept_quote
+            FROM obj_m_group g
+            JOIN franchise.obj_tp_job j
+            ON g.obj_uuid = j.groupid
+            WHERE j.id = :job_id
+            """
+        ).bindparams(job_id=job_id)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return False
+    return row.api_enabled and row.auto_accept_quote

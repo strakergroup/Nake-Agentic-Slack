@@ -1,4 +1,3 @@
-import asyncio
 from cgi import parse_header
 from typing import Literal
 import math
@@ -6,8 +5,6 @@ import datetime
 from urllib.parse import urlencode, unquote
 
 from app.auth.connector import RayClient, is_ibm_super_group
-from ..config import config, domains, Environment
-
 from babel.numbers import format_currency as babel_format_currency
 import requests
 from app.translate import _
@@ -15,7 +12,6 @@ from app.translate import _
 from app.translate import Translator, translator_var
 
 from ..config import domains
-from slack_sdk.web.async_client import AsyncWebClient
 from io import BytesIO
 
 
