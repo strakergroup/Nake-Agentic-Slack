@@ -1362,6 +1362,7 @@ async def get_group_tokens(super_group_uuid: str) -> GetCreditBalanceResponse:
         rows = result.fetchall()
         for row in rows:
             list_group_uuid.append(row.group_uuid)
+        list_group_uuid.append(super_group_uuid)
     # first get
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
