@@ -179,9 +179,11 @@ async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
         ai_tokens = client_tokens.ai_token
         if ai_tokens >= value:
             return True
-    client_type = await get_client_type(
-        context["ray"].client.id, context["ray"].client.user_group_id
-    )
+    client_type = None
+    if context["ray"].client is not None:
+        client_type = await get_client_type(
+            context["ray"].client.id, context["ray"].client.user_group_id
+        )
     if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
         team_id=context["team_id"], enterprise_id=context.get("enterprise_id")
     ):

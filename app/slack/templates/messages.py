@@ -1734,8 +1734,11 @@ class InsightsMessage(SlackMessage):
 class JobCreationMessage(SlackMessage):
     """A job TJ number is created after submitting a new job (from API v3 callback)."""
 
-    def __init__(self, job_id: str = "") -> None:
+    def __init__(self, job_id: str = "", is_auto_quote: bool = False) -> None:
         tadeEmoji = f":tada:"
+        quote_message = _(
+            "{tadeEmoji} A new translation job has been created with the job number: `{job_id}`. Auto quoting has not been configured for human translations for your account. Your internal team will be in touch."
+        )
         super().__init__(
             "New Job Created",
             [
@@ -1743,8 +1746,12 @@ class JobCreationMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            "{tadeEmoji} A new translation job has been created with the job number: `{job_id}`"
+                        "text": (
+                            _(
+                                "{tadeEmoji} A new translation job has been created with the job number: `{job_id}`"
+                            )
+                            if is_auto_quote
+                            else quote_message
                         ),
                     },
                 },
