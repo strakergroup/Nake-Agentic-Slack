@@ -177,7 +177,7 @@ async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
     elif context["ray"].super_group is not None:
         client_tokens = await get_group_tokens(context["ray"].super_group[0].id)
         ai_tokens = client_tokens.ai_token
-        if ai_tokens >= value:
+        if ai_tokens and ai_tokens >= value:
             return True
     client_type = None
     if context["ray"].client is not None:
