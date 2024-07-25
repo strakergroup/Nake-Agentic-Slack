@@ -1375,7 +1375,7 @@ async def get_group_tokens(super_group_uuid: str) -> GetCreditBalanceResponse:
         ).bindparams(bindparam("group_uuids", expanding=True))
         result = conn.execute(sql, {"group_uuids": list_group_uuid})
         row = result.first()
-        if not row:
+        if not row or not row.total:
             return GetCreditBalanceResponse(0, 0)
     return GetCreditBalanceResponse(ai_token=row.total, mt_token=0)
 
