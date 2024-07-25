@@ -1737,7 +1737,7 @@ class JobCreationMessage(SlackMessage):
     def __init__(self, job_id: str = "", is_auto_quote: bool = False) -> None:
         tadeEmoji = f":tada:"
         quote_message = _(
-            "{tadeEmoji} A new translation job has been created with the job number: `{job_id}`. Auto quoting has not been configured for human translations for your account. Your internal team will be in touch."
+            "{tadeEmoji} A new translation job has been created with the job number: `{job_id}`. Cost estimate has not been configured for human translation for your account. Your internal team will be in touch."
         )
         super().__init__(
             "New Job Created",
