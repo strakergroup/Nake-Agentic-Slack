@@ -351,7 +351,7 @@ async def auto_translate_message(
     if not target_langs:
         return
     required_tokens = len(text) * len(target_langs)
-    if not await require_mt_tokens(context, required_tokens):
+    if not required_tokens or not await require_mt_tokens(context, required_tokens):
         return
     unformatted_text = escape_slack_emoji(text)
     try:
