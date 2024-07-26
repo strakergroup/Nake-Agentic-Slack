@@ -1071,7 +1071,7 @@ def connect_ray_account_sso(
             user_data=json.dumps(slack_data), member_id=member_id
         )
         add_client_to_slack_group(
-            user_data=json.dumps(slack_data),
+            user_data=slack_data,
             member_id=member_id,
         )
         return member_id
