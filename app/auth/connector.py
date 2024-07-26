@@ -1070,7 +1070,56 @@ def connect_ray_account_sso(
         create_slack_deltaray_link_sso(
             user_data=json.dumps(slack_data), member_id=member_id
         )
+        add_client_to_slack_group(
+            user_data=json.dumps(slack_data),
+            member_id=member_id,
+        )
         return member_id
+
+
+def get_direct_login_group(enterprise_id: str):
+    # direct login ibm slack group to insert user
+    group_id = "07DA6A86-D635-4383-9598-724D368EF1C3"
+    if enterprise_id == "E04RDMG8XP1":
+        # on live we treat dev test as ibm group. So when connecting from our enterprise we will add to this group.
+        group_id = "173231FA-D524-42BF-9AF3F4834CAA88A0"
+    # for uat ibm slack group uuid is different
+    if (
+        config.environment != Environment.production
+        and config.environment != Environment.local
+    ):
+        group_id = "C9E4513A-41BC-419A-BEB9-6EDAFCD04470"
+    return group_id
+
+
+def add_client_to_slack_group(user_data: dict, member_id: str):
+    # function to add user to ibm slack group when they are not in the group
+    with engines["sitemanager"].connect() as conn:
+        group_id = get_direct_login_group(user_data.get("enterprise_id"))
+
+        sql = text(
+            """
+            SELECT obj_uuid FROM obj_m_mglink WHERE groupid = :group_id and memberid = :member_id
+            """
+        ).bindparams(group_id=group_id, member_id=member_id)
+        users_in_group = conn.execute(sql)
+        if users_in_group.rowcount == 0:
+            sqlMgLink = text(
+                """
+                INSERT INTO obj_m_mglink
+                    (obj_uuid, groupid, memberid, label, client_type, created, modified)
+                VALUES
+                    (:obj_uuid, :groupid, :memberid, :label, :client_type, now(), now())
+                """
+            ).bindparams(
+                obj_uuid=str(uuid4()).upper(),
+                groupid=group_id,
+                memberid=member_id,
+                label=f"{member_id}-{group_id}",
+                client_type="Normal",
+            )
+            conn.execute(sqlMgLink)
+            conn.commit()
 
 
 def create_client_and_mglink(
@@ -1078,14 +1127,7 @@ def create_client_and_mglink(
     member_id: str,
 ):
     json_data = json.loads(user_data)
-    group_id = "0D750948-74A8-4932-B344-0880BDCB5215"
-    if json_data.get("enterprise_id") == "E04RDMG8XP1":
-        group_id = "173231FA-D524-42BF-9AF3F4834CAA88A0"
-        if (
-            config.environment != Environment.production
-            and config.environment != Environment.local
-        ):
-            group_id = "B988B8ED-142B-465E-9CCE-831A0D92DD1D"
+    group_id = get_direct_login_group(json_data.get("enterprise_id"))
     password = "secret".encode("utf-8")  # Convert the password to bytes
     hash_object = hashlib.sha512(password)
     with engines["sitemanager"].connect() as conn:
