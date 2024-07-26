@@ -252,6 +252,37 @@ class WelcomeBackMessage(SlackMessage):
             [
                 {
                     "type": "section",
+                    "text": {"type": "mrkdwn", "text": _(":dart: Learn Direct MT")},
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Direct MT Help"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
+                        "action_id": "link_direct_mt",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(":books: Learn AI Channel Translations"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Channel Translations Help"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
+                        "action_id": "link_channel_translations",
+                    },
+                },
+                {
+                    "type": "section",
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
@@ -366,37 +397,6 @@ class WelcomeBackMessage(SlackMessage):
                 },
                 {
                     "type": "section",
-                    "text": {"type": "mrkdwn", "text": _(":dart: Learn Direct MT")},
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _("Direct MT Help"),
-                        },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
-                        "action_id": "link_direct_mt",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(":books: Learn AI Channel Translations"),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _("Channel Translations Help"),
-                        },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
-                        "action_id": "link_channel_translations",
-                    },
-                },
-                {
-                    "type": "section",
                     "text": {
                         "type": "mrkdwn",
                         "text": f"*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|{_('Show more options')}>*",
@@ -427,6 +427,37 @@ class SuccessfulLoginMessage(SlackMessage):
         super().__init__(
             ":white_check_mark: Login was successful!",
             [
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": _(":dart: Learn Direct MT")},
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Direct MT Help"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
+                        "action_id": "cf",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(":books: Learn AI Channel Translations"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Channel Translations Help"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
+                        "action_id": "link_channel_translations",
+                    },
+                },
                 {
                     "type": "section",
                     "text": {
@@ -539,37 +570,6 @@ class SuccessfulLoginMessage(SlackMessage):
                         },
                         "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
                         "action_id": "link_2",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": _(":dart: Learn Direct MT")},
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _("Direct MT Help"),
-                        },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
-                        "action_id": "link_direct_mt",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(":books: Learn AI Channel Translations"),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _("Channel Translations Help"),
-                        },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
-                        "action_id": "link_channel_translations",
                     },
                 },
                 {
@@ -1857,6 +1857,37 @@ class HelpMessage(SlackMessage):
                     },
                 },
                 {"type": "divider"},
+                 {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(":blue_book: Learn The Basics"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Help Centre"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+                        "action_id": "link_2",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": _(":dart: Learn Direct MT")},
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Direct MT Help"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
+                        "action_id": "link_direct_mt",
+                    },
+                },
                 {
                     "type": "section",
                     "text": {
@@ -1959,37 +1990,6 @@ class HelpMessage(SlackMessage):
                             "text": _("Cancel"),
                         },
                         "action_id": "cancel_job",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(":blue_book: Learn The Basics"),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _("Help Centre"),
-                        },
-                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
-                        "action_id": "link_2",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": _(":dart: Learn Direct MT")},
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _("Direct MT Help"),
-                        },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
-                        "action_id": "link_direct_mt",
                     },
                 },
                 {
