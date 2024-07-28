@@ -1857,21 +1857,21 @@ class HelpMessage(SlackMessage):
                     },
                 },
                 {"type": "divider"},
-                 {
+                {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(":blue_book: Learn The Basics"),
+                        "text": _(":books: Learn AI Channel Translations"),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _("Help Centre"),
+                            "text": _("Channel Translations Help"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
-                        "action_id": "link_2",
+                        "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
+                        "action_id": "link_channel_translations",
                     },
                 },
                 {
@@ -1996,17 +1996,17 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(":books: Learn AI Channel Translations"),
+                        "text": _(":blue_book: Learn The Basics"),
                     },
                     "accessory": {
                         "type": "button",
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _("Channel Translations Help"),
+                            "text": _("Help Centre"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
-                        "action_id": "link_channel_translations",
+                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+                        "action_id": "link_2",
                     },
                 },
                 {"type": "divider"},
