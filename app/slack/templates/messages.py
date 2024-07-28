@@ -252,6 +252,17 @@ class WelcomeBackMessage(SlackMessage):
             [
                 {
                     "type": "section",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": _(
+                            "Welcome {waveEmoji} \n\nChoose an option below to get started."
+                        ),
+                    },
+                },
+                {"type": "divider"},
+                {
+                    "type": "section",
                     "text": {"type": "mrkdwn", "text": _(":dart: Learn Direct MT")},
                     "accessory": {
                         "type": "button",
@@ -281,17 +292,6 @@ class WelcomeBackMessage(SlackMessage):
                         "action_id": "link_channel_translations",
                     },
                 },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": _(
-                            "Welcome {waveEmoji} \n\nChoose an option below to get started."
-                        ),
-                    },
-                },
-                {"type": "divider"},
                 {
                     "type": "section",
                     "text": {
@@ -429,6 +429,17 @@ class SuccessfulLoginMessage(SlackMessage):
             [
                 {
                     "type": "section",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": _(
+                            "Welcome {waveEmoji} \n\nChoose an option below to get started."
+                        ),
+                    },
+                },
+                {"type": "divider"},
+                {
+                    "type": "section",
                     "text": {"type": "mrkdwn", "text": _(":dart: Learn Direct MT")},
                     "accessory": {
                         "type": "button",
@@ -458,17 +469,6 @@ class SuccessfulLoginMessage(SlackMessage):
                         "action_id": "link_channel_translations",
                     },
                 },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": _(
-                            "Welcome {waveEmoji} \n\nChoose an option below to get started."
-                        ),
-                    },
-                },
-                {"type": "divider"},
                 {
                     "type": "section",
                     "text": {
