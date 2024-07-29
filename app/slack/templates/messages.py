@@ -1859,6 +1859,20 @@ class HelpMessage(SlackMessage):
                 {"type": "divider"},
                 {
                     "type": "section",
+                    "text": {"type": "mrkdwn", "text": _(":dart: Learn Direct MT")},
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Direct MT Help"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
+                        "action_id": "link_direct_mt",
+                    },
+                },
+                {
+                    "type": "section",
                     "text": {
                         "type": "mrkdwn",
                         "text": _(":books: Learn AI Channel Translations"),
@@ -1872,20 +1886,6 @@ class HelpMessage(SlackMessage):
                         },
                         "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
                         "action_id": "link_channel_translations",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": _(":dart: Learn Direct MT")},
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _("Direct MT Help"),
-                        },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
-                        "action_id": "link_direct_mt",
                     },
                 },
                 {
