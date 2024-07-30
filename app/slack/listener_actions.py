@@ -87,7 +87,7 @@ async def respond_to_message(
     """
     # Reply in a thread in channels and groups (non-ephemeral messages only).
     thread_ts = message.get("thread_ts", message.get("ts")) if use_thread else None
-
+    print("reay clinet", context["ray"])
     # If there is no text, show new job button or ignore the message.
     if message.get("files"):
         if await require_ray_client(context):

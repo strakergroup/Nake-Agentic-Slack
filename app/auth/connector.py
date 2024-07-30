@@ -1500,3 +1500,46 @@ def get_job_group_quote_settings(job_id: str):
         if not row:
             return False
     return row.api_enabled
+
+
+def get_group_mt_engine(
+    group_uuid: str,
+    mt_engine: str = "google",
+) -> bool:
+    """Gets user super group or group MT engine settings.
+
+    Args:
+        group_uuid (str): user assign group uuid
+        mt_engine (str): MT engine name. Defaults to "google".
+    """
+    from_super = True
+    # CHEKC IF IS INHERITE FROM SUPER GROUP
+    with engines["sitemanager"].connect() as conn:
+        sql = text(
+            """
+                SELECT super_group_uuid
+                FROM super_group_glink
+                WHERE group_uuid = :group_uuid
+                AND property_to_inherit = :mt_engine
+            """
+        ).bindparams(group_uuid=group_uuid)
+    super_group_inherit = conn.execute(sql)
+    rows = super_group_inherit.fetchall()
+    if not rows:
+        from_super = False
+
+     # GET GROUP MT ENGINE
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT property_value
+            FROM obj_m_group_property
+            WHERE group_uuid = :group_uuid
+            AND property_name = :mt_engine
+            """
+        ).bindparams(group_uuid=group_uuid, mt_engine=mt_engine)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return False
+        return row.property_value
