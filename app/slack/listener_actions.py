@@ -282,8 +282,10 @@ async def respond_to_message(
                         thread_ts=thread_ts,
                     )
             except Exception as e:
+                help_site = 'https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack'
+                none_msg = _("I didn't understand, please refer to the <{help_site}|help docs>")
                 # Default to Watson Assistant fallback response if no other matches.
-                await context.say(response.reply, thread_ts=thread_ts)
+                await context.say(none_msg, thread_ts=thread_ts)
                 notify_exception(
                     e, "Failed to get machine translation from watson response"
                 )
@@ -319,7 +321,6 @@ async def respond_to_message(
                 help_site = 'https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack'
                 none_msg = _("I didn't understand, please refer to the <{help_site}|help docs>")
                 reply = none_msg if response.intent is None else _(response.reply)
-                print(_(reply))
                 # Default to Watson Assistant fallback response if no other matches.
                 await context.say(reply, thread_ts=thread_ts)
 
@@ -1676,7 +1677,12 @@ async def get_mt_translation(
                     thread_ts=thread_ts,
                 )
     except Exception as e:
-        print(e)
+        help_site = 'https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack'
+        none_msg = _("I didn't understand, please refer to the <{help_site}|help docs>")
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=none_msg,
+        )
         notify_exception(e, "Failed to get machine translation from language cloud API")
     finally:
         # todo need to add logging
