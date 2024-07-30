@@ -565,7 +565,7 @@
           {
             "values": [
               {
-                "text": "I didn't understand. You can try rephrasing."
+                "text": "I didn't understand, please refer to the [help docs](https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack)."
               },
               {
                 "text": "Can you reword your statement? I'm not understanding."
