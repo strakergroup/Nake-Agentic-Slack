@@ -36,8 +36,11 @@ async def home_view(
         tuple[SlackGroupSettingsTranslation, list[str]]
     ] = []
     questionEmoji = f":question:"
-    total_pages = get_pagination(context, 5)
-    translation_settings = get_full_group_translation_settings(context, page)
+    rows_per_page = 5
+    total_pages = get_pagination(context, rows_per_page)
+    translation_settings = get_full_group_translation_settings(
+        context, page, rows_per_page
+    )
     footer_blocks = [
         {
             "type": "button",
@@ -199,50 +202,48 @@ async def home_view(
                         },
                     ]
                 )
+            actions = []
             if page > 1:
-                translation_settings_blocks.append(
+                actions.append(
                     {
-                        "type": "actions",
-                        "elements": [
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Previous"),
+                            "emoji": True,
+                        },
+                        "value": json.dumps(
                             {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Previous"),
-                                    "emoji": True,
-                                },
-                                "value": json.dumps(
-                                    {
-                                        "team_id": context["team_id"],
-                                        "page": page - 1,
-                                    }
-                                ),
-                                "action_id": "home_load",
-                            },
-                        ],
-                    }
+                                "team_id": context["team_id"],
+                                "page": page - 1,
+                            }
+                        ),
+                        "action_id": "home_load",
+                    },
                 )
             if total_pages > 1 and page < total_pages:
                 translation_settings_blocks.append(
                     {
-                        "type": "actions",
-                        "elements": [
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Next"),
+                            "emoji": True,
+                        },
+                        "value": json.dumps(
                             {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Next"),
-                                    "emoji": True,
-                                },
-                                "value": json.dumps(
-                                    {
-                                        "team_id": context["team_id"],
-                                        "page": page + 1,
-                                    }
-                                ),
-                                "action_id": "home_load",
-                            },
-                        ],
+                                "team_id": context["team_id"],
+                                "page": page + 1,
+                            }
+                        ),
+                        "action_id": "home_load",
+                    },
+                )
+            if len(actions):
+                translation_settings_blocks.append(
+                    {
+                        "type": "actions",
+                        "elements": actions,
                     }
                 )
     return {
