@@ -218,11 +218,11 @@ async def home_view(
                                 "page": page - 1,
                             }
                         ),
-                        "action_id": "home_load",
+                        "action_id": "home_load_previous",
                     },
                 )
             if total_pages > 1 and page < total_pages:
-                translation_settings_blocks.append(
+                actions.append(
                     {
                         "type": "button",
                         "text": {
@@ -236,7 +236,7 @@ async def home_view(
                                 "page": page + 1,
                             }
                         ),
-                        "action_id": "home_load",
+                        "action_id": "home_load_next",
                     },
                 )
             if len(actions):
