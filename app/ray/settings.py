@@ -54,9 +54,7 @@ def get_auto_translate_languages(
     if include_variations:
         languages.append(("zh", "Chinese (Simplified)"))
 
-    languages = [
-        (lang[0], _(lang[1])) for lang in languages
-    ]
+    languages = [(lang[0], _(lang[1])) for lang in languages]
     languages = sorted(languages, key=lambda language: language[1])
     return languages
 
@@ -261,9 +259,7 @@ def get_or_create_group_settings(
 
 
 def get_or_create_auto_translate_group_settings(
-    session: Session,
-    context: AsyncBoltContext,
-    channel_id: str,
+    session: Session, context: AsyncBoltContext, channel_id: str
 ) -> SlackGroupSettingsTranslation:
     # TODO streamline this (join)
     settings = get_or_create_group_settings(session, context)
@@ -297,7 +293,7 @@ def get_auto_translate_settings_and_langs(
         return None, []  # Modal triggers do not have channel_id
     with Session(engines["ray_integration"]) as session:
         channel_settings = get_or_create_auto_translate_group_settings(
-            session, context, channel_id
+            session, context, channel_id, team_id=context.team_id
         )
         results = session.scalars(
             select(SlackGroupSettingsTranslationLangs.lang).where(
@@ -310,7 +306,7 @@ def get_auto_translate_settings_and_langs(
 
 def update_auto_translate_group_settings(
     context: AsyncBoltContext,
-    channels: list[str],
+    channels: list[dict[str, str]],
     languages: list[str],
     display_format: SlackGroupSettingsTranslation.DisplayFormatType,
 ) -> None:
@@ -322,9 +318,9 @@ def update_auto_translate_group_settings(
         display_format: The display format setting.
     """
     with Session(engines["ray_integration"]) as session:
-        for channel_id in channels:
+        for channel in channels:
             channel_settings = get_or_create_auto_translate_group_settings(
-                session, context, channel_id
+                session, context, channel["channel_id"]
             )
             channel_settings.display_format = display_format
             session.execute(

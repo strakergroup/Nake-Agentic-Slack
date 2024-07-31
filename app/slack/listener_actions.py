@@ -3,12 +3,10 @@ This module contains functions for common actions which are executed in
 Slack Bolt listener functions.
 """
 
-import uuid
 
 import asyncio
 from typing import Any
 import re
-import functools
 import httpx
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
@@ -27,7 +25,6 @@ from .templates.messages import (
     HelpMessage,
     LoginMessage,
     LogoutMessage,
-    SlackPermissionsMessage,
     JobStatusNoIdMessage,
     NewJobMessage,
     JobQuotedMessage,
@@ -53,7 +50,6 @@ from .templates.messages import (
 from .templates.models import NewJobForm
 from .templates.views import (
     new_job_modal,
-    cancel_job_modal,
 )
 from .web import files_list_simple, download_files, get_mt_ts_cached, set_mt_ts_edit
 from ..auth.connector import RayClient, approve_pending_groups, spend_mt_tokens

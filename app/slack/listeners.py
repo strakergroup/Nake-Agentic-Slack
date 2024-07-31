@@ -3,8 +3,6 @@ commands, etc. from the Slack API.
 """
 
 import asyncio
-import os
-from pathlib import Path
 import re
 import json
 from datetime import datetime, timedelta
@@ -51,7 +49,6 @@ from .templates.models import (
     convert_pydantic_to_slack_error,
     NewJobForm,
     JobSearchForm,
-    SsoLoginForm,
     AutoTranslationSettingsForm,
 )
 from .templates.messages import (
@@ -61,7 +58,6 @@ from .templates.messages import (
     OnboardingMessage,
     QuoteMessage,
     WelcomeBackMessage,
-    SuccessfulLoginMessage,
     SuccessfulLogoutMessage,
     SrtTranslateMessage,
     JobSubmitMessage,
@@ -80,20 +76,18 @@ from .templates.views import (
     translation_settings_view,
     translation_settings_view_error,
     job_search_modal,
-    sso_form_modal,
     cancel_job_modal,
 )
 from .web import download_file, files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, get_file_options_cached
 from .utils import is_channel_im
 from ..auth.connector import (
-    connect_ray_account,
     disconnect_ray_account,
     disconnect_ray_super_group_and_users,
     connect_ray_account_sso,
     get_bot_token,
     get_ray_connection,
-    spend_mt_tokens,
+    resolve_channels_to_team,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
@@ -102,7 +96,7 @@ from ..ray.settings import (
     disable_auto_translate_group_settings,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
-from ..config import config, domains
+from ..config import domains
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -543,7 +537,6 @@ async def ray_command(ack, respond, command, context, client):
                     [context.channel_id],
                     auto_translate_langs,
                     settings.display_format if settings else "thread",
-                    team_id=context.team_id,
                 ),
             )
 
@@ -654,7 +647,6 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
                         [channel_id] if channel_id else None,
                         auto_translate_langs,
                         settings.display_format if settings else "thread",
-                        team_id=team_id,
                     ),
                 )
             else:
@@ -679,7 +671,6 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
                 [channel_id] if channel_id else None,
                 auto_translate_langs,
                 settings.display_format if settings else "thread",
-                team_id=team_id,
             ),
         )
 
@@ -1094,14 +1085,10 @@ async def handle_job_search(ack, view, context, client):
 @slack_log_decorator
 async def view_update_auto_translate_settings(ack, view, context, body, client):
     try:
-        team_id = view["private_metadata"]
-        with engines["ray_integration_readonly"].connect() as conn:
-            token = get_bot_token(conn, team_id)
-            if token:
-                client.token = token
         form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
-        for c in form.channels:
-            await client.conversations_info(channel=c)
+        team_channels = await resolve_channels_to_team(
+            form.channels, client, context.get("enterprise_id", "")
+        )
     except SlackApiError as e:
         if e.response["error"] == "channel_not_found":
             error_msg = _(
@@ -1125,7 +1112,7 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
     try:
         update_auto_translate_group_settings(
             context,
-            channels=form.channels,
+            channels=team_channels,
             languages=form.languages,
             display_format=form.display_format,
         )
@@ -1135,19 +1122,21 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
         )
 
         # Try to join channel automatically after updating settings.
-        async def join_channel(channel_id: str):
+        async def join_channel(channel_id: str, bot_token: str):
             try:
+                client.token = bot_token
                 await client.conversations_join(channel=channel_id)
             except SlackApiError:
                 pass  # Cannot join private channel, or cannot find channel.
             except Exception as e:
                 notify_exception(e)
 
-        async def notify_channel(channel_id: str):
+        async def notify_channel(channel_id: str, bot_token: str):
             try:
                 msg = AutoTranslateSettingsChangedMessage(
                     context["user_id"], channel_id, form.languages, form.display_format
                 )
+                client.token = bot_token
                 await client.chat_postMessage(channel=channel_id, text=msg.text)
             except SlackApiError:
                 pass  # Must be in channel to post. TODO check other events, e.g. app_mention
@@ -1155,11 +1144,17 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
                 notify_exception(e)
 
         await asyncio.gather(
-            *[join_channel(channel_id) for channel_id in form.channels],
+            *[
+                join_channel(channel["channel_id"], channel["bot_token"])
+                for channel in team_channels
+            ],
             return_exceptions=True,
         )
         await asyncio.gather(
-            *[notify_channel(channel_id) for channel_id in form.channels],
+            *[
+                notify_channel(channel["channel_id"], channel["bot_token"])
+                for channel in team_channels
+            ],
             return_exceptions=True,
         )
     except Exception as e:

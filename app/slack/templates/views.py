@@ -61,27 +61,29 @@ async def home_view(
                 "url": domains.languagecloud,
             },
         )
+    visible_translation_settings = translation_settings
     # Filter conversations by accessible by user.
-    if translation_settings:
-        next_cursor = ""
-        # Use cursor to loop through all conversations.
-        while True:
-            conversations = await context.client.conversations_list(
-                exclude_archived=True,
-                types="public_channel,private_channel",
-                limit=1000,
-                cursor=next_cursor or None,
-            )
-            channel_ids = [channel["id"] for channel in conversations["channels"]]
-            for translation_setting in translation_settings:
-                if translation_setting[0].channel_id in channel_ids:
-                    visible_translation_settings.append(translation_setting)
-            if len(translation_settings) == len(visible_translation_settings):
-                break
-            if conversations.get("response_metadata", {}).get("next_cursor"):  # type: ignore
-                next_cursor = conversations["response_metadata"]["next_cursor"]
-            else:
-                break
+    # if translation_settings:
+    #     next_cursor = ""
+    #     # Use cursor to loop through all conversations.
+    #     while True:
+    #         conversations = await context.client.conversations_list(
+    #             exclude_archived=True,
+    #             types="public_channel,private_channel",
+    #             limit=1000,
+    #             cursor=next_cursor or None,
+    #         )
+    #         channel_ids = [channel["id"] for channel in conversations["channels"]]
+    #         for translation_setting in translation_settings:
+    #             if translation_setting[0].channel_id in channel_ids:
+    #                 visible_translation_settings.append(translation_setting)
+
+    #         if len(translation_settings) == len(visible_translation_settings):
+    #             break
+    #         if conversations.get("response_metadata", {}).get("next_cursor"):  # type: ignore
+    #             next_cursor = conversations["response_metadata"]["next_cursor"]
+    #         else:
+    #             break
     # Hide translation settings in Production until scopes are approved.
     translation_settings_blocks: list[dict[str, Any]] = [
         {
@@ -950,7 +952,6 @@ def translation_settings_view(
     initial_channels: list[str] | None = None,
     initial_langs: list[str] | None = None,
     display_format: SlackGroupSettingsTranslation.DisplayFormatType = "thread",
-    team_id: str | None = None,
 ) -> dict[str, Any]:
     # TODO: Detect message max length (5000)
     # TODO: Detect message formatting, emojis
@@ -971,7 +972,6 @@ def translation_settings_view(
         "title": {"type": "plain_text", "text": _("Translation Settings")[:24]},
         "submit": {"type": "plain_text", "text": _("Create")},
         "close": {"type": "plain_text", "text": _("Close")},
-        "private_metadata": team_id,
         "blocks": [
             {
                 "type": "input",
