@@ -197,7 +197,7 @@ async def home_opened(event, action, context, body, say, client):
     )
 
 
-@app.action("home_load", middleware=[ray_connection])
+@app.action(re.compile(r"home_load_(next|previous)"), middleware=[ray_connection])
 @slack_log_decorator
 async def home_load(action, context, client, body):
     # submit from next button on transation settings view
