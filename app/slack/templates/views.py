@@ -15,6 +15,7 @@ from ...auth.connector import RayConnection
 from ...ray.settings import (
     get_full_group_translation_settings,
     get_auto_translate_language_name,
+    get_pagination,
 )
 from ...ray.utils import is_ibm_enterprise, is_min_langugagecloud_plan
 from ...slack.utils import format_strings_display
@@ -24,11 +25,10 @@ import json
 
 
 async def home_view(
-    context: AsyncBoltContext, app_id: str, rayConnection: RayConnection | None
+    context: AsyncBoltContext, app_id: str, rayConnection: RayConnection | None, page=1
 ) -> dict[str, Any]:
     assert context.client
     message_url = f"slack://app?team={context['team_id']}&id={app_id}&tab=messages"
-    translation_settings = get_full_group_translation_settings(context)
     barEmoji = f":bar_chart:"
     helpEmoji = f":question:"
     speechEmoji = f":speech_balloon:"
@@ -36,6 +36,8 @@ async def home_view(
         tuple[SlackGroupSettingsTranslation, list[str]]
     ] = []
     questionEmoji = f":question:"
+    total_pages = get_pagination(context, 5)
+    translation_settings = get_full_group_translation_settings(context, page)
     footer_blocks = [
         {
             "type": "button",
@@ -61,28 +63,29 @@ async def home_view(
                 "url": domains.languagecloud,
             },
         )
+    visible_translation_settings = []
     # Filter conversations by accessible by user.
-    if translation_settings:
-        next_cursor = ""
-        # Use cursor to loop through all conversations.
-        while True:
-            conversations = await context.client.conversations_list(
-                exclude_archived=True,
-                types="public_channel,private_channel",
-                limit=1000,
-                cursor=next_cursor or None,
-            )
-            channel_ids = [channel["id"] for channel in conversations["channels"]]
-            for translation_setting in translation_settings:
-                if translation_setting[0].channel_id in channel_ids:
-                    visible_translation_settings.append(translation_setting)
-            if len(translation_settings) == len(visible_translation_settings):
-                break
-            if conversations.get("response_metadata", {}).get("next_cursor"):  # type: ignore
-                next_cursor = conversations["response_metadata"]["next_cursor"]
-            else:
-                break
-    # Hide translation settings in Production until scopes are approved.
+    # if translation_settings:
+    #     next_cursor = ""
+    #     # Use cursor to loop through all conversations.
+    #     while True:
+    #         conversations = await context.client.conversations_list(
+    #             exclude_archived=True,
+    #             types="public_channel,private_channel",
+    #             limit=1000,
+    #             cursor=next_cursor or None,
+    #         )
+    #         channel_ids = [channel["id"] for channel in conversations["channels"]]
+    #         for translation_setting in translation_settings:
+    #             if translation_setting[0].channel_id in channel_ids:
+    #                 visible_translation_settings.append(translation_setting)
+
+    #         if len(translation_settings) == len(visible_translation_settings):
+    #             break
+    #         if conversations.get("response_metadata", {}).get("next_cursor"):  # type: ignore
+    #             next_cursor = conversations["response_metadata"]["next_cursor"]
+    #         else:
+    #             break
     translation_settings_blocks: list[dict[str, Any]] = [
         {
             "type": "section",
@@ -195,6 +198,52 @@ async def home_view(
                             ],
                         },
                     ]
+                )
+            if page > 1:
+                translation_settings_blocks.append(
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Previous"),
+                                    "emoji": True,
+                                },
+                                "value": json.dumps(
+                                    {
+                                        "team_id": context["team_id"],
+                                        "page": page - 1,
+                                    }
+                                ),
+                                "action_id": "home_load",
+                            },
+                        ],
+                    }
+                )
+            if total_pages > 1 and page < total_pages:
+                translation_settings_blocks.append(
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Next"),
+                                    "emoji": True,
+                                },
+                                "value": json.dumps(
+                                    {
+                                        "team_id": context["team_id"],
+                                        "page": page + 1,
+                                    }
+                                ),
+                                "action_id": "home_load",
+                            },
+                        ],
+                    }
                 )
     return {
         "type": "home",
@@ -950,7 +999,6 @@ def translation_settings_view(
     initial_channels: list[str] | None = None,
     initial_langs: list[str] | None = None,
     display_format: SlackGroupSettingsTranslation.DisplayFormatType = "thread",
-    team_id: str | None = None,
 ) -> dict[str, Any]:
     # TODO: Detect message max length (5000)
     # TODO: Detect message formatting, emojis
@@ -971,7 +1019,6 @@ def translation_settings_view(
         "title": {"type": "plain_text", "text": _("Translation Settings")[:24]},
         "submit": {"type": "plain_text", "text": _("Create")},
         "close": {"type": "plain_text", "text": _("Close")},
-        "private_metadata": team_id,
         "blocks": [
             {
                 "type": "input",
