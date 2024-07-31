@@ -361,7 +361,7 @@ def disable_auto_translate_group_settings(
 
 
 def get_full_group_translation_settings(
-    context: AsyncBoltContext, page: int = 1, rows_per_page: int = 10
+    context: AsyncBoltContext, page: int = 1, rows_per_page: int = 5
 ) -> list[tuple[SlackGroupSettingsTranslation, list[str]]]:
     """Get the group translation settings for all channels.
 
