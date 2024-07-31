@@ -647,6 +647,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
             client.token = token
             conver_info = await client.conversations_info(channel=channel_id)
             # Check if the user is a member of the channel.
+            # TODO: this defaults to 100 members, Can get results upto 1000
             response = await client.conversations_members(channel=channel_id)
             client.token = old_token
             if (
