@@ -63,7 +63,7 @@ async def home_view(
                 "url": domains.languagecloud,
             },
         )
-    visible_translation_settings = []
+    visible_translation_settings = translation_settings
     # Filter conversations by accessible by user.
     # if translation_settings:
     #     next_cursor = ""
