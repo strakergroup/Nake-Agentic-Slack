@@ -197,6 +197,18 @@ async def home_opened(event, action, context, body, say, client):
     )
 
 
+@app.action("home_load", middleware=[ray_connection])
+@slack_log_decorator
+async def home_load(action, context, client, body):
+    # submit from next button on transation settings view
+    home_info = json.loads(action["value"])
+    page = int(home_info.get("page", 1))
+    await client.views_publish(
+        user_id=context["user_id"],
+        view=await home_view(context, body["api_app_id"], context.get("ray"), page),
+    )
+
+
 @app.event("app_uninstalled")
 @slack_log_decorator
 async def app_uninstalled(context):
