@@ -94,6 +94,7 @@ from ..ray.settings import (
     get_auto_translate_settings_and_langs,
     update_auto_translate_group_settings,
     disable_auto_translate_group_settings,
+    update_channel_id,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
 from ..config import domains
@@ -219,6 +220,12 @@ async def app_uninstalled(context):
     disconnect_ray_super_group_and_users(
         context["team_id"], context.get("enterprise_id")
     )
+
+
+@app.event("channel_id_changed")
+@slack_log_decorator
+async def channel_id_changed(event):
+    update_channel_id(event.get("old_channel_id"), event.get("new_channel_id"))
 
 
 @app.message_shortcut("new_job", middleware=[ray_connection])

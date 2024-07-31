@@ -427,3 +427,13 @@ def get_pagination(context: AsyncBoltContext, rows_per_page: int) -> int:
         if total_rows == 0:
             return 0
     return (total_rows + rows_per_page - 1) // rows_per_page
+
+
+def update_channel_id(old_channel_id, new_channel_id):
+    with Session(engines["ray_integration"]) as session:
+        session.execute(
+            update(SlackGroupSettingsTranslation)
+            .where(SlackGroupSettingsTranslation.channel_id == old_channel_id)
+            .values(channel_id=new_channel_id)
+        )
+        session.commit()
