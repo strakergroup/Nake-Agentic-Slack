@@ -374,7 +374,13 @@ def get_full_group_translation_settings(
         settings = get_or_create_group_settings(session, context)
         channel_settings = session.scalars(
             select(SlackGroupSettingsTranslation)
+            .join(
+                SlackGroupSettingsTranslationLangs,
+                SlackGroupSettingsTranslation.id
+                == SlackGroupSettingsTranslationLangs.translation_settings_id,
+            )
             .where(SlackGroupSettingsTranslation.settings_id == settings.id)
+            .group_by(SlackGroupSettingsTranslation.id)
             .limit(rows_per_page)
             .offset((page - 1) * rows_per_page)
             .order_by(SlackGroupSettingsTranslation.id)
