@@ -680,6 +680,10 @@ async def disable_auto_translate_settings(ack, context, payload, body, client):
     try:
         channel_info = json.loads(payload["value"])
         channel_id = channel_info.get("channel_id")
+        team_channel = await resolve_channels_to_team(
+            [channel_id], client, context.get("enterprise_id")
+        )
+        client.token = team_channel[0]["bot_token"]
         if not channel_id:
             notify_message("Channel ID not found in payload", extra=payload)
             return
