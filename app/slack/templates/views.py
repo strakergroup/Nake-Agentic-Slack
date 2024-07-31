@@ -37,7 +37,7 @@ async def home_view(
     ] = []
     questionEmoji = f":question:"
     rows_per_page = 5
-    total_pages = get_pagination(context, 5)
+    total_pages = get_pagination(context, rows_per_page)
     translation_settings = get_full_group_translation_settings(
         context, page, rows_per_page
     )
