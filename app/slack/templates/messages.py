@@ -153,7 +153,7 @@ class LoginMessage(SlackMessage):
         self._variation = variation
 
         # Have variations of the login message depending on the arguments.
-        block_text = "Click this button to connect your LanguageCloud account."
+        block_text = "In order to use the Straker Translate features, please login. Click this button to connect your LanguageCloud account."
         if variation == self.GET_JOB:
             block_text = "Connect your LanguageCloud account to view your jobs."
         elif variation == self.NEW_JOB:
@@ -2114,7 +2114,7 @@ class ConnectionInfoMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "Click this button to connect your LanguageCloud account."
+                            "In order to use the Straker Translate features, please login. Click this button to connect your LanguageCloud account."
                         ),
                     },
                 }
