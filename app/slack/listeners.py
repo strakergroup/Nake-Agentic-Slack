@@ -637,7 +637,6 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
     await ack()
     channel_info = json.loads(payload["value"])
     channel_id = channel_info.get("channel_id")
-    # TODO Could have no channel_id if triggered from home tab.
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
         context, channel_id
     )
@@ -652,7 +651,6 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
             )
             client.token = channel_info[0]["bot_token"]
             await client.conversations_info(channel=channel_id)
-            # Check if the user is a member of the channel.
             # reassign token to the original token since it is required for the original trigger_id
             client.token = old_token
             await client.views_open(
@@ -691,6 +689,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
 @app.block_action("settings_auto_translate_disable", middleware=[ray_connection])
 async def disable_auto_translate_settings(ack, context, payload, body, client):
     try:
+        await ack()
         channel_info = json.loads(payload["value"])
         channel_id = channel_info.get("channel_id")
         team_channel = await resolve_channels_to_team(
