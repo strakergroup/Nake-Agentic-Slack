@@ -652,7 +652,6 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
             )
             client.token = channel_info[0]["bot_token"]
             await client.conversations_info(channel=channel_id)
-            # Check if the user is a member of the channel.
             # reassign token to the original token since it is required for the original trigger_id
             client.token = old_token
             await client.views_open(
