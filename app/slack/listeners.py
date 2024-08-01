@@ -649,31 +649,27 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
     if channel_id:
         error_msg = _("You do not have permission to edit this channel!!")
         try:
-            # Check if the channel is public or private.
             old_token = client.token
-            client.token = token
-            conver_info = await client.conversations_info(channel=channel_id)
+            # check if we have a token that can get channel info for the channel
+            client.token = await resolve_channels_to_team(
+                [channel_id], client, context.get("enterprise_id")
+            )
+            await client.conversations_info(channel=channel_id)
             # Check if the user is a member of the channel.
-            # TODO: this defaults to 100 members, Can get results upto 1000
-            response = await client.conversations_members(channel=channel_id)
+            # reassign token to the original token since it is required for the original trigger_id
             client.token = old_token
-            if (
-                context["user_id"] in response["members"]
-                or not conver_info["channel"]["is_private"]
-            ):
-                await client.views_open(
-                    trigger_id=body["trigger_id"],
-                    view=translation_settings_view(
-                        [channel_id] if channel_id else None,
-                        auto_translate_langs,
-                        settings.display_format if settings else "thread",
-                    ),
-                )
-            else:
-                await client.views_open(
-                    trigger_id=body["trigger_id"],
-                    view=translation_settings_view_error(error_msg),
-                )
+            await client.views_open(
+                trigger_id=body["trigger_id"],
+                view=translation_settings_view(
+                    [channel_id] if channel_id else None,
+                    auto_translate_langs,
+                    settings.display_format if settings else "thread",
+                ),
+            )
+            await client.views_open(
+                trigger_id=body["trigger_id"],
+                view=translation_settings_view_error(error_msg),
+            )
         except SlackApiError as e:
             if e.response["error"] == "missing_scope":
                 notify_exception(e)
