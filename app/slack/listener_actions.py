@@ -488,7 +488,7 @@ async def document_machine_translate(
     client: AsyncWebClient,
     context: AsyncBoltContext,
     file_id: str,
-    selected_language: str,
+    selected_language: str
 ):
     """Translate the Document using verify-task-consumer
 
@@ -496,7 +496,13 @@ async def document_machine_translate(
         client (AsyncWebClient): The Slack client.
         channel_id (str): The channel ID of the message.
         output_file (str): The output file name.
+        ai_engine (str): The AI engine to use.
     """
+    # check ai engine from group setting and only fr-ca will support by microsoft
+    ai_engine = get_group_mt_engine(context['ray'].client.user_group_id)
+    if selected_language.lower() == "fr-ca":
+        ai_engine = "microsoft"
+
     if not file_id:
         return
     try:
@@ -508,6 +514,7 @@ async def document_machine_translate(
                 "client_id": context["ray"].client.id,
                 "channel_id": context["channel_id"],
                 "target_language": selected_language,
+                "ai_engine": ai_engine,
             }
         )
         async with httpx.AsyncClient() as http:
