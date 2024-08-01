@@ -71,7 +71,7 @@ async def get_microsoft_machine_translations(
     text: str, target_lang: str | list[str]
 ) -> tuple[str, dict[str, str]]:
     """Get machine translation from Microsoft Translator Text API.
-    
+
     https://docs.microsoft.com/en-us/azure/cognitive-services/translator/reference/v3-0-translate
     https://docs.microsoft.com/en-us/azure/cognitive-services/translator/reference/v3-0-detect
     """
@@ -79,7 +79,6 @@ async def get_microsoft_machine_translations(
     text = text[:5000]  # Microsoft translate supports max 5000 characters
     if isinstance(target_lang, str):
         target_lang = [target_lang]
-    
     headers['Authorization'] = 'Bearer ' + access_token
     async with httpx.AsyncClient(base_url=URL, timeout=10.0) as client:
         detect_response = await client.post(
@@ -101,6 +100,7 @@ async def get_microsoft_machine_translations(
         else:
             translations[tl] = result
     return source_lang, translations
+
 
 async def log_microsoft_api_usage(
     user_uuid: str | None,  # LC UUID or Slack user_id

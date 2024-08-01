@@ -56,7 +56,7 @@ from .templates.views import (
     cancel_job_modal,
 )
 from .web import files_list_simple, download_files, get_mt_ts_cached, set_mt_ts_edit
-from ..auth.connector import RayClient, approve_pending_groups, spend_mt_tokens
+from ..auth.connector import RayClient, approve_pending_groups, spend_mt_tokens, get_group_mt_engine
 from ..config import config, domains, Environment
 from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
@@ -87,7 +87,6 @@ async def respond_to_message(
     """
     # Reply in a thread in channels and groups (non-ephemeral messages only).
     thread_ts = message.get("thread_ts", message.get("ts")) if use_thread else None
-    print("reay clinet", context["ray"])
     # If there is no text, show new job button or ignore the message.
     if message.get("files"):
         if await require_ray_client(context):
@@ -355,9 +354,9 @@ async def auto_translate_message(
         return
     unformatted_text = escape_slack_emoji(text)
     try:
-        split_langs = await split_languages(target_langs)
+        split_langs = await split_languages(target_langs, context["ray"].client.user_group_id)
         translations = {}
-        if split_langs["microsoft"]:
+        if split_langs["engine"] == "microsoft":
             source_lang, translationsMicrosoft = (
                 await get_microsoft_machine_translations(
                     unformatted_text, split_langs["microsoft"]
@@ -365,7 +364,7 @@ async def auto_translate_message(
             )
             translationsMicrosoft.pop(source_lang, None)
             translations.update(translationsMicrosoft)
-        if split_langs["google"]:
+        if split_langs["engine"] == "google":
             source_lang, translationsGoogle = await get_machine_translations(
                 unformatted_text, split_langs["google"]
             )
@@ -465,7 +464,7 @@ async def auto_translate_message(
     finally:
         ray_connection = context.get("ray")
         ray_client = ray_connection.client if ray_connection else None
-        if split_langs["microsoft"]:
+        if split_langs["engine"] == "microsoft":
             asyncio.create_task(
                 log_microsoft_api_usage(
                     ray_client.id if ray_client else context.user_id,
@@ -474,7 +473,7 @@ async def auto_translate_message(
                     translationsMicrosoft,
                 )
             )
-        if split_langs["google"]:
+        if split_langs["engine"] == "google":
             asyncio.create_task(
                 log_google_api_usage(
                     ray_client.id if ray_client else context.user_id,
@@ -1611,8 +1610,8 @@ async def get_mt_translation(
     channel_id = context.channel_id or context.user_id
     try:
         input = escape_slack_emoji(sentence)
-        split_langs = await split_languages([target_lang])
-        if split_langs["microsoft"]:
+        split_langs = await split_languages([target_lang], context["ray"].client.user_group_id)
+        if split_langs["engine"] == "microsoft":
             unformatted_text = input
             source_lang, translations = await get_microsoft_machine_translations(
                 unformatted_text, split_langs["microsoft"]
@@ -1632,7 +1631,7 @@ async def get_mt_translation(
             response = await RayService.get_service(ray_client).get_machine_translation(
                 target_lang, source_lang, input
             )
-        if not split_langs["microsoft"]:
+        if split_langs["engine"] != "microsoft":
             mt_data = response.data
         else:
             mt_data = response["data"]
@@ -1681,7 +1680,7 @@ async def get_mt_translation(
     finally:
         # todo need to add logging
         if "response" in locals():
-            if not split_langs["microsoft"]:
+            if split_langs["engine"] != "microsoft":
                 raw_response = response.response
                 try:
                     response_data = raw_response.json()
@@ -1708,18 +1707,24 @@ async def get_mt_translation(
                 )
 
 
-async def split_languages(target_langs):
+async def split_languages(target_langs: list[str], client_id: str):
+    ai_engine = get_group_mt_engine(client_id)
     microsoft_languages = {
         "fr-ca": "fr-ca",
         "french-canada": "fr-ca",
         "french-canadian": "fr-ca",
     }
-    result = {"microsoft": [], "google": []}
-    for lang in target_langs:
-        if lang.lower() in microsoft_languages:
-            result["microsoft"].append(microsoft_languages[lang.lower()])
-        else:
-            result["google"].append(lang)
+    result = {"microsoft": [], "google": [], "engine": ai_engine}
+
+    # Check if any target_langs are in microsoft_languages
+    if any(lang.lower() in microsoft_languages for lang in target_langs):
+        result["microsoft"].extend(target_langs)
+        result["engine"] = "microsoft"
+    elif ai_engine == "microsoft":
+        result["microsoft"].extend(target_langs)
+    else:
+        result["google"].extend(target_langs)
+
     return result
 
 

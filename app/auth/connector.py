@@ -1504,7 +1504,6 @@ def get_job_group_quote_settings(job_id: str):
 
 def get_group_mt_engine(
     group_uuid: str,
-    mt_engine: str = "google",
 ) -> bool:
     """Gets user super group or group MT engine settings.
 
@@ -1512,7 +1511,10 @@ def get_group_mt_engine(
         group_uuid (str): user assign group uuid
         mt_engine (str): MT engine name. Defaults to "google".
     """
-    from_super = True
+
+    ai_inherit = "ai_mt"
+    group_id = group_uuid
+    mt_engine = "google"
     # CHEKC IF IS INHERITE FROM SUPER GROUP
     with engines["sitemanager"].connect() as conn:
         sql = text(
@@ -1520,26 +1522,27 @@ def get_group_mt_engine(
                 SELECT super_group_uuid
                 FROM super_group_glink
                 WHERE group_uuid = :group_uuid
-                AND property_to_inherit = :mt_engine
+                AND property_to_inherit = :ai_inherit
             """
-        ).bindparams(group_uuid=group_uuid)
-    super_group_inherit = conn.execute(sql)
-    rows = super_group_inherit.fetchall()
-    if not rows:
-        from_super = False
+        ).bindparams(group_uuid=group_uuid, ai_inherit=ai_inherit)
+        super_group_inherit = conn.execute(sql)
+        rows = super_group_inherit.fetchall()
+        if rows:
+            group_id = rows[0].super_group_uuid
 
-     # GET GROUP MT ENGINE
+    # GET GROUP MT ENGINE
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
             """
-            SELECT property_value
-            FROM obj_m_group_property
-            WHERE group_uuid = :group_uuid
-            AND property_name = :mt_engine
+            SELECT ai_mt
+            FROM obj_m_group
+            WHERE obj_uuid = :group_id
             """
-        ).bindparams(group_uuid=group_uuid, mt_engine=mt_engine)
+        ).bindparams(group_id=group_id)
         result = conn.execute(sql)
         row = result.first()
-        if not row:
-            return False
-        return row.property_value
+
+    if row is not None and row.ai_mt is not None and row.ai_mt != "":
+        mt_engine = row.ai_mt
+
+    return mt_engine
