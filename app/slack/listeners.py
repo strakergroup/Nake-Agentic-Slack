@@ -637,7 +637,6 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
     await ack()
     channel_info = json.loads(payload["value"])
     channel_id = channel_info.get("channel_id")
-    # TODO Could have no channel_id if triggered from home tab.
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
         context, channel_id
     )
