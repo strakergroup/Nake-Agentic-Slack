@@ -637,10 +637,6 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
     await ack()
     channel_info = json.loads(payload["value"])
     channel_id = channel_info.get("channel_id")
-    team_id = channel_info.get("team_id")
-    token = client.token
-    with engines["ray_integration_readonly"].connect() as conn:
-        token = get_bot_token(conn, team_id)
     # TODO Could have no channel_id if triggered from home tab.
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
         context, channel_id
@@ -651,9 +647,10 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
         try:
             old_token = client.token
             # check if we have a token that can get channel info for the channel
-            client.token = await resolve_channels_to_team(
+            channel_info = await resolve_channels_to_team(
                 [channel_id], client, context.get("enterprise_id")
             )
+            client.token = channel_info[0]["bot_token"]
             await client.conversations_info(channel=channel_id)
             # Check if the user is a member of the channel.
             # reassign token to the original token since it is required for the original trigger_id
