@@ -689,6 +689,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
 @app.block_action("settings_auto_translate_disable", middleware=[ray_connection])
 async def disable_auto_translate_settings(ack, context, payload, body, client):
     try:
+        await ack()
         channel_info = json.loads(payload["value"])
         channel_id = channel_info.get("channel_id")
         team_channel = await resolve_channels_to_team(

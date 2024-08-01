@@ -11,13 +11,13 @@ from ..select_options import (
     map_translation_display_format_option,
     filter_auto_translate_language_options,
 )
-from ...auth.connector import RayConnection
+from ...auth.connector import RayConnection, is_slack_team_admin
 from ...ray.settings import (
     get_full_group_translation_settings,
     get_auto_translate_language_name,
     get_pagination,
 )
-from ...ray.utils import is_ibm_enterprise, is_min_langugagecloud_plan
+from ...ray.utils import is_ibm_enterprise
 from ...slack.utils import format_strings_display
 from ...config import config, domains, Environment
 from ...models import SlackGroupSettingsTranslation
@@ -32,6 +32,9 @@ async def home_view(
     barEmoji = f":bar_chart:"
     helpEmoji = f":question:"
     speechEmoji = f":speech_balloon:"
+    translation_settings_enabled = not is_ibm_enterprise(
+        context.team_id, context.enterprise_id
+    ) or await is_slack_team_admin(rayConnection.client.id, context.enterprise_id)
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str]]
     ] = []
@@ -66,41 +69,30 @@ async def home_view(
                 "url": domains.languagecloud,
             },
         )
-    visible_translation_settings = translation_settings
-    # Filter conversations by accessible by user.
-    # if translation_settings:
-    #     next_cursor = ""
-    #     # Use cursor to loop through all conversations.
-    #     while True:
-    #         conversations = await context.client.conversations_list(
-    #             exclude_archived=True,
-    #             types="public_channel,private_channel",
-    #             limit=1000,
-    #             cursor=next_cursor or None,
-    #         )
-    #         channel_ids = [channel["id"] for channel in conversations["channels"]]
-    #         for translation_setting in translation_settings:
-    #             if translation_setting[0].channel_id in channel_ids:
-    #                 visible_translation_settings.append(translation_setting)
-
-    #         if len(translation_settings) == len(visible_translation_settings):
-    #             break
-    #         if conversations.get("response_metadata", {}).get("next_cursor"):  # type: ignore
-    #             next_cursor = conversations["response_metadata"]["next_cursor"]
-    #         else:
-    #             break
-    translation_settings_blocks: list[dict[str, Any]] = [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": _(
-                    "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
-                ),
+    translation_settings_blocks = []
+    if translation_settings_enabled:
+        visible_translation_settings = translation_settings
+        translation_settings_blocks: list[dict[str, Any]] = [
+            {"type": "divider"},
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": _("Translate Channels")},
             },
-        },
-    ]
-    if isinstance(rayConnection, RayConnection) and rayConnection.client:
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
+                    ),
+                },
+            },
+        ]
+    if (
+        isinstance(rayConnection, RayConnection)
+        and rayConnection.client
+        and translation_settings_enabled
+    ):
         translation_settings_blocks.append(
             {
                 "type": "actions",
@@ -321,11 +313,6 @@ async def home_view(
                         "url": message_url,
                     },
                 ],
-            },
-            {"type": "divider"},
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": _("Translate Channels")},
             },
             *translation_settings_blocks,
             {"type": "divider"},

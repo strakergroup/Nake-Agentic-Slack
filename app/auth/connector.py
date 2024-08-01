@@ -1590,3 +1590,9 @@ async def resolve_channels_to_team(
             if not successful:
                 raise e  # Raise the original SlackApiError if no token was successful. This will request that the app be added to the workspace/channel.
     return team_channel
+
+
+async def is_slack_team_admin(client_uuid: str, enterprise_id: str) -> bool:
+    group_id = get_direct_login_group(enterprise_id)
+    client_type = await get_client_type(client_uuid, group_id)
+    return client_type in ["Admin", "Owner"]
