@@ -1,6 +1,6 @@
 import functools
 from typing import Iterable
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import delete, distinct, func, select, text, update
 from sqlalchemy.orm import Session
 from slack_bolt.context.async_context import AsyncBoltContext
 
@@ -420,7 +420,7 @@ def get_pagination(context: AsyncBoltContext, rows_per_page: int) -> int:
     with Session(engines["ray_integration"]) as session:
         settings = get_or_create_group_settings(session, context)
         total_rows = session.scalar(
-            select(func.count(SlackGroupSettingsTranslation.id))
+            select(func.count(distinct(SlackGroupSettingsTranslation.id)))
             .join(
                 SlackGroupSettingsTranslationLangs,
                 SlackGroupSettingsTranslation.id
