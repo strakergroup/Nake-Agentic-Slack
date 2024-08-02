@@ -32,9 +32,11 @@ async def home_view(
     barEmoji = f":bar_chart:"
     helpEmoji = f":question:"
     speechEmoji = f":speech_balloon:"
-    translation_settings_enabled = not is_ibm_enterprise(
-        context.team_id, context.enterprise_id
-    ) or await is_slack_team_admin(rayConnection.client.id, context.enterprise_id)
+    translation_settings_enabled = (
+        not is_ibm_enterprise(context.team_id, context.enterprise_id)
+        or rayConnection.client is not None
+        and await is_slack_team_admin(rayConnection.client.id, context.enterprise_id)
+    )
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str]]
     ] = []
