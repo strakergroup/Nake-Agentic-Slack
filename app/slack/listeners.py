@@ -165,32 +165,38 @@ async def app_mention_event(client, context, event):
 async def home_opened(event, action, context, body, say, client):
     # https://api.slack.com/events/app_home_opened
     # Send an onboarding message if the app home is opened for the first time.
-    history = await client.conversations_history(channel=event.get("channel"), limit=1)
-    is_ibm = is_ibm_enterprise(
-        team_id=context["team_id"], enterprise_id=context.get("enterprise_id")
-    )
-    if not history.get("messages"):
-        message = OnboardingMessage(
-            context["user_id"],
-            context["team_id"],
-            context.get("enterprise_id"),
-            event.get("channel"),
-            not is_ibm,
+    # TODO: put try catch around this
+    try:
+        history = await client.conversations_history(
+            channel=event.get("channel"), limit=1
         )
-        await say(blocks=message.blocks, text=message.text)
-    # Send a welcome message if the app home has been idle for 24 hours
-    else:
-        history_last_24_hours = await client.conversations_history(
-            channel=event.get("channel"),
-            oldest=int((datetime.now() - timedelta(hours=24)).timestamp()),
-            latest=int(datetime.now().timestamp()),
+        is_ibm = is_ibm_enterprise(
+            team_id=context["team_id"], enterprise_id=context.get("enterprise_id")
         )
-        if not history_last_24_hours.get("messages"):
-            message = WelcomeBackMessage(context["user_id"])
+        if not history.get("messages"):
+            message = OnboardingMessage(
+                context["user_id"],
+                context["team_id"],
+                context.get("enterprise_id"),
+                event.get("channel"),
+                not is_ibm,
+            )
             await say(blocks=message.blocks, text=message.text)
+        # Send a welcome message if the app home has been idle for 24 hours
         else:
-            # There had been some activity in the last 24 hours
-            pass
+            history_last_24_hours = await client.conversations_history(
+                channel=event.get("channel"),
+                oldest=int((datetime.now() - timedelta(hours=24)).timestamp()),
+                latest=int(datetime.now().timestamp()),
+            )
+            if not history_last_24_hours.get("messages"):
+                message = WelcomeBackMessage(context["user_id"])
+                await say(blocks=message.blocks, text=message.text)
+            else:
+                # There had been some activity in the last 24 hours
+                pass
+    except SlackApiError as e:
+        notify_exception(e)
     # Publish view to home tab.
     await client.views_publish(
         user_id=context["user_id"],

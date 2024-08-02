@@ -1026,7 +1026,6 @@ def translation_settings_view(
                     ),
                     "filter": {
                         "include": ["public", "private", "mpim"],
-                        "exclude_external_shared_channels": True,
                         "exclude_bot_users": True,
                     },
                 },
