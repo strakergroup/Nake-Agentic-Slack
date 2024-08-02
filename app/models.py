@@ -120,6 +120,7 @@ class GoogleApiLog(Base):
     word_count: Mapped[int]
     character_count: Mapped[int]
 
+
 class MicrosoftApiLog(Base):
     """The table for logging Microsoft API usage.
 

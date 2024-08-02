@@ -7,6 +7,7 @@ import math
 import time
 import json
 import hashlib
+from typing import List
 from uuid import uuid4
 from dataclasses import dataclass
 from urllib.parse import urlencode
@@ -16,6 +17,9 @@ import httpx
 from sqlalchemy import bindparam, text
 from sqlalchemy.engine import Connection
 from slack_sdk.oauth.installation_store import Installation
+from slack_sdk.web.async_client import AsyncWebClient
+from slack_sdk.errors import SlackApiError
+
 from straker_auth.languagecloud import create_languagecloud_id_token
 from buglog import notify_exception
 
@@ -1500,3 +1504,95 @@ def get_job_group_quote_settings(job_id: str):
         if not row:
             return False
     return row.api_enabled
+
+
+def get_all_tokens_for_enterprise(enterprise_id: str):
+    """Get all the tokens for the enterprise"""
+    with engines["ray_integration"].connect() as conn:
+        sql = text(
+            """
+            SELECT sb.team_id, sb.bot_token
+            FROM slack_bots sb
+            JOIN (
+                SELECT team_id, MAX(id) as max_id
+                FROM slack_bots
+                WHERE enterprise_id = :enterprise_id
+                GROUP BY team_id
+            ) latest_bots ON sb.id = latest_bots.max_id
+            WHERE sb.bot_token IS NOT NULL AND sb.bot_token <> ''
+            ORDER BY sb.id DESC
+            """
+        ).bindparams(enterprise_id=enterprise_id)
+        result = conn.execute(sql)
+        rows = result.fetchall()
+        if not rows:
+            return None
+    return rows
+
+
+def get_team_from_token(token: str) -> str:
+    """Get the team ID from the bot token"""
+    with engines["ray_integration"].connect() as conn:
+        sql = text(
+            """
+            SELECT team_id
+            FROM slack_bots
+            WHERE bot_token = :bot_token
+            """
+        ).bindparams(bot_token=token)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return None
+    return row.team_id
+
+
+async def resolve_channels_to_team(
+    channel_id: List[str], client: AsyncWebClient, enterprise_id: str
+) -> List[dict[str, str]]:
+    """Resolve a channel ID to a team ID. Use conversation info API to get the team ID.
+        When error attempt to get all tokens for the enterprise with each token
+    Args:
+        channel_id (str): The Slack channel ID.
+
+    Returns:
+        str: The Slack team ID.
+    """
+    team_channel = []
+    all_tokens = get_all_tokens_for_enterprise(enterprise_id)
+    for channel in channel_id:
+        try:
+            await client.conversations_info(channel=channel)
+            team_channel.append(
+                {
+                    "team_id": get_team_from_token(client.token),
+                    "channel_id": channel,
+                    "bot_token": client.token,
+                }
+            )
+        except SlackApiError as e:
+            successful = False
+            for token in all_tokens:
+                client.token = token.bot_token
+                try:
+                    await client.conversations_info(channel=channel)
+                    team_channel.append(
+                        {
+                            "team_id": token.team_id,
+                            "channel_id": channel,
+                            "bot_token": token.bot_token,
+                        }
+                    )
+                    successful = True
+                    break  # Exit the loop if a successful token is found
+                except SlackApiError:
+                    continue
+            if not successful:
+                raise e  # Raise the original SlackApiError if no token was successful. This will request that the app be added to the workspace/channel.
+    return team_channel
+
+
+async def is_slack_team_admin(client_uuid: str, enterprise_id: str) -> bool:
+    group_id = get_direct_login_group(enterprise_id)
+    client_type = await get_client_type(client_uuid, group_id)
+    return client_type in ["Admin", "Owner"]

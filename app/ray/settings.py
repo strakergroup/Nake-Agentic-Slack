@@ -1,6 +1,6 @@
 import functools
 from typing import Iterable
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.orm import Session
 from slack_bolt.context.async_context import AsyncBoltContext
 
@@ -54,9 +54,7 @@ def get_auto_translate_languages(
     if include_variations:
         languages.append(("zh", "Chinese (Simplified)"))
 
-    languages = [
-        (lang[0], _(lang[1])) for lang in languages
-    ]
+    languages = [(lang[0], _(lang[1])) for lang in languages]
     languages = sorted(languages, key=lambda language: language[1])
     return languages
 
@@ -261,9 +259,7 @@ def get_or_create_group_settings(
 
 
 def get_or_create_auto_translate_group_settings(
-    session: Session,
-    context: AsyncBoltContext,
-    channel_id: str,
+    session: Session, context: AsyncBoltContext, channel_id: str
 ) -> SlackGroupSettingsTranslation:
     # TODO streamline this (join)
     settings = get_or_create_group_settings(session, context)
@@ -310,7 +306,7 @@ def get_auto_translate_settings_and_langs(
 
 def update_auto_translate_group_settings(
     context: AsyncBoltContext,
-    channels: list[str],
+    channels: list[dict[str, str]],
     languages: list[str],
     display_format: SlackGroupSettingsTranslation.DisplayFormatType,
 ) -> None:
@@ -322,9 +318,9 @@ def update_auto_translate_group_settings(
         display_format: The display format setting.
     """
     with Session(engines["ray_integration"]) as session:
-        for channel_id in channels:
+        for channel in channels:
             channel_settings = get_or_create_auto_translate_group_settings(
-                session, context, channel_id
+                session, context, channel["channel_id"]
             )
             channel_settings.display_format = display_format
             session.execute(
@@ -365,7 +361,7 @@ def disable_auto_translate_group_settings(
 
 
 def get_full_group_translation_settings(
-    context: AsyncBoltContext,
+    context: AsyncBoltContext, page: int = 1, rows_per_page: int = 5
 ) -> list[tuple[SlackGroupSettingsTranslation, list[str]]]:
     """Get the group translation settings for all channels.
 
@@ -378,7 +374,15 @@ def get_full_group_translation_settings(
         settings = get_or_create_group_settings(session, context)
         channel_settings = session.scalars(
             select(SlackGroupSettingsTranslation)
+            .join(
+                SlackGroupSettingsTranslationLangs,
+                SlackGroupSettingsTranslation.id
+                == SlackGroupSettingsTranslationLangs.translation_settings_id,
+            )
             .where(SlackGroupSettingsTranslation.settings_id == settings.id)
+            .group_by(SlackGroupSettingsTranslation.id)
+            .limit(rows_per_page)
+            .offset((page - 1) * rows_per_page)
             .order_by(SlackGroupSettingsTranslation.id)
         ).all()
         channel_langs = session.scalars(
@@ -401,3 +405,35 @@ def get_full_group_translation_settings(
     return [
         (channel, langs) for channel, langs in settings_lang_map.values() if len(langs)
     ]
+
+
+# pagination - get number of pages based on rows per page and number of records
+def get_pagination(context: AsyncBoltContext, rows_per_page: int) -> int:
+    """Get the number of pages based on the number of rows per page and total rows.
+
+    Args:
+        rows_per_page (int): The number of rows per page.
+
+    Returns:
+        int: The number of pages.
+    """
+    with Session(engines["ray_integration"]) as session:
+        settings = get_or_create_group_settings(session, context)
+        total_rows = session.scalar(
+            select(func.count(SlackGroupSettingsTranslation.id)).where(
+                SlackGroupSettingsTranslation.settings_id == settings.id
+            )
+        )
+        if total_rows == 0:
+            return 0
+    return (total_rows + rows_per_page - 1) // rows_per_page
+
+
+def update_channel_id(old_channel_id, new_channel_id):
+    with Session(engines["ray_integration"]) as session:
+        session.execute(
+            update(SlackGroupSettingsTranslation)
+            .where(SlackGroupSettingsTranslation.channel_id == old_channel_id)
+            .values(channel_id=new_channel_id)
+        )
+        session.commit()

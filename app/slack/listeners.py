@@ -3,8 +3,6 @@ commands, etc. from the Slack API.
 """
 
 import asyncio
-import os
-from pathlib import Path
 import re
 import json
 from datetime import datetime, timedelta
@@ -51,7 +49,6 @@ from .templates.models import (
     convert_pydantic_to_slack_error,
     NewJobForm,
     JobSearchForm,
-    SsoLoginForm,
     AutoTranslationSettingsForm,
 )
 from .templates.messages import (
@@ -61,7 +58,6 @@ from .templates.messages import (
     OnboardingMessage,
     QuoteMessage,
     WelcomeBackMessage,
-    SuccessfulLoginMessage,
     SuccessfulLogoutMessage,
     SrtTranslateMessage,
     JobSubmitMessage,
@@ -80,29 +76,28 @@ from .templates.views import (
     translation_settings_view,
     translation_settings_view_error,
     job_search_modal,
-    sso_form_modal,
     cancel_job_modal,
 )
 from .web import download_file, files_list_simple, get_bot_accessible_files
 from .select_options import get_language_options, get_file_options_cached
 from .utils import is_channel_im
 from ..auth.connector import (
-    connect_ray_account,
     disconnect_ray_account,
     disconnect_ray_super_group_and_users,
     connect_ray_account_sso,
     get_bot_token,
     get_ray_connection,
-    spend_mt_tokens,
+    resolve_channels_to_team,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
     get_auto_translate_settings_and_langs,
     update_auto_translate_group_settings,
     disable_auto_translate_group_settings,
+    update_channel_id,
 )
 from slack_bolt.context.async_context import AsyncBoltContext
-from ..config import config, domains
+from ..config import domains
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -203,6 +198,18 @@ async def home_opened(event, action, context, body, say, client):
     )
 
 
+@app.action(re.compile(r"home_load_(next|previous)"), middleware=[ray_connection])
+@slack_log_decorator
+async def home_load(action, context, client, body):
+    # submit from next button on transation settings view
+    home_info = json.loads(action["value"])
+    page = int(home_info.get("page", 1))
+    await client.views_publish(
+        user_id=context["user_id"],
+        view=await home_view(context, body["api_app_id"], context.get("ray"), page),
+    )
+
+
 @app.event("app_uninstalled")
 @slack_log_decorator
 async def app_uninstalled(context):
@@ -213,6 +220,12 @@ async def app_uninstalled(context):
     disconnect_ray_super_group_and_users(
         context["team_id"], context.get("enterprise_id")
     )
+
+
+@app.event("channel_id_changed")
+@slack_log_decorator
+async def channel_id_changed(event):
+    update_channel_id(event.get("old_channel_id"), event.get("new_channel_id"))
 
 
 @app.message_shortcut("new_job", middleware=[ray_connection])
@@ -543,7 +556,6 @@ async def ray_command(ack, respond, command, context, client):
                     [context.channel_id],
                     auto_translate_langs,
                     settings.display_format if settings else "thread",
-                    team_id=context.team_id,
                 ),
             )
 
@@ -625,11 +637,6 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
     await ack()
     channel_info = json.loads(payload["value"])
     channel_id = channel_info.get("channel_id")
-    team_id = channel_info.get("team_id")
-    token = client.token
-    with engines["ray_integration_readonly"].connect() as conn:
-        token = get_bot_token(conn, team_id)
-    # TODO Could have no channel_id if triggered from home tab.
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
         context, channel_id
     )
@@ -637,31 +644,27 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
     if channel_id:
         error_msg = _("You do not have permission to edit this channel!!")
         try:
-            # Check if the channel is public or private.
             old_token = client.token
-            client.token = token
-            conver_info = await client.conversations_info(channel=channel_id)
-            # Check if the user is a member of the channel.
-            response = await client.conversations_members(channel=channel_id)
+            # check if we have a token that can get channel info for the channel
+            channel_info = await resolve_channels_to_team(
+                [channel_id], client, context.get("enterprise_id")
+            )
+            client.token = channel_info[0]["bot_token"]
+            await client.conversations_info(channel=channel_id)
+            # reassign token to the original token since it is required for the original trigger_id
             client.token = old_token
-            if (
-                context["user_id"] in response["members"]
-                or not conver_info["channel"]["is_private"]
-            ):
-                await client.views_open(
-                    trigger_id=body["trigger_id"],
-                    view=translation_settings_view(
-                        [channel_id] if channel_id else None,
-                        auto_translate_langs,
-                        settings.display_format if settings else "thread",
-                        team_id=team_id,
-                    ),
-                )
-            else:
-                await client.views_open(
-                    trigger_id=body["trigger_id"],
-                    view=translation_settings_view_error(error_msg),
-                )
+            await client.views_open(
+                trigger_id=body["trigger_id"],
+                view=translation_settings_view(
+                    [channel_id] if channel_id else None,
+                    auto_translate_langs,
+                    settings.display_format if settings else "thread",
+                ),
+            )
+            await client.views_open(
+                trigger_id=body["trigger_id"],
+                view=translation_settings_view_error(error_msg),
+            )
         except SlackApiError as e:
             if e.response["error"] == "missing_scope":
                 notify_exception(e)
@@ -679,7 +682,6 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
                 [channel_id] if channel_id else None,
                 auto_translate_langs,
                 settings.display_format if settings else "thread",
-                team_id=team_id,
             ),
         )
 
@@ -687,8 +689,13 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
 @app.block_action("settings_auto_translate_disable", middleware=[ray_connection])
 async def disable_auto_translate_settings(ack, context, payload, body, client):
     try:
+        await ack()
         channel_info = json.loads(payload["value"])
         channel_id = channel_info.get("channel_id")
+        team_channel = await resolve_channels_to_team(
+            [channel_id], client, context.get("enterprise_id")
+        )
+        client.token = team_channel[0]["bot_token"]
         if not channel_id:
             notify_message("Channel ID not found in payload", extra=payload)
             return
@@ -1094,14 +1101,10 @@ async def handle_job_search(ack, view, context, client):
 @slack_log_decorator
 async def view_update_auto_translate_settings(ack, view, context, body, client):
     try:
-        team_id = view["private_metadata"]
-        with engines["ray_integration_readonly"].connect() as conn:
-            token = get_bot_token(conn, team_id)
-            if token:
-                client.token = token
         form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
-        for c in form.channels:
-            await client.conversations_info(channel=c)
+        team_channels = await resolve_channels_to_team(
+            form.channels, client, context.get("enterprise_id", "")
+        )
     except SlackApiError as e:
         if e.response["error"] == "channel_not_found":
             error_msg = _(
@@ -1125,7 +1128,7 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
     try:
         update_auto_translate_group_settings(
             context,
-            channels=form.channels,
+            channels=team_channels,
             languages=form.languages,
             display_format=form.display_format,
         )
@@ -1135,19 +1138,21 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
         )
 
         # Try to join channel automatically after updating settings.
-        async def join_channel(channel_id: str):
+        async def join_channel(channel_id: str, bot_token: str):
             try:
+                client.token = bot_token
                 await client.conversations_join(channel=channel_id)
             except SlackApiError:
                 pass  # Cannot join private channel, or cannot find channel.
             except Exception as e:
                 notify_exception(e)
 
-        async def notify_channel(channel_id: str):
+        async def notify_channel(channel_id: str, bot_token: str):
             try:
                 msg = AutoTranslateSettingsChangedMessage(
                     context["user_id"], channel_id, form.languages, form.display_format
                 )
+                client.token = bot_token
                 await client.chat_postMessage(channel=channel_id, text=msg.text)
             except SlackApiError:
                 pass  # Must be in channel to post. TODO check other events, e.g. app_mention
@@ -1155,11 +1160,17 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
                 notify_exception(e)
 
         await asyncio.gather(
-            *[join_channel(channel_id) for channel_id in form.channels],
+            *[
+                join_channel(channel["channel_id"], channel["bot_token"])
+                for channel in team_channels
+            ],
             return_exceptions=True,
         )
         await asyncio.gather(
-            *[notify_channel(channel_id) for channel_id in form.channels],
+            *[
+                notify_channel(channel["channel_id"], channel["bot_token"])
+                for channel in team_channels
+            ],
             return_exceptions=True,
         )
     except Exception as e:
