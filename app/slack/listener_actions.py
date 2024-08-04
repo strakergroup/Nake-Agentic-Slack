@@ -278,8 +278,10 @@ async def respond_to_message(
                         thread_ts=thread_ts,
                     )
             except Exception as e:
-                help_site = 'https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack'
-                none_msg = _("I didn't understand, please refer to the <{help_site}|help docs>")
+                help_site = "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack"
+                none_msg = _(
+                    "I didn't understand, please refer to the <{help_site}|help docs>"
+                )
                 # Default to Watson Assistant fallback response if no other matches.
                 await context.say(none_msg, thread_ts=thread_ts)
                 notify_exception(
@@ -314,8 +316,10 @@ async def respond_to_message(
                         thread_ts=thread_ts,
                     )
             elif response.reply:
-                help_site = 'https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack'
-                none_msg = _("I didn't understand, please refer to the <{help_site}|help docs>")
+                help_site = "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack"
+                none_msg = _(
+                    "I didn't understand, please refer to the <{help_site}|help docs>"
+                )
                 reply = none_msg if response.intent is None else _(response.reply)
                 # Default to Watson Assistant fallback response if no other matches.
                 await context.say(reply, thread_ts=thread_ts)
@@ -891,7 +895,9 @@ async def post_job_summary(
             all_jobs=all_jobs,
         )
         if context.response_url:
-            return await context.respond(text=msg.text, blocks=msg.blocks)
+            return await context.respond(
+                text=msg.text, blocks=msg.blocks, replace_original=False
+            )
         else:
             return await client.chat_postMessage(
                 channel=channel_id,
@@ -1532,7 +1538,7 @@ async def post_report_insights(
     insights_msg = ReportInsightsMessage(ray_client.planname)
     try:
         if context.response_url:
-            await context.respond(text=insights_msg.text, blocks=insights_msg.blocks)
+            await context.respond(text=insights_msg.text, blocks=insights_msg.blocks, replace_original=False)
         else:
             await client.chat_postMessage(
                 channel=channel_id,
@@ -1673,7 +1679,7 @@ async def get_mt_translation(
                     thread_ts=thread_ts,
                 )
     except Exception as e:
-        help_site = 'https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack'
+        help_site = "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack"
         none_msg = _("I didn't understand, please refer to the <{help_site}|help docs>")
         await client.chat_postMessage(
             channel=channel_id,

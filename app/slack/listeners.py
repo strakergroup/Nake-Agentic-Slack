@@ -900,7 +900,7 @@ async def get_account_info(ack, context, respond):
         enterprise_id=context.get("enterprise_id"),
         channel_id=context["channel_id"],
     )
-    await respond(text=msg.text, blocks=msg.blocks)
+    await respond(text=msg.text, blocks=msg.blocks, replace_original=False)
 
 
 # The "Connect" button short cut in Help Message
@@ -915,7 +915,7 @@ async def get_connect_info(ack, context, respond):
         channel_id=context.get("channel_id", context["user_id"]),
         ray_client=context["ray"].client if context["ray"] is not None else None,
     )
-    await respond(text=msg.text, blocks=msg.blocks)
+    await respond(text=msg.text, blocks=msg.blocks, replace_original=False)
 
 
 @app.block_action("delay_info", middleware=[ray_connection])
