@@ -140,7 +140,7 @@ class MtFileRequestSchema(BaseModel):
     client_id: str
     channel_id: str
     target_language: str
-
+    data_source: str
 
 class MtSuccessResponseSchema(BaseModel):
     file_id: str

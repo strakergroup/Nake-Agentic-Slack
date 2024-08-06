@@ -506,6 +506,7 @@ async def document_machine_translate(
                 "client_id": context["ray"].client.id,
                 "channel_id": context["channel_id"],
                 "target_language": selected_language,
+                "data_source": 'slack',
             }
         )
         async with httpx.AsyncClient() as http:
