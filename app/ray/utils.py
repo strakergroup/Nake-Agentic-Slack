@@ -252,7 +252,7 @@ def upload_to_file_server(file_path: str) -> str:
     return file_id
 
 
-def set_user_language(user_info):
+def set_user_language(user_info, context):
     user_locale = "en"
     if "user" in user_info and "locale" in user_info["user"]:
         user_locale = user_info["user"]["locale"]
@@ -267,6 +267,7 @@ def set_user_language(user_info):
         ):
             user_locale = "fr-CA"
     translator_var.set(Translator(user_locale))
+    context["locale"] = user_locale
 
 
 # TODO: Maybe add to middleware

@@ -27,6 +27,7 @@ from .app import app
 from .middleware import ray_connection, require_ray_client, require_mt_tokens
 from .listener_actions import (
     document_machine_translate,
+    get_mt_translation,
     respond_to_message,
     auto_translate_message,
     get_groups,
@@ -88,6 +89,7 @@ from ..auth.connector import (
     get_bot_token,
     get_ray_connection,
     resolve_channels_to_team,
+    spend_mt_tokens,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
@@ -356,6 +358,26 @@ async def download_transcribed_file(ack, action, context, client):
             title=file["file_name"],
             filename=file["file_name"],
         )
+
+
+@app.shortcut("shortcut_translate", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_translate_shortcut(ack, body, client, context):
+    print(body)
+    await ack()
+    if await require_ray_client(context):
+        mt_tl = context.get("locale", "en")
+        mt_text = body["message"]["text"]
+        if await require_mt_tokens(context, len(mt_text)):
+            await get_mt_translation(
+                client,
+                context,
+                context["ray"].client,
+                source_lang="",
+                target_lang=mt_tl,
+                sentence=mt_text,
+            )
+            await spend_mt_tokens(credits=len(mt_text), ray_connection=context["ray"])
 
 
 @app.action("srt_translate", middleware=[ray_connection])

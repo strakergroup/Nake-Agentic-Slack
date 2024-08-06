@@ -84,7 +84,7 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
             user=context["user_id"], include_locale=True
         )
         context["is_bot"] = user_info["user"]["is_bot"]
-        set_user_language(user_info)
+        set_user_language(user_info, context)
     except Exception as e:
         context["is_bot"] = False
         notify_exception(e)
