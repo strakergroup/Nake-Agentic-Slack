@@ -363,7 +363,6 @@ async def download_transcribed_file(ack, action, context, client):
 @app.shortcut("shortcut_translate", middleware=[ray_connection])
 @slack_log_decorator
 async def handle_translate_shortcut(ack, body, client, context):
-    print(body)
     await ack()
     if await require_ray_client(context):
         mt_tl = context.get("locale", "en")
