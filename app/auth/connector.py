@@ -1596,3 +1596,51 @@ async def is_slack_team_admin(client_uuid: str, enterprise_id: str) -> bool:
     group_id = get_direct_login_group(enterprise_id)
     client_type = await get_client_type(client_uuid, group_id)
     return client_type in ["Admin", "Owner"]
+
+
+def get_group_mt_engine(
+    group_uuid: str,
+    is_group: bool = False,
+) -> bool:
+    """Gets user super group or group MT engine settings.
+
+    Args:
+        group_uuid (str): user assign group uuid
+        mt_engine (str): MT engine name. Defaults to "google".
+    """
+
+    ai_inherit = "ai_mt"
+    group_id = group_uuid
+    mt_engine = "google"
+    if not is_group:
+        # CHEKC IF IS INHERITE FROM SUPER GROUP
+        with engines["sitemanager"].connect() as conn:
+            sql = text(
+                """
+                    SELECT super_group_uuid
+                    FROM super_group_glink
+                    WHERE group_uuid = :group_uuid
+                    AND property_to_inherit = :ai_inherit
+                """
+            ).bindparams(group_uuid=group_uuid, ai_inherit=ai_inherit)
+            super_group_inherit = conn.execute(sql)
+            rows = super_group_inherit.fetchall()
+            if rows:
+                group_id = rows[0].super_group_uuid
+
+    # GET GROUP MT ENGINE
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT ai_mt
+            FROM obj_m_group
+            WHERE obj_uuid = :group_id
+            """
+        ).bindparams(group_id=group_id)
+        result = conn.execute(sql)
+        row = result.first()
+
+    if row is not None and row.ai_mt is not None and row.ai_mt != "":
+        mt_engine = row.ai_mt
+
+    return mt_engine

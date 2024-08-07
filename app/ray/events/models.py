@@ -140,6 +140,7 @@ class MtFileRequestSchema(BaseModel):
     client_id: str
     channel_id: str
     target_language: str
+    ai_engine: str
 
 
 class MtSuccessResponseSchema(BaseModel):
