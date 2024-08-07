@@ -354,7 +354,13 @@ async def auto_translate_message(
         return
     unformatted_text = escape_slack_emoji(text)
     try:
-        split_langs = await split_languages(target_langs, context["ray"].client.user_group_id)
+        is_gropid = False
+        if context["ray"].client is None:
+            user_group_id = context['ray'].super_group[0].id
+            is_gropid = True
+        else:
+            user_group_id = context['ray'].client.user_group_id
+        split_langs = await split_languages(target_langs, user_group_id, is_gropid)
         translations = {}
         if split_langs["engine"] == "microsoft":
             source_lang, translationsMicrosoft = (
@@ -498,8 +504,15 @@ async def document_machine_translate(
         output_file (str): The output file name.
         ai_engine (str): The AI engine to use.
     """
+
+    is_gropid = False
+    if context["ray"].client is None:
+        user_group_id = context['ray'].super_group[0].id
+        is_gropid = True
+    else:
+        user_group_id = context['ray'].client.user_group_id
     # check ai engine from group setting and only fr-ca will support by microsoft
-    ai_engine = get_group_mt_engine(context['ray'].client.user_group_id)
+    ai_engine = get_group_mt_engine(user_group_id, is_gropid)
     if selected_language.lower() == "fr-ca":
         ai_engine = "microsoft"
 
@@ -1617,7 +1630,13 @@ async def get_mt_translation(
     channel_id = context.channel_id or context.user_id
     try:
         input = escape_slack_emoji(sentence)
-        split_langs = await split_languages([target_lang], context["ray"].client.user_group_id)
+        is_gropid = False
+        if context["ray"].client is None:
+            user_group_id = context['ray'].super_group[0].id
+            is_gropid = True
+        else:
+            user_group_id = context['ray'].client.user_group_id
+        split_langs = await split_languages([target_lang], user_group_id, is_gropid)
         if split_langs["engine"] == "microsoft":
             unformatted_text = input
             source_lang, translations = await get_microsoft_machine_translations(
@@ -1714,8 +1733,8 @@ async def get_mt_translation(
                 )
 
 
-async def split_languages(target_langs: list[str], client_id: str):
-    ai_engine = get_group_mt_engine(client_id)
+async def split_languages(target_langs: list[str], mt_id: str, is_gropid: bool):
+    ai_engine = get_group_mt_engine(mt_id, is_gropid)
     microsoft_languages = {
         "fr-ca": "fr-ca",
         "french-canada": "fr-ca",

@@ -1504,6 +1504,7 @@ def get_job_group_quote_settings(job_id: str):
 
 def get_group_mt_engine(
     group_uuid: str,
+    is_group: bool = False,
 ) -> bool:
     """Gets user super group or group MT engine settings.
 
@@ -1515,20 +1516,21 @@ def get_group_mt_engine(
     ai_inherit = "ai_mt"
     group_id = group_uuid
     mt_engine = "google"
-    # CHEKC IF IS INHERITE FROM SUPER GROUP
-    with engines["sitemanager"].connect() as conn:
-        sql = text(
-            """
-                SELECT super_group_uuid
-                FROM super_group_glink
-                WHERE group_uuid = :group_uuid
-                AND property_to_inherit = :ai_inherit
-            """
-        ).bindparams(group_uuid=group_uuid, ai_inherit=ai_inherit)
-        super_group_inherit = conn.execute(sql)
-        rows = super_group_inherit.fetchall()
-        if rows:
-            group_id = rows[0].super_group_uuid
+    if not is_group:
+        # CHEKC IF IS INHERITE FROM SUPER GROUP
+        with engines["sitemanager"].connect() as conn:
+            sql = text(
+                """
+                    SELECT super_group_uuid
+                    FROM super_group_glink
+                    WHERE group_uuid = :group_uuid
+                    AND property_to_inherit = :ai_inherit
+                """
+            ).bindparams(group_uuid=group_uuid, ai_inherit=ai_inherit)
+            super_group_inherit = conn.execute(sql)
+            rows = super_group_inherit.fetchall()
+            if rows:
+                group_id = rows[0].super_group_uuid
 
     # GET GROUP MT ENGINE
     with engines["sitemanager_readonly"].connect() as conn:
