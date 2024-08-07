@@ -79,7 +79,12 @@ from .templates.views import (
     job_search_modal,
     cancel_job_modal,
 )
-from .web import download_file, files_list_simple, get_bot_accessible_files
+from .web import (
+    download_file,
+    files_list_simple,
+    get_bot_accessible_files,
+    get_mt_ts_cached,
+)
 from .select_options import get_language_options, get_file_options_cached
 from .utils import is_channel_im
 from ..auth.connector import (
@@ -1351,6 +1356,17 @@ async def handle_cancel_job(ack, view, context, client):
             blocks=context["login_prompt"].blocks,
             text=context["login_prompt"].text,
         )
+
+
+@app.event({"type": "message", "subtype": "message_deleted"})
+@slack_log_decorator
+async def message_deleted_event(message, body):
+    print("hello")
+    print(body)
+    if message.get("subtype") == "message_changed":
+        deleted_ts = body["event"]["deleted_ts"]
+        timestamp = await get_mt_ts_cached(deleted_ts)
+        # TODO: Complete
 
 
 @app.event(
