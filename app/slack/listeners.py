@@ -364,19 +364,18 @@ async def download_transcribed_file(ack, action, context, client):
 @slack_log_decorator
 async def handle_translate_shortcut(ack, body, client, context):
     await ack()
-    if await require_ray_client(context):
-        mt_tl = context.get("locale", "en")
-        mt_text = body["message"]["text"]
-        if await require_mt_tokens(context, len(mt_text)):
-            await get_mt_translation(
-                client,
-                context,
-                context["ray"].client,
-                source_lang="",
-                target_lang=mt_tl,
-                sentence=mt_text,
-            )
-            await spend_mt_tokens(credits=len(mt_text), ray_connection=context["ray"])
+    mt_tl = context.get("locale", "en")
+    mt_text = body["message"]["text"]
+    if await require_mt_tokens(context, len(mt_text)):
+        await get_mt_translation(
+            client,
+            context,
+            context["ray"].client,
+            source_lang="",
+            target_lang=mt_tl,
+            sentence=mt_text,
+        )
+        await spend_mt_tokens(credits=len(mt_text), ray_connection=context["ray"])
 
 
 @app.action("srt_translate", middleware=[ray_connection])
