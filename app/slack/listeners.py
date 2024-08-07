@@ -1360,13 +1360,12 @@ async def handle_cancel_job(ack, view, context, client):
 
 @app.event({"type": "message", "subtype": "message_deleted"})
 @slack_log_decorator
-async def message_deleted_event(message, body):
-    print("hello")
-    print(body)
-    if message.get("subtype") == "message_changed":
+async def message_deleted_event(message, client, body, context):
+    if message.get("subtype") == "message_deleted":
         deleted_ts = body["event"]["deleted_ts"]
         timestamp = await get_mt_ts_cached(deleted_ts)
-        # TODO: Complete
+        if timestamp:
+            await client.chat_delete(ts=timestamp, channel=context["channel_id"])
 
 
 @app.event(
