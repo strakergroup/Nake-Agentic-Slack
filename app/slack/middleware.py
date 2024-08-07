@@ -71,13 +71,6 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
         )
         if demo_connection is not None:
             context["ray"] = demo_connection
-    context["login_prompt"] = LoginMessage(
-        user_id=context["user_id"],
-        team_id=context["team_id"],
-        enterprise_id=context.get("enterprise_id"),
-        channel_id=context.get("channel_id", context["user_id"]),
-        ray_client=context["ray"].client if context["ray"] is not None else None,
-    )
     try:
         context["is_bot"] = False
         user_info = await context.client.users_info(
@@ -88,6 +81,13 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
     except Exception as e:
         context["is_bot"] = False
         notify_exception(e)
+    context["login_prompt"] = LoginMessage(
+        user_id=context["user_id"],
+        team_id=context["team_id"],
+        enterprise_id=context.get("enterprise_id"),
+        channel_id=context.get("channel_id", context["user_id"]),
+        ray_client=context["ray"].client if context["ray"] is not None else None,
+    )
     # Log the RAY client ID if available.
     if "log" in context and isinstance(context["log"], SlackAppLog):
         if context["ray"] is not None:
