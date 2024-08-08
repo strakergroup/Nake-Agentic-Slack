@@ -94,7 +94,6 @@ from ..auth.connector import (
     get_bot_token,
     get_ray_connection,
     resolve_channels_to_team,
-    spend_mt_tokens,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
@@ -1362,7 +1361,7 @@ async def message_deleted_event(message, client, body, context):
         deleted_ts = body["event"]["deleted_ts"]
         timestamp = await get_mt_ts_cached(deleted_ts)
         if timestamp:
-            await client.chat_delete(ts=timestamp, channel=context["channel_id"])
+            await client.chat_delete(ts=timestamp, channel=context.channel_id)
 
 
 @app.event(
@@ -1370,25 +1369,23 @@ async def message_deleted_event(message, client, body, context):
     middleware=[ray_connection],
 )
 @slack_log_decorator
-async def message_changed_event(client, context, message):
+async def message_changed_event(client, body, context, message):
     if message.get("subtype") == "message_changed":
-        is_edit = True
-        # latest_ts = message['message'].get("latest_reply")
-        if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
-            try:
-                await resendMT(client, context, message, use_thread=False)
-            except Exception as e:
-                print(e)
-        elif (
-            message["message"].get("text")
-            and f"<@{context['bot_user_id']}>" not in message["message"]["text"]
-        ):
-            # Do not auto-translate if the bot is mentioned (should default to normal response).
-            await auto_translate_message(client, context, message["message"], is_edit)
+        if message.get("message", {}).get("subtype") == "tombstone":
+            deleted_ts = body["event"]["previous_message"]["ts"]
+            timestamp = await get_mt_ts_cached(deleted_ts)
+            if timestamp:
+                await client.chat_delete(ts=timestamp, channel=context.channel_id)
         else:
-            # Do nothing if the Slack app is not mentioned in group chats and
-            # auto-translate is disabled.
-            pass
+            is_edit = True
+            if (
+                message["message"].get("text")
+                and f"<@{context['bot_user_id']}>" not in message["message"]["text"]
+            ):
+                # Do not auto-translate if the bot is mentioned (should default to normal response).
+                await auto_translate_message(
+                    client, context, message["message"], is_edit
+                )
 
 
 # FastAPI will use this to handle Slack API requests.

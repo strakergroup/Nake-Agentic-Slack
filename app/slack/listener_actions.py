@@ -53,7 +53,6 @@ from .web import files_list_simple, download_files, get_mt_ts_cached, set_mt_ts_
 from ..auth.connector import (
     RayClient,
     approve_pending_groups,
-    spend_mt_tokens,
     get_group_mt_engine,
 )
 from ..config import config, domains, Environment
@@ -333,11 +332,7 @@ async def auto_translate_message(
                     thread_ts=ts,
                 )
                 # save timestamp to cache
-                asyncio.create_task(
-                    set_mt_ts_edit(
-                        client, send_ts=ts, reply_ts=request["ts"], count=100
-                    )
-                )
+                asyncio.create_task(set_mt_ts_edit(send_ts=ts, reply_ts=request["ts"]))
         elif settings.display_format == "message":
             if is_edit:
                 timestamp = await get_mt_ts_cached(ts)
@@ -355,11 +350,7 @@ async def auto_translate_message(
                     thread_ts=thread_ts,
                 )
                 # save timestamp to cache
-                asyncio.create_task(
-                    set_mt_ts_edit(
-                        client, send_ts=ts, reply_ts=request["ts"], count=100
-                    )
-                )
+                asyncio.create_task(set_mt_ts_edit(send_ts=ts, reply_ts=request["ts"]))
         else:
             notify_message("Slack app: Invalid display format")
 
@@ -1690,8 +1681,6 @@ async def resendMT(
     client: AsyncWebClient,
     context: AsyncBoltContext,
     message: dict[str, Any],
-    *,
-    use_thread: bool = False,
 ):
     # process mt
     message_match = re.search(
@@ -1704,23 +1693,18 @@ async def resendMT(
         mt_sl = message_match.group(1) or ""
         # TODO: read user lang to default target
         mt_tl = message_match.group(2) or "en"
+        mt_tl = resolve_language_code(mt_sl)
         mt_text = message_match.group(3)
         try:
-            if await require_mt_tokens(context, len(mt_text)):
-                await get_mt_translation(
-                    client,
-                    context,
-                    context["ray"].client,
-                    source_lang=mt_sl,
-                    target_lang=mt_tl,
-                    sentence=mt_text,
-                    thread_ts=message["message"]["latest_reply"],
-                    is_edit=True,
-                )
-
-                await spend_mt_tokens(
-                    credits=len(mt_text), ray_connection=context["ray"]
-                )
+            await get_mt_translation(
+                client=client,
+                context=context,
+                source_lang=mt_sl,
+                target_lang=mt_tl,
+                sentence=mt_text,
+                thread_ts=message["message"]["latest_reply"],
+                is_edit=True,
+            )
         except Exception as e:
             print(e)
 
