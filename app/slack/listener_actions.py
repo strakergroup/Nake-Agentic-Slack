@@ -3,7 +3,6 @@ This module contains functions for common actions which are executed in
 Slack Bolt listener functions.
 """
 
-
 import asyncio
 from typing import Any
 import re
@@ -14,13 +13,12 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
 from buglog import notify_exception, notify_message
 
+from app.mt.translate import get_ai_translation, resolve_language_code
 from app.ray.events.models import MtFileRequestSchema
 from app.translate import _
 from app.wb_tasks.tasks import create_task
-from app.translate import _
 
 from .middleware import require_mt_tokens, require_ray_client
-from .utils import escape_slack_emoji, unescape_slack_emoji
 from .templates.messages import (
     HelpMessage,
     LoginMessage,
@@ -52,17 +50,18 @@ from .templates.views import (
     new_job_modal,
 )
 from .web import files_list_simple, download_files, get_mt_ts_cached, set_mt_ts_edit
-from ..auth.connector import RayClient, approve_pending_groups, spend_mt_tokens, get_group_mt_engine
+from ..auth.connector import (
+    RayClient,
+    approve_pending_groups,
+    spend_mt_tokens,
+    get_group_mt_engine,
+)
 from ..config import config, domains, Environment
 from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
-    is_valid_auto_translate_language,
-    filter_invalid_auto_translate_languages,
     get_auto_translate_settings_and_langs,
 )
-from ..ray.utils import is_ibm_enterprise, is_min_langugagecloud_plan
-from ..mt.google import get_machine_translations, log_google_api_usage
-from ..mt.microsoft import get_microsoft_machine_translations, log_microsoft_api_usage
+from ..ray.utils import is_ibm_enterprise
 from ..watson import watson_message
 from .select_options import get_file_options_cached
 
@@ -136,14 +135,10 @@ async def respond_to_message(
                 await get_mt_translation(
                     client,
                     context,
-                    context["ray"].client,
                     source_lang=mt_sl,
                     target_lang=mt_tl,
                     sentence=mt_text,
                     thread_ts=thread_ts,
-                )
-                await spend_mt_tokens(
-                    credits=len(mt_text), ray_connection=context["ray"]
                 )
         return
     if message["text"] == "debug":
@@ -248,44 +243,6 @@ async def respond_to_message(
         case "Jokes":
             # Delegate jokes to IBM Watson Assistant dialog.
             await context.say(response.reply, thread_ts=thread_ts)
-        case "Machine_Translate":
-            # TODO: Enable intent for machine translate
-            # splict target and source language from the text
-            try:
-                message_match = re.findall(
-                    r"(mt|Mt|mT|MT)\s(\w+)?(\s\w+)?\sto\s(\w+)(\s\w+)?\stranslate:\s?(.*)",
-                    message["text"],
-                    re.I,
-                )
-                if message_match is not None:
-                    mt_sl = message_match[-1][1] + message_match[-1][2]
-                    mt_tl = message_match[-1][3] + message_match[-1][4]
-                    mt_text = message_match[-1][-1]
-                    if await require_mt_tokens(context, len(mt_text)):
-                        await get_mt_translation(
-                            client,
-                            context,
-                            context["ray"].client,
-                            source_lang=mt_sl,
-                            target_lang=mt_tl,
-                            sentence=mt_text[1],
-                            thread_ts=thread_ts,
-                        )
-                else:
-                    await context.say(
-                        'Invalid machine translation request. Please try "Mt source language to target language: sentence."',
-                        thread_ts=thread_ts,
-                    )
-            except Exception as e:
-                help_site = "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack"
-                none_msg = _(
-                    "I didn't understand, please refer to the <{help_site}|help docs>"
-                )
-                # Default to Watson Assistant fallback response if no other matches.
-                await context.say(none_msg, thread_ts=thread_ts)
-                notify_exception(
-                    e, "Failed to get machine translation from watson response"
-                )
         case "Cancel":
             cancel_content = message["text"].lower().split("cancel")
             is_tj = re.findall(r"tj\d+", cancel_content[1].lower(), re.IGNORECASE)
@@ -338,11 +295,6 @@ async def auto_translate_message(
     if message.get("bot_id"):
         # Do not translate bot messages.
         return
-    # if not await require_ray_client(context):
-    #     return
-    # if not is_min_langugagecloud_plan(ray_client.planname, "Essentials"):
-    #     # Minimum Essentials plan is required for the auto-translate feature.
-    #     return
     assert context.channel_id  # TODO enforce this
     settings, target_langs = get_auto_translate_settings_and_langs(
         context, context.channel_id
@@ -350,35 +302,10 @@ async def auto_translate_message(
     assert settings  # TODO Fix typing
     if not target_langs:
         return
-    required_tokens = len(text) * len(target_langs)
-    if not required_tokens or not await require_mt_tokens(context, required_tokens):
-        return
-    unformatted_text = escape_slack_emoji(text)
     try:
-        is_gropid = False
-        if context["ray"].client is None:
-            user_group_id = context['ray'].super_group[0].id
-            is_gropid = True
-        else:
-            user_group_id = context['ray'].client.user_group_id
-        split_langs = await split_languages(target_langs, user_group_id, is_gropid)
-        translations = {}
-        if split_langs["engine"] == "microsoft":
-            source_lang, translationsMicrosoft = (
-                await get_microsoft_machine_translations(
-                    unformatted_text, split_langs["microsoft"]
-                )
-            )
-            translationsMicrosoft.pop(source_lang, None)
-            translations.update(translationsMicrosoft)
-        if split_langs["engine"] == "google":
-            source_lang, translationsGoogle = await get_machine_translations(
-                unformatted_text, split_langs["google"]
-            )
-            translationsGoogle.pop(source_lang, None)
-            translations.update(translationsGoogle)
-        if not translations:
-            return  # Do nothing if nothing translated (source = target)
+        source_lang, translations = await get_ai_translation(
+            context, text, target_langs
+        )
     except Exception as e:
         notify_exception(e, "Slack channel MT failed")
         return
@@ -386,10 +313,7 @@ async def auto_translate_message(
     msg = AutoTranslationMessage(
         None,
         source_lang,
-        translations=[
-            (tl, unescape_slack_emoji(target_text, text))
-            for tl, target_text in translations.items()
-        ],
+        translations=translations,
     )
     try:
         if settings.display_format == "thread":
@@ -438,64 +362,19 @@ async def auto_translate_message(
                 )
         else:
             notify_message("Slack app: Invalid display format")
-            # Disable editing users' messages for now.
-            # if context.user_token:
-            #     try:
-            #         client.token = context.user_token
-            #         await client.chat_update(
-            #             channel=context.channel_id,
-            #             ts=ts,
-            #             text=text,  # Must use original untranslated text for future detect language
-            #             blocks=msg.blocks,
-            #         )
-            #         return
-            #     except Exception as e:
-            #         notify_exception(e, "Failed to update message (auto-translation)")
-            #         # If updating message fails (e.g. permissions), default to thread reply.
-            #         client.token = context.bot_token
-        await spend_mt_tokens(credits=required_tokens, ray_connection=context["ray"])
-        # TODO decide what to do with this
-        # permissions_msg = SlackPermissionsMessage.auto_translate_variation()
-        # await client.chat_postEphemeral(
-        #     channel=context.channel_id,
-        #     user=context.user_id,
-        #     text=permissions_msg.text,
-        #     blocks=permissions_msg.blocks,
-        # )
 
     except Exception as e:
         notify_exception(
             e,
             "Failed to get machine translation from LanguageCloud API or Microsoft API",
         )
-    finally:
-        ray_connection = context.get("ray")
-        ray_client = ray_connection.client if ray_connection else None
-        if split_langs["engine"] == "microsoft":
-            asyncio.create_task(
-                log_microsoft_api_usage(
-                    ray_client.id if ray_client else context.user_id,
-                    unformatted_text,
-                    source_lang,
-                    translationsMicrosoft,
-                )
-            )
-        if split_langs["engine"] == "google":
-            asyncio.create_task(
-                log_google_api_usage(
-                    ray_client.id if ray_client else context.user_id,
-                    unformatted_text,
-                    source_lang,
-                    translationsGoogle,
-                )
-            )
 
 
 async def document_machine_translate(
     client: AsyncWebClient,
     context: AsyncBoltContext,
     file_id: str,
-    selected_language: str
+    selected_language: str,
 ):
     """Translate the Document using verify-task-consumer
 
@@ -508,10 +387,10 @@ async def document_machine_translate(
 
     is_gropid = False
     if context["ray"].client is None:
-        user_group_id = context['ray'].super_group[0].id
+        user_group_id = context["ray"].super_group[0].id
         is_gropid = True
     else:
-        user_group_id = context['ray'].client.user_group_id
+        user_group_id = context["ray"].client.user_group_id
     # check ai engine from group setting and only fr-ca will support by microsoft
     ai_engine = get_group_mt_engine(user_group_id, is_gropid)
     if selected_language.lower() == "fr-ca":
@@ -1557,7 +1436,11 @@ async def post_report_insights(
     insights_msg = ReportInsightsMessage(ray_client.planname)
     try:
         if context.response_url:
-            await context.respond(text=insights_msg.text, blocks=insights_msg.blocks, replace_original=False)
+            await context.respond(
+                text=insights_msg.text,
+                blocks=insights_msg.blocks,
+                replace_original=False,
+            )
         else:
             await client.chat_postMessage(
                 channel=channel_id,
@@ -1611,7 +1494,6 @@ async def ai_translate_help(
 async def get_mt_translation(
     client: AsyncWebClient,
     context: AsyncBoltContext,
-    ray_client: RayClient,
     target_lang: str,
     source_lang: str,
     sentence: str,
@@ -1628,117 +1510,43 @@ async def get_mt_translation(
         sentence (str): The sentence post on RAY need to be translated.
         thread_ts (str | None, optional): The message thread to reply to.
     """
-    if not context.channel_id and not context.user_id and not context.response_url:
-        raise AssertionError("No channel to post to")
-    channel_id = context.channel_id or context.user_id
     try:
-        input = escape_slack_emoji(sentence)
-        is_gropid = False
-        if context["ray"].client is None:
-            user_group_id = context['ray'].super_group[0].id
-            is_gropid = True
+        channel_id = context.channel_id or context.user_id
+        target_lang = resolve_language_code(target_lang.lower())
+
+        source_lang, translation = await get_ai_translation(
+            context, sentence, [target_lang]
+        )
+        target_lang, translation = translation[0]
+        msg = MachineTranslationMessage(target_lang, source_lang, translation)
+        if context.response_url:
+            return await context.respond(text=msg.text, blocks=msg.blocks)
         else:
-            user_group_id = context['ray'].client.user_group_id
-        split_langs = await split_languages([target_lang], user_group_id, is_gropid)
-        if split_langs["engine"] == "microsoft":
-            unformatted_text = input
-            source_lang, translations = await get_microsoft_machine_translations(
-                unformatted_text, split_langs["microsoft"]
-            )
-            translations.pop(source_lang, None)
-            formatted_text = unescape_slack_emoji(
-                translations[split_langs["microsoft"][0]], sentence
-            )
-            response = {
-                "data": {
-                    "source_lang": source_lang,
-                    "target_lang": target_lang,
-                    "text": formatted_text,
-                }
-            }
-        else:
-            response = await RayService.get_service(ray_client).get_machine_translation(
-                target_lang, source_lang, input
-            )
-        if split_langs["engine"] != "microsoft":
-            mt_data = response.data
-        else:
-            mt_data = response["data"]
-        if mt_data is not None:
-            msg = MachineTranslationMessage(
-                mt_data["target_lang"].replace("-", ""),
-                mt_data["source_lang"],
-                unescape_slack_emoji(mt_data["text"], sentence),
-            )
-            if context.response_url:
-                return await context.respond(text=msg.text, blocks=msg.blocks)
-            else:
-                if is_edit:
-                    try:
-                        await client.chat_update(
-                            channel=channel_id,
-                            text=msg.text,
-                            blocks=msg.blocks,
-                            ts=thread_ts,
-                        )
-                    except Exception as e:
-                        print(e)
-                else:
-                    try:
-                        request = await client.chat_postMessage(
-                            channel=channel_id,
-                            text=msg.text,
-                            blocks=msg.blocks,
-                            thread_ts=thread_ts,
-                        )
-                    except Exception as e:
-                        print(e)
-        else:
-            msg = InvalidMTResultMessage()
-            if context.response_url:
-                return await context.respond(text=msg.text)
+            if is_edit:
+                return await client.chat_update(
+                    channel=channel_id,
+                    text=msg.text,
+                    blocks=msg.blocks,
+                    ts=thread_ts,
+                )
             else:
                 return await client.chat_postMessage(
                     channel=channel_id,
                     text=msg.text,
+                    blocks=msg.blocks,
                     thread_ts=thread_ts,
                 )
     except Exception as e:
-        help_site = "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack"
-        none_msg = _("I didn't understand, please refer to the <{help_site}|help docs>")
-        await client.chat_postMessage(
-            channel=channel_id,
-            text=none_msg,
-        )
-        notify_exception(e, "Failed to get machine translation from language cloud API")
-    finally:
-        # todo need to add logging
-        if "response" in locals():
-            if split_langs["engine"] != "microsoft":
-                raw_response = response.response
-                try:
-                    response_data = raw_response.json()
-                except Exception:
-                    response_data = raw_response.content.decode() or None
-                context["log"].add_api_log(
-                    status_code=raw_response.status_code,
-                    url=str(raw_response.url),
-                    payload=None,
-                    response=response_data,
-                    headers=dict(raw_response.headers.items()),
-                    version="v3",
-                )
-            elif "unformatted_text" in locals() and "translations" in locals():
-                ray_connection = context.get("ray")
-                ray_client = ray_connection.client if ray_connection else None
-                asyncio.create_task(
-                    log_microsoft_api_usage(
-                        ray_client.id if ray_client else context.user_id,
-                        unformatted_text,
-                        source_lang,
-                        translations,
-                    )
-                )
+        notify_exception(e, "Failed to get machine translation")
+        msg = InvalidMTResultMessage()
+        if context.response_url:
+            return await context.respond(text=msg.text)
+        else:
+            return await client.chat_postMessage(
+                channel=channel_id,
+                text=msg.text,
+                thread_ts=thread_ts,
+            )
 
 
 async def split_languages(target_langs: list[str], mt_id: str, is_gropid: bool):

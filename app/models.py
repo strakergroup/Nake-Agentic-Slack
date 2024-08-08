@@ -141,3 +141,22 @@ class MicrosoftApiLog(Base):
     response: Mapped[dict | None] = mapped_column(JSON)
     word_count: Mapped[int]
     character_count: Mapped[int]
+
+
+class Language(Base):
+    """Languages that we support for translation.
+
+    Table: `translators.obj_m_langs`
+    """
+
+    __tablename__ = "obj_m_langs"
+
+    uuid: Mapped[str] = mapped_column(name="obj_uuid", primary_key=True)
+    label: Mapped[str]
+    code: Mapped[str] = mapped_column(name="lang")
+    shortname: Mapped[str]
+    site_shortname: Mapped[str]
+    google_code: Mapped[str]
+    parent_lang: Mapped[str]
+    is_char_lang: Mapped[bool]  # TODO fix this, always True
+    tiers: Mapped[int]
