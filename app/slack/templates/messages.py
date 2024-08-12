@@ -296,6 +296,23 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
+                        "text": _(":page_with_curl: Learn Document MT"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Document MT Help"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
+                        "action_id": "link_document_mt",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
                         "text": _(
                             "🔍 Search allows you to search for specific Translation Jobs (TJs)."
                         ),
@@ -467,6 +484,23 @@ class SuccessfulLoginMessage(SlackMessage):
                         },
                         "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
                         "action_id": "link_channel_translations",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(":page_with_curl: Learn Document MT"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Document MT Help"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
+                        "action_id": "link_document_mt",
                     },
                 },
                 {
@@ -1886,6 +1920,23 @@ class HelpMessage(SlackMessage):
                         },
                         "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
                         "action_id": "link_channel_translations",
+                    },
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(":page_with_curl: Learn Document MT"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Document MT Help"),
+                        },
+                        "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
+                        "action_id": "link_document_mt",
                     },
                 },
                 {
