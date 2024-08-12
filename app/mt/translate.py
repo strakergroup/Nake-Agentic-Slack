@@ -6,7 +6,7 @@ from app.mt.google import get_machine_translations, log_google_api_usage
 from app.slack.utils import escape_slack_emoji, unescape_slack_emoji
 from ..models import Language
 from ..database import engines
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from ..mt.microsoft import get_microsoft_machine_translations, log_microsoft_api_usage
 
@@ -15,7 +15,7 @@ from app.slack.middleware import require_mt_tokens
 
 
 # TODO: get microsoft code
-def resolve_language_code(lang: str | None) -> str | None:
+def resolve_language_code(lang: str | None) -> Language | None:
     """Resolve the language code to a Google language code."""
 
     if not lang:
@@ -25,6 +25,7 @@ def resolve_language_code(lang: str | None) -> str | None:
             session.query(Language)
             .filter(
                 or_(
+                    func.lower(Language.bcp_47) == (lang),
                     Language.label == (lang),
                     Language.code == (lang),
                     Language.site_shortname == (lang),
@@ -38,16 +39,14 @@ def resolve_language_code(lang: str | None) -> str | None:
     session.close()
 
     if language:
-        if language.google_code:
-            return language.google_code
-        else:
-            return language.site_shortname
+        return language
     else:
         like_lang = f"{lang}%"
         language = (
             session.query(Language)
             .filter(
                 or_(
+                    Language.bcp_47.ilike(like_lang),
                     Language.google_code.ilike(like_lang),
                     Language.label.ilike(like_lang),
                     Language.code.ilike(like_lang),
@@ -57,16 +56,12 @@ def resolve_language_code(lang: str | None) -> str | None:
             )
             .first()
         )
-        if language:
-            if language.google_code:
-                return language.google_code
-            else:
-                return language.site_shortname
 
-    return "en"
+    return language
 
 
-def resolve_language(target_langs: list[str]) -> str:
+# TODO: Clean this. Create static mapping for microsoft api/google api rather than our db
+def resolve_language(target_langs: list[str], engine: str) -> str:
     """Resolve language code from language name."""
     # Resolve language code from language name
     langs_dict = get_auto_translate_languages(True)
@@ -75,8 +70,12 @@ def resolve_language(target_langs: list[str]) -> str:
         if lang in langs_dict:
             mapped_lang.append(lang)
         else:
-            # fetch from db
-            mapped_lang.append(resolve_language_code(lang))
+            db_lang = resolve_language_code(lang)
+            if db_lang:
+                if db_lang and engine == "microsoft":
+                    mapped_lang.append(db_lang.bcp_47)
+                else:
+                    mapped_lang.append(db_lang.google_code)
     # If language code is not found
     if not mapped_lang:
         return ["en"]
@@ -97,6 +96,7 @@ def get_mt_engine(target_langs: list[str], mt_id: str, is_gropid: bool) -> str:
     return ai_engine
 
 
+# TODO: Add tests
 async def get_ai_translation(
     context: AsyncBoltContext, text: str, target_langs: list[str]
 ) -> tuple[str, list[tuple[str, str]]]:
@@ -123,11 +123,12 @@ async def get_ai_translation(
     else:
         user_group_id = context["ray"].client.user_group_id
     engine = get_mt_engine(target_langs, user_group_id, is_gropid)
+    target_langs = resolve_language(target_langs, engine)
     if engine == "microsoft":
         source_lang, translations = await get_microsoft_machine_translations(
             escaped_text, target_langs
         )
-    else:  # default to google
+    elif engine == "google":
         source_lang, translations = await get_machine_translations(
             escaped_text, target_langs
         )

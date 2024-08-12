@@ -154,6 +154,7 @@ class Language(Base):
     uuid: Mapped[str] = mapped_column(name="obj_uuid", primary_key=True)
     label: Mapped[str]
     code: Mapped[str] = mapped_column(name="lang")
+    bcp_47: Mapped[str] = mapped_column(name="bcp_47")
     shortname: Mapped[str]
     site_shortname: Mapped[str]
     google_code: Mapped[str]

@@ -13,7 +13,7 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
 from buglog import notify_exception, notify_message
 
-from app.mt.translate import get_ai_translation, resolve_language_code
+from app.mt.translate import get_ai_translation
 from app.ray.events.models import MtFileRequestSchema
 from app.translate import _
 from app.wb_tasks.tasks import create_task
@@ -128,7 +128,7 @@ async def respond_to_message(
         if await require_ray_client(context):
             mt_sl = message_match.group(1) or ""
             # TODO: read user lang to default target
-            mt_tl = message_match.group(2) or "en"
+            mt_tl = message_match.group(2) or context.get("locale") or "en"
             mt_text = message_match.group(3)
             if await require_mt_tokens(context, len(mt_text)):
                 await get_mt_translation(
@@ -1503,7 +1503,7 @@ async def get_mt_translation(
     """
     try:
         channel_id = context.channel_id or context.user_id
-        target_lang = resolve_language_code(target_lang.lower())
+        target_lang = target_lang.lower()
 
         source_lang, translation = await get_ai_translation(
             context, sentence, [target_lang]
@@ -1691,9 +1691,7 @@ async def resendMT(
 
     if message_match and await require_ray_client(context, prompt_login=False):
         mt_sl = message_match.group(1) or ""
-        # TODO: read user lang to default target
-        mt_tl = message_match.group(2) or "en"
-        mt_tl = resolve_language_code(mt_sl)
+        mt_tl = message_match.group(2) or context.get("locale") or "en"
         mt_text = message_match.group(3)
         try:
             await get_mt_translation(
