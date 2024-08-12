@@ -128,7 +128,7 @@ async def get_ai_translation(
         source_lang, translations = await get_microsoft_machine_translations(
             escaped_text, target_langs
         )
-    elif engine == "google":
+    else:
         source_lang, translations = await get_machine_translations(
             escaped_text, target_langs
         )
@@ -143,7 +143,7 @@ async def get_ai_translation(
                 translations,
             )
         )
-    elif engine == "google":
+    else:
         ray_client = context["ray"]
         asyncio.create_task(
             log_google_api_usage(
