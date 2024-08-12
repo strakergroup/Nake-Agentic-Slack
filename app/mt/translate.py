@@ -67,7 +67,7 @@ def resolve_language(target_langs: list[str], engine: str) -> str:
     langs_dict = get_auto_translate_languages(True)
     mapped_lang = []
     for lang in target_langs:
-        if lang in langs_dict:
+        if engine != "microsoft" and lang in langs_dict:
             mapped_lang.append(lang)
         else:
             db_lang = resolve_language_code(lang)
