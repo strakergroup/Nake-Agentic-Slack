@@ -47,6 +47,10 @@ features:
     display_name: Straker Translate
     always_online: true
   shortcuts:
+    - name: AI Translate
+      type: message
+      callback_id: shortcut_translate
+      description: Translate this message to your locale
     - name: New Translation Job
       type: message
       callback_id: new_job

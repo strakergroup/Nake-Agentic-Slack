@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 import datetime
 
 import app  # Bug - circular import
-from app.auth.connector import get_job_group_quote_settings
+from app.auth.connector import get_job_group_quote_settings, get_group_mt_engine
 import app.ray.utils
 from app.config import domains
 from app.translate import _, translator_var, Translator
@@ -110,5 +110,14 @@ def test_get_job_group_quote_settings():
     # Assuming 'test_job_uuid' exists in your test database and is associated with a job group
     test_job_uuid = "989A1445-B699-41F4-8E1C-105FD530E450"
     settings = get_job_group_quote_settings(test_job_uuid)
+    assert settings is not None  # Adjust this assertion based on expected results
+    print(settings)
+
+
+def test_get_group_mt():
+    # Assuming 'test_group' exists in your test database and is associated with a job group
+    test_group = "571E9A50-85BA-4356-887411C111D12FDC"
+    is_group = False
+    settings = get_group_mt_engine(test_group,is_group)
     assert settings is not None  # Adjust this assertion based on expected results
     print(settings)
