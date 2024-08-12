@@ -127,7 +127,7 @@ async def get_ai_translation(
         source_lang, translations = await get_microsoft_machine_translations(
             escaped_text, target_langs
         )
-    elif engine == "google":
+    else:  # default to google
         source_lang, translations = await get_machine_translations(
             escaped_text, target_langs
         )
