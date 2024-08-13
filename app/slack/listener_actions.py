@@ -1540,27 +1540,6 @@ async def get_mt_translation(
             )
 
 
-async def split_languages(target_langs: list[str], mt_id: str, is_gropid: bool):
-    ai_engine = get_group_mt_engine(mt_id, is_gropid)
-    microsoft_languages = {
-        "fr-ca": "fr-ca",
-        "french-canada": "fr-ca",
-        "french-canadian": "fr-ca",
-    }
-    result = {"microsoft": [], "google": [], "engine": ai_engine}
-
-    # Check if any target_langs are in microsoft_languages
-    if any(lang.lower() in microsoft_languages for lang in target_langs):
-        result["microsoft"].extend(target_langs)
-        result["engine"] = "microsoft"
-    elif ai_engine == "microsoft":
-        result["microsoft"].extend(target_langs)
-    else:
-        result["google"].extend(target_langs)
-
-    return result
-
-
 async def cancel_job_process(
     client: AsyncWebClient,
     context: AsyncBoltContext,

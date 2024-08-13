@@ -99,7 +99,7 @@ def get_auto_translate_language_name(language: str) -> str:
     for lang in get_auto_translate_languages(include_variations=True):
         if lang[0].casefold() == language or lang[1].casefold() == language:
             return lang[1]
-    return "Unknown"
+    return language
 
 
 def filter_invalid_auto_translate_languages(languages: Iterable[str]) -> list[str]:
