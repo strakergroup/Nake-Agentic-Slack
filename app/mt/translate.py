@@ -137,7 +137,7 @@ async def get_ai_translation(
         ray_client = context["ray"]
         asyncio.create_task(
             log_microsoft_api_usage(
-                ray_client.client.id if ray_client else context.user_id,
+                ray_client.client.id if ray_client.client else context.user_id,
                 escaped_text,
                 source_lang,
                 translations,
