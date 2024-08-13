@@ -2912,8 +2912,12 @@ class AutoTranslationMessage(SlackMessage):
         """
         self.source_text = source_text
         self.source_language = source_language
-        self.translations = translations
         self.scores = scores
+        # Filter translations where target language does not equal source language
+        self.translations = [
+            (target_lang, translated) for target_lang, translated in translations
+            if target_lang != source_language
+        ]
         # TODO what happens when no translations?
         text = source_text or (self.translations[0][1] if self.translations else "")
         super().__init__(text, self.generate_blocks())
@@ -2928,15 +2932,16 @@ class AutoTranslationMessage(SlackMessage):
                 }
             )
         for target_lang, translated in self.translations:
-            quoted_translated = "\n".join(
-                ["> " + line for line in translated.split("\n")]
-            )
-            blocks.append(
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": quoted_translated},
-                }
-            )
+            if target_lang != self.source_language:
+                quoted_translated = "\n".join(
+                    ["> " + line for line in translated.split("\n")]
+                )
+                blocks.append(
+                    {
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": quoted_translated},
+                    }
+                )
         target_langs = [
             get_auto_translate_language_name(t[0]) for t in self.translations
         ]
