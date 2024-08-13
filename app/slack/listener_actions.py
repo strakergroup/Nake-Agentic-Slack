@@ -298,6 +298,7 @@ async def auto_translate_message(
     settings, target_langs = get_auto_translate_settings_and_langs(
         context, context.channel_id
     )
+
     assert settings  # TODO Fix typing
     if not target_langs:
         return
@@ -308,7 +309,13 @@ async def auto_translate_message(
     except Exception as e:
         notify_exception(e, "Slack channel MT failed")
         return
-
+    translations = [
+        (target_lang, translated)
+        for target_lang, translated in translations
+        if target_lang != source_lang
+    ]
+    if not translations:
+        return
     msg = AutoTranslationMessage(
         None,
         source_lang,
