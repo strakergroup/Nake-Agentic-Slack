@@ -2982,7 +2982,10 @@ class AutoTranslationMessage(SlackMessage):
                 }
             )
         for target_lang, translated in self.translations:
-            if target_lang != self.source_language and langcodes.get(target_lang).language != self.source_language:
+            if (
+                target_lang != self.source_language
+                and langcodes.get(target_lang).language != langcodes.get(self.source_language).language
+            ):
                 quoted_translated = "\n".join(
                     ["> " + line for line in translated.split("\n")]
                 )
