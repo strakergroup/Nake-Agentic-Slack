@@ -688,10 +688,6 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
                     settings.display_format if settings else "thread",
                 ),
             )
-            await client.views_open(
-                trigger_id=body["trigger_id"],
-                view=translation_settings_view_error(error_msg),
-            )
         except SlackApiError as e:
             client.token = old_token
             if e.response["error"] == "missing_scope":

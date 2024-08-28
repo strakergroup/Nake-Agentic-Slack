@@ -2,6 +2,8 @@
 
 from typing import Any
 import json
+
+import langcodes
 from app.slack.select_options import get_auto_translate_language_options
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
@@ -2980,7 +2982,10 @@ class AutoTranslationMessage(SlackMessage):
                 }
             )
         for target_lang, translated in self.translations:
-            if target_lang != self.source_language:
+            if (
+                target_lang != self.source_language
+                and langcodes.get(target_lang).language != langcodes.get(self.source_language).language
+            ):
                 quoted_translated = "\n".join(
                     ["> " + line for line in translated.split("\n")]
                 )

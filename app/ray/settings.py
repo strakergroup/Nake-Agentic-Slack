@@ -1,5 +1,6 @@
 import functools
 from typing import Iterable
+import langcodes
 from sqlalchemy import delete, distinct, func, select, text, update
 from sqlalchemy.orm import Session
 from slack_bolt.context.async_context import AsyncBoltContext
@@ -96,6 +97,10 @@ def get_auto_translate_language_name(language: str) -> str:
         str: The name of the language if valid, else "Unknown".
     """
     language = language.casefold()
+    for lang in get_auto_translate_languages(include_variations=True):
+        if lang[0].casefold() == language or lang[1].casefold() == language:
+            return lang[1]
+    language = langcodes.get(language).language
     for lang in get_auto_translate_languages(include_variations=True):
         if lang[0].casefold() == language or lang[1].casefold() == language:
             return lang[1]

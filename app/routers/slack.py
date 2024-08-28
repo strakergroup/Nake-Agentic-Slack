@@ -110,6 +110,4 @@ async def slack_openid_connect(request: Request):
 @router.api_route("/slack/{path:path}", methods=["GET", "POST"])
 async def slack(request: Request):
     """Called by the Slack API to handle events, actions, commands, etc."""
-    raw_body = await request.body()
-    print(raw_body.decode("utf-8"))
     return await slack_handler.handle(request)
