@@ -7,6 +7,7 @@ import asyncio
 from typing import Any
 import re
 import httpx
+import langcodes
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_bolt.context.async_context import AsyncBoltContext
@@ -313,6 +314,7 @@ async def auto_translate_message(
         (target_lang, translated)
         for target_lang, translated in translations
         if target_lang != source_lang
+        and langcodes.get(target_lang).language != langcodes.get(source_lang).language
     ]
     if not translations:
         return
