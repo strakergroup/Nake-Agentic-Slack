@@ -670,8 +670,8 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
 
     if channel_id:
         error_msg = _("You do not have permission to edit this channel!!")
+        old_token = client.token
         try:
-            old_token = client.token
             # check if we have a token that can get channel info for the channel
             channel_info = await resolve_channels_to_team(
                 [channel_id], client, context.get("enterprise_id")
@@ -693,6 +693,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
                 view=translation_settings_view_error(error_msg),
             )
         except SlackApiError as e:
+            client.token = old_token
             if e.response["error"] == "missing_scope":
                 notify_exception(e)
                 error_msg = _("Please reinstall the app")
