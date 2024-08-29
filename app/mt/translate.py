@@ -1,4 +1,5 @@
 import asyncio
+import langcodes
 from slack_bolt.context.async_context import AsyncBoltContext
 
 from app.auth.connector import get_group_mt_engine, spend_mt_tokens
@@ -73,7 +74,10 @@ def resolve_language(target_langs: list[str], engine: str) -> str:
             db_lang = resolve_language_code(lang)
             if db_lang:
                 if db_lang and engine == "microsoft":
-                    mapped_lang.append(db_lang.bcp_47)
+                    if db_lang.bcp_47:
+                        mapped_lang.append(db_lang.bcp_47)
+                    else:
+                        mapped_lang.append(langcodes.get(db_lang.shortname).language)
                 else:
                     mapped_lang.append(db_lang.google_code)
     # If language code is not found
