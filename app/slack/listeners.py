@@ -370,6 +370,23 @@ async def handle_translate_shortcut(ack, body, client, context):
     await ack()
     mt_tl = context.get("locale", "en")
     mt_text = body["message"]["text"]
+
+    user_info = await context.client.users_info(
+        user=context["user_id"], include_locale=True
+    )
+
+    # Set user language for AI Translate based on user locale and timezone for Romanian(ro-RO), Polish(pl-PL) and Dutch[Belgium](nl-NL)
+    # Romanian Timezone - (UTC+02:00) Athens, Bucharest.
+    # Polish Timezone - (UTC+01:00) Sarajevo, Skopje, Warsaw, Zagreb.
+    # Dutch(Belgium) Timezone - (UTC+01:00) Brussels, Copenhagen, Madrid, Paris
+    if user_info["user"]["locale"] == "fr-FR":
+        if user_info["user"]["tz"] == "Europe/Athens":
+            mt_tl = "ro-RO"
+        elif user_info["user"]["tz"] == "Europe/Warsaw":
+            mt_tl = "pl-PL"
+        elif user_info["user"]["tz"] == "Europe/Brussels":
+            mt_tl = "nl-NL"
+
     await get_mt_translation(
         client,
         context,
