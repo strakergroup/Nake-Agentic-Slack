@@ -677,7 +677,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
                 [channel_id], client, context.get("enterprise_id")
             )
             client.token = channel_info[0]["bot_token"]
-            await client.conversations_info(channel=channel_id)
+            channel_info = await client.conversations_info(channel=channel_id)
             # reassign token to the original token since it is required for the original trigger_id
             client.token = old_token
             await client.views_open(

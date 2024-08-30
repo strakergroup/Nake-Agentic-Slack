@@ -1,5 +1,6 @@
 """Slack view templates (modals, home tab)."""
 
+import asyncio
 from typing import Any
 from slack_bolt.context.async_context import AsyncBoltContext
 from app.translate import _
@@ -11,7 +12,11 @@ from ..select_options import (
     map_translation_display_format_option,
     filter_auto_translate_language_options,
 )
-from ...auth.connector import RayConnection, is_slack_team_admin
+from ...auth.connector import (
+    RayConnection,
+    is_slack_team_admin,
+    resolve_channels_to_team,
+)
 from ...ray.settings import (
     get_full_group_translation_settings,
     get_auto_translate_language_name,
@@ -38,7 +43,7 @@ async def home_view(
         and await is_slack_team_admin(rayConnection.client.id, context.enterprise_id)
     )
     visible_translation_settings: list[
-        tuple[SlackGroupSettingsTranslation, list[str]]
+        tuple[SlackGroupSettingsTranslation, list[str], str]
     ] = []
     questionEmoji = f":question:"
     rows_per_page = 5
@@ -46,6 +51,20 @@ async def home_view(
     translation_settings = get_full_group_translation_settings(
         context, page, rows_per_page
     )
+    channel_info = await asyncio.gather(
+        *(
+            resolve_channels_to_team(
+                [setting.channel_id], context.client, context.enterprise_id
+            )
+            for setting, _ in translation_settings
+        ),
+        return_exceptions=True,
+    )
+    for (setting, langs), info in zip(translation_settings, channel_info, strict=False):
+        if isinstance(info, Exception):
+            visible_translation_settings.append((setting, langs, ""))
+        else:
+            visible_translation_settings.append((setting, langs, info[0]["name"]))
     footer_blocks = [
         {
             "type": "button",
@@ -73,7 +92,6 @@ async def home_view(
         )
     translation_settings_blocks = []
     if translation_settings_enabled:
-        visible_translation_settings = translation_settings
         translation_settings_blocks: list[dict[str, Any]] = [
             {"type": "divider"},
             {
@@ -129,7 +147,7 @@ async def home_view(
                     },
                 ]
             )
-            for setting, langs in visible_translation_settings:
+            for setting, langs, name in visible_translation_settings:
                 langs_string = format_strings_display(
                     [get_auto_translate_language_name(lang) for lang in langs],
                     and_string="and",
@@ -144,13 +162,14 @@ async def home_view(
                 message_trans = _(
                     "will be translated into {langs_string} through {display_format_string}"
                 )
+                error_msg = _("channel not found or bot not in channel")
                 translation_settings_blocks.extend(
                     [
                         {
                             "type": "section",
                             "text": {
                                 "type": "mrkdwn",
-                                "text": f"<#{setting.channel_id}> {message_trans}.",
+                                "text": f"<#{setting.channel_id}> ({name if name else error_msg}) {message_trans}.",
                             },
                             # "accessory": {
                             #     "type": "button",
