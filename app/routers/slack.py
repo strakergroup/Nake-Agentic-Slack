@@ -1,3 +1,4 @@
+import time
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
@@ -110,4 +111,19 @@ async def slack_openid_connect(request: Request):
 @router.api_route("/slack/{path:path}", methods=["GET", "POST"])
 async def slack(request: Request):
     """Called by the Slack API to handle events, actions, commands, etc."""
-    return await slack_handler.handle(request)
+    start_time = time.time()
+
+    response = await slack_handler.handle(request)
+    end_time = time.time()
+    duration = end_time - start_time
+    if duration > 5:
+        data = await request.json()
+        event = data.get("event", {})
+        ts = event.get("event_ts", "")
+        event_type = event.get("type", "")
+        channel_type = event.get("channel_type", "")
+        if ts:
+            print(
+                f"Error: Slack request took too long {ts} took {duration:.2f} seconds {event_type} {channel_type}"
+            )
+    return response
