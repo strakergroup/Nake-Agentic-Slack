@@ -37,10 +37,13 @@ async def home_view(
     barEmoji = f":bar_chart:"
     helpEmoji = f":question:"
     speechEmoji = f":speech_balloon:"
+    is_straker_admin = rayConnection.client is not None and await is_slack_team_admin(
+        rayConnection.client.id, context.enterprise_id
+    )
     translation_settings_enabled = (
         not is_ibm_enterprise(context.team_id, context.enterprise_id)
         or rayConnection.client is not None
-        and await is_slack_team_admin(rayConnection.client.id, context.enterprise_id)
+        and is_straker_admin
     )
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str], str]
@@ -51,20 +54,27 @@ async def home_view(
     translation_settings = get_full_group_translation_settings(
         context, page, rows_per_page
     )
-    channel_info = await asyncio.gather(
-        *(
-            resolve_channels_to_team(
-                [setting.channel_id], context.client, context.enterprise_id
-            )
-            for setting, _ in translation_settings
-        ),
-        return_exceptions=True,
-    )
-    for (setting, langs), info in zip(translation_settings, channel_info, strict=False):
-        if isinstance(info, Exception):
-            visible_translation_settings.append((setting, langs, ""))
-        else:
-            visible_translation_settings.append((setting, langs, info[0]["name"]))
+    if is_straker_admin:
+        channel_info = await asyncio.gather(
+            *(
+                resolve_channels_to_team(
+                    [setting.channel_id], context.client, context.enterprise_id
+                )
+                for setting, _ in translation_settings
+            ),
+            return_exceptions=True,
+        )
+        for (setting, langs), info in zip(
+            translation_settings, channel_info, strict=False
+        ):
+            if isinstance(info, Exception):
+                visible_translation_settings.append((setting, langs, ""))
+            else:
+                visible_translation_settings.append((setting, langs, info[0]["name"]))
+    else:
+        visible_translation_settings = [
+            (setting, langs, "") for setting, langs in translation_settings
+        ]
     footer_blocks = [
         {
             "type": "button",
@@ -163,13 +173,14 @@ async def home_view(
                     "will be translated into {langs_string} through {display_format_string}"
                 )
                 error_msg = _("channel not found or bot not in channel")
+                channel_name = f"({name if name else error_msg})"
                 translation_settings_blocks.extend(
                     [
                         {
                             "type": "section",
                             "text": {
                                 "type": "mrkdwn",
-                                "text": f"<#{setting.channel_id}> ({name if name else error_msg}) {message_trans}.",
+                                "text": f"<#{setting.channel_id}>{channel_name if is_straker_admin else ''} {message_trans}.",
                             },
                             # "accessory": {
                             #     "type": "button",
