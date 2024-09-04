@@ -17,6 +17,7 @@ from buglog import notify_exception, notify_message
 from app.ray.utils import (
     download_from_file_server,
     is_ibm_enterprise,
+    supported_file_types,
     upload_to_file_server,
 )
 from app.translate import _
@@ -311,14 +312,25 @@ async def document_mt_job_action(ack, context, action, body, client):
     await ack()
     if await require_ray_client(context):
         output_file = action["value"]
+        file_info = await client.files_info(file=output_file)
+        is_valid_file_type = supported_file_types(file_info["file"]["filetype"])
         # Perform the necessary actions to document the MT job
-        msg = DocumentMTJobMessage(output_file)
-        # Add your code here
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=msg.text,
-            blocks=msg.blocks,
-        )
+        if is_valid_file_type:
+            msg = DocumentMTJobMessage(output_file)
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=msg.text,
+                blocks=msg.blocks,
+            )
+        else:
+            msg = _(
+                "This file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
+            )
+            # Add your code here
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=msg,
+            )
 
 
 @app.action("document_mt_submit", middleware=[ray_connection])
