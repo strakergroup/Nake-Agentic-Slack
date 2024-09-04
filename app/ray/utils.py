@@ -297,3 +297,28 @@ def is_ibm_enterprise(
     except Exception as e:
         print(f"Error checking ibm group{e}")
     return False
+
+
+def supported_file_types(file_type: str) -> bool:
+    VALID_FILE_TYPES = [
+        "csv",
+        "dita",
+        "docx",
+        "html",
+        "idml",
+        "json",
+        "pptx",
+        "properties",
+        "srt",
+        "strings",
+        "ts",
+        "txt",
+        "vtt",
+        "xlf",
+        "xliff",
+        "xlsx",
+        "xml",
+    ]
+
+    if file_type.lower() in VALID_FILE_TYPES:
+        return True
