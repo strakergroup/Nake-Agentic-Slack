@@ -1570,6 +1570,7 @@ async def resolve_channels_to_team(
                     "channel_id": channel,
                     "bot_token": client.token,
                     "name": channel_info["channel"]["name"],
+                    "is_private": channel_info["channel"]["is_private"],
                 }
             )
         except SlackApiError as e:
@@ -1584,6 +1585,7 @@ async def resolve_channels_to_team(
                             "channel_id": channel,
                             "bot_token": token.bot_token,
                             "name": channel_info["channel"]["name"],
+                            "is_private": channel_info["channel"]["is_private"],
                         }
                     )
                     successful = True
