@@ -88,7 +88,6 @@ def get_auto_translate_languages(
         ("mi", "Maori"),
         ("mr", "Marathi"),
         ("mn", "Mongolian"),
-        ("sr", "Montenegrin"),
         ("ne", "Nepali"),
         ("no", "Norwegian"),
         ("or", "Oriya"),
