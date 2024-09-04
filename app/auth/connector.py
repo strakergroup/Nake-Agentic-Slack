@@ -1507,7 +1507,6 @@ def get_job_group_quote_settings(job_id: str):
 
 def get_group_quote_settings(group_uuid: str):
     """Get the quote settings for the job group."""
-    print(group_uuid)
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
             """
