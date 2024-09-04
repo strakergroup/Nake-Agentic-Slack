@@ -73,7 +73,6 @@ def get_auto_translate_languages(
         ("jw", "Javanese"),
         ("kk", "Kazakh"),
         ("km", "Khmer"),
-        ("ky", "Kirghiz"),
         ("ko", "Korean"),
         ("ky", "Kyrgyz"),
         ("lo", "Lao"),
