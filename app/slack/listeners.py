@@ -55,6 +55,7 @@ from .templates.models import (
 )
 from .templates.messages import (
     DocumentMTJobMessage,
+    JobCreationMessage,
     LoginMessage,
     LogoutMessage,
     OnboardingMessage,
@@ -93,6 +94,7 @@ from ..auth.connector import (
     disconnect_ray_super_group_and_users,
     connect_ray_account_sso,
     get_bot_token,
+    get_group_quote_settings,
     get_ray_connection,
     resolve_channels_to_team,
 )
@@ -1061,13 +1063,24 @@ async def handle_new_job(ack, view, context, client):
         try:
             responses = await submit_job(client, context["ray"].client, form)
             result = responses[0].response.json()["Message"]
+            group_id = form.group_id or context["ray"].client.user_group_id
             if "job_id" in result:
-                message = JobSubmitMessage(form)
-                await client.chat_postMessage(
-                    channel=context["user_id"],
-                    text=message.text,
-                    blocks=message.blocks,
-                )
+                if not is_ibm_enterprise(
+                    context["team_id"], context.get("enterprise_id")
+                ) or get_group_quote_settings(group_id):
+                    message = JobSubmitMessage(form)
+                    await client.chat_postMessage(
+                        channel=context["user_id"],
+                        text=message.text,
+                        blocks=message.blocks,
+                    )
+                else:
+                    message = JobCreationMessage(result["job_id"], False)
+                    await client.chat_postMessage(
+                        channel=context["user_id"],
+                        text=message.text,
+                        blocks=message.blocks,
+                    )
         except Exception as e:
             if isinstance(e, RayAPIResponseError):
                 try:
