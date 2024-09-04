@@ -1488,7 +1488,6 @@ async def get_client_type(client_id: str, group_id: str) -> str:
 
 def get_job_group_quote_settings(job_id: str):
     """Get the quote settings for the job group."""
-    print(job_id)
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
             """
@@ -1499,6 +1498,24 @@ def get_job_group_quote_settings(job_id: str):
             WHERE j.id = :job_id
             """
         ).bindparams(job_id=job_id)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return False
+    return row.api_enabled
+
+
+def get_group_quote_settings(group_uuid: str):
+    """Get the quote settings for the job group."""
+    print(group_uuid)
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT api_enabled
+            FROM obj_m_group g
+            WHERE g.obj_uuid = :group_uuid
+            """
+        ).bindparams(group_uuid=group_uuid)
         result = conn.execute(sql)
         row = result.first()
         if not row:
