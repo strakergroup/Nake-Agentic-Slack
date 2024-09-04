@@ -46,7 +46,7 @@ async def home_view(
         and is_straker_admin
     )
     visible_translation_settings: list[
-        tuple[SlackGroupSettingsTranslation, list[str], str]
+        tuple[SlackGroupSettingsTranslation, list[str], dict[str, str]]
     ] = []
     questionEmoji = f":question:"
     rows_per_page = 5
@@ -68,12 +68,12 @@ async def home_view(
             translation_settings, channel_info, strict=False
         ):
             if isinstance(info, Exception):
-                visible_translation_settings.append((setting, langs, ""))
+                visible_translation_settings.append((setting, langs, {}))
             else:
-                visible_translation_settings.append((setting, langs, info[0]["name"]))
+                visible_translation_settings.append((setting, langs, info[0]))
     else:
         visible_translation_settings = [
-            (setting, langs, "") for setting, langs in translation_settings
+            (setting, langs, {}) for setting, langs in translation_settings
         ]
     footer_blocks = [
         {
@@ -157,7 +157,8 @@ async def home_view(
                     },
                 ]
             )
-            for setting, langs, name in visible_translation_settings:
+            for setting, langs, info in visible_translation_settings:
+                print(info)
                 langs_string = format_strings_display(
                     [get_auto_translate_language_name(lang) for lang in langs],
                     and_string="and",
@@ -173,14 +174,19 @@ async def home_view(
                     "will be translated into {langs_string} through {display_format_string}"
                 )
                 error_msg = _("channel not found or bot not in channel")
-                channel_name = f"({name if name else error_msg})"
+                channel_name = (
+                    f"({info.get('name') if info.get('name') else error_msg})"
+                )
+                should_display_channel_info = (
+                    is_straker_admin and info.get("is_private")
+                ) or not info.get("name")
                 translation_settings_blocks.extend(
                     [
                         {
                             "type": "section",
                             "text": {
                                 "type": "mrkdwn",
-                                "text": f"<#{setting.channel_id}>{channel_name if is_straker_admin else ''} {message_trans}.",
+                                "text": f"<#{setting.channel_id}>{channel_name if should_display_channel_info else ''} {message_trans}.",
                             },
                             # "accessory": {
                             #     "type": "button",
