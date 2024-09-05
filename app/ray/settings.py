@@ -44,7 +44,6 @@ def get_auto_translate_languages(
         ("ny", "Chichewa"),
         ("zh-CN", "Chinese (Simplified)"),
         ("zh-TW", "Chinese (Traditional)"),
-        ("el", "Classical Greek"),
         ("hr", "Croatian"),
         ("cs", "Czech"),
         ("da", "Danish"),
