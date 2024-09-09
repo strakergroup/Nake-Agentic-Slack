@@ -120,15 +120,7 @@ async def get_ai_translation(
     required_tokens = len(text) * len(target_langs)
     if not required_tokens or not await require_mt_tokens(context, required_tokens):
         return
-    is_gropid = False
     escaped_text = escape_slack_emoji(text)
-    if context["ray"].client is None:
-        user_group_id = context["ray"].super_group[0].id
-        is_gropid = True
-    else:
-        user_group_id = context["ray"].client.user_group_id
-    engine = get_mt_engine(target_langs, user_group_id, is_gropid)
-    target_langs = resolve_language(target_langs, engine)
     url = f"{domains.languagecloud_api}/mt/translate"
     token = (
         context["ray"].client.id_token
