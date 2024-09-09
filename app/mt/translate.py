@@ -42,7 +42,14 @@ def resolve_language_code(lang: str | None) -> Language | None:
     if language:
         return language
     else:
-        like_lang = f"{lang}%"
+        if "-" in lang:
+            if lang == "french-canada":
+                like_lang = "french (canada)"
+            else:
+                like_lang = lang.replace("-", " ")
+        else:
+            like_lang = f"{lang}%"
+
         language = (
             session.query(Language)
             .filter(
