@@ -1575,15 +1575,18 @@ async def resolve_channels_to_team(
         str: The Slack team ID.
     """
     team_channel = []
+    old_token = client.token
     all_tokens = get_all_tokens_for_enterprise(enterprise_id)
     for channel in channel_id:
         try:
-            await client.conversations_info(channel=channel)
+            channel_info = await client.conversations_info(channel=channel)
             team_channel.append(
                 {
                     "team_id": get_team_from_token(client.token),
                     "channel_id": channel,
                     "bot_token": client.token,
+                    "name": channel_info["channel"]["name"],
+                    "is_private": channel_info["channel"]["is_private"],
                 }
             )
         except SlackApiError as e:
@@ -1591,12 +1594,14 @@ async def resolve_channels_to_team(
             for token in all_tokens:
                 client.token = token.bot_token
                 try:
-                    await client.conversations_info(channel=channel)
+                    channel_info = await client.conversations_info(channel=channel)
                     team_channel.append(
                         {
                             "team_id": token.team_id,
                             "channel_id": channel,
                             "bot_token": token.bot_token,
+                            "name": channel_info["channel"]["name"],
+                            "is_private": channel_info["channel"]["is_private"],
                         }
                     )
                     successful = True
@@ -1604,7 +1609,9 @@ async def resolve_channels_to_team(
                 except SlackApiError:
                     continue
             if not successful:
+                client.token = old_token
                 raise e  # Raise the original SlackApiError if no token was successful. This will request that the app be added to the workspace/channel.
+    client.token = old_token
     return team_channel
 
 
