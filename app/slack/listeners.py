@@ -17,6 +17,7 @@ from buglog import notify_exception, notify_message
 from app.ray.utils import (
     download_from_file_server,
     is_ibm_enterprise,
+    supported_file_types,
     upload_to_file_server,
 )
 from app.translate import _
@@ -54,6 +55,7 @@ from .templates.models import (
 )
 from .templates.messages import (
     DocumentMTJobMessage,
+    JobCreationMessage,
     LoginMessage,
     LogoutMessage,
     OnboardingMessage,
@@ -92,6 +94,7 @@ from ..auth.connector import (
     disconnect_ray_super_group_and_users,
     connect_ray_account_sso,
     get_bot_token,
+    get_group_quote_settings,
     get_ray_connection,
     resolve_channels_to_team,
 )
@@ -309,14 +312,25 @@ async def document_mt_job_action(ack, context, action, body, client):
     await ack()
     if await require_ray_client(context):
         output_file = action["value"]
+        file_info = await client.files_info(file=output_file)
+        is_valid_file_type = supported_file_types(file_info["file"]["filetype"])
         # Perform the necessary actions to document the MT job
-        msg = DocumentMTJobMessage(output_file)
-        # Add your code here
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=msg.text,
-            blocks=msg.blocks,
-        )
+        if is_valid_file_type:
+            msg = DocumentMTJobMessage(output_file)
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=msg.text,
+                blocks=msg.blocks,
+            )
+        else:
+            msg = _(
+                "This file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
+            )
+            # Add your code here
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=msg,
+            )
 
 
 @app.action("document_mt_submit", middleware=[ray_connection])
@@ -694,7 +708,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
                 [channel_id], client, context.get("enterprise_id")
             )
             client.token = channel_info[0]["bot_token"]
-            await client.conversations_info(channel=channel_id)
+            channel_info = await client.conversations_info(channel=channel_id)
             # reassign token to the original token since it is required for the original trigger_id
             client.token = old_token
             await client.views_open(
@@ -1066,13 +1080,24 @@ async def handle_new_job(ack, view, context, client):
         try:
             responses = await submit_job(client, context["ray"].client, form)
             result = responses[0].response.json()["Message"]
+            group_id = form.group_id or context["ray"].client.user_group_id
             if "job_id" in result:
-                message = JobSubmitMessage(form)
-                await client.chat_postMessage(
-                    channel=context["user_id"],
-                    text=message.text,
-                    blocks=message.blocks,
-                )
+                if not is_ibm_enterprise(
+                    context["team_id"], context.get("enterprise_id")
+                ) or get_group_quote_settings(group_id):
+                    message = JobSubmitMessage(form)
+                    await client.chat_postMessage(
+                        channel=context["user_id"],
+                        text=message.text,
+                        blocks=message.blocks,
+                    )
+                else:
+                    message = JobCreationMessage(result["job_id"], False)
+                    await client.chat_postMessage(
+                        channel=context["user_id"],
+                        text=message.text,
+                        blocks=message.blocks,
+                    )
         except Exception as e:
             if isinstance(e, RayAPIResponseError):
                 try:
