@@ -29,9 +29,9 @@ def resolve_language_code(lang: str | None) -> Language | None:
                     func.lower(Language.bcp_47) == (lang),
                     Language.label == (lang),
                     Language.code == (lang),
-                    Language.site_shortname == (lang),
                     Language.google_code == (lang),
-                    Language.parent_lang == (lang),
+                    # Language.site_shortname == (lang),
+                    # Language.parent_lang == (lang),
                 )
             )
             .first()
@@ -42,7 +42,14 @@ def resolve_language_code(lang: str | None) -> Language | None:
     if language:
         return language
     else:
-        like_lang = f"{lang}%"
+        if "-" in lang:
+            if lang == "french-canada":
+                like_lang = "french (canada)"
+            else:
+                like_lang = lang.replace("-", " ")
+        else:
+            like_lang = f"{lang}%"
+
         language = (
             session.query(Language)
             .filter(
@@ -51,8 +58,8 @@ def resolve_language_code(lang: str | None) -> Language | None:
                     Language.google_code.ilike(like_lang),
                     Language.label.ilike(like_lang),
                     Language.code.ilike(like_lang),
-                    Language.site_shortname.ilike(like_lang),
-                    Language.parent_lang.ilike(like_lang),
+                    # Language.site_shortname.ilike(like_lang),
+                    # Language.parent_lang.ilike(like_lang),
                 )
             )
             .first()
