@@ -1,15 +1,16 @@
-import asyncio
+import httpx
 import langcodes
 from slack_bolt.context.async_context import AsyncBoltContext
 
+from app.mt.schemas import TranslationRequest, TranslationResponse
+from ..config import domains
 from app.auth.connector import get_group_mt_engine, spend_mt_tokens
-from app.mt.google import get_machine_translations, log_google_api_usage
 from app.slack.utils import escape_slack_emoji, unescape_slack_emoji
 from ..models import Language
 from ..database import engines
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
-from ..mt.microsoft import get_microsoft_machine_translations, log_microsoft_api_usage
+from straker_auth.languagecloud import create_languagecloud_group_token
 
 from app.ray.settings import get_auto_translate_languages
 from app.slack.middleware import require_mt_tokens
@@ -126,47 +127,29 @@ async def get_ai_translation(
     required_tokens = len(text) * len(target_langs)
     if not required_tokens or not await require_mt_tokens(context, required_tokens):
         return
-    is_gropid = False
     escaped_text = escape_slack_emoji(text)
-    if context["ray"].client is None:
-        user_group_id = context["ray"].super_group[0].id
-        is_gropid = True
-    else:
-        user_group_id = context["ray"].client.user_group_id
-    engine = get_mt_engine(target_langs, user_group_id, is_gropid)
-    target_langs = resolve_language(target_langs, engine)
-    if engine == "microsoft":
-        source_lang, translations = await get_microsoft_machine_translations(
-            escaped_text, target_langs
+    url = f"{domains.languagecloud_api}/mt/translate"
+    token = (
+        context["ray"].client.id_token
+        if context["ray"].client
+        else create_languagecloud_group_token(context["ray"].super_group[0].id)
+    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+    }
+    task_data = TranslationRequest(text=escaped_text, target_languages=target_langs)
+    async with httpx.AsyncClient() as http:
+        response = await http.post(
+            url,
+            headers=headers,
+            json=task_data.model_dump(),
         )
-    else:
-        source_lang, translations = await get_machine_translations(
-            escaped_text, target_langs
-        )
-    # TODO: update logging to include transaction id
-    if engine == "microsoft":
-        ray_client = context["ray"]
-        asyncio.create_task(
-            log_microsoft_api_usage(
-                ray_client.client.id if ray_client.client else context.user_id,
-                escaped_text,
-                source_lang,
-                translations,
-            )
-        )
-    else:
-        ray_client = context["ray"]
-        asyncio.create_task(
-            log_google_api_usage(
-                ray_client.client.id if ray_client.client else context.user_id,
-                escaped_text,
-                source_lang,
-                translations,
-            )
-        )
+        response.raise_for_status()
+        data = TranslationResponse(**response.json())
     translations = [
         (tl, unescape_slack_emoji(target_text, text))
-        for tl, target_text in translations.items()
+        for tl, target_text in data.translations.items()
     ]
+    source_lang = data.source_language
     await spend_mt_tokens(credits=required_tokens, ray_connection=context["ray"])
     return (source_lang, translations)

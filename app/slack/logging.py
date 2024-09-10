@@ -1,3 +1,4 @@
+import time
 from typing import Any, Callable, Coroutine
 import asyncio
 import inspect
@@ -128,16 +129,27 @@ def slack_log_decorator(
 
     @functools.wraps(wrapper_sig_func)
     async def wrapper(context, *args, **kwargs):
+        start_time = time.time()
         # Put the context back into kwargs if needed.
         if context_in_listener:
             kwargs["context"] = context
 
         await listener_func(*args, **kwargs)
+        end_time = time.time()
+        duration = end_time - start_time
 
         # Log with ray_logger at the end of the function.
         if "log" in context and isinstance(context["log"], SlackAppLog):
             asyncio.create_task(log_slack(context["log"]))
         else:
             logging.warning("The SlackAppLog object ('log') is not in the context")
+
+        if duration > 5:
+            ts = ""
+            if "log" in context and isinstance(context["log"], SlackAppLog):
+                ts = context["log"].slack_log.ts
+            logging.error(
+                f"Slack request took too long Function {listener_func.__name__} {ts} took {duration:.2f} seconds"
+            )
 
     return wrapper
