@@ -1488,7 +1488,6 @@ async def get_client_type(client_id: str, group_id: str) -> str:
 
 def get_job_group_quote_settings(job_id: str):
     """Get the quote settings for the job group."""
-    print(job_id)
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
             """
@@ -1499,6 +1498,23 @@ def get_job_group_quote_settings(job_id: str):
             WHERE j.id = :job_id
             """
         ).bindparams(job_id=job_id)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return False
+    return row.api_enabled
+
+
+def get_group_quote_settings(group_uuid: str):
+    """Get the quote settings for the job group."""
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT api_enabled
+            FROM obj_m_group g
+            WHERE g.obj_uuid = :group_uuid
+            """
+        ).bindparams(group_uuid=group_uuid)
         result = conn.execute(sql)
         row = result.first()
         if not row:
@@ -1559,15 +1575,18 @@ async def resolve_channels_to_team(
         str: The Slack team ID.
     """
     team_channel = []
+    old_token = client.token
     all_tokens = get_all_tokens_for_enterprise(enterprise_id)
     for channel in channel_id:
         try:
-            await client.conversations_info(channel=channel)
+            channel_info = await client.conversations_info(channel=channel)
             team_channel.append(
                 {
                     "team_id": get_team_from_token(client.token),
                     "channel_id": channel,
                     "bot_token": client.token,
+                    "name": channel_info["channel"]["name"],
+                    "is_private": channel_info["channel"]["is_private"],
                 }
             )
         except SlackApiError as e:
@@ -1575,12 +1594,14 @@ async def resolve_channels_to_team(
             for token in all_tokens:
                 client.token = token.bot_token
                 try:
-                    await client.conversations_info(channel=channel)
+                    channel_info = await client.conversations_info(channel=channel)
                     team_channel.append(
                         {
                             "team_id": token.team_id,
                             "channel_id": channel,
                             "bot_token": token.bot_token,
+                            "name": channel_info["channel"]["name"],
+                            "is_private": channel_info["channel"]["is_private"],
                         }
                     )
                     successful = True
@@ -1588,7 +1609,9 @@ async def resolve_channels_to_team(
                 except SlackApiError:
                     continue
             if not successful:
+                client.token = old_token
                 raise e  # Raise the original SlackApiError if no token was successful. This will request that the app be added to the workspace/channel.
+    client.token = old_token
     return team_channel
 
 
