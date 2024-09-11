@@ -15,6 +15,8 @@ from straker_auth.languagecloud import create_languagecloud_group_token
 from app.ray.settings import get_auto_translate_languages
 from app.slack.middleware import require_mt_tokens
 
+from ..config import config
+
 
 # TODO: get microsoft code
 def resolve_language_code(lang: str | None) -> Language | None:
@@ -132,7 +134,11 @@ async def get_ai_translation(
     token = (
         context["ray"].client.id_token
         if context["ray"].client
-        else create_languagecloud_group_token(context["ray"].super_group[0].id)
+        else create_languagecloud_group_token(
+            context["ray"].super_group[0].id,
+            aud="languagecloud-api",
+            secret=config.languagecloud_api_key.get_secret_value(),
+        )
     )
     headers = {
         "Authorization": f"Bearer {token}",
