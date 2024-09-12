@@ -158,7 +158,6 @@ async def home_view(
                 ]
             )
             for setting, langs, info in visible_translation_settings:
-                print(info)
                 langs_string = format_strings_display(
                     [get_auto_translate_language_name(lang) for lang in langs],
                     and_string="and",
