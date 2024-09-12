@@ -408,6 +408,7 @@ async def document_machine_translate(
                 "channel_id": context["channel_id"],
                 "target_language": selected_language,
                 "ai_engine": ai_engine,
+                "data_source": 'slack',
             }
         )
         async with httpx.AsyncClient() as http:
