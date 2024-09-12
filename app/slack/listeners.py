@@ -93,6 +93,7 @@ from ..auth.connector import (
     disconnect_ray_account,
     disconnect_ray_super_group_and_users,
     connect_ray_account_sso,
+    get_all_tokens_for_enterprise,
     get_bot_token,
     get_group_quote_settings,
     get_ray_connection,
@@ -1220,25 +1221,26 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
                 )
                 client.token = bot_token
                 await client.chat_postMessage(channel=channel_id, text=msg.text)
-            except SlackApiError:
-                pass  # Must be in channel to post. TODO check other events, e.g. app_mention
             except Exception as e:
                 notify_exception(e)
+                if context.get("enterprise_id"):
+                    all_tokens = get_all_tokens_for_enterprise(
+                        context.get("enterprise_id")
+                    )
+                    for token in all_tokens:
+                        client.token = token.bot_token
+                        try:
+                            await client.chat_postMessage(
+                                channel=channel_id, text=msg.text
+                            )
+                            break
+                        except Exception as e:
+                            pass
 
-        await asyncio.gather(
-            *[
-                join_channel(channel["channel_id"], channel["bot_token"])
-                for channel in team_channels
-            ],
-            return_exceptions=True,
-        )
-        await asyncio.gather(
-            *[
-                notify_channel(channel["channel_id"], channel["bot_token"])
-                for channel in team_channels
-            ],
-            return_exceptions=True,
-        )
+        for channel in team_channels:
+            await join_channel(channel["channel_id"], channel["bot_token"])
+            await notify_channel(channel["channel_id"], channel["bot_token"])
+
     except Exception as e:
         notify_exception(e)
 
