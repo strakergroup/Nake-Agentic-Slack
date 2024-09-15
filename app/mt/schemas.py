@@ -7,6 +7,11 @@ class TranslationRequest(BaseModel):
     text: str
     target_languages: List[str]
     source_language: str | None = None
+    app_name: str
+    usage_type: str = "direct mt"
+    email: str | None = (
+        None  # used when user is not logged in or does not have an lc account
+    )
 
 
 class TranslationResponse(BaseModel):

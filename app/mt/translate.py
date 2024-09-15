@@ -112,7 +112,7 @@ def get_mt_engine(target_langs: list[str], mt_id: str, is_gropid: bool) -> str:
 
 # TODO: Add tests
 async def get_ai_translation(
-    context: AsyncBoltContext, text: str, target_langs: list[str]
+    context: AsyncBoltContext, text: str, target_langs: list[str], usage_type: str
 ) -> tuple[str, list[tuple[str, str]]]:
     """Get google or microsoft machine translation for sentence by correct language pair.
 
@@ -143,7 +143,13 @@ async def get_ai_translation(
     headers = {
         "Authorization": f"Bearer {token}",
     }
-    task_data = TranslationRequest(text=escaped_text, target_languages=target_langs)
+    task_data = TranslationRequest(
+        text=escaped_text,
+        target_languages=target_langs,
+        app_name="slack",
+        usage_type=usage_type,
+        email=context.get("user_info", {}).get("profile", {}).get("email", "unknown"),
+    )
     async with httpx.AsyncClient() as http:
         response = await http.post(
             url,
@@ -157,5 +163,4 @@ async def get_ai_translation(
         for tl, target_text in data.translations.items()
     ]
     source_lang = data.source_language
-    await spend_mt_tokens(credits=required_tokens, ray_connection=context["ray"])
     return (source_lang, translations)
