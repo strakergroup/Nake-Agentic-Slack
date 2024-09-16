@@ -73,12 +73,13 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
             context["ray"] = demo_connection
     try:
         context["is_bot"] = False
-        user_info = await context.client.users_info(
-            user=context["user_id"], include_locale=True
-        )
-        context["is_bot"] = user_info["user"]["is_bot"]
-        set_user_language(user_info, context)
-        context["user_info"] = user_info["user"]
+        if context.client:
+            user_info = await context.client.users_info(
+                user=context["user_id"], include_locale=True
+            )
+            context["is_bot"] = user_info["user"]["is_bot"]
+            set_user_language(user_info, context)
+            context["user_info"] = user_info["user"]
     except Exception as e:
         context["is_bot"] = False
         notify_exception(e)
@@ -139,7 +140,7 @@ async def require_ray_client(
     ):
         return True
 
-    if prompt_login:
+    if prompt_login and context.client:
         if not isinstance(login_message := context.get("login_prompt"), LoginMessage):
             logging.warning('"login_prompt" is not in the context')
             notify_message(
@@ -149,15 +150,15 @@ async def require_ray_client(
 
         login_message = login_message.with_variation(variation)
         # Send login prompt if no LanguageCloud account is connected.
-        if context.respond.response_url:
+        if context.respond:
             await context.respond(
                 text=login_message.text,
                 blocks=login_message.blocks,
             )
         else:
             await context.client.chat_postEphemeral(
-                channel=context.get("channel_id") or context.get("user_id"),
-                user=context.get("user_id"),
+                channel=context.get("channel_id") or context.get("user_id", ""),
+                user=context.get("user_id", ""),
                 text=login_message.text,
                 blocks=login_message.blocks,
             )
@@ -185,22 +186,23 @@ async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
         client_type = await get_client_type(
             context["ray"].client.id, context["ray"].client.user_group_id
         )
-    if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
-        team_id=context["team_id"], enterprise_id=context.get("enterprise_id")
-    ):
-        message = RequiresMtTokenMessage(ai_tokens, value)
-        await context.client.chat_postEphemeral(
-            channel=context.get("channel_id") or context.get("user_id"),
-            user=context.get("user_id"),
-            text=message.text,
-            blocks=message.blocks,
-        )
-    else:
-        message = RequiresMtTokenAdminMessage(ai_tokens, value)
-        await context.client.chat_postEphemeral(
-            channel=context.get("channel_id") or context.get("user_id"),
-            user=context.get("user_id"),
-            text=message.text,
-            blocks=message.blocks,
-        )
+    if context.client:
+        if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
+            enterprise_id=context.get("enterprise_id")
+        ):
+            message = RequiresMtTokenMessage(ai_tokens, value)
+            await context.client.chat_postEphemeral(
+                channel=context.get("channel_id") or context.get("user_id", ""),
+                user=context.get("user_id", ""),
+                text=message.text,
+                blocks=message.blocks,
+            )
+        else:
+            admin_message = RequiresMtTokenAdminMessage(ai_tokens, value)
+            await context.client.chat_postEphemeral(
+                channel=context.get("channel_id") or context.get("user_id", ""),
+                user=context.get("user_id", ""),
+                text=admin_message.text,
+                blocks=admin_message.blocks,
+            )
     return False

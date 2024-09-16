@@ -273,23 +273,17 @@ def set_user_language(user_info, context=None):
 
 # TODO: Maybe add to middleware
 def is_ibm_enterprise(
-    team_id: str,
     enterprise_id: str | None,
 ):
     """Check if the user is in ibm enterpirse or workspace."""
+    if not enterprise_id:
+        return False
     # if config.environment == Environment.production:
     e_id = "EUJJ37YFR"
     t_id = "T0360HUQKS9"
     # else:
     se_id = "E04RDMG8XP1"
     st_id = "T02FDFCGK"
-    # if (
-    #     enterprise_id == e_id
-    #     or team_id == t_id
-    #     or enterprise_id == se_id
-    #     or team_id == st_id
-    # ) and team_id != "T04D0JGE2HH":
-    #     return True
     try:
         # TODO: Maybe add to middleware
         if is_ibm_super_group(enterprise_id):

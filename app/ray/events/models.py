@@ -143,12 +143,18 @@ class MtFileRequestSchema(BaseModel):
     ai_engine: str
     data_source: str
 
+
 class MtSuccessResponseSchema(BaseModel):
     file_id: str
     tokens: int
     client_id: str
     target_language: str
     channel_id: str
+
+
+class Balance(BaseModel):
+    required: int
+    balance: int
 
 
 class MtErrorResponseSchema(BaseModel):

@@ -72,7 +72,7 @@ def resolve_language_code(lang: str | None) -> Language | None:
 
 
 # TODO: Clean this. Create static mapping for microsoft api/google api rather than our db
-def resolve_language(target_langs: list[str], engine: str) -> str:
+def resolve_language(target_langs: list[str], engine: str) -> list[str]:
     """Resolve language code from language name."""
     # Resolve language code from language name
     langs_dict = get_auto_translate_languages(True)
@@ -87,7 +87,11 @@ def resolve_language(target_langs: list[str], engine: str) -> str:
                     if db_lang.bcp_47:
                         mapped_lang.append(db_lang.bcp_47)
                     else:
-                        mapped_lang.append(langcodes.get(db_lang.shortname).language)
+                        lng_str = langcodes.get(db_lang.shortname).language
+                        if lng_str:
+                            mapped_lang.append(lng_str)
+                        else:
+                            mapped_lang.append(lang)
                 else:
                     mapped_lang.append(db_lang.google_code)
     # If language code is not found
@@ -113,7 +117,7 @@ def get_mt_engine(target_langs: list[str], mt_id: str, is_gropid: bool) -> str:
 # TODO: Add tests
 async def get_ai_translation(
     context: AsyncBoltContext, text: str, target_langs: list[str], usage_type: str
-) -> tuple[str, list[tuple[str, str]]]:
+) -> tuple[str | None, list[tuple[str, str]]]:
     """Get google or microsoft machine translation for sentence by correct language pair.
 
     Args:
@@ -128,7 +132,7 @@ async def get_ai_translation(
         raise AssertionError("No channel to post to")
     required_tokens = len(text) * len(target_langs)
     if not required_tokens or not await require_mt_tokens(context, required_tokens):
-        return
+        return None, []
     escaped_text = escape_slack_emoji(text)
     url = f"{domains.languagecloud_api}/mt/translate"
     token = (

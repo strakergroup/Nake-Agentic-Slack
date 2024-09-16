@@ -81,7 +81,7 @@ async def respond_to_message(
         use_thread (bool, optional): Reply to messages in a thread. Defaults to False.
     """
     # Reply in a thread in channels and groups (non-ephemeral messages only).
-    thread_ts = message.get("thread_ts", message.get("ts")) if use_thread else None
+    thread_ts = message.get("thread_ts", message.get("ts")) if use_thread else ""
     # If there is no text, show new job button or ignore the message.
     if message.get("files"):
         if await require_ray_client(context):
@@ -111,11 +111,13 @@ async def respond_to_message(
                             msg = TranscriptionMessage()
                             await context.say(text=msg.text, thread_ts=thread_ts)
                 else:
-                    msg = NewJobMessage(
+                    new_job_msg = NewJobMessage(
                         context["channel_id"], message["ts"], file["id"]
                     )
                     await context.say(
-                        text=msg.text, blocks=msg.blocks, thread_ts=thread_ts
+                        text=new_job_msg.text,
+                        blocks=new_job_msg.blocks,
+                        thread_ts=thread_ts,
                     )
             return
     # process mt
@@ -164,7 +166,7 @@ async def respond_to_message(
                 thread_ts=thread_ts,
             )
         case "Login":
-            msg = LoginMessage(
+            login_msg = LoginMessage(
                 user_id=context["user_id"],
                 team_id=context["team_id"],
                 enterprise_id=context.get("enterprise_id"),
@@ -176,8 +178,8 @@ async def respond_to_message(
             await client.chat_postEphemeral(
                 channel=context["channel_id"],
                 user=context["user_id"],
-                text=msg.text,
-                blocks=msg.blocks,
+                text=login_msg.text,
+                blocks=login_msg.blocks,
             )
             # await client.chat_postEphemeral(
             #     channel=context["channel_id"],
@@ -187,12 +189,12 @@ async def respond_to_message(
             # )
         case "Logout":
             if await require_ray_client(context):
-                msg = LogoutMessage(context["ray"].client)
+                logout_msg = LogoutMessage(context["ray"].client)
                 await client.chat_postEphemeral(
                     channel=context["channel_id"],
                     user=context["user_id"],
-                    text=msg.text,
-                    blocks=msg.blocks,
+                    text=logout_msg.text,
+                    blocks=logout_msg.blocks,
                 )
         case "Job_Overview":
             if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -229,8 +231,12 @@ async def respond_to_message(
                         client, channel_id=context["channel_id"], count=120
                     )
                 )
-                msg = NewJobMessage(context["channel_id"], message["ts"])
-                await context.say(text=msg.text, blocks=msg.blocks, thread_ts=thread_ts)
+                new_job_msg = NewJobMessage(context["channel_id"], message["ts"])
+                await context.say(
+                    text=new_job_msg.text,
+                    blocks=new_job_msg.blocks,
+                    thread_ts=thread_ts,
+                )
         case "Show_Insights":
             if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
                 await post_insights(
@@ -242,7 +248,8 @@ async def respond_to_message(
                 )
         case "Jokes":
             # Delegate jokes to IBM Watson Assistant dialog.
-            await context.say(response.reply, thread_ts=thread_ts)
+            if response.reply:
+                await context.say(response.reply, thread_ts=thread_ts)
         case "Cancel":
             cancel_content = message["text"].lower().split("cancel")
             is_tj = re.findall(r"tj\d+", cancel_content[1].lower(), re.IGNORECASE)
@@ -256,9 +263,11 @@ async def respond_to_message(
                             client, channel_id=context["channel_id"], count=120
                         )
                     )
-                    msg = CancelJobMessage(context["channel_id"], message["ts"])
+                    cancel_msg = CancelJobMessage(context["channel_id"], message["ts"])
                     await context.say(
-                        text=msg.text, blocks=msg.blocks, thread_ts=thread_ts
+                        text=cancel_msg.text,
+                        blocks=cancel_msg.blocks,
+                        thread_ts=thread_ts,
                     )
         case _:
             if tj_number_entity := response.findEntity("tj-number"):
@@ -309,6 +318,8 @@ async def auto_translate_message(
         )
     except Exception as e:
         notify_exception(e, "Slack channel MT failed")
+        return
+    if not source_lang:
         return
     translations = [
         (target_lang, translated)
@@ -371,7 +382,6 @@ async def auto_translate_message(
 
 
 async def document_machine_translate(
-    client: AsyncWebClient,
     context: AsyncBoltContext,
     file_id: str,
     selected_language: str,
@@ -382,7 +392,6 @@ async def document_machine_translate(
         client (AsyncWebClient): The Slack client.
         channel_id (str): The channel ID of the message.
         output_file (str): The output file name.
-        ai_engine (str): The AI engine to use.
     """
 
     is_gropid = False
@@ -396,6 +405,7 @@ async def document_machine_translate(
     if selected_language.lower() == "fr-ca":
         ai_engine = "microsoft"
 
+    client: RayClient = context["ray"]["client"]
     if not file_id:
         return
     try:
@@ -404,11 +414,11 @@ async def document_machine_translate(
         task_data = MtFileRequestSchema.model_validate(
             {
                 "file_id": file_id,
-                "client_id": context["ray"].client.id,
+                "client_id": client.id,
                 "channel_id": context["channel_id"],
                 "target_language": selected_language,
                 "ai_engine": ai_engine,
-                "data_source": 'slack',
+                "data_source": "slack",
             }
         )
         async with httpx.AsyncClient() as http:
@@ -536,14 +546,15 @@ async def post_job_status(
                     job,
                     ray_client.id,
                     is_ibm_enterprise(
-                        team_id=context.team_id,
                         enterprise_id=context.get("enterprise_id"),
                     ),
                     job_prediction,
                 )
-                if context.response_url:
+                if context.response_url and context.respond:
                     await context.respond(text=msg.text, blocks=msg.blocks)
                 else:
+                    if not channel_id:
+                        raise AssertionError("No channel to post to")
                     await client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
@@ -551,13 +562,15 @@ async def post_job_status(
                         thread_ts=thread_ts,
                     )
         else:
-            msg = InvalidJobMessage(job_id)
-            if context.response_url:
-                return await context.respond(text=msg.text)
+            invalid_msg = InvalidJobMessage(job_id)
+            if context.response_url and context.respond:
+                return await context.respond(text=invalid_msg.text)
             else:
+                if not channel_id:
+                    raise AssertionError("No channel to post to")
                 return await client.chat_postMessage(
                     channel=channel_id,
-                    text=msg.text,
+                    text=invalid_msg.text,
                     thread_ts=thread_ts,
                 )
     finally:
@@ -610,19 +623,21 @@ async def post_job_details(
     channel_id = channel_id or context.channel_id or context.user_id
 
     if status == "ORDER_NOW":
-        job, response = await RayService.get_service(ray_client).get_quote(job_id)
+        quote_job, response = await RayService.get_service(ray_client).get_quote(job_id)
     else:
         jobs, response = await RayService.get_service(ray_client).get_job(job_id)
     try:
         if status == "ORDER_NOW":
-            if job is not None:
+            if quote_job is not None:
                 msg = JobQuotedMessage(
-                    job,
-                    is_ibm_enterprise(context.team_id, context.get("enterprise_id")),
+                    quote_job,
+                    is_ibm_enterprise(context.get("enterprise_id")),
                 )
-                if context.response_url:
+                if context.response_url and context.respond:
                     return await context.respond(text=msg.text, blocks=msg.blocks)
                 else:
+                    if not channel_id:
+                        raise AssertionError("No channel to post to")
                     return await client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
@@ -630,50 +645,60 @@ async def post_job_details(
                         thread_ts=thread_ts,
                     )
             else:
-                msg = InvalidJobMessage(job_id)
-                if context.response_url:
-                    return await context.respond(text=msg.text)
+                invalid_msg = InvalidJobMessage(job_id)
+                if context.response_url and context.respond:
+                    return await context.respond(text=invalid_msg.text)
                 else:
+                    if not channel_id:
+                        raise AssertionError("No channel to post to")
                     return await client.chat_postMessage(
                         channel=channel_id,
-                        text=msg.text,
+                        text=invalid_msg.text,
                         thread_ts=thread_ts,
                     )
         else:
             if jobs is not None:
                 for job in jobs:
-                    # get the job prediction
-                    job_prediction = (
-                        (await get_job_predictions([job_id]))[0].get("prediction", "")
-                        if job.status == "IN_PROGRESS"
-                        else ""
-                    )
-                    msg = JobDetailsMessage(
-                        job,
-                        ray_client.id,
-                        is_ibm_enterprise(
-                            team_id=context["team_id"],
-                            enterprise_id=context.get("enterprise_id"),
-                        ),
-                        job_prediction,
-                    )
-                    if context.response_url:
-                        return await context.respond(text=msg.text, blocks=msg.blocks)
-                    else:
-                        return await client.chat_postMessage(
-                            channel=channel_id,
-                            text=msg.text,
-                            blocks=msg.blocks,
-                            thread_ts=thread_ts,
+                    if job:
+                        # get the job prediction
+                        job_prediction = (
+                            (await get_job_predictions([job_id]))[0].get(
+                                "prediction", ""
+                            )
+                            if job.status == "IN_PROGRESS"
+                            else ""
                         )
+                        job_msg = JobDetailsMessage(
+                            job,
+                            ray_client.id,
+                            is_ibm_enterprise(
+                                enterprise_id=context.get("enterprise_id"),
+                            ),
+                            job_prediction,
+                        )
+                        if context.response_url and context.respond:
+                            return await context.respond(
+                                text=job_msg.text, blocks=job_msg.blocks
+                            )
+                        else:
+                            if not channel_id:
+                                raise AssertionError("No channel to post to")
+                            return await client.chat_postMessage(
+                                channel=channel_id,
+                                text=job_msg.text,
+                                blocks=job_msg.blocks,
+                                thread_ts=thread_ts,
+                            )
             else:
-                msg = InvalidJobMessage(job_id)
-                if context.response_url:
-                    return await context.respond(text=msg.text)
+                invalid_msg = InvalidJobMessage(job_id)
+                if context.response_url and context.respond:
+                    return await context.respond(text=invalid_msg.text)
                 else:
+                    if not channel_id:
+                        raise AssertionError("No channel to post to")
                     return await client.chat_postMessage(
                         channel=channel_id,
-                        text=msg.text,
+                        text=invalid_msg.text,
                         thread_ts=thread_ts,
                     )
     finally:
@@ -751,10 +776,25 @@ async def post_job_summary(
     if isinstance(responses[3], RayResponse):
         in_progress_due = responses[3].data.summary.get("in_progress", 0)
     if isinstance(responses[0], RayResponse):
-        in_progress_count = responses[0].data.summary.get("in_progress", 0)
-        validation_count = responses[4].data.summary.get("validation", 0)
-        pending_quotes_count = responses[5].data.summary.get("pending_quotes", 0)
-        order_now_count = responses[6].data.summary.get("order_now", 0)
+        if isinstance(responses[0], RayResponse):
+            in_progress_count = responses[0].data.summary.get("in_progress", 0)
+        else:
+            in_progress_count = 0  # or handle the exception case appropriately
+
+        if isinstance(responses[4], RayResponse):
+            validation_count = responses[4].data.summary.get("validation", 0)
+        else:
+            validation_count = 0  # or handle the exception case appropriately
+
+        if isinstance(responses[5], RayResponse):
+            pending_quotes_count = responses[5].data.summary.get("pending_quotes", 0)
+        else:
+            pending_quotes_count = 0  # or handle the exception case appropriately
+
+        if isinstance(responses[6], RayResponse):
+            order_now_count = responses[6].data.summary.get("order_now", 0)
+        else:
+            order_now_count = 0  # or handle the exception case appropriately
         # Get job predictions.
         job_ids: list[str] = []
         for group in responses[0].data.groups:
@@ -793,11 +833,13 @@ async def post_job_summary(
             predictions=predictions,
             all_jobs=all_jobs,
         )
-        if context.response_url:
+        if context.response_url and context.respond:
             return await context.respond(
                 text=msg.text, blocks=msg.blocks, replace_original=False
             )
         else:
+            if not channel_id:
+                raise AssertionError("No channel to post to")
             return await client.chat_postMessage(
                 channel=channel_id,
                 text=msg.text,
@@ -968,11 +1010,15 @@ async def post_job_list(
             client_ref=client_ref,
             job_predictions=job_predictions,
         )
-        if context.response_url:
+        if context.response_url and context.respond:
             return await context.respond(
                 text=msg.text, blocks=msg.blocks, replace_original=replace_original
             )
         else:
+            if not channel_id:
+                raise AssertionError("No channel to post to")
+            if not context.user_id:
+                raise AssertionError("No user to post to")
             return await client.chat_postEphemeral(
                 channel=channel_id,
                 user=context.user_id,
@@ -1005,13 +1051,6 @@ async def post_insights(
     channel_id: str | None = None,
     thread_ts: str | None = None,
 ):
-    if (
-        not channel_id
-        and not context.channel_id
-        and not context.user_id
-        and not context.response_url
-    ):
-        raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
 
     async def send_insights_message():
@@ -1023,11 +1062,13 @@ async def post_insights(
         insights_response = insights_response.json()
         insights_msg = InsightsMessage(insights_response["result"].strip())
         try:
-            if context.response_url:
+            if context.response_url and context.respond:
                 await context.respond(
                     text=insights_msg.text, blocks=insights_msg.blocks
                 )
             else:
+                if not channel_id:
+                    raise AssertionError("No channel to post to")
                 await client.chat_postMessage(
                     channel=channel_id,
                     text=insights_msg.text,
@@ -1039,10 +1080,12 @@ async def post_insights(
             # TODO send error message
 
     waiting_msg = ":stopwatch: Please wait as we gather your information..."
-    if context.response_url:
-        response = await context.respond(text=waiting_msg)
+    if context.response_url and context.respond:
+        await context.respond(text=waiting_msg)
     else:
-        response = await client.chat_postMessage(
+        if not channel_id:
+            raise AssertionError("No channel to post to")
+        await client.chat_postMessage(
             channel=channel_id,
             text=waiting_msg,
             thread_ts=thread_ts,
@@ -1050,8 +1093,6 @@ async def post_insights(
 
     # Send insights message async because it might take a long time.
     asyncio.create_task(send_insights_message())
-
-    return response
 
 
 async def show_quote_form_modal(
@@ -1198,13 +1239,15 @@ async def post_batch_list(
         if jobs is not None:
             for job in jobs:
                 msg = BatchListMessage(job, ray_client.id)
-                if context.response_url:
+                if context.response_url and context.respond:
                     return await context.respond(
                         text=msg.text,
                         blocks=msg.blocks,
                         replace_original=replace_original,
                     )
                 else:
+                    if not channel_id:
+                        raise AssertionError("No channel to post to")
                     return await client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
@@ -1212,13 +1255,15 @@ async def post_batch_list(
                         thread_ts=thread_ts,
                     )
             else:
-                msg = InvalidJobMessage(job_id)
-                if context.response_url:
-                    return await context.respond(text=msg.text)
+                invalid_msg = InvalidJobMessage(job_id)
+                if context.response_url and context.respond:
+                    return await context.respond(text=invalid_msg.text)
                 else:
+                    if not channel_id:
+                        raise AssertionError("No channel to post to")
                     return await client.chat_postMessage(
                         channel=channel_id,
-                        text=msg.text,
+                        text=invalid_msg.text,
                         thread_ts=thread_ts,
                     )
     finally:
@@ -1279,13 +1324,15 @@ async def post_file_list(
         if jobs is not None:
             for job in jobs:
                 msg = FileListMessage(job, ray_client.id)
-                if context.response_url:
+                if context.response_url and context.respond:
                     return await context.respond(
                         text=msg.text,
                         blocks=msg.blocks,
                         replace_original=replace_original,
                     )
                 else:
+                    if not channel_id:
+                        raise AssertionError("No channel to post to")
                     return await client.chat_postMessage(
                         channel=channel_id,
                         text=msg.text,
@@ -1293,13 +1340,15 @@ async def post_file_list(
                         thread_ts=thread_ts,
                     )
             else:
-                msg = InvalidJobMessage(job_id)
-                if context.response_url:
-                    return await context.respond(text=msg.text)
+                invlaid_msg = InvalidJobMessage(job_id)
+                if context.response_url and context.respond:
+                    return await context.respond(text=invlaid_msg.text)
                 else:
+                    if not channel_id:
+                        raise AssertionError("No channel to post to")
                     return await client.chat_postMessage(
                         channel=channel_id,
-                        text=msg.text,
+                        text=invlaid_msg.text,
                         thread_ts=thread_ts,
                     )
     finally:
@@ -1376,22 +1425,26 @@ async def post_job_target_lang(
 
                 if no_job:
                     msg = JobTargetLangMessage(job, ray_client.id)
-                    if context.response_url:
+                    if context.response_url and context.respond:
                         return await context.respond(text=msg.text, blocks=msg.blocks)
                     else:
+                        if not channel_id:
+                            raise AssertionError("No channel to post to")
                         return await client.chat_postMessage(
                             channel=channel_id,
                             text=msg.text,
                             blocks=msg.blocks,
                         )
             else:
-                msg = InvalidJobMessage(job_id)
-                if context.response_url:
-                    return await context.respond(text=msg.text)
+                invalid_msg = InvalidJobMessage(job_id)
+                if context.response_url and context.respond:
+                    return await context.respond(text=invalid_msg.text)
                 else:
+                    if not channel_id:
+                        raise AssertionError("No channel to post to")
                     return await client.chat_postMessage(
                         channel=channel_id,
-                        text=msg.text,
+                        text=invalid_msg.text,
                     )
     finally:
         if response is not None:
@@ -1425,24 +1478,19 @@ async def post_report_insights(
             If not given, posts to the source channel.
         thread_ts (str | None, optional): The message thread to reply to.
     """
-    if (
-        not channel_id
-        and not context.channel_id
-        and not context.user_id
-        and not context.response_url
-    ):
-        raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
 
     insights_msg = ReportInsightsMessage(ray_client.planname)
     try:
-        if context.response_url:
+        if context.response_url and context.respond:
             await context.respond(
                 text=insights_msg.text,
                 blocks=insights_msg.blocks,
                 replace_original=False,
             )
         else:
+            if not channel_id:
+                raise AssertionError("No channel to post to")
             await client.chat_postMessage(
                 channel=channel_id,
                 text=insights_msg.text,
@@ -1469,19 +1517,14 @@ async def ai_translate_help(
             If not given, posts to the source channel.
         thread_ts (str | None, optional): The message thread to reply to.
     """
-    if (
-        not channel_id
-        and not context.channel_id
-        and not context.user_id
-        and not context.response_url
-    ):
-        raise AssertionError("No channel to post to")
     channel_id = channel_id or context.channel_id or context.user_id
     ai_helper_msg = AIHelperMessage()
     try:
-        if context.response_url:
+        if context.response_url and context.respond:
             await context.respond(text=ai_helper_msg.text, blocks=ai_helper_msg.blocks)
         else:
+            if not channel_id:
+                raise AssertionError("No channel to post to")
             await client.chat_postMessage(
                 channel=channel_id,
                 text=ai_helper_msg.text,
@@ -1498,7 +1541,7 @@ async def get_mt_translation(
     target_lang: str,
     source_lang: str,
     sentence: str,
-    thread_ts: str | None = None,
+    thread_ts: str,
     is_edit: bool = False,
 ):
     """Get google machine translation for sentence by correct language pair.
@@ -1513,14 +1556,20 @@ async def get_mt_translation(
     """
     try:
         channel_id = context.channel_id or context.user_id
+        if not channel_id:
+            raise AssertionError("No channel to post to")
         target_lang = target_lang.lower()
 
-        source_lang, translation = await get_ai_translation(
+        result_source_lang, translation = await get_ai_translation(
             context, sentence, [target_lang], "direct mt"
         )
-        target_lang, translation = translation[0]
-        msg = MachineTranslationMessage(target_lang, source_lang, translation)
-        if context.response_url:
+        if not result_source_lang:
+            return
+        target_lang, translation_direct = translation[0]
+        msg = MachineTranslationMessage(
+            target_lang, result_source_lang, translation_direct
+        )
+        if context.response_url and context.respond:
             return await context.respond(text=msg.text, blocks=msg.blocks)
         else:
             if is_edit:
@@ -1539,15 +1588,16 @@ async def get_mt_translation(
                 )
     except Exception as e:
         notify_exception(e, "Failed to get machine translation")
-        msg = InvalidMTResultMessage()
-        if context.response_url:
-            return await context.respond(text=msg.text)
+        error_msg = InvalidMTResultMessage()
+        if context.response_url and context.respond:
+            return await context.respond(text=error_msg.text)
         else:
-            return await client.chat_postMessage(
-                channel=channel_id,
-                text=msg.text,
-                thread_ts=thread_ts,
-            )
+            if channel_id:
+                return await client.chat_postMessage(
+                    channel=channel_id,
+                    text=msg.text,
+                    thread_ts=thread_ts,
+                )
 
 
 async def cancel_job_process(
@@ -1571,7 +1621,7 @@ async def cancel_job_process(
         job, response = await RayService.get_service(ray_client).cancel_job(
             job_id, job_uuid
         )
-        msg = "TJ" + job_id + " - " + _(job["message"])
+        msg = "TJ" + job_id
         await client.chat_postMessage(
             channel=context["user_id"],
             text=msg,
@@ -1630,12 +1680,16 @@ async def job_tj_cancel(
                         "sourcelang": job.sl,
                         "targetlang": job.tl,
                     }
-                    msg = CancelTJMessage(context["channel_id"], jobdetail)
-                    if context.response_url:
-                        await context.respond(text=msg.text, blocks=msg.blocks)
+                    cancel_msg = CancelTJMessage(jobdetail)
+                    if context.response_url and context.respond:
+                        await context.respond(
+                            text=cancel_msg.text, blocks=cancel_msg.blocks
+                        )
                     else:
                         await client.chat_postMessage(
-                            channel=context["user_id"], text=msg.text, blocks=msg.blocks
+                            channel=context["user_id"],
+                            text=cancel_msg.text,
+                            blocks=cancel_msg.blocks,
                         )
         else:
             msg = (

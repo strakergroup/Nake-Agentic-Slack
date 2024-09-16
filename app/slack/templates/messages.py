@@ -67,7 +67,7 @@ class OnboardingMessage(SlackMessage):
     def __init__(
         self,
         user_id: str,
-        team_id: str,
+        team_id: str | None,
         enterprise_id: str | None,
         channel_id: str,
         prompt_login: bool = True,
@@ -82,7 +82,7 @@ class OnboardingMessage(SlackMessage):
                 },
             }
         ]
-        if prompt_login:
+        if prompt_login and team_id:
             blocks.extend(
                 [
                     {
@@ -926,7 +926,7 @@ class JobDetailsMessage(SlackMessage):
     """Message showing the details of a translation job."""
 
     def __init__(
-        self, job: Job, client_id: str, is_ibm: bool, job_prediction: str = ""
+        self, job: Job | Quote, client_id: str, is_ibm: bool, job_prediction: str = ""
     ) -> None:
         job_link = (
             f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
@@ -2597,7 +2597,7 @@ class JobQuoteAcceptedEventMessage(SlackMessage):
             },
         ]
         if not is_ibm:
-            blocks.append(job_link_block(event.uuid, event.client_id)),
+            blocks.append(job_link_block(event.uuid, event.client_id))
         super().__init__(
             _(
                 "Quote Accepted for {id}. Your job will be completed before {target_date}.",
@@ -2984,7 +2984,8 @@ class AutoTranslationMessage(SlackMessage):
         for target_lang, translated in self.translations:
             if (
                 target_lang != self.source_language
-                and langcodes.get(target_lang).language != langcodes.get(self.source_language).language
+                and langcodes.get(target_lang).language
+                != langcodes.get(self.source_language).language
             ):
                 quoted_translated = "\n".join(
                     ["> " + line for line in translated.split("\n")]
@@ -3262,7 +3263,7 @@ class CancelTJMessage(SlackMessage):
     to display the individual job IDs for each status and timeframe.
     """
 
-    def __init__(self, channel_id: str, jobdetail) -> None:
+    def __init__(self, jobdetail: dict[str, Any]) -> None:
 
         target_labels = [_(target.label) for target in jobdetail["targetlang"]]
         jobid = jobdetail["job_id"]

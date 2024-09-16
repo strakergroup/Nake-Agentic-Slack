@@ -42,7 +42,7 @@ def get_ray_event_message(
     """
     is_ibm = False
     if slack_user:
-        is_ibm = is_ibm_enterprise(slack_user.team_id, slack_user.enterprise_id)
+        is_ibm = is_ibm_enterprise(slack_user.enterprise_id)
     if event_type == "ray:slack:account_connected":
         event0 = SlackAccountConnectedEvent.model_validate(event_data)
         return SuccessfulLoginMessage(event0.user_id, event0.username)
@@ -97,7 +97,7 @@ def get_ray_event_message(
         event5 = JobQuoteAcceptedEvent.model_validate(event_data)
         return JobQuoteAcceptedEventMessage(event5, is_ibm)
     elif event_type == "ray:job:quote_cancelled":
-        event6 = JobQuoteCancelledEvent.model_validate(event_data, is_ibm)
+        event6 = JobQuoteCancelledEvent.model_validate(event_data)
         return JobQuoteCancelledEventMessage(
             client_id=event6.client_id,
             job_uuid=event6.uuid,

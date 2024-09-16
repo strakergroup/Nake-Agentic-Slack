@@ -44,7 +44,6 @@ from .listener_actions import (
     post_batch_list,
     post_file_list,
     cancel_job_process,
-    resendMT,
 )
 from .logging import slack_log_decorator
 from .templates.models import (
@@ -351,7 +350,7 @@ async def document_mt_submit_action(ack, action, context, body, say, client):
                 )
                 input_file_id = upload_to_file_server(input_file)
                 await document_machine_translate(
-                    client, context, input_file_id, selected_language
+                    context, input_file_id, selected_language
                 )
                 await say(
                     _(
@@ -425,7 +424,7 @@ async def srt_translate_action(ack, action, context, body, say, client):
             selected_language = await redis_conn.get(f"output_file_{task_uuid}")
             if selected_language:
                 await document_machine_translate(
-                    client, context, task_result["file_id"], selected_language
+                    context, task_result["file_id"], selected_language
                 )
                 await say(
                     _(
@@ -466,11 +465,7 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                     # Show connection success message
                     sso_msg = SsoConnectionInfoMessage(
                         context["ray"],
-                        is_ibm=(
-                            is_ibm_enterprise(
-                                context["team_id"], context.get("enterprise_id")
-                            )
-                        ),
+                        is_ibm=(is_ibm_enterprise(context.get("enterprise_id"))),
                     )
                     await ack(response_action="clear")
                     if context.response_url:
@@ -494,21 +489,18 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                         "ray:slack:account_connected", data, None
                     )
                     await ack(response_action="clear")
-                    await client.chat_postMessage(
-                        channel=context["user_id"],
-                        text=msg.text,
-                        blocks=msg.blocks,
-                    )
+                    if msg:
+                        await client.chat_postMessage(
+                            channel=context["user_id"],
+                            text=msg.text,
+                            blocks=msg.blocks,
+                        )
             else:
                 await ack(response_action="clear")
                 if context["ray"].client.sso:
                     msg = SsoConnectionInfoMessage(
                         context["ray"],
-                        is_ibm=(
-                            is_ibm_enterprise(
-                                context["team_id"], context.get("enterprise_id")
-                            )
-                        ),
+                        is_ibm=(is_ibm_enterprise(context.get("enterprise_id"))),
                     )
                 # need else block if triggered from old message
                 else:
@@ -518,9 +510,7 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                         team_id=context["team_id"],
                         enterprise_id=context.get("enterprise_id"),
                         channel_id=context["channel_id"],
-                        is_ibm=is_ibm_enterprise(
-                            context["team_id"], context.get("enterprise_id")
-                        ),
+                        is_ibm=is_ibm_enterprise(context.get("enterprise_id")),
                     )
                 await respond(text=msg.text, blocks=msg.blocks)
         else:

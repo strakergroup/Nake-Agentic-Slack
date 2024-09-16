@@ -1468,8 +1468,10 @@ async def spend_mt_tokens(
     return amount
 
 
-async def get_client_type(client_id: str, group_id: str) -> str:
+async def get_client_type(client_id: str, group_id: str | None) -> str:
     """Get the client type for a group. Owner Admin or Normal client"""
+    if not group_id:
+        return None
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
             """
@@ -1624,7 +1626,7 @@ async def is_slack_team_admin(client_uuid: str, enterprise_id: str) -> bool:
 def get_group_mt_engine(
     group_uuid: str,
     is_group: bool = False,
-) -> bool:
+) -> str:
     """Gets user super group or group MT engine settings.
 
     Args:

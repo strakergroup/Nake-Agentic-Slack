@@ -61,7 +61,7 @@ async def post_notification(
     asyncio.create_task(
         log_notification(
             event=event.event,
-            event_data=json.dumps(event.data),
+            event_data=event.data,
             user_id=slack_user.user_id,
             channel_id=slack_user.user_id,
             ray_client_id=slack_user.ray_client_id,
@@ -90,7 +90,7 @@ async def post_notification_ephemeral(
     asyncio.create_task(
         log_notification(
             event=event.event,
-            event_data=json.dumps(event.data),
+            event_data=event.data,
             user_id=slack_user.user_id,
             channel_id=channel_id,
             ray_client_id=slack_user.ray_client_id,

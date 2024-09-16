@@ -40,6 +40,7 @@ from ..slack.templates.messages import (
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.events.models import (
+    Balance,
     ClientGroup,
     MtErrorResponseSchema,
     MtSuccessResponseSchema,
@@ -90,15 +91,18 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         auth.slack_user.ray_client_id,
                         auth.slack_user.ray_user_group_id,
                     )
-                    token_balance = event_data.error_data.get("balance")
-                    required = event_data.error_data.get("required")
+                    balance = Balance.model_validate(event_data.error_data)
 
                     if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
-                        auth.slack_user.team_id, auth.slack_user.enterprise_id
+                        auth.slack_user.enterprise_id
                     ):
-                        message = RequiresMtTokenMessage(token_balance, required)
+                        message = RequiresMtTokenMessage(
+                            balance.balance, balance.required
+                        )
                     else:
-                        message = RequiresMtTokenAdminMessage(token_balance, required)
+                        message = RequiresMtTokenAdminMessage(
+                            balance.balance, balance.required
+                        )
 
                 await post_notification_ephemeral(
                     app.client,
@@ -109,17 +113,17 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 )
             except ValidationError:
                 app.client.token = auth.slack_user.bot_token
-                event_data = MtSuccessResponseSchema.model_validate(event.data)
-                output_file = download_from_file_server(event_data.file_id)
-                token_count = event_data.tokens
+                success_data = MtSuccessResponseSchema.model_validate(event.data)
+                output_file = download_from_file_server(success_data.file_id)
+                token_count = success_data.tokens
                 token_count = await spend_mt_tokens(
                     user=auth.slack_user, credits=token_count
                 )
-                target_lang = event_data.target_language
+                target_lang = success_data.target_language
                 title = target_lang + "_" + output_file.get("file_name")
                 token_consumption_message = _("You have used {token_count} AI tokens.")
                 await app.client.files_upload_v2(
-                    channel=event_data.channel_id,
+                    channel=success_data.channel_id,
                     file=output_file.get("file"),
                     initial_comment=token_consumption_message,
                     title=title,
@@ -227,7 +231,7 @@ async def api_job_callback(
         try:
             job_data = body.job[0]
             is_auto_quote = True
-            if is_ibm_enterprise(slack_user.team_id, slack_user.enterprise_id):
+            if is_ibm_enterprise(slack_user.enterprise_id):
                 is_auto_quote = False
                 is_auto_quote = get_group_quote_settings(job_data["tj_number"][2:])
             if is_auto_quote:

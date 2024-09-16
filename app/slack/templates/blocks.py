@@ -2,6 +2,8 @@
 
 from typing import Any
 from ray_sdk.api.v3.models import Quote
+
+from app.ray.events.models import JobQuoteCreatedEvent
 from ...auth.connector import (
     get_language_cloud_connect_url,
     RayConnection,
@@ -121,7 +123,7 @@ def job_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
 
 
 def quote_message_block(
-    quote: Quote, job_url: str, is_ibm: bool
+    quote: Quote | JobQuoteCreatedEvent, job_url: str, is_ibm: bool
 ) -> list[dict[str, Any]]:
     currency = format_currency_symbol(quote.quote.currency)
     quote_formatted = format_currency(quote.quote.quote, quote.quote.currency)

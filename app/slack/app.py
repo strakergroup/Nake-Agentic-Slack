@@ -116,9 +116,7 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
                 args.installation.enterprise_id,
                 args.installation.user_id,
                 prompt_login=user is None
-                and not is_ibm_enterprise(
-                    args.installation.team_id, args.installation.enterprise_id
-                ),
+                and not is_ibm_enterprise(args.installation.enterprise_id),
             )
             await app.client.chat_postMessage(
                 channel=args.installation.user_id,
