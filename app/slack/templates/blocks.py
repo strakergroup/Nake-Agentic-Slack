@@ -71,7 +71,7 @@ def home_auth_blocks(
             "elements": [],
         },
     ]
-    if is_ibm_enterprise(team_id, enterprise_id):
+    if is_ibm_enterprise(enterprise_id):
         msg[1]["elements"].insert(
             0,
             {

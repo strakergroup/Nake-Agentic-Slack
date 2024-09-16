@@ -41,7 +41,7 @@ async def home_view(
         rayConnection.client.id, context.enterprise_id
     )
     translation_settings_enabled = (
-        not is_ibm_enterprise(context.team_id, context.enterprise_id)
+        not is_ibm_enterprise(context.enterprise_id)
         or rayConnection.client is not None
         and is_straker_admin
     )
@@ -87,7 +87,7 @@ async def home_view(
             "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
         },
     ]
-    if not is_ibm_enterprise(context.team_id, context.enterprise_id):
+    if not is_ibm_enterprise(context.enterprise_id):
         footer_blocks.append(
             {
                 "type": "button",
