@@ -183,7 +183,7 @@ class LoginMessage(SlackMessage):
             },
         ]
         if not isinstance(ray_client, RayClient):
-            if is_ibm_enterprise(team_id, enterprise_id):
+            if is_ibm_enterprise(enterprise_id):
                 msg.append(
                     {
                         "type": "actions",
