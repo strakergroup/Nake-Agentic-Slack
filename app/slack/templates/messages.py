@@ -1,6 +1,6 @@
 """Slack Messages templates."""
 
-from typing import Any
+from typing import Any, Dict, List
 import json
 
 import langcodes
@@ -2148,7 +2148,7 @@ class ConnectionInfoMessage(SlackMessage):
         account_blocks: list[dict[str, Any]] = []
         if ray_connection is not None and ray_connection.client is not None:
             user_details = f"<{domains.languagecloud}|{ray_connection.client.username}>"
-            if is_ibm_enterprise(enterprise_id=enterprise_id, team_id=team_id):
+            if is_ibm_enterprise(enterprise_id=enterprise_id):
                 text = _(
                     "Your connected LanguageCloud account is: {ray_connection.client.username}"
                 )
@@ -2283,32 +2283,33 @@ class SsoConnectionInfoMessage(SlackMessage):
                 "text": {"type": "mrkdwn", "text": text},
             },
         ]
-        msg.extend(
-            [
-                {
-                    "type": "actions",
-                    "elements": (
-                        [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Login to LanguageCloud"),
-                                },
-                                "style": "primary",
-                                # TODO: ray_connection.client could be None
-                                "url": encrpyt_slack_sso_token(
-                                    ray_connection.client.username
-                                ),
-                                "action_id": "login",
-                            }
-                        ]
-                    ),
-                }
-            ]
-            if not is_ibm
-            else []
-        )
+        if ray_connection.client:
+            msg.extend(
+                [
+                    {
+                        "type": "actions",
+                        "elements": (
+                            [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("Login to LanguageCloud"),
+                                    },
+                                    "style": "primary",
+                                    # TODO: ray_connection.client could be None
+                                    "url": encrpyt_slack_sso_token(
+                                        ray_connection.client.username
+                                    ),
+                                    "action_id": "login",
+                                }
+                            ]
+                        ),
+                    }
+                ]
+                if not is_ibm
+                else []
+            )
         super().__init__(
             "Login to LanguageCloud",
             msg,
@@ -2509,7 +2510,7 @@ class JobCompletedEventMessage(SlackMessage):
             target_lang_text = ", ".join(target_languages[:2]) + ", and more"
         else:
             target_lang_text = ", ".join(target_languages)
-        blocks = [
+        blocks: List[Dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {
