@@ -405,8 +405,8 @@ async def document_machine_translate(
     if selected_language.lower() == "fr-ca":
         ai_engine = "microsoft"
 
-    client: RayClient = context["ray"]["client"]
-    if not file_id:
+    client: RayClient | None = context["ray"].client
+    if not file_id or not client:
         return
     try:
         # file_info = await client.files_info(file=slack_file_id)
