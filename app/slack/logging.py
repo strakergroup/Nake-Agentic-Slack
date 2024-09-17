@@ -125,7 +125,7 @@ def slack_log_decorator(
         params.insert(
             0, inspect.Parameter("context", inspect.Parameter.POSITIONAL_OR_KEYWORD)
         )
-        wrapper_sig_func.__signature__ = listener_sig.replace(parameters=params)
+        wrapper_sig_func.__signature__ = listener_sig.replace(parameters=params)  # type: ignore
 
     @functools.wraps(wrapper_sig_func)
     async def wrapper(context, *args, **kwargs):

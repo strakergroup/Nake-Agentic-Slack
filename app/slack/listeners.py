@@ -179,9 +179,7 @@ async def home_opened(event, action, context, body, say, client):
         history = await client.conversations_history(
             channel=event.get("channel"), limit=1
         )
-        is_ibm = is_ibm_enterprise(
-            enterprise_id=context.get("enterprise_id")
-        )
+        is_ibm = is_ibm_enterprise(enterprise_id=context.get("enterprise_id"))
         if not history.get("messages"):
             message = OnboardingMessage(
                 context["user_id"],
