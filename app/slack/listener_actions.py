@@ -1541,7 +1541,7 @@ async def get_mt_translation(
     target_lang: str,
     source_lang: str,
     sentence: str,
-    thread_ts: str,
+    thread_ts: str | None = None,
     is_edit: bool = False,
 ):
     """Get google machine translation for sentence by correct language pair.
@@ -1572,7 +1572,7 @@ async def get_mt_translation(
         if context.response_url and context.respond:
             return await context.respond(text=msg.text, blocks=msg.blocks)
         else:
-            if is_edit:
+            if is_edit and thread_ts:
                 return await client.chat_update(
                     channel=channel_id,
                     text=msg.text,
