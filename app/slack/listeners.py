@@ -180,7 +180,7 @@ async def home_opened(event, action, context, body, say, client):
             channel=event.get("channel"), limit=1
         )
         is_ibm = is_ibm_enterprise(
-            team_id=context["team_id"], enterprise_id=context.get("enterprise_id")
+            enterprise_id=context.get("enterprise_id")
         )
         if not history.get("messages"):
             message = OnboardingMessage(
@@ -1074,7 +1074,7 @@ async def handle_new_job(ack, view, context, client):
             group_id = form.group_id or context["ray"].client.user_group_id
             if "job_id" in result:
                 if not is_ibm_enterprise(
-                    context["team_id"], context.get("enterprise_id")
+                    context.get("enterprise_id")
                 ) or get_group_quote_settings(group_id):
                     message = JobSubmitMessage(form)
                     await client.chat_postMessage(
