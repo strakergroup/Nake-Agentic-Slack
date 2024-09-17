@@ -150,7 +150,7 @@ async def require_ray_client(
 
         login_message = login_message.with_variation(variation)
         # Send login prompt if no LanguageCloud account is connected.
-        if context.respond:
+        if context.response_url and context.respond:
             await context.respond(
                 text=login_message.text,
                 blocks=login_message.blocks,
