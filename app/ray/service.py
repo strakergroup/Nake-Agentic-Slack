@@ -206,24 +206,6 @@ class RayService:
         response = await self._ray.get_groups()
         return response.data
 
-    async def get_machine_translation(
-        self,
-        target_lang: str,
-        source_lang: str | None = None,
-        sentence: str | None = None,
-    ):
-        """Gets the machine translation from the Google Translate API by target and source langauge."""
-        return await self._ray.get_machine_translation(
-            target_lang=target_lang,
-            source_lang=source_lang,
-            sentence=sentence,
-            app_name="slack",
-        )
-
-    async def detect_language(self, text: str):
-        """Detects the language of a text using the Google Translate API."""
-        return await self._ray.detect_language(text)
-
     async def cancel_job(
         self,
         job_id: str = "",

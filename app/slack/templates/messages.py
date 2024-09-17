@@ -176,7 +176,7 @@ class LoginMessage(SlackMessage):
                 block_text = (
                     "Your connected LanguageCloud account is: *{ray_client.username}*."
                 )
-        msg = [
+        msg: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": _(block_text)},
@@ -805,7 +805,7 @@ class JobStatusMessage(SlackMessage):
             },
         ]
         if not is_ibm:
-            job_status_block.append(job_link_block(job.uuid, client_id)),
+            job_status_block.append(job_link_block(job.uuid, client_id))
         if (
             job.status != "COMPLETED"
             and job.batches != "[]"
@@ -926,7 +926,7 @@ class JobDetailsMessage(SlackMessage):
     """Message showing the details of a translation job."""
 
     def __init__(
-        self, job: Job | Quote, client_id: str, is_ibm: bool, job_prediction: str = ""
+        self, job: Job, client_id: str, is_ibm: bool, job_prediction: str = ""
     ) -> None:
         job_link = (
             f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
@@ -995,7 +995,7 @@ class JobDetailsMessage(SlackMessage):
             },
         ]
         if not is_ibm:
-            job_detail_block.append(job_link_block(job.uuid, client_id)),
+            job_detail_block.append(job_link_block(job.uuid, client_id))
 
         if (
             job.status != "COMPLETED"
@@ -2277,7 +2277,7 @@ class SsoConnectionInfoMessage(SlackMessage):
             text = _(
                 "Your connected LanguageCloud account is: *{ray_connection.client.username}*."
             )
-        msg = [
+        msg: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": text},

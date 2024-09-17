@@ -117,18 +117,19 @@ async def download_file(
     if not reuse_connection:
         http = httpx.AsyncClient()
     try:
-        response = await http.get(
-            download_url,
-            headers={"Authorization": f"Bearer {client.token}"},
-            follow_redirects=True,
-        )
-        response.raise_for_status()
+        if http:
+            response = await http.get(
+                download_url,
+                headers={"Authorization": f"Bearer {client.token}"},
+                follow_redirects=True,
+            )
+            response.raise_for_status()
     except httpx.HTTPStatusError:
         # 302 status if auth token is invalid.
         raise
     finally:
         # Close the http connection if no httpx client given.
-        if not reuse_connection:
+        if not reuse_connection and http is not None:
             await http.aclose()
 
     # Save the file to the temp directory.
@@ -190,7 +191,7 @@ async def set_mt_ts_edit(
 
 async def get_mt_ts_cached(send_ts: str) -> str:
     key = f"slack-ray-translator:mt_ts:{send_ts}"
-    cached = False
+    cached = ""
     mt_timestamp = ""
     try:
         cached = await redis_conn.get(key)

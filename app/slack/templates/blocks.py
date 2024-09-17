@@ -56,7 +56,7 @@ def home_auth_blocks(
                 },
             },
         ]
-    msg = [
+    msg: list[dict[str, Any]] = [
         {
             "type": "section",
             "text": {

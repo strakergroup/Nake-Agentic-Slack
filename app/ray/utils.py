@@ -317,3 +317,4 @@ def supported_file_types(file_type: str) -> bool:
 
     if file_type.lower() in VALID_FILE_TYPES:
         return True
+    return False

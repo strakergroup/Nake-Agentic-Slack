@@ -62,9 +62,9 @@ class Translator:
                 AND label = :input
                 """,
             ).bindparams(lang=self.lang, input=translation)
-            translation = conn.execute(sql).fetchone()
-            if translation:
-                translation = translation[0]
+            translation_row = conn.execute(sql).fetchone()
+            if translation_row:
+                translation = translation_row[0]
             else:
                 # log error missing translation
                 logging.warning(f"WARNING Missing translation for {self.lang}: {input}")
@@ -86,8 +86,11 @@ def _(input: str):
     translator = translator_var.get()
     frame = inspect.currentframe()
     try:
-        outer_locals = frame.f_back.f_locals
-        outer_globals = frame.f_back.f_globals
+        outer_locals = {}
+        outer_globals = {}
+        if frame and frame.f_back:
+            outer_locals = frame.f_back.f_locals
+            outer_globals = frame.f_back.f_globals
     finally:
         del frame  # Avoid a reference cycle
     try:

@@ -14,7 +14,7 @@ from app.translate import _
 
 async def _get_languages_cached() -> list[dict[str, str]]:
     key = "slack-ray-translator:languages"
-    cached = False
+    cached = ""
     try:
         cached = await redis_conn.get(key)
     except Exception as e:
@@ -51,9 +51,7 @@ async def get_language_options(filter: str | None = None) -> list[dict[str, Any]
     languages = islice(languages, 100)  # type: ignore
 
     # translated languages name and reorder by translated words
-    languages = [
-        {"code": lang["code"], "name": _(lang["name"])} for lang in languages
-    ]
+    languages = [{"code": lang["code"], "name": _(lang["name"])} for lang in languages]
     languages.sort(key=lambda lang: lang["name"].lower())
     return [
         {
@@ -66,7 +64,7 @@ async def get_language_options(filter: str | None = None) -> list[dict[str, Any]
 
 async def get_file_options_cached(channel_id: str) -> list[dict[str, Any]]:
     key = f"slack-ray-translator:files:{channel_id}"
-    cached = False
+    cached = ""
     files = []
     try:
         cached = await redis_conn.get(key)

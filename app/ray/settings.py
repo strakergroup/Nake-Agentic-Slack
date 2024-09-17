@@ -168,7 +168,9 @@ def get_auto_translate_language_name(language: str) -> str:
     for lang in get_auto_translate_languages(include_variations=True):
         if lang[0].casefold() == language or lang[1].casefold() == language:
             return lang[1]
-    language = langcodes.get(language).language
+    lang_info = langcodes.get(language)
+    if lang_info:
+        language = lang_info.language or language
     for lang in get_auto_translate_languages(include_variations=True):
         if lang[0].casefold() == language or lang[1].casefold() == language:
             return lang[1]
@@ -501,7 +503,7 @@ def get_pagination(context: AsyncBoltContext, rows_per_page: int) -> int:
             )
             .where(SlackGroupSettingsTranslation.settings_id == settings.id)
         )
-        if total_rows == 0:
+        if not total_rows:
             return 0
     return (total_rows + rows_per_page - 1) // rows_per_page
 

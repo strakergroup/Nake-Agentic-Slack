@@ -89,7 +89,7 @@ class RayClient:
     """an ID Token according to the OpenID Connect spec"""
     planname: str | None
     """The Slack enterprise ID."""
-    sso: str | None
+    sso: bool
     """The SSO flag."""
 
 
@@ -178,6 +178,8 @@ async def save_user_token_from_installation(
         RayClient | None: The LC client if the Slack user has a connected LC
             account, otherwise `None`.
     """
+    if not installation.team_id or not installation.user_id:
+        return None
     user = await get_ray_client(
         installation.user_id, installation.team_id, installation.enterprise_id
     )
@@ -231,6 +233,7 @@ async def save_user_token_from_installation(
         slack_team_id=user.slack_team_id,
         slack_enterprise_id=user.slack_enterprise_id,
         slack_access_token=installation.user_token,
+        user_group_id=user.user_group_id,
         settings_id=user.settings_id,
         id_token=user.id_token,
         planname=user.planname,
@@ -320,7 +323,7 @@ def get_client_access_tokens(ray_client_id: str) -> tuple[str]:
 
 
 async def get_demo_super_group(
-    team_id: str, enterprise_id: str
+    team_id: str, enterprise_id: str | None
 ) -> list[RaySuperGroup] | None:
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
@@ -431,7 +434,7 @@ def is_ibm_super_group(
 
 
 async def get_ray_demo_client(
-    user_id: str, team_id: str, slack_enterprise_id: str
+    user_id: str, team_id: str, slack_enterprise_id: str | None
 ) -> RayClient | None:
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
@@ -636,11 +639,11 @@ async def get_ray_client(
                     """
         ).bindparams(group_uuid=groupid)
         result = conn.execute(sql)
-        row = result.fetchall()
-        if not row:
+        plan_row = result.fetchall()
+        if not plan_row:
             plan = "Free"
         else:
-            plan = row[0].plan_name
+            plan = plan_row[0].plan_name
     return RayClient(
         id=ray_client_id,
         user_group_id=user_group_id,
@@ -740,7 +743,7 @@ async def connect_ray_account(
     user_id: str,
     team_id: str,
     enterprise_id: str | None = None,
-    channel_id: str = None,
+    channel_id: str | None = None,
 ) -> str:
     """Connect the LanguageCloud account of a slack user.
 
@@ -754,6 +757,7 @@ async def connect_ray_account(
     """
 
     try:
+        channel_id = channel_id or user_id
         url = get_language_cloud_connect_url(
             user_id, team_id, enterprise_id, channel_id
         )
@@ -1069,7 +1073,11 @@ def connect_ray_account_sso(
         )
         return member_id
     else:
-        member_id = result1.first().obj_uuid
+        result = result1.first()
+        if not result:
+            raise Exception("Member ID not found")
+        member_id = result.obj_uuid
+
         create_client_access_tokens(client_id=member_id, type="public")
         create_slack_deltaray_link_sso(
             user_data=json.dumps(slack_data), member_id=member_id
@@ -1099,7 +1107,7 @@ def get_direct_login_group(enterprise_id: str):
 def add_client_to_slack_group(user_data: dict, member_id: str):
     # function to add user to ibm slack group when they are not in the group
     with engines["sitemanager"].connect() as conn:
-        group_id = get_direct_login_group(user_data.get("enterprise_id"))
+        group_id = get_direct_login_group(user_data.get("enterprise_id", ""))
 
         sql = text(
             """
@@ -1145,6 +1153,7 @@ def create_client_and_mglink(
         ).bindparams(obj_uuid=group_id)
         conn.execute(sqlAm)
         resultAm = conn.execute(sqlAm).first()
+        account_manager = resultAm.account_manager if resultAm is not None else None
         # Create User
         sqlMem = text(
             """
@@ -1159,7 +1168,7 @@ def create_client_and_mglink(
             given_name=json_data.get("first_name"),
             family_name=json_data.get("last_name"),
             password=hash_object.hexdigest().upper(),
-            account_manager=resultAm.account_manager,
+            account_manager=account_manager,
             groupid=group_id,
         )
         conn.execute(sqlMem)
@@ -1420,22 +1429,24 @@ async def get_group_tokens(super_group_uuid: str) -> GetCreditBalanceResponse:
             """
         ).bindparams(bindparam("group_uuids", expanding=True))
         result = conn.execute(sql, {"group_uuids": list_group_uuid})
-        row = result.first()
-        if not row or not row.total:
+        row_total = result.first()
+        if not row_total or not row_total.total:
             return GetCreditBalanceResponse(0, 0)
-    return GetCreditBalanceResponse(ai_token=row.total, mt_token=0)
+    return GetCreditBalanceResponse(ai_token=row_total.total, mt_token=0)
 
 
 async def spend_mt_tokens(
     credits: int,
-    user: SlackUser = None,
-    ray_connection: RayConnection = None,
+    user: SlackUser,
+    ray_connection: RayConnection | None = None,
 ) -> int:
     """Insert into the database obj_m_member_credit_transactions to record transaction"""
     if ray_connection is None:
         ray_connection = await get_ray_connection(
             user.user_id, user.team_id, user.enterprise_id
         )
+        if ray_connection is None:
+            raise ValueError("No Ray connection found.")
     # If no client spend under super group
     if ray_connection.client is None:
         client_uuid = ray_connection.super_group[0].id
@@ -1468,7 +1479,7 @@ async def spend_mt_tokens(
     return amount
 
 
-async def get_client_type(client_id: str, group_id: str | None) -> str:
+async def get_client_type(client_id: str, group_id: str | None) -> str | None:
     """Get the client type for a group. Owner Admin or Normal client"""
     if not group_id:
         return None
@@ -1548,8 +1559,10 @@ def get_all_tokens_for_enterprise(enterprise_id: str):
     return rows
 
 
-def get_team_from_token(token: str) -> str:
+def get_team_from_token(token: str | None) -> str | None:
     """Get the team ID from the bot token"""
+    if not token:
+        return None
     with engines["ray_integration"].connect() as conn:
         sql = text(
             """
@@ -1566,7 +1579,7 @@ def get_team_from_token(token: str) -> str:
 
 
 async def resolve_channels_to_team(
-    channel_id: List[str], client: AsyncWebClient, enterprise_id: str
+    channel_id: List[str], client: AsyncWebClient, enterprise_id: str | None
 ) -> List[dict[str, str]]:
     """Resolve a channel ID to a team ID. Use conversation info API to get the team ID.
         When error attempt to get all tokens for the enterprise with each token
@@ -1578,7 +1591,10 @@ async def resolve_channels_to_team(
     """
     team_channel = []
     old_token = client.token
-    all_tokens = get_all_tokens_for_enterprise(enterprise_id)
+    if enterprise_id:
+        all_tokens = get_all_tokens_for_enterprise(enterprise_id)
+    else:
+        all_tokens = []
     for channel in channel_id:
         try:
             channel_info = await client.conversations_info(channel=channel)
@@ -1617,7 +1633,9 @@ async def resolve_channels_to_team(
     return team_channel
 
 
-async def is_slack_team_admin(client_uuid: str, enterprise_id: str) -> bool:
+async def is_slack_team_admin(client_uuid: str, enterprise_id: str | None) -> bool:
+    if not enterprise_id:
+        return False
     group_id = get_direct_login_group(enterprise_id)
     client_type = await get_client_type(client_uuid, group_id)
     return client_type in ["Admin", "Owner"]
