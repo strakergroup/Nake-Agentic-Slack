@@ -118,7 +118,11 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 token_count = success_data.tokens
                 target_lang = success_data.target_language
                 title = target_lang + "_" + output_file.get("file_name")
-                token_consumption_message = _("You have used {token_count} AI tokens.")
+                token_consumption_message = (
+                    _("You have used {token_count} AI tokens.")
+                    if not is_ibm_enterprise(auth.slack_user.enterprise_id)
+                    else ""
+                )
                 await app.client.files_upload_v2(
                     channel=success_data.channel_id,
                     file=output_file.get("file"),
