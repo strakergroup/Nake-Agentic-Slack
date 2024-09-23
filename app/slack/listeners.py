@@ -1334,8 +1334,9 @@ async def cancel_job_action(ack, payload, context, client, body):
                     client, context, context["ray"].client, job_id=job_id
                 )
             elif job_info.get("job_action") == "submit":
+                job_id = job_info["job_id"].split("TJ")[1]
                 await cancel_job_process(
-                    client, context, context["ray"].client, job_uuid=job_info["job_id"]
+                    client, context, context["ray"].client, job_id=job_id, job_uuid=job_info["job_id"]
                 )
             else:
                 await client.views_open(

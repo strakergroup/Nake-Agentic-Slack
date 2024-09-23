@@ -1624,7 +1624,7 @@ async def cancel_job_process(
         msg = "TJ" + job_id
         await client.chat_postMessage(
             channel=context["user_id"],
-            text=msg,
+            text=msg + " - " + job["message"],
         )
     except Exception as e:
         notify_exception(e)
