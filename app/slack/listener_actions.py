@@ -1621,10 +1621,13 @@ async def cancel_job_process(
         job, response = await RayService.get_service(ray_client).cancel_job(
             job_id, job_uuid
         )
-        msg = "TJ" + job_id
+        if job_id:
+            msg = "TJ" + job_id + " - " + job["message"]
+        else:
+            msg = job["message"]
         await client.chat_postMessage(
             channel=context["user_id"],
-            text=msg + " - " + job["message"],
+            text=msg
         )
     except Exception as e:
         notify_exception(e)
