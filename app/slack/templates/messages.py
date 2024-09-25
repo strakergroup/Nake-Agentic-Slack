@@ -1450,6 +1450,31 @@ class JobListMessage(SlackMessage):
                     }
                 )
                 if (
+                    job.status == "PENDING_QUOTES"
+                    or job.status == "ORDER_NOW"
+                    or job.status == "LEAD"
+                ):
+                    jobs_blocks.append(
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _("🔴 Cancel this job"),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Cancel"),
+                                },
+                                "action_id": "cancel_job",
+                                "value": json.dumps(
+                                    {"job_id": job.id, "job_action": "list"}
+                                ),
+                            },
+                        }
+                    )
+                elif (
                     job.status != "COMPLETED"
                     and job.batches != "[]"
                     and job.translated_file == []
@@ -1548,27 +1573,6 @@ class JobListMessage(SlackMessage):
                                 }
                             ],
                         },
-                    )
-                elif job.status == "PENDING_QUOTES" or job.status == "ORDER_NOW":
-                    jobs_blocks.append(
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _("🔴 Cancel this job"),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Cancel"),
-                                },
-                                "action_id": "cancel_job",
-                                "value": json.dumps(
-                                    {"job_id": job.id, "job_action": "list"}
-                                ),
-                            },
-                        }
                     )
                 if formatted_job_prediction != "":
                     jobs_blocks.append(job_prediction_block(formatted_job_prediction))
