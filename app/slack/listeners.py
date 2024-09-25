@@ -3,6 +3,7 @@ commands, etc. from the Slack API.
 """
 
 import asyncio
+import os
 import re
 import json
 from datetime import datetime, timedelta
@@ -311,7 +312,8 @@ async def document_mt_job_action(ack, context, action, body, client):
     if await require_ray_client(context):
         output_file = action["value"]
         file_info = await client.files_info(file=output_file)
-        is_valid_file_type = supported_file_types(file_info["file"]["filetype"])
+        file_path, file_extension = os.path.splitext(file_info["file"]["name"])
+        is_valid_file_type = supported_file_types(file_extension)
         # Perform the necessary actions to document the MT job
         if is_valid_file_type:
             msg = DocumentMTJobMessage(output_file)

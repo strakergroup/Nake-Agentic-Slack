@@ -315,6 +315,6 @@ def supported_file_types(file_type: str) -> bool:
         "text",
     ]
 
-    if file_type.lower() in VALID_FILE_TYPES:
+    if file_type.lower().lstrip(".") in VALID_FILE_TYPES:
         return True
     return False
