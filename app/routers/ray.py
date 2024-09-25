@@ -234,7 +234,7 @@ async def api_job_callback(
             is_auto_quote = True
             if is_ibm_enterprise(slack_user.enterprise_id):
                 is_auto_quote = False
-                is_auto_quote = get_group_quote_settings(slack_user.ray_user_group_id)
+                is_auto_quote = get_group_quote_settings(job_data["group_id"])
             if is_auto_quote:
                 message = JobCreationMessage(job_data["job_key"], True)
         except (KeyError, IndexError):
