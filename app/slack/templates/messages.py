@@ -1779,22 +1779,23 @@ class JobCreationMessage(SlackMessage):
         quote_message = _(
             "Human translation is currently not supported, please continue to use Translate@IBM for human translation requests until further notice."
         )
-        super().__init__(
-            "New Job Created",
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": (
-                            _(
-                                "{tadeEmoji} A new translation job has been created with the job number: `{job_id}`"
-                            )
-                            if is_auto_quote
-                            else quote_message
-                        ),
-                    },
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        _(
+                            "{tadeEmoji} A new translation job has been created with the job number: `{job_id}`"
+                        )
+                        if is_auto_quote
+                        else quote_message
+                    ),
                 },
+            },
+        ]
+        if is_auto_quote:
+            blocks.append(
                 {
                     "type": "section",
                     "text": {
@@ -1810,9 +1811,9 @@ class JobCreationMessage(SlackMessage):
                         "action_id": "cancel_job",
                         "value": json.dumps({"job_id": job_id, "job_action": "submit"}),
                     },
-                },
-            ],
-        )
+                }
+            )
+        super().__init__("New Job Created", blocks)
 
 
 class FileTranslatedMessage(SlackMessage):
