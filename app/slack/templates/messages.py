@@ -1809,7 +1809,7 @@ class JobCreationMessage(SlackMessage):
                             "text": _("Cancel"),
                         },
                         "action_id": "cancel_job",
-                        "value": json.dumps({"job_id": job_id, "job_action": "submit"}),
+                        "value": json.dumps({"job_id": job_id, "job_action": "list"}),
                     },
                 }
             )
