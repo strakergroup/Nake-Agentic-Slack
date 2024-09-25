@@ -1,10 +1,7 @@
-import os
 from typing import Any, Annotated
 from buglog import notify_exception, notify_message
 from fastapi import APIRouter, HTTPException, Depends, Header, Request
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, ValidationError
-from app.translate import translator_var, Translator
 
 from app.ray.utils import (
     download_from_file_server,
@@ -12,14 +9,12 @@ from app.ray.utils import (
     set_user_language,
 )
 from app.translate import _
-from app.wb_tasks.tasks import get_task
 
 from ..auth.connector import (
     SlackUser,
     get_client_type,
     get_demo_link,
-    get_group_quote_settings,
-    spend_mt_tokens,
+    get_job_group_quote_settings,
     validate_api_callback_signature,
     get_slack_user,
     get_client_access_tokens,
@@ -47,8 +42,6 @@ from ..ray.events.models import (
 )
 from ..ray.events.logging import post_notification, post_notification_ephemeral
 from dataclasses import replace
-from pathlib import Path
-from ..config import config, domains
 
 
 router = APIRouter()
@@ -234,7 +227,7 @@ async def api_job_callback(
             is_auto_quote = True
             if is_ibm_enterprise(slack_user.enterprise_id):
                 is_auto_quote = False
-                is_auto_quote = get_group_quote_settings(job_data["group_id"])
+                is_auto_quote = get_job_group_quote_settings(job_data["tj_number"][2:])
             if is_auto_quote:
                 message = JobCreationMessage(job_data["job_key"], True)
         except (KeyError, IndexError):
