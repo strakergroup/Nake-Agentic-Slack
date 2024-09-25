@@ -22,6 +22,7 @@ async def log_notification(
 ):
     """Logs a Slack notification which was sent to a Slack user to the database."""
     try:
+
         with engines["ray_integration_log"].begin() as conn:
             sql = text(
                 """
@@ -35,7 +36,7 @@ async def log_notification(
                 user_id=user_id,
                 channel_id=channel_id,
                 client_uuid=ray_client_id,
-                payload=event_data,
+                payload=json.dumps(event_data),
                 message=message,
             )
             conn.execute(sql)
