@@ -3442,3 +3442,20 @@ class DocMtMessage(SlackMessage):
                 }
             ],
         )
+
+class DocParseErrorMessage(SlackMessage):
+    """Message verify consumer event response. Specific to faliure to parse file"""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            _("Verify the translation"),
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": message,
+                    },
+                }
+            ],
+        )
