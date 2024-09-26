@@ -24,6 +24,7 @@ from ..dependencies import RayEventAuth, RayEvent
 from ..slack import app
 from ..slack.templates.messages import (
     DocMtMessage,
+    DocParseErrorMessage,
     RequiresMtTokenAdminMessage,
     RequiresMtTokenMessage,
     SuccessfulLoginMessage,
@@ -96,6 +97,8 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         message = RequiresMtTokenAdminMessage(
                             balance.balance, balance.required
                         )
+                elif event_data.error_type == "conversion_error":
+                    message = DocParseErrorMessage(event_data.error_data["message"])
 
                 await post_notification_ephemeral(
                     app.client,
