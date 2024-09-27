@@ -1132,6 +1132,13 @@ def add_client_to_slack_group(user_data: dict, member_id: str):
             )
             conn.execute(sqlMgLink)
             conn.commit()
+        sql = text(
+            """
+                UPDATE obj_m_member SET groupid = :groupid WHERE login = :login
+                """
+        ).bindparams(member_id, groupid=group_id)
+        conn.execute(sql)
+        conn.commit()
 
 
 def create_client_and_mglink(
