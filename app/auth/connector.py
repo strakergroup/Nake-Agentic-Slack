@@ -1134,7 +1134,7 @@ def add_client_to_slack_group(user_data: dict, member_id: str):
             conn.commit()
         sql = text(
             """
-                UPDATE obj_m_member SET groupid = :groupid WHERE obj_uuid = :uuid
+                UPDATE obj_m_member SET groupid = :groupid WHERE obj_uuid = :uuid AND (groupid IS NULL or groupid = '')
                 """
         ).bindparams(uuid=member_id, groupid=group_id)
         conn.execute(sql)
