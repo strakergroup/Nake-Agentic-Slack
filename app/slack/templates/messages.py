@@ -3454,7 +3454,7 @@ class DocParseErrorMessage(SlackMessage):
 
     def __init__(self, ext: str, file_type: str) -> None:
         message = _(
-            "Error parsing file. Please ensure file with {ext} is a valid {file_expected}"
+            "Error parsing file. Please ensure file with {ext} is a valid {file_type}"
         )
         super().__init__(
             _("Verify the translation"),
