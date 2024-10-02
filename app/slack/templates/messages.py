@@ -1697,6 +1697,17 @@ class NewJobMessage(SlackMessage):
                                     "action_id": "document_mt_job",
                                     "style": "primary",
                                     "value": file_id,
+                                },
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("Evaluate File"),
+                                        "emoji": True,
+                                    },
+                                    "action_id": "evaluate_job",
+                                    "style": "primary",
+                                    "value": file_id,
                                 }
                             ]
                             if file_id
