@@ -3463,7 +3463,7 @@ class DocParseErrorMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(message),
+                        "text": message,
                     },
                 }
             ],
