@@ -105,7 +105,10 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                             balance.balance, balance.required
                         )
                 elif event_data.error_type == "conversion_error":
-                    message = DocParseErrorMessage(event_data.error_data["message"])
+                    message = DocParseErrorMessage(
+                        event_data.error_data["ext"],
+                        event_data.error_data["file_expected"],
+                    )
 
                 await post_notification_ephemeral(
                     app.client,
