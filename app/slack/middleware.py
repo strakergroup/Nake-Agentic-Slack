@@ -63,11 +63,11 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
     be sent to the user asking them to connect their LanguageCloud account.
     """
     context["ray"] = await get_ray_connection(
-        context["user_id"], context["team_id"], context.get("enterprise_id")
+        context["user_id"], context["team_id"], context.enterprise_id
     )
     if context["ray"] is None or context["ray"].client is None:
         demo_connection = await get_ray_connection_demo(
-            context["user_id"], context["team_id"], context.get("enterprise_id")
+            context["user_id"], context["team_id"], context.enterprise_id
         )
         if demo_connection is not None:
             context["ray"] = demo_connection
@@ -86,7 +86,7 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
     context["login_prompt"] = LoginMessage(
         user_id=context["user_id"],
         team_id=context["team_id"],
-        enterprise_id=context.get("enterprise_id"),
+        enterprise_id=context.enterprise_id,
         channel_id=context.get("channel_id", context["user_id"]),
         ray_client=context["ray"].client if context["ray"] is not None else None,
     )
@@ -188,7 +188,7 @@ async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
         )
     if context.client:
         if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
-            enterprise_id=context.get("enterprise_id")
+            enterprise_id=context.enterprise_id
         ):
             message = RequiresMtTokenMessage(ai_tokens, value)
             await context.client.chat_postEphemeral(

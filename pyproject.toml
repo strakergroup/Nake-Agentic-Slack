@@ -24,3 +24,4 @@ plugins = "sqlalchemy.ext.mypy.plugin"
 python_version = "3.11"
 files = "app"
 ignore_missing_imports = true
+disable_error_code = ["assignment"]

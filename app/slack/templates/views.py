@@ -37,8 +37,10 @@ async def home_view(
     barEmoji = f":bar_chart:"
     helpEmoji = f":question:"
     speechEmoji = f":speech_balloon:"
-    is_straker_admin = rayConnection and rayConnection.client and await is_slack_team_admin(
-        rayConnection.client.id, context.enterprise_id
+    is_straker_admin = (
+        rayConnection
+        and rayConnection.client
+        and await is_slack_team_admin(rayConnection.client.id, context.enterprise_id)
     )
     translation_settings_enabled = not is_ibm_enterprise(context.enterprise_id) or (
         rayConnection and rayConnection.client and is_straker_admin
@@ -284,7 +286,7 @@ async def home_view(
             *home_auth_blocks(
                 context["user_id"],
                 context["team_id"],
-                context.get("enterprise_id"),
+                context.enterprise_id,
                 context.get("channel_id"),  # TODO can be None, e.g. view_submission
                 rayConnection,
             ),

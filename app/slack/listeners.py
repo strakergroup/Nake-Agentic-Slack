@@ -141,7 +141,7 @@ async def message_event(
                     token = get_bot_token(
                         conn=conn,
                         team_id=body_team_id,
-                        enterprise_id=context.get("enterprise_id"),
+                        enterprise_id=context.enterprise_id,
                     )
                     if token:
                         if token != client.token:
@@ -198,12 +198,12 @@ async def home_opened(
         history = await client.conversations_history(
             channel=event.get("channel"), limit=1
         )
-        is_ibm = is_ibm_enterprise(enterprise_id=context.get("enterprise_id"))
+        is_ibm = is_ibm_enterprise(enterprise_id=context.enterprise_id)
         if not history.get("messages"):
             message = OnboardingMessage(
                 context["user_id"],
                 context["team_id"],
-                context.get("enterprise_id"),
+                context.enterprise_id,
                 event.get("channel"),
                 not is_ibm,
             )
@@ -254,9 +254,7 @@ async def app_uninstalled(context: AsyncBoltContext):
     # Disconnect the Super Group and all users linked to the Slack workspace
     # when the app is uninstalled.
     # RAY-59799: This is a requirement of the Slack app directory submission.
-    disconnect_ray_super_group_and_users(
-        context["team_id"], context.get("enterprise_id")
-    )
+    disconnect_ray_super_group_and_users(context["team_id"], context.enterprise_id)
 
 
 @app.event("channel_id_changed")
@@ -311,7 +309,7 @@ async def new_job_shortcut(
 #                 context["ray"],
 #                 user_id=context["user_id"],
 #                 team_id=context["team_id"],
-#                 enterprise_id=context.get("enterprise_id"),
+#                 enterprise_id=context.enterprise_id,
 #                 channel_id=context["channel_id"],
 #             )
 #         await respond(text=msg.text, blocks=msg.blocks)
@@ -525,17 +523,17 @@ async def login_sso_action(
                         user_info["profile"]["first_name"],
                         user_info["profile"]["last_name"],
                         context["channel_id"],
-                        context.get("enterprise_id"),
+                        context.enterprise_id,
                     )
                     context["ray"] = await get_ray_connection(
                         context["user_id"],
                         context["team_id"],
-                        context.get("enterprise_id"),
+                        context.enterprise_id,
                     )
                     # Show connection success message
                     sso_msg = SsoConnectionInfoMessage(
                         context["ray"],
-                        is_ibm=(is_ibm_enterprise(context.get("enterprise_id"))),
+                        is_ibm=(is_ibm_enterprise(context.enterprise_id)),
                     )
                     await ack(response_action="clear")
                     if context.response_url:
@@ -553,7 +551,7 @@ async def login_sso_action(
                         "user_id": context["user_id"],
                         "team_id": context["team_id"],
                         "channel_id": context["channel_id"],
-                        "enterprise_id": context.get("enterprise_id"),
+                        "enterprise_id": context.enterprise_id,
                     }
                     msg = get_ray_event_message(
                         "ray:slack:account_connected", data, None
@@ -570,7 +568,7 @@ async def login_sso_action(
                 if context["ray"].client.sso:
                     msg = SsoConnectionInfoMessage(
                         context["ray"],
-                        is_ibm=(is_ibm_enterprise(context.get("enterprise_id"))),
+                        is_ibm=(is_ibm_enterprise(context.enterprise_id)),
                     )
                 # need else block if triggered from old message
                 else:
@@ -578,9 +576,9 @@ async def login_sso_action(
                         context["ray"],
                         user_id=context["user_id"],
                         team_id=context["team_id"],
-                        enterprise_id=context.get("enterprise_id"),
+                        enterprise_id=context.enterprise_id,
                         channel_id=context["channel_id"],
-                        is_ibm=is_ibm_enterprise(context.get("enterprise_id")),
+                        is_ibm=is_ibm_enterprise(context.enterprise_id),
                     )
                 await respond(text=msg.text, blocks=msg.blocks)
         else:
@@ -658,7 +656,7 @@ async def ray_command(
                 context["ray"],
                 user_id=context["user_id"],
                 team_id=context["team_id"],
-                enterprise_id=context.get("enterprise_id"),
+                enterprise_id=context.enterprise_id,
                 channel_id=context["channel_id"],
             )
             await respond(text=msg.text, blocks=msg.blocks)
@@ -783,7 +781,7 @@ async def show_auto_translate_settings(
         try:
             # check if we have a token that can get channel info for the channel
             channel_info = await resolve_channels_to_team(
-                [channel_id], client, context.get("enterprise_id")
+                [channel_id], client, context.enterprise_id
             )
             client.token = channel_info[0]["bot_token"]
             channel_info = await client.conversations_info(channel=channel_id)
@@ -832,7 +830,7 @@ async def disable_auto_translate_settings(
         channel_info = json.loads(payload["value"])
         channel_id = channel_info.get("channel_id")
         team_channel = await resolve_channels_to_team(
-            [channel_id], client, context.get("enterprise_id")
+            [channel_id], client, context.enterprise_id
         )
         client.token = team_channel[0]["bot_token"]
         if not channel_id:
@@ -1060,7 +1058,7 @@ async def get_account_info(
         context["ray"],
         user_id=context["user_id"],
         team_id=context["team_id"],
-        enterprise_id=context.get("enterprise_id"),
+        enterprise_id=context.enterprise_id,
         channel_id=context["channel_id"],
     )
     await respond(text=msg.text, blocks=msg.blocks, replace_original=False)
@@ -1076,7 +1074,7 @@ async def get_connect_info(
     msg = LoginMessage(
         user_id=context["user_id"],
         team_id=context["team_id"],
-        enterprise_id=context.get("enterprise_id"),
+        enterprise_id=context.enterprise_id,
         channel_id=context.get("channel_id", context["user_id"]),
         ray_client=context["ray"].client if context["ray"] is not None else None,
     )
@@ -1138,7 +1136,7 @@ async def login_account_action(
         # result = await connect_ray_account(
         #     context["user_id"],
         #     context["team_id"],
-        #     context.get("enterprise_id"),
+        #     context.enterprise_id,
         #     channel_id=context["channel_id"],
         # )
         # if result == "success":
@@ -1165,10 +1163,10 @@ async def disconnect_account_action(
     await ack()
     # Get connection info before disconnecting.
     context["ray"] = await get_ray_connection(
-        context["user_id"], context["team_id"], context.get("enterprise_id")
+        context["user_id"], context["team_id"], context.enterprise_id
     )
     disconnect_ray_account(
-        context["user_id"], context["team_id"], context.get("enterprise_id")
+        context["user_id"], context["team_id"], context.enterprise_id
     )
     # action["value"] should contain the LanguageCloud account username.
     msg = SuccessfulLogoutMessage(
@@ -1199,7 +1197,8 @@ async def handle_new_job(
 ):
     if await require_ray_client(context, prompt_login=False):
         try:
-            form = NewJobForm.parse_slack(view["state"]["values"])
+            form_data = view["state"]["values"] if view else {}
+            form = NewJobForm.parse_slack(form_data)
         except ValidationError as e:
             errors = convert_pydantic_to_slack_error(e)
             await ack(response_action="errors", errors=errors)
@@ -1220,7 +1219,7 @@ async def handle_new_job(
             group_id = form.group_id or context["ray"].client.user_group_id
             if "job_id" in result:
                 if not is_ibm_enterprise(
-                    context.get("enterprise_id")
+                    context.enterprise_id
                 ) or get_group_quote_settings(group_id):
                     message = JobSubmitMessage(form)
                     await client.chat_postMessage(
@@ -1276,7 +1275,8 @@ async def handle_job_search(
 ):
     if await require_ray_client(context, prompt_login=False):
         try:
-            form = JobSearchForm.parse_slack(view["state"]["values"])
+            form_data = view.get("state", {}).get("values") if view else {}
+            form = JobSearchForm.parse_slack(form_data)
         except ValidationError as e:
             errors = convert_pydantic_to_slack_error(e)
             await ack(response_action="errors", errors=errors)
@@ -1315,9 +1315,10 @@ async def view_update_auto_translate_settings(
     client: AsyncWebClient,
 ):
     try:
-        form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
+        form_data = view.get("state", {}).get("values") if view else {}
+        form = AutoTranslationSettingsForm.parse_slack(form_data)
         team_channels = await resolve_channels_to_team(
-            form.channels, client, context.get("enterprise_id", "")
+            form.channels, client, context.enterprise_id
         )
     except SlackApiError as e:
         if e.response["error"] == "channel_not_found":
@@ -1370,10 +1371,8 @@ async def view_update_auto_translate_settings(
                 await client.chat_postMessage(channel=channel_id, text=msg.text)
             except Exception as e:
                 notify_exception(e)
-                if context.get("enterprise_id"):
-                    all_tokens = get_all_tokens_for_enterprise(
-                        context.get("enterprise_id")
-                    )
+                if context.enterprise_id:
+                    all_tokens = get_all_tokens_for_enterprise(context.enterprise_id)
                     for token in all_tokens:
                         client.token = token.bot_token
                         try:
@@ -1536,7 +1535,8 @@ async def handle_cancel_job(
     await ack()
     if await require_ray_client(context, prompt_login=False):
         try:
-            form = JobSearchForm.parse_slack(view["state"]["values"])
+            form_state = view["state"]["values"] if view else {}
+            form = JobSearchForm.parse_slack(form_state)
         except ValidationError as e:
             errors = convert_pydantic_to_slack_error(e)
             await ack(response_action="errors", errors=errors)
@@ -1574,7 +1574,7 @@ async def message_deleted_event(
     if message.get("subtype") == "message_deleted":
         deleted_ts = body["event"]["deleted_ts"]
         timestamp = await get_mt_ts_cached(deleted_ts)
-        if timestamp:
+        if timestamp and context.channel_id:
             await client.chat_delete(ts=timestamp, channel=context.channel_id)
 
 

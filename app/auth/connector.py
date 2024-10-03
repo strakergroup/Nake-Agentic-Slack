@@ -1542,8 +1542,10 @@ def get_group_quote_settings(group_uuid: str):
     return row.api_enabled
 
 
-def get_all_tokens_for_enterprise(enterprise_id: str):
+def get_all_tokens_for_enterprise(enterprise_id: str | None):
     """Get all the tokens for the enterprise"""
+    if not enterprise_id:
+        return None
     with engines["ray_integration"].connect() as conn:
         sql = text(
             """
