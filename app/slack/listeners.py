@@ -90,6 +90,7 @@ from .web import (
 from .select_options import get_language_options, get_file_options_cached
 from .utils import is_channel_im
 from ..auth.connector import (
+    RayContext,
     disconnect_ray_account,
     disconnect_ray_super_group_and_users,
     connect_ray_account_sso,
@@ -106,7 +107,7 @@ from ..ray.settings import (
     disable_auto_translate_group_settings,
     update_channel_id,
 )
-from slack_bolt.context.async_context import AsyncBoltContext
+
 from ..config import domains
 
 from typing import Dict, Any, Optional
@@ -125,14 +126,14 @@ from slack_bolt.kwargs_injection.async_args import AsyncAck, AsyncSay, AsyncResp
 @slack_log_decorator
 async def message_event(
     client: AsyncWebClient,
-    context: AsyncBoltContext,
+    context: RayContext,
     message: Dict[str, Any],
     body: Dict[str, Any],
 ):
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # use threads in channels or group conversations (see the "app_mention" event).
-    if not context["is_bot"]:
+    if not context.is_bot:
         if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
             with engines["ray_integration_readonly"].connect() as conn:
                 # extract team id from body
@@ -169,7 +170,7 @@ async def message_event(
 @app.event("app_mention", middleware=[ray_connection])
 @slack_log_decorator
 async def app_mention_event(
-    client: AsyncWebClient, context: AsyncBoltContext, event: Dict[str, Any]
+    client: AsyncWebClient, context: RayContext, event: Dict[str, Any]
 ):
     # https://api.slack.com/events/app_mention
     # Respond to messages with threads in channel and group chats if mentioned.
@@ -186,7 +187,7 @@ async def app_mention_event(
 async def home_opened(
     event: Dict[str, Any],
     action: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     body: Dict[str, Any],
     say: AsyncSay,
     client: AsyncWebClient,
@@ -234,7 +235,7 @@ async def home_opened(
 @slack_log_decorator
 async def home_load(
     action: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
     body: Dict[str, Any],
 ):
@@ -249,7 +250,7 @@ async def home_load(
 
 @app.event("app_uninstalled")
 @slack_log_decorator
-async def app_uninstalled(context: AsyncBoltContext):
+async def app_uninstalled(context: RayContext):
     # https://api.slack.com/events/app_uninstalled
     # Disconnect the Super Group and all users linked to the Slack workspace
     # when the app is uninstalled.
@@ -268,7 +269,7 @@ async def channel_id_changed(event: Dict[str, Any]):
 async def new_job_shortcut(
     ack: AsyncAck,
     shortcut: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
 ):
     await ack()
@@ -291,7 +292,7 @@ async def new_job_shortcut(
 
 # @app.block_action("login_sso", middleware=[ray_connection])
 # @slack_log_decorator
-# async def login_sso_action(ack: AsyncAck, context: AsyncBoltContext, body: Dict[str, Any], respond: AsyncRespond, client: AsyncWebClient):
+# async def login_sso_action(ack: AsyncAck, context: RayContext, body: Dict[str, Any], respond: AsyncRespond, client: AsyncWebClient):
 #     if context["ray"].client is None:
 #         await ack()
 #         await client.views_open(
@@ -319,7 +320,7 @@ async def new_job_shortcut(
 @slack_log_decorator
 async def show_srt_translate_form(
     ack: AsyncAck,
-    context: AsyncBoltContext,
+    context: RayContext,
     action: Optional[Dict[str, Any]],
     body: Dict[str, Any],
     client: AsyncWebClient,
@@ -341,7 +342,7 @@ async def show_srt_translate_form(
 @slack_log_decorator
 async def document_mt_job_action(
     ack: AsyncAck,
-    context: AsyncBoltContext,
+    context: RayContext,
     action: Optional[Dict[str, Any]],
     body: Dict[str, Any],
     client: AsyncWebClient,
@@ -376,7 +377,7 @@ async def document_mt_job_action(
 async def document_mt_submit_action(
     ack: AsyncAck,
     action: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     body: Dict[str, Any],
     say: AsyncSay,
     client: AsyncWebClient,
@@ -411,7 +412,7 @@ async def document_mt_submit_action(
 async def download_transcribed_file(
     ack: AsyncAck,
     action: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
 ):
     await ack()
@@ -434,7 +435,7 @@ async def handle_translate_shortcut(
     ack: AsyncAck,
     body: Dict[str, Any],
     client: AsyncWebClient,
-    context: AsyncBoltContext,
+    context: RayContext,
 ):
     await ack()
     mt_tl = context.get("locale", "en")
@@ -470,7 +471,7 @@ async def handle_translate_shortcut(
 async def srt_translate_action(
     ack: AsyncAck,
     action: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     body: Dict[str, Any],
     say: AsyncSay,
     client: AsyncWebClient,
@@ -501,7 +502,7 @@ async def srt_translate_action(
 @slack_log_decorator
 async def login_sso_action(
     ack: AsyncAck,
-    context: AsyncBoltContext,
+    context: RayContext,
     respond: AsyncRespond,
     client: AsyncWebClient,
     view: Optional[Dict[str, Any]],
@@ -612,7 +613,7 @@ async def login_sso_action(
 @slack_log_decorator
 async def job_search_action(
     ack: AsyncAck,
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
     body: Dict[str, Any],
 ):
@@ -633,7 +634,7 @@ async def ray_command(
     ack: AsyncAck,
     respond: AsyncRespond,
     command: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
 ):
     await ack()
@@ -763,7 +764,7 @@ async def ray_command(
 @slack_log_decorator
 async def show_auto_translate_settings(
     ack: AsyncAck,
-    context: AsyncBoltContext,
+    context: RayContext,
     payload: Dict[str, Any],
     body: Dict[str, Any],
     client: AsyncWebClient,
@@ -820,7 +821,7 @@ async def show_auto_translate_settings(
 @app.block_action("settings_auto_translate_disable", middleware=[ray_connection])
 async def disable_auto_translate_settings(
     ack: AsyncAck,
-    context: AsyncBoltContext,
+    context: RayContext,
     payload: Dict[str, Any],
     body: Dict[str, Any],
     client: AsyncWebClient,
@@ -880,7 +881,7 @@ async def show_job_details(
     ack: AsyncAck,
     action: Optional[Dict[str, Any]],
     payload: Dict[str, Any],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
 ):
     """Get job info. Triggered from the "View More Info" in the job list"""
@@ -899,7 +900,7 @@ async def show_job_details(
 
 @app.action("quote", middleware=[ray_connection])
 @slack_log_decorator
-async def quote(ack: AsyncAck, context: AsyncBoltContext, client: AsyncWebClient):
+async def quote(ack: AsyncAck, context: RayContext, client: AsyncWebClient):
     """Get quote. Triggered from the Home View New Job button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
@@ -913,9 +914,7 @@ async def quote(ack: AsyncAck, context: AsyncBoltContext, client: AsyncWebClient
 
 @app.action("daily_summary", middleware=[ray_connection])
 @slack_log_decorator
-async def daily_summary(
-    ack: AsyncAck, context: AsyncBoltContext, client: AsyncWebClient
-):
+async def daily_summary(ack: AsyncAck, context: RayContext, client: AsyncWebClient):
     """Get daily summary. Triggered from the Home View Daily Summary button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -924,7 +923,7 @@ async def daily_summary(
 
 @app.block_action("all_summary", middleware=[ray_connection])
 @slack_log_decorator
-async def all_summary(ack: AsyncAck, context: AsyncBoltContext, client: AsyncWebClient):
+async def all_summary(ack: AsyncAck, context: RayContext, client: AsyncWebClient):
     """Get daily summary. Triggered from the Home View Daily Summary button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -936,7 +935,7 @@ async def all_summary(ack: AsyncAck, context: AsyncBoltContext, client: AsyncWeb
 @app.action("report_insights", middleware=[ray_connection])
 @slack_log_decorator
 async def handle_report_insights_action(
-    ack: AsyncAck, context: AsyncBoltContext, client: AsyncWebClient
+    ack: AsyncAck, context: RayContext, client: AsyncWebClient
 ):
     """Get Report and Insights. Triggered from the Home Report Insights button"""
     await ack()
@@ -947,7 +946,7 @@ async def handle_report_insights_action(
 @app.action("ai_translate_help", middleware=[ray_connection])
 @slack_log_decorator
 async def handle_ai_translate_help_action(
-    ack: AsyncAck, context: AsyncBoltContext, client: AsyncWebClient
+    ack: AsyncAck, context: RayContext, client: AsyncWebClient
 ):
     """Get ai translate help link. Triggered from the Home AI Translate help button"""
     await ack()
@@ -960,7 +959,7 @@ async def handle_ai_translate_help_action(
 async def job_list_action(
     ack: AsyncAck,
     payload: Dict[str, Any],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
 ):
     """Paginated job list. Triggered from the job summary dropdown."""
@@ -979,7 +978,7 @@ async def job_list_action(
 async def job_list_paginated_action(
     ack: AsyncAck,
     payload: Dict[str, Any],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
 ):
     """Paginated job list. Triggered from the job list "Show more" and
@@ -1012,7 +1011,7 @@ async def job_list_paginated_action(
 async def new_job_action(
     ack: AsyncAck,
     payload: Dict[str, Any],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
     body: Dict[str, Any],
 ):
@@ -1050,9 +1049,7 @@ async def new_job_action(
 # The "Account Info" button short cut
 @app.block_action("account_info", middleware=[ray_connection])
 @slack_log_decorator
-async def get_account_info(
-    ack: AsyncAck, context: AsyncBoltContext, respond: AsyncRespond
-):
+async def get_account_info(ack: AsyncAck, context: RayContext, respond: AsyncRespond):
     await ack()
     msg = ConnectionInfoMessage(
         context["ray"],
@@ -1067,9 +1064,7 @@ async def get_account_info(
 # The "Connect" button short cut in Help Message
 @app.block_action("connect_info", middleware=[ray_connection])
 @slack_log_decorator
-async def get_connect_info(
-    ack: AsyncAck, context: AsyncBoltContext, respond: AsyncRespond
-):
+async def get_connect_info(ack: AsyncAck, context: RayContext, respond: AsyncRespond):
     await ack()
     msg = LoginMessage(
         user_id=context["user_id"],
@@ -1093,7 +1088,7 @@ async def get_delay_info(ack: AsyncAck, respond: AsyncRespond):
 async def approve_pending_client_action(
     ack: AsyncAck,
     action: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     say: AsyncSay,
     client: AsyncWebClient,
 ):
@@ -1126,7 +1121,7 @@ async def approve_pending_client_action(
 async def login_account_action(
     ack: AsyncAck,
     action: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     respond: AsyncRespond,
 ):
     await ack()
@@ -1157,20 +1152,17 @@ async def login_account_action(
 async def disconnect_account_action(
     ack: AsyncAck,
     action: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     respond: AsyncRespond,
 ):
     await ack()
-    # Get connection info before disconnecting.
-    context["ray"] = await get_ray_connection(
-        context["user_id"], context["team_id"], context.enterprise_id
-    )
+
     disconnect_ray_account(
         context["user_id"], context["team_id"], context.enterprise_id
     )
     # action["value"] should contain the LanguageCloud account username.
     msg = SuccessfulLogoutMessage(
-        context["user_id"], context["ray"].client.sso, action.get("value")
+        context.user_id, context.ray.client.sso, action.get("value")
     )
     await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
 
@@ -1192,7 +1184,7 @@ async def link(ack: AsyncAck):
 async def handle_new_job(
     ack: AsyncAck,
     view: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
 ):
     if await require_ray_client(context, prompt_login=False):
@@ -1270,7 +1262,7 @@ async def handle_new_job(
 async def handle_job_search(
     ack: AsyncAck,
     view: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
 ):
     if await require_ray_client(context, prompt_login=False):
@@ -1310,7 +1302,7 @@ async def handle_job_search(
 async def view_update_auto_translate_settings(
     ack: AsyncAck,
     view: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     body: Dict[str, Any],
     client: AsyncWebClient,
 ):
@@ -1407,7 +1399,7 @@ async def language_options(ack: AsyncAck, payload: Dict[str, Any]):
 
 
 @app.options("group_options", middleware=[ray_connection])
-async def group_options(ack: AsyncAck, context: AsyncBoltContext):
+async def group_options(ack: AsyncAck, context: RayContext):
     if await require_ray_client(context):
         options = await get_groups(context["ray"].client)
         await ack(options=options)
@@ -1440,7 +1432,7 @@ async def file_options(ack: AsyncAck, payload: Dict[str, Any], client: AsyncWebC
 async def batch_list_action(
     ack: AsyncAck,
     payload: Dict[str, Any],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
 ):
     """Paginated batch file list. Triggered from the Show In Progress Files button."""
@@ -1467,7 +1459,7 @@ async def batch_list_action(
 async def file_list_action(
     ack: AsyncAck,
     payload: Dict[str, Any],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
 ):
     """Paginated file list. Triggered from the Show Files button."""
@@ -1494,7 +1486,7 @@ async def file_list_action(
 async def cancel_job_action(
     ack: AsyncAck,
     payload: Dict[str, Any],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
     body: Dict[str, Any],
 ):
@@ -1528,7 +1520,7 @@ async def cancel_job_action(
 async def handle_cancel_job(
     ack: AsyncAck,
     view: Optional[Dict[str, Any]],
-    context: AsyncBoltContext,
+    context: RayContext,
     client: AsyncWebClient,
 ):
     """Get job info. Triggered from the "View More Info" in the job list"""
@@ -1569,7 +1561,7 @@ async def message_deleted_event(
     message: Dict[str, Any],
     client: AsyncWebClient,
     body: Dict[str, Any],
-    context: AsyncBoltContext,
+    context: RayContext,
 ):
     if message.get("subtype") == "message_deleted":
         deleted_ts = body["event"]["deleted_ts"]
@@ -1586,7 +1578,7 @@ async def message_deleted_event(
 async def message_changed_event(
     client: AsyncWebClient,
     body: Dict[str, Any],
-    context: AsyncBoltContext,
+    context: RayContext,
     message: Dict[str, Any],
 ):
     if message.get("subtype") == "message_changed":
@@ -1609,7 +1601,7 @@ async def message_changed_event(
 
 # @app.event({"type": "message"}, middleware=[ray_connection])
 # @slack_log_decorator
-# async def evaluate_job_action(client: AsyncWebClient, body: Dict[str, Any], context: AsyncBoltContext, message: Dict[str, Any]):
+# async def evaluate_job_action(client: AsyncWebClient, body: Dict[str, Any], context: RayContext, message: Dict[str, Any]):
 #     file_id = message.value
 
 

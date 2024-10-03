@@ -4,7 +4,7 @@ See https://slack.dev/bolt-python/concepts#listener-middleware.
 """
 
 import math
-from typing import Any
+from typing import Awaitable, Callable
 import logging
 
 from buglog import notify_exception, notify_message
@@ -12,14 +12,12 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from ray_logger.slack import SlackAppLog  # type: ignore
 
 from app.ray.utils import is_ibm_enterprise, set_user_language
-from app.translate import translator_var, Translator
 
 from .app import app
 from .logging import init_slack_app_log
 from .templates.messages import (
     RequiresMtTokenAdminMessage,
     RequiresMtTokenMessage,
-    SlackMessage,
     LoginMessage,
 )
 from ..auth.connector import (
@@ -54,7 +52,10 @@ async def ray_log(context, body, next):
 # -----------------------------------------------------------------------------
 
 
-async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) -> None:
+async def ray_connection(
+    context: AsyncBoltContext,
+    next: Callable[[], Awaitable[None]],
+) -> None:
     """Gets and saves the LanguageCloud super group and client information of the
     Slack user to the context. The `RayConnection` object is stored as `ray` in
     the context if the Slack workspace has a connected super group.

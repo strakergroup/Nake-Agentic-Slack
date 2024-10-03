@@ -18,6 +18,8 @@ from slack_bolt.request.payload_utils import (
 )
 from ray_logger.slack import SlackMySQLLogger, SlackAppLog
 
+from app.auth.connector import RayContext
+
 from ..database import engines
 
 
@@ -132,7 +134,7 @@ def slack_log_decorator(
         start_time = time.time()
         # Put the context back into kwargs if needed.
         if context_in_listener:
-            kwargs["context"] = context
+            kwargs["context"] = RayContext(context)
 
         await listener_func(*args, **kwargs)
         end_time = time.time()
