@@ -43,6 +43,7 @@ async def home_view(
     translation_settings_enabled = not is_ibm_enterprise(context.enterprise_id) or (
         rayConnection and rayConnection.client and is_straker_admin
     )
+    is_verify_enabled = rayConnection.super_group[0].enable_verify_in_slack
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str], dict[str, str]]
     ] = []

@@ -55,6 +55,8 @@ class RaySuperGroup:
     """The Slack team ID linked to the RAY client."""
     slack_enterprise_id: str | None
     """The Slack enterprise ID linked to the RAY client."""
+    enable_verify_in_slack: bool = False
+    """The flag to enable verify in Slack (`obj_m_group.enable_verify_in_slack`)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,7 +330,7 @@ async def get_demo_super_group(
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
-            SELECT link.super_group_uuid, g.label
+            SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack
             FROM slack_super_group_link link
             INNER JOIN sitemanager.obj_m_group g
             ON link.super_group_uuid = g.obj_uuid
@@ -350,6 +352,7 @@ async def get_demo_super_group(
             name=row.label,
             slack_team_id=team_id,
             slack_enterprise_id=enterprise_id,
+            enable_verify_in_slack=bool(row.enable_verify_in_slack),
         )
     ]
 
@@ -367,7 +370,7 @@ async def get_ray_super_group(
         if enterprise_id:
             sql = text(
                 """
-                SELECT link.super_group_uuid, g.label
+                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack
                 FROM slack_super_group_link link
                 INNER JOIN sitemanager.obj_m_group g
                 ON link.super_group_uuid = g.obj_uuid
@@ -378,7 +381,7 @@ async def get_ray_super_group(
         else:
             sql = text(
                 """
-                SELECT link.super_group_uuid, g.label
+                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack
                 FROM slack_super_group_link link
                 INNER JOIN sitemanager.obj_m_group g
                 ON link.super_group_uuid = g.obj_uuid
@@ -396,6 +399,7 @@ async def get_ray_super_group(
             name=row.label,
             slack_team_id=team_id,
             slack_enterprise_id=enterprise_id,
+            enable_verify_in_slack=bool(row.enable_verify_in_slack),
         )
         for row in rows
     ]

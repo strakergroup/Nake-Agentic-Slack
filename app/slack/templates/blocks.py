@@ -33,11 +33,17 @@ def home_auth_blocks(
         super_group_names_str = ", ".join(super_group_names)
         user_id_str = f"<@{user_id}>"
         domain_url = f"<{domains.languagecloud}|{ray_connection.client.username}>"
+        enable_verify = ray_connection.super_group[0].enable_verify_in_slack
         text = _("Your Slack account {user_id_str} is connected with: {domain_url}.")
         if ray_connection.client.sso:
             text = _(
-                "Your Slack account {user_id_str} is connected with: *{ray_connection.client.username}*."
+            "Your Slack account {user_id_str} is connected with: *{ray_connection.client.username}*."
             )
+        if enable_verify:
+            text += _("\n\n Your Slack account is connected to *LangaugeCloud* and *Verify*.")
+            # token_text = _("You have *{ray_connection.client.tokens}* tokens available.")
+        else:
+            text += _("\n\n Your Slack account is connected to *LangaugeCloud*.")
         return [
             {
                 "type": "section",
