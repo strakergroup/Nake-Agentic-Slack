@@ -3467,10 +3467,14 @@ class DocMtMessage(SlackMessage):
             ],
         )
 
+
 class DocParseErrorMessage(SlackMessage):
     """Message verify consumer event response. Specific to faliure to parse file"""
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, ext: str, file_type: str) -> None:
+        message = _(
+            "Error parsing file. Please ensure file with {ext} is a valid {file_type}"
+        )
         super().__init__(
             _("Verify the translation"),
             [
