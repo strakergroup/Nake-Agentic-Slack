@@ -37,13 +37,13 @@ def home_auth_blocks(
         text = _("Your Slack account {user_id_str} is connected with: {domain_url}.")
         if ray_connection.client.sso:
             text = _(
-            "Your Slack account {user_id_str} is connected with: *{ray_connection.client.username}*."
+            "Your Slack account {user_id_str} is connected."
             )
-        if enable_verify:
-            text += _("\n\n Your Slack account is connected to *LangaugeCloud* and *Verify*.")
-            # token_text = _("You have *{ray_connection.client.tokens}* tokens available.")
-        else:
-            text += _("\n\n Your Slack account is connected to *LangaugeCloud*.")
+        # To show the verify enabled status/message in the home tab
+        # if enable_verify:
+        #     text += _("\n\n Your Slack account is connected to *LangaugeCloud* and *Verify*.")
+        # else:
+        #     text += _("\n\n Your Slack account is connected to *LangaugeCloud*.")
         return [
             {
                 "type": "section",

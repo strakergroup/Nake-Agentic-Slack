@@ -44,6 +44,7 @@ async def home_view(
         rayConnection and rayConnection.client and is_straker_admin
     )
     is_verify_enabled = rayConnection.super_group[0].enable_verify_in_slack
+    verify_settings_block = []
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str], dict[str, str]]
     ] = []
@@ -272,6 +273,31 @@ async def home_view(
                         "elements": actions,
                     }
                 )
+        if is_verify_enabled:
+            verify_settings_block = [{
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        ":drum_with_drumsticks: Introducing a new option: Translate and evaluate your files using AI, with the choice of adding human verification if needed."
+                    ),
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _(":star2: Create New Project(QE)"),
+                        },
+                        "action_id": "quote",
+                        "url": message_url,
+                    },
+                ],
+            }]
     return {
         "type": "home",
         "blocks": [
@@ -348,6 +374,7 @@ async def home_view(
                     },
                 ],
             },
+            *verify_settings_block,
             *translation_settings_blocks,
             {"type": "divider"},
             {

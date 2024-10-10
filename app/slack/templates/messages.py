@@ -1887,6 +1887,8 @@ class HelpMessage(SlackMessage):
     """Help message showing how to use the app."""
 
     def __init__(self, context: AsyncBoltContext) -> None:
+        ray_connection = context['ray']
+        is_verify_enabled = ray_connection.super_group[0].enable_verify_in_slack
         super().__init__(
             "Hi there :wave: here are some ideas of what you can currently do with our app:",
             [
@@ -1946,6 +1948,23 @@ class HelpMessage(SlackMessage):
                         "action_id": "link_document_mt",
                     },
                 },
+                *([{
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(":sports_medal: Translate and evaluate your files using AI and choose whether human verification is required."),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Quality Evaluation"),
+                        },
+                        # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
+                        "action_id": "quote",
+                    },
+                }] if is_verify_enabled else []),
                 {
                     "type": "section",
                     "text": {
