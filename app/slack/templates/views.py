@@ -479,6 +479,7 @@ def evaluate_job_modal(file_id: str):
                         "text": _("Project Name"),
                         "emoji": True,
                     },
+                    "min_length": 4,
                     "max_length": 110,
                 },
                 "label": {

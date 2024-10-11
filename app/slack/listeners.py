@@ -1667,9 +1667,8 @@ async def evaluate_job_submit(
             context.ray.client, input_file, form.target_langs_uuid, form.reference
         )
         if response:
-            await client.chat_postMessage(
-                channel=context.user_id, text=response["uuid"]
-            )
+            # TODO use form to match spec
+            await client.chat_postMessage(channel=context.user_id, text="Evaluating...")
 
 
 @app.action("evaluate_job", middleware=[ray_connection])
@@ -1716,23 +1715,11 @@ async def handle_verify_job_submission(ack, body, client):
     job_uuid = body["view"]["private_metadata"]
 
     # Extract the selected checkbox values
-    selected_values = []
-    for block_id, block_data in body["view"]["state"]["values"].items():
-        if "verification_checkbox_action" in block_data:
-            selected_options = block_data["verification_checkbox_action"][
-                "selected_options"
-            ]
-            selected_values.extend([option["value"] for option in selected_options])
-
-    # Process the selected values
-    print(f"Job UUID: {job_uuid}")
-    print(f"Selected checkbox values: {selected_values}")
-
     # Example: Send a message with the selected values
     user_id = body["user"]["id"]
     await client.chat_postMessage(
         channel=user_id,
-        text=f"Job UUID: {job_uuid}\nSelected checkbox values: {', '.join(selected_values)}",
+        text="Job Created",
     )
 
 
