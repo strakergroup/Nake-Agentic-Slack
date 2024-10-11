@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict, List
 
 from pydantic import (
     BaseModel,
@@ -257,3 +257,22 @@ class AutoTranslationSettingsForm(BaseModel):
         except KeyError as e:
             # TODO Better error handling
             raise ValueError("The Slack payload format is incorrect") from e
+
+
+class EvaluateJobForm(BaseModel):
+    """The model for an evaluation job form."""
+
+    reference: str  # Max 100 chars, validated in view
+    target_langs_uuid: list[str]
+
+    @classmethod
+    def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "EvaluateJobForm":
+        reference = values["reference"]["reference"]["value"]
+        target_langs_uuid = [
+            opt["value"]
+            for opt in values["target_langs"]["language_options_uuid"][
+                "selected_options"
+            ]
+        ]
+
+        return cls(reference=reference, target_langs_uuid=target_langs_uuid)

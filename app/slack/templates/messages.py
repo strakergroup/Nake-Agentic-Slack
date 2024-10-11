@@ -4,7 +4,9 @@ from typing import Any, Dict, List
 import json
 
 import langcodes
-from app.slack.select_options import get_auto_translate_language_options
+from app.slack.select_options import (
+    get_auto_translate_language_options,
+)
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm
@@ -15,8 +17,8 @@ from ...ray.events.models import (
     ClientGroup,
     JobQuoteAcceptedEvent,
 )
+
 from ...ray.utils import (
-    format_predictions,
     get_job_url,
     format_job_status,
     format_datetime_slack,
@@ -26,7 +28,7 @@ from ...ray.utils import (
     is_min_langugagecloud_plan,
 )
 from ...ray.settings import get_auto_translate_language_name
-from ..utils import format_strings_display
+from ..utils import format_strings_display, segment_quality_score
 from ...config import config, domains, Environment
 from ...auth.connector import (
     RayClient,
@@ -1667,7 +1669,34 @@ class NewJobMessage(SlackMessage):
                 {
                     "type": "actions",
                     "elements": (
-                        [
+                        (
+                            [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("Quality Evaluation"),
+                                        "emoji": True,
+                                    },
+                                    "action_id": "evaluate_job",
+                                    "style": "primary",
+                                    "value": file_id,
+                                },
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("AI Translate"),
+                                        "emoji": True,
+                                    },
+                                    "action_id": "document_mt_job",
+                                    "value": file_id,
+                                },
+                            ]
+                            if file_id
+                            else []
+                        )
+                        + [
                             {
                                 "type": "button",
                                 "text": {
@@ -1685,34 +1714,6 @@ class NewJobMessage(SlackMessage):
                                 ),
                             }
                         ]
-                        + (
-                            [
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("AI Translate"),
-                                        "emoji": True,
-                                    },
-                                    "action_id": "document_mt_job",
-                                    "style": "primary",
-                                    "value": file_id,
-                                },
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("Evaluate File"),
-                                        "emoji": True,
-                                    },
-                                    "action_id": "evaluate_job",
-                                    "style": "primary",
-                                    "value": file_id,
-                                }
-                            ]
-                            if file_id
-                            else []
-                        )
                     ),
                 },
             ],
@@ -3458,6 +3459,80 @@ class DocMtMessage(SlackMessage):
                 }
             ],
         )
+
+
+class EvaluateSuccessMessage(SlackMessage):
+    """Message verify consumer event response"""
+
+    def __init__(self, job: dict[str, Any], all_langs: list[dict[str, str]]) -> None:
+        languages = job["target_languages"]
+        file = job["source_files"][0]
+        source_lang_uuid = file["report"]["language_uuid"]
+        source_lang = next(
+            (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
+        )
+        reports = file["report"]["evaluation_reports"]
+        for lang in languages:
+            for report in reports:
+                if lang["uuid"] == report["target_language"]:
+                    lang["report"] = report
+            for target_file in file["target_files"]:
+                if target_file["language_uuid"] == lang["uuid"]:
+                    lang["target_file_uuid"] = target_file["target_file_uuid"]
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _("AI quality evaluation of your translated files:"),
+                },
+            }
+        ]
+        lang_blocks = []
+        for lang in languages:
+            lang_blocks = [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"Translate from: {source_lang['name']}\nTranslate to: {lang['name']}\n:file_folder: {file['filename']}\n{segment_quality_score(lang['report']['score'])}",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Download AI Translation"),
+                            },
+                            "value": lang["target_file_uuid"],
+                            "action_id": "download_ai_translation_action",
+                        },
+                    ],
+                },
+            ]
+
+        blocks.extend(lang_blocks)
+        blocks.append(
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Send to Human Verification",
+                        },
+                        "value": job["uuid"],
+                        "action_id": "verify_job_modal_open",
+                    },
+                ],
+            },
+        )
+        super().__init__(_("Evaluation Result"), blocks)
+
 
 class DocParseErrorMessage(SlackMessage):
     """Message verify consumer event response. Specific to faliure to parse file"""

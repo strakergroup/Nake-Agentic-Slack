@@ -10,6 +10,7 @@ The [Slack App](https://api.slack.com/) for Straker LanguageCloud. This app allo
 - [Pipenv](https://pipenv.pypa.io/)
 - MySQL
 - MongoDB (docker compose)
+- [sup-file-api](https://github.com/strakergroup/sup-file-api)
 - [pt-languagecloud-api](https://bitbucket.org/strakertech/pt-languagecloud-api)
 - Redis (in docker-compose)
 - [redis-stream-proxy](https://bitbucket.org/strakertech/redis-stream-proxy-api/) Called by other apps to send events to slack

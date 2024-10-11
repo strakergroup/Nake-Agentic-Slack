@@ -7,6 +7,13 @@ import os
 import re
 import json
 from datetime import datetime, timedelta
+
+from app.api.verify import (
+    download_verify_file,
+    get_client_evaluation_job,
+    get_evaluation_job,
+    submit_evaluation_job,
+)
 from ..database import engines
 
 from pydantic import ValidationError
@@ -50,6 +57,7 @@ from .logging import slack_log_decorator
 from .templates.models import (
     convert_pydantic_to_slack_error,
     NewJobForm,
+    EvaluateJobForm,
     JobSearchForm,
     AutoTranslationSettingsForm,
 )
@@ -75,11 +83,13 @@ from .templates.messages import (
     AutoTranslateSettingsDisabledMessage,
 )
 from .templates.views import (
+    evaluate_job_modal,
     home_view,
     translation_settings_view,
     translation_settings_view_error,
     job_search_modal,
     cancel_job_modal,
+    verify_job_modal,
 )
 from .web import (
     download_file,
@@ -87,7 +97,11 @@ from .web import (
     get_bot_accessible_files,
     get_mt_ts_cached,
 )
-from .select_options import get_language_options, get_file_options_cached
+from .select_options import (
+    _get_languages_cached,
+    get_language_options,
+    get_file_options_cached,
+)
 from .utils import is_channel_im
 from ..auth.connector import (
     RayContext,
@@ -429,6 +443,26 @@ async def download_transcribed_file(
         )
 
 
+@app.block_action("download_ai_translation_action", middleware=[ray_connection])
+@slack_log_decorator
+async def download_ai_translation_action(
+    ack: AsyncAck,
+    action: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+):
+    await ack()
+    if await require_ray_client(context):
+        file_uuid = action["value"]
+        file = await download_verify_file(context.ray.client, file_uuid)
+        await client.files_upload_v2(
+            channel=context["channel_id"],
+            file=file["file"],
+            title=file["file_name"],
+            filename=file["file_name"],
+        )
+
+
 @app.shortcut("shortcut_translate", middleware=[ray_connection])
 @slack_log_decorator
 async def handle_translate_shortcut(
@@ -554,7 +588,7 @@ async def login_sso_action(
                         "channel_id": context["channel_id"],
                         "enterprise_id": context.enterprise_id,
                     }
-                    msg = get_ray_event_message(
+                    msg = await get_ray_event_message(
                         "ray:slack:account_connected", data, None
                     )
                     await ack(response_action="clear")
@@ -1156,7 +1190,6 @@ async def disconnect_account_action(
     respond: AsyncRespond,
 ):
     await ack()
-
     disconnect_ray_account(
         context["user_id"], context["team_id"], context.enterprise_id
     )
@@ -1398,6 +1431,13 @@ async def language_options(ack: AsyncAck, payload: Dict[str, Any]):
     await ack(options=options)
 
 
+@app.options("language_options_uuid", middleware=[ray_connection])
+async def language_options_uuid(ack: AsyncAck, payload: Dict[str, Any]):
+    # returns the language options where the value is the uuid
+    options = await get_language_options(payload.get("value"), "uuid")
+    await ack(options=options)
+
+
 @app.options("group_options", middleware=[ray_connection])
 async def group_options(ack: AsyncAck, context: RayContext):
     if await require_ray_client(context):
@@ -1599,10 +1639,101 @@ async def message_changed_event(
                 )
 
 
-# @app.event({"type": "message"}, middleware=[ray_connection])
-# @slack_log_decorator
-# async def evaluate_job_action(client: AsyncWebClient, body: Dict[str, Any], context: RayContext, message: Dict[str, Any]):
-#     file_id = message.value
+@app.view("evaluate_job", middleware=[ray_connection])
+@slack_log_decorator
+async def evaluate_job_submit(
+    view: Optional[Dict[str, Any]],
+    client: AsyncWebClient,
+    ack: AsyncAck,
+    context: RayContext,
+):
+    """Evaluate job. Triggered from the Evaluate form view."""
+    await ack()
+    try:
+        if view:
+            file_id = view["private_metadata"]
+            form_data = view["state"]["values"]
+            form = EvaluateJobForm.parse_slack(form_data)
+            # call verify api to submit a file for evaluation
+    except ValidationError as e:
+        errors = convert_pydantic_to_slack_error(e)
+        print(errors)
+        await ack(response_action="errors", errors=errors)
+        return
+    await ack(response_action="clear")
+    if await require_ray_client(context, prompt_login=True):
+        input_file = await download_file(client=client, file_id=file_id, http=None)
+        response = await submit_evaluation_job(
+            context.ray.client, input_file, form.target_langs_uuid, form.reference
+        )
+        if response:
+            await client.chat_postMessage(
+                channel=context.user_id, text=response["uuid"]
+            )
+
+
+@app.action("evaluate_job", middleware=[ray_connection])
+@slack_log_decorator
+async def evaluate_job_action(
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+    ack: AsyncAck,
+):
+    """Evaluate job. Triggered from the Evaluate Job button."""
+    await ack()
+    file_id = action["value"]
+    await client.views_open(
+        trigger_id=body["trigger_id"],
+        view=evaluate_job_modal(file_id),
+    )
+
+
+@app.action("verify_job_modal_open", middleware=[ray_connection])
+@slack_log_decorator
+async def verify_job_modal_open_action(
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+    context: RayContext,
+    ack: AsyncAck,
+):
+    """Open modal for human verification. Triggered from the Send for human verification button."""
+    await ack()
+    job_uuid = action["value"]
+    job = await get_client_evaluation_job(context.ray.client, job_uuid)
+    all_langs = await _get_languages_cached()
+    await client.views_open(
+        trigger_id=body["trigger_id"], view=verify_job_modal(job["data"], all_langs)
+    )
+
+
+@app.view("verify_job")
+async def handle_verify_job_submission(ack, body, client):
+    await ack()
+
+    # Extract the private metadata (job UUID)
+    job_uuid = body["view"]["private_metadata"]
+
+    # Extract the selected checkbox values
+    selected_values = []
+    for block_id, block_data in body["view"]["state"]["values"].items():
+        if "verification_checkbox_action" in block_data:
+            selected_options = block_data["verification_checkbox_action"][
+                "selected_options"
+            ]
+            selected_values.extend([option["value"] for option in selected_options])
+
+    # Process the selected values
+    print(f"Job UUID: {job_uuid}")
+    print(f"Selected checkbox values: {selected_values}")
+
+    # Example: Send a message with the selected values
+    user_id = body["user"]["id"]
+    await client.chat_postMessage(
+        channel=user_id,
+        text=f"Job UUID: {job_uuid}\nSelected checkbox values: {', '.join(selected_values)}",
+    )
 
 
 # FastAPI will use this to handle Slack API requests.

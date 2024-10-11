@@ -25,6 +25,7 @@ from ..slack import app
 from ..slack.templates.messages import (
     DocMtMessage,
     DocParseErrorMessage,
+    EvaluateSuccessMessage,
     RequiresMtTokenAdminMessage,
     RequiresMtTokenMessage,
     SuccessfulLoginMessage,
@@ -59,7 +60,9 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 user=auth.slack_user.user_id, include_locale=True
             )
             set_user_language(user_info)
-            message = get_ray_event_message(event.event, event.data, auth.slack_user)
+            message = await get_ray_event_message(
+                event.event, event.data, auth.slack_user
+            )
     except ValidationError as e:
         raise HTTPException(
             422,
@@ -75,6 +78,13 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
         if isinstance(message, SuccessfulLoginMessage):
             await post_notification_ephemeral(
                 app.client, auth.slack_user.channel_id, event, auth.slack_user, message
+            )
+        elif isinstance(message, EvaluateSuccessMessage):
+            await post_notification(
+                app.client,
+                event,
+                auth.slack_user,
+                message,
             )
         elif isinstance(message, DocMtMessage):
             try:
