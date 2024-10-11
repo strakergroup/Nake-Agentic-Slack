@@ -13,7 +13,7 @@ from app.translate import _
 
 
 async def _get_languages_cached() -> list[dict[str, str]]:
-    key = "slack-ray-translator:languages"
+    key = "slack-ray-translator:languages:v1"
     cached = ""
     try:
         cached = await redis_conn.get(key)
