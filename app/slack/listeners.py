@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 from app.api.verify import (
     download_verify_file,
     get_client_evaluation_job,
-    get_evaluation_job,
     submit_evaluation_job,
 )
 from ..database import engines

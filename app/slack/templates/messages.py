@@ -33,6 +33,7 @@ from ...config import config, domains, Environment
 from ...auth.connector import (
     RayClient,
     RayConnection,
+    RayContext,
     get_language_cloud_connect_url,
     encrpyt_slack_sso_token,
 )
@@ -1898,8 +1899,8 @@ class FileTranslatedMessage(SlackMessage):
 class HelpMessage(SlackMessage):
     """Help message showing how to use the app."""
 
-    def __init__(self, context: AsyncBoltContext) -> None:
-        ray_connection = context['ray']
+    def __init__(self, context: RayContext) -> None:
+        ray_connection = context.ray
         is_verify_enabled = ray_connection.super_group[0].enable_verify_in_slack
         super().__init__(
             "Hi there :wave: here are some ideas of what you can currently do with our app:",
@@ -1960,23 +1961,31 @@ class HelpMessage(SlackMessage):
                         "action_id": "link_document_mt",
                     },
                 },
-                *([{
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(":sports_medal: Translate and evaluate your files using AI and choose whether human verification is required."),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _("Quality Evaluation"),
-                        },
-                        # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
-                        "action_id": "quote",
-                    },
-                }] if is_verify_enabled else []),
+                *(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    ":sports_medal: Translate and evaluate your files using AI and choose whether human verification is required."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": _("Quality Evaluation"),
+                                },
+                                # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
+                                "action_id": "quote",
+                            },
+                        }
+                    ]
+                    if is_verify_enabled
+                    else []
+                ),
                 {
                     "type": "section",
                     "text": {
@@ -3509,29 +3518,31 @@ class EvaluateSuccessMessage(SlackMessage):
         ]
         lang_blocks = []
         for lang in languages:
-            lang_blocks = [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"Translate from: {source_lang['name']}\nTranslate to: {lang['name']}\n:file_folder: {file['filename']}\n{segment_quality_score(lang['report']['score'])}",
-                    },
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Download AI Translation"),
-                            },
-                            "value": lang["target_file_uuid"],
-                            "action_id": "download_ai_translation_action",
+            lang_blocks.extend(
+                [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"Translate from: {source_lang['name']}\nTranslate to: {lang['name']}\n:file_folder: {file['filename']}\n{segment_quality_score(lang['report']['score'])}",
                         },
-                    ],
-                },
-            ]
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Download AI Translation"),
+                                },
+                                "value": lang["target_file_uuid"],
+                                "action_id": "download_ai_translation_action",
+                            },
+                        ],
+                    },
+                ]
+            )
 
         blocks.extend(lang_blocks)
         blocks.append(
