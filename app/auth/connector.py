@@ -7,7 +7,7 @@ import math
 import time
 import json
 import hashlib
-from typing import List
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 from dataclasses import dataclass
 from urllib.parse import urlencode
@@ -19,6 +19,8 @@ from sqlalchemy.engine import Connection
 from slack_sdk.oauth.installation_store import Installation
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.errors import SlackApiError
+from slack_bolt.context.async_context import AsyncBoltContext
+from ray_logger.slack import SlackAppLog
 
 from straker_auth.languagecloud import create_languagecloud_id_token
 from buglog import notify_exception
@@ -104,6 +106,31 @@ class RayConnection:
 
     super_group: list[RaySuperGroup]
     client: RayClient | None
+
+
+class RayContext(AsyncBoltContext):
+    def __init__(self, context: AsyncBoltContext):
+        super().__init__(context)
+
+    @property
+    def ray(self) -> Optional[RayConnection]:
+        return self.get("ray")
+
+    @property
+    def log(self) -> Optional[SlackAppLog]:
+        return self.get("log")
+
+    @property
+    def is_bot(self) -> bool:
+        return self.get("is_bot", False)
+
+    @property
+    def user_info(self) -> Optional[Dict[str, Any]]:
+        return self.get("user_info")
+
+    @property
+    def login_prompt(self) -> Optional[Any]:
+        return self.get("login_prompt")
 
 
 def validate_queue_proxy_secret(secret: str) -> bool:
@@ -1546,8 +1573,10 @@ def get_group_quote_settings(group_uuid: str):
     return row.api_enabled
 
 
-def get_all_tokens_for_enterprise(enterprise_id: str):
+def get_all_tokens_for_enterprise(enterprise_id: str | None):
     """Get all the tokens for the enterprise"""
+    if not enterprise_id:
+        return None
     with engines["ray_integration"].connect() as conn:
         sql = text(
             """

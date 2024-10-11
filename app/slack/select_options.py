@@ -28,7 +28,9 @@ async def _get_languages_cached() -> list[dict[str, str]]:
             notify_exception(e)
 
     languages = (await get_languages()).data
-    languages = [{"code": lang.code, "name": lang.name} for lang in languages]
+    languages = [
+        {"code": lang.code, "name": lang.name, "uuid": lang.uuid} for lang in languages
+    ]
     # Cache languages for 1 hour.
     try:
         await redis_conn.set(key, json.dumps(languages), ex=3600)
@@ -37,7 +39,9 @@ async def _get_languages_cached() -> list[dict[str, str]]:
     return languages
 
 
-async def get_language_options(filter: str | None = None) -> list[dict[str, Any]]:
+async def get_language_options(
+    filter: str | None = None, format: str = "code"
+) -> list[dict[str, Any]]:
     languages = await _get_languages_cached()
     # Filter language options from keyword filter.
     if filter:
@@ -51,12 +55,12 @@ async def get_language_options(filter: str | None = None) -> list[dict[str, Any]
     languages = islice(languages, 100)  # type: ignore
 
     # translated languages name and reorder by translated words
-    languages = [{"code": lang["code"], "name": _(lang["name"])} for lang in languages]
+    languages = [{format: lang[format], "name": _(lang["name"])} for lang in languages]
     languages.sort(key=lambda lang: lang["name"].lower())
     return [
         {
             "text": {"type": "plain_text", "text": lang["name"], "emoji": False},
-            "value": lang["code"],
+            "value": lang[format],
         }
         for lang in languages
     ]

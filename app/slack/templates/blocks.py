@@ -318,3 +318,36 @@ def job_prediction_block(
         }
     else:
         return {}
+
+
+def verify_job_blocks(
+    summary: str,
+    report: dict[str, Any],
+    file_report: dict[str, Any],
+    lang_name: str,
+    language_uuid: str,
+) -> dict[str, Any]:
+    """The blocks for the verification job."""
+    word_count = file_report["word_count"]
+    counts = report["word_count"]
+    bad = (counts["bad"] / word_count) * 100
+    good = (counts["good"] / word_count) * 100
+    best = (counts["best"] / word_count) * 100
+    acceptable = (counts["acceptable"] / word_count) * 100
+    memory_percentage = (counts["translation_memory"] / word_count) * 100
+    report_message = (
+        f":large_blue_square: Translation Memory: {round(memory_percentage)}%\n"
+    )
+    report_message += f":large_green_square: Best: {round(best)}%\n"
+    report_message += f":large_yellow_square: Good: {round(good)}%\n"
+    report_message += f":large_orange_square: Acceptable: {round(acceptable)}%\n"
+    report_message += f":large_red_square: Bad: {round(bad)}%"
+    return [
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*Summary:*\n{summary}"},
+                {"type": "mrkdwn", "text": f"*Overall Score:*\n{report_message}"},
+            ],
+        },
+    ]

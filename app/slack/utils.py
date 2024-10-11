@@ -152,3 +152,34 @@ def unescape_slack_emoji(translated_text: str, source_text: str) -> str:
 def replace_xtag(match):
     i = match.group(1)
     return f"<x i={i}/>"
+
+
+def segment_quality_score(score: float, taus_version: str = "1.0.0") -> str:
+    """
+    Determine the quality score based on the TAUS QE version.
+
+    Args:
+        score (float): The quality score.
+        taus_version (str): The TAUS QE version. Defaults to "1.0.0".
+
+    Returns:
+        str: The quality category ("best", "good", "acceptable", "bad").
+    """
+    if taus_version == "2.0.0":
+        # TAUS QE version 2.0.0
+        if score >= 0.9:
+            return ":large_green_square: Translation Quality: Best"
+        elif score >= 0.88:
+            return ":large_yellow_square: Translation Quality: Good"
+        elif score >= 0.8:
+            return ":large_orange_square: Translation Quality: Acceptable"
+        return ":large_red_square: Translation Quality: Bad"
+    else:
+        # TAUS QE version 1.0.0
+        if score >= 0.95:
+            return ":large_green_square: Translation Quality: Best"
+        elif score >= 0.9:
+            return ":large_yellow_square: Translation Quality: Good"
+        elif score >= 0.85:
+            return ":large_orange_square: Translation Quality: Acceptable"
+        return ":large_red_square: Translation Quality: Bad"

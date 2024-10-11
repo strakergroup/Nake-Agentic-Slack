@@ -169,7 +169,7 @@ async def respond_to_message(
             login_msg = LoginMessage(
                 user_id=context["user_id"],
                 team_id=context["team_id"],
-                enterprise_id=context.get("enterprise_id"),
+                enterprise_id=context.enterprise_id,
                 channel_id=context.get("channel_id", context["user_id"]),
                 ray_client=(
                     context["ray"].client if context["ray"] is not None else None
@@ -546,7 +546,7 @@ async def post_job_status(
                     job,
                     ray_client.id,
                     is_ibm_enterprise(
-                        enterprise_id=context.get("enterprise_id"),
+                        enterprise_id=context.enterprise_id,
                     ),
                     job_prediction,
                 )
@@ -631,7 +631,7 @@ async def post_job_details(
             if quote_job is not None:
                 msg = JobQuotedMessage(
                     quote_job,
-                    is_ibm_enterprise(context.get("enterprise_id")),
+                    is_ibm_enterprise(context.enterprise_id),
                 )
                 if context.response_url and context.respond:
                     return await context.respond(text=msg.text, blocks=msg.blocks)
@@ -672,7 +672,7 @@ async def post_job_details(
                             job,
                             ray_client.id,
                             is_ibm_enterprise(
-                                enterprise_id=context.get("enterprise_id"),
+                                enterprise_id=context.enterprise_id,
                             ),
                             job_prediction,
                         )
@@ -1625,10 +1625,7 @@ async def cancel_job_process(
             msg = "TJ" + job_id + " - " + job["message"]
         else:
             msg = job["message"]
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=msg
-        )
+        await client.chat_postMessage(channel=context["user_id"], text=msg)
     except Exception as e:
         notify_exception(e)
         raise

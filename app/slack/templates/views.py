@@ -4,7 +4,7 @@ import asyncio
 from typing import Any
 from slack_bolt.context.async_context import AsyncBoltContext
 from app.translate import _
-from .blocks import home_auth_blocks
+from .blocks import home_auth_blocks, verify_job_blocks
 from ..select_options import (
     map_file_options,
     get_auto_translate_language_options,
@@ -23,7 +23,7 @@ from ...ray.settings import (
     get_pagination,
 )
 from ...ray.utils import is_ibm_enterprise
-from ...slack.utils import format_strings_display
+from ...slack.utils import format_strings_display, segment_quality_score
 from ...config import config, domains, Environment
 from ...models import SlackGroupSettingsTranslation
 import json
@@ -37,8 +37,10 @@ async def home_view(
     barEmoji = f":bar_chart:"
     helpEmoji = f":question:"
     speechEmoji = f":speech_balloon:"
-    is_straker_admin = rayConnection and rayConnection.client and await is_slack_team_admin(
-        rayConnection.client.id, context.enterprise_id
+    is_straker_admin = (
+        rayConnection
+        and rayConnection.client
+        and await is_slack_team_admin(rayConnection.client.id, context.enterprise_id)
     )
     translation_settings_enabled = not is_ibm_enterprise(context.enterprise_id) or (
         rayConnection and rayConnection.client and is_straker_admin
@@ -311,7 +313,7 @@ async def home_view(
             *home_auth_blocks(
                 context["user_id"],
                 context["team_id"],
-                context.get("enterprise_id"),
+                context.enterprise_id,
                 context.get("channel_id"),  # TODO can be None, e.g. view_submission
                 rayConnection,
             ),
@@ -465,6 +467,78 @@ def job_search_modal(
                     "type": "plain_text",
                     "text": _("Your job reference"),
                     "emoji": True,
+                },
+            },
+        ],
+    }
+
+
+def evaluate_job_modal(file_id: str):
+    """The template for the modal to submit a file to verify quality evaluate."""
+    return {
+        "type": "modal",
+        "callback_id": "evaluate_job",
+        "title": {"type": "plain_text", "text": _("Evaluate Job")},
+        "submit": {"type": "plain_text", "text": _("Submit")},
+        "private_metadata": file_id,
+        "close": {"type": "plain_text", "text": _("Close")},
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "Translate and evaluate your files using AI and choose whether human verification is required."
+                    ),
+                },
+            },
+            # seperator
+            {"type": "divider"},
+            # add file id as hidden input
+            # Add other input fields here...
+            {
+                "type": "input",
+                "block_id": "reference",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "reference",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": _("Project Name"),
+                        "emoji": True,
+                    },
+                    "min_length": 4,
+                    "max_length": 110,
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": _("Create a name for your project"),
+                    "emoji": True,
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "target_langs",
+                "element": {
+                    "type": "multi_external_select",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": _("Select languages"),
+                        "emoji": True,
+                    },
+                    "action_id": "language_options_uuid",
+                    "min_query_length": 0,
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": _("Translate to"),
+                    "emoji": True,
+                },
+                "hint": {
+                    "type": "plain_text",
+                    "text": _(
+                        "Which language(s) do you want the file to be translated to?"
+                    ),
                 },
             },
         ],
@@ -1169,4 +1243,49 @@ def translation_settings_view_error(message: str) -> dict[str, Any]:
                 },
             }
         ],
+    }
+
+
+def verify_job_modal(
+    job: dict[str, Any], all_langs: list[dict[str, str]]
+) -> dict[str, Any]:
+    languages = job["target_languages"]
+    file = job["source_files"][0]
+    source_lang_uuid = file["report"]["language_uuid"]
+    source_lang = next(
+        (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
+    )
+    reports = file["report"]["evaluation_reports"]
+    for lang in languages:
+        for report in reports:
+            if lang["uuid"] == report["target_language"]:
+                lang["report"] = report
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _("AI quality evaluation of your translated files."),
+            },
+        },
+        # seperator
+        # add file id as hidden input
+    ]
+    for lang in languages:
+        blocks.extend(
+            verify_job_blocks(
+                f"Translate from: {source_lang['name']}\nTranslate to: {lang['name']}\n:file_folder: {file['filename']}\n{segment_quality_score(lang['report']['score'])}",
+                lang["report"],
+                file["report"],
+                lang["name"],
+                lang["uuid"],
+            )
+        )
+    return {
+        "type": "modal",
+        "callback_id": "verify_job",
+        "title": {"type": "plain_text", "text": _("Human Verification")},
+        "submit": {"type": "plain_text", "text": _("New Verification Job")},
+        "private_metadata": job["uuid"],
+        "blocks": blocks,
     }

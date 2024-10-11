@@ -7,6 +7,13 @@ import os
 import re
 import json
 from datetime import datetime, timedelta
+
+from app.api.verify import (
+    download_verify_file,
+    get_client_evaluation_job,
+    get_evaluation_job,
+    submit_evaluation_job,
+)
 from ..database import engines
 
 from pydantic import ValidationError
@@ -50,6 +57,7 @@ from .logging import slack_log_decorator
 from .templates.models import (
     convert_pydantic_to_slack_error,
     NewJobForm,
+    EvaluateJobForm,
     JobSearchForm,
     AutoTranslationSettingsForm,
 )
@@ -75,11 +83,13 @@ from .templates.messages import (
     AutoTranslateSettingsDisabledMessage,
 )
 from .templates.views import (
+    evaluate_job_modal,
     home_view,
     translation_settings_view,
     translation_settings_view_error,
     job_search_modal,
     cancel_job_modal,
+    verify_job_modal,
 )
 from .web import (
     download_file,
@@ -87,9 +97,14 @@ from .web import (
     get_bot_accessible_files,
     get_mt_ts_cached,
 )
-from .select_options import get_language_options, get_file_options_cached
+from .select_options import (
+    _get_languages_cached,
+    get_language_options,
+    get_file_options_cached,
+)
 from .utils import is_channel_im
 from ..auth.connector import (
+    RayContext,
     disconnect_ray_account,
     disconnect_ray_super_group_and_users,
     connect_ray_account_sso,
@@ -106,8 +121,12 @@ from ..ray.settings import (
     disable_auto_translate_group_settings,
     update_channel_id,
 )
-from slack_bolt.context.async_context import AsyncBoltContext
+
 from ..config import domains
+
+from typing import Dict, Any, Optional
+from slack_sdk.web.async_client import AsyncWebClient
+from slack_bolt.kwargs_injection.async_args import AsyncAck, AsyncSay, AsyncRespond
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -119,11 +138,16 @@ from ..config import domains
     middleware=[ray_connection],
 )
 @slack_log_decorator
-async def message_event(client, context, message, body):
+async def message_event(
+    client: AsyncWebClient,
+    context: RayContext,
+    message: Dict[str, Any],
+    body: Dict[str, Any],
+):
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # use threads in channels or group conversations (see the "app_mention" event).
-    if not context["is_bot"]:
+    if not context.is_bot:
         if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
             with engines["ray_integration_readonly"].connect() as conn:
                 # extract team id from body
@@ -132,7 +156,7 @@ async def message_event(client, context, message, body):
                     token = get_bot_token(
                         conn=conn,
                         team_id=body_team_id,
-                        enterprise_id=context.get("enterprise_id"),
+                        enterprise_id=context.enterprise_id,
                     )
                     if token:
                         if token != client.token:
@@ -159,7 +183,9 @@ async def message_event(client, context, message, body):
 
 @app.event("app_mention", middleware=[ray_connection])
 @slack_log_decorator
-async def app_mention_event(client, context, event):
+async def app_mention_event(
+    client: AsyncWebClient, context: RayContext, event: Dict[str, Any]
+):
     # https://api.slack.com/events/app_mention
     # Respond to messages with threads in channel and group chats if mentioned.
     # Remove user mentions from text before processing.
@@ -172,7 +198,14 @@ async def app_mention_event(client, context, event):
 
 @app.event("app_home_opened", middleware=[ray_connection])
 @slack_log_decorator
-async def home_opened(event, action, context, body, say, client):
+async def home_opened(
+    event: Dict[str, Any],
+    action: Optional[Dict[str, Any]],
+    context: RayContext,
+    body: Dict[str, Any],
+    say: AsyncSay,
+    client: AsyncWebClient,
+):
     # https://api.slack.com/events/app_home_opened
     # Send an onboarding message if the app home is opened for the first time.
     # TODO: put try catch around this
@@ -180,12 +213,12 @@ async def home_opened(event, action, context, body, say, client):
         history = await client.conversations_history(
             channel=event.get("channel"), limit=1
         )
-        is_ibm = is_ibm_enterprise(enterprise_id=context.get("enterprise_id"))
+        is_ibm = is_ibm_enterprise(enterprise_id=context.enterprise_id)
         if not history.get("messages"):
             message = OnboardingMessage(
                 context["user_id"],
                 context["team_id"],
-                context.get("enterprise_id"),
+                context.enterprise_id,
                 event.get("channel"),
                 not is_ibm,
             )
@@ -214,7 +247,12 @@ async def home_opened(event, action, context, body, say, client):
 
 @app.action(re.compile(r"home_load_(next|previous)"), middleware=[ray_connection])
 @slack_log_decorator
-async def home_load(action, context, client, body):
+async def home_load(
+    action: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+):
     # submit from next button on transation settings view
     home_info = json.loads(action["value"])
     page = int(home_info.get("page", 1))
@@ -226,25 +264,28 @@ async def home_load(action, context, client, body):
 
 @app.event("app_uninstalled")
 @slack_log_decorator
-async def app_uninstalled(context):
+async def app_uninstalled(context: RayContext):
     # https://api.slack.com/events/app_uninstalled
     # Disconnect the Super Group and all users linked to the Slack workspace
     # when the app is uninstalled.
     # RAY-59799: This is a requirement of the Slack app directory submission.
-    disconnect_ray_super_group_and_users(
-        context["team_id"], context.get("enterprise_id")
-    )
+    disconnect_ray_super_group_and_users(context["team_id"], context.enterprise_id)
 
 
 @app.event("channel_id_changed")
 @slack_log_decorator
-async def channel_id_changed(event):
+async def channel_id_changed(event: Dict[str, Any]):
     update_channel_id(event.get("old_channel_id"), event.get("new_channel_id"))
 
 
 @app.message_shortcut("new_job", middleware=[ray_connection])
 @slack_log_decorator
-async def new_job_shortcut(ack, shortcut, context, client):
+async def new_job_shortcut(
+    ack: AsyncAck,
+    shortcut: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
         asyncio.create_task(
@@ -265,7 +306,7 @@ async def new_job_shortcut(ack, shortcut, context, client):
 
 # @app.block_action("login_sso", middleware=[ray_connection])
 # @slack_log_decorator
-# async def login_sso_action(ack, context, body, respond, client):
+# async def login_sso_action(ack: AsyncAck, context: RayContext, body: Dict[str, Any], respond: AsyncRespond, client: AsyncWebClient):
 #     if context["ray"].client is None:
 #         await ack()
 #         await client.views_open(
@@ -283,7 +324,7 @@ async def new_job_shortcut(ack, shortcut, context, client):
 #                 context["ray"],
 #                 user_id=context["user_id"],
 #                 team_id=context["team_id"],
-#                 enterprise_id=context.get("enterprise_id"),
+#                 enterprise_id=context.enterprise_id,
 #                 channel_id=context["channel_id"],
 #             )
 #         await respond(text=msg.text, blocks=msg.blocks)
@@ -291,7 +332,13 @@ async def new_job_shortcut(ack, shortcut, context, client):
 
 @app.action("show_srt_translate_form", middleware=[ray_connection])
 @slack_log_decorator
-async def show_srt_translate_form(ack, context, action, body, client):
+async def show_srt_translate_form(
+    ack: AsyncAck,
+    context: RayContext,
+    action: Optional[Dict[str, Any]],
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+):
     await ack()
     if await require_ray_client(context):
         task_uuid = action["value"]
@@ -307,7 +354,13 @@ async def show_srt_translate_form(ack, context, action, body, client):
 # document_mt_job
 @app.action("document_mt_job", middleware=[ray_connection])
 @slack_log_decorator
-async def document_mt_job_action(ack, context, action, body, client):
+async def document_mt_job_action(
+    ack: AsyncAck,
+    context: RayContext,
+    action: Optional[Dict[str, Any]],
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+):
     await ack()
     if await require_ray_client(context):
         output_file = action["value"]
@@ -335,7 +388,14 @@ async def document_mt_job_action(ack, context, action, body, client):
 
 @app.action("document_mt_submit", middleware=[ray_connection])
 @slack_log_decorator
-async def document_mt_submit_action(ack, action, context, body, say, client):
+async def document_mt_submit_action(
+    ack: AsyncAck,
+    action: Optional[Dict[str, Any]],
+    context: RayContext,
+    body: Dict[str, Any],
+    say: AsyncSay,
+    client: AsyncWebClient,
+):
     await ack()
     if await require_ray_client(context):
         slack_file_id = action["value"]
@@ -363,7 +423,12 @@ async def document_mt_submit_action(ack, action, context, body, say, client):
 
 @app.block_action("download_transcribed_file", middleware=[ray_connection])
 @slack_log_decorator
-async def download_transcribed_file(ack, action, context, client):
+async def download_transcribed_file(
+    ack: AsyncAck,
+    action: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+):
     await ack()
     if await require_ray_client(context):
         task_uuid = action["value"]
@@ -378,9 +443,34 @@ async def download_transcribed_file(ack, action, context, client):
         )
 
 
+@app.block_action("download_ai_translation_action", middleware=[ray_connection])
+@slack_log_decorator
+async def download_ai_translation_action(
+    ack: AsyncAck,
+    action: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+):
+    await ack()
+    if await require_ray_client(context):
+        file_uuid = action["value"]
+        file = await download_verify_file(context.ray.client, file_uuid)
+        await client.files_upload_v2(
+            channel=context["channel_id"],
+            file=file["file"],
+            title=file["file_name"],
+            filename=file["file_name"],
+        )
+
+
 @app.shortcut("shortcut_translate", middleware=[ray_connection])
 @slack_log_decorator
-async def handle_translate_shortcut(ack, body, client, context):
+async def handle_translate_shortcut(
+    ack: AsyncAck,
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+    context: RayContext,
+):
     await ack()
     mt_tl = context.get("locale", "en")
     mt_text = body["message"]["text"]
@@ -412,7 +502,14 @@ async def handle_translate_shortcut(ack, body, client, context):
 
 @app.action("srt_translate", middleware=[ray_connection])
 @slack_log_decorator
-async def srt_translate_action(ack, action, context, body, say, client):
+async def srt_translate_action(
+    ack: AsyncAck,
+    action: Optional[Dict[str, Any]],
+    context: RayContext,
+    body: Dict[str, Any],
+    say: AsyncSay,
+    client: AsyncWebClient,
+):
     await ack()
     if await require_ray_client(context):
         task_uuid = action["value"]
@@ -437,7 +534,13 @@ async def srt_translate_action(ack, action, context, body, say, client):
 
 @app.block_action("login_sso", middleware=[ray_connection])
 @slack_log_decorator
-async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view):
+async def login_sso_action(
+    ack: AsyncAck,
+    context: RayContext,
+    respond: AsyncRespond,
+    client: AsyncWebClient,
+    view: Optional[Dict[str, Any]],
+):
 
     try:
         if "channel_id" not in context:
@@ -455,17 +558,17 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                         user_info["profile"]["first_name"],
                         user_info["profile"]["last_name"],
                         context["channel_id"],
-                        context.get("enterprise_id"),
+                        context.enterprise_id,
                     )
                     context["ray"] = await get_ray_connection(
                         context["user_id"],
                         context["team_id"],
-                        context.get("enterprise_id"),
+                        context.enterprise_id,
                     )
                     # Show connection success message
                     sso_msg = SsoConnectionInfoMessage(
                         context["ray"],
-                        is_ibm=(is_ibm_enterprise(context.get("enterprise_id"))),
+                        is_ibm=(is_ibm_enterprise(context.enterprise_id)),
                     )
                     await ack(response_action="clear")
                     if context.response_url:
@@ -483,9 +586,9 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                         "user_id": context["user_id"],
                         "team_id": context["team_id"],
                         "channel_id": context["channel_id"],
-                        "enterprise_id": context.get("enterprise_id"),
+                        "enterprise_id": context.enterprise_id,
                     }
-                    msg = get_ray_event_message(
+                    msg = await get_ray_event_message(
                         "ray:slack:account_connected", data, None
                     )
                     await ack(response_action="clear")
@@ -500,7 +603,7 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                 if context["ray"].client.sso:
                     msg = SsoConnectionInfoMessage(
                         context["ray"],
-                        is_ibm=(is_ibm_enterprise(context.get("enterprise_id"))),
+                        is_ibm=(is_ibm_enterprise(context.enterprise_id)),
                     )
                 # need else block if triggered from old message
                 else:
@@ -508,9 +611,9 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
                         context["ray"],
                         user_id=context["user_id"],
                         team_id=context["team_id"],
-                        enterprise_id=context.get("enterprise_id"),
+                        enterprise_id=context.enterprise_id,
                         channel_id=context["channel_id"],
-                        is_ibm=is_ibm_enterprise(context.get("enterprise_id")),
+                        is_ibm=is_ibm_enterprise(context.enterprise_id),
                     )
                 await respond(text=msg.text, blocks=msg.blocks)
         else:
@@ -542,7 +645,12 @@ async def login_sso_action(ack, context: AsyncBoltContext, respond, client, view
 
 @app.block_action("job_search", middleware=[ray_connection])
 @slack_log_decorator
-async def job_search_action(ack, context, client, body):
+async def job_search_action(
+    ack: AsyncAck,
+    context: RayContext,
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
         await client.views_open(
@@ -556,7 +664,13 @@ async def job_search_action(ack, context, client, body):
 @app.command(re.compile(r"\/\w*(ray|straker|lc)\w*"), middleware=[ray_connection])
 @slack_log_decorator
 # Process slash commands.
-async def ray_command(ack, respond, command, context, client):
+async def ray_command(
+    ack: AsyncAck,
+    respond: AsyncRespond,
+    command: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+):
     await ack()
 
     # Strip the text formatting from the command args (not perfect).
@@ -577,7 +691,7 @@ async def ray_command(ack, respond, command, context, client):
                 context["ray"],
                 user_id=context["user_id"],
                 team_id=context["team_id"],
-                enterprise_id=context.get("enterprise_id"),
+                enterprise_id=context.enterprise_id,
                 channel_id=context["channel_id"],
             )
             await respond(text=msg.text, blocks=msg.blocks)
@@ -682,7 +796,13 @@ async def ray_command(ack, respond, command, context, client):
 
 @app.block_action("settings_auto_translate", middleware=[ray_connection])
 @slack_log_decorator
-async def show_auto_translate_settings(ack, context, payload, body, client):
+async def show_auto_translate_settings(
+    ack: AsyncAck,
+    context: RayContext,
+    payload: Dict[str, Any],
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+):
     await ack()
     channel_info = json.loads(payload["value"])
     channel_id = channel_info.get("channel_id")
@@ -696,7 +816,7 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
         try:
             # check if we have a token that can get channel info for the channel
             channel_info = await resolve_channels_to_team(
-                [channel_id], client, context.get("enterprise_id")
+                [channel_id], client, context.enterprise_id
             )
             client.token = channel_info[0]["bot_token"]
             channel_info = await client.conversations_info(channel=channel_id)
@@ -733,13 +853,19 @@ async def show_auto_translate_settings(ack, context, payload, body, client):
 
 
 @app.block_action("settings_auto_translate_disable", middleware=[ray_connection])
-async def disable_auto_translate_settings(ack, context, payload, body, client):
+async def disable_auto_translate_settings(
+    ack: AsyncAck,
+    context: RayContext,
+    payload: Dict[str, Any],
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+):
     try:
         await ack()
         channel_info = json.loads(payload["value"])
         channel_id = channel_info.get("channel_id")
         team_channel = await resolve_channels_to_team(
-            [channel_id], client, context.get("enterprise_id")
+            [channel_id], client, context.enterprise_id
         )
         client.token = team_channel[0]["bot_token"]
         if not channel_id:
@@ -785,7 +911,13 @@ async def disable_auto_translate_settings(ack, context, payload, body, client):
 
 @app.block_action("show_job_details", middleware=[ray_connection])
 @slack_log_decorator
-async def show_job_details(ack, action, payload, context, client):
+async def show_job_details(
+    ack: AsyncAck,
+    action: Optional[Dict[str, Any]],
+    payload: Dict[str, Any],
+    context: RayContext,
+    client: AsyncWebClient,
+):
     """Get job info. Triggered from the "View More Info" in the job list"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -802,7 +934,7 @@ async def show_job_details(ack, action, payload, context, client):
 
 @app.action("quote", middleware=[ray_connection])
 @slack_log_decorator
-async def quote(ack, context, client):
+async def quote(ack: AsyncAck, context: RayContext, client: AsyncWebClient):
     """Get quote. Triggered from the Home View New Job button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
@@ -816,7 +948,7 @@ async def quote(ack, context, client):
 
 @app.action("daily_summary", middleware=[ray_connection])
 @slack_log_decorator
-async def daily_summary(ack, context, client):
+async def daily_summary(ack: AsyncAck, context: RayContext, client: AsyncWebClient):
     """Get daily summary. Triggered from the Home View Daily Summary button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -825,7 +957,7 @@ async def daily_summary(ack, context, client):
 
 @app.block_action("all_summary", middleware=[ray_connection])
 @slack_log_decorator
-async def all_summary(ack, context, client):
+async def all_summary(ack: AsyncAck, context: RayContext, client: AsyncWebClient):
     """Get daily summary. Triggered from the Home View Daily Summary button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -836,7 +968,9 @@ async def all_summary(ack, context, client):
 
 @app.action("report_insights", middleware=[ray_connection])
 @slack_log_decorator
-async def handle_report_insights_action(ack, context, client):
+async def handle_report_insights_action(
+    ack: AsyncAck, context: RayContext, client: AsyncWebClient
+):
     """Get Report and Insights. Triggered from the Home Report Insights button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -845,7 +979,9 @@ async def handle_report_insights_action(ack, context, client):
 
 @app.action("ai_translate_help", middleware=[ray_connection])
 @slack_log_decorator
-async def handle_ai_translate_help_action(ack, context, client):
+async def handle_ai_translate_help_action(
+    ack: AsyncAck, context: RayContext, client: AsyncWebClient
+):
     """Get ai translate help link. Triggered from the Home AI Translate help button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -854,7 +990,12 @@ async def handle_ai_translate_help_action(ack, context, client):
 
 @app.block_action("job_list", middleware=[ray_connection])
 @slack_log_decorator
-async def job_list_action(ack, payload, context, client):
+async def job_list_action(
+    ack: AsyncAck,
+    payload: Dict[str, Any],
+    context: RayContext,
+    client: AsyncWebClient,
+):
     """Paginated job list. Triggered from the job summary dropdown."""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -868,7 +1009,12 @@ async def job_list_action(ack, payload, context, client):
 
 @app.block_action(re.compile(r"job_list_paginated(_\d+)?"), middleware=[ray_connection])
 @slack_log_decorator
-async def job_list_paginated_action(ack, payload, context, client):
+async def job_list_paginated_action(
+    ack: AsyncAck,
+    payload: Dict[str, Any],
+    context: RayContext,
+    client: AsyncWebClient,
+):
     """Paginated job list. Triggered from the job list "Show more" and
     "Show previous" buttons.
     """
@@ -896,7 +1042,13 @@ async def job_list_paginated_action(ack, payload, context, client):
 
 @app.block_action("new_job", middleware=[ray_connection])
 @slack_log_decorator
-async def new_job_action(ack, payload, context, client, body):
+async def new_job_action(
+    ack: AsyncAck,
+    payload: Dict[str, Any],
+    context: RayContext,
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
         init_files = []
@@ -931,13 +1083,13 @@ async def new_job_action(ack, payload, context, client, body):
 # The "Account Info" button short cut
 @app.block_action("account_info", middleware=[ray_connection])
 @slack_log_decorator
-async def get_account_info(ack, context, respond):
+async def get_account_info(ack: AsyncAck, context: RayContext, respond: AsyncRespond):
     await ack()
     msg = ConnectionInfoMessage(
         context["ray"],
         user_id=context["user_id"],
         team_id=context["team_id"],
-        enterprise_id=context.get("enterprise_id"),
+        enterprise_id=context.enterprise_id,
         channel_id=context["channel_id"],
     )
     await respond(text=msg.text, blocks=msg.blocks, replace_original=False)
@@ -946,12 +1098,12 @@ async def get_account_info(ack, context, respond):
 # The "Connect" button short cut in Help Message
 @app.block_action("connect_info", middleware=[ray_connection])
 @slack_log_decorator
-async def get_connect_info(ack, context, respond):
+async def get_connect_info(ack: AsyncAck, context: RayContext, respond: AsyncRespond):
     await ack()
     msg = LoginMessage(
         user_id=context["user_id"],
         team_id=context["team_id"],
-        enterprise_id=context.get("enterprise_id"),
+        enterprise_id=context.enterprise_id,
         channel_id=context.get("channel_id", context["user_id"]),
         ray_client=context["ray"].client if context["ray"] is not None else None,
     )
@@ -960,14 +1112,20 @@ async def get_connect_info(ack, context, respond):
 
 @app.block_action("delay_info", middleware=[ray_connection])
 @slack_log_decorator
-async def get_delay_info(ack, respond):
+async def get_delay_info(ack: AsyncAck, respond: AsyncRespond):
     await ack()
     await respond(JobDelayMessage().text, JobDelayMessage().blocks)
 
 
 @app.block_action("approve_pending_client", middleware=[ray_connection])
 @slack_log_decorator
-async def approve_pending_client_action(ack, action, context, say, client):
+async def approve_pending_client_action(
+    ack: AsyncAck,
+    action: Optional[Dict[str, Any]],
+    context: RayContext,
+    say: AsyncSay,
+    client: AsyncWebClient,
+):
     await ack()
     if await require_ray_client(context):
         try:
@@ -994,7 +1152,12 @@ async def approve_pending_client_action(ack, action, context, say, client):
 
 
 @app.block_action("login")
-async def login_account_action(ack, action, context, respond):
+async def login_account_action(
+    ack: AsyncAck,
+    action: Optional[Dict[str, Any]],
+    context: RayContext,
+    respond: AsyncRespond,
+):
     await ack()
     try:
         # Use language cloud API to send success message
@@ -1002,7 +1165,7 @@ async def login_account_action(ack, action, context, respond):
         # result = await connect_ray_account(
         #     context["user_id"],
         #     context["team_id"],
-        #     context.get("enterprise_id"),
+        #     context.enterprise_id,
         #     channel_id=context["channel_id"],
         # )
         # if result == "success":
@@ -1020,40 +1183,47 @@ async def login_account_action(ack, action, context, respond):
 
 
 @app.block_action("disconnect", middleware=[ray_connection])
-async def disconnect_account_action(ack, action, context, respond):
+async def disconnect_account_action(
+    ack: AsyncAck,
+    action: Optional[Dict[str, Any]],
+    context: RayContext,
+    respond: AsyncRespond,
+):
     await ack()
-    # Get connection info before disconnecting.
-    context["ray"] = await get_ray_connection(
-        context["user_id"], context["team_id"], context.get("enterprise_id")
-    )
     disconnect_ray_account(
-        context["user_id"], context["team_id"], context.get("enterprise_id")
+        context["user_id"], context["team_id"], context.enterprise_id
     )
     # action["value"] should contain the LanguageCloud account username.
     msg = SuccessfulLogoutMessage(
-        context["user_id"], context["ray"].client.sso, action.get("value")
+        context.user_id, context.ray.client.sso, action.get("value")
     )
     await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
 
 
 @app.block_action("delete_ephemeral_message")
-async def delete_ephemeral_message(ack, respond):
+async def delete_ephemeral_message(ack: AsyncAck, respond: AsyncRespond):
     await ack()
     await respond(delete_original=True)
 
 
 @app.block_action(re.compile(r"link(_\d+)?|login"))
-async def link(ack):
+async def link(ack: AsyncAck):
     """Simple link button action. No additional actions required."""
     await ack()
 
 
 @app.view("new_job", middleware=[ray_connection])
 @slack_log_decorator
-async def handle_new_job(ack, view, context, client):
+async def handle_new_job(
+    ack: AsyncAck,
+    view: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+):
     if await require_ray_client(context, prompt_login=False):
         try:
-            form = NewJobForm.parse_slack(view["state"]["values"])
+            form_data = view["state"]["values"] if view else {}
+            form = NewJobForm.parse_slack(form_data)
         except ValidationError as e:
             errors = convert_pydantic_to_slack_error(e)
             await ack(response_action="errors", errors=errors)
@@ -1074,7 +1244,7 @@ async def handle_new_job(ack, view, context, client):
             group_id = form.group_id or context["ray"].client.user_group_id
             if "job_id" in result:
                 if not is_ibm_enterprise(
-                    context.get("enterprise_id")
+                    context.enterprise_id
                 ) or get_group_quote_settings(group_id):
                     message = JobSubmitMessage(form)
                     await client.chat_postMessage(
@@ -1122,10 +1292,16 @@ async def handle_new_job(ack, view, context, client):
 
 @app.view("job_search", middleware=[ray_connection])
 @slack_log_decorator
-async def handle_job_search(ack, view, context, client):
+async def handle_job_search(
+    ack: AsyncAck,
+    view: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+):
     if await require_ray_client(context, prompt_login=False):
         try:
-            form = JobSearchForm.parse_slack(view["state"]["values"])
+            form_data = view.get("state", {}).get("values") if view else {}
+            form = JobSearchForm.parse_slack(form_data)
         except ValidationError as e:
             errors = convert_pydantic_to_slack_error(e)
             await ack(response_action="errors", errors=errors)
@@ -1156,11 +1332,18 @@ async def handle_job_search(ack, view, context, client):
 
 @app.view("settings_auto_translate", middleware=[ray_connection])
 @slack_log_decorator
-async def view_update_auto_translate_settings(ack, view, context, body, client):
+async def view_update_auto_translate_settings(
+    ack: AsyncAck,
+    view: Optional[Dict[str, Any]],
+    context: RayContext,
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+):
     try:
-        form = AutoTranslationSettingsForm.parse_slack(view["state"]["values"])
+        form_data = view.get("state", {}).get("values") if view else {}
+        form = AutoTranslationSettingsForm.parse_slack(form_data)
         team_channels = await resolve_channels_to_team(
-            form.channels, client, context.get("enterprise_id", "")
+            form.channels, client, context.enterprise_id
         )
     except SlackApiError as e:
         if e.response["error"] == "channel_not_found":
@@ -1213,10 +1396,8 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
                 await client.chat_postMessage(channel=channel_id, text=msg.text)
             except Exception as e:
                 notify_exception(e)
-                if context.get("enterprise_id"):
-                    all_tokens = get_all_tokens_for_enterprise(
-                        context.get("enterprise_id")
-                    )
+                if context.enterprise_id:
+                    all_tokens = get_all_tokens_for_enterprise(context.enterprise_id)
                     for token in all_tokens:
                         client.token = token.bot_token
                         try:
@@ -1236,7 +1417,7 @@ async def view_update_auto_translate_settings(ack, view, context, body, client):
 
 
 @app.action("language_mt_options", middleware=[ray_connection])
-async def language_mt_options_selected(ack, body):
+async def language_mt_options_selected(ack: AsyncAck, body: Dict[str, Any]):
     # redis store the selected options keyed by ouputn file
     await ack()
     file_id = body["actions"][0]["block_id"]
@@ -1245,20 +1426,27 @@ async def language_mt_options_selected(ack, body):
 
 
 @app.options("language_options", middleware=[ray_connection])
-async def language_options(ack, payload):
+async def language_options(ack: AsyncAck, payload: Dict[str, Any]):
     options = await get_language_options(payload.get("value"))
     await ack(options=options)
 
 
+@app.options("language_options_uuid", middleware=[ray_connection])
+async def language_options_uuid(ack: AsyncAck, payload: Dict[str, Any]):
+    # returns the language options where the value is the uuid
+    options = await get_language_options(payload.get("value"), "uuid")
+    await ack(options=options)
+
+
 @app.options("group_options", middleware=[ray_connection])
-async def group_options(ack, context):
+async def group_options(ack: AsyncAck, context: RayContext):
     if await require_ray_client(context):
         options = await get_groups(context["ray"].client)
         await ack(options=options)
 
 
 @app.options(re.compile(r"file_options_.+"))
-async def file_options(ack, payload, client):
+async def file_options(ack: AsyncAck, payload: Dict[str, Any], client: AsyncWebClient):
     """This select options endpoint is used as a backup in case there are
     no files available for the new job files input.
     """
@@ -1281,7 +1469,12 @@ async def file_options(ack, payload, client):
 
 @app.block_action(re.compile(r"batch_list(_\d+)?"), middleware=[ray_connection])
 @slack_log_decorator
-async def batch_list_action(ack, payload, context, client):
+async def batch_list_action(
+    ack: AsyncAck,
+    payload: Dict[str, Any],
+    context: RayContext,
+    client: AsyncWebClient,
+):
     """Paginated batch file list. Triggered from the Show In Progress Files button."""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -1303,7 +1496,12 @@ async def batch_list_action(ack, payload, context, client):
 
 @app.block_action(re.compile(r"file_list(_\d+)?"), middleware=[ray_connection])
 @slack_log_decorator
-async def file_list_action(ack, payload, context, client):
+async def file_list_action(
+    ack: AsyncAck,
+    payload: Dict[str, Any],
+    context: RayContext,
+    client: AsyncWebClient,
+):
     """Paginated file list. Triggered from the Show Files button."""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
@@ -1325,7 +1523,13 @@ async def file_list_action(ack, payload, context, client):
 
 @app.block_action("cancel_job", middleware=[ray_connection])
 @slack_log_decorator
-async def cancel_job_action(ack, payload, context, client, body):
+async def cancel_job_action(
+    ack: AsyncAck,
+    payload: Dict[str, Any],
+    context: RayContext,
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
         if "value" in payload:
@@ -1353,12 +1557,18 @@ async def cancel_job_action(ack, payload, context, client, body):
 
 @app.view("cancel_job", middleware=[ray_connection])
 @slack_log_decorator
-async def handle_cancel_job(ack, view, context, client):
+async def handle_cancel_job(
+    ack: AsyncAck,
+    view: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+):
     """Get job info. Triggered from the "View More Info" in the job list"""
     await ack()
     if await require_ray_client(context, prompt_login=False):
         try:
-            form = JobSearchForm.parse_slack(view["state"]["values"])
+            form_state = view["state"]["values"] if view else {}
+            form = JobSearchForm.parse_slack(form_state)
         except ValidationError as e:
             errors = convert_pydantic_to_slack_error(e)
             await ack(response_action="errors", errors=errors)
@@ -1387,11 +1597,16 @@ async def handle_cancel_job(ack, view, context, client):
 
 @app.event({"type": "message", "subtype": "message_deleted"})
 @slack_log_decorator
-async def message_deleted_event(message, client, body, context):
+async def message_deleted_event(
+    message: Dict[str, Any],
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    context: RayContext,
+):
     if message.get("subtype") == "message_deleted":
         deleted_ts = body["event"]["deleted_ts"]
         timestamp = await get_mt_ts_cached(deleted_ts)
-        if timestamp:
+        if timestamp and context.channel_id:
             await client.chat_delete(ts=timestamp, channel=context.channel_id)
 
 
@@ -1400,12 +1615,17 @@ async def message_deleted_event(message, client, body, context):
     middleware=[ray_connection],
 )
 @slack_log_decorator
-async def message_changed_event(client, body, context, message):
+async def message_changed_event(
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    context: RayContext,
+    message: Dict[str, Any],
+):
     if message.get("subtype") == "message_changed":
         if message.get("message", {}).get("subtype") == "tombstone":
             deleted_ts = body["event"]["previous_message"]["ts"]
             timestamp = await get_mt_ts_cached(deleted_ts)
-            if timestamp:
+            if timestamp and context.channel_id:
                 await client.chat_delete(ts=timestamp, channel=context.channel_id)
         else:
             is_edit = True
@@ -1417,6 +1637,90 @@ async def message_changed_event(client, body, context, message):
                 await auto_translate_message(
                     client, context, message["message"], is_edit
                 )
+
+
+@app.view("evaluate_job", middleware=[ray_connection])
+@slack_log_decorator
+async def evaluate_job_submit(
+    view: Optional[Dict[str, Any]],
+    client: AsyncWebClient,
+    ack: AsyncAck,
+    context: RayContext,
+):
+    """Evaluate job. Triggered from the Evaluate form view."""
+    await ack()
+    try:
+        if view:
+            file_id = view["private_metadata"]
+            form_data = view["state"]["values"]
+            form = EvaluateJobForm.parse_slack(form_data)
+            # call verify api to submit a file for evaluation
+    except ValidationError as e:
+        errors = convert_pydantic_to_slack_error(e)
+        print(errors)
+        await ack(response_action="errors", errors=errors)
+        return
+    await ack(response_action="clear")
+    if await require_ray_client(context, prompt_login=True):
+        input_file = await download_file(client=client, file_id=file_id, http=None)
+        response = await submit_evaluation_job(
+            context.ray.client, input_file, form.target_langs_uuid, form.reference
+        )
+        if response:
+            # TODO use form to match spec
+            await client.chat_postMessage(channel=context.user_id, text="Evaluating...")
+
+
+@app.action("evaluate_job", middleware=[ray_connection])
+@slack_log_decorator
+async def evaluate_job_action(
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+    ack: AsyncAck,
+):
+    """Evaluate job. Triggered from the Evaluate Job button."""
+    await ack()
+    file_id = action["value"]
+    await client.views_open(
+        trigger_id=body["trigger_id"],
+        view=evaluate_job_modal(file_id),
+    )
+
+
+@app.action("verify_job_modal_open", middleware=[ray_connection])
+@slack_log_decorator
+async def verify_job_modal_open_action(
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+    context: RayContext,
+    ack: AsyncAck,
+):
+    """Open modal for human verification. Triggered from the Send for human verification button."""
+    await ack()
+    job_uuid = action["value"]
+    job = await get_client_evaluation_job(context.ray.client, job_uuid)
+    all_langs = await _get_languages_cached()
+    await client.views_open(
+        trigger_id=body["trigger_id"], view=verify_job_modal(job["data"], all_langs)
+    )
+
+
+@app.view("verify_job")
+async def handle_verify_job_submission(ack, body, client):
+    await ack()
+
+    # Extract the private metadata (job UUID)
+    job_uuid = body["view"]["private_metadata"]
+
+    # Extract the selected checkbox values
+    # Example: Send a message with the selected values
+    user_id = body["user"]["id"]
+    await client.chat_postMessage(
+        channel=user_id,
+        text="Job Created",
+    )
 
 
 # FastAPI will use this to handle Slack API requests.
