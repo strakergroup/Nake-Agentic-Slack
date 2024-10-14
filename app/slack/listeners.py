@@ -1721,7 +1721,7 @@ async def handle_verify_job_submission(ack, body, client):
     user_id = body["user"]["id"]
     await client.chat_postMessage(
         channel=user_id,
-        text="New Verification Function yet to be implemented. Coming Soon!",
+        text="The functionality for Human Verification is yet to be implemented. Coming Soon!",
     )
 
 

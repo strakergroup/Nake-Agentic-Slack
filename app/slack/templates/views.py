@@ -1285,7 +1285,7 @@ def verify_job_modal(
         "type": "modal",
         "callback_id": "verify_job",
         "title": {"type": "plain_text", "text": _("Human Verification")},
-        "submit": {"type": "plain_text", "text": _("New Verification Job")},
+        "submit": {"type": "plain_text", "text": _("Send for Human Verification")},
         "private_metadata": job["uuid"],
         "blocks": blocks,
     }
