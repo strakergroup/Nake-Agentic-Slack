@@ -3524,7 +3524,7 @@ class EvaluateSuccessMessage(SlackMessage):
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f"Translate from: {source_lang['name']}\nTranslate to: {lang['name']}\n:file_folder: {file['filename']}\n{segment_quality_score(lang['report']['score'])}",
+                            "text": f"Translate from: {source_lang['name']}\nTranslate to: {lang['name']}\n:paperclip: {file['filename']}\n{segment_quality_score(lang['report']['score'])}",
                         },
                     },
                     {
@@ -3553,7 +3553,7 @@ class EvaluateSuccessMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Send to Human Verification",
+                            "text": "Send to Human Verification (Coming Soon)",
                         },
                         "value": job["uuid"],
                         "action_id": "verify_job_modal_open",

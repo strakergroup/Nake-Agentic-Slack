@@ -1274,7 +1274,7 @@ def verify_job_modal(
     for lang in languages:
         blocks.extend(
             verify_job_blocks(
-                f"Translate from: {source_lang['name']}\nTranslate to: {lang['name']}\n:file_folder: {file['filename']}\n{segment_quality_score(lang['report']['score'])}",
+                f"Translate from: {source_lang['name']}\nTranslate to: {lang['name']}\n:paperclip: {file['filename']}\n{segment_quality_score(lang['report']['score'])}",
                 lang["report"],
                 file["report"],
                 lang["name"],
