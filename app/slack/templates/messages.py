@@ -3553,7 +3553,7 @@ class EvaluateSuccessMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Send to Human Verification (Coming Soon)",
+                            "text": "Human Verification-Coming Soon",
                         },
                         "value": job["uuid"],
                         "action_id": "verify_job_modal_open",
