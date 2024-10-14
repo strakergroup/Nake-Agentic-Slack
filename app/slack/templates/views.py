@@ -275,31 +275,31 @@ async def home_view(
                         "elements": actions,
                     }
                 )
-        if is_verify_enabled:
-            verify_settings_block = [{
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        ":drum_with_drumsticks: Introducing a new option: Translate and evaluate your files using AI, with the choice of adding human verification if needed."
-                    ),
-                },
+    if is_verify_enabled:
+        verify_settings_block = [{
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _(
+                    ":drum_with_drumsticks: Introducing a new option: Translate and evaluate your files using AI, with the choice of adding human verification if needed."
+                ),
             },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _(":star2: Create New Project(QE)"),
-                        },
-                        "action_id": "quote",
-                        "url": message_url,
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": _(":star2: Create New Project (QE)"),
                     },
-                ],
-            }]
+                    "action_id": "quote",
+                    "url": message_url,
+                },
+            ],
+        }]
     return {
         "type": "home",
         "blocks": [
