@@ -1667,7 +1667,10 @@ async def evaluate_job_submit(
         )
         if response:
             # TODO use form to match spec
-            await client.chat_postMessage(channel=context.user_id, text="Evaluating...")
+            msg = _(
+                "You've successfully submitted your document for quality evaluation. Your documents will be AI Translated and you will be given a score."
+            )
+            await client.chat_postMessage(channel=context.user_id, text=msg)
 
 
 @app.action("evaluate_job", middleware=[ray_connection])
