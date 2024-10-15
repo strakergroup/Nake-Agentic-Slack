@@ -1680,14 +1680,28 @@ async def evaluate_job_action(
     body: Dict[str, Any],
     action: Dict[str, Any],
     ack: AsyncAck,
+    context: RayContext,
 ):
     """Evaluate job. Triggered from the Evaluate Job button."""
     await ack()
     file_id = action["value"]
-    await client.views_open(
-        trigger_id=body["trigger_id"],
-        view=evaluate_job_modal(file_id),
-    )
+    file_info = await client.files_info(file=file_id)
+    file_path, file_extension = os.path.splitext(file_info["file"]["name"])
+    is_valid_file_type = supported_file_types(file_extension)
+    if is_valid_file_type:
+        await client.views_open(
+            trigger_id=body["trigger_id"],
+            view=evaluate_job_modal(file_id),
+        )
+    else:
+        msg = _(
+            "This file type is currently not supported. Please check the help docs."
+        )
+        # Add your code here
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=msg,
+        )
 
 
 @app.action("verify_job_modal_open", middleware=[ray_connection])
@@ -1719,9 +1733,12 @@ async def handle_verify_job_submission(ack, body, client):
     # Extract the selected checkbox values
     # Example: Send a message with the selected values
     user_id = body["user"]["id"]
+    msg = _(
+            "This feature is yet to be implemented. Coming Soon!"
+        )
     await client.chat_postMessage(
         channel=user_id,
-        text="The functionality for Human Verification is yet to be implemented. Coming Soon!",
+        text=msg,
     )
 
 
