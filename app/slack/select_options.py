@@ -108,7 +108,7 @@ def map_file_options(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
     # sort files by timestamp descending
     files.sort(key=lambda f: f["timestamp"], reverse=True)
     # Keep only the latest 10 files
-    files = files[:20]
+    files = files[:10]
     file_options = []
     for file in files:
         title = file.get("title", "")

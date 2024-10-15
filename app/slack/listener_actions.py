@@ -1121,8 +1121,8 @@ async def show_quote_form_modal(
     # Include a bit more than the max 100 options due to hidden files.
     files = await get_file_options_cached(context["channel_id"])
     # Reduce list to 20 if initial files are set.
-    if initial_files and len(files)+len(initial_files) > 20:
-        files = files[:20-len(initial_files)]
+    if initial_files and len(files) + len(initial_files) > 10:
+        files = files[: 10 - len(initial_files)]
     # Set initial selected files.
     if not initial_files and check_last_messages > 0:
         # Check last 100 messages maximum.
@@ -1628,10 +1628,7 @@ async def cancel_job_process(
             msg = "TJ" + job_id + " - " + job["message"]
         else:
             msg = job["message"]
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=msg
-        )
+        await client.chat_postMessage(channel=context["user_id"], text=msg)
     except Exception as e:
         notify_exception(e)
         raise
