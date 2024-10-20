@@ -776,26 +776,26 @@ def new_job_modal(
                 },
                 "label": {"type": "plain_text", "text": _("Timeframe"), "emoji": True},
             },
-            {
-                "type": "input",
-                "block_id": "validation",
-                "element": {
-                    "type": "checkboxes",
-                    "options": [
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Yes"),
-                                "emoji": True,
-                            },
-                            "value": "1",
-                        },
-                    ],
-                    "action_id": "validation",
-                },
-                "label": {"type": "plain_text", "text": _("Validation"), "emoji": True},
-                "optional": True,
-            },
+            # {
+            #     "type": "input",
+            #     "block_id": "validation",
+            #     "element": {
+            #         "type": "checkboxes",
+            #         "options": [
+            #             {
+            #                 "text": {
+            #                     "type": "plain_text",
+            #                     "text": _("Yes"),
+            #                     "emoji": True,
+            #                 },
+            #                 "value": "1",
+            #             },
+            #         ],
+            #         "action_id": "validation",
+            #     },
+            #     "label": {"type": "plain_text", "text": _("Validation"), "emoji": True},
+            #     "optional": True,
+            # },
             {
                 "type": "input",
                 "block_id": "notes",
@@ -812,22 +812,22 @@ def new_job_modal(
                 },
                 "optional": True,
             },
-            {
-                "type": "input",
-                "block_id": "translation_notes",
-                "element": {
-                    "type": "plain_text_input",
-                    "action_id": "translation_notes",
-                    "multiline": True,
-                    "max_length": 250,
-                },
-                "label": {
-                    "type": "plain_text",
-                    "text": _("Job Notes"),
-                    "emoji": True,
-                },
-                "optional": True,
-            },
+            # {
+            #     "type": "input",
+            #     "block_id": "translation_notes",
+            #     "element": {
+            #         "type": "plain_text_input",
+            #         "action_id": "translation_notes",
+            #         "multiline": True,
+            #         "max_length": 250,
+            #     },
+            #     "label": {
+            #         "type": "plain_text",
+            #         "text": _("Job Notes"),
+            #         "emoji": True,
+            #     },
+            #     "optional": True,
+            # },
             # TODO: job category?
             # {
             #     "type": "input",
