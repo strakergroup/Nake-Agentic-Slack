@@ -1166,7 +1166,7 @@ async def submit_job(
         timeframe=form.timeframe,
         reference=form.reference,
         job_notes=form.notes,
-        translation_notes=form.translation_notes,
+        # translation_notes=form.translation_notes,
     )
 
 
