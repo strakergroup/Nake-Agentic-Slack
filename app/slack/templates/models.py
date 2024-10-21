@@ -100,7 +100,7 @@ class NewJobForm(BaseModel):
     # target_date: datetime.date
     service: str
     timeframe: str
-    # validation: bool
+    validation: bool | None = None
     notes: str | None = None
     # translation_notes: str | None = None
     # category: str
