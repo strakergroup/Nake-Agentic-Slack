@@ -112,6 +112,7 @@ from ..auth.connector import (
     get_group_quote_settings,
     get_ray_connection,
     resolve_channels_to_team,
+    is_slack_team_admin,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
@@ -709,17 +710,46 @@ async def ray_command(
                 await respond(text=msg.text, blocks=msg.blocks)
 
         case ["translate"]:
-            settings, auto_translate_langs = get_auto_translate_settings_and_langs(
-                context, context.channel_id
-            )
-            await client.views_open(
-                trigger_id=command["trigger_id"],
-                view=translation_settings_view(
-                    [context.channel_id],
-                    auto_translate_langs,
-                    settings.display_format if settings else "thread",
-                ),
-            )
+            # Check if the user has a connected account.
+            # Open the channel translation settings modal
+            # If translation_settings_enabled is True.
+            # Else display link to help docs.
+            if await require_ray_client(context):
+                is_straker_admin = (
+                    context["ray"]
+                    and context["ray"].client
+                    and await is_slack_team_admin(
+                        context["ray"].client.id, context.get("enterprise_id")
+                    )
+                )
+                translation_settings_enabled = not is_ibm_enterprise(
+                    context.get("enterprise_id")
+                ) or (context["ray"] and context["ray"].client and is_straker_admin)
+
+                if translation_settings_enabled:
+                    settings, auto_translate_langs = (
+                        get_auto_translate_settings_and_langs(
+                            context, context.channel_id
+                        )
+                    )
+                    await client.views_open(
+                        trigger_id=command["trigger_id"],
+                        view=translation_settings_view(
+                            [context.channel_id],
+                            auto_translate_langs,
+                            settings.display_format if settings else "thread",
+                        ),
+                    )
+                else:
+                    url_doc ="https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Enabling-Channel-Translation"
+                    text_help = "help docs"
+                    text = _(
+                        f"Please check the <{url_doc}|{text_help}>."
+                    )
+                    await client.chat_postMessage(
+                        channel=context["channel_id"],
+                        text=text,
+                    )
 
         case ["job", reference, *reference_other]:
             # Get job status or list of jobs.
