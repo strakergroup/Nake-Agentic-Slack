@@ -140,7 +140,7 @@ class RayService:
         group_id: str | None = None,
         reference: str | None = None,
         job_notes: str | None = None,
-        translation_notes: str | None = None,
+        # translation_notes: str | None = None,
     ) -> list[RayResponse[None]]:
         """Submit a new job.
 
@@ -174,7 +174,7 @@ class RayService:
                     timeframe=timeframe,
                     callback_uri=callback_uri,
                     job_notes=job_notes,
-                    translation_notes=translation_notes,
+                    # translation_notes=translation_notes,
                     additional_data={"app_source": "slack"},
                 )
             )
