@@ -2222,7 +2222,7 @@ class InvalidCommandMessage(TextMessage):
     def __init__(self) -> None:
         super().__init__(
             _(
-                ":no_entry_sign: Invalid command. Type `/straker help` for a list of valid commands."
+                ":no_entry_sign: Invalid command. Type `/straker help` for help."
             )
         )
 
