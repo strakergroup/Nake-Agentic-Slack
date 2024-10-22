@@ -314,7 +314,7 @@ async def auto_translate_message(
         return
     try:
         source_lang, translations = await get_ai_translation(
-            context, text, target_langs, "channel translation"
+            context, text, target_langs, "channel_translation"
         )
     except Exception as e:
         notify_exception(e, "Slack channel MT failed")
@@ -1564,7 +1564,7 @@ async def get_mt_translation(
         target_lang = target_lang.lower()
 
         result_source_lang, translation = await get_ai_translation(
-            context, sentence, [target_lang], "direct mt"
+            context, sentence, [target_lang], "direct_machine_translation"
         )
         if not result_source_lang:
             return
