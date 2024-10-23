@@ -126,6 +126,8 @@ class LoginMessage(SlackMessage):
     NEW_JOB = "new_job"
     INSIGHTS = "insights"
     CANCEL_JOB = "cancel_job"
+    AI_HELP = "ai_help"
+    QUALITY_EVALUATION = "quality_evaluation"
 
     def __init__(
         self,
@@ -169,6 +171,8 @@ class LoginMessage(SlackMessage):
             block_text = "Connect your LanguageCloud account to view your insights."
         elif variation == self.CANCEL_JOB:
             block_text = "Connect your LanguageCloud account to cancel your job."
+        elif variation == self.QUALITY_EVALUATION:
+            block_text = "Connect your LanguageCloud account to evaluate the quality of your translation."
         elif isinstance(ray_client, RayClient):
             user_details = f"<<{domains.languagecloud}|{ray_client.username}>>"
             block_text = (
@@ -250,8 +254,10 @@ class WelcomeBackMessage(SlackMessage):
     account.
     """
 
-    def __init__(self, user_id: str) -> None:
+    def __init__(self, user_id: str, ray_connection: RayConnection) -> None:
         waveEmoji = f":wave:"
+        is_verify_enabled = ray_connection.super_group[0].enable_verify_in_slack if ray_connection else False
+        print("is_verify_enabled", is_verify_enabled)
         super().__init__(
             "Welcome back :wave:",
             [
@@ -314,6 +320,31 @@ class WelcomeBackMessage(SlackMessage):
                         "action_id": "link_document_mt",
                     },
                 },
+                *(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    ":sports_medal: Translate and evaluate your files using AI and choose whether human verification is required."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": _("Quality Evaluation"),
+                                },
+                                # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
+                                "action_id": "verify_help",
+                            },
+                        }
+                    ]
+                    if is_verify_enabled
+                    else []
+                ),
                 {
                     "type": "section",
                     "text": {
@@ -444,8 +475,9 @@ class SuccessfulLoginMessage(SlackMessage):
     account.
     """
 
-    def __init__(self, user_id: str, ray_username: str) -> None:
+    def __init__(self, user_id: str, ray_username: str, ray_connection: RayConnection) -> None:
         waveEmoji = f":wave:"
+        is_verify_enabled = ray_connection.super_group[0].enable_verify_in_slack if ray_connection else False
         super().__init__(
             ":white_check_mark: Login was successful!",
             [
@@ -508,6 +540,31 @@ class SuccessfulLoginMessage(SlackMessage):
                         "action_id": "link_document_mt",
                     },
                 },
+                *(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    ":sports_medal: Translate and evaluate your files using AI and choose whether human verification is required."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": _("Quality Evaluation"),
+                                },
+                                # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
+                                "action_id": "verify_help",
+                            },
+                        }
+                    ]
+                    if is_verify_enabled
+                    else []
+                ),
                 {
                     "type": "section",
                     "text": {
@@ -1901,7 +1958,7 @@ class HelpMessage(SlackMessage):
 
     def __init__(self, context: RayContext) -> None:
         ray_connection = context.ray
-        is_verify_enabled = ray_connection.super_group[0].enable_verify_in_slack
+        is_verify_enabled = ray_connection.super_group[0].enable_verify_in_slack if ray_connection else False
         super().__init__(
             "Hi there :wave: here are some ideas of what you can currently do with our app:",
             [
@@ -1979,7 +2036,7 @@ class HelpMessage(SlackMessage):
                                     "text": _("Quality Evaluation"),
                                 },
                                 # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
-                                "action_id": "quote",
+                                "action_id": "verify_help",
                             },
                         }
                     ]
@@ -2954,6 +3011,17 @@ class AIHelperMessage(SlackMessage):
             [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
         )
 
+class VerifyHelperMessage(SlackMessage):
+    def __init__(self) -> None:
+        verify_uri = "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack"
+        message = _(
+            "Please upload your files to perform the Quality Evaluation in the message composer below. Click me to learn Straker <{verify_uri}|Verify MT>."
+        )
+        bookEmoji = ":books:"
+        super().__init__(
+            _("{bookEmoji} Learn Verify MT"),
+            [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
+        )
 
 class JobTargetsNoIdMessage(TextMessage):
     """Message to send when the user asks for a job targets but has not given
