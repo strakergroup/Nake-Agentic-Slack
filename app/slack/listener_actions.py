@@ -35,6 +35,7 @@ from .templates.messages import (
     InsightsMessage,
     ReportInsightsMessage,
     AIHelperMessage,
+    VerifyHelperMessage,
     BatchListMessage,
     FileListMessage,
     JobTargetsNoIdMessage,
@@ -269,6 +270,15 @@ async def respond_to_message(
                         blocks=cancel_msg.blocks,
                         thread_ts=thread_ts,
                     )
+        case "Quality_Evaluation":
+            if await require_ray_client(context, variation=LoginMessage.QUALITY_EVALUATION):
+                quality_evaluation_msg = VerifyHelperMessage()
+                await client.chat_postEphemeral(
+                    channel=context["channel_id"],
+                    user=context["user_id"],
+                    text=quality_evaluation_msg.text,
+                    blocks=quality_evaluation_msg.blocks,
+                )
         case _:
             if tj_number_entity := response.findEntity("tj-number"):
                 # Show the job status if only a job id is entered.
@@ -1534,6 +1544,38 @@ async def ai_translate_help(
     except Exception as e:
         notify_exception(e, "Failed to get AI Translate help message")
 
+async def verify_help(
+    client: AsyncWebClient,
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    channel_id: str | None = None,
+    thread_ts: str | None = None,
+):
+    """Show Verify message modal.
+
+    Args:
+        context (AsyncBoltContext): The context from the listener.
+        ray_client (RayClient): The RAY client details.
+        channel_id (str | None, optional): The channel to post the message to.
+            If not given, posts to the source channel.
+        thread_ts (str | None, optional): The message thread to reply to.
+    """
+    channel_id = channel_id or context.channel_id or context.user_id
+    verify_helper_msg = VerifyHelperMessage()
+    try:
+        if context.response_url and context.respond:
+            await context.respond(text=verify_helper_msg.text, blocks=verify_helper_msg.blocks)
+        else:
+            if not channel_id:
+                raise AssertionError("No channel to post to")
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=verify_helper_msg.text,
+                blocks=verify_helper_msg.blocks,
+                thread_ts=thread_ts,
+            )
+    except Exception as e:
+        notify_exception(e, "Failed to get Verify help message")
 
 async def get_mt_translation(
     client: AsyncWebClient,

@@ -34,7 +34,7 @@ from ...slack.templates.messages import (
 
 
 async def get_ray_event_message(
-    event_type: str, event_data: dict[str, Any], slack_user: SlackUser | None
+    event_type: str, event_data: dict[str, Any], slack_user: SlackUser | None, ray_connection: Any | None = None
 ) -> SlackMessage | None:
     """Gets the SlackMessage based on the event type. Returns None if no Slack
     message should be sent for the particular event.
@@ -48,7 +48,7 @@ async def get_ray_event_message(
         is_ibm = is_ibm_enterprise(slack_user.enterprise_id)
     if event_type == "ray:slack:account_connected":
         event0 = SlackAccountConnectedEvent.model_validate(event_data)
-        return SuccessfulLoginMessage(event0.user_id, event0.username)
+        return SuccessfulLoginMessage(event0.user_id, event0.username, ray_connection)
     elif event_type == "ray:client:signup":
         event1 = ClientSignupEvent.model_validate(event_data)
         return ClientSignupEventMessage(event1)

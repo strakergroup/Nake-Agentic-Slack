@@ -48,6 +48,7 @@ from .listener_actions import (
     approve_pending_client,
     post_report_insights,
     ai_translate_help,
+    verify_help,
     post_batch_list,
     post_file_list,
     cancel_job_process,
@@ -230,7 +231,7 @@ async def home_opened(
                 latest=int(datetime.now().timestamp()),
             )
             if not history_last_24_hours.get("messages"):
-                message = WelcomeBackMessage(context["user_id"])
+                message = WelcomeBackMessage(context["user_id"], context["ray"])
                 await say(blocks=message.blocks, text=message.text)
             else:
                 # There had been some activity in the last 24 hours
@@ -588,7 +589,7 @@ async def login_sso_action(
                         "enterprise_id": context.enterprise_id,
                     }
                     msg = await get_ray_event_message(
-                        "ray:slack:account_connected", data, None
+                        "ray:slack:account_connected", data, None, context["ray"]
                     )
                     await ack(response_action="clear")
                     if msg:
@@ -985,6 +986,16 @@ async def handle_ai_translate_help_action(
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
         await ai_translate_help(client, context, context["ray"].client)
+
+@app.action("verify_help", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_verify_help_action(
+    ack: AsyncAck, context: RayContext, client: AsyncWebClient
+):
+    """Get verify help link. Triggered from the Home Verify help button"""
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.QUALITY_EVALUATION):
+        await verify_help(client, context, context["ray"].client)
 
 
 @app.block_action("job_list", middleware=[ray_connection])
@@ -1684,7 +1695,7 @@ async def evaluate_job_action(
 ):
     """Evaluate job. Triggered from the Evaluate Job button."""
     await ack()
-    file_id = action["value"]
+    file_id = action["value"] if "value" in action else ""
     file_info = await client.files_info(file=file_id)
     file_path, file_extension = os.path.splitext(file_info["file"]["name"])
     is_valid_file_type = supported_file_types(file_extension)
