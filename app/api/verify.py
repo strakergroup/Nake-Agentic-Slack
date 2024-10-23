@@ -80,3 +80,36 @@ async def download_verify_file(ray_client: RayClient, file_uuid: str):
         "file": BytesIO(response.content),
     }
     return file_result
+
+
+async def create_human_job(
+    ray_client: RayClient,
+    job_uuid: str,
+    file_and_languages: List[str],
+):
+    """
+    Create a human job in the Verify API
+
+    Args:
+        ray_client: RayClient object
+        job_uuid: UUID of the job
+        file_and_languages: List of strings with the format "file_uuid:language_uuid"
+    """
+    url = f"{domains.verify_api}/automation/service/create-human-job"
+    headers = {"Authorization": f"Bearer {ray_client.id_token}"}
+    # TODO: allow submission
+    service_uuid = "37f2e44b-ba3c-42b1-83c7-d3023298292f"
+    # TODO: What is this?
+    purchase_order_number = "123456"
+    data = {
+        "job_uuid": job_uuid,
+        "service_uuid": service_uuid,
+        "file_and_languages": file_and_languages,
+        "purchase_order_number": purchase_order_number,
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=headers, data=data)
+
+    response.raise_for_status()
+    return response.json()

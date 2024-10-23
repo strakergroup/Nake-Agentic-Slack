@@ -36,9 +36,7 @@ def home_auth_blocks(
         enable_verify = ray_connection.super_group[0].enable_verify_in_slack
         text = _("Your Slack account {user_id_str} is connected with: {domain_url}.")
         if ray_connection.client.sso:
-            text = _(
-            "Your Slack account {user_id_str} is connected."
-            )
+            text = _("Your Slack account {user_id_str} is connected.")
         # To show the verify enabled status/message in the home tab
         # if enable_verify:
         #     text += _("\n\n Your Slack account is connected to *LangaugeCloud* and *Verify*.")
@@ -344,10 +342,35 @@ def verify_job_blocks(
     report_message += f":large_red_square: Bad: {round(bad)}%"
     return [
         {
+            "type": "input",
+            "block_id": f"verification_checkbox_{language_uuid}",
+            "label": {
+                "type": "plain_text",
+                "text": f"{lang_name}",
+            },
+            "element": {
+                "type": "checkboxes",
+                "options": [
+                    {
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": " ",
+                        },
+                        "value": language_uuid,
+                    },
+                ],
+                "action_id": "verification_checkbox_action",
+            },
+            "optional": True,  # Make the input block optional
+        },
+        {
             "type": "section",
             "fields": [
                 {"type": "mrkdwn", "text": f"*Summary:*\n{summary}"},
                 {"type": "mrkdwn", "text": f"*Overall Score:*\n{report_message}"},
             ],
+        },
+        {
+            "type": "divider",
         },
     ]

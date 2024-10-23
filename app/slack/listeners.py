@@ -9,6 +9,7 @@ import json
 from datetime import datetime, timedelta
 
 from app.api.verify import (
+    create_human_job,
     download_verify_file,
     get_client_evaluation_job,
     submit_evaluation_job,
@@ -1706,12 +1707,35 @@ async def verify_job_modal_open_action(
     )
 
 
-@app.view("verify_job")
-async def handle_verify_job_submission(ack, body, client):
+@app.view("verify_job", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_verify_job_submission(
+    ack: AsyncAck, body: Dict[str, Any], client: Dict[str, Any], context: RayContext
+):
     await ack()
 
     # Extract the private metadata (job UUID)
     job_uuid = body["view"]["private_metadata"]
+    job = await get_client_evaluation_job(context.ray.client, job_uuid)
+    source_file = job["data"]["source_files"][0]
+    target_languages = job["data"]["target_languages"]
+    # Extract the selected checkbox values
+    selected_languages = []
+    for lang in target_languages:
+        block_id = f"verification_checkbox_{lang['uuid']}"
+        if block_id in body["view"]["state"]["values"]:
+            selected_options = body["view"]["state"]["values"][block_id][
+                "verification_checkbox_action"
+            ]["selected_options"]
+            selected_languages.extend([option["value"] for option in selected_options])
+
+    file_and_languages = [
+        f"{source_file['file_uuid']}:{lang}" for lang in selected_languages
+    ]
+    # TODO: handle no langs
+    job_result = await create_human_job(
+        context.ray.client, job_uuid, file_and_languages
+    )
 
     # Extract the selected checkbox values
     # Example: Send a message with the selected values
