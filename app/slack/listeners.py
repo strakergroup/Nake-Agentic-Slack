@@ -485,13 +485,13 @@ async def handle_translate_shortcut(
     # Romanian Timezone - (UTC+02:00) Athens, Bucharest.
     # Polish Timezone - (UTC+01:00) Sarajevo, Skopje, Warsaw, Zagreb.
     # Dutch(Belgium) Timezone - (UTC+01:00) Brussels, Copenhagen, Madrid, Paris
-    if user_info["user"]["locale"] == "fr-FR":
-        if user_info["user"]["tz"] == "Europe/Athens":
-            mt_tl = "ro-RO"
-        elif user_info["user"]["tz"] == "Europe/Warsaw":
-            mt_tl = "pl-PL"
-        elif user_info["user"]["tz"] == "Europe/Brussels":
-            mt_tl = "nl-NL"
+    # if user_info["user"]["locale"] == "fr-FR":
+    #     if user_info["user"]["tz"] == "Europe/Athens":
+    #         mt_tl = "ro-RO"
+    #     elif user_info["user"]["tz"] == "Europe/Warsaw":
+    #         mt_tl = "pl-PL"
+    #     elif user_info["user"]["tz"] == "Europe/Brussels":
+    #         mt_tl = "nl-NL"
 
     await get_mt_translation(
         client,
