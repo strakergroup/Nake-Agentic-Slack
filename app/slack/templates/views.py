@@ -45,7 +45,7 @@ async def home_view(
     translation_settings_enabled = not is_ibm_enterprise(context.enterprise_id) or (
         rayConnection and rayConnection.client and is_straker_admin
     )
-    is_verify_enabled = rayConnection.super_group[0].enable_verify_in_slack
+    is_verify_enabled = rayConnection.super_group[0].enable_verify_in_slack if rayConnection else False
     verify_settings_block = []
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str], dict[str, str]]
@@ -275,31 +275,31 @@ async def home_view(
                         "elements": actions,
                     }
                 )
-        if is_verify_enabled:
-            verify_settings_block = [{
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        ":drum_with_drumsticks: Introducing a new option: Translate and evaluate your files using AI, with the choice of adding human verification if needed."
-                    ),
-                },
+    if is_verify_enabled:
+        verify_settings_block = [{
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _(
+                    ":drum_with_drumsticks: Introducing a new option: Translate and evaluate your files using AI, with the choice of adding human verification if needed."
+                ),
             },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _(":star2: Create New Project(QE)"),
-                        },
-                        "action_id": "quote",
-                        "url": message_url,
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": _(":star2: Create New Project (QE)"),
                     },
-                ],
-            }]
+                    "action_id": "verify_help",
+                    "url": message_url,
+                },
+            ],
+        }]
     return {
         "type": "home",
         "blocks": [
@@ -878,26 +878,26 @@ def new_job_modal(
                 },
                 "label": {"type": "plain_text", "text": _("Timeframe"), "emoji": True},
             },
-            {
-                "type": "input",
-                "block_id": "validation",
-                "element": {
-                    "type": "checkboxes",
-                    "options": [
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Yes"),
-                                "emoji": True,
-                            },
-                            "value": "1",
-                        },
-                    ],
-                    "action_id": "validation",
-                },
-                "label": {"type": "plain_text", "text": _("Validation"), "emoji": True},
-                "optional": True,
-            },
+            # {
+            #     "type": "input",
+            #     "block_id": "validation",
+            #     "element": {
+            #         "type": "checkboxes",
+            #         "options": [
+            #             {
+            #                 "text": {
+            #                     "type": "plain_text",
+            #                     "text": _("Yes"),
+            #                     "emoji": True,
+            #                 },
+            #                 "value": "1",
+            #             },
+            #         ],
+            #         "action_id": "validation",
+            #     },
+            #     "label": {"type": "plain_text", "text": _("Validation"), "emoji": True},
+            #     "optional": True,
+            # },
             {
                 "type": "input",
                 "block_id": "notes",
@@ -914,22 +914,22 @@ def new_job_modal(
                 },
                 "optional": True,
             },
-            {
-                "type": "input",
-                "block_id": "translation_notes",
-                "element": {
-                    "type": "plain_text_input",
-                    "action_id": "translation_notes",
-                    "multiline": True,
-                    "max_length": 250,
-                },
-                "label": {
-                    "type": "plain_text",
-                    "text": _("Job Notes"),
-                    "emoji": True,
-                },
-                "optional": True,
-            },
+            # {
+            #     "type": "input",
+            #     "block_id": "translation_notes",
+            #     "element": {
+            #         "type": "plain_text_input",
+            #         "action_id": "translation_notes",
+            #         "multiline": True,
+            #         "max_length": 250,
+            #     },
+            #     "label": {
+            #         "type": "plain_text",
+            #         "text": _("Job Notes"),
+            #         "emoji": True,
+            #     },
+            #     "optional": True,
+            # },
             # TODO: job category?
             # {
             #     "type": "input",
@@ -1274,7 +1274,7 @@ def verify_job_modal(
     for lang in languages:
         blocks.extend(
             verify_job_blocks(
-                f"Translate from: {source_lang['name']}\nTranslate to: {lang['name']}\n:file_folder: {file['filename']}\n{segment_quality_score(lang['report']['score'])}",
+                f":blue_book: Translate from: {source_lang['name']}\n:green_book: Translate to: {lang['name']}\n:paperclip: {file['filename']}\n{segment_quality_score(lang['report']['score'])}",
                 lang["report"],
                 file["report"],
                 lang["name"],
@@ -1285,7 +1285,7 @@ def verify_job_modal(
         "type": "modal",
         "callback_id": "verify_job",
         "title": {"type": "plain_text", "text": _("Human Verification")},
-        "submit": {"type": "plain_text", "text": _("New Verification Job")},
+        "submit": {"type": "plain_text", "text": _("Human Verification Job")},
         "private_metadata": job["uuid"],
         "blocks": blocks,
     }

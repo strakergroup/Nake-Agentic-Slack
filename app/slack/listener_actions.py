@@ -35,6 +35,7 @@ from .templates.messages import (
     InsightsMessage,
     ReportInsightsMessage,
     AIHelperMessage,
+    VerifyHelperMessage,
     BatchListMessage,
     FileListMessage,
     JobTargetsNoIdMessage,
@@ -269,6 +270,15 @@ async def respond_to_message(
                         blocks=cancel_msg.blocks,
                         thread_ts=thread_ts,
                     )
+        case "Quality_Evaluation":
+            if await require_ray_client(context, variation=LoginMessage.QUALITY_EVALUATION):
+                quality_evaluation_msg = VerifyHelperMessage()
+                await client.chat_postEphemeral(
+                    channel=context["channel_id"],
+                    user=context["user_id"],
+                    text=quality_evaluation_msg.text,
+                    blocks=quality_evaluation_msg.blocks,
+                )
         case _:
             if tj_number_entity := response.findEntity("tj-number"):
                 # Show the job status if only a job id is entered.
@@ -314,7 +324,7 @@ async def auto_translate_message(
         return
     try:
         source_lang, translations = await get_ai_translation(
-            context, text, target_langs, "channel translation"
+            context, text, target_langs, "channel_translation"
         )
     except Exception as e:
         notify_exception(e, "Slack channel MT failed")
@@ -1120,6 +1130,9 @@ async def show_quote_form_modal(
     """
     # Include a bit more than the max 100 options due to hidden files.
     files = await get_file_options_cached(context["channel_id"])
+    # Reduce list to 10 if initial files are set.
+    if initial_files and len(files) + len(initial_files) > 10:
+        files = files[: 10 - len(initial_files)]
     # Set initial selected files.
     if not initial_files and check_last_messages > 0:
         # Check last 100 messages maximum.
@@ -1166,7 +1179,7 @@ async def submit_job(
         timeframe=form.timeframe,
         reference=form.reference,
         job_notes=form.notes,
-        translation_notes=form.translation_notes,
+        # translation_notes=form.translation_notes,
     )
 
 
@@ -1534,6 +1547,38 @@ async def ai_translate_help(
     except Exception as e:
         notify_exception(e, "Failed to get AI Translate help message")
 
+async def verify_help(
+    client: AsyncWebClient,
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    channel_id: str | None = None,
+    thread_ts: str | None = None,
+):
+    """Show Verify message modal.
+
+    Args:
+        context (AsyncBoltContext): The context from the listener.
+        ray_client (RayClient): The RAY client details.
+        channel_id (str | None, optional): The channel to post the message to.
+            If not given, posts to the source channel.
+        thread_ts (str | None, optional): The message thread to reply to.
+    """
+    channel_id = channel_id or context.channel_id or context.user_id
+    verify_helper_msg = VerifyHelperMessage()
+    try:
+        if context.response_url and context.respond:
+            await context.respond(text=verify_helper_msg.text, blocks=verify_helper_msg.blocks)
+        else:
+            if not channel_id:
+                raise AssertionError("No channel to post to")
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=verify_helper_msg.text,
+                blocks=verify_helper_msg.blocks,
+                thread_ts=thread_ts,
+            )
+    except Exception as e:
+        notify_exception(e, "Failed to get Verify help message")
 
 async def get_mt_translation(
     client: AsyncWebClient,
@@ -1561,7 +1606,7 @@ async def get_mt_translation(
         target_lang = target_lang.lower()
 
         result_source_lang, translation = await get_ai_translation(
-            context, sentence, [target_lang], "direct mt"
+            context, sentence, [target_lang], "direct_machine_translation"
         )
         if not result_source_lang:
             return

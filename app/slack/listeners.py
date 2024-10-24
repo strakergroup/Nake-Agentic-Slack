@@ -49,6 +49,7 @@ from .listener_actions import (
     approve_pending_client,
     post_report_insights,
     ai_translate_help,
+    verify_help,
     post_batch_list,
     post_file_list,
     cancel_job_process,
@@ -113,6 +114,7 @@ from ..auth.connector import (
     get_group_quote_settings,
     get_ray_connection,
     resolve_channels_to_team,
+    is_slack_team_admin,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
@@ -231,7 +233,7 @@ async def home_opened(
                 latest=int(datetime.now().timestamp()),
             )
             if not history_last_24_hours.get("messages"):
-                message = WelcomeBackMessage(context["user_id"])
+                message = WelcomeBackMessage(context["user_id"], context["ray"])
                 await say(blocks=message.blocks, text=message.text)
             else:
                 # There had been some activity in the last 24 hours
@@ -589,7 +591,7 @@ async def login_sso_action(
                         "enterprise_id": context.enterprise_id,
                     }
                     msg = await get_ray_event_message(
-                        "ray:slack:account_connected", data, None
+                        "ray:slack:account_connected", data, None, context["ray"]
                     )
                     await ack(response_action="clear")
                     if msg:
@@ -710,17 +712,46 @@ async def ray_command(
                 await respond(text=msg.text, blocks=msg.blocks)
 
         case ["translate"]:
-            settings, auto_translate_langs = get_auto_translate_settings_and_langs(
-                context, context.channel_id
-            )
-            await client.views_open(
-                trigger_id=command["trigger_id"],
-                view=translation_settings_view(
-                    [context.channel_id],
-                    auto_translate_langs,
-                    settings.display_format if settings else "thread",
-                ),
-            )
+            # Check if the user has a connected account.
+            # Open the channel translation settings modal
+            # If translation_settings_enabled is True.
+            # Else display link to help docs.
+            if await require_ray_client(context):
+                is_straker_admin = (
+                    context["ray"]
+                    and context["ray"].client
+                    and await is_slack_team_admin(
+                        context["ray"].client.id, context.get("enterprise_id")
+                    )
+                )
+                translation_settings_enabled = not is_ibm_enterprise(
+                    context.get("enterprise_id")
+                ) or (context["ray"] and context["ray"].client and is_straker_admin)
+
+                if translation_settings_enabled:
+                    settings, auto_translate_langs = (
+                        get_auto_translate_settings_and_langs(
+                            context, context.channel_id
+                        )
+                    )
+                    await client.views_open(
+                        trigger_id=command["trigger_id"],
+                        view=translation_settings_view(
+                            [context.channel_id],
+                            auto_translate_langs,
+                            settings.display_format if settings else "thread",
+                        ),
+                    )
+                else:
+                    url_doc ="https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Enabling-Channel-Translation"
+                    text_help = "help docs"
+                    text = _(
+                        f"Please check the <{url_doc}|{text_help}>."
+                    )
+                    await client.chat_postMessage(
+                        channel=context["channel_id"],
+                        text=text,
+                    )
 
         case ["job", reference, *reference_other]:
             # Get job status or list of jobs.
@@ -986,6 +1017,16 @@ async def handle_ai_translate_help_action(
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
         await ai_translate_help(client, context, context["ray"].client)
+
+@app.action("verify_help", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_verify_help_action(
+    ack: AsyncAck, context: RayContext, client: AsyncWebClient
+):
+    """Get verify help link. Triggered from the Home Verify help button"""
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.QUALITY_EVALUATION):
+        await verify_help(client, context, context["ray"].client)
 
 
 @app.block_action("job_list", middleware=[ray_connection])
@@ -1668,7 +1709,10 @@ async def evaluate_job_submit(
         )
         if response:
             # TODO use form to match spec
-            await client.chat_postMessage(channel=context.user_id, text="Evaluating...")
+            msg = _(
+                "You've successfully submitted your document for quality evaluation. Your documents will be AI Translated and you will be given a score."
+            )
+            await client.chat_postMessage(channel=context.user_id, text=msg)
 
 
 @app.action("evaluate_job", middleware=[ray_connection])
@@ -1678,14 +1722,28 @@ async def evaluate_job_action(
     body: Dict[str, Any],
     action: Dict[str, Any],
     ack: AsyncAck,
+    context: RayContext,
 ):
     """Evaluate job. Triggered from the Evaluate Job button."""
     await ack()
-    file_id = action["value"]
-    await client.views_open(
-        trigger_id=body["trigger_id"],
-        view=evaluate_job_modal(file_id),
-    )
+    file_id = action["value"] if "value" in action else ""
+    file_info = await client.files_info(file=file_id)
+    file_path, file_extension = os.path.splitext(file_info["file"]["name"])
+    is_valid_file_type = supported_file_types(file_extension)
+    if is_valid_file_type:
+        await client.views_open(
+            trigger_id=body["trigger_id"],
+            view=evaluate_job_modal(file_id),
+        )
+    else:
+        msg = _(
+            "This file type is currently not supported. Please check the help docs."
+        )
+        # Add your code here
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=msg,
+        )
 
 
 @app.action("verify_job_modal_open", middleware=[ray_connection])
@@ -1740,9 +1798,12 @@ async def handle_verify_job_submission(
     # Extract the selected checkbox values
     # Example: Send a message with the selected values
     user_id = body["user"]["id"]
+    msg = _(
+            "This feature is yet to be implemented. Coming Soon!"
+        )
     await client.chat_postMessage(
         channel=user_id,
-        text="Job Created",
+        text=msg,
     )
 
 
