@@ -326,13 +326,13 @@ def verify_job_blocks(
     language_uuid: str,
 ) -> dict[str, Any]:
     """The blocks for the verification job."""
-    word_count = file_report["word_count"]
-    counts = report["word_count"]
-    bad = (counts["bad"] / word_count) * 100
-    good = (counts["good"] / word_count) * 100
-    best = (counts["best"] / word_count) * 100
-    acceptable = (counts["acceptable"] / word_count) * 100
-    memory_percentage = (counts["translation_memory"] / word_count) * 100
+    segment_count = sum(report["count"].values())
+    counts = report["count"]
+    bad = (counts["bad"] / segment_count) * 100
+    good = (counts["good"] / segment_count) * 100
+    best = (counts["best"] / segment_count) * 100
+    acceptable = (counts["acceptable"] / segment_count) * 100
+    memory_percentage = (counts["translation_memory"] / segment_count) * 100
     report_message = (
         f":large_blue_square: Translation Memory: {round(memory_percentage)}%\n"
     )
