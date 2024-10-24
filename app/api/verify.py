@@ -128,7 +128,6 @@ async def get_verify_languages():
         try:
             languages = json.loads(cached)
             assert isinstance(languages, list)
-            print(languages)
             return languages
         except Exception as e:
             notify_exception(e)
