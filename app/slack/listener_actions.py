@@ -273,12 +273,11 @@ async def respond_to_message(
         case "Quality_Evaluation":
             if await require_ray_client(context, variation=LoginMessage.QUALITY_EVALUATION):
                 quality_evaluation_msg = VerifyHelperMessage()
-                await client.chat_postEphemeral(
-                    channel=context["channel_id"],
-                    user=context["user_id"],
-                    text=quality_evaluation_msg.text,
-                    blocks=quality_evaluation_msg.blocks,
-                )
+                await context.say(
+                        text=quality_evaluation_msg.text,
+                        blocks=quality_evaluation_msg.blocks,
+                        thread_ts=thread_ts,
+                    )
         case _:
             if tj_number_entity := response.findEntity("tj-number"):
                 # Show the job status if only a job id is entered.
