@@ -743,11 +743,9 @@ async def ray_command(
                         ),
                     )
                 else:
-                    url_doc ="https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Enabling-Channel-Translation"
+                    url_doc = "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Enabling-Channel-Translation"
                     text_help = "help docs"
-                    text = _(
-                        f"Please check the <{url_doc}|{text_help}>."
-                    )
+                    text = _(f"Please check the <{url_doc}|{text_help}>.")
                     await client.chat_postMessage(
                         channel=context["channel_id"],
                         text=text,
@@ -1017,6 +1015,7 @@ async def handle_ai_translate_help_action(
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
         await ai_translate_help(client, context, context["ray"].client)
+
 
 @app.action("verify_help", middleware=[ray_connection])
 @slack_log_decorator
@@ -1790,17 +1789,18 @@ async def handle_verify_job_submission(
     file_and_languages = [
         f"{source_file['file_uuid']}:{lang}" for lang in selected_languages
     ]
-    # TODO: handle no langs
-    job_result = await create_human_job(
-        context.ray.client, job_uuid, file_and_languages
-    )
-
-    # Extract the selected checkbox values
-    # Example: Send a message with the selected values
-    user_id = body["user"]["id"]
-    msg = _(
-            "This feature is yet to be implemented. Coming Soon!"
+    if selected_languages:
+        # TODO: handle no langs
+        job_result = await create_human_job(
+            context.ray.client, job_uuid, file_and_languages
         )
+        msg = _(
+            "Thank you for sending your document for human verification! We will notify as soon as the translation is complete."
+        )
+    else:
+        msg = _("Please select at least one language for verification.")
+    user_id = body["user"]["id"]
+
     await client.chat_postMessage(
         channel=user_id,
         text=msg,
