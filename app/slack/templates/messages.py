@@ -256,7 +256,11 @@ class WelcomeBackMessage(SlackMessage):
 
     def __init__(self, user_id: str, ray_connection: RayConnection) -> None:
         waveEmoji = f":wave:"
-        is_verify_enabled = ray_connection.super_group[0].enable_verify_in_slack if ray_connection else False
+        is_verify_enabled = (
+            ray_connection.super_group[0].enable_verify_in_slack
+            if ray_connection
+            else False
+        )
         print("is_verify_enabled", is_verify_enabled)
         super().__init__(
             "Welcome back :wave:",
@@ -475,9 +479,15 @@ class SuccessfulLoginMessage(SlackMessage):
     account.
     """
 
-    def __init__(self, user_id: str, ray_username: str, ray_connection: RayConnection) -> None:
+    def __init__(
+        self, user_id: str, ray_username: str, ray_connection: RayConnection
+    ) -> None:
         waveEmoji = f":wave:"
-        is_verify_enabled = ray_connection.super_group[0].enable_verify_in_slack if ray_connection else False
+        is_verify_enabled = (
+            ray_connection.super_group[0].enable_verify_in_slack
+            if ray_connection
+            else False
+        )
         super().__init__(
             ":white_check_mark: Login was successful!",
             [
@@ -1958,7 +1968,11 @@ class HelpMessage(SlackMessage):
 
     def __init__(self, context: RayContext) -> None:
         ray_connection = context.ray
-        is_verify_enabled = ray_connection.super_group[0].enable_verify_in_slack if ray_connection else False
+        is_verify_enabled = (
+            ray_connection.super_group[0].enable_verify_in_slack
+            if ray_connection
+            else False
+        )
         super().__init__(
             "Hi there :wave: here are some ideas of what you can currently do with our app:",
             [
@@ -2318,9 +2332,7 @@ class InvalidCommandMessage(TextMessage):
 
     def __init__(self) -> None:
         super().__init__(
-            _(
-                ":no_entry_sign: Invalid command. Type `/straker help` for help."
-            )
+            _(":no_entry_sign: Invalid command. Type `/straker help` for help.")
         )
 
 
@@ -3011,6 +3023,7 @@ class AIHelperMessage(SlackMessage):
             [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
         )
 
+
 class VerifyHelperMessage(SlackMessage):
     def __init__(self) -> None:
         verify_uri = "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack"
@@ -3022,6 +3035,7 @@ class VerifyHelperMessage(SlackMessage):
             _("{bookEmoji} Learn Verify MT"),
             [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
         )
+
 
 class JobTargetsNoIdMessage(TextMessage):
     """Message to send when the user asks for a job targets but has not given
@@ -3621,7 +3635,7 @@ class EvaluateSuccessMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Human Verification-Coming Soon",
+                            "text": "Send to Human Verification",
                         },
                         "value": job["uuid"],
                         "action_id": "verify_job_modal_open",

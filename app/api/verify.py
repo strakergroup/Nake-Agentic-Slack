@@ -1,9 +1,11 @@
 from io import BytesIO
+import json
 import os
+from buglog import notify_exception
 import httpx
 from typing import List
+from ..redis import redis_conn
 
-from app import config
 from app.auth.connector import RayClient, SlackUser, get_ray_client
 from app.config import domains
 
@@ -113,3 +115,37 @@ async def create_human_job(
 
     response.raise_for_status()
     return response.json()
+
+
+async def get_verify_languages():
+    key = "slack-ray-translator:verify:languages"
+    cached = ""
+    try:
+        cached = await redis_conn.get(key)
+    except Exception as e:
+        notify_exception(e)
+    if cached:
+        try:
+            languages = json.loads(cached)
+            assert isinstance(languages, list)
+            print(languages)
+            return languages
+        except Exception as e:
+            notify_exception(e)
+
+    url = f"{domains.verify_api}/languages"
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+    response.raise_for_status()
+    languages = response.json()["data"]
+
+    languages = [
+        {"code": lang["code"], "name": lang["name"], "uuid": lang["uuid"]}
+        for lang in languages
+    ]
+    # Cache languages for 1 hour.
+    try:
+        await redis_conn.set(key, json.dumps(languages), ex=3600)
+    except Exception as e:
+        notify_exception(e)
+    return languages
