@@ -5,6 +5,8 @@ import json
 
 from buglog import notify_exception
 
+from app.api.verify import get_verify_languages
+
 from ..redis import redis_conn
 from ..ray import get_languages
 from ..ray.settings import get_auto_translate_languages
@@ -42,7 +44,11 @@ async def _get_languages_cached() -> list[dict[str, str]]:
 async def get_language_options(
     filter: str | None = None, format: str = "code"
 ) -> list[dict[str, Any]]:
-    languages = await _get_languages_cached()
+    languages = (
+        await _get_languages_cached()
+        if format == "code"
+        else await get_verify_languages()
+    )
     # Filter language options from keyword filter.
     if filter:
         languages = (

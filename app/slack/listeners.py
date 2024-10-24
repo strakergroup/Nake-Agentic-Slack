@@ -12,6 +12,7 @@ from app.api.verify import (
     create_human_job,
     download_verify_file,
     get_client_evaluation_job,
+    get_verify_languages,
     submit_evaluation_job,
 )
 from ..database import engines
@@ -99,7 +100,6 @@ from .web import (
     get_mt_ts_cached,
 )
 from .select_options import (
-    _get_languages_cached,
     get_language_options,
     get_file_options_cached,
 )
@@ -1758,7 +1758,7 @@ async def verify_job_modal_open_action(
     await ack()
     job_uuid = action["value"]
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
-    all_langs = await _get_languages_cached()
+    all_langs = await get_verify_languages()
     await client.views_open(
         trigger_id=body["trigger_id"], view=verify_job_modal(job["data"], all_langs)
     )
