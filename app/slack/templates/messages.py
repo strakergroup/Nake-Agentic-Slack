@@ -261,7 +261,6 @@ class WelcomeBackMessage(SlackMessage):
             if ray_connection
             else False
         )
-        print("is_verify_enabled", is_verify_enabled)
         super().__init__(
             "Welcome back :wave:",
             [
@@ -1721,7 +1720,44 @@ class JobListMessage(SlackMessage):
 class NewJobMessage(SlackMessage):
     """Message with a button to open the new job modal."""
 
-    def __init__(self, channel_id: str, timestamp: str, file_id: str = "") -> None:
+    def __init__(
+        self,
+        channel_id: str,
+        timestamp: str,
+        file_id: str = "",
+        is_verify_enabled: bool = False,
+    ) -> None:
+        ai_verify_blocks = (
+            [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": _("Quality Evaluation"),
+                        "emoji": True,
+                    },
+                    "action_id": "evaluate_job",
+                    "style": "primary",
+                    "value": file_id,
+                }
+            ]
+            if is_verify_enabled
+            else []
+        )
+
+        ai_verify_blocks.append(
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": _("AI Translate"),
+                    "emoji": True,
+                },
+                "action_id": "document_mt_job",
+                "value": file_id,
+            }
+        )
+
         super().__init__(
             "Submit a new translation job",
             [
@@ -1737,33 +1773,7 @@ class NewJobMessage(SlackMessage):
                 {
                     "type": "actions",
                     "elements": (
-                        (
-                            [
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("Quality Evaluation"),
-                                        "emoji": True,
-                                    },
-                                    "action_id": "evaluate_job",
-                                    "style": "primary",
-                                    "value": file_id,
-                                },
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("AI Translate"),
-                                        "emoji": True,
-                                    },
-                                    "action_id": "document_mt_job",
-                                    "value": file_id,
-                                },
-                            ]
-                            if file_id
-                            else []
-                        )
+                        (ai_verify_blocks if file_id else [])
                         + [
                             {
                                 "type": "button",

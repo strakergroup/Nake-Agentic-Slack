@@ -54,6 +54,7 @@ from .templates.views import (
 from .web import files_list_simple, download_files, get_mt_ts_cached, set_mt_ts_edit
 from ..auth.connector import (
     RayClient,
+    RayContext,
     approve_pending_groups,
     get_group_mt_engine,
 )
@@ -69,7 +70,7 @@ from .select_options import get_file_options_cached
 
 async def respond_to_message(
     client: AsyncWebClient,
-    context: AsyncBoltContext,
+    context: RayContext,
     message: dict[str, Any],
     *,
     use_thread: bool = False,
@@ -113,7 +114,10 @@ async def respond_to_message(
                             await context.say(text=msg.text, thread_ts=thread_ts)
                 else:
                     new_job_msg = NewJobMessage(
-                        context["channel_id"], message["ts"], file["id"]
+                        context["channel_id"],
+                        message["ts"],
+                        file["id"],
+                        context.ray.super_group[0].enable_verify_in_slack,
                     )
                     await context.say(
                         text=new_job_msg.text,
@@ -232,7 +236,11 @@ async def respond_to_message(
                         client, channel_id=context["channel_id"], count=120
                     )
                 )
-                new_job_msg = NewJobMessage(context["channel_id"], message["ts"])
+                new_job_msg = NewJobMessage(
+                    context["channel_id"],
+                    message["ts"],
+                    context.ray.super_group[0].enable_verify_in_slack,
+                )
                 await context.say(
                     text=new_job_msg.text,
                     blocks=new_job_msg.blocks,
@@ -271,7 +279,9 @@ async def respond_to_message(
                         thread_ts=thread_ts,
                     )
         case "Quality_Evaluation":
-            if await require_ray_client(context, variation=LoginMessage.QUALITY_EVALUATION):
+            if await require_ray_client(
+                context, variation=LoginMessage.QUALITY_EVALUATION
+            ):
                 quality_evaluation_msg = VerifyHelperMessage()
                 await client.chat_postEphemeral(
                     channel=context["channel_id"],
@@ -1547,6 +1557,7 @@ async def ai_translate_help(
     except Exception as e:
         notify_exception(e, "Failed to get AI Translate help message")
 
+
 async def verify_help(
     client: AsyncWebClient,
     context: AsyncBoltContext,
@@ -1567,7 +1578,9 @@ async def verify_help(
     verify_helper_msg = VerifyHelperMessage()
     try:
         if context.response_url and context.respond:
-            await context.respond(text=verify_helper_msg.text, blocks=verify_helper_msg.blocks)
+            await context.respond(
+                text=verify_helper_msg.text, blocks=verify_helper_msg.blocks
+            )
         else:
             if not channel_id:
                 raise AssertionError("No channel to post to")
@@ -1579,6 +1592,7 @@ async def verify_help(
             )
     except Exception as e:
         notify_exception(e, "Failed to get Verify help message")
+
 
 async def get_mt_translation(
     client: AsyncWebClient,
