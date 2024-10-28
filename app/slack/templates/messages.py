@@ -1758,6 +1758,21 @@ class NewJobMessage(SlackMessage):
             }
         )
 
+        text = _(
+            "Please upload your files for translation in the message composer below. Alternatively, if you have already uploaded your files, click:"
+        )
+        if is_verify_enabled:
+            text += _(
+            "\n\n *Quality Evaluation* - machine translate and obtain a quality report"
+            )
+        text += _(
+            "\n\n *AI Translate* - machine translation for documents"
+            )
+        text += _(
+            "\n\n *New translation Job* - to create a new translation job to send for human translation"
+            )
+
+
         super().__init__(
             "Submit a new translation job",
             [
@@ -1765,9 +1780,7 @@ class NewJobMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *New translation job* button below"
-                        ),
+                        "text": text,
                     },
                 },
                 {
