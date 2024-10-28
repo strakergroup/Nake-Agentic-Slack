@@ -239,6 +239,7 @@ async def respond_to_message(
                 new_job_msg = NewJobMessage(
                     context["channel_id"],
                     message["ts"],
+                    "",
                     context.ray.super_group[0].enable_verify_in_slack,
                 )
                 await context.say(
