@@ -1,9 +1,11 @@
 from io import BytesIO
+import json
 import os
+from buglog import notify_exception
 import httpx
 from typing import List
+from ..redis import redis_conn
 
-from app import config
 from app.auth.connector import RayClient, SlackUser, get_ray_client
 from app.config import domains
 
@@ -80,3 +82,69 @@ async def download_verify_file(ray_client: RayClient, file_uuid: str):
         "file": BytesIO(response.content),
     }
     return file_result
+
+
+async def create_human_job(
+    ray_client: RayClient,
+    job_uuid: str,
+    file_and_languages: List[str],
+):
+    """
+    Create a human job in the Verify API
+
+    Args:
+        ray_client: RayClient object
+        job_uuid: UUID of the job
+        file_and_languages: List of strings with the format "file_uuid:language_uuid"
+    """
+    url = f"{domains.verify_api}/automation/service/create-human-job"
+    headers = {"Authorization": f"Bearer {ray_client.id_token}"}
+    # TODO: allow submission
+    service_uuid = "37f2e44b-ba3c-42b1-83c7-d3023298292f"
+    # TODO: What is this?
+    purchase_order_number = "123456"
+    data = {
+        "job_uuid": job_uuid,
+        "service_uuid": service_uuid,
+        "file_and_languages": file_and_languages,
+        "purchase_order_number": purchase_order_number,
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=headers, data=data)
+
+    response.raise_for_status()
+    return response.json()
+
+
+async def get_verify_languages():
+    key = "slack-ray-translator:verify:languages"
+    cached = ""
+    try:
+        cached = await redis_conn.get(key)
+    except Exception as e:
+        notify_exception(e)
+    if cached:
+        try:
+            languages = json.loads(cached)
+            assert isinstance(languages, list)
+            return languages
+        except Exception as e:
+            notify_exception(e)
+
+    url = f"{domains.verify_api}/languages"
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+    response.raise_for_status()
+    languages = response.json()["data"]
+
+    languages = [
+        {"code": lang["code"], "name": lang["name"], "uuid": lang["uuid"]}
+        for lang in languages
+    ]
+    # Cache languages for 1 hour.
+    try:
+        await redis_conn.set(key, json.dumps(languages), ex=3600)
+    except Exception as e:
+        notify_exception(e)
+    return languages

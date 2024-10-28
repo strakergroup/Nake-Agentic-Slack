@@ -54,6 +54,7 @@ from .templates.views import (
 from .web import files_list_simple, download_files, get_mt_ts_cached, set_mt_ts_edit
 from ..auth.connector import (
     RayClient,
+    RayContext,
     approve_pending_groups,
     get_group_mt_engine,
 )
@@ -69,7 +70,7 @@ from .select_options import get_file_options_cached
 
 async def respond_to_message(
     client: AsyncWebClient,
-    context: AsyncBoltContext,
+    context: RayContext,
     message: dict[str, Any],
     *,
     use_thread: bool = False,
@@ -113,7 +114,10 @@ async def respond_to_message(
                             await context.say(text=msg.text, thread_ts=thread_ts)
                 else:
                     new_job_msg = NewJobMessage(
-                        context["channel_id"], message["ts"], file["id"]
+                        context["channel_id"],
+                        message["ts"],
+                        file["id"],
+                        context.ray.super_group[0].enable_verify_in_slack,
                     )
                     await context.say(
                         text=new_job_msg.text,
@@ -232,7 +236,11 @@ async def respond_to_message(
                         client, channel_id=context["channel_id"], count=120
                     )
                 )
-                new_job_msg = NewJobMessage(context["channel_id"], message["ts"])
+                new_job_msg = NewJobMessage(
+                    context["channel_id"],
+                    message["ts"],
+                    context.ray.super_group[0].enable_verify_in_slack,
+                )
                 await context.say(
                     text=new_job_msg.text,
                     blocks=new_job_msg.blocks,
@@ -271,7 +279,9 @@ async def respond_to_message(
                         thread_ts=thread_ts,
                     )
         case "Quality_Evaluation":
-            if await require_ray_client(context, variation=LoginMessage.QUALITY_EVALUATION):
+            if await require_ray_client(
+                context, variation=LoginMessage.QUALITY_EVALUATION
+            ):
                 quality_evaluation_msg = VerifyHelperMessage()
                 await context.say(
                         text=quality_evaluation_msg.text,
@@ -323,7 +333,7 @@ async def auto_translate_message(
         return
     try:
         source_lang, translations = await get_ai_translation(
-            context, text, target_langs, "channel translation"
+            context, text, target_langs, "channel_translation"
         )
     except Exception as e:
         notify_exception(e, "Slack channel MT failed")
@@ -1129,6 +1139,9 @@ async def show_quote_form_modal(
     """
     # Include a bit more than the max 100 options due to hidden files.
     files = await get_file_options_cached(context["channel_id"])
+    # Reduce list to 10 if initial files are set.
+    if initial_files and len(files) + len(initial_files) > 10:
+        files = files[: 10 - len(initial_files)]
     # Set initial selected files.
     if not initial_files and check_last_messages > 0:
         # Check last 100 messages maximum.
@@ -1175,7 +1188,7 @@ async def submit_job(
         timeframe=form.timeframe,
         reference=form.reference,
         job_notes=form.notes,
-        translation_notes=form.translation_notes,
+        # translation_notes=form.translation_notes,
     )
 
 
@@ -1543,6 +1556,7 @@ async def ai_translate_help(
     except Exception as e:
         notify_exception(e, "Failed to get AI Translate help message")
 
+
 async def verify_help(
     client: AsyncWebClient,
     context: AsyncBoltContext,
@@ -1563,7 +1577,9 @@ async def verify_help(
     verify_helper_msg = VerifyHelperMessage()
     try:
         if context.response_url and context.respond:
-            await context.respond(text=verify_helper_msg.text, blocks=verify_helper_msg.blocks)
+            await context.respond(
+                text=verify_helper_msg.text, blocks=verify_helper_msg.blocks
+            )
         else:
             if not channel_id:
                 raise AssertionError("No channel to post to")
@@ -1575,6 +1591,7 @@ async def verify_help(
             )
     except Exception as e:
         notify_exception(e, "Failed to get Verify help message")
+
 
 async def get_mt_translation(
     client: AsyncWebClient,
@@ -1602,7 +1619,7 @@ async def get_mt_translation(
         target_lang = target_lang.lower()
 
         result_source_lang, translation = await get_ai_translation(
-            context, sentence, [target_lang], "direct mt"
+            context, sentence, [target_lang], "direct_machine_translation"
         )
         if not result_source_lang:
             return

@@ -115,7 +115,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
 
                 await post_notification_ephemeral(
                     app.client,
-                    event_data.channel_id,
+                    event_data.channel_id or auth.slack_user.channel_id,
                     event,
                     auth.slack_user,
                     message,

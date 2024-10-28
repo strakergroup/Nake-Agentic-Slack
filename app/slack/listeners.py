@@ -9,8 +9,10 @@ import json
 from datetime import datetime, timedelta
 
 from app.api.verify import (
+    create_human_job,
     download_verify_file,
     get_client_evaluation_job,
+    get_verify_languages,
     submit_evaluation_job,
 )
 from ..database import engines
@@ -98,7 +100,6 @@ from .web import (
     get_mt_ts_cached,
 )
 from .select_options import (
-    _get_languages_cached,
     get_language_options,
     get_file_options_cached,
 )
@@ -113,6 +114,7 @@ from ..auth.connector import (
     get_group_quote_settings,
     get_ray_connection,
     resolve_channels_to_team,
+    is_slack_team_admin,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
@@ -483,13 +485,13 @@ async def handle_translate_shortcut(
     # Romanian Timezone - (UTC+02:00) Athens, Bucharest.
     # Polish Timezone - (UTC+01:00) Sarajevo, Skopje, Warsaw, Zagreb.
     # Dutch(Belgium) Timezone - (UTC+01:00) Brussels, Copenhagen, Madrid, Paris
-    if user_info["user"]["locale"] == "fr-FR":
-        if user_info["user"]["tz"] == "Europe/Athens":
-            mt_tl = "ro-RO"
-        elif user_info["user"]["tz"] == "Europe/Warsaw":
-            mt_tl = "pl-PL"
-        elif user_info["user"]["tz"] == "Europe/Brussels":
-            mt_tl = "nl-NL"
+    # if user_info["user"]["locale"] == "fr-FR":
+    #     if user_info["user"]["tz"] == "Europe/Athens":
+    #         mt_tl = "ro-RO"
+    #     elif user_info["user"]["tz"] == "Europe/Warsaw":
+    #         mt_tl = "pl-PL"
+    #     elif user_info["user"]["tz"] == "Europe/Brussels":
+    #         mt_tl = "nl-NL"
 
     await get_mt_translation(
         client,
@@ -710,17 +712,44 @@ async def ray_command(
                 await respond(text=msg.text, blocks=msg.blocks)
 
         case ["translate"]:
-            settings, auto_translate_langs = get_auto_translate_settings_and_langs(
-                context, context.channel_id
-            )
-            await client.views_open(
-                trigger_id=command["trigger_id"],
-                view=translation_settings_view(
-                    [context.channel_id],
-                    auto_translate_langs,
-                    settings.display_format if settings else "thread",
-                ),
-            )
+            # Check if the user has a connected account.
+            # Open the channel translation settings modal
+            # If translation_settings_enabled is True.
+            # Else display link to help docs.
+            if await require_ray_client(context):
+                is_straker_admin = (
+                    context["ray"]
+                    and context["ray"].client
+                    and await is_slack_team_admin(
+                        context["ray"].client.id, context.get("enterprise_id")
+                    )
+                )
+                translation_settings_enabled = not is_ibm_enterprise(
+                    context.get("enterprise_id")
+                ) or (context["ray"] and context["ray"].client and is_straker_admin)
+
+                if translation_settings_enabled:
+                    settings, auto_translate_langs = (
+                        get_auto_translate_settings_and_langs(
+                            context, context.channel_id
+                        )
+                    )
+                    await client.views_open(
+                        trigger_id=command["trigger_id"],
+                        view=translation_settings_view(
+                            [context.channel_id],
+                            auto_translate_langs,
+                            settings.display_format if settings else "thread",
+                        ),
+                    )
+                else:
+                    url_doc = "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Enabling-Channel-Translation"
+                    text_help = "help docs"
+                    text = _(f"Please check the <{url_doc}|{text_help}>.")
+                    await client.chat_postMessage(
+                        channel=context["channel_id"],
+                        text=text,
+                    )
 
         case ["job", reference, *reference_other]:
             # Get job status or list of jobs.
@@ -986,6 +1015,7 @@ async def handle_ai_translate_help_action(
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
         await ai_translate_help(client, context, context["ray"].client)
+
 
 @app.action("verify_help", middleware=[ray_connection])
 @slack_log_decorator
@@ -1728,25 +1758,49 @@ async def verify_job_modal_open_action(
     await ack()
     job_uuid = action["value"]
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
-    all_langs = await _get_languages_cached()
+    all_langs = await get_verify_languages()
     await client.views_open(
         trigger_id=body["trigger_id"], view=verify_job_modal(job["data"], all_langs)
     )
 
 
-@app.view("verify_job")
-async def handle_verify_job_submission(ack, body, client):
+@app.view("verify_job", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_verify_job_submission(
+    ack: AsyncAck, body: Dict[str, Any], client: Dict[str, Any], context: RayContext
+):
     await ack()
 
     # Extract the private metadata (job UUID)
     job_uuid = body["view"]["private_metadata"]
-
+    job = await get_client_evaluation_job(context.ray.client, job_uuid)
+    source_file = job["data"]["source_files"][0]
+    target_languages = job["data"]["target_languages"]
     # Extract the selected checkbox values
-    # Example: Send a message with the selected values
-    user_id = body["user"]["id"]
-    msg = _(
-            "This feature is yet to be implemented. Coming Soon!"
+    selected_languages = []
+    for lang in target_languages:
+        block_id = f"verification_checkbox_{lang['uuid']}"
+        if block_id in body["view"]["state"]["values"]:
+            selected_options = body["view"]["state"]["values"][block_id][
+                "verification_checkbox_action"
+            ]["selected_options"]
+            selected_languages.extend([option["value"] for option in selected_options])
+
+    file_and_languages = [
+        f"{source_file['file_uuid']}:{lang}" for lang in selected_languages
+    ]
+    if selected_languages:
+        # TODO: handle no langs
+        job_result = await create_human_job(
+            context.ray.client, job_uuid, file_and_languages
         )
+        msg = _(
+            "Thank you for sending your document for human verification! We will notify as soon as the translation is complete."
+        )
+    else:
+        msg = _("Please select at least one language for verification.")
+    user_id = body["user"]["id"]
+
     await client.chat_postMessage(
         channel=user_id,
         text=msg,

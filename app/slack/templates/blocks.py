@@ -36,9 +36,7 @@ def home_auth_blocks(
         enable_verify = ray_connection.super_group[0].enable_verify_in_slack
         text = _("Your Slack account {user_id_str} is connected with: {domain_url}.")
         if ray_connection.client.sso:
-            text = _(
-            "Your Slack account {user_id_str} is connected."
-            )
+            text = _("Your Slack account {user_id_str} is connected.")
         # To show the verify enabled status/message in the home tab
         # if enable_verify:
         #     text += _("\n\n Your Slack account is connected to *LangaugeCloud* and *Verify*.")
@@ -328,13 +326,13 @@ def verify_job_blocks(
     language_uuid: str,
 ) -> dict[str, Any]:
     """The blocks for the verification job."""
-    word_count = file_report["word_count"]
-    counts = report["word_count"]
-    bad = (counts["bad"] / word_count) * 100
-    good = (counts["good"] / word_count) * 100
-    best = (counts["best"] / word_count) * 100
-    acceptable = (counts["acceptable"] / word_count) * 100
-    memory_percentage = (counts["translation_memory"] / word_count) * 100
+    segment_count = sum(report["count"].values())
+    counts = report["count"]
+    bad = (counts["bad"] / segment_count) * 100
+    good = (counts["good"] / segment_count) * 100
+    best = (counts["best"] / segment_count) * 100
+    acceptable = (counts["acceptable"] / segment_count) * 100
+    memory_percentage = (counts["translation_memory"] / segment_count) * 100
     report_message = (
         f":large_blue_square: Translation Memory: {round(memory_percentage)}%\n"
     )
@@ -344,10 +342,35 @@ def verify_job_blocks(
     report_message += f":large_red_square: Bad: {round(bad)}%"
     return [
         {
+            "type": "input",
+            "block_id": f"verification_checkbox_{language_uuid}",
+            "label": {
+                "type": "plain_text",
+                "text": f"{lang_name}",
+            },
+            "element": {
+                "type": "checkboxes",
+                "options": [
+                    {
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": " ",
+                        },
+                        "value": language_uuid,
+                    },
+                ],
+                "action_id": "verification_checkbox_action",
+            },
+            "optional": True,  # Make the input block optional
+        },
+        {
             "type": "section",
             "fields": [
                 {"type": "mrkdwn", "text": f"*Summary:*\n{summary}"},
                 {"type": "mrkdwn", "text": f"*Overall Score:*\n{report_message}"},
             ],
+        },
+        {
+            "type": "divider",
         },
     ]

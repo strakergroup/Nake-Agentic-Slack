@@ -256,8 +256,11 @@ class WelcomeBackMessage(SlackMessage):
 
     def __init__(self, user_id: str, ray_connection: RayConnection) -> None:
         waveEmoji = f":wave:"
-        is_verify_enabled = ray_connection.super_group[0].enable_verify_in_slack if ray_connection else False
-        print("is_verify_enabled", is_verify_enabled)
+        is_verify_enabled = (
+            ray_connection.super_group[0].enable_verify_in_slack
+            if ray_connection
+            else False
+        )
         super().__init__(
             "Welcome back :wave:",
             [
@@ -475,9 +478,15 @@ class SuccessfulLoginMessage(SlackMessage):
     account.
     """
 
-    def __init__(self, user_id: str, ray_username: str, ray_connection: RayConnection) -> None:
+    def __init__(
+        self, user_id: str, ray_username: str, ray_connection: RayConnection
+    ) -> None:
         waveEmoji = f":wave:"
-        is_verify_enabled = ray_connection.super_group[0].enable_verify_in_slack if ray_connection else False
+        is_verify_enabled = (
+            ray_connection.super_group[0].enable_verify_in_slack
+            if ray_connection
+            else False
+        )
         super().__init__(
             ":white_check_mark: Login was successful!",
             [
@@ -1711,7 +1720,44 @@ class JobListMessage(SlackMessage):
 class NewJobMessage(SlackMessage):
     """Message with a button to open the new job modal."""
 
-    def __init__(self, channel_id: str, timestamp: str, file_id: str = "") -> None:
+    def __init__(
+        self,
+        channel_id: str,
+        timestamp: str,
+        file_id: str = "",
+        is_verify_enabled: bool = False,
+    ) -> None:
+        ai_verify_blocks = (
+            [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": _("Quality Evaluation"),
+                        "emoji": True,
+                    },
+                    "action_id": "evaluate_job",
+                    "style": "primary",
+                    "value": file_id,
+                }
+            ]
+            if is_verify_enabled
+            else []
+        )
+
+        ai_verify_blocks.append(
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": _("AI Translate"),
+                    "emoji": True,
+                },
+                "action_id": "document_mt_job",
+                "value": file_id,
+            }
+        )
+
         super().__init__(
             "Submit a new translation job",
             [
@@ -1727,33 +1773,7 @@ class NewJobMessage(SlackMessage):
                 {
                     "type": "actions",
                     "elements": (
-                        (
-                            [
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("Quality Evaluation"),
-                                        "emoji": True,
-                                    },
-                                    "action_id": "evaluate_job",
-                                    "style": "primary",
-                                    "value": file_id,
-                                },
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("AI Translate"),
-                                        "emoji": True,
-                                    },
-                                    "action_id": "document_mt_job",
-                                    "value": file_id,
-                                },
-                            ]
-                            if file_id
-                            else []
-                        )
+                        (ai_verify_blocks if file_id else [])
                         + [
                             {
                                 "type": "button",
@@ -1958,7 +1978,11 @@ class HelpMessage(SlackMessage):
 
     def __init__(self, context: RayContext) -> None:
         ray_connection = context.ray
-        is_verify_enabled = ray_connection.super_group[0].enable_verify_in_slack if ray_connection else False
+        is_verify_enabled = (
+            ray_connection.super_group[0].enable_verify_in_slack
+            if ray_connection
+            else False
+        )
         super().__init__(
             "Hi there :wave: here are some ideas of what you can currently do with our app:",
             [
@@ -2318,9 +2342,7 @@ class InvalidCommandMessage(TextMessage):
 
     def __init__(self) -> None:
         super().__init__(
-            _(
-                ":no_entry_sign: Invalid command. Type `/straker help` for a list of valid commands."
-            )
+            _(":no_entry_sign: Invalid command. Type `/straker help` for help.")
         )
 
 
@@ -3011,6 +3033,7 @@ class AIHelperMessage(SlackMessage):
             [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
         )
 
+
 class VerifyHelperMessage(SlackMessage):
     def __init__(self) -> None:
         verify_uri = "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack"
@@ -3022,6 +3045,7 @@ class VerifyHelperMessage(SlackMessage):
             _("{bookEmoji} Learn Verify MT"),
             [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
         )
+
 
 class JobTargetsNoIdMessage(TextMessage):
     """Message to send when the user asks for a job targets but has not given
@@ -3621,7 +3645,7 @@ class EvaluateSuccessMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Human Verification-Coming Soon",
+                            "text": "Send to Human Verification",
                         },
                         "value": job["uuid"],
                         "action_id": "verify_job_modal_open",
