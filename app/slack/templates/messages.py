@@ -3660,6 +3660,7 @@ class EvaluateSuccessMessage(SlackMessage):
                             "type": "plain_text",
                             "text": "Send to Human Verification",
                         },
+                        "style": "primary",
                         "value": job["uuid"],
                         "action_id": "verify_job_modal_open",
                     },
