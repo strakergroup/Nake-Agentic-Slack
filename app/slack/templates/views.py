@@ -3,6 +3,7 @@
 import asyncio
 from typing import Any
 from slack_bolt.context.async_context import AsyncBoltContext
+from app.api.verify import get_job_pricing
 from app.translate import _
 from .blocks import home_auth_blocks, verify_job_blocks
 from ..select_options import (
@@ -13,6 +14,7 @@ from ..select_options import (
     filter_auto_translate_language_options,
 )
 from ...auth.connector import (
+    RayClient,
     RayConnection,
     is_slack_team_admin,
     resolve_channels_to_team,
@@ -45,7 +47,9 @@ async def home_view(
     translation_settings_enabled = not is_ibm_enterprise(context.enterprise_id) or (
         rayConnection and rayConnection.client and is_straker_admin
     )
-    is_verify_enabled = rayConnection.super_group[0].enable_verify_in_slack if rayConnection else False
+    is_verify_enabled = (
+        rayConnection.super_group[0].enable_verify_in_slack if rayConnection else False
+    )
     verify_settings_block = []
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str], dict[str, str]]
@@ -276,30 +280,32 @@ async def home_view(
                     }
                 )
     if is_verify_enabled:
-        verify_settings_block = [{
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": _(
-                    ":drum_with_drumsticks: Introducing a new option: Translate and evaluate your files using AI, with the choice of adding human verification if needed."
-                ),
-            },
-        },
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": _(":star2: Create New Project (QE)"),
-                    },
-                    "action_id": "verify_help",
-                    "url": message_url,
+        verify_settings_block = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        ":drum_with_drumsticks: Introducing a new option: Translate and evaluate your files using AI, with the choice of adding human verification if needed."
+                    ),
                 },
-            ],
-        }]
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _(":star2: Create New Project (QE)"),
+                        },
+                        "action_id": "verify_help",
+                        "url": message_url,
+                    },
+                ],
+            },
+        ]
     return {
         "type": "home",
         "blocks": [
@@ -1247,7 +1253,9 @@ def translation_settings_view_error(message: str) -> dict[str, Any]:
 
 
 def verify_job_modal(
-    job: dict[str, Any], all_langs: list[dict[str, str]]
+    job: dict[str, Any],
+    all_langs: list[dict[str, str]],
+    costs: list[dict[str, Any]],
 ) -> dict[str, Any]:
     languages = job["target_languages"]
     file = job["source_files"][0]
@@ -1271,14 +1279,15 @@ def verify_job_modal(
         # seperator
         # add file id as hidden input
     ]
+
     for lang in languages:
         blocks.extend(
             verify_job_blocks(
                 f":blue_book: Translate from: {source_lang['name']}\n:green_book: Translate to: {lang['name']}\n:paperclip: {file['filename']}\n{segment_quality_score(lang['report']['score'])}",
                 lang["report"],
-                file["report"],
                 lang["name"],
                 lang["uuid"],
+                costs,
             )
         )
     return {
