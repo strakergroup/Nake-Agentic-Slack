@@ -321,9 +321,9 @@ def job_prediction_block(
 def verify_job_blocks(
     summary: str,
     report: dict[str, Any],
-    file_report: dict[str, Any],
     lang_name: str,
     language_uuid: str,
+    costs: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """The blocks for the verification job."""
     segment_count = sum(report["count"].values())
@@ -340,6 +340,12 @@ def verify_job_blocks(
     report_message += f":large_yellow_square: Good: {round(good)}%\n"
     report_message += f":large_orange_square: Acceptable: {round(acceptable)}%\n"
     report_message += f":large_red_square: Bad: {round(bad)}%"
+    cost = 0.00
+    for item in costs:
+        if item["language_uuid"] == language_uuid:
+            cost = item["service_list"][0]["estimated_cost"]
+            break
+
     return [
         {
             "type": "input",
@@ -354,7 +360,7 @@ def verify_job_blocks(
                     {
                         "text": {
                             "type": "mrkdwn",
-                            "text": " ",
+                            "text": f"USD${cost:.2f}",
                         },
                         "value": language_uuid,
                     },

@@ -148,3 +148,17 @@ async def get_verify_languages():
     except Exception as e:
         notify_exception(e)
     return languages
+
+
+async def get_job_pricing(
+    ray_client: RayClient, job_uuid: str, file_uuid: str, language_uuids: list[str]
+):
+    url = f"{domains.verify_api}/automation/service/pricing"
+    headers = {"Authorization": f"Bearer {ray_client.id_token}"}
+    # TODO: Update for multiple files
+    file_and_languages = [f"{file_uuid}:{lang}" for lang in language_uuids]
+    data = {"job_uuid": job_uuid, "file_and_languages": file_and_languages}
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=headers, data=data)
+    response.raise_for_status()
+    return response.json()

@@ -12,6 +12,7 @@ from app.api.verify import (
     create_human_job,
     download_verify_file,
     get_client_evaluation_job,
+    get_job_pricing,
     get_verify_languages,
     submit_evaluation_job,
 )
@@ -1762,9 +1763,18 @@ async def verify_job_modal_open_action(
     job_uuid = action["value"]
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
     all_langs = await get_verify_languages()
-    await client.views_open(
-        trigger_id=body["trigger_id"], view=verify_job_modal(job["data"], all_langs)
-    )
+    if await require_ray_client(context, prompt_login=True):
+        langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
+        costs = await get_job_pricing(
+            context.ray.client,
+            job_uuid,
+            job["data"]["source_files"][0]["file_uuid"],
+            langs,
+        )
+        await client.views_open(
+            trigger_id=body["trigger_id"],
+            view=verify_job_modal(job["data"], all_langs, costs["data"]),
+        )
 
 
 @app.view("verify_job", middleware=[ray_connection])
