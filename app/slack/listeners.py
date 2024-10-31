@@ -1801,8 +1801,8 @@ async def handle_verify_job_submission(
     ]
     if selected_languages:
         # TODO: handle no langs
-        job_result = await create_human_job(
-            context.ray.client, job_uuid, file_and_languages
+        asyncio.create_task(
+            create_human_job(context.ray.client, job_uuid, file_and_languages)
         )
         msg = _(
             "Thank you for sending your document for human verification! We will notify as soon as the translation is complete."

@@ -110,7 +110,7 @@ async def create_human_job(
         "purchase_order_number": purchase_order_number,
     }
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
         response = await client.post(url, headers=headers, data=data)
 
     response.raise_for_status()
