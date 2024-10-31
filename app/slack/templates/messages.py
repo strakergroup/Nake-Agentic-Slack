@@ -1652,6 +1652,17 @@ class NewJobMessage(SlackMessage):
     """Message with a button to open the new job modal."""
 
     def __init__(self, channel_id: str, timestamp: str, file_id: str = "") -> None:
+
+        text = _(
+            "Please upload your files to translate in the message compose below, or alternatively, if you have already uploaded your files, click;"
+        )
+        text += _(
+            "\n\n*• New translation Job* - Human translate content from one language into multiple languages"
+            )
+        text += _(
+            "\n\n*• AI Translate* - AI translate content from one language into multiple languages"
+            )
+        print("text", text)
         super().__init__(
             "Submit a new translation job",
             [
@@ -1659,9 +1670,7 @@ class NewJobMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *New translation job* button below"
-                        ),
+                        "text": _(text),
                     },
                 },
                 {
