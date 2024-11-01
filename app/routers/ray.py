@@ -15,6 +15,7 @@ from ..auth.connector import (
     get_client_type,
     get_demo_link,
     get_job_group_quote_settings,
+    is_verify_job,
     validate_api_callback_signature,
     get_slack_user,
     get_client_access_tokens,
@@ -34,6 +35,8 @@ from ..slack.templates.messages import (
     ClientApprovedEventMessage,
     JobCreationMessage,
     JobTranscribedEventMessage,
+    JobCompletedEventMessage,
+    VerifyCompleteMessage,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.events.models import (
@@ -155,6 +158,30 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         "This video cannot be sent for transcription as it doesn't have any sound"
                     ),
                 )
+        elif isinstance(message, JobCompletedEventMessage):
+            if not is_verify_job(event.data["uuid"]):
+                await post_notification(
+                    app.client,
+                    event,
+                    auth.slack_user,
+                    message,
+                )
+        elif isinstance(message, VerifyCompleteMessage):
+            await post_notification(
+                app.client,
+                event,
+                auth.slack_user,
+                message,
+            )
+            output_file = download_from_file_server(
+                event.data["grid_file_id"],
+            )
+            await app.client.files_upload_v2(
+                channel=auth.slack_user.user_id,
+                file=output_file.get("file"),
+                title=title,
+                filename=output_file.get("file_name"),
+            )
         elif (
             # Send important messages regardless of subscribed status.
             isinstance(message, (ClientSignupEventMessage, ClientApprovedEventMessage))
@@ -192,9 +219,6 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 groups=groups,
             )
             await post_notification(app.client, event, user, admin_message)
-    elif not auth.slack_user:
-        notify_message("Slack user not found in events endpoint", severity="WARNING")
-        raise HTTPException(401)
 
     return {"message": "success", "data": {"event": event.event}}
 
