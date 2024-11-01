@@ -30,11 +30,15 @@ from ...slack.templates.messages import (
     JobQuoteAcceptedEventMessage,
     JobQuoteCancelledEventMessage,
     JobTranscribedEventMessage,
+    VerifyCompleteMessage,
 )
 
 
 async def get_ray_event_message(
-    event_type: str, event_data: dict[str, Any], slack_user: SlackUser | None, ray_connection: Any | None = None
+    event_type: str,
+    event_data: dict[str, Any],
+    slack_user: SlackUser | None,
+    ray_connection: Any | None = None,
 ) -> SlackMessage | None:
     """Gets the SlackMessage based on the event type. Returns None if no Slack
     message should be sent for the particular event.
@@ -121,4 +125,12 @@ async def get_ray_event_message(
         job = await get_evaluation_job(slack_user, event_data["job_uuid"])
         all_langs = await _get_languages_cached()
         return EvaluateSuccessMessage(job["data"], all_langs)
+    elif event_type == "verify:human_verification:completed":
+        all_langs = await _get_languages_cached()
+        lang_label = ""
+        for lang in all_langs:
+            if lang["uuid"] == event_data["lang_uuid"]:
+                lang_label = lang["name"]
+                break
+        return VerifyCompleteMessage(event_data["job_title"], lang_label)
     raise ValueError(f"Invalid RAY event type: {event_type}")

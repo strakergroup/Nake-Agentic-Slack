@@ -1727,3 +1727,20 @@ def get_group_mt_engine(
         mt_engine = row.ai_mt
 
     return mt_engine
+
+
+def is_verify_job(job_uuid: str) -> bool:
+    """Check if the job is a verify job."""
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT jobtype
+            FROM franchise.obj_tp_job
+            WHERE obj_uuid = :job_uuid
+            """
+        ).bindparams(job_uuid=job_uuid)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return False
+    return row.jobtype == "Verify"
