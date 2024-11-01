@@ -229,24 +229,24 @@ async def respond_to_message(
                     )
             else:
                 await context.say(JobTargetsNoIdMessage().text, thread_ts=thread_ts)
-        case "New_Translation_Job":
-            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-                asyncio.create_task(
-                    files_list_simple(
-                        client, channel_id=context["channel_id"], count=120
-                    )
-                )
-                new_job_msg = NewJobMessage(
-                    context["channel_id"],
-                    message["ts"],
-                    "",
-                    context.ray.super_group[0].enable_verify_in_slack,
-                )
-                await context.say(
-                    text=new_job_msg.text,
-                    blocks=new_job_msg.blocks,
-                    thread_ts=thread_ts,
-                )
+        # case "New_Translation_Job":
+        #     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+        #         asyncio.create_task(
+        #             files_list_simple(
+        #                 client, channel_id=context["channel_id"], count=120
+        #             )
+        #         )
+        #         new_job_msg = NewJobMessage(
+        #             context["channel_id"],
+        #             message["ts"],
+        #             "",
+        #             context.ray.super_group[0].enable_verify_in_slack,
+        #         )
+        #         await context.say(
+        #             text=new_job_msg.text,
+        #             blocks=new_job_msg.blocks,
+        #             thread_ts=thread_ts,
+        #         )
         case "Show_Insights":
             if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
                 await post_insights(
