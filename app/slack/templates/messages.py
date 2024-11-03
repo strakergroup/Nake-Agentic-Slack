@@ -1778,7 +1778,7 @@ class NewJobMessage(SlackMessage):
                 "type": "section",
                 "text": {
                 "type": "mrkdwn",
-                "text": _("Please upload your files to translate in the message compose below, or alternatively, if you have already uploaded your files, click;\n\n")
+                "text": _("Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n")
                 + (_("*• New translation Job* - Human translate content from one language into multiple languages\n\n") if not is_verify_enabled else "")
                 + (_("*• Quality Evaluation* - machine translate and obtain a quality report\n\n") if is_verify_enabled and file_id else "")
                 + (_("*• AI Translate* - AI translate content from one language into multiple languages") if file_id else ""),
@@ -1801,10 +1801,10 @@ class NewJobMessage(SlackMessage):
                             "action_id": "new_job",
                             "style": "primary",
                             "value": json.dumps(
-                            {
-                                "channel_id": channel_id,
-                                "ts": timestamp,
-                            }
+                                {
+                                    "channel_id": channel_id,
+                                    "ts": timestamp,
+                                }
                             ),
                         }
                     ]
