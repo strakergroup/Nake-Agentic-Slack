@@ -1667,41 +1667,41 @@ class NewJobMessage(SlackMessage):
                 {
                     "type": "actions",
                     "elements": (
-                    [
-                        {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("New translation job"),
-                            "emoji": True,
-                        },
-                        "action_id": "new_job",
-                        "style": "primary",
-                        "value": json.dumps(
-                            {
-                            "channel_id": channel_id,
-                            "ts": timestamp,
-                            }
-                        ),
-                        }
-                    ]
-                    + (
                         [
-                        {
-                            "type": "button",
-                            "text": {
-                            "type": "plain_text",
-                            "text": _("AI Translate"),
-                            "emoji": True,
-                            },
-                            "action_id": "document_mt_job",
-                            "style": "primary",
-                            "value": file_id,
-                        }
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("New translation job"),
+                                    "emoji": True,
+                                },
+                                "action_id": "new_job",
+                                "style": "primary",
+                                "value": json.dumps(
+                                    {
+                                        "channel_id": channel_id,
+                                        "ts": timestamp,
+                                    }
+                                ),
+                            }
                         ]
-                        if file_id
-                        else []
-                    )
+                        + (
+                            [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("AI Translate"),
+                                        "emoji": True,
+                                    },
+                                    "action_id": "document_mt_job",
+                                    "style": "primary",
+                                    "value": file_id,
+                                }
+                            ]
+                            if file_id
+                            else []
+                        )
                     ),
                 },
             ],
