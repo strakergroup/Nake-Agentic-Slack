@@ -1659,7 +1659,7 @@ class NewJobMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("Please upload your files to translate in the message compose below, or alternatively, if you have already uploaded your files, click;\n\n")
+                        "text": _("Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n")
                         + _("*• New translation Job* - Human translate content from one language into multiple languages\n\n")
                         + (_("*• AI Translate* - AI translate content from one language into multiple languages") if file_id else ""),
                     },
