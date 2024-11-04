@@ -286,7 +286,7 @@ async def home_view(
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        ":drum_with_drumsticks: Introducing a new option: Translate and evaluate your files using AI, with the choice of adding human verification if needed."
+                        ":drum_with_drumsticks: Introducing a new option: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
                     ),
                 },
             },
@@ -500,7 +500,7 @@ def evaluate_job_modal(file_id: str):
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Translate and evaluate your files using AI and choose whether human verification is required."
+                        "AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
                     ),
                 },
             },
