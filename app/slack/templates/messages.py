@@ -3084,7 +3084,7 @@ class AIHelperMessage(SlackMessage):
 
 class VerifyHelperMessage(SlackMessage):
     def __init__(self) -> None:
-        verify_uri = "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack"
+        verify_uri = "https://help.strakertranslations.com/hc/en-us/articles/39202694401433-Quality-Evaluation"
         message = _(
             "Please upload your files to perform the Quality Evaluation in the message composer below. Click me to learn Straker <{verify_uri}|Verify MT>."
         )
