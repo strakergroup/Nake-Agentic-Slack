@@ -9,7 +9,6 @@ from ..redis import redis_conn
 from app.auth.connector import RayClient, SlackUser, get_ray_client
 from app.config import domains
 
-from straker_auth.languagecloud import create_languagecloud_id_token
 
 from app.ray.utils import get_filename_from_header
 
