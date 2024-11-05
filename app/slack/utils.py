@@ -118,7 +118,7 @@ def escape_slack_emoji(text: str):
     Returns:
         str: The text with Slack emoji characters escaped.
     """
-    # Slack uses :emoji: syntax for emoji. If the text contains :emoji:,
+    # Slack uses Overall syntax for emoji. If the text contains Overall,
     # to prevent translation replace with <x i={i}> where i is the source index.
     emojis = re.findall(r":[^\s]*?:|<[^\s]*>", text)
     for i, emoji in enumerate(emojis):
@@ -168,18 +168,18 @@ def segment_quality_score(score: float, taus_version: str = "1.0.0") -> str:
     if taus_version == "2.0.0":
         # TAUS QE version 2.0.0
         if score >= 0.9:
-            return ":large_green_square: Translation Quality: Best"
+            return "Overall Translation Quality: Best"
         elif score >= 0.88:
-            return ":large_yellow_square: Translation Quality: Good"
+            return "Overall Translation Quality: Good"
         elif score >= 0.8:
-            return ":large_orange_square: Translation Quality: Acceptable"
-        return ":large_red_square: Translation Quality: Bad"
+            return "Overall Translation Quality: Acceptable"
+        return "Overall Translation Quality: Bad"
     else:
         # TAUS QE version 1.0.0
         if score >= 0.95:
-            return ":large_green_square: Translation Quality: Best"
+            return "Overall Translation Quality: Best"
         elif score >= 0.9:
-            return ":large_yellow_square: Translation Quality: Good"
+            return "Overall Translation Quality: Good"
         elif score >= 0.85:
-            return ":large_orange_square: Translation Quality: Acceptable"
-        return ":large_red_square: Translation Quality: Bad"
+            return "Overall Translation Quality: Acceptable"
+        return "Overall Translation Quality: Bad"

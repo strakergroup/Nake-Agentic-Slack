@@ -10,7 +10,12 @@ from app.slack.select_options import (
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm
-from .blocks import job_link_block, quote_message_block, job_prediction_block
+from .blocks import (
+    job_link_block,
+    job_summary_string,
+    quote_message_block,
+    job_prediction_block,
+)
 from ...ray.events.models import (
     ClientSignupEvent,
     JobQuoteCreatedEvent,
@@ -28,7 +33,7 @@ from ...ray.utils import (
     is_min_langugagecloud_plan,
 )
 from ...ray.settings import get_auto_translate_language_name
-from ..utils import format_strings_display, segment_quality_score
+from ..utils import format_strings_display
 from ...config import config, domains, Environment
 from ...auth.connector import (
     RayClient,
@@ -37,7 +42,6 @@ from ...auth.connector import (
     get_language_cloud_connect_url,
     encrpyt_slack_sso_token,
 )
-from slack_bolt.context.async_context import AsyncBoltContext
 from app.translate import _
 
 
@@ -3664,7 +3668,7 @@ class EvaluateSuccessMessage(SlackMessage):
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": f":blue_book: Translate from: {source_lang['name']}\n:green_book: Translate to: {lang['name']}\n:paperclip: {file['filename']}\n{segment_quality_score(lang['report']['score'])}",
+                            "text": job_summary_string(source_lang, lang, file),
                         },
                     },
                     {

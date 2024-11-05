@@ -4,11 +4,12 @@ from typing import Any
 from ray_sdk.api.v3.models import Quote
 
 from app.ray.events.models import JobQuoteCreatedEvent
+from app.slack.utils import segment_quality_score
 from ...auth.connector import (
     get_language_cloud_connect_url,
     RayConnection,
 )
-from ...config import domains, config, Environment
+from ...config import domains
 from ...ray.utils import (
     get_job_url,
     format_currency,
@@ -352,7 +353,7 @@ def verify_job_blocks(
             "block_id": f"verification_checkbox_{language_uuid}",
             "label": {
                 "type": "plain_text",
-                "text": f"{lang_name}",
+                "text": _(lang_name),
             },
             "element": {
                 "type": "checkboxes",
@@ -372,11 +373,24 @@ def verify_job_blocks(
         {
             "type": "section",
             "fields": [
-                {"type": "mrkdwn", "text": f"*Summary:*\n{summary}"},
-                {"type": "mrkdwn", "text": f"*Overall Score:*\n{report_message}"},
+                {"type": "mrkdwn", "text": _("*Summary:*\n{summary}")},
+                {"type": "mrkdwn", "text": _("*Overall Score:*\n{report_message}")},
             ],
         },
         {
             "type": "divider",
         },
     ]
+
+
+def job_summary_string(
+    source_lang: dict[str, Any], lang: dict[str, Any], file: dict[str, Any]
+):
+    """Returns the job summary string."""
+    formatted_source_lang = _(source_lang["name"])
+    formatted_target_lang = _(lang["name"])
+    file_name = file["filename"]
+    formatted_score = _(segment_quality_score(lang["report"]["score"]))
+    return _(
+        "Detected Source Language: {formatted_source_lang}\nTranslate to: {formatted_target_lang}\nFile Uploaded: {file_name}\n{formatted_score}"
+    )

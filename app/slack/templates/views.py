@@ -3,9 +3,12 @@
 import asyncio
 from typing import Any
 from slack_bolt.context.async_context import AsyncBoltContext
-from app.api.verify import get_job_pricing
 from app.translate import _
-from .blocks import home_auth_blocks, verify_job_blocks
+from .blocks import (
+    home_auth_blocks,
+    job_summary_string,
+    verify_job_blocks,
+)
 from ..select_options import (
     map_file_options,
     get_auto_translate_language_options,
@@ -14,7 +17,6 @@ from ..select_options import (
     filter_auto_translate_language_options,
 )
 from ...auth.connector import (
-    RayClient,
     RayConnection,
     is_slack_team_admin,
     resolve_channels_to_team,
@@ -25,8 +27,8 @@ from ...ray.settings import (
     get_pagination,
 )
 from ...ray.utils import is_ibm_enterprise
-from ...slack.utils import format_strings_display, segment_quality_score
-from ...config import config, domains, Environment
+from ...slack.utils import format_strings_display
+from ...config import domains
 from ...models import SlackGroupSettingsTranslation
 import json
 
@@ -81,18 +83,7 @@ async def home_view(
         visible_translation_settings = [
             (setting, langs, {}) for setting, langs in translation_settings
         ]
-    footer_blocks = [
-        {
-            "type": "button",
-            "text": {
-                "type": "plain_text",
-                "emoji": True,
-                "text": _("{questionEmoji} Help Centre"),
-            },
-            "action_id": "link_2",
-            "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
-        },
-    ]
+    footer_blocks = []
     if not is_ibm_enterprise(context.enterprise_id):
         footer_blocks.append(
             {
@@ -1289,7 +1280,7 @@ def verify_job_modal(
     for lang in languages:
         blocks.extend(
             verify_job_blocks(
-                f":blue_book: Translate from: {source_lang['name']}\n:green_book: Translate to: {lang['name']}\n:paperclip: {file['filename']}\n{segment_quality_score(lang['report']['score'])}",
+                job_summary_string(source_lang, lang, file),
                 lang["report"],
                 lang["name"],
                 lang["uuid"],
