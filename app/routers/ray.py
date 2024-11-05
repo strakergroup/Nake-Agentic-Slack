@@ -167,7 +167,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     message,
                 )
         elif isinstance(message, VerifyCompleteMessage):
-            await post_notification(
+            response = await post_notification(
                 app.client,
                 event,
                 auth.slack_user,
@@ -177,7 +177,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 event.data["grid_file_id"],
             )
             await app.client.files_upload_v2(
-                channel=auth.slack_user.channel_id,
+                channel=response["channel"],
                 file=output_file.get("file"),
                 title=event.data["job_title"],
                 filename=output_file.get("file_name"),
