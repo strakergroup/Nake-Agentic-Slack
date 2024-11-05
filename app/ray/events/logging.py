@@ -54,7 +54,7 @@ async def post_notification(
     database.
     """
     client.token = slack_user.bot_token
-    await client.chat_postMessage(
+    response = await client.chat_postMessage(
         channel=slack_user.user_id,
         text=message.text,
         blocks=message.blocks,
@@ -69,6 +69,7 @@ async def post_notification(
             message=type(message).__name__,
         )
     )
+    return response
 
 
 async def post_notification_ephemeral(
