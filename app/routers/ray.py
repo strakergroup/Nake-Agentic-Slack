@@ -177,7 +177,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 event.data["grid_file_id"],
             )
             await app.client.files_upload_v2(
-                channel=auth.slack_user.user_id,
+                channel=auth.slack_user.channel_id,
                 file=output_file.get("file"),
                 title=event.data["job_title"],
                 filename=output_file.get("file_name"),
