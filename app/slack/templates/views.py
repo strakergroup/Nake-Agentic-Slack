@@ -1281,7 +1281,9 @@ def verify_job_modal(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": _("AI quality evaluation of your translated files."),
+                "text": _(
+                    ":sports_medal: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
+                ),
             },
         },
         # seperator
