@@ -83,7 +83,18 @@ async def home_view(
         visible_translation_settings = [
             (setting, langs, {}) for setting, langs in translation_settings
         ]
-    footer_blocks = []
+    footer_blocks = [
+        {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "emoji": True,
+                "text": _("{questionEmoji} Help Centre"),
+            },
+            "action_id": "link_2",
+            "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+        },
+    ]
     if not is_ibm_enterprise(context.enterprise_id):
         footer_blocks.append(
             {
