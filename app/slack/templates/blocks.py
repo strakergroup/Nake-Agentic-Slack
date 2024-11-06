@@ -325,6 +325,7 @@ def verify_job_blocks(
     lang_name: str,
     language_uuid: str,
     costs: list[dict[str, Any]],
+    optional: bool,
 ) -> dict[str, Any]:
     """The blocks for the verification job."""
     segment_count = sum(report["count"].values())
@@ -368,7 +369,7 @@ def verify_job_blocks(
                 ],
                 "action_id": "verification_checkbox_action",
             },
-            "optional": True,  # Make the input block optional
+            "optional": optional,  # Make the input block optional
         },
         {
             "type": "section",
