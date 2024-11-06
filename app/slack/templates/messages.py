@@ -4,19 +4,26 @@ from typing import Any, Dict, List
 import json
 
 import langcodes
-from app.slack.select_options import get_auto_translate_language_options
+from app.slack.select_options import (
+    get_auto_translate_language_options,
+)
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm
-from .blocks import job_link_block, quote_message_block, job_prediction_block
+from .blocks import (
+    job_link_block,
+    job_summary_string,
+    quote_message_block,
+    job_prediction_block,
+)
 from ...ray.events.models import (
     ClientSignupEvent,
     JobQuoteCreatedEvent,
     ClientGroup,
     JobQuoteAcceptedEvent,
 )
+
 from ...ray.utils import (
-    format_predictions,
     get_job_url,
     format_job_status,
     format_datetime_slack,
@@ -31,10 +38,10 @@ from ...config import config, domains, Environment
 from ...auth.connector import (
     RayClient,
     RayConnection,
+    RayContext,
     get_language_cloud_connect_url,
     encrpyt_slack_sso_token,
 )
-from slack_bolt.context.async_context import AsyncBoltContext
 from app.translate import _
 
 
@@ -123,6 +130,8 @@ class LoginMessage(SlackMessage):
     NEW_JOB = "new_job"
     INSIGHTS = "insights"
     CANCEL_JOB = "cancel_job"
+    AI_HELP = "ai_help"
+    QUALITY_EVALUATION = "quality_evaluation"
 
     def __init__(
         self,
@@ -166,6 +175,8 @@ class LoginMessage(SlackMessage):
             block_text = "Connect your LanguageCloud account to view your insights."
         elif variation == self.CANCEL_JOB:
             block_text = "Connect your LanguageCloud account to cancel your job."
+        elif variation == self.QUALITY_EVALUATION:
+            block_text = "Connect your LanguageCloud account to evaluate the quality of your translation."
         elif isinstance(ray_client, RayClient):
             user_details = f"<<{domains.languagecloud}|{ray_client.username}>>"
             block_text = (
@@ -247,8 +258,13 @@ class WelcomeBackMessage(SlackMessage):
     account.
     """
 
-    def __init__(self, user_id: str) -> None:
+    def __init__(self, user_id: str, ray_connection: RayConnection) -> None:
         waveEmoji = f":wave:"
+        is_verify_enabled = (
+            ray_connection.super_group[0].enable_verify_in_slack
+            if ray_connection
+            else False
+        )
         super().__init__(
             "Welcome back :wave:",
             [
@@ -311,6 +327,31 @@ class WelcomeBackMessage(SlackMessage):
                         "action_id": "link_document_mt",
                     },
                 },
+                *(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    ":sports_medal: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": _("Quality Evaluation"),
+                                },
+                                # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
+                                "action_id": "verify_help",
+                            },
+                        }
+                    ]
+                    if is_verify_enabled
+                    else []
+                ),
                 {
                     "type": "section",
                     "text": {
@@ -347,23 +388,29 @@ class WelcomeBackMessage(SlackMessage):
                         "action_id": "all_summary",
                     },
                 },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
-                        ),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("New translation job"),
+                *(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("New translation job"),
+                                },
+                                "action_id": "new_job",
+                            },
                         },
-                        "action_id": "new_job",
-                    },
-                },
+                    ]
+                    if not is_verify_enabled
+                    else []
+                ),
                 {
                     "type": "section",
                     "text": {
@@ -441,8 +488,15 @@ class SuccessfulLoginMessage(SlackMessage):
     account.
     """
 
-    def __init__(self, user_id: str, ray_username: str) -> None:
+    def __init__(
+        self, user_id: str, ray_username: str, ray_connection: RayConnection
+    ) -> None:
         waveEmoji = f":wave:"
+        is_verify_enabled = (
+            ray_connection.super_group[0].enable_verify_in_slack
+            if ray_connection
+            else False
+        )
         super().__init__(
             ":white_check_mark: Login was successful!",
             [
@@ -505,6 +559,31 @@ class SuccessfulLoginMessage(SlackMessage):
                         "action_id": "link_document_mt",
                     },
                 },
+                *(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    ":sports_medal: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": _("Quality Evaluation"),
+                                },
+                                # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
+                                "action_id": "verify_help",
+                            },
+                        }
+                    ]
+                    if is_verify_enabled
+                    else []
+                ),
                 {
                     "type": "section",
                     "text": {
@@ -541,23 +620,29 @@ class SuccessfulLoginMessage(SlackMessage):
                         "action_id": "all_summary",
                     },
                 },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
-                        ),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("New translation job"),
+                *(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("New translation job"),
+                                },
+                                "action_id": "new_job",
+                            },
                         },
-                        "action_id": "new_job",
-                    },
-                },
+                    ]
+                    if not is_verify_enabled
+                    else []
+                ),
                 {
                     "type": "section",
                     "text": {
@@ -1651,59 +1736,88 @@ class JobListMessage(SlackMessage):
 class NewJobMessage(SlackMessage):
     """Message with a button to open the new job modal."""
 
-    def __init__(self, channel_id: str, timestamp: str, file_id: str = "") -> None:
+    def __init__(
+        self,
+        channel_id: str,
+        timestamp: str,
+        file_id: str = "",
+        is_verify_enabled: bool = False,
+    ) -> None:
+        ai_verify_blocks = (
+            [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": _("Quality Evaluation"),
+                        "emoji": True,
+                    },
+                    "action_id": "evaluate_job",
+                    "style": "primary",
+                    "value": file_id,
+                }
+            ]
+            if is_verify_enabled
+            else []
+        )
+
+        ai_verify_blocks.append(
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": _("AI Translate"),
+                    "emoji": True,
+                },
+                "action_id": "document_mt_job",
+                "style": "primary",
+                "value": file_id,
+            }
+        )
+
         super().__init__(
             "Submit a new translation job",
             [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _("Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n")
-                        + _("*• New translation Job* - Human translate content from one language into multiple languages\n\n")
-                        + (_("*• AI Translate* - AI translate content from one language into multiple languages") if file_id else ""),
-                    },
+            {
+                "type": "section",
+                "text": {
+                "type": "mrkdwn",
+                "text": _("Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n")
+                + (_("*• New translation Job* - Human translate content from one language into multiple languages\n\n") if not is_verify_enabled else "")
+                + (_("*• Quality Evaluation* - AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification\n\n") if is_verify_enabled and file_id else "")
+                + (_("*• AI Translate* - AI translate content from one language into multiple languages") if file_id else ""),
                 },
-                {
-                    "type": "actions",
-                    "elements": (
-                        [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("New translation job"),
-                                    "emoji": True,
-                                },
-                                "action_id": "new_job",
-                                "style": "primary",
-                                "value": json.dumps(
-                                    {
-                                        "channel_id": channel_id,
-                                        "ts": timestamp,
-                                    }
-                                ),
-                            }
-                        ]
-                        + (
-                            [
+            },
+            {
+                "type": "actions",
+                "elements": (
+                # (ai_verify_blocks if file_id else [])
+                # +
+                (
+                    [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("New translation job"),
+                                "emoji": True,
+                            },
+                            "action_id": "new_job",
+                            "style": "primary",
+                            "value": json.dumps(
                                 {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("AI Translate"),
-                                        "emoji": True,
-                                    },
-                                    "action_id": "document_mt_job",
-                                    "style": "primary",
-                                    "value": file_id,
+                                    "channel_id": channel_id,
+                                    "ts": timestamp,
                                 }
-                            ]
-                            if file_id
-                            else []
-                        )
-                    ),
-                },
+                            ),
+                        }
+                    ]
+                    if not is_verify_enabled
+                    else []
+                )
+                + (ai_verify_blocks if file_id else [])
+                ),
+            },
             ],
         )
 
@@ -1886,7 +2000,13 @@ class FileTranslatedMessage(SlackMessage):
 class HelpMessage(SlackMessage):
     """Help message showing how to use the app."""
 
-    def __init__(self, context: AsyncBoltContext) -> None:
+    def __init__(self, context: RayContext) -> None:
+        ray_connection = context.ray
+        is_verify_enabled = (
+            ray_connection.super_group[0].enable_verify_in_slack
+            if ray_connection
+            else False
+        )
         super().__init__(
             "Hi there :wave: here are some ideas of what you can currently do with our app:",
             [
@@ -1946,6 +2066,31 @@ class HelpMessage(SlackMessage):
                         "action_id": "link_document_mt",
                     },
                 },
+                *(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    ":sports_medal: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": _("Quality Evaluation"),
+                                },
+                                # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
+                                "action_id": "verify_help",
+                            },
+                        }
+                    ]
+                    if is_verify_enabled
+                    else []
+                ),
                 {
                     "type": "section",
                     "text": {
@@ -1974,23 +2119,29 @@ class HelpMessage(SlackMessage):
                         "action_id": "all_summary",
                     },
                 },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
-                        ),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("New translation job"),
+                *(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("New translation job"),
+                                },
+                                "action_id": "new_job",
+                            },
                         },
-                        "action_id": "quote",
-                    },
-                },
+                    ]
+                    if not is_verify_enabled
+                    else []
+                ),
                 {
                     "type": "section",
                     "text": {
@@ -2221,9 +2372,7 @@ class InvalidCommandMessage(TextMessage):
 
     def __init__(self) -> None:
         super().__init__(
-            _(
-                ":no_entry_sign: Invalid command. Type `/straker help` for help."
-            )
+            _(":no_entry_sign: Invalid command. Type `/straker help` for help.")
         )
 
 
@@ -2803,6 +2952,28 @@ class BatchListMessage(SlackMessage):
         )
 
 
+class VerifyCompleteMessage(SlackMessage):
+    """Message to display a file which has been generated by the Verify Human verification service."""
+
+    def __init__(self, job_title: str, lang_label: str) -> None:
+        lang_label = _(lang_label)
+        title = _(
+            "Verify Job '{job_title}' human verification complete. The file has been verified for language {lang_label}."
+        )
+        super().__init__(
+            _("Verification Complete"),
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": title,
+                    },
+                }
+            ],
+        )
+
+
 class FileListMessage(SlackMessage):
     """Message showing the list of translation files."""
 
@@ -2911,6 +3082,19 @@ class AIHelperMessage(SlackMessage):
         bookEmoji = ":books:"
         super().__init__(
             _("{bookEmoji} Learn AI Channel Translations"),
+            [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
+        )
+
+
+class VerifyHelperMessage(SlackMessage):
+    def __init__(self) -> None:
+        verify_uri = "https://help.strakertranslations.com/hc/en-us/articles/39202694401433-Quality-Evaluation"
+        message = _(
+            "Please upload your files to perform the Quality Evaluation in the message composer below. Click me to learn Straker <{verify_uri}|Verify MT>."
+        )
+        bookEmoji = ":books:"
+        super().__init__(
+            _("{bookEmoji} Learn Verify MT"),
             [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
         )
 
@@ -3448,10 +3632,90 @@ class DocMtMessage(SlackMessage):
             ],
         )
 
+
+class EvaluateSuccessMessage(SlackMessage):
+    """Message verify consumer event response"""
+
+    def __init__(self, job: dict[str, Any], all_langs: list[dict[str, str]]) -> None:
+        languages = job["target_languages"]
+        file = job["source_files"][0]
+        source_lang_uuid = file["report"]["language_uuid"]
+        source_lang = next(
+            (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
+        )
+        reports = file["report"]["evaluation_reports"]
+        for lang in languages:
+            for report in reports:
+                if lang["uuid"] == report["target_language"]:
+                    lang["report"] = report
+            for target_file in file["target_files"]:
+                if target_file["language_uuid"] == lang["uuid"]:
+                    lang["target_file_uuid"] = target_file["target_file_uuid"]
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _("AI quality evaluation of your translated files:"),
+                },
+            }
+        ]
+        lang_blocks = []
+        for lang in languages:
+            lang_blocks.extend(
+                [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": job_summary_string(source_lang, lang, file),
+                        },
+                    },
+                    {
+                        "type": "actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Download AI Translation"),
+                                },
+                                "value": lang["target_file_uuid"],
+                                "action_id": "download_ai_translation_action",
+                            },
+                        ],
+                    },
+                ]
+            )
+
+        blocks.extend(lang_blocks)
+        blocks.append(
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Send to Human Verification",
+                        },
+                        "style": "primary",
+                        "value": job["uuid"],
+                        "action_id": "verify_job_modal_open",
+                    },
+                ],
+            },
+        )
+        super().__init__(_("Evaluation Result"), blocks)
+
+
 class DocParseErrorMessage(SlackMessage):
     """Message verify consumer event response. Specific to faliure to parse file"""
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, ext: str, file_type: str) -> None:
+        message = _(
+            "Error parsing file. Please ensure file with {ext} is a valid {file_type}"
+        )
         super().__init__(
             _("Verify the translation"),
             [

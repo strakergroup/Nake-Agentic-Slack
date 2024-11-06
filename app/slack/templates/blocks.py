@@ -4,11 +4,12 @@ from typing import Any
 from ray_sdk.api.v3.models import Quote
 
 from app.ray.events.models import JobQuoteCreatedEvent
+from app.slack.utils import segment_quality_score
 from ...auth.connector import (
     get_language_cloud_connect_url,
     RayConnection,
 )
-from ...config import domains, config, Environment
+from ...config import domains
 from ...ray.utils import (
     get_job_url,
     format_currency,
@@ -33,11 +34,15 @@ def home_auth_blocks(
         super_group_names_str = ", ".join(super_group_names)
         user_id_str = f"<@{user_id}>"
         domain_url = f"<{domains.languagecloud}|{ray_connection.client.username}>"
+        enable_verify = ray_connection.super_group[0].enable_verify_in_slack
         text = _("Your Slack account {user_id_str} is connected with: {domain_url}.")
         if ray_connection.client.sso:
-            text = _(
-                "Your Slack account {user_id_str} is connected with: *{ray_connection.client.username}*."
-            )
+            text = _("Your Slack account {user_id_str} is connected.")
+        # To show the verify enabled status/message in the home tab
+        # if enable_verify:
+        #     text += _("\n\n Your Slack account is connected to *LangaugeCloud* and *Verify*.")
+        # else:
+        #     text += _("\n\n Your Slack account is connected to *LangaugeCloud*.")
         return [
             {
                 "type": "section",
@@ -312,3 +317,80 @@ def job_prediction_block(
         }
     else:
         return {}
+
+
+def verify_job_blocks(
+    summary: str,
+    report: dict[str, Any],
+    lang_name: str,
+    language_uuid: str,
+    costs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """The blocks for the verification job."""
+    segment_count = sum(report["count"].values())
+    counts = report["count"]
+    bad = (counts["bad"] / segment_count) * 100
+    good = (counts["good"] / segment_count) * 100
+    best = (counts["best"] / segment_count) * 100
+    acceptable = (counts["acceptable"] / segment_count) * 100
+    memory_percentage = (counts["translation_memory"] / segment_count) * 100
+    report_message = (
+        f":large_blue_square: Translation Memory: {round(memory_percentage)}%\n"
+    )
+    report_message += f":large_green_square: Best: {round(best)}%\n"
+    report_message += f":large_yellow_square: Good: {round(good)}%\n"
+    report_message += f":large_orange_square: Acceptable: {round(acceptable)}%\n"
+    report_message += f":large_red_square: Bad: {round(bad)}%"
+    cost = 0.00
+    for item in costs:
+        if item["language_uuid"] == language_uuid:
+            cost = item["service_list"][0]["estimated_cost"]
+            break
+
+    return [
+        {
+            "type": "input",
+            "block_id": f"verification_checkbox_{language_uuid}",
+            "label": {
+                "type": "plain_text",
+                "text": _(lang_name),
+            },
+            "element": {
+                "type": "checkboxes",
+                "options": [
+                    {
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f"USD${cost:.2f}",
+                        },
+                        "value": language_uuid,
+                    },
+                ],
+                "action_id": "verification_checkbox_action",
+            },
+            "optional": True,  # Make the input block optional
+        },
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": _("*Summary:*\n{summary}")},
+                {"type": "mrkdwn", "text": _("*Overall Score:*\n{report_message}")},
+            ],
+        },
+        {
+            "type": "divider",
+        },
+    ]
+
+
+def job_summary_string(
+    source_lang: dict[str, Any], lang: dict[str, Any], file: dict[str, Any]
+):
+    """Returns the job summary string."""
+    formatted_source_lang = _(source_lang["name"])
+    formatted_target_lang = _(lang["name"])
+    file_name = file["filename"]
+    formatted_score = _(segment_quality_score(lang["report"]["score"]))
+    return _(
+        "Detected Source Language: {formatted_source_lang}\nTranslate to: {formatted_target_lang}\nFile Uploaded: {file_name}\n{formatted_score}"
+    )

@@ -5,6 +5,8 @@ import json
 
 from buglog import notify_exception
 
+from app.api.verify import get_verify_languages
+
 from ..redis import redis_conn
 from ..ray import get_languages
 from ..ray.settings import get_auto_translate_languages
@@ -13,7 +15,7 @@ from app.translate import _
 
 
 async def _get_languages_cached() -> list[dict[str, str]]:
-    key = "slack-ray-translator:languages"
+    key = "slack-ray-translator:languages:v1"
     cached = ""
     try:
         cached = await redis_conn.get(key)
@@ -28,7 +30,9 @@ async def _get_languages_cached() -> list[dict[str, str]]:
             notify_exception(e)
 
     languages = (await get_languages()).data
-    languages = [{"code": lang.code, "name": lang.name} for lang in languages]
+    languages = [
+        {"code": lang.code, "name": lang.name, "uuid": lang.uuid} for lang in languages
+    ]
     # Cache languages for 1 hour.
     try:
         await redis_conn.set(key, json.dumps(languages), ex=3600)
@@ -37,8 +41,14 @@ async def _get_languages_cached() -> list[dict[str, str]]:
     return languages
 
 
-async def get_language_options(filter: str | None = None) -> list[dict[str, Any]]:
-    languages = await _get_languages_cached()
+async def get_language_options(
+    filter: str | None = None, format: str = "code"
+) -> list[dict[str, Any]]:
+    languages = (
+        await _get_languages_cached()
+        if format == "code"
+        else await get_verify_languages()
+    )
     # Filter language options from keyword filter.
     if filter:
         languages = (
@@ -51,12 +61,12 @@ async def get_language_options(filter: str | None = None) -> list[dict[str, Any]
     languages = islice(languages, 100)  # type: ignore
 
     # translated languages name and reorder by translated words
-    languages = [{"code": lang["code"], "name": _(lang["name"])} for lang in languages]
+    languages = [{format: lang[format], "name": _(lang["name"])} for lang in languages]
     languages.sort(key=lambda lang: lang["name"].lower())
     return [
         {
             "text": {"type": "plain_text", "text": lang["name"], "emoji": False},
-            "value": lang["code"],
+            "value": lang[format],
         }
         for lang in languages
     ]

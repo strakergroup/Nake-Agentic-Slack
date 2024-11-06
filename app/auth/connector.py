@@ -7,7 +7,7 @@ import math
 import time
 import json
 import hashlib
-from typing import List
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 from dataclasses import dataclass
 from urllib.parse import urlencode
@@ -19,6 +19,8 @@ from sqlalchemy.engine import Connection
 from slack_sdk.oauth.installation_store import Installation
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.errors import SlackApiError
+from slack_bolt.context.async_context import AsyncBoltContext
+from ray_logger.slack import SlackAppLog
 
 from straker_auth.languagecloud import create_languagecloud_id_token
 from buglog import notify_exception
@@ -55,6 +57,8 @@ class RaySuperGroup:
     """The Slack team ID linked to the RAY client."""
     slack_enterprise_id: str | None
     """The Slack enterprise ID linked to the RAY client."""
+    enable_verify_in_slack: bool = False
+    """The flag to enable verify in Slack (`obj_m_group.enable_verify_in_slack`)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +106,31 @@ class RayConnection:
 
     super_group: list[RaySuperGroup]
     client: RayClient | None
+
+
+class RayContext(AsyncBoltContext):
+    def __init__(self, context: AsyncBoltContext):
+        super().__init__(context)
+
+    @property
+    def ray(self) -> Optional[RayConnection]:
+        return self.get("ray")
+
+    @property
+    def log(self) -> Optional[SlackAppLog]:
+        return self.get("log")
+
+    @property
+    def is_bot(self) -> bool:
+        return self.get("is_bot", False)
+
+    @property
+    def user_info(self) -> Optional[Dict[str, Any]]:
+        return self.get("user_info")
+
+    @property
+    def login_prompt(self) -> Optional[Any]:
+        return self.get("login_prompt")
 
 
 def validate_queue_proxy_secret(secret: str) -> bool:
@@ -328,7 +357,7 @@ async def get_demo_super_group(
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
             """
-            SELECT link.super_group_uuid, g.label
+            SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack
             FROM slack_super_group_link link
             INNER JOIN sitemanager.obj_m_group g
             ON link.super_group_uuid = g.obj_uuid
@@ -350,6 +379,7 @@ async def get_demo_super_group(
             name=row.label,
             slack_team_id=team_id,
             slack_enterprise_id=enterprise_id,
+            enable_verify_in_slack=bool(row.enable_verify_in_slack),
         )
     ]
 
@@ -367,7 +397,7 @@ async def get_ray_super_group(
         if enterprise_id:
             sql = text(
                 """
-                SELECT link.super_group_uuid, g.label
+                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack
                 FROM slack_super_group_link link
                 INNER JOIN sitemanager.obj_m_group g
                 ON link.super_group_uuid = g.obj_uuid
@@ -378,7 +408,7 @@ async def get_ray_super_group(
         else:
             sql = text(
                 """
-                SELECT link.super_group_uuid, g.label
+                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack
                 FROM slack_super_group_link link
                 INNER JOIN sitemanager.obj_m_group g
                 ON link.super_group_uuid = g.obj_uuid
@@ -396,6 +426,7 @@ async def get_ray_super_group(
             name=row.label,
             slack_team_id=team_id,
             slack_enterprise_id=enterprise_id,
+            enable_verify_in_slack=bool(row.enable_verify_in_slack),
         )
         for row in rows
     ]
@@ -1542,8 +1573,10 @@ def get_group_quote_settings(group_uuid: str):
     return row.api_enabled
 
 
-def get_all_tokens_for_enterprise(enterprise_id: str):
+def get_all_tokens_for_enterprise(enterprise_id: str | None):
     """Get all the tokens for the enterprise"""
+    if not enterprise_id:
+        return None
     with engines["ray_integration"].connect() as conn:
         sql = text(
             """
@@ -1694,3 +1727,20 @@ def get_group_mt_engine(
         mt_engine = row.ai_mt
 
     return mt_engine
+
+
+def is_verify_job(job_uuid: str) -> bool:
+    """Check if the job is a verify job."""
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT jobtype
+            FROM franchise.obj_tp_job
+            WHERE obj_uuid = :job_uuid
+            """
+        ).bindparams(job_uuid=job_uuid)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return False
+    return row.jobtype == "Verify"
