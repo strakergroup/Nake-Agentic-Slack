@@ -334,7 +334,7 @@ class WelcomeBackMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: Translate and evaluate your files using AI and choose whether human verification is required."
+                                    ":sports_medal: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
                                 ),
                             },
                             "accessory": {
@@ -388,23 +388,29 @@ class WelcomeBackMessage(SlackMessage):
                         "action_id": "all_summary",
                     },
                 },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
-                        ),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("New translation job"),
+                *(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("New translation job"),
+                                },
+                                "action_id": "new_job",
+                            },
                         },
-                        "action_id": "new_job",
-                    },
-                },
+                    ]
+                    if not is_verify_enabled
+                    else []
+                ),
                 {
                     "type": "section",
                     "text": {
@@ -560,7 +566,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: Translate and evaluate your files using AI and choose whether human verification is required."
+                                    ":sports_medal: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
                                 ),
                             },
                             "accessory": {
@@ -614,23 +620,29 @@ class SuccessfulLoginMessage(SlackMessage):
                         "action_id": "all_summary",
                     },
                 },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
-                        ),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("New translation job"),
+                *(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("New translation job"),
+                                },
+                                "action_id": "new_job",
+                            },
                         },
-                        "action_id": "new_job",
-                    },
-                },
+                    ]
+                    if not is_verify_enabled
+                    else []
+                ),
                 {
                     "type": "section",
                     "text": {
@@ -1758,6 +1770,7 @@ class NewJobMessage(SlackMessage):
                     "emoji": True,
                 },
                 "action_id": "document_mt_job",
+                "style": "primary",
                 "value": file_id,
             }
         )
@@ -1765,39 +1778,46 @@ class NewJobMessage(SlackMessage):
         super().__init__(
             "Submit a new translation job",
             [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *New translation job* button below"
-                        ),
-                    },
+            {
+                "type": "section",
+                "text": {
+                "type": "mrkdwn",
+                "text": _("Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n")
+                + (_("*• New translation Job* - Human translate content from one language into multiple languages\n\n") if not is_verify_enabled else "")
+                + (_("*• Quality Evaluation* - AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification\n\n") if is_verify_enabled and file_id else "")
+                + (_("*• AI Translate* - AI translate content from one language into multiple languages") if file_id else ""),
                 },
-                {
-                    "type": "actions",
-                    "elements": (
-                        (ai_verify_blocks if file_id else [])
-                        + [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("New translation job"),
-                                    "emoji": True,
-                                },
-                                "action_id": "new_job",
-                                "style": "primary",
-                                "value": json.dumps(
-                                    {
-                                        "channel_id": channel_id,
-                                        "ts": timestamp,
-                                    }
-                                ),
-                            }
-                        ]
-                    ),
-                },
+            },
+            {
+                "type": "actions",
+                "elements": (
+                # (ai_verify_blocks if file_id else [])
+                # +
+                (
+                    [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("New translation job"),
+                                "emoji": True,
+                            },
+                            "action_id": "new_job",
+                            "style": "primary",
+                            "value": json.dumps(
+                                {
+                                    "channel_id": channel_id,
+                                    "ts": timestamp,
+                                }
+                            ),
+                        }
+                    ]
+                    if not is_verify_enabled
+                    else []
+                )
+                + (ai_verify_blocks if file_id else [])
+                ),
+            },
             ],
         )
 
@@ -2053,7 +2073,7 @@ class HelpMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: Translate and evaluate your files using AI and choose whether human verification is required."
+                                    ":sports_medal: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
                                 ),
                             },
                             "accessory": {
@@ -2099,23 +2119,29 @@ class HelpMessage(SlackMessage):
                         "action_id": "all_summary",
                     },
                 },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
-                        ),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("New translation job"),
+                *(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("New translation job"),
+                                },
+                                "action_id": "new_job",
+                            },
                         },
-                        "action_id": "quote",
-                    },
-                },
+                    ]
+                    if not is_verify_enabled
+                    else []
+                ),
                 {
                     "type": "section",
                     "text": {
@@ -3062,7 +3088,7 @@ class AIHelperMessage(SlackMessage):
 
 class VerifyHelperMessage(SlackMessage):
     def __init__(self) -> None:
-        verify_uri = "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack"
+        verify_uri = "https://help.strakertranslations.com/hc/en-us/articles/39202694401433-Quality-Evaluation"
         message = _(
             "Please upload your files to perform the Quality Evaluation in the message composer below. Click me to learn Straker <{verify_uri}|Verify MT>."
         )
@@ -3673,6 +3699,7 @@ class EvaluateSuccessMessage(SlackMessage):
                             "type": "plain_text",
                             "text": "Send to Human Verification",
                         },
+                        "style": "primary",
                         "value": job["uuid"],
                         "action_id": "verify_job_modal_open",
                     },

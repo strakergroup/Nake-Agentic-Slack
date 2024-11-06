@@ -1224,6 +1224,7 @@ async def login_account_action(
 
 
 @app.block_action("disconnect", middleware=[ray_connection])
+@slack_log_decorator
 async def disconnect_account_action(
     ack: AsyncAck,
     action: Optional[Dict[str, Any]],
@@ -1242,12 +1243,14 @@ async def disconnect_account_action(
 
 
 @app.block_action("delete_ephemeral_message")
+@slack_log_decorator
 async def delete_ephemeral_message(ack: AsyncAck, respond: AsyncRespond):
     await ack()
     await respond(delete_original=True)
 
 
 @app.block_action(re.compile(r"link(_\d+)?|login"))
+@slack_log_decorator
 async def link(ack: AsyncAck):
     """Simple link button action. No additional actions required."""
     await ack()

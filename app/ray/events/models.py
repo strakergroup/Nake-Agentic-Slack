@@ -94,7 +94,7 @@ class JobQuoteAcceptedEvent(BaseModel):
         """Convert string to datetime."""
         if isinstance(v, datetime.datetime):
             return v
-        return parse(v, dayfirst=True)
+        return parse(v)
 
 
 class JobQuoteCancelledEvent(BaseModel):
@@ -109,7 +109,7 @@ class JobQuoteCancelledEvent(BaseModel):
         """Convert string to datetime."""
         if isinstance(v, datetime.datetime):
             return v
-        return parse(v, dayfirst=True)
+        return parse(v)
 
 
 class JobTranscribedPath(BaseModel):

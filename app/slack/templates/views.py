@@ -288,7 +288,7 @@ async def home_view(
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        ":drum_with_drumsticks: Introducing a new option: Translate and evaluate your files using AI, with the choice of adding human verification if needed."
+                        ":drum_with_drumsticks: Introducing a new option: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
                     ),
                 },
             },
@@ -342,16 +342,22 @@ async def home_view(
             {
                 "type": "actions",
                 "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _(":zap: Create New Job"),
-                        },
-                        "action_id": "quote",
-                        "url": message_url,
-                    },
+                    *(
+                        [
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": _(":zap: Create New Job"),
+                                },
+                                "action_id": "quote",
+                                "url": message_url,
+                            },
+                        ]
+                        if not is_verify_enabled
+                        else []
+                    ),
                     {
                         "type": "button",
                         "text": {
@@ -496,7 +502,7 @@ def evaluate_job_modal(file_id: str):
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Translate and evaluate your files using AI and choose whether human verification is required."
+                        "AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
                     ),
                 },
             },

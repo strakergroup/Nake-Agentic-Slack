@@ -92,12 +92,12 @@ async def download_file(
     client: AsyncWebClient,
     file_id: str,
     *,
-    http: httpx.AsyncClient | None,
+    http: httpx.AsyncClient | None = None,
 ) -> str:
     """Downloads a file from Slack and saves it to the disk.
 
     Args:
-        client (WebClient): The Slack WebClient instance (with auth token).
+        client (AsyncWebClient): The Slack WebClient instance (with auth token).
         file_id (str): The file ID.
         http (httpx.AsyncClient | None): The httpx client to use. If not given, this
         will create one.
@@ -118,12 +118,25 @@ async def download_file(
         http = httpx.AsyncClient()
     try:
         if http:
-            response = await http.get(
+            async with http.stream(
+                "GET",
                 download_url,
                 headers={"Authorization": f"Bearer {client.token}"},
                 follow_redirects=True,
-            )
-            response.raise_for_status()
+            ) as response:
+                response.raise_for_status()
+
+                # Save the file to the temp directory.
+                temp_directory = os.path.join(
+                    tempfile.gettempdir(), "slack-ray-translator", file_id
+                )
+                # Create the directory if it doesn't exist.
+                Path(temp_directory).mkdir(parents=True, exist_ok=True)
+                file_path = os.path.join(temp_directory, file["file"]["title"])
+
+                with open(file_path, "wb") as f:
+                    async for chunk in response.aiter_bytes():
+                        f.write(chunk)
     except httpx.HTTPStatusError:
         # 302 status if auth token is invalid.
         raise
@@ -131,16 +144,6 @@ async def download_file(
         # Close the http connection if no httpx client given.
         if not reuse_connection and http is not None:
             await http.aclose()
-
-    # Save the file to the temp directory.
-    temp_directory = os.path.join(
-        tempfile.gettempdir(), "slack-ray-translator", file_id
-    )
-    # Create the directory if it doesn't exist.
-    Path(temp_directory).mkdir(parents=True, exist_ok=True)
-    file_path = os.path.join(temp_directory, file["file"]["title"])
-    with open(file_path, "wb") as f:
-        f.write(await response.aread())
 
     return file_path
 
