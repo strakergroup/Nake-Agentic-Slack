@@ -118,7 +118,7 @@ def escape_slack_emoji(text: str):
     Returns:
         str: The text with Slack emoji characters escaped.
     """
-    # Slack uses Overall syntax for emoji. If the text contains Overall,
+    # Slack uses :emoji: syntax for emoji. If the text contains :emoji:,
     # to prevent translation replace with <x i={i}> where i is the source index.
     emojis = re.findall(r":[^\s]*?:|<[^\s]*>", text)
     for i, emoji in enumerate(emojis):
