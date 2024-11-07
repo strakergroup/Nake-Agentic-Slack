@@ -23,7 +23,11 @@ async def submit_evaluation_job(
         "title": reference,
         "source": "slack",
     }
-    if config.environment != Environment.production:
+    if (
+        config.environment != Environment.production
+        or domains.slack_ray_translator
+        == "https://stage-slack-deltaray.strakertranslations.com"
+    ):
         target_languages_data["workflow"] = "ff9d336e-4043-41cd-bd95-0d65a5eeb945"
     files = {
         "files": (
