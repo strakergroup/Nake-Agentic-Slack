@@ -329,12 +329,16 @@ def verify_job_blocks(
 ) -> dict[str, Any]:
     """The blocks for the verification job."""
     segment_count = sum(report["count"].values())
-    counts = report["count"]
-    bad = (counts["bad"] / segment_count) * 100
-    good = (counts["good"] / segment_count) * 100
-    best = (counts["best"] / segment_count) * 100
-    acceptable = (counts["acceptable"] / segment_count) * 100
-    memory_percentage = (counts["translation_memory"] / segment_count) * 100
+    if segment_count == 0:
+        bad = good = best = acceptable = memory_percentage = 0
+    else:
+        counts = report["count"]
+        bad = (counts["bad"] / segment_count) * 100
+        good = (counts["good"] / segment_count) * 100
+        best = (counts["best"] / segment_count) * 100
+        acceptable = (counts["acceptable"] / segment_count) * 100
+        memory_percentage = (counts["translation_memory"] / segment_count) * 100
+
     report_message = (
         f":large_blue_square: Translation Memory: {round(memory_percentage)}%\n"
     )
