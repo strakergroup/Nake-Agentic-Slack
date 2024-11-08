@@ -25,19 +25,28 @@ def extract_strings_from_file(filepath, translator, sheet):
                 and isinstance(node.func, ast.Name)
                 and node.func.id == "_"
             ):
-                if node.args and isinstance(node.args[0], ast.Constant):
-                    source_text = node.args[0].s
-                    result = translator.translate(source_text)
-                    translation = result
-                    if result == source_text:
-                        for i, match in enumerate(
-                            re.finditer(r":\w+:|\{.*?\}", result)
-                        ):
-                            tag = f"<x id={i+1}>"
-                            translation = translation.replace(match.group(), tag)
-                        print("missing: ", translation)
-                        # Write the source text and translation to the Excel sheet
-                        sheet.append([translation])
+                if node.args:
+                    if isinstance(node.args[0], ast.Constant):
+                        source_text = node.args[0].s
+                        if node.args[0].kind and "f" in node.args[0].kind:
+                            print(f"Extracted f-string: {source_text}")
+                        result = translator.translate(source_text)
+                        translation = result
+                        if result == source_text:
+                            for i, match in enumerate(
+                                re.finditer(r":\w+:|\{.*?\}", result)
+                            ):
+                                tag = f"<x id={i+1}>"
+                                translation = translation.replace(match.group(), tag)
+                            # Write the source text and translation to the Excel sheet
+                            sheet.append([translation])
+                    elif isinstance(node.args[0], ast.Name):
+                        variable_name = node.args[0].id
+                        line_number = node.lineno
+                        print(
+                            f"Found variable '{variable_name}' in file {filepath}:{line_number}"
+                        )
+                        # Handle the variable case if needed
 
 
 def extract_strings_from_directory(directory, translator, sheet):
