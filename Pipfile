@@ -39,6 +39,7 @@ coverage = "*"
 ruff = "*"
 black = "*"
 mypy = "*"
+openpyxl = "*"
 
 [requires]
 python_version = "3.11"
