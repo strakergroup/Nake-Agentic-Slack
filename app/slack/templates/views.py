@@ -1251,10 +1251,7 @@ def translation_settings_view_error(message: str) -> dict[str, Any]:
         "blocks": [
             {
                 "type": "section",
-                "text": {
-                    "type": "plain_text",
-                    "text": _(f"{message}"),
-                },
+                "text": {"type": "plain_text", "text": message},
             }
         ],
     }

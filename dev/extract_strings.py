@@ -26,10 +26,11 @@ def extract_strings_from_file(filepath, translator, sheet):
                 and node.func.id == "_"
             ):
                 if node.args:
+                    if isinstance(node.args[0], ast.JoinedStr):
+                        print(f"Extracted f-string: {filepath}:{node.lineno}")
                     if isinstance(node.args[0], ast.Constant):
                         source_text = node.args[0].s
-                        if node.args[0].kind and "f" in node.args[0].kind:
-                            print(f"Extracted f-string: {source_text}")
+
                         result = translator.translate(source_text)
                         translation = result
                         if result == source_text:
