@@ -572,7 +572,7 @@ async def get_ray_client(
         if enterprise_id:
             sql = text(
                 """
-                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name,
+                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, link.slack_team_id
                 mem.active, mem.groupid, link.is_sso, link.access_token, settings.id AS settings_id
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
@@ -609,6 +609,21 @@ async def get_ray_client(
         row = result.first()
         if not row:
             return None
+        if row.slack_team_id != team_id:
+            # update slack_team_id of link to team_id
+            with engines["ray_integration"].begin() as conn:
+                sql = text(
+                    """
+                    UPDATE slack_deltaray_link SET
+                        slack_team_id = :team_id
+                    WHERE slack_user_id = :user_id
+                    AND slack_enterprise_id = :enterprise_id
+                    AND is_active = 1
+                    """
+                ).bindparams(
+                    user_id=user_id, team_id=team_id, enterprise_id=enterprise_id
+                )
+                conn.execute(sql)
         id_token = create_languagecloud_id_token(
             uuid=row.member_uuid,
             given_name=row.given_name,
