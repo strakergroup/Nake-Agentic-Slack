@@ -1251,10 +1251,7 @@ def translation_settings_view_error(message: str) -> dict[str, Any]:
         "blocks": [
             {
                 "type": "section",
-                "text": {
-                    "type": "plain_text",
-                    "text": _(f"{message}"),
-                },
+                "text": {"type": "plain_text", "text": message},
             }
         ],
     }
@@ -1281,7 +1278,9 @@ def verify_job_modal(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": _("AI quality evaluation of your translated files."),
+                "text": _(
+                    ":sports_medal: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
+                ),
             },
         },
         # seperator
@@ -1292,10 +1291,11 @@ def verify_job_modal(
         blocks.extend(
             verify_job_blocks(
                 job_summary_string(source_lang, lang, file),
-                lang["report"],
-                lang["name"],
-                lang["uuid"],
-                costs,
+                report=lang["report"],
+                lang_name=lang["name"],
+                language_uuid=lang["uuid"],
+                costs=costs,
+                optional=len(languages) > 1,
             )
         )
     return {

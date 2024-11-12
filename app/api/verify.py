@@ -7,7 +7,8 @@ from typing import List
 from ..redis import redis_conn
 
 from app.auth.connector import RayClient, SlackUser, get_ray_client
-from app.config import domains
+from app.config import domains, config
+from straker_utils.environment import Environment
 
 
 from app.ray.utils import get_filename_from_header
@@ -22,6 +23,12 @@ async def submit_evaluation_job(
         "title": reference,
         "source": "slack",
     }
+    if (
+        config.environment != Environment.production
+        or domains.slack_ray_translator
+        == "https://stage-slack-deltaray.strakertranslations.com"
+    ):
+        target_languages_data["workflow"] = "ff9d336e-4043-41cd-bd95-0d65a5eeb945"
     files = {
         "files": (
             os.path.basename(file_path),
