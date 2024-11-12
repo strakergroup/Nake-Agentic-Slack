@@ -56,7 +56,6 @@ with open("update.sql", "w") as sql_file:
             if iteration % query_count == 0:
                 sleep(60)  # Sleep for 1 minute
             channel_info = channel_info_response.json()
-            print(channel_info)
             team_id = channel_info.get("channel", {}).get("context_team_id", None)
             if not team_id:
                 continue
