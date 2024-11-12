@@ -46,7 +46,6 @@ with open("update.sql", "w") as sql_file:
             bot_token = conn.execute(bound_query).fetchone()
             if not bot_token:
                 continue
-            print("ok", iteration)
             # Make Slack Web API request to get channel info
             headers = {"Authorization": f"Bearer {bot_token.bot_token}"}
             channel_info_response = requests.get(
