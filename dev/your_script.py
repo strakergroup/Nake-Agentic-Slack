@@ -2,6 +2,7 @@ import os
 import sys
 import requests
 from sqlalchemy import text
+from time import sleep
 
 # Add the parent directory to sys.path
 parent_dir = os.path.abspath(
@@ -23,7 +24,8 @@ FROM
     slack_group_settings
     JOIN slack_group_settings_translation ON slack_group_settings_translation.settings_id = slack_group_settings.id;
 """
-
+query_count = 40
+iteration = 0
 # Open the file in write mode
 with open("update.sql", "w") as sql_file:
     generated_statements = set()
@@ -42,7 +44,7 @@ with open("update.sql", "w") as sql_file:
             """
             bound_query = text(query).bindparams(enterprise_id=row.slack_enterprise_id)
             bot_token = conn.execute(bound_query).fetchone()
-
+            print("ok", iteration)
             # Make Slack Web API request to get channel info
             headers = {"Authorization": f"Bearer {bot_token.bot_token}"}
             channel_info_response = requests.get(
@@ -50,15 +52,19 @@ with open("update.sql", "w") as sql_file:
                 headers=headers,
                 params={"channel": row.channel_id},
             )
+            iteration += 1
+            if iteration % query_count == 0:
+                sleep(60)  # Sleep for 1 minute
             channel_info = channel_info_response.json()
-            if channel_info["channel"]["context_team_id"] != row.slack_team_id:
+            team_id = channel_info.get("channel", {}).get("context_team_id", None)
+            if not team_id:
+                continue
+            if team_id != row.slack_team_id:
                 query = """
                    SELECT id FROM slack_group_settings
                     WHERE slack_team_id = :team_id
                 """
-                bound_query = text(query).bindparams(
-                    team_id=channel_info["channel"]["context_team_id"]
-                )
+                bound_query = text(query).bindparams(team_id=team_id)
                 settings_id = conn.execute(bound_query).fetchone()
 
                 if settings_id is None:
@@ -67,7 +73,7 @@ with open("update.sql", "w") as sql_file:
                         VALUES (:team_id, :enterprise_id)
                     """
                     bound_query = text(query).bindparams(
-                        team_id=channel_info["channel"]["context_team_id"],
+                        team_id=team_id,
                         enterprise_id=row.slack_enterprise_id,
                     )
                     compiled_query = (
@@ -89,7 +95,7 @@ with open("update.sql", "w") as sql_file:
                 """
                 bound_query = text(query).bindparams(
                     channel_id=row.channel_id,
-                    team_id=channel_info["channel"]["context_team_id"],
+                    team_id=team_id,
                 )
                 compiled_query = (
                     str(
