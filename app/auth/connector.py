@@ -709,7 +709,7 @@ async def get_ray_connection(
         client
         and super_group[0].enable_verify_in_slack
         and is_ibm_super_group(enterprise_id)
-        and not is_slack_team_admin(client.id, enterprise_id)
+        and not await is_slack_team_admin(client.id, enterprise_id)
     ):
         super_group = [
             RaySuperGroup(
