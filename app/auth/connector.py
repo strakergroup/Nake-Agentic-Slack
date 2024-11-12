@@ -704,6 +704,24 @@ async def get_ray_connection(
     )
     if super_group is None:
         return None
+    # When ibm enterprise and user is not admin, disable verify in slack
+    if (
+        client
+        and super_group[0].enable_verify_in_slack
+        and is_ibm_super_group(enterprise_id)
+        and not is_slack_team_admin(client.id, enterprise_id)
+    ):
+        super_group = [
+            RaySuperGroup(
+                id=group.id,
+                name=group.name,
+                slack_team_id=group.slack_team_id,
+                slack_enterprise_id=group.slack_enterprise_id,
+                enable_verify_in_slack=False,
+            )
+            for group in super_group
+        ]
+
     return RayConnection(super_group, client)
 
 
