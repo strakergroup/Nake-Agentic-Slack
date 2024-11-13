@@ -388,29 +388,29 @@ class WelcomeBackMessage(SlackMessage):
                         "action_id": "all_summary",
                     },
                 },
-                *(
-                    [
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("New translation job"),
-                                },
-                                "action_id": "new_job",
-                            },
-                        },
-                    ]
-                    if not is_verify_enabled
-                    else []
-                ),
+                # *(
+                #     [
+                #         {
+                #             "type": "section",
+                #             "text": {
+                #                 "type": "mrkdwn",
+                #                 "text": _(
+                #                     "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
+                #                 ),
+                #             },
+                #             "accessory": {
+                #                 "type": "button",
+                #                 "text": {
+                #                     "type": "plain_text",
+                #                     "text": _("New translation job"),
+                #                 },
+                #                 "action_id": "new_job",
+                #             },
+                #         },
+                #     ]
+                #     if not is_verify_enabled
+                #     else []
+                # ),
                 {
                     "type": "section",
                     "text": {
@@ -620,29 +620,29 @@ class SuccessfulLoginMessage(SlackMessage):
                         "action_id": "all_summary",
                     },
                 },
-                *(
-                    [
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("New translation job"),
-                                },
-                                "action_id": "new_job",
-                            },
-                        },
-                    ]
-                    if not is_verify_enabled
-                    else []
-                ),
+                # *(
+                #     [
+                #         {
+                #             "type": "section",
+                #             "text": {
+                #                 "type": "mrkdwn",
+                #                 "text": _(
+                #                     "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
+                #                 ),
+                #             },
+                #             "accessory": {
+                #                 "type": "button",
+                #                 "text": {
+                #                     "type": "plain_text",
+                #                     "text": _("New translation job"),
+                #                 },
+                #                 "action_id": "new_job",
+                #             },
+                #         },
+                #     ]
+                #     if not is_verify_enabled
+                #     else []
+                # ),
                 {
                     "type": "section",
                     "text": {
@@ -1785,13 +1785,13 @@ class NewJobMessage(SlackMessage):
                         "text": _(
                             "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n"
                         )
-                        + (
-                            _(
-                                "*• New translation Job* - Human translate content from one language into multiple languages\n\n"
-                            )
-                            if not is_verify_enabled
-                            else ""
-                        )
+                        # + (
+                        #     _(
+                        #         "*• New translation Job* - Human translate content from one language into multiple languages\n\n"
+                        #     )
+                        #     if not is_verify_enabled
+                        #     else ""
+                        # )
                         + (
                             _(
                                 "*• Quality Evaluation* - AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification\n\n"
@@ -1815,22 +1815,22 @@ class NewJobMessage(SlackMessage):
                         # +
                         (
                             [
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("New translation job"),
-                                        "emoji": True,
-                                    },
-                                    "action_id": "new_job",
-                                    "style": "primary",
-                                    "value": json.dumps(
-                                        {
-                                            "channel_id": channel_id,
-                                            "ts": timestamp,
-                                        }
-                                    ),
-                                }
+                                # {
+                                #     "type": "button",
+                                #     "text": {
+                                #         "type": "plain_text",
+                                #         "text": _("New translation job"),
+                                #         "emoji": True,
+                                #     },
+                                #     "action_id": "new_job",
+                                #     "style": "primary",
+                                #     "value": json.dumps(
+                                #         {
+                                #             "channel_id": channel_id,
+                                #             "ts": timestamp,
+                                #         }
+                                #     ),
+                                # }
                             ]
                             if not is_verify_enabled
                             else []
@@ -2139,29 +2139,29 @@ class HelpMessage(SlackMessage):
                         "action_id": "all_summary",
                     },
                 },
-                *(
-                    [
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("New translation job"),
-                                },
-                                "action_id": "new_job",
-                            },
-                        },
-                    ]
-                    if not is_verify_enabled
-                    else []
-                ),
+                # *(
+                #     [
+                #         {
+                #             "type": "section",
+                #             "text": {
+                #                 "type": "mrkdwn",
+                #                 "text": _(
+                #                     "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
+                #                 ),
+                #             },
+                #             "accessory": {
+                #                 "type": "button",
+                #                 "text": {
+                #                     "type": "plain_text",
+                #                     "text": _("New translation job"),
+                #                 },
+                #                 "action_id": "new_job",
+                #             },
+                #         },
+                #     ]
+                #     if not is_verify_enabled
+                #     else []
+                # ),
                 {
                     "type": "section",
                     "text": {

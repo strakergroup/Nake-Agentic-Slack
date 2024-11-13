@@ -342,22 +342,22 @@ async def home_view(
             {
                 "type": "actions",
                 "elements": [
-                    *(
-                        [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": _(":zap: Create New Job"),
-                                },
-                                "action_id": "quote",
-                                "url": message_url,
-                            },
-                        ]
-                        if not is_verify_enabled
-                        else []
-                    ),
+                    # *(
+                    #     [
+                    #         {
+                    #             "type": "button",
+                    #             "text": {
+                    #                 "type": "plain_text",
+                    #                 "emoji": True,
+                    #                 "text": _(":zap: Create New Job"),
+                    #             },
+                    #             "action_id": "quote",
+                    #             "url": message_url,
+                    #         },
+                    #     ]
+                    #     if not is_verify_enabled
+                    #     else []
+                    # ),
                     {
                         "type": "button",
                         "text": {
