@@ -1754,68 +1754,44 @@ class NewJobMessage(SlackMessage):
 
         super().__init__(
             "Submit a new translation job",
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n"
-                        )
-                        + (
-                            _(
-                                "*• New translation Job* - Human translate content from one language into multiple languages\n\n"
+            (
+                [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": _(
+                                "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n"
                             )
-                            if not is_verify_enabled
-                            else ""
-                        )
-                        + (
-                            _(
-                                "*• Quality Evaluation* - AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification\n\n"
+                            + (
+                                _(
+                                    "*• New translation Job* - Human translate content from one language into multiple languages\n\n"
+                                )
+                                if not is_verify_enabled
+                                else ""
                             )
-                            if is_verify_enabled and file_id
-                            else ""
-                        )
-                        + (
-                            _(
-                                "*• AI Translate* - AI translate content from one language into multiple languages"
+                            + (
+                                _(
+                                    "*• Quality Evaluation* - AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification\n\n"
+                                )
+                                if is_verify_enabled and file_id
+                                else ""
                             )
-                            if file_id
-                            else ""
-                        ),
+                            + (
+                                _(
+                                    "*• AI Translate* - AI translate content from one language into multiple languages"
+                                )
+                                if file_id
+                                else ""
+                            ),
+                        },
                     },
-                },
-                {
-                    "type": "actions",
-                    "elements": (
-                        # (ai_verify_blocks if file_id else [])
-                        # +
-                        (
-                            [
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("New translation job"),
-                                        "emoji": True,
-                                    },
-                                    "action_id": "new_job",
-                                    "style": "primary",
-                                    "value": json.dumps(
-                                        {
-                                            "channel_id": channel_id,
-                                            "ts": timestamp,
-                                        }
-                                    ),
-                                }
-                            ]
-                            if not is_verify_enabled
-                            else []
-                        )
-                        + (ai_verify_blocks if file_id else [])
-                    ),
-                },
-            ],
+                    {
+                        "type": "actions",
+                        "elements": (ai_verify_blocks),
+                    },
+                ]
+            ),
         )
 
 
