@@ -388,29 +388,6 @@ class WelcomeBackMessage(SlackMessage):
                         "action_id": "all_summary",
                     },
                 },
-                *(
-                    [
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("New translation job"),
-                                },
-                                "action_id": "new_job",
-                            },
-                        },
-                    ]
-                    if not is_verify_enabled
-                    else []
-                ),
                 {
                     "type": "section",
                     "text": {
@@ -2139,29 +2116,6 @@ class HelpMessage(SlackMessage):
                         "action_id": "all_summary",
                     },
                 },
-                *(
-                    [
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    "🗂️ Click New translation job to select documents uploaded through the message box below.\n Note: This will create a new translation job."
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("New translation job"),
-                                },
-                                "action_id": "new_job",
-                            },
-                        },
-                    ]
-                    if not is_verify_enabled
-                    else []
-                ),
                 {
                     "type": "section",
                     "text": {
@@ -2269,20 +2223,6 @@ class QuoteMessage(SlackMessage):
                             "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *New translation job* button below"
                         ),
                     },
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("New translation job"),
-                            },
-                            "style": "primary",
-                            "action_id": "new_job",
-                        }
-                    ],
                 },
             ],
         )
