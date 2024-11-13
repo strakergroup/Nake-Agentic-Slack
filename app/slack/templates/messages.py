@@ -1697,23 +1697,24 @@ class NewJobMessage(SlackMessage):
         file_id: str = "",
         is_verify_enabled: bool = False,
     ) -> None:
-        ai_verify_blocks = (
-            [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("AI Translate"),
-                        "emoji": True,
-                    },
-                    "action_id": "document_mt_job",
-                    "style": "primary",
-                    "value": file_id,
-                }
-            ]
-        )
 
-        ai_verify_blocks.append(
+
+        ai_verify_blocks = [
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": _("AI Translate"),
+                    "emoji": True,
+                },
+                "action_id": "document_mt_job",
+                "style": "primary",
+                "value": file_id,
+            }
+        ]
+
+        if is_verify_enabled:
+            ai_verify_blocks.append(
                 {
                     "type": "button",
                     "text": {
@@ -1725,9 +1726,7 @@ class NewJobMessage(SlackMessage):
                     "style": "primary",
                     "value": file_id,
                 }
-            if is_verify_enabled
-            else []
-        )
+            )
 
         super().__init__(
             "Submit a new translation job",
