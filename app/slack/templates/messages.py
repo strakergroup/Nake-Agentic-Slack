@@ -1703,6 +1703,21 @@ class NewJobMessage(SlackMessage):
                     "type": "button",
                     "text": {
                         "type": "plain_text",
+                        "text": _("AI Translate"),
+                        "emoji": True,
+                    },
+                    "action_id": "document_mt_job",
+                    "style": "primary",
+                    "value": file_id,
+                }
+            ]
+        )
+
+        ai_verify_blocks.append(
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
                         "text": _("Quality Evaluation"),
                         "emoji": True,
                     },
@@ -1710,23 +1725,8 @@ class NewJobMessage(SlackMessage):
                     "style": "primary",
                     "value": file_id,
                 }
-            ]
             if is_verify_enabled
             else []
-        )
-
-        ai_verify_blocks.append(
-            {
-                "type": "button",
-                "text": {
-                    "type": "plain_text",
-                    "text": _("AI Translate"),
-                    "emoji": True,
-                },
-                "action_id": "document_mt_job",
-                "style": "primary",
-                "value": file_id,
-            }
         )
 
         super().__init__(
@@ -1742,16 +1742,16 @@ class NewJobMessage(SlackMessage):
                             )
                             + (
                                 _(
-                                    "*• Quality Evaluation* - AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification\n\n"
+                                    "*• AI Translate* - AI Translate content from one language into another language\n\n"
                                 )
-                                if is_verify_enabled and file_id
+                                if file_id
                                 else ""
                             )
                             + (
                                 _(
-                                    "*• AI Translate* - AI translate content from one language into multiple languages"
+                                    "*• Quality Evaluation* - AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification"
                                 )
-                                if file_id
+                                if is_verify_enabled and file_id
                                 else ""
                             ),
                         },
