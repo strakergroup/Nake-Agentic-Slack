@@ -420,7 +420,7 @@ def disable_auto_translate_group_settings(
     """
     with Session(engines["ray_integration"]) as session:
         channel_settings = get_or_create_auto_translate_group_settings(
-            session, context, channel_id
+            session, context, channel_id, context.team_id
         )
         session.execute(
             delete(SlackGroupSettingsTranslationLangs).where(
