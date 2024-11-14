@@ -208,10 +208,12 @@ async def home_opened(
     body: Dict[str, Any],
     say: AsyncSay,
     client: AsyncWebClient,
+    ack: AsyncAck,
 ):
     # https://api.slack.com/events/app_home_opened
     # Send an onboarding message if the app home is opened for the first time.
     # TODO: put try catch around this
+    await ack()
     try:
         history = await client.conversations_history(
             channel=event.get("channel"), limit=1
@@ -255,7 +257,9 @@ async def home_load(
     context: RayContext,
     client: AsyncWebClient,
     body: Dict[str, Any],
+    ack: AsyncAck,
 ):
+    await ack()
     # submit from next button on transation settings view
     home_info = json.loads(action["value"])
     page = int(home_info.get("page", 1))
