@@ -20,7 +20,6 @@ from ...auth.connector import (
     RayConnection,
     get_channel_info,
     is_slack_team_admin,
-    resolve_channels_to_team,
 )
 from ...ray.settings import (
     get_full_group_translation_settings,
@@ -70,7 +69,6 @@ async def home_view(
                 get_channel_info(
                     setting.channel_id,
                     context.client,
-                    context.enterprise_id,
                     context.team_id,
                 )
                 for setting, _ in translation_settings
