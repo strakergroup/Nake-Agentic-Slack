@@ -114,6 +114,7 @@ from ..auth.connector import (
     get_bot_token,
     get_group_quote_settings,
     get_ray_connection,
+    get_token_for_team,
     resolve_channels_to_team,
     is_slack_team_admin,
 )
@@ -263,6 +264,12 @@ async def home_load(
     # submit from next button on transation settings view
     home_info = json.loads(action["value"])
     page = int(home_info.get("page", 1))
+    team_id = home_info.get("team_id", "")
+    if team_id:
+        token = get_token_for_team(team_id)
+        if token:
+            client.token = token
+        context["team_id"] = team_id
     await client.views_publish(
         user_id=context["user_id"],
         view=await home_view(context, body["api_app_id"], context.get("ray"), page),
@@ -840,6 +847,7 @@ async def show_auto_translate_settings(
     await ack()
     channel_info = json.loads(payload["value"])
     channel_id = channel_info.get("channel_id")
+    team_id = channel_info.get("team_id", "")
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
         context, channel_id
     )
@@ -862,6 +870,7 @@ async def show_auto_translate_settings(
                     [channel_id] if channel_id else None,
                     auto_translate_langs,
                     settings.display_format if settings else "thread",
+                    team_id,
                 ),
             )
         except SlackApiError as e:
@@ -882,6 +891,7 @@ async def show_auto_translate_settings(
                 [channel_id] if channel_id else None,
                 auto_translate_langs,
                 settings.display_format if settings else "thread",
+                team_id,
             ),
         )
 
@@ -1388,6 +1398,8 @@ async def view_update_auto_translate_settings(
     client: AsyncWebClient,
 ):
     try:
+        # get team_id from private_metadata
+        team_id = view.get("private_metadata", "")
         form_data = view.get("state", {}).get("values") if view else {}
         form = AutoTranslationSettingsForm.parse_slack(form_data)
         team_channels = await resolve_channels_to_team(
@@ -1420,6 +1432,10 @@ async def view_update_auto_translate_settings(
             languages=form.languages,
             display_format=form.display_format,
         )
+        team_token = get_token_for_team(team_id) if team_id else None
+        if team_token:
+            client.token = team_token
+        context["team_id"] = team_id
         await client.views_publish(
             user_id=context["user_id"],
             view=await home_view(context, body["api_app_id"], context.get("ray")),

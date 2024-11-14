@@ -333,6 +333,7 @@ def get_or_create_auto_translate_group_settings(
 ) -> SlackGroupSettingsTranslation:
     # TODO streamline this (join)
     settings = get_or_create_group_settings(session, context, team_id)
+
     auto_translate_settings = session.scalar(
         select(SlackGroupSettingsTranslation)
         .where(SlackGroupSettingsTranslation.settings_id == settings.id)
@@ -419,7 +420,7 @@ def disable_auto_translate_group_settings(
     """
     with Session(engines["ray_integration"]) as session:
         channel_settings = get_or_create_auto_translate_group_settings(
-            session, context, channel_id
+            session, context, channel_id, context.team_id
         )
         session.execute(
             delete(SlackGroupSettingsTranslationLangs).where(
@@ -472,9 +473,7 @@ def get_full_group_translation_settings(
             if lang.translation_settings_id in settings_lang_map:
                 settings_lang_map[lang.translation_settings_id][1].append(lang.lang)
     # Remove channels with no languages.
-    return [
-        (channel, langs) for channel, langs in settings_lang_map.values() if len(langs)
-    ]
+    return [(channel, langs) for channel, langs in settings_lang_map.values()]
 
 
 # pagination - get number of pages based on rows per page and number of records

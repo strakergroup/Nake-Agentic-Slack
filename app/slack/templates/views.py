@@ -1141,6 +1141,7 @@ def translation_settings_view(
     initial_channels: list[str] | None = None,
     initial_langs: list[str] | None = None,
     display_format: SlackGroupSettingsTranslation.DisplayFormatType = "thread",
+    team_id: str = "",
 ) -> dict[str, Any]:
     # TODO: Detect message max length (5000)
     # TODO: Detect message formatting, emojis
@@ -1158,6 +1159,7 @@ def translation_settings_view(
     return {
         "type": "modal",
         "callback_id": "settings_auto_translate",
+        "private_metadata": team_id,
         "title": {"type": "plain_text", "text": _("Translation Settings")[:24]},
         "submit": {"type": "plain_text", "text": _("Create")},
         "close": {"type": "plain_text", "text": _("Close")},

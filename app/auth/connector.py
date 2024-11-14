@@ -1789,3 +1789,22 @@ def is_verify_job(job_uuid: str) -> bool:
         if not row:
             return False
     return row.jobtype == "Verify"
+
+
+def get_token_for_team(team_id: str) -> str:
+    """Get the bot token for a team."""
+    with engines["ray_integration"].connect() as conn:
+        sql = text(
+            """
+            SELECT bot_token
+            FROM slack_bots
+            WHERE team_id = :team_id
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).bindparams(team_id=team_id)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return None
+    return row.bot_token
