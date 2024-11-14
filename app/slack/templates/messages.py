@@ -164,7 +164,7 @@ class LoginMessage(SlackMessage):
         self._variation = variation
 
         # Have variations of the login message depending on the arguments.
-        block_text = "In order to use the Straker Translate features, please login. Click this button to connect your LanguageCloud account."
+        block_text = "In order to use the Straker Translate features, please login. Click this button below;"
         if variation == self.GET_JOB:
             block_text = "Connect your LanguageCloud account to view your jobs."
         elif variation == self.NEW_JOB:
@@ -180,12 +180,12 @@ class LoginMessage(SlackMessage):
         elif isinstance(ray_client, RayClient):
             user_details = f"<<{domains.languagecloud}|{ray_client.username}>>"
             block_text = (
-                "Your connected LanguageCloud account is: {user_details}. "
+                "Your connected account is: {user_details}. "
                 + "\nYou can connect a different account by clicking this button."
             )
             if ray_client.sso:
                 block_text = (
-                    "Your connected LanguageCloud account is: *{ray_client.username}*."
+                    "Your connected account is: *{ray_client.username}*."
                 )
         msg: list[dict[str, Any]] = [
             {
@@ -675,11 +675,11 @@ class LogoutMessage(SlackMessage):
     def __init__(self, ray_client: RayClient) -> None:
         user_details = f"<{domains.languagecloud}|{ray_client.username}>"
         text = _(
-            "Click this button to disconnect your LanguageCloud account: {user_details}."
+            "Click this button to disconnect your account: {user_details}."
         )
         if ray_client.sso:
             text = _(
-                "Click this button to disconnect your LanguageCloud account: *{ray_client.username}*."
+                "Click this button to disconnect your account: *{ray_client.username}*."
             )
         super().__init__(
             "Disconnect your LanguageCloud account",
@@ -698,7 +698,7 @@ class LogoutMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("Disconnect LanguageCloud account"),
+                                "text": _("Disconnect account"),
                             },
                             "style": "danger",
                             "action_id": "disconnect",
@@ -728,19 +728,19 @@ class SuccessfulLogoutMessage(SlackMessage):
         user_details = f"<{domains.languagecloud}|{ray_username}>"
         user_link = f"<@{user_id}>"
         text = _(
-            "Your LanguageCloud account {user_details} is now disconnected from {user_link}."
+            "Your account {user_details} is now disconnected from {user_link}."
         )
         if is_sso:
             text = _(
-                "Your LanguageCloud account *{ray_username}* is now disconnected from {user_link}."
+                "Your account *{ray_username}* is now disconnected from {user_link}."
             )
         block_message = (
             text
             if ray_username
-            else _("Your LanguageCloud account is now disconnected from {user_link}.")
+            else _("Your account is now disconnected from {user_link}.")
         )
         super().__init__(
-            "Your LanguageCloud account is now disconnected.",
+            "Your account is now disconnected.",
             [
                 {
                     "type": "section",
@@ -2211,10 +2211,10 @@ class ConnectionInfoMessage(SlackMessage):
             user_details = f"<{domains.languagecloud}|{ray_connection.client.username}>"
             if is_ibm_enterprise(enterprise_id=enterprise_id):
                 text = _(
-                    "Your connected LanguageCloud account is: {ray_connection.client.username}"
+                    "Your connected account is: {ray_connection.client.username}"
                 )
             else:
-                text = _("Your connected LanguageCloud account is: <{user_details}>")
+                text = _("Your connected account is: <{user_details}>")
             account_blocks.append(
                 {
                     "type": "section",
@@ -2228,7 +2228,7 @@ class ConnectionInfoMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "In order to use the Straker Translate features, please login. Click this button to connect your LanguageCloud account."
+                            "In order to use the Straker Translate features, please login. Click this button below;"
                         ),
                     },
                 }
@@ -2334,7 +2334,7 @@ class SsoConnectionInfoMessage(SlackMessage):
     ) -> None:
         if ray_connection.client is not None:
             text = _(
-                "Your connected LanguageCloud account is: *{ray_connection.client.username}*."
+                "Your connected account is: *{ray_connection.client.username}*."
             )
         msg: list[dict[str, Any]] = [
             {

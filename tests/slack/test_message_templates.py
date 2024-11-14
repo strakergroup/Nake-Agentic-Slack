@@ -15,7 +15,7 @@ class TestLoginMessage:
         message = LoginMessage(user_id, team_id, enterprise_id, channel_id)
         assert message.text == "Connect your LanguageCloud account"
         assert (
-            "In order to use the Straker Translate features, please login. Click this button to connect your LanguageCloud account."
+            "In order to use the Straker Translate features, please login. Click this button below;"
             in message.blocks[0]["text"]["text"]
         )
 

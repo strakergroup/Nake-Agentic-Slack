@@ -102,7 +102,7 @@ def test_translations():
     translator = translator_var.set(Translator("jp"))
     user_details = "test"
     user_link = "test"
-    input = "Your LanguageCloud account {user_details} is now disconnected from {user_link}."
+    input = "Your account {user_details} is now disconnected from {user_link}."
     assert _(input) != input
 
 
