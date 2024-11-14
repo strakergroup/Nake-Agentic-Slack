@@ -306,26 +306,21 @@ def update_auto_translate_user_settings(
             )
 
 
+# TODO comeback to this
 def get_or_create_group_settings(
-    session: Session, context: AsyncBoltContext
+    session: Session, context: AsyncBoltContext, team_id: str | None = None
 ) -> SlackGroupSettings:
     # NOTE: The logic for getting group settings is not stable and WILL change in the future.
     # Please don't touch this file yet
     query = select(SlackGroupSettings)
-    if context.enterprise_id:
-        query = query.where(
-            # TODO delete team_id filter after enterprise refactor
-            (SlackGroupSettings.slack_enterprise_id == context.enterprise_id)
-            | (SlackGroupSettings.slack_team_id == context.team_id)
-        )
-    else:
-        query = query.where(SlackGroupSettings.slack_team_id == context.team_id)
+    team_id = team_id or context.team_id
+    query = query.where(SlackGroupSettings.slack_team_id == team_id)
     settings = session.scalar(query)
     if settings:
         return settings
     # Create record if doesn't exist yet.
     new_settings = SlackGroupSettings(
-        slack_team_id=context.team_id, slack_enterprise_id=context.enterprise_id
+        slack_team_id=team_id, slack_enterprise_id=context.enterprise_id
     )
     session.add(new_settings)
     session.commit()
@@ -334,10 +329,10 @@ def get_or_create_group_settings(
 
 
 def get_or_create_auto_translate_group_settings(
-    session: Session, context: AsyncBoltContext, channel_id: str
+    session: Session, context: AsyncBoltContext, channel_id: str, team_id: str
 ) -> SlackGroupSettingsTranslation:
     # TODO streamline this (join)
-    settings = get_or_create_group_settings(session, context)
+    settings = get_or_create_group_settings(session, context, team_id)
     auto_translate_settings = session.scalar(
         select(SlackGroupSettingsTranslation)
         .where(SlackGroupSettingsTranslation.settings_id == settings.id)
@@ -368,7 +363,7 @@ def get_auto_translate_settings_and_langs(
         return None, []  # Modal triggers do not have channel_id
     with Session(engines["ray_integration"]) as session:
         channel_settings = get_or_create_auto_translate_group_settings(
-            session, context, channel_id
+            session, context, channel_id, context.team_id
         )
         results = session.scalars(
             select(SlackGroupSettingsTranslationLangs.lang).where(
@@ -395,7 +390,7 @@ def update_auto_translate_group_settings(
     with Session(engines["ray_integration"]) as session:
         for channel in channels:
             channel_settings = get_or_create_auto_translate_group_settings(
-                session, context, channel["channel_id"]
+                session, context, channel["channel_id"], channel["team_id"]
             )
             channel_settings.display_format = display_format
             session.execute(
@@ -446,7 +441,7 @@ def get_full_group_translation_settings(
     """
     # TODO Refactor
     with Session(engines["ray_integration"]) as session:
-        settings = get_or_create_group_settings(session, context)
+        settings = get_or_create_group_settings(session, context, context.team_id)
         channel_settings = session.scalars(
             select(SlackGroupSettingsTranslation)
             .join(

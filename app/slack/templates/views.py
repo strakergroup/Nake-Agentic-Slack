@@ -18,6 +18,7 @@ from ..select_options import (
 )
 from ...auth.connector import (
     RayConnection,
+    get_channel_info,
     is_slack_team_admin,
     resolve_channels_to_team,
 )
@@ -37,6 +38,7 @@ async def home_view(
     context: AsyncBoltContext, app_id: str, rayConnection: RayConnection | None, page=1
 ) -> dict[str, Any]:
     assert context.client
+
     message_url = f"slack://app?team={context['team_id']}&id={app_id}&tab=messages"
     barEmoji = f":bar_chart:"
     helpEmoji = f":question:"
@@ -65,8 +67,11 @@ async def home_view(
     if is_straker_admin:
         channel_info = await asyncio.gather(
             *(
-                resolve_channels_to_team(
-                    [setting.channel_id], context.client, context.enterprise_id
+                get_channel_info(
+                    setting.channel_id,
+                    context.client,
+                    context.enterprise_id,
+                    context.team_id,
                 )
                 for setting, _ in translation_settings
             ),
@@ -78,7 +83,7 @@ async def home_view(
             if isinstance(info, BaseException):
                 visible_translation_settings.append((setting, langs, {}))
             else:
-                visible_translation_settings.append((setting, langs, info[0]))
+                visible_translation_settings.append((setting, langs, info))
     else:
         visible_translation_settings = [
             (setting, langs, {}) for setting, langs in translation_settings
@@ -183,8 +188,10 @@ async def home_view(
                 error_msg = _("channel not found or bot not in channel")
                 channel_name = f"({visible_info.get('name') if visible_info.get('name') else error_msg})"
                 should_display_channel_info = (
-                    is_straker_admin and visible_info.get("is_private")
-                ) or not visible_info.get("name")
+                    (is_straker_admin and visible_info.get("is_private"))
+                    or (not visible_info.get("name"))
+                    and is_straker_admin
+                )
                 translation_settings_blocks.extend(
                     [
                         {

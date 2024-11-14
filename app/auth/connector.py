@@ -1651,6 +1651,18 @@ def get_team_from_token(token: str | None) -> str | None:
     return row.team_id
 
 
+async def get_channel_info(channel_id: str, client: AsyncWebClient, team_id: str):
+    """Get the quote settings for the job group."""
+    channel_info = await client.conversations_info(channel=channel_id)
+    return {
+        "team_id": team_id,
+        "channel_id": channel_id,
+        "bot_token": client.token,
+        "name": channel_info["channel"]["name"],
+        "is_private": channel_info["channel"]["is_private"],
+    }
+
+
 async def resolve_channels_to_team(
     channel_id: List[str], client: AsyncWebClient, enterprise_id: str | None
 ) -> List[dict[str, str]]:

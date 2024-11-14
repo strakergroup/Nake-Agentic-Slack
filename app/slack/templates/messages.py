@@ -1698,7 +1698,6 @@ class NewJobMessage(SlackMessage):
         is_verify_enabled: bool = False,
     ) -> None:
 
-
         ai_verify_blocks = [
             {
                 "type": "button",
