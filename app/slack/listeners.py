@@ -264,6 +264,12 @@ async def home_load(
     # submit from next button on transation settings view
     home_info = json.loads(action["value"])
     page = int(home_info.get("page", 1))
+    team_id = home_info.get("team_id", "")
+    if team_id:
+        token = get_token_for_team(team_id)
+        if token:
+            client.token = token
+        context["team_id"] = team_id
     await client.views_publish(
         user_id=context["user_id"],
         view=await home_view(context, body["api_app_id"], context.get("ray"), page),
