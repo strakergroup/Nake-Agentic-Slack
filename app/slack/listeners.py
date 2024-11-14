@@ -1429,6 +1429,7 @@ async def view_update_auto_translate_settings(
         team_token = get_token_for_team(team_id) if team_id else None
         if team_token:
             client.token = team_token
+        context["team_id"] = team_id
         await client.views_publish(
             user_id=context["user_id"],
             view=await home_view(context, body["api_app_id"], context.get("ray")),
