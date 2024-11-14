@@ -35,6 +35,7 @@ from .templates.messages import (
     InsightsMessage,
     ReportInsightsMessage,
     AIHelperMessage,
+    VerifyHelperMessage,
     BatchListMessage,
     FileListMessage,
     JobTargetsNoIdMessage,
@@ -53,6 +54,7 @@ from .templates.views import (
 from .web import files_list_simple, download_files, get_mt_ts_cached, set_mt_ts_edit
 from ..auth.connector import (
     RayClient,
+    RayContext,
     approve_pending_groups,
     get_group_mt_engine,
 )
@@ -68,7 +70,7 @@ from .select_options import get_file_options_cached
 
 async def respond_to_message(
     client: AsyncWebClient,
-    context: AsyncBoltContext,
+    context: RayContext,
     message: dict[str, Any],
     *,
     use_thread: bool = False,
@@ -112,7 +114,10 @@ async def respond_to_message(
                             await context.say(text=msg.text, thread_ts=thread_ts)
                 else:
                     new_job_msg = NewJobMessage(
-                        context["channel_id"], message["ts"], file["id"]
+                        context["channel_id"],
+                        message["ts"],
+                        file["id"],
+                        context.ray.super_group[0].enable_verify_in_slack,
                     )
                     await context.say(
                         text=new_job_msg.text,
@@ -169,7 +174,7 @@ async def respond_to_message(
             login_msg = LoginMessage(
                 user_id=context["user_id"],
                 team_id=context["team_id"],
-                enterprise_id=context.get("enterprise_id"),
+                enterprise_id=context.enterprise_id,
                 channel_id=context.get("channel_id", context["user_id"]),
                 ray_client=(
                     context["ray"].client if context["ray"] is not None else None
@@ -224,19 +229,24 @@ async def respond_to_message(
                     )
             else:
                 await context.say(JobTargetsNoIdMessage().text, thread_ts=thread_ts)
-        case "New_Translation_Job":
-            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-                asyncio.create_task(
-                    files_list_simple(
-                        client, channel_id=context["channel_id"], count=120
-                    )
-                )
-                new_job_msg = NewJobMessage(context["channel_id"], message["ts"])
-                await context.say(
-                    text=new_job_msg.text,
-                    blocks=new_job_msg.blocks,
-                    thread_ts=thread_ts,
-                )
+        # case "New_Translation_Job":
+        #     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+        #         asyncio.create_task(
+        #             files_list_simple(
+        #                 client, channel_id=context["channel_id"], count=120
+        #             )
+        #         )
+        #         new_job_msg = NewJobMessage(
+        #             context["channel_id"],
+        #             message["ts"],
+        #             "",
+        #             context.ray.super_group[0].enable_verify_in_slack,
+        #         )
+        #         await context.say(
+        #             text=new_job_msg.text,
+        #             blocks=new_job_msg.blocks,
+        #             thread_ts=thread_ts,
+        #         )
         case "Show_Insights":
             if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
                 await post_insights(
@@ -267,6 +277,16 @@ async def respond_to_message(
                     await context.say(
                         text=cancel_msg.text,
                         blocks=cancel_msg.blocks,
+                        thread_ts=thread_ts,
+                    )
+        case "Quality_Evaluation":
+            if await require_ray_client(
+                context, variation=LoginMessage.QUALITY_EVALUATION
+            ):
+                quality_evaluation_msg = VerifyHelperMessage()
+                await context.say(
+                        text=quality_evaluation_msg.text,
+                        blocks=quality_evaluation_msg.blocks,
                         thread_ts=thread_ts,
                     )
         case _:
@@ -546,7 +566,7 @@ async def post_job_status(
                     job,
                     ray_client.id,
                     is_ibm_enterprise(
-                        enterprise_id=context.get("enterprise_id"),
+                        enterprise_id=context.enterprise_id,
                     ),
                     job_prediction,
                 )
@@ -631,7 +651,7 @@ async def post_job_details(
             if quote_job is not None:
                 msg = JobQuotedMessage(
                     quote_job,
-                    is_ibm_enterprise(context.get("enterprise_id")),
+                    is_ibm_enterprise(context.enterprise_id),
                 )
                 if context.response_url and context.respond:
                     return await context.respond(text=msg.text, blocks=msg.blocks)
@@ -672,7 +692,7 @@ async def post_job_details(
                             job,
                             ray_client.id,
                             is_ibm_enterprise(
-                                enterprise_id=context.get("enterprise_id"),
+                                enterprise_id=context.enterprise_id,
                             ),
                             job_prediction,
                         )
@@ -1169,7 +1189,7 @@ async def submit_job(
         timeframe=form.timeframe,
         reference=form.reference,
         job_notes=form.notes,
-        translation_notes=form.translation_notes,
+        # translation_notes=form.translation_notes,
     )
 
 
@@ -1536,6 +1556,42 @@ async def ai_translate_help(
             )
     except Exception as e:
         notify_exception(e, "Failed to get AI Translate help message")
+
+
+async def verify_help(
+    client: AsyncWebClient,
+    context: AsyncBoltContext,
+    ray_client: RayClient,
+    channel_id: str | None = None,
+    thread_ts: str | None = None,
+):
+    """Show Verify message modal.
+
+    Args:
+        context (AsyncBoltContext): The context from the listener.
+        ray_client (RayClient): The RAY client details.
+        channel_id (str | None, optional): The channel to post the message to.
+            If not given, posts to the source channel.
+        thread_ts (str | None, optional): The message thread to reply to.
+    """
+    channel_id = channel_id or context.channel_id or context.user_id
+    verify_helper_msg = VerifyHelperMessage()
+    try:
+        if context.response_url and context.respond:
+            await context.respond(
+                text=verify_helper_msg.text, blocks=verify_helper_msg.blocks
+            )
+        else:
+            if not channel_id:
+                raise AssertionError("No channel to post to")
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=verify_helper_msg.text,
+                blocks=verify_helper_msg.blocks,
+                thread_ts=thread_ts,
+            )
+    except Exception as e:
+        notify_exception(e, "Failed to get Verify help message")
 
 
 async def get_mt_translation(

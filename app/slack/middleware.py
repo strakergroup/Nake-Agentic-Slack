@@ -4,7 +4,7 @@ See https://slack.dev/bolt-python/concepts#listener-middleware.
 """
 
 import math
-from typing import Any
+from typing import Awaitable, Callable
 import logging
 
 from buglog import notify_exception, notify_message
@@ -12,14 +12,12 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from ray_logger.slack import SlackAppLog  # type: ignore
 
 from app.ray.utils import is_ibm_enterprise, set_user_language
-from app.translate import translator_var, Translator
 
 from .app import app
 from .logging import init_slack_app_log
 from .templates.messages import (
     RequiresMtTokenAdminMessage,
     RequiresMtTokenMessage,
-    SlackMessage,
     LoginMessage,
 )
 from ..auth.connector import (
@@ -54,7 +52,10 @@ async def ray_log(context, body, next):
 # -----------------------------------------------------------------------------
 
 
-async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) -> None:
+async def ray_connection(
+    context: AsyncBoltContext,
+    next: Callable[[], Awaitable[None]],
+) -> None:
     """Gets and saves the LanguageCloud super group and client information of the
     Slack user to the context. The `RayConnection` object is stored as `ray` in
     the context if the Slack workspace has a connected super group.
@@ -63,11 +64,11 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
     be sent to the user asking them to connect their LanguageCloud account.
     """
     context["ray"] = await get_ray_connection(
-        context["user_id"], context["team_id"], context.get("enterprise_id")
+        context["user_id"], context["team_id"], context.enterprise_id
     )
     if context["ray"] is None or context["ray"].client is None:
         demo_connection = await get_ray_connection_demo(
-            context["user_id"], context["team_id"], context.get("enterprise_id")
+            context["user_id"], context["team_id"], context.enterprise_id
         )
         if demo_connection is not None:
             context["ray"] = demo_connection
@@ -86,7 +87,7 @@ async def ray_connection(context: AsyncBoltContext, body: dict[str, Any], next) 
     context["login_prompt"] = LoginMessage(
         user_id=context["user_id"],
         team_id=context["team_id"],
-        enterprise_id=context.get("enterprise_id"),
+        enterprise_id=context.enterprise_id,
         channel_id=context.get("channel_id", context["user_id"]),
         ray_client=context["ray"].client if context["ray"] is not None else None,
     )
@@ -188,7 +189,7 @@ async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
         )
     if context.client:
         if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
-            enterprise_id=context.get("enterprise_id")
+            enterprise_id=context.enterprise_id
         ):
             message = RequiresMtTokenMessage(ai_tokens, value)
             await context.client.chat_postEphemeral(

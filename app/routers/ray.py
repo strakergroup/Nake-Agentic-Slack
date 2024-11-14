@@ -15,6 +15,7 @@ from ..auth.connector import (
     get_client_type,
     get_demo_link,
     get_job_group_quote_settings,
+    is_verify_job,
     validate_api_callback_signature,
     get_slack_user,
     get_client_access_tokens,
@@ -25,6 +26,7 @@ from ..slack import app
 from ..slack.templates.messages import (
     DocMtMessage,
     DocParseErrorMessage,
+    EvaluateSuccessMessage,
     RequiresMtTokenAdminMessage,
     RequiresMtTokenMessage,
     SuccessfulLoginMessage,
@@ -33,6 +35,8 @@ from ..slack.templates.messages import (
     ClientApprovedEventMessage,
     JobCreationMessage,
     JobTranscribedEventMessage,
+    JobCompletedEventMessage,
+    VerifyCompleteMessage,
 )
 from ..ray.events.parse import get_ray_event_message
 from ..ray.events.models import (
@@ -59,7 +63,9 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 user=auth.slack_user.user_id, include_locale=True
             )
             set_user_language(user_info)
-            message = get_ray_event_message(event.event, event.data, auth.slack_user)
+            message = await get_ray_event_message(
+                event.event, event.data, auth.slack_user
+            )
     except ValidationError as e:
         raise HTTPException(
             422,
@@ -75,6 +81,13 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
         if isinstance(message, SuccessfulLoginMessage):
             await post_notification_ephemeral(
                 app.client, auth.slack_user.channel_id, event, auth.slack_user, message
+            )
+        elif isinstance(message, EvaluateSuccessMessage):
+            await post_notification(
+                app.client,
+                event,
+                auth.slack_user,
+                message,
             )
         elif isinstance(message, DocMtMessage):
             try:
@@ -98,11 +111,14 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                             balance.balance, balance.required
                         )
                 elif event_data.error_type == "conversion_error":
-                    message = DocParseErrorMessage(event_data.error_data["message"])
+                    message = DocParseErrorMessage(
+                        event_data.error_data["ext"],
+                        event_data.error_data["file_expected"],
+                    )
 
                 await post_notification_ephemeral(
                     app.client,
-                    event_data.channel_id,
+                    event_data.channel_id or auth.slack_user.channel_id,
                     event,
                     auth.slack_user,
                     message,
@@ -142,6 +158,30 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         "This video cannot be sent for transcription as it doesn't have any sound"
                     ),
                 )
+        elif isinstance(message, JobCompletedEventMessage):
+            if not is_verify_job(event.data["uuid"]):
+                await post_notification(
+                    app.client,
+                    event,
+                    auth.slack_user,
+                    message,
+                )
+        elif isinstance(message, VerifyCompleteMessage):
+            response = await post_notification(
+                app.client,
+                event,
+                auth.slack_user,
+                message,
+            )
+            output_file = download_from_file_server(
+                event.data["grid_file_id"],
+            )
+            await app.client.files_upload_v2(
+                channel=response["channel"],
+                file=output_file.get("file"),
+                title=event.data["job_title"],
+                filename=output_file.get("file_name"),
+            )
         elif (
             # Send important messages regardless of subscribed status.
             isinstance(message, (ClientSignupEventMessage, ClientApprovedEventMessage))
@@ -179,9 +219,6 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 groups=groups,
             )
             await post_notification(app.client, event, user, admin_message)
-    elif not auth.slack_user:
-        notify_message("Slack user not found in events endpoint", severity="WARNING")
-        raise HTTPException(401)
 
     return {"message": "success", "data": {"event": event.event}}
 

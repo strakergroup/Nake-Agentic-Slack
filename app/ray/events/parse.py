@@ -1,7 +1,9 @@
 from typing import Any
 
+from app.api.verify import get_evaluation_job
 from app.auth.connector import SlackUser
 from app.ray.utils import is_ibm_enterprise
+from app.slack.select_options import _get_languages_cached
 
 from .models import (
     MtFileReponseSchema,
@@ -16,6 +18,7 @@ from .models import (
 )
 from ...slack.templates.messages import (
     DocMtMessage,
+    EvaluateSuccessMessage,
     SlackMessage,
     SuccessfulLoginMessage,
     ClientSignupEventMessage,
@@ -27,11 +30,15 @@ from ...slack.templates.messages import (
     JobQuoteAcceptedEventMessage,
     JobQuoteCancelledEventMessage,
     JobTranscribedEventMessage,
+    VerifyCompleteMessage,
 )
 
 
-def get_ray_event_message(
-    event_type: str, event_data: dict[str, Any], slack_user: SlackUser | None
+async def get_ray_event_message(
+    event_type: str,
+    event_data: dict[str, Any],
+    slack_user: SlackUser | None,
+    ray_connection: Any | None = None,
 ) -> SlackMessage | None:
     """Gets the SlackMessage based on the event type. Returns None if no Slack
     message should be sent for the particular event.
@@ -45,7 +52,7 @@ def get_ray_event_message(
         is_ibm = is_ibm_enterprise(slack_user.enterprise_id)
     if event_type == "ray:slack:account_connected":
         event0 = SlackAccountConnectedEvent.model_validate(event_data)
-        return SuccessfulLoginMessage(event0.user_id, event0.username)
+        return SuccessfulLoginMessage(event0.user_id, event0.username, ray_connection)
     elif event_type == "ray:client:signup":
         event1 = ClientSignupEvent.model_validate(event_data)
         return ClientSignupEventMessage(event1)
@@ -111,4 +118,19 @@ def get_ray_event_message(
     elif event_type == "verify:slack:document:translated":
         event8 = MtFileReponseSchema.model_validate(event_data)
         return DocMtMessage()
+    elif event_type == "verify:slack:evaluate:complete":
+        # fetch the job report from event_data
+        # create message which displays the job report
+        # TODO type job
+        job = await get_evaluation_job(slack_user, event_data["job_uuid"])
+        all_langs = await _get_languages_cached()
+        return EvaluateSuccessMessage(job["data"], all_langs)
+    elif event_type == "verify:human_verification:completed":
+        all_langs = await _get_languages_cached()
+        lang_label = ""
+        for lang in all_langs:
+            if lang["uuid"] == event_data["lang_uuid"]:
+                lang_label = lang["name"]
+                break
+        return VerifyCompleteMessage(event_data["job_title"], lang_label)
     raise ValueError(f"Invalid RAY event type: {event_type}")

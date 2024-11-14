@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict, List
 
 from pydantic import (
     BaseModel,
@@ -100,9 +100,9 @@ class NewJobForm(BaseModel):
     # target_date: datetime.date
     service: str
     timeframe: str
-    validation: bool
+    validation: bool | None = None
     notes: str | None = None
-    translation_notes: str | None = None
+    # translation_notes: str | None = None
     # category: str
 
     @property
@@ -178,11 +178,11 @@ class NewJobForm(BaseModel):
                 # target_date=values["target_date"]["target_date"]["selected_date"],
                 service=values["service"]["service"]["selected_option"]["value"],
                 timeframe=values["timeframe"]["timeframe"]["selected_option"]["value"],
-                validation=bool(values["validation"]["validation"]["selected_options"]),
+                # validation=bool(values["validation"]["validation"]["selected_options"]),
                 notes=values["notes"]["notes"]["value"],
-                translation_notes=values["translation_notes"]["translation_notes"][
-                    "value"
-                ],
+                # translation_notes=values["translation_notes"]["translation_notes"][
+                #     "value"
+                # ],
                 # category=values["category"]["category"]["selected_option"]["value"],
             )
         except KeyError as e:
@@ -257,3 +257,22 @@ class AutoTranslationSettingsForm(BaseModel):
         except KeyError as e:
             # TODO Better error handling
             raise ValueError("The Slack payload format is incorrect") from e
+
+
+class EvaluateJobForm(BaseModel):
+    """The model for an evaluation job form."""
+
+    reference: str  # Max 100 chars, validated in view
+    target_langs_uuid: list[str]
+
+    @classmethod
+    def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "EvaluateJobForm":
+        reference = values["reference"]["reference"]["value"]
+        target_langs_uuid = [
+            opt["value"]
+            for opt in values["target_langs"]["language_options_uuid"][
+                "selected_options"
+            ]
+        ]
+
+        return cls(reference=reference, target_langs_uuid=target_langs_uuid)

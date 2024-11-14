@@ -4,7 +4,7 @@ import math
 import datetime
 from urllib.parse import urlencode, unquote
 
-from app.auth.connector import RayClient, is_ibm_super_group
+from app.auth.connector import is_ibm_super_group
 from babel.numbers import format_currency as babel_format_currency
 import requests
 from app.translate import _
