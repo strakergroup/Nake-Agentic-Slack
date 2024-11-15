@@ -66,6 +66,7 @@ with open("update.sql", "w") as sql_file:
     # Define the raw SQL query
     query = """
     SELECT
+        slack_group_settings.slack_enterprise_id,
         slack_group_settings.slack_team_id,
         slack_group_settings_translation.channel_id
     FROM
@@ -82,6 +83,14 @@ with open("update.sql", "w") as sql_file:
 
         # Fetch and print the results
         for row in result:
+            if not row.slack_enterprise_id:
+                continue
+            print(
+                "checking channel_id",
+                row.channel_id,
+                row.slack_team_id,
+                row.slack_enterprise_id,
+            )
             query = """
                 SELECT bot_token, enterprise_id
                 FROM slack_bots
@@ -100,18 +109,18 @@ with open("update.sql", "w") as sql_file:
                 headers=headers,
                 params={"channel": row.channel_id},
             )
-            iteration += 1
-            if iteration % query_count == 0:
-                sleep(60)  # Sleep for 1 minute
+            # iteration += 1
+            # if iteration % query_count == 0:
+            #     sleep(60)  # Sleep for 1 minute
             channel_info = channel_info_response.json()
             team_id = channel_info.get("channel", {}).get("context_team_id", None)
             if not team_id:
                 query = """
-                    SELECT bot_token, enterprise_id
+                    SELECT DISTINCT bot_token, enterprise_id
                     FROM slack_bots
                     WHERE team_id <> :team_id
-                    and enterprise_id = :enterprise_id
-                    ORDER BY id DESC
+                    AND enterprise_id = :enterprise_id
+                    ORDER BY id DESC;
                 """
                 bound_query = text(query).bindparams(
                     team_id=row.slack_team_id, enterprise_id=bot_token.enterprise_id

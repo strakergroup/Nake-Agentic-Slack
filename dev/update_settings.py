@@ -14,67 +14,6 @@ from app.database import engines
 
 # Use the ray_integration engine from database.py
 with open("update.sql", "w") as sql_file:
-
-    query = """
-    SELECT channel_id
-    FROM slack_group_settings_translation
-    GROUP BY channel_id
-    HAVING COUNT(*) > 1;
-    """
-    duplicated_channel_ids = []
-    # Execute the query to get duplicated channel_ids
-    with engines["ray_integration"].connect() as conn:
-        duplicated_channel_ids = conn.execute(text(query)).fetchall()
-
-        # Step 2: For each duplicated channel_id, find the oldest entry and delete it
-        for row in duplicated_channel_ids:
-            channel_id = row.channel_id
-
-            # Find the oldest entry for the duplicated channel_id
-            oldest_entry_query = """
-            SELECT id
-            FROM slack_group_settings_translation
-            WHERE channel_id = :channel_id
-            ORDER BY created_at ASC
-            LIMIT 1;
-            """
-            oldest_entry = conn.execute(
-                text(oldest_entry_query).bindparams(channel_id=channel_id)
-            ).fetchone()
-
-            if oldest_entry:
-                # Delete the oldest entry
-                delete_query = """
-                DELETE FROM slack_group_settings_translation
-                WHERE id = :id;
-                """
-                bound_query = text(delete_query).bindparams(id=oldest_entry.id)
-                compiled_query = (
-                    str(
-                        bound_query.compile(
-                            dialect=conn.engine.dialect,
-                            compile_kwargs={"literal_binds": True},
-                        )
-                    )
-                    + ";\n"
-                )
-                sql_file.write(compiled_query)
-                print(
-                    f"Deleted oldest entry with id {oldest_entry.id} for channel_id {channel_id}"
-                )
-
-    # Define the raw SQL query
-    query = """
-    SELECT
-        slack_group_settings.slack_team_id,
-        slack_group_settings_translation.channel_id
-    FROM
-        slack_group_settings
-        JOIN slack_group_settings_translation ON slack_group_settings_translation.settings_id = slack_group_settings.id;
-    """
-    query_count = 40
-    iteration = 0
-    # Open the file in write mode
     generated_statements = set()
     with engines["ray_integration"].connect() as conn:
         # Execute the query
@@ -100,18 +39,18 @@ with open("update.sql", "w") as sql_file:
                 headers=headers,
                 params={"channel": row.channel_id},
             )
-            iteration += 1
-            if iteration % query_count == 0:
-                sleep(60)  # Sleep for 1 minute
+            # iteration += 1
+            # if iteration % query_count == 0:
+            #     sleep(60)  # Sleep for 1 minute
             channel_info = channel_info_response.json()
             team_id = channel_info.get("channel", {}).get("context_team_id", None)
             if not team_id:
                 query = """
-                    SELECT bot_token, enterprise_id
+                    SELECT DISTINCT bot_token, enterprise_id
                     FROM slack_bots
                     WHERE team_id <> :team_id
-                    and enterprise_id = :enterprise_id
-                    ORDER BY id DESC
+                    AND enterprise_id = :enterprise_id
+                    ORDER BY id DESC;
                 """
                 bound_query = text(query).bindparams(
                     team_id=row.slack_team_id, enterprise_id=bot_token.enterprise_id
