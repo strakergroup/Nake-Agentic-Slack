@@ -1579,7 +1579,7 @@ async def verify_help(
     try:
         if context.response_url and context.respond:
             await context.respond(
-                text=verify_helper_msg.text, blocks=verify_helper_msg.blocks
+                text=verify_helper_msg.text, blocks=verify_helper_msg.blocks, replace_original=False
             )
         else:
             if not channel_id:
