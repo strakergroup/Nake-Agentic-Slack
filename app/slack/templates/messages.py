@@ -2352,7 +2352,7 @@ class SsoConnectionInfoMessage(SlackMessage):
                                     "type": "button",
                                     "text": {
                                         "type": "plain_text",
-                                        "text": _("Login to LanguageCloud"),
+                                        "text": _("Login to LanguageCloud-----"),
                                     },
                                     "style": "primary",
                                     # TODO: ray_connection.client could be None
@@ -2369,7 +2369,7 @@ class SsoConnectionInfoMessage(SlackMessage):
                 else []
             )
         super().__init__(
-            "Login to LanguageCloud",
+            "Login Successfull",
             msg,
         )
 

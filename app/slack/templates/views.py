@@ -286,7 +286,8 @@ async def home_view(
                         "elements": actions,
                     }
                 )
-    if is_verify_enabled:
+    # Note: translation_settings_enabled should be removed once we enable QE for everyone
+    if is_verify_enabled and translation_settings_enabled:
         verify_settings_block = [
             {
                 "type": "section",
