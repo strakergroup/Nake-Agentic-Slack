@@ -16,11 +16,26 @@ from app.database import engines
 with open("update.sql", "w") as sql_file:
     generated_statements = set()
     with engines["ray_integration"].connect() as conn:
+        # Define the raw SQL query
+        query = """
+        SELECT
+            slack_group_settings.slack_enterprise_id,
+            slack_group_settings.slack_team_id,
+            slack_group_settings_translation.channel_id
+        FROM
+            slack_group_settings
+            JOIN slack_group_settings_translation ON slack_group_settings_translation.settings_id = slack_group_settings.id;
+        """
+        query_count = 40
+        iteration = 0
+        # Open the file in write mode
         # Execute the query
         result = conn.execute(text(query))
 
         # Fetch and print the results
         for row in result:
+            if not row.slack_enterprise_id:
+                continue
             query = """
                 SELECT bot_token, enterprise_id
                 FROM slack_bots
