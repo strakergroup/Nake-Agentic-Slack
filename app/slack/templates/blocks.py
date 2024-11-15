@@ -67,7 +67,7 @@ def home_auth_blocks(
             "text": {
                 "type": "mrkdwn",
                 "text": _(
-                    "Connect your LanguageCloud account to get details about your translation jobs."
+                    "Connect your account to get details about your translation jobs."
                 ),
             },
         },
