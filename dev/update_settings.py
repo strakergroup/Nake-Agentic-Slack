@@ -13,7 +13,7 @@ sys.path.append(parent_dir)
 from app.database import engines
 
 # Use the ray_integration engine from database.py
-with open("update.sql", "w") as sql_file:
+with open("update_2.sql", "w", buffering=1) as sql_file:
     generated_statements = set()
     with engines["ray_integration"].connect() as conn:
         # Define the raw SQL query

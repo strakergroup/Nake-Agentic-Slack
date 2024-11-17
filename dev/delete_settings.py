@@ -13,7 +13,7 @@ sys.path.append(parent_dir)
 from app.database import engines
 
 # Use the ray_integration engine from database.py
-with open("update.sql", "w") as sql_file:
+with open("update.sql", "w", buffering=1) as sql_file:
 
     query = """
     SELECT channel_id
