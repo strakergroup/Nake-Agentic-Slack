@@ -14,6 +14,8 @@ sys.path.append(parent_dir)
 from app.translate import Translator, translator_var
 
 langs = ["fr", "de", "es", "fr-ca", "jp"]
+# You should probably remove log statements from the translate.py translate function
+# cases where varibles are used in the translation should be handled manually. The line should be printed
 
 
 def extract_strings_from_file(filepath, translator, sheet):
