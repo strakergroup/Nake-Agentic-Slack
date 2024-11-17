@@ -365,7 +365,7 @@ def get_auto_translate_settings_and_langs(
     team_id = team_id or context.team_id
     with Session(engines["ray_integration"]) as session:
         channel_settings = get_or_create_auto_translate_group_settings(
-            session, context, channel_id, context.team_id
+            session, context, channel_id, team_id
         )
         results = session.scalars(
             select(SlackGroupSettingsTranslationLangs.lang).where(
