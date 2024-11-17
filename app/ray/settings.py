@@ -352,7 +352,7 @@ def get_or_create_auto_translate_group_settings(
 
 
 def get_auto_translate_settings_and_langs(
-    context: AsyncBoltContext, channel_id: str | None = None
+    context: AsyncBoltContext, channel_id: str | None = None, team_id: str | None = None
 ) -> tuple[SlackGroupSettingsTranslation | None, list[str]]:
     """Get the auto-translate languages for a channel for a LanugageCloud group.
 
@@ -362,6 +362,7 @@ def get_auto_translate_settings_and_langs(
     # TODO: Combine with above function
     if not channel_id:
         return None, []  # Modal triggers do not have channel_id
+    team_id = team_id or context.team_id
     with Session(engines["ray_integration"]) as session:
         channel_settings = get_or_create_auto_translate_group_settings(
             session, context, channel_id, context.team_id

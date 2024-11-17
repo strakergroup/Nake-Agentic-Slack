@@ -849,7 +849,7 @@ async def show_auto_translate_settings(
     channel_id = channel_info.get("channel_id")
     team_id = channel_info.get("team_id", "")
     settings, auto_translate_langs = get_auto_translate_settings_and_langs(
-        context, channel_id
+        context, channel_id, team_id
     )
 
     if channel_id:
