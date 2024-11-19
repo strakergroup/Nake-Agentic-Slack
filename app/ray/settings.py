@@ -380,6 +380,29 @@ def get_or_create_setting_for_team(
     return new_settings
 
 
+def get_all_settings_for_channel(
+    session: Session, context: AsyncBoltContext, channel_id: str
+) -> list[SlackGroupSettingsTranslation]:
+    # TODO streamline this (join)
+    settings = get_or_create_group_settings(session, context)
+
+    auto_translate_settings = session.scalars(
+        select(SlackGroupSettingsTranslation).where(
+            SlackGroupSettingsTranslation.channel_id == channel_id
+        )
+    ).all()
+    if auto_translate_settings:
+        return auto_translate_settings
+    # Create record if doesn't exist yet.
+    new_settings = SlackGroupSettingsTranslation(
+        settings_id=settings[0].id, channel_id=channel_id
+    )
+    session.add(new_settings)
+    session.commit()
+    session.refresh(new_settings)
+    return [new_settings]
+
+
 def get_or_create_auto_translate_group_settings(
     session: Session, context: AsyncBoltContext, channel_id: str
 ) -> list[SlackGroupSettingsTranslation]:
@@ -418,9 +441,7 @@ def get_auto_translate_settings_and_langs(
         return None, []  # Modal triggers do not have channel_id
     team_id = team_id or context.team_id
     with Session(engines["ray_integration"]) as session:
-        channel_settings = get_or_create_auto_translate_group_settings(
-            session, context, channel_id
-        )
+        channel_settings = get_all_settings_for_channel(session, context, channel_id)
         channel_ids = [channel_settings.id for channel_settings in channel_settings]
         results = session.scalars(
             select(distinct(SlackGroupSettingsTranslationLangs.lang)).where(
