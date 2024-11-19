@@ -285,10 +285,10 @@ async def respond_to_message(
             ):
                 quality_evaluation_msg = VerifyHelperMessage()
                 await context.say(
-                        text=quality_evaluation_msg.text,
-                        blocks=quality_evaluation_msg.blocks,
-                        thread_ts=thread_ts,
-                    )
+                    text=quality_evaluation_msg.text,
+                    blocks=quality_evaluation_msg.blocks,
+                    thread_ts=thread_ts,
+                )
         case _:
             if tj_number_entity := response.findEntity("tj-number"):
                 # Show the job status if only a job id is entered.
@@ -325,10 +325,10 @@ async def auto_translate_message(
         # Do not translate bot messages.
         return
     assert context.channel_id  # TODO enforce this
+    # TODO make this fetch all settings for channel
     settings, target_langs = get_auto_translate_settings_and_langs(
         context, context.channel_id
     )
-
     assert settings  # TODO Fix typing
     if not target_langs:
         return
@@ -355,7 +355,7 @@ async def auto_translate_message(
         translations=translations,
     )
     try:
-        if settings.display_format == "thread":
+        if settings[0].display_format == "thread":
             if is_edit:
                 timestamp = await get_mt_ts_cached(ts)
                 await client.chat_update(
@@ -373,7 +373,7 @@ async def auto_translate_message(
                 )
                 # save timestamp to cache
                 asyncio.create_task(set_mt_ts_edit(send_ts=ts, reply_ts=request["ts"]))
-        elif settings.display_format == "message":
+        elif settings[0].display_format == "message":
             if is_edit:
                 timestamp = await get_mt_ts_cached(ts)
                 await client.chat_update(
