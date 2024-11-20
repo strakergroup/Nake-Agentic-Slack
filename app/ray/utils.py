@@ -256,7 +256,7 @@ def set_user_language(user_info, context=None):
     user_locale = "en"
     if "user" in user_info and "locale" in user_info["user"]:
         user_locale = user_info["user"]["locale"]
-    if user_info["user"]["locale"] == "fr-FR":
+    if user_locale == "fr-FR":
         if (
             user_info["user"]["tz"] == "America/Chicago"
             or user_info["user"]["tz"] == "America/New_York"

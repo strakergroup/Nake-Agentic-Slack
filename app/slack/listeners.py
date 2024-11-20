@@ -164,14 +164,7 @@ async def message_event(
                     )
                     if token:
                         if token != client.token:
-                            print("token different")
                             client.token = token
-                        else:
-                            print("token same")
-                    else:
-                        print("no token")
-                else:
-                    print("no event in body")
             await respond_to_message(client, context, message, use_thread=False)
         elif (
             message.get("text")
