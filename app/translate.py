@@ -33,7 +33,7 @@ class Translator:
                 language_map[row[0]] = row[1]
         return language_map
 
-    def translate(self, input: str):
+    def translate(self, input: str, max_length: int = 0) -> str:
 
         if self.lang.lower().startswith(("en", "gb", "us")):
             return input
@@ -65,6 +65,11 @@ class Translator:
             translation_row = conn.execute(sql).fetchone()
             if translation_row:
                 translation = translation_row[0]
+                if max_length and len(translation) > max_length:
+                    logging.warning(
+                        f"WARNING Translation for {self.lang}: {input} exceeds max length {max_length}"
+                    )
+                    return input
             else:
                 # log error missing translation
                 logging.warning(f"WARNING Missing translation for {self.lang}: {input}")
@@ -82,7 +87,7 @@ class Translator:
 translator_var = contextvars.ContextVar("translator", default=Translator("en"))
 
 
-def _(input: str):
+def _(input: str, max_length: int = 0) -> str:
     translator = translator_var.get()
     frame = inspect.currentframe()
     try:
@@ -95,7 +100,7 @@ def _(input: str):
         del frame  # Avoid a reference cycle
     try:
         all_vars = {**outer_globals, **outer_locals}
-        input = translator.translate(input)
+        input = translator.translate(input, max_length)
         return input.format(**all_vars)
     except Exception as e:
         notify_exception(e)

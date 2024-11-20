@@ -448,7 +448,7 @@ def job_search_modal(
     return {
         "type": "modal",
         "callback_id": "job_search",
-        "title": {"type": "plain_text", "text": _("Job Status")},
+        "title": {"type": "plain_text", "text": _("Job Status", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Submit")},
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
@@ -498,7 +498,7 @@ def evaluate_job_modal(file_id: str):
     return {
         "type": "modal",
         "callback_id": "evaluate_job",
-        "title": {"type": "plain_text", "text": _("Evaluate Job")},
+        "title": {"type": "plain_text", "text": _("Evaluate Job", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Submit")},
         "private_metadata": file_id,
         "close": {"type": "plain_text", "text": _("Close")},
@@ -629,7 +629,7 @@ def new_job_modal(
     return {
         "type": "modal",
         "callback_id": "new_job",
-        "title": {"type": "plain_text", "text": _("New Job")},
+        "title": {"type": "plain_text", "text": _("New Job", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Submit")},
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
@@ -1044,7 +1044,7 @@ def sso_form_modal() -> dict[str, Any]:
         dict: The view dict.
     """
     return {
-        "title": {"type": "plain_text", "text": _("Direct Login")},
+        "title": {"type": "plain_text", "text": _("Direct Login", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Submit")},
         "blocks": [
             {
@@ -1103,7 +1103,7 @@ def cancel_job_modal(client_name: str) -> dict[str, Any]:
     return {
         "type": "modal",
         "callback_id": "cancel_job",
-        "title": {"type": "plain_text", "text": _("Cancel Job")},
+        "title": {"type": "plain_text", "text": _("Cancel Job", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Submit")},
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
@@ -1161,7 +1161,7 @@ def translation_settings_view(
         "type": "modal",
         "callback_id": "settings_auto_translate",
         "private_metadata": team_id,
-        "title": {"type": "plain_text", "text": _("Translation Settings")[:24]},
+        "title": {"type": "plain_text", "text": _("Translation Settings", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Create")},
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
@@ -1253,7 +1253,7 @@ def translation_settings_view_error(message: str) -> dict[str, Any]:
         "type": "modal",
         "title": {
             "type": "plain_text",
-            "text": _("Translation Settings")[:24],
+            "text": _("Translation Settings", 24)[:24],
         },
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
@@ -1309,7 +1309,7 @@ def verify_job_modal(
     return {
         "type": "modal",
         "callback_id": "verify_job",
-        "title": {"type": "plain_text", "text": _("Human Verification")},
+        "title": {"type": "plain_text", "text": _("Human Verification", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Human Verification Job")},
         "private_metadata": job["uuid"],
         "blocks": blocks,
