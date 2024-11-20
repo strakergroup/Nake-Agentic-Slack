@@ -505,7 +505,7 @@ def disable_auto_translate_group_settings(
         channel_id str: The ID of the channel (conversations) to auto-translate.
     """
     with Session(engines["ray_integration"]) as session:
-        channel_settings = get_or_create_auto_translate_group_settings(
+        channel_settings = get_all_settings_for_channel(
             session, context, channel_id
         )
         settings_ids = [setting.id for setting in channel_settings]
