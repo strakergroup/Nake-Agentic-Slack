@@ -918,11 +918,11 @@ async def disable_auto_translate_settings(
             return
         disable_auto_translate_group_settings(context, channel_id)
         await ack()
+        if team_id:
+            context["team_id"] = team_id
         await client.views_publish(
             user_id=context["user_id"],
-            view=await home_view(
-                context, body["api_app_id"], context.get("ray"), team_id
-            ),
+            view=await home_view(context, body["api_app_id"], context.get("ray")),
         )
 
         async def join_channel(channel_id: str):
