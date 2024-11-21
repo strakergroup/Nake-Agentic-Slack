@@ -901,6 +901,7 @@ async def disable_auto_translate_settings(
         await ack()
         channel_info = json.loads(payload["value"])
         channel_id = channel_info.get("channel_id")
+        team_id = channel_info.get("team_id", "")
         team_channel = await resolve_channels_to_team(
             [channel_id], client, context.enterprise_id
         )
@@ -910,6 +911,8 @@ async def disable_auto_translate_settings(
             return
         disable_auto_translate_group_settings(context, channel_id)
         await ack()
+        if team_id:
+            context["team_id"] = team_id
         await client.views_publish(
             user_id=context["user_id"],
             view=await home_view(context, body["api_app_id"], context.get("ray")),
