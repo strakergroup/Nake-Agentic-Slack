@@ -355,9 +355,11 @@ async def auto_translate_message(
         translations=translations,
     )
     try:
+        timestamp = None
+        if is_edit:
+            timestamp = await get_mt_ts_cached(ts)
         if settings[0].display_format == "thread":
-            if is_edit:
-                timestamp = await get_mt_ts_cached(ts)
+            if timestamp:
                 await client.chat_update(
                     channel=context.channel_id,
                     text=msg.text,
@@ -374,8 +376,7 @@ async def auto_translate_message(
                 # save timestamp to cache
                 asyncio.create_task(set_mt_ts_edit(send_ts=ts, reply_ts=request["ts"]))
         elif settings[0].display_format == "message":
-            if is_edit:
-                timestamp = await get_mt_ts_cached(ts)
+            if timestamp:
                 await client.chat_update(
                     channel=context.channel_id,
                     text=msg.text,
@@ -1579,7 +1580,9 @@ async def verify_help(
     try:
         if context.response_url and context.respond:
             await context.respond(
-                text=verify_helper_msg.text, blocks=verify_helper_msg.blocks, replace_original=False
+                text=verify_helper_msg.text,
+                blocks=verify_helper_msg.blocks,
+                replace_original=False,
             )
         else:
             if not channel_id:
