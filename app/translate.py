@@ -36,12 +36,12 @@ class Translator:
     def translate(self, input: str, max_length: int = 0) -> str:
 
         if self.lang.lower().startswith(("en", "gb", "us")):
-            return input
+            return input, True
         if input in self.cache:
-            return self.cache[input]
+            return self.cache[input], True
         translation = input
         # check redis for translation
-        input_hash = hashlib.sha256(input.encode()).hexdigest()
+        # input_hash = hashlib.sha256(input.encode()).hexdigest()
         # cached_translation = redis_conn.get(f"translation:{self.lang}:{input_hash}")
         # if cached_translation:
         #     return cached_translation
@@ -60,6 +60,7 @@ class Translator:
                 FROM obj_stringtranslator
                 WHERE lang = :lang
                 AND label = :input
+                order by created desc
                 """,
             ).bindparams(lang=self.lang, input=translation)
             translation_row = conn.execute(sql).fetchone()
@@ -69,11 +70,11 @@ class Translator:
                     logging.warning(
                         f"WARNING Translation for {self.lang}: {input} exceeds max length {max_length}"
                     )
-                    return input
+                    return translation, False
             else:
                 # log error missing translation
                 logging.warning(f"WARNING Missing translation for {self.lang}: {input}")
-                return input
+                return input, False
         # place back the emojis and python variable expansion from the input
         for original, tag in replacements.items():
             translation = translation.replace(tag, original)
@@ -81,7 +82,8 @@ class Translator:
         # if translation != input:
         # redis_conn.set(f"translation:{self.lang}:{input_hash}", translation)
         self.cache[input] = translation
-        return translation
+
+        return translation, True
 
 
 translator_var = contextvars.ContextVar("translator", default=Translator("en"))
@@ -100,7 +102,7 @@ def _(input: str, max_length: int = 0) -> str:
         del frame  # Avoid a reference cycle
     try:
         all_vars = {**outer_globals, **outer_locals}
-        input = translator.translate(input, max_length)
+        input, success = translator.translate(input, max_length)
         return input.format(**all_vars)
     except Exception as e:
         notify_exception(e)
