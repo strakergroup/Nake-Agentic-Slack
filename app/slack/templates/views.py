@@ -1253,7 +1253,7 @@ def translation_settings_view_error(message: str) -> dict[str, Any]:
         "type": "modal",
         "title": {
             "type": "plain_text",
-            "text": _("Translation Settings", 24)[:24],
+            "text": _("Translation Settings", 23)[:24],
         },
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [

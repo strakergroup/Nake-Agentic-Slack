@@ -14,6 +14,7 @@ sys.path.append(parent_dir)
 from app.translate import Translator, translator_var
 
 langs = ["fr", "de", "es", "fr-ca", "jp"]
+
 # You should probably remove log statements from the translate.py translate function
 # cases where varibles are used in the translation should be handled manually. The line should be printed
 
@@ -33,25 +34,28 @@ def extract_strings_from_file(filepath, translator, sheet):
                     if isinstance(node.args[0], ast.Constant):
                         source_text = node.args[0].s
                         max_length = node.args[1].n if len(node.args) > 1 else 0
-                        result = translator.translate(source_text, max_length)
+                        result, success = translator.translate(source_text, max_length)
                         translation = result
-                        if result == source_text:
-                            for i, match in enumerate(
-                                re.finditer(r":\w+:|\{.*?\}", result)
-                            ):
-                                tag = f"<x id={i+1}>"
-                                translation = translation.replace(match.group(), tag)
-                            # Write the source text and translation to the Excel sheet
-                            if max_length:
+
+                        if not success:
+                            if max_length and len(translation) > max_length:
+                                for i, match in enumerate(
+                                    re.finditer(r":\w+:|\{.*?\}", result)
+                                ):
+                                    tag = f"<x id={i+1}>"
+                                    translation = translation.replace(
+                                        match.group(), tag
+                                    )
+                                # Write the source text and translation to the Excel sheet
                                 sheet.append(
                                     [
-                                        translation,
-                                        translator.translate(source_text),
+                                        source_text,
+                                        translator.translate(source_text)[0],
                                         "Needs maxmimum length: " + str(max_length),
                                     ]
                                 )
                             else:
-                                sheet.append([translation])
+                                sheet.append([translation, "", ""])
                     elif isinstance(node.args[0], ast.Name):
                         variable_name = node.args[0].id
                         line_number = node.lineno
