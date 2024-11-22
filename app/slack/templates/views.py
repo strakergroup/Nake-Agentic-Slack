@@ -499,7 +499,7 @@ def evaluate_job_modal(file_id: str):
         "type": "modal",
         "callback_id": "evaluate_job",
         "title": {"type": "plain_text", "text": _("Evaluate Job", 23)[:24]},
-        "submit": {"type": "plain_text", "text": _("Submit")},
+        "submit": {"type": "plain_text", "text": _("Submit", 23)[:24]},
         "private_metadata": file_id,
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
@@ -1310,7 +1310,7 @@ def verify_job_modal(
         "type": "modal",
         "callback_id": "verify_job",
         "title": {"type": "plain_text", "text": _("Human Verification", 23)[:24]},
-        "submit": {"type": "plain_text", "text": _("Human Verification Job")},
+        "submit": {"type": "plain_text", "text": _("Human Verification Job", 23)[:24]},
         "private_metadata": job["uuid"],
         "blocks": blocks,
     }
