@@ -168,18 +168,18 @@ def segment_quality_score(score: float, taus_version: str = "1.0.0") -> str:
     if taus_version == "2.0.0":
         # TAUS QE version 2.0.0
         if score >= 0.9:
-            return "Overall Translation Quality: Best"
+            return _("Overall Translation Quality: Best")
         elif score >= 0.88:
-            return "Overall Translation Quality: Good"
+            return _("Overall Translation Quality: Good")
         elif score >= 0.8:
-            return "Overall Translation Quality: Acceptable"
-        return "Overall Translation Quality: Bad"
+            return _("Overall Translation Quality: Acceptable")
+        return _("Overall Translation Quality: Bad")
     else:
         # TAUS QE version 1.0.0
         if score >= 0.95:
-            return "Overall Translation Quality: Best"
+            return _("Overall Translation Quality: Best")
         elif score >= 0.9:
-            return "Overall Translation Quality: Good"
+            return _("Overall Translation Quality: Good")
         elif score >= 0.85:
-            return "Overall Translation Quality: Acceptable"
-        return "Overall Translation Quality: Bad"
+            return _("Overall Translation Quality: Acceptable")
+        return _("Overall Translation Quality: Bad")

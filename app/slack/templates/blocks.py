@@ -340,12 +340,12 @@ def verify_job_blocks(
         memory_percentage = (counts["translation_memory"] / segment_count) * 100
 
     report_message = (
-        f":large_blue_square: Translation Memory: {round(memory_percentage)}%\n"
+        f":large_blue_square: {_('Translation Memory')}: {round(memory_percentage)}%\n"
     )
-    report_message += f":large_green_square: Best: {round(best)}%\n"
-    report_message += f":large_yellow_square: Good: {round(good)}%\n"
-    report_message += f":large_orange_square: Acceptable: {round(acceptable)}%\n"
-    report_message += f":large_red_square: Bad: {round(bad)}%"
+    report_message += f":large_green_square: {_('Best')}: {round(best)}%\n"
+    report_message += f":large_yellow_square: {_('Good')}: {round(good)}%\n"
+    report_message += f":large_orange_square: {_('Acceptable')}: {round(acceptable)}%\n"
+    report_message += f":large_red_square: {_('Bad')}: {round(bad)}%"
     cost = 0.00
     for item in costs:
         if item["language_uuid"] == language_uuid:
