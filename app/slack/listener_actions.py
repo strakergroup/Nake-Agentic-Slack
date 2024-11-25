@@ -56,7 +56,9 @@ from ..auth.connector import (
     RayClient,
     RayContext,
     approve_pending_groups,
+    duration_to_tokens,
     get_group_mt_engine,
+    log_transcribe_request,
 )
 from ..config import config, domains, Environment
 from ..ray.service import RayService, get_job_predictions
@@ -95,12 +97,20 @@ async def respond_to_message(
             for file in message["files"]:
                 if file["filetype"] in ["mp4", "mp3"]:
                     file_info = await client.files_info(file=file["id"])
+                    duration_ms = file_info["file"]["duration_ms"]
                     download_url = file_info["file"]["url_private"]
+                    file_name = file_info["file"]["name"]
                     token = client.token
                     # send video to wb consumer
-                    if await require_ray_client(context, prompt_login=False):
-                        # TODO: Requires token check
-                        if await require_mt_tokens(context):
+                    if (
+                        await require_ray_client(context, prompt_login=False)
+                        and duration_ms
+                    ):
+                        tokens = duration_to_tokens(duration_ms)
+                        if await require_mt_tokens(context, tokens):
+                            await log_transcribe_request(
+                                duration_ms, file_name, context["ray"]
+                            )
                             await create_task(
                                 context["ray"].client.id,
                                 "wb_task:media:asr",
