@@ -110,7 +110,6 @@ async def respond_to_message(
                         and duration_ms
                     ):
                         tokens = duration_to_tokens(duration_ms)
-                        print(tokens, "hello sir")
                         if await require_mt_tokens(context, tokens):
                             await log_transcribe_request(
                                 duration_ms, file_name, context["ray"]
