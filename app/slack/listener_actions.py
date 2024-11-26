@@ -65,7 +65,7 @@ from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
     get_auto_translate_settings_and_langs,
 )
-from ..ray.utils import is_ibm_enterprise
+from ..ray.utils import get_media_duration, is_ibm_enterprise
 from ..watson import watson_message
 from .select_options import get_file_options_cached
 
@@ -97,8 +97,11 @@ async def respond_to_message(
             for file in message["files"]:
                 if file["filetype"] in ["mp4", "mp3"]:
                     file_info = await client.files_info(file=file["id"])
-                    duration_ms = file_info["file"]["duration_ms"]
                     download_url = file_info["file"]["url_private"]
+                    # duration_ms = file_info["file"].get("duration_ms", 0)
+                    duration_ms = 0
+                    if not duration_ms:
+                        duration_ms = get_media_duration(download_url, client.token)
                     file_name = file_info["file"]["name"]
                     token = client.token
                     # send video to wb consumer
@@ -107,6 +110,7 @@ async def respond_to_message(
                         and duration_ms
                     ):
                         tokens = duration_to_tokens(duration_ms)
+                        print(tokens, "hello sir")
                         if await require_mt_tokens(context, tokens):
                             await log_transcribe_request(
                                 duration_ms, file_name, context["ray"]
