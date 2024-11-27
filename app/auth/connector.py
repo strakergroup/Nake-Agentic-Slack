@@ -1538,7 +1538,7 @@ def duration_to_tokens(duration_ms: int) -> int:
     Convert duration to tokens.
     """
     cost_per_min = 2  # $2
-    token_value = 0.002  # $0.002
+    token_value = 0.02  # $0.002
     duration_per_token_min = token_value / cost_per_min  # min
     duration_per_token_ms = duration_per_token_min * 60 * 1000
     # 60 ms per token
