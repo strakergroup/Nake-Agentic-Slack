@@ -1537,12 +1537,12 @@ def duration_to_tokens(duration_ms: int) -> int:
     """
     Convert duration to tokens.
     """
-    # convert ms to hours
-    cost_per_hour = 0.37
-    token_value = 0.2
-    hours_per_token = token_value / cost_per_hour
-    duration_hours = duration_ms / (1000 * 60 * 60)
-    return math.ceil(duration_hours / hours_per_token)
+    cost_per_min = 2  # $2
+    token_value = 0.002  # $0.002
+    duration_per_token_min = token_value / cost_per_min  # min
+    duration_per_token_ms = duration_per_token_min * 60 * 1000
+    # 60 ms per token
+    return math.ceil(duration_ms / duration_per_token_ms)
 
 
 async def get_client_type(client_id: str, group_id: str | None) -> str | None:
