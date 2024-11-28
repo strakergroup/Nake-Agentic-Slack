@@ -98,6 +98,7 @@ async def home_view(
             "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
         },
     ]
+    # Domain needs to be updates to verify instead of languagecloud
     if not is_ibm_enterprise(context.enterprise_id):
         footer_blocks.append(
             {
@@ -105,7 +106,7 @@ async def home_view(
                 "text": {
                     "type": "plain_text",
                     "emoji": True,
-                    "text": _(":globe_with_meridians: Visit Straker LanguageCloud"),
+                    "text": _(":globe_with_meridians: Visit Straker Verify"),
                 },
                 "action_id": "link_1",
                 "url": domains.languagecloud,
@@ -321,7 +322,7 @@ async def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": _("Welcome to the Straker Translate App!"),
+                    "text": _(":wave: Welcome to the Straker Translate!"),
                 },
             },
             *home_auth_blocks(
@@ -408,7 +409,7 @@ async def home_view(
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest LanguageCloud and Enterprise features, provide updates, and engage with customers like you!"
+                        "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest Verify and Enterprise features, provide updates, and engage with customers like you!"
                     ),
                 },
             },

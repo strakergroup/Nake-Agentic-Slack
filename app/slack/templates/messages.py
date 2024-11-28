@@ -97,7 +97,7 @@ class OnboardingMessage(SlackMessage):
                         "text": {
                             "type": "mrkdwn",
                             "text": _(
-                                "Connect your LanguageCloud account to get details about your translation jobs."
+                                "Connect your account to get details about your translation jobs."
                             ),
                         },
                     },
@@ -108,7 +108,7 @@ class OnboardingMessage(SlackMessage):
                                 "type": "button",
                                 "text": {
                                     "type": "plain_text",
-                                    "text": _("Connect LanguageCloud account"),
+                                    "text": _("Connect account"),
                                 },
                                 "style": "primary",
                                 "url": get_language_cloud_connect_url(
@@ -166,17 +166,17 @@ class LoginMessage(SlackMessage):
         # Have variations of the login message depending on the arguments.
         block_text = "In order to use the Straker Translate features, please login. Click this button below;"
         if variation == self.GET_JOB:
-            block_text = "Connect your LanguageCloud account to view your jobs."
+            block_text = "Connect your account to view your jobs."
         elif variation == self.NEW_JOB:
             block_text = (
-                "Connect your LanguageCloud account to submit a new translation job."
+                "Connect your account to submit a new translation job."
             )
         elif variation == self.INSIGHTS:
-            block_text = "Connect your LanguageCloud account to view your insights."
+            block_text = "Connect your account to view your insights."
         elif variation == self.CANCEL_JOB:
-            block_text = "Connect your LanguageCloud account to cancel your job."
+            block_text = "Connect your account to cancel your job."
         elif variation == self.QUALITY_EVALUATION:
-            block_text = "Connect your LanguageCloud account to evaluate the quality of your translation."
+            block_text = "Connect your account to evaluate the quality of your translation."
         elif isinstance(ray_client, RayClient):
             user_details = f"<<{domains.languagecloud}|{ray_client.username}>>"
             block_text = (
@@ -220,7 +220,7 @@ class LoginMessage(SlackMessage):
                                 "type": "button",
                                 "text": {
                                     "type": "plain_text",
-                                    "text": _("Connect LanguageCloud account"),
+                                    "text": _("Connect account"),
                                 },
                                 "style": "primary",
                                 "url": get_language_cloud_connect_url(
@@ -232,7 +232,7 @@ class LoginMessage(SlackMessage):
                     }
                 )
         super().__init__(
-            "Connect your LanguageCloud account",
+            "Connect your account",
             msg,
         )
 
@@ -682,7 +682,7 @@ class LogoutMessage(SlackMessage):
                 "Click this button to disconnect your account: *{ray_client.username}*."
             )
         super().__init__(
-            "Disconnect your LanguageCloud account",
+            "Disconnect your account",
             [
                 {
                     "type": "section",
@@ -2079,7 +2079,7 @@ class HelpMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            ":globe_with_meridians: View your LanguageCloud connection."
+                            ":globe_with_meridians: View your connection."
                         ),
                     },
                     "accessory": {
@@ -2093,7 +2093,7 @@ class HelpMessage(SlackMessage):
                     "block_id": "sectionBlockWithButton",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(":Seedling: Connect your LanguageCloud account"),
+                        "text": _(":Seedling: Connect your account"),
                     },
                     "accessory": {
                         "type": "button",
@@ -2242,7 +2242,7 @@ class ConnectionInfoMessage(SlackMessage):
                                     "type": "button",
                                     "text": {
                                         "type": "plain_text",
-                                        "text": _("Connect LanguageCloud account"),
+                                        "text": _("Connect account"),
                                     },
                                     "style": "primary",
                                     "url": get_language_cloud_connect_url(
@@ -2352,7 +2352,7 @@ class SsoConnectionInfoMessage(SlackMessage):
                                     "type": "button",
                                     "text": {
                                         "type": "plain_text",
-                                        "text": _("Login to LanguageCloud-----"),
+                                        "text": _("Login to Verify"),
                                     },
                                     "style": "primary",
                                     # TODO: ray_connection.client could be None
@@ -2383,14 +2383,14 @@ class ClientSignupEventMessage(SlackMessage):
     def __init__(self, event: ClientSignupEvent) -> None:
         self.event = event
         super().__init__(
-            "Thank you for signing up to LanguageCloud :tada:",
+            "Thank you for signing :tada:",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "Thank you for signing up to LanguageCloud {event.username} :tada:",
+                            "Thank you for signing {event.username} :tada:",
                         ),
                     },
                 },
@@ -2412,14 +2412,14 @@ class ClientSignupEventAdminMessage(SlackMessage):
         self.event = event
         user_str = f"{event.first_name} {event.last_name} ({event.email})"
         super().__init__(
-            _("A new user has signed up for a LanguageCloud account: {user_str}"),
+            _("A new user has signed up: {user_str}"),
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "A new user has signed up for a LanguageCloud account:\n{user_str}",
+                            "A new user has signed up:\n{user_str}",
                         ),
                     },
                 },
@@ -2445,7 +2445,7 @@ class ClientSignupEventAdminMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "To approve this user please click the approve button below, or alternatively if you need to change anything, please log into LanguageCloud to edit their permissions."
+                            "To approve this user please click the approve button below, or alternatively if you need to change anything, please log into Verify to edit their permissions."
                         ),
                     },
                 },
@@ -2470,7 +2470,7 @@ class ClientSignupEventAdminMessage(SlackMessage):
                             "text": {
                                 "type": "plain_text",
                                 "emoji": True,
-                                "text": _("Log into LanguageCloud"),
+                                "text": _("Log into Verify"),
                             },
                             "url": domains.languagecloud,
                             "action_id": "link",
@@ -2485,14 +2485,14 @@ class ClientApprovedEventMessage(SlackMessage):
     def __init__(self, groups: list[str]) -> None:
         groups_text = "\n".join(f"- *{group}*" for group in groups)
         super().__init__(
-            ":raised_hands: Your LanguageCloud groups have been approved by an Admin.",
+            ":raised_hands: Your Verify groups have been approved by an Admin.",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            ":raised_hands: Your LanguageCloud groups have been approved by an Admin:\n\n{groups_text}",
+                            ":raised_hands: Your Verify groups have been approved by an Admin:\n\n{groups_text}",
                         ),
                     },
                 },
@@ -2608,7 +2608,7 @@ class JobCompletedEventMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "Please log into LanguageCloud below to access your completed files."
+                            "Please log into Verify below to access your completed files."
                         ),
                     },
                 }
@@ -2720,7 +2720,7 @@ class JobQuotedEventMessage(SlackMessage):
 class JobDelayMessage(SlackMessage):
     def __init__(self) -> None:
         message = _(
-            "Our LanguageCloud on-time AI prediction model has indicated that your job may be tracking behind schedule.\n\n"
+            "Our on-time AI prediction model has indicated that your job may be tracking behind schedule.\n\n"
         )
         message += _(
             "Our Project Managers have been notified and will be taking action to ensure that we still meet your due date. "

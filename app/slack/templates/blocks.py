@@ -61,22 +61,37 @@ def home_auth_blocks(
                 },
             },
         ]
-    msg: list[dict[str, Any]] = [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": _(
-                    "Connect your account to get details about your translation jobs."
-                ),
-            },
-        },
-        {
-            "type": "actions",
-            "elements": [],
-        },
-    ]
+    # msg: list[dict[str, Any]] = [
+    #     {
+    #         "type": "section",
+    #         "text": {
+    #             "type": "mrkdwn",
+    #             "text": _(
+    #                 "Connect your account to get details about your translation jobs."
+    #             ),
+    #         },
+    #     },
+    #     {
+    #         "type": "actions",
+    #         "elements": [],
+    #     },
+    # ]
     if is_ibm_enterprise(enterprise_id):
+        msg: list[dict[str, Any]] = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "Connect your account to get details about your translation jobs."
+                    ),
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [],
+            },
+        ]
         msg[1]["elements"].insert(
             0,
             {
@@ -90,13 +105,28 @@ def home_auth_blocks(
             },
         )
     else:
+        msg: list[dict[str, Any]] = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "\n\nVerify (Quality Evaluation) allows you:\n\n    • Translate content using AI translation.\n    • Assess the quality of the translation to determine the reliability of the AI-translated content along with any existing translation memory you may have with Straker.\n    • Determine whether the translated content is suitable for use or requires further human verification."
+                    ),
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [],
+            },
+        ]
         msg[1]["elements"].insert(
             0,
             {
                 "type": "button",
                 "text": {
                     "type": "plain_text",
-                    "text": _("Connect LanguageCloud account"),
+                    "text": _("Connect to Verify"),
                 },
                 "style": "primary",
                 "url": get_language_cloud_connect_url(
@@ -116,7 +146,7 @@ def job_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
                 "type": "button",
                 "text": {
                     "type": "plain_text",
-                    "text": _("View this job in LanguageCloud"),
+                    "text": _("View this job"),
                     "emoji": True,
                 },
                 "style": "primary",
@@ -207,7 +237,7 @@ def quote_message_block(
                 "type": "button",
                 "text": {
                     "type": "plain_text",
-                    "text": _("View in LanguageCloud"),
+                    "text": _("View in Verify"),
                     "emoji": True,
                 },
                 "url": job_url,
