@@ -113,23 +113,23 @@ async def home_view(
             },
         )
     translation_settings_blocks: list[dict[str, Any]] = []
-    if translation_settings_enabled:
-        translation_settings_blocks = [
-            {"type": "divider"},
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": _("Translate Channels")},
+    # if translation_settings_enabled:
+    translation_settings_blocks = [
+        {"type": "divider"},
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": _("Translate Channels")},
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _(
+                    "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
+                ),
             },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
-                    ),
-                },
-            },
-        ]
+        },
+    ]
     if (
         isinstance(rayConnection, RayConnection)
         and rayConnection.client
