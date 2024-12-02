@@ -968,7 +968,8 @@ def get_language_cloud_connect_url(
             user_id, team_id, enterprise_id, channel_id, expire_seconds
         )
     }
-    return f"{domains.verify}/apps?{urlencode(params)}"
+    # TODO: link to apps page
+    return f"{domains.verify}?{urlencode(params)}"
 
 
 async def approve_pending_groups(
