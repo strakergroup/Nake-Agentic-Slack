@@ -105,10 +105,10 @@ async def home_view(
                 "text": {
                     "type": "plain_text",
                     "emoji": True,
-                    "text": _(":globe_with_meridians: Visit Straker LanguageCloud"),
+                    "text": _("Visit Straker Verify"),
                 },
                 "action_id": "link_1",
-                "url": domains.languagecloud,
+                "url": domains.verify,
             },
         )
     translation_settings_blocks: list[dict[str, Any]] = []
