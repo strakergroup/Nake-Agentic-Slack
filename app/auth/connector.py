@@ -969,7 +969,7 @@ def get_language_cloud_connect_url(
         )
     }
     # TODO: link to apps page
-    return f"{domains.verify}?{urlencode(params)}"
+    return f"{domains.verify}/apps?{urlencode(params)}"
 
 
 async def approve_pending_groups(
