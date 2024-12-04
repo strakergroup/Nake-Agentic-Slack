@@ -20,6 +20,9 @@ RUN /root/.local/bin/pipenv sync
 # Final build stage - Run the app
 FROM python:3.11
 
+# install ffmpeg
+RUN apt-get update && apt-get install -y ffmpeg
+
 WORKDIR /code
 
 # Copy venv from the previous build stage

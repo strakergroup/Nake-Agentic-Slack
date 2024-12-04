@@ -5,15 +5,15 @@ from app.slack.templates.messages import LoginMessage
 class TestLoginMessage:
     def test_no_enterprise_id(self, user_id: str, team_id: str, channel_id: str):
         message = LoginMessage(user_id, team_id, None, channel_id)
-        assert message.text == "Connect your LanguageCloud account"
+        assert message.text == "Connect your account"
         message = LoginMessage(user_id, team_id, "", channel_id)
-        assert message.text == "Connect your LanguageCloud account"
+        assert message.text == "Connect your account"
 
     def test_normal_variation(
         self, user_id: str, team_id: str, enterprise_id: str, channel_id: str
     ):
         message = LoginMessage(user_id, team_id, enterprise_id, channel_id)
-        assert message.text == "Connect your LanguageCloud account"
+        assert message.text == "Connect your account"
         assert (
             "In order to use the Straker Translate features, please login. Click this button below;"
             in message.blocks[0]["text"]["text"]
@@ -30,9 +30,9 @@ class TestLoginMessage:
         message = LoginMessage(
             user_id, team_id, enterprise_id, channel_id, ray_client=ray_client
         )
-        assert message.text == "Connect your LanguageCloud account"
+        assert message.text == "Connect your account"
         assert (
-            "Your connected LanguageCloud account is"
+            "Your connected account is"
             in message.blocks[0]["text"]["text"]
         )
         assert ray_client.username in message.blocks[0]["text"]["text"]
@@ -47,9 +47,9 @@ class TestLoginMessage:
         message = LoginMessage(
             user_id, team_id, enterprise_id, channel_id, variation=LoginMessage.GET_JOB
         )
-        assert message.text == "Connect your LanguageCloud account"
+        assert message.text == "Connect your account"
         assert (
-            "Connect your LanguageCloud account to view your jobs."
+            "Connect your account to view your jobs."
             in message.blocks[0]["text"]["text"]
         )
 
@@ -59,9 +59,9 @@ class TestLoginMessage:
         message = LoginMessage(
             user_id, team_id, enterprise_id, channel_id, variation=LoginMessage.NEW_JOB
         )
-        assert message.text == "Connect your LanguageCloud account"
+        assert message.text == "Connect your account"
         assert (
-            "Connect your LanguageCloud account to submit a new translation job"
+            "Connect your account to submit a new translation job"
             in message.blocks[0]["text"]["text"]
         )
 
@@ -84,9 +84,9 @@ class TestLoginMessage:
             ray_client=ray_client,
             variation=LoginMessage.GET_JOB,
         )
-        assert message.text == "Connect your LanguageCloud account"
+        assert message.text == "Connect your account"
         assert (
-            "Connect your LanguageCloud account to view your jobs."
+            "Connect your account to view your jobs."
             in message.blocks[0]["text"]["text"]
         )
         assert ray_client.username not in message.blocks[0]["text"]["text"]

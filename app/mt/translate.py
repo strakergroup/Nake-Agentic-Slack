@@ -4,7 +4,7 @@ from slack_bolt.context.async_context import AsyncBoltContext
 
 from app.mt.schemas import TranslationRequest, TranslationResponse
 from ..config import domains
-from app.auth.connector import get_group_mt_engine, spend_mt_tokens
+from app.auth.connector import get_group_mt_engine
 from app.slack.utils import escape_slack_emoji, unescape_slack_emoji
 from ..models import Language
 from ..database import engines
