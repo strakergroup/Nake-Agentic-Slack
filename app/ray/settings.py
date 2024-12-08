@@ -1,7 +1,7 @@
 import functools
 from typing import Iterable
 import langcodes
-from sqlalchemy import delete, distinct, func, select, text, update
+from sqlalchemy import delete, distinct, func, select, text, update, or_
 from sqlalchemy.orm import Session
 from slack_bolt.context.async_context import AsyncBoltContext
 
@@ -350,7 +350,16 @@ def get_or_create_group_settings(
         session.refresh(new_settings)
     query = select(SlackGroupSettings)
     team_id = team_id or context.team_id
-    query = query.where(SlackGroupSettings.slack_team_id == context.team_id)
+    enterprise_id = context.enterprise_id
+    if enterprise_id:
+        query = query.where(
+            or_(
+                SlackGroupSettings.slack_team_id == team_id,
+                SlackGroupSettings.slack_enterprise_id == enterprise_id,
+            )
+        )
+    else:
+        query = query.where(SlackGroupSettings.slack_team_id == team_id)
     settings = session.scalars(query).all()
     return settings
 
@@ -505,9 +514,7 @@ def disable_auto_translate_group_settings(
         channel_id str: The ID of the channel (conversations) to auto-translate.
     """
     with Session(engines["ray_integration"]) as session:
-        channel_settings = get_all_settings_for_channel(
-            session, context, channel_id
-        )
+        channel_settings = get_all_settings_for_channel(session, context, channel_id)
         settings_ids = [setting.id for setting in channel_settings]
         session.execute(
             delete(SlackGroupSettingsTranslationLangs).where(
@@ -543,7 +550,7 @@ def get_full_group_translation_settings(
             .group_by(SlackGroupSettingsTranslation.id)
             .limit(rows_per_page)
             .offset((page - 1) * rows_per_page)
-            .order_by(SlackGroupSettingsTranslation.id)
+            .order_by(SlackGroupSettingsTranslation.id.desc())
         ).all()
         channel_langs = session.scalars(
             select(SlackGroupSettingsTranslationLangs)
