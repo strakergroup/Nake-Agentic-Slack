@@ -355,7 +355,7 @@ def get_or_create_group_settings(
         query = query.where(
             or_(
                 SlackGroupSettings.slack_team_id == team_id,
-                SlackGroupSettings.slack_enterprise_id == enterprise_id,
+                SlackGroupSettings.slack_team_id == enterprise_id,
             )
         )
     else:
