@@ -1222,7 +1222,7 @@ def translation_settings_view(
                     "type": "plain_text",
                     "text": _("Automatically translate messages into these languages"),
                 },
-                "optional": False,
+                "optional": True,
             },
             {
                 "type": "input",
