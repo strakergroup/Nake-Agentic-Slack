@@ -3540,7 +3540,13 @@ class DocMtMessage(SlackMessage):
 class EvaluateSuccessMessage(SlackMessage):
     """Message verify consumer event response"""
 
-    def __init__(self, job: dict[str, Any], all_langs: list[dict[str, str]]) -> None:
+    def __init__(
+        self,
+        job: dict[str, Any],
+        all_langs: list[dict[str, str]],
+        tokens: int,
+        is_ibm_enterprise: bool,
+    ) -> None:
         languages = job["target_languages"]
         file = job["source_files"][0]
         source_lang_uuid = file["report"]["language_uuid"]
@@ -3555,7 +3561,18 @@ class EvaluateSuccessMessage(SlackMessage):
             for target_file in file["target_files"]:
                 if target_file["language_uuid"] == lang["uuid"]:
                     lang["target_file_uuid"] = target_file["target_file_uuid"]
-        blocks = [
+        blocks = []
+        if not is_ibm_enterprise:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _("You have used {tokens} AI tokens."),
+                    },
+                }
+            )
+        blocks.append(
             {
                 "type": "section",
                 "text": {
@@ -3563,7 +3580,7 @@ class EvaluateSuccessMessage(SlackMessage):
                     "text": _("AI quality evaluation of your translated files:"),
                 },
             }
-        ]
+        )
         lang_blocks = []
         for lang in languages:
             lang_blocks.extend(
