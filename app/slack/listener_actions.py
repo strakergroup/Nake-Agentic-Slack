@@ -326,11 +326,10 @@ async def auto_translate_message(
         return
     assert context.channel_id  # TODO enforce this
     # TODO make this fetch all settings for channel
-    settings, target_langs = get_auto_translate_settings_and_langs(
-        context, context.channel_id
-    )
+    settings = get_auto_translate_settings_and_langs(context, context.channel_id)
+    target_langs = [langs["target_lang"] for langs in settings]
     assert settings  # TODO Fix typing
-    if not target_langs:
+    if not settings:
         return
     try:
         source_lang, translations = await get_ai_translation(
@@ -358,7 +357,7 @@ async def auto_translate_message(
         timestamp = None
         if is_edit:
             timestamp = await get_mt_ts_cached(ts)
-        if settings[0].display_format == "thread":
+        if settings[0]["display_format"] == "thread":
             if timestamp:
                 await client.chat_update(
                     channel=context.channel_id,
@@ -375,7 +374,7 @@ async def auto_translate_message(
                 )
                 # save timestamp to cache
                 asyncio.create_task(set_mt_ts_edit(send_ts=ts, reply_ts=request["ts"]))
-        elif settings[0].display_format == "message":
+        elif settings[0]["display_format"] == "message":
             if timestamp:
                 await client.chat_update(
                     channel=context.channel_id,
