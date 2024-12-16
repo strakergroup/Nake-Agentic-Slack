@@ -1282,6 +1282,9 @@ def verify_job_modal(
         for report in reports:
             if lang["uuid"] == report["target_language"]:
                 lang["report"] = report
+        for target_file in file["target_files"]:
+            if lang["uuid"] == target_file["language_uuid"]:
+                lang["human_job_status"] = target_file.get("human_job_status", "")
     blocks = [
         {
             "type": "section",
@@ -1305,6 +1308,7 @@ def verify_job_modal(
                 language_uuid=lang["uuid"],
                 costs=costs,
                 optional=len(languages) > 1,
+                human_job_status=lang.get("human_job_status", ""),
             )
         )
     return {
