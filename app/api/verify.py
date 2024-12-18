@@ -54,7 +54,7 @@ async def submit_evaluation_job(
 async def get_evaluation_job(user: SlackUser, job_uuid: str):
     ray_client = await get_ray_client(user.user_id, user.team_id, user.enterprise_id)
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = client.get(
+        response = await client.get(  # Added missing await
             f"{domains.verify_api}/evaluate/{job_uuid}",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )
@@ -64,7 +64,7 @@ async def get_evaluation_job(user: SlackUser, job_uuid: str):
 
 async def get_client_evaluation_job(ray_client: RayClient, job_uuid: str):
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = client.get(
+        response = await client.get(  # Added missing await
             f"{domains.verify_api}/evaluate/{job_uuid}",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )
@@ -74,7 +74,7 @@ async def get_client_evaluation_job(ray_client: RayClient, job_uuid: str):
 
 async def download_verify_file(ray_client: RayClient, file_uuid: str):
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = client.get(
+        response = await client.get(  # Added missing await
             f"{domains.verify_api}/files/{file_uuid}",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )
