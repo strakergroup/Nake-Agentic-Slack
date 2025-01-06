@@ -37,7 +37,7 @@ async def submit_evaluation_job(
         )
     }
     # Create a job
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(
             f"{domains.verify_api}/evaluate/create",
             files=files,
@@ -53,8 +53,8 @@ async def submit_evaluation_job(
 
 async def get_evaluation_job(user: SlackUser, job_uuid: str):
     ray_client = await get_ray_client(user.user_id, user.team_id, user.enterprise_id)
-    with httpx.Client() as client:
-        response = client.get(
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(  # Added missing await
             f"{domains.verify_api}/evaluate/{job_uuid}",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )
@@ -63,8 +63,8 @@ async def get_evaluation_job(user: SlackUser, job_uuid: str):
 
 
 async def get_client_evaluation_job(ray_client: RayClient, job_uuid: str):
-    with httpx.Client() as client:
-        response = client.get(
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(  # Added missing await
             f"{domains.verify_api}/evaluate/{job_uuid}",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )
@@ -73,8 +73,8 @@ async def get_client_evaluation_job(ray_client: RayClient, job_uuid: str):
 
 
 async def download_verify_file(ray_client: RayClient, file_uuid: str):
-    with httpx.Client() as client:
-        response = client.get(
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(  # Added missing await
             f"{domains.verify_api}/files/{file_uuid}",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )
@@ -139,7 +139,7 @@ async def get_verify_languages():
             notify_exception(e)
 
     url = f"{domains.verify_api}/languages"
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30) as client:
         response = await client.get(url)
     response.raise_for_status()
     languages = response.json()["data"]
@@ -164,7 +164,7 @@ async def get_job_pricing(
     # TODO: Update for multiple files
     file_and_languages = [f"{file_uuid}:{lang}" for lang in language_uuids]
     data = {"job_uuid": job_uuid, "file_and_languages": file_and_languages}
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(url, headers=headers, data=data)
     response.raise_for_status()
     return response.json()

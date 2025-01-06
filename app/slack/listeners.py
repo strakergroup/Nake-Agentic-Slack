@@ -734,11 +734,12 @@ async def ray_command(
                 ) or (context["ray"] and context["ray"].client and is_straker_admin)
 
                 if translation_settings_enabled:
-                    settings, auto_translate_langs = (
-                        get_auto_translate_settings_and_langs(
-                            context, context.channel_id
-                        )
+                    settings = get_auto_translate_settings_and_langs(
+                        context, context.channel_id
                     )
+                    auto_translate_langs = [
+                        setting["target_lang"] for setting in settings
+                    ]
                     await client.views_open(
                         trigger_id=command["trigger_id"],
                         view=translation_settings_view(
@@ -841,10 +842,8 @@ async def show_auto_translate_settings(
     channel_info = json.loads(payload["value"])
     channel_id = channel_info.get("channel_id")
     team_id = channel_info.get("team_id", "")
-    settings, auto_translate_langs = get_auto_translate_settings_and_langs(
-        context, channel_id, team_id
-    )
-
+    settings = get_auto_translate_settings_and_langs(context, channel_id, team_id)
+    auto_translate_langs = [setting["target_lang"] for setting in settings]
     if channel_id:
         error_msg = _("You do not have permission to edit this channel!!")
         old_token = client.token
@@ -862,7 +861,7 @@ async def show_auto_translate_settings(
                 view=translation_settings_view(
                     [channel_id] if channel_id else None,
                     auto_translate_langs,
-                    settings[0].display_format if settings else "thread",
+                    settings[0]["display_format"] if settings else "thread",
                     team_id,
                 ),
             )
@@ -883,7 +882,7 @@ async def show_auto_translate_settings(
             view=translation_settings_view(
                 [channel_id] if channel_id else None,
                 auto_translate_langs,
-                settings.display_format if settings else "thread",
+                settings["display_format"] if settings else "thread",
                 team_id,
             ),
         )
@@ -1422,12 +1421,16 @@ async def view_update_auto_translate_settings(
         return
     await ack(response_action="clear")
     try:
-        update_auto_translate_group_settings(
-            context,
-            channels=team_channels,
-            languages=form.languages,
-            display_format=form.display_format,
-        )
+        if not form.languages:
+            for channel in team_channels:
+                disable_auto_translate_group_settings(context, channel["channel_id"])
+        else:
+            update_auto_translate_group_settings(
+                context,
+                channels=team_channels,
+                languages=form.languages,
+                display_format=form.display_format,
+            )
         team_token = get_token_for_team(team_id) if team_id else None
         if team_token:
             client.token = team_token
@@ -1449,11 +1452,20 @@ async def view_update_auto_translate_settings(
 
         async def notify_channel(channel_id: str, bot_token: str):
             try:
-                msg = AutoTranslateSettingsChangedMessage(
-                    context["user_id"], channel_id, form.languages, form.display_format
-                )
                 client.token = bot_token
-                await client.chat_postMessage(channel=channel_id, text=msg.text)
+                if form.languages:
+                    msg = AutoTranslateSettingsChangedMessage(
+                        context["user_id"],
+                        channel_id,
+                        form.languages,
+                        form.display_format,
+                    )
+                    await client.chat_postMessage(channel=channel_id, text=msg.text)
+                else:
+                    msg = AutoTranslateSettingsDisabledMessage(
+                        context["user_id"], channel_id
+                    )
+                    await client.chat_postMessage(channel=channel_id, text=msg.text)
             except Exception as e:
                 notify_exception(e)
                 if context.enterprise_id:
@@ -1473,6 +1485,7 @@ async def view_update_auto_translate_settings(
             await notify_channel(channel["channel_id"], channel["bot_token"])
 
     except Exception as e:
+        print(e)
         notify_exception(e)
 
 

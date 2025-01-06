@@ -969,7 +969,7 @@ def get_language_cloud_connect_url(
         )
     }
     # TODO: link to apps page
-    return f"{domains.verify}?{urlencode(params)}"
+    return f"{domains.verify}/marketplace?{urlencode(params)}"
 
 
 async def approve_pending_groups(
@@ -1681,7 +1681,7 @@ async def resolve_channels_to_team(
             channel_info = await client.conversations_info(channel=channel)
             team_channel.append(
                 {
-                    "team_id": get_team_from_token(client.token),
+                    "team_id": channel_info["channel"]["context_team_id"],
                     "channel_id": channel,
                     "bot_token": client.token,
                     "name": channel_info["channel"]["name"],

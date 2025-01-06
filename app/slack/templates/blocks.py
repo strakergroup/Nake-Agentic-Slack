@@ -356,6 +356,7 @@ def verify_job_blocks(
     language_uuid: str,
     costs: list[dict[str, Any]],
     optional: bool,
+    human_job_status: str,
 ) -> dict[str, Any]:
     """The blocks for the verification job."""
     segment_count = sum(report["count"].values())
@@ -381,30 +382,41 @@ def verify_job_blocks(
         if item["language_uuid"] == language_uuid:
             cost = item["service_list"][0]["estimated_cost"]
             break
-
-    return [
-        {
-            "type": "input",
-            "block_id": f"verification_checkbox_{language_uuid}",
-            "label": {
-                "type": "plain_text",
-                "text": _(lang_name),
-            },
-            "element": {
-                "type": "checkboxes",
-                "options": [
-                    {
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": f"USD${cost:.2f}",
-                        },
-                        "value": language_uuid,
-                    },
-                ],
-                "action_id": "verification_checkbox_action",
-            },
-            "optional": optional,  # Make the input block optional
+    cost_block = {
+        "type": "input",
+        "block_id": f"verification_checkbox_{language_uuid}",
+        "label": {
+            "type": "plain_text",
+            "text": _(lang_name),
         },
+        "element": {
+            "type": "checkboxes",
+            "options": [
+                {
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"USD${cost:.2f}",
+                    },
+                    "value": language_uuid,
+                },
+            ],
+            "action_id": "verification_checkbox_action",
+        },
+        "optional": optional,  # Make the input block optional
+    }
+    if human_job_status:
+        lang_label = f"*{_(lang_name)}*\n"
+        cost_block = {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _(
+                    "{lang_label} Human verification has been submitted for this language."
+                ),
+            },
+        }
+    return [
+        cost_block,
         {
             "type": "section",
             "fields": [

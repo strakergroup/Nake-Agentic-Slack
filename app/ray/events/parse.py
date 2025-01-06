@@ -121,10 +121,14 @@ async def get_ray_event_message(
     elif event_type == "verify:slack:evaluate:complete":
         # fetch the job report from event_data
         # create message which displays the job report
+        if event_data.get("error"):
+            return DocMtMessage()
         # TODO type job
         job = await get_evaluation_job(slack_user, event_data["job_uuid"])
         all_langs = await _get_languages_cached()
-        return EvaluateSuccessMessage(job["data"], all_langs)
+        return EvaluateSuccessMessage(
+            job["data"], all_langs, event_data["tokens"], is_ibm
+        )
     elif event_type == "verify:human_verification:completed":
         all_langs = await _get_languages_cached()
         lang_label = ""
