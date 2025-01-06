@@ -98,6 +98,7 @@ async def home_view(
             "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
         },
     ]
+    # Domain needs to be updates to verify instead of languagecloud
     if not is_ibm_enterprise(context.enterprise_id):
         footer_blocks.append(
             {
@@ -105,30 +106,30 @@ async def home_view(
                 "text": {
                     "type": "plain_text",
                     "emoji": True,
-                    "text": _(":globe_with_meridians: Visit Straker LanguageCloud"),
+                    "text": _("Visit Straker Verify"),
                 },
                 "action_id": "link_1",
-                "url": domains.languagecloud,
+                "url": domains.verify,
             },
         )
     translation_settings_blocks: list[dict[str, Any]] = []
-    if translation_settings_enabled:
-        translation_settings_blocks = [
-            {"type": "divider"},
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": _("Translate Channels")},
+    # if translation_settings_enabled:
+    translation_settings_blocks = [
+        {"type": "divider"},
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": _("Translate Channels")},
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _(
+                    "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
+                ),
             },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences."
-                    ),
-                },
-            },
-        ]
+        },
+    ]
     if (
         isinstance(rayConnection, RayConnection)
         and rayConnection.client
@@ -321,7 +322,7 @@ async def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": _("Welcome to the Straker Translate App!"),
+                    "text": _(":wave: Welcome to the Straker Translate!"),
                 },
             },
             *home_auth_blocks(
@@ -408,7 +409,7 @@ async def home_view(
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest LanguageCloud and Enterprise features, provide updates, and engage with customers like you!"
+                        "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest Verify and Enterprise features, provide updates, and engage with customers like you!"
                     ),
                 },
             },
@@ -1281,6 +1282,9 @@ def verify_job_modal(
         for report in reports:
             if lang["uuid"] == report["target_language"]:
                 lang["report"] = report
+        for target_file in file["target_files"]:
+            if lang["uuid"] == target_file["language_uuid"]:
+                lang["human_job_status"] = target_file.get("human_job_status", "")
     blocks = [
         {
             "type": "section",
@@ -1304,6 +1308,7 @@ def verify_job_modal(
                 language_uuid=lang["uuid"],
                 costs=costs,
                 optional=len(languages) > 1,
+                human_job_status=lang.get("human_job_status", ""),
             )
         )
     return {

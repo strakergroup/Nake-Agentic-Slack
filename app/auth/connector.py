@@ -964,11 +964,12 @@ def get_language_cloud_connect_url(
         str: The URL to connect a user's Slack account and LanguageCloud account.
     """
     params = {
-        "token": encrpyt_slack_integration_token(
+        "slack_token": encrpyt_slack_integration_token(
             user_id, team_id, enterprise_id, channel_id, expire_seconds
         )
     }
-    return f"{domains.languagecloud}/app/slack?{urlencode(params)}"
+    # TODO: link to apps page
+    return f"{domains.verify}/marketplace?{urlencode(params)}"
 
 
 async def approve_pending_groups(

@@ -439,7 +439,7 @@ def get_or_create_auto_translate_group_settings(
 
 def get_auto_translate_settings_and_langs(
     context: AsyncBoltContext, channel_id: str | None = None, team_id: str | None = None
-) -> tuple[SlackGroupSettingsTranslation | None, list[str]]:
+) -> list[dict[str, str]]:
     """Get the auto-translate languages for a channel for a LanugageCloud group.
 
     Returns:
@@ -447,19 +447,29 @@ def get_auto_translate_settings_and_langs(
     """
     # TODO: Combine with above function
     if not channel_id:
-        return None, []  # Modal triggers do not have channel_id
+        return []  # Modal triggers do not have channel_id
     team_id = team_id or context.team_id
     with Session(engines["ray_integration"]) as session:
-        channel_settings = get_all_settings_for_channel(session, context, channel_id)
-        channel_ids = [channel_settings.id for channel_settings in channel_settings]
-        results = session.scalars(
-            select(distinct(SlackGroupSettingsTranslationLangs.lang)).where(
-                SlackGroupSettingsTranslationLangs.translation_settings_id.in_(
-                    channel_ids
-                )
+        get_all_settings_for_channel(session, context, channel_id)
+        results = session.execute(
+            select(
+                distinct(SlackGroupSettingsTranslationLangs.lang).label("target_lang"),
+                SlackGroupSettingsTranslation.display_format,
+            )
+            .join(
+                SlackGroupSettingsTranslation,
+                SlackGroupSettingsTranslation.id
+                == SlackGroupSettingsTranslationLangs.translation_settings_id,
+            )
+            .where(
+                channel_id == SlackGroupSettingsTranslation.channel_id,
             )
         ).all()
-    return channel_settings, list(results)
+
+    return [
+        {"target_lang": row.target_lang, "display_format": row.display_format}
+        for row in results
+    ]
 
 
 def update_auto_translate_group_settings(
