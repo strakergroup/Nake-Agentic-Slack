@@ -1728,7 +1728,7 @@ class NewJobMessage(SlackMessage):
             )
 
         super().__init__(
-            "Submit a new translation job",
+            "Submit a new job",
             (
                 [
                     {
