@@ -4,6 +4,8 @@ import math
 import datetime
 from urllib.parse import urlencode, unquote
 
+from buglog import notify_exception
+
 from app.auth.connector import is_ibm_super_group
 from babel.numbers import format_currency as babel_format_currency
 import requests
@@ -13,6 +15,7 @@ from app.translate import Translator, translator_var
 
 from ..config import domains
 from io import BytesIO
+import ffmpeg
 
 
 def get_job_url(job_uuid: str, client_id: str | None = None) -> str:
@@ -318,3 +321,14 @@ def supported_file_types(file_type: str) -> bool:
     if file_type.lower().lstrip(".") in VALID_FILE_TYPES:
         return True
     return False
+
+
+def get_media_duration(download_url: str, token: str) -> int:
+    """Fetch the duration of the media file using ffprobe."""
+    try:
+        probe = ffmpeg.probe(download_url, headers=f"Authorization: Bearer {token}\n")
+        duration = float(probe["format"]["duration"])
+        return int(duration * 1000)
+    except ffmpeg.Error as e:
+        notify_exception(e.stderr, "Failed to get media duration")
+        return 0

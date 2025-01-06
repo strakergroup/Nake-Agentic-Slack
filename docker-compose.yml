@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile.local
     ports:
-      - "3000:3000"
+      - "3000:80"
     volumes:
       - .:/app
     networks:

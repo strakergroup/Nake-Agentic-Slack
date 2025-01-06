@@ -1506,48 +1506,43 @@ async def get_group_tokens(super_group_uuid: str) -> GetCreditBalanceResponse:
     return GetCreditBalanceResponse(ai_token=row_total.total, mt_token=0)
 
 
-async def spend_mt_tokens(
-    credits: int,
-    user: SlackUser,
-    ray_connection: RayConnection | None = None,
+async def log_transcribe_request(
+    duration_ms: int,
+    file_name: str,
+    ray_connection: RayConnection,
 ) -> int:
-    """Insert into the database obj_m_member_credit_transactions to record transaction"""
-    if ray_connection is None:
-        ray_connection = await get_ray_connection(
-            user.user_id, user.team_id, user.enterprise_id
-        )
-        if ray_connection is None:
-            raise ValueError("No Ray connection found.")
-    # If no client spend under super group
-    if ray_connection.client is None:
-        client_uuid = ray_connection.super_group[0].id
-        group_uuid = ray_connection.super_group[0].id
-    else:
-        client_uuid = ray_connection.client.id
-        group_uuid = ray_connection.client.user_group_id
-    description = "Machine Translation"
-    mt_scale = 0.1
-    amount = math.ceil(credits * mt_scale)
-    with engines["sitemanager"].begin() as conn:
-        sql = text(
-            """
-            INSERT INTO obj_m_member_credit_transactions
-                (uuid, client_uuid, group_uuid, amount, credit_type, transaction_type, description)
-            VALUES
-                (:uuid, :client_uuid, :group_uuid, :amount, :credit_type, :transaction_type, :description)
-            """
-        ).bindparams(
-            uuid=str(uuid.uuid4()),
-            client_uuid=client_uuid,
-            group_uuid=group_uuid,
-            amount=0 - amount,
-            credit_type="ai_token",
-            transaction_type="spend",
-            description=description,
-        )
-        conn.execute(sql)
+    """
+    Call languagecloud api to log the transcription request and consumer tokens
+    """
 
-    return amount
+    tokens = duration_to_tokens(duration_ms)
+    if not tokens:
+        raise Exception("Duration is 0")
+    url = f"{domains.languagecloud_api}/mt/transcribe"
+    headers = {
+        "Authorization": f"Bearer {ray_connection.client.id_token}",
+    }
+    data = {
+        "duration_ms": duration_ms,
+        "app_name": "slack",
+        "file_name": file_name,
+    }
+    async with httpx.AsyncClient() as http:
+        response = await http.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        return tokens
+
+
+def duration_to_tokens(duration_ms: int) -> int:
+    """
+    Convert duration to tokens.
+    """
+    cost_per_min = 2  # $2
+    token_value = 0.02  # $0.002
+    duration_per_token_min = token_value / cost_per_min  # min
+    duration_per_token_ms = duration_per_token_min * 60 * 1000
+    # 60 ms per token
+    return math.ceil(duration_ms / duration_per_token_ms)
 
 
 async def get_client_type(client_id: str, group_id: str | None) -> str | None:
