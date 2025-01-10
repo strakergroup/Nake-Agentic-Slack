@@ -441,6 +441,8 @@ def is_ibm_super_group(
     Args:
         team_id (str): The ID of the team.
     """
+    if not enterprise_id:
+        return False
     with engines["ray_integration_readonly"].connect() as conn:
         if enterprise_id:
             sql = text(
