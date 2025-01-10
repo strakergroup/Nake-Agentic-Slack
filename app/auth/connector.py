@@ -590,7 +590,7 @@ async def get_ray_client(
         else:
             sql = text(
                 """
-                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name,
+                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, link.slack_team_id,
                 mem.active, mem.groupid, link.is_sso, link.access_token, settings.id AS settings_id
                 FROM slack_deltaray_link link
                 INNER JOIN sitemanager.obj_m_member mem
