@@ -65,7 +65,7 @@ from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
     get_auto_translate_settings_and_langs,
 )
-from ..ray.utils import get_media_duration, is_ibm_enterprise
+from ..ray.utils import is_ibm_enterprise
 from ..watson import watson_message
 from .select_options import get_file_options_cached
 

@@ -21,7 +21,7 @@ RUN /root/.local/bin/pipenv sync
 FROM python:3.11
 
 # install ffmpeg
-RUN apt-get update && apt-get install -y ffmpeg
+# RUN apt-get update && apt-get install -y ffmpeg
 
 WORKDIR /code
 
