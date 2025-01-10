@@ -101,7 +101,7 @@ async def respond_to_message(
                     # duration_ms = file_info["file"].get("duration_ms", 0)
                     duration_ms = 0
                     if not duration_ms:
-                        duration_ms = get_media_duration(download_url, client.token)
+                        duration_ms = 1
                     file_name = file_info["file"]["name"]
                     token = client.token
                     # send video to wb consumer
