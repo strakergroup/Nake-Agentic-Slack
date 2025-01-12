@@ -745,7 +745,11 @@ async def ray_command(
                         view=translation_settings_view(
                             [context.channel_id],
                             auto_translate_langs,
-                            settings[0].display_format if settings else "thread",
+                            (
+                                settings[0].get("display_format", "thread")
+                                if settings
+                                else "thread"
+                            ),
                         ),
                     )
                 else:
