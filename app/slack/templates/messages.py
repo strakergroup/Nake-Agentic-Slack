@@ -168,15 +168,15 @@ class LoginMessage(SlackMessage):
         if variation == self.GET_JOB:
             block_text = "Connect your account to view your jobs."
         elif variation == self.NEW_JOB:
-            block_text = (
-                "Connect your account to submit a new translation job."
-            )
+            block_text = "Connect your account to submit a new translation job."
         elif variation == self.INSIGHTS:
             block_text = "Connect your account to view your insights."
         elif variation == self.CANCEL_JOB:
             block_text = "Connect your account to cancel your job."
         elif variation == self.QUALITY_EVALUATION:
-            block_text = "Connect your account to evaluate the quality of your translation."
+            block_text = (
+                "Connect your account to evaluate the quality of your translation."
+            )
         elif isinstance(ray_client, RayClient):
             user_details = f"<<{domains.languagecloud}|{ray_client.username}>>"
             block_text = (
@@ -184,9 +184,7 @@ class LoginMessage(SlackMessage):
                 + "\nYou can connect a different account by clicking this button."
             )
             if ray_client.sso:
-                block_text = (
-                    "Your connected account is: *{ray_client.username}*."
-                )
+                block_text = "Your connected account is: *{ray_client.username}*."
         msg: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -674,9 +672,7 @@ class LogoutMessage(SlackMessage):
 
     def __init__(self, ray_client: RayClient) -> None:
         user_details = f"<{domains.languagecloud}|{ray_client.username}>"
-        text = _(
-            "Click this button to disconnect your account: {user_details}."
-        )
+        text = _("Click this button to disconnect your account: {user_details}.")
         if ray_client.sso:
             text = _(
                 "Click this button to disconnect your account: *{ray_client.username}*."
@@ -727,9 +723,7 @@ class SuccessfulLogoutMessage(SlackMessage):
         # TODO: Translation fix this
         user_details = f"<{domains.languagecloud}|{ray_username}>"
         user_link = f"<@{user_id}>"
-        text = _(
-            "Your account {user_details} is now disconnected from {user_link}."
-        )
+        text = _("Your account {user_details} is now disconnected from {user_link}.")
         if is_sso:
             text = _(
                 "Your account *{ray_username}* is now disconnected from {user_link}."
@@ -1698,68 +1692,65 @@ class NewJobMessage(SlackMessage):
         is_verify_enabled: bool = False,
     ) -> None:
 
-        ai_verify_blocks = [
+        message_blocks = [
             {
-                "type": "button",
+                "type": "section",
                 "text": {
-                    "type": "plain_text",
-                    "text": _("AI Translate"),
-                    "emoji": True,
+                    "type": "mrkdwn",
+                    "text": _(
+                        "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n"
+                    ),
                 },
-                "action_id": "document_mt_job",
-                "style": "primary",
-                "value": file_id,
-            }
-        ]
-
-        if is_verify_enabled:
-            ai_verify_blocks.append(
-                {
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "*• AI Translation* - AI translate content from one language into multiple languages\n\n"
+                    ),
+                },
+                "accessory": {
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": _("Quality Evaluation"),
                         "emoji": True,
+                        "text": _("AI Translation"),
                     },
-                    "action_id": "evaluate_job",
+                    "action_id": "document_mt_job",
                     "style": "primary",
                     "value": file_id,
+                },
+            },
+        ]
+
+        if is_verify_enabled:
+            message_blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "*• Quality Evaluation* - AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification"
+                        ),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Quality Evaluation"),
+                        },
+                        "action_id": "evaluate_job",
+                        "style": "primary",
+                        "value": file_id,
+                    },
                 }
             )
 
         super().__init__(
             "Submit a new job",
-            (
-                [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": _(
-                                "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n"
-                            )
-                            + (
-                                _(
-                                    "*• AI Translate* - AI Translate content from one language into another language\n\n"
-                                )
-                                if file_id
-                                else ""
-                            )
-                            + (
-                                _(
-                                    "*• Quality Evaluation* - AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification"
-                                )
-                                if is_verify_enabled and file_id
-                                else ""
-                            ),
-                        },
-                    },
-                    {
-                        "type": "actions",
-                        "elements": (ai_verify_blocks),
-                    },
-                ]
-            ),
+            message_blocks,
         )
 
 
@@ -2078,9 +2069,7 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            ":globe_with_meridians: View your connection."
-                        ),
+                        "text": _(":globe_with_meridians: View your connection."),
                     },
                     "accessory": {
                         "type": "button",
@@ -2209,9 +2198,7 @@ class ConnectionInfoMessage(SlackMessage):
         if ray_connection is not None and ray_connection.client is not None:
             user_details = f"<{domains.languagecloud}|{ray_connection.client.username}>"
             if is_ibm_enterprise(enterprise_id=enterprise_id):
-                text = _(
-                    "Your connected account is: {ray_connection.client.username}"
-                )
+                text = _("Your connected account is: {ray_connection.client.username}")
             else:
                 text = _("Your connected account is: <{user_details}>")
             account_blocks.append(
@@ -2332,9 +2319,7 @@ class SsoConnectionInfoMessage(SlackMessage):
         is_ibm=False,
     ) -> None:
         if ray_connection.client is not None:
-            text = _(
-                "Your connected account is: *{ray_connection.client.username}*."
-            )
+            text = _("Your connected account is: *{ray_connection.client.username}*.")
         msg: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -3289,7 +3274,7 @@ class JobTranscribedEventMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("AI Translate"),
+                                "text": _("AI Translation"),
                                 "emoji": False,
                             },
                             "action_id": "show_srt_translate_form",
