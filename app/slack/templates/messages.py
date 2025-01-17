@@ -1692,68 +1692,65 @@ class NewJobMessage(SlackMessage):
         is_verify_enabled: bool = False,
     ) -> None:
 
-        ai_verify_blocks = [
+        message_blocks = [
             {
-                "type": "button",
+                "type": "section",
                 "text": {
-                    "type": "plain_text",
-                    "text": _("AI Translate"),
-                    "emoji": True,
+                    "type": "mrkdwn",
+                    "text": _(
+                        "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n"
+                    ),
                 },
-                "action_id": "document_mt_job",
-                "style": "primary",
-                "value": file_id,
-            }
-        ]
-
-        if is_verify_enabled:
-            ai_verify_blocks.append(
-                {
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "*• AI Translation* - AI translate content from one language into multiple languages\n\n"
+                    ),
+                },
+                "accessory": {
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": _("Quality Evaluation"),
                         "emoji": True,
+                        "text": _("AI Translation"),
                     },
-                    "action_id": "evaluate_job",
+                    "action_id": "document_mt_job",
                     "style": "primary",
                     "value": file_id,
+                },
+            },
+        ]
+
+        if is_verify_enabled:
+            message_blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "*• Quality Evaluation* - AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification"
+                        ),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Quality Evaluation"),
+                        },
+                        "action_id": "evaluate_job",
+                        "style": "primary",
+                        "value": file_id,
+                    },
                 }
             )
 
         super().__init__(
             "Submit a new job",
-            (
-                [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": _(
-                                "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n"
-                            )
-                            + (
-                                _(
-                                    "*• AI Translate* - AI Translate content from one language into another language\n\n"
-                                )
-                                if file_id
-                                else ""
-                            )
-                            + (
-                                _(
-                                    "*• Quality Evaluation* - AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification"
-                                )
-                                if is_verify_enabled and file_id
-                                else ""
-                            ),
-                        },
-                    },
-                    {
-                        "type": "actions",
-                        "elements": (ai_verify_blocks),
-                    },
-                ]
-            ),
+            message_blocks,
         )
 
 
@@ -3277,7 +3274,7 @@ class JobTranscribedEventMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("AI Translate"),
+                                "text": _("AI Translation"),
                                 "emoji": False,
                             },
                             "action_id": "show_srt_translate_form",

@@ -30,12 +30,11 @@ COPY --from=builder /build/.venv/ /venv/
 # Activate venv
 ENV PATH=/venv/bin:$PATH
 
-COPY app app
 # Removed as we can inject this as secrets file in k8s
-# COPY .env ibm-credentials.env ./
+COPY .env ibm-credentials.env ./
 
 # Do not run with root
 RUN useradd -m -u 1001 -g 33 straker
 USER straker
 
-CMD ["/venv/bin/python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80"]
+CMD ["/venv/bin/python", "-m", "uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "80"]

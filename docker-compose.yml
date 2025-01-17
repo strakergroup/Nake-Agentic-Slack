@@ -6,9 +6,9 @@ services:
       context: .
       dockerfile: Dockerfile.local
     ports:
-      - "3000:80"
+      - "3002:80"
     volumes:
-      - .:/app
+      - ./app:/code/app
     networks:
       local-straker:
         ipv4_address: 172.20.0.62
