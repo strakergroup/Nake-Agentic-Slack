@@ -1,5 +1,7 @@
 from app.auth.connector import RayClient
 from app.slack.templates.messages import LoginMessage
+from app.slack.templates.messages import VerifyCompleteMessage
+from app.translate import _
 
 
 class TestLoginMessage:
@@ -31,10 +33,7 @@ class TestLoginMessage:
             user_id, team_id, enterprise_id, channel_id, ray_client=ray_client
         )
         assert message.text == "Connect your account"
-        assert (
-            "Your connected account is"
-            in message.blocks[0]["text"]["text"]
-        )
+        assert "Your connected account is" in message.blocks[0]["text"]["text"]
         assert ray_client.username in message.blocks[0]["text"]["text"]
         assert (
             "You can connect a different account by clicking this button"
@@ -94,3 +93,30 @@ class TestLoginMessage:
             "You can connect a different account by clicking this button"
             not in message.blocks[0]["text"]["text"]
         )
+
+
+class TestVerifyCompleteMessage:
+    def test_verify_complete_message(self):
+        job_title = "Sample Job"
+        lang_label = "English"
+
+        localized_lang_label = _(lang_label)
+
+        # Create a VerifyCompleteMessage instance
+        message = VerifyCompleteMessage(job_title, lang_label)
+
+        # Assert the message blocks are formatted correctly
+        assert len(message.blocks) == 1  # Should contain one block
+        assert message.blocks[0]["type"] == "section"  # Block type
+        assert message.blocks[0]["text"]["type"] == "mrkdwn"  # Text type
+
+        # Check that the text includes the correct job title and language
+        expected_text = (
+            f"Evaluation Job '{job_title}' human verification complete. "
+            f"The file has been verified for language {localized_lang_label}."
+        )
+        assert message.blocks[0]["text"]["text"] == expected_text
+
+        # Assert the message's title is correct
+        # Since the 'title' is part of the first block, we should check for the title text there.
+        assert message.blocks[0]["text"]["text"].startswith("Evaluation Job")
