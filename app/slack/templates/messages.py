@@ -168,15 +168,15 @@ class LoginMessage(SlackMessage):
         if variation == self.GET_JOB:
             block_text = "Connect your account to view your jobs."
         elif variation == self.NEW_JOB:
-            block_text = (
-                "Connect your account to submit a new translation job."
-            )
+            block_text = "Connect your account to submit a new translation job."
         elif variation == self.INSIGHTS:
             block_text = "Connect your account to view your insights."
         elif variation == self.CANCEL_JOB:
             block_text = "Connect your account to cancel your job."
         elif variation == self.QUALITY_EVALUATION:
-            block_text = "Connect your account to evaluate the quality of your translation."
+            block_text = (
+                "Connect your account to evaluate the quality of your translation."
+            )
         elif isinstance(ray_client, RayClient):
             user_details = f"<<{domains.languagecloud}|{ray_client.username}>>"
             block_text = (
@@ -184,9 +184,7 @@ class LoginMessage(SlackMessage):
                 + "\nYou can connect a different account by clicking this button."
             )
             if ray_client.sso:
-                block_text = (
-                    "Your connected account is: *{ray_client.username}*."
-                )
+                block_text = "Your connected account is: *{ray_client.username}*."
         msg: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -674,9 +672,7 @@ class LogoutMessage(SlackMessage):
 
     def __init__(self, ray_client: RayClient) -> None:
         user_details = f"<{domains.languagecloud}|{ray_client.username}>"
-        text = _(
-            "Click this button to disconnect your account: {user_details}."
-        )
+        text = _("Click this button to disconnect your account: {user_details}.")
         if ray_client.sso:
             text = _(
                 "Click this button to disconnect your account: *{ray_client.username}*."
@@ -727,9 +723,7 @@ class SuccessfulLogoutMessage(SlackMessage):
         # TODO: Translation fix this
         user_details = f"<{domains.languagecloud}|{ray_username}>"
         user_link = f"<@{user_id}>"
-        text = _(
-            "Your account {user_details} is now disconnected from {user_link}."
-        )
+        text = _("Your account {user_details} is now disconnected from {user_link}.")
         if is_sso:
             text = _(
                 "Your account *{ray_username}* is now disconnected from {user_link}."
@@ -2078,9 +2072,7 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            ":globe_with_meridians: View your connection."
-                        ),
+                        "text": _(":globe_with_meridians: View your connection."),
                     },
                     "accessory": {
                         "type": "button",
@@ -2209,9 +2201,7 @@ class ConnectionInfoMessage(SlackMessage):
         if ray_connection is not None and ray_connection.client is not None:
             user_details = f"<{domains.languagecloud}|{ray_connection.client.username}>"
             if is_ibm_enterprise(enterprise_id=enterprise_id):
-                text = _(
-                    "Your connected account is: {ray_connection.client.username}"
-                )
+                text = _("Your connected account is: {ray_connection.client.username}")
             else:
                 text = _("Your connected account is: <{user_details}>")
             account_blocks.append(
@@ -2332,9 +2322,7 @@ class SsoConnectionInfoMessage(SlackMessage):
         is_ibm=False,
     ) -> None:
         if ray_connection.client is not None:
-            text = _(
-                "Your connected account is: *{ray_connection.client.username}*."
-            )
+            text = _("Your connected account is: *{ray_connection.client.username}*.")
         msg: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -3324,7 +3312,7 @@ class CancelJobMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("Click the *Cancel translation job* button below"),
+                        "text": _("Click the *Cancel request* button below"),
                     },
                 },
                 {
@@ -3334,7 +3322,7 @@ class CancelJobMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("Cancel translation job"),
+                                "text": _("Cancel request"),
                                 "emoji": True,
                             },
                             "action_id": "cancel_job",
