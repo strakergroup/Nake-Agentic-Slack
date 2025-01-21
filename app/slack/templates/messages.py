@@ -2850,7 +2850,7 @@ class VerifyCompleteMessage(SlackMessage):
     def __init__(self, job_title: str, lang_label: str) -> None:
         lang_label = _(lang_label)
         title = _(
-            "Evaluation Job '{job_title}' human verification complete. The file has been verified for language {lang_label}."
+            "Quality Evaluation '{job_title}' human verification complete. The file has been verified for language {lang_label}."
         )
         super().__init__(
             _("Verification Complete"),
