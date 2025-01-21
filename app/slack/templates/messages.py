@@ -3309,7 +3309,7 @@ class CancelJobMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("Click the *Cancel translation job* button below"),
+                        "text": _("Click the *Cancel request* button below"),
                     },
                 },
                 {
@@ -3319,7 +3319,7 @@ class CancelJobMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("Cancel translation job"),
+                                "text": _("Cancel request"),
                                 "emoji": True,
                             },
                             "action_id": "cancel_job",

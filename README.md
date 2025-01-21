@@ -18,6 +18,7 @@ The [Slack App](https://api.slack.com/) for Straker LanguageCloud. This app allo
 - [wb-task-consumer](https://bitbucket.org/strakertech/wb-task-consumer/) used for transcribing of video posted to slack
 - [verify-task-consumer](https://bitbucket.org/strakertech/pt-verify-consumer/) used for document machine translating
 - [cloud-verify-api](https://github.com/strakergroup/cloud-verify-api) used for verify job submission
+- [cloud-verify-ui](https://github.com/strakergroup/cloud-verify-ui) verify ui for connect
 
 ### Setup
 
