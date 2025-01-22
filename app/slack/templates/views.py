@@ -499,7 +499,7 @@ def evaluate_job_modal(file_id: str):
     return {
         "type": "modal",
         "callback_id": "evaluate_job",
-        "title": {"type": "plain_text", "text": _("Evaluate Job", 23)[:24]},
+        "title": {"type": "plain_text", "text": _("Quality Evaluation", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Submit", 23)[:24]},
         "private_metadata": file_id,
         "close": {"type": "plain_text", "text": _("Close")},
