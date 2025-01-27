@@ -89,7 +89,6 @@ from .templates.views import (
     evaluate_job_modal,
     home_view,
     translation_settings_view,
-    translation_settings_view_error,
     job_search_modal,
     cancel_job_modal,
     verify_job_modal,
@@ -848,48 +847,15 @@ async def show_auto_translate_settings(
     team_id = channel_info.get("team_id", "")
     settings = get_auto_translate_settings_and_langs(context, channel_id, team_id)
     auto_translate_langs = [setting["target_lang"] for setting in settings]
-    if channel_id:
-        error_msg = _("You do not have permission to edit this channel!!")
-        old_token = client.token
-        try:
-            # check if we have a token that can get channel info for the channel
-            channel_info = await resolve_channels_to_team(
-                [channel_id], client, context.enterprise_id
-            )
-            client.token = channel_info[0]["bot_token"]
-            channel_info = await client.conversations_info(channel=channel_id)
-            # reassign token to the original token since it is required for the original trigger_id
-            client.token = old_token
-            await client.views_open(
-                trigger_id=body["trigger_id"],
-                view=translation_settings_view(
-                    [channel_id] if channel_id else None,
-                    auto_translate_langs,
-                    settings[0]["display_format"] if settings else "thread",
-                    team_id,
-                ),
-            )
-        except SlackApiError as e:
-            client.token = old_token
-            if e.response["error"] == "missing_scope":
-                notify_exception(e)
-                error_msg = _("Please reinstall the app")
-            elif e.response["error"] == "channel_not_found":
-                error_msg = _("The bot is not integrated in this channel!!")
-            await client.views_open(
-                trigger_id=body["trigger_id"],
-                view=translation_settings_view_error(error_msg),
-            )
-    else:
-        await client.views_open(
-            trigger_id=body["trigger_id"],
-            view=translation_settings_view(
-                [channel_id] if channel_id else None,
-                auto_translate_langs,
-                settings["display_format"] if settings else "thread",
-                team_id,
-            ),
-        )
+    await client.views_open(
+        trigger_id=body["trigger_id"],
+        view=translation_settings_view(
+            [channel_id] if channel_id else None,
+            auto_translate_langs,
+            settings[0]["display_format"] if settings else "thread",
+            team_id,
+        ),
+    )
 
 
 @app.block_action("settings_auto_translate_disable", middleware=[ray_connection])
@@ -905,21 +871,22 @@ async def disable_auto_translate_settings(
         channel_info = json.loads(payload["value"])
         channel_id = channel_info.get("channel_id")
         team_id = channel_info.get("team_id", "")
-        team_channel = await resolve_channels_to_team(
-            [channel_id], client, context.enterprise_id
-        )
-        client.token = team_channel[0]["bot_token"]
-        if not channel_id:
-            notify_message("Channel ID not found in payload", extra=payload)
-            return
         disable_auto_translate_group_settings(context, channel_id)
-        await ack()
-        if team_id:
-            context["team_id"] = team_id
         await client.views_publish(
             user_id=context["user_id"],
             view=await home_view(context, body["api_app_id"], context.get("ray")),
         )
+
+        team_channel = await resolve_channels_to_team(
+            channel_id, client, context.enterprise_id
+        )
+        client.token = team_channel["bot_token"]
+        if not channel_id:
+            notify_message("Channel ID not found in payload", extra=payload)
+            return
+        await ack()
+        if team_id:
+            context["team_id"] = team_id
 
         async def join_channel(channel_id: str):
             try:
@@ -1401,29 +1368,35 @@ async def view_update_auto_translate_settings(
         team_id = view.get("private_metadata", "")
         form_data = view.get("state", {}).get("values") if view else {}
         form = AutoTranslationSettingsForm.parse_slack(form_data)
-        team_channels = await resolve_channels_to_team(
-            form.channels, client, context.enterprise_id
-        )
-    except SlackApiError as e:
-        if e.response["error"] == "channel_not_found":
-            error_msg = _(
-                "Please /invite @Straker Translate to the private channels in order to enable channel translation."
-            )
-            await ack(
-                response_action="errors",
-                errors={"channels": error_msg},
-            )
-        if e.response["error"] == "missing_scope":
-            await ack(
-                response_action="errors",
-                errors={"channels": "Please reinstall the app"},
-            )
-        return
+        team_channels = []
+        await ack(response_action="clear")
+        for channel in form.channels:
+            try:
+                team_channels.append(
+                    await resolve_channels_to_team(
+                        channel, client, context.enterprise_id, context.team_id
+                    )
+                )
+            except SlackApiError as e:
+                if e.response["error"] == "channel_not_found":
+                    error_msg = _(
+                        "Channel not found when creating channel translation setting. Please /invite @Straker to the channel <#{channel}> and recreate the setting."
+                    )
+                    await client.chat_postMessage(
+                        channel=context["user_id"],
+                        text=error_msg,
+                    )
+
+                if e.response["error"] == "missing_scope":
+                    await client.chat_postMessage(
+                        channel=context["user_id"],
+                        text=_("Reinstall the app"),
+                    )
+                return
     except ValidationError as e:
         errors = convert_pydantic_to_slack_error(e)
         await ack(response_action="errors", errors=errors)
         return
-    await ack(response_action="clear")
     try:
         if not form.languages:
             for channel in team_channels:

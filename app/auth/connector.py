@@ -1662,7 +1662,7 @@ async def get_channel_info(channel_id: str, client: AsyncWebClient, team_id: str
 
 
 async def resolve_channels_to_team(
-    channel_id: List[str], client: AsyncWebClient, enterprise_id: str | None
+    channel_id: str, client: AsyncWebClient, enterprise_id: str | None, team_id: str
 ) -> List[dict[str, str]]:
     """Resolve a channel ID to a team ID. Use conversation info API to get the team ID.
         When error attempt to get all tokens for the enterprise with each token
@@ -1672,47 +1672,49 @@ async def resolve_channels_to_team(
     Returns:
         str: The Slack team ID.
     """
-    team_channel = []
+    team_channel = {
+        "team_id": team_id,
+        "channel_id": channel_id,
+        "bot_token": client.token,
+        "name": "unknown",
+        "is_private": False,
+    }
     old_token = client.token
     if enterprise_id:
         all_tokens = get_all_tokens_for_enterprise(enterprise_id)
     else:
         all_tokens = []
-    for channel in channel_id:
-        try:
-            channel_info = await client.conversations_info(channel=channel)
-            team_channel.append(
-                {
-                    "team_id": channel_info["channel"]["context_team_id"],
-                    "channel_id": channel,
-                    "bot_token": client.token,
+    try:
+        channel_info = await client.conversations_info(channel=channel_id)
+        team_channel = {
+            "team_id": channel_info["channel"]["context_team_id"],
+            "channel_id": channel_id,
+            "bot_token": client.token,
+            "name": channel_info["channel"]["name"],
+            "is_private": channel_info["channel"]["is_private"],
+        }
+    except SlackApiError as e:
+        successful = False
+        for token in all_tokens:
+            client.token = token.bot_token
+            try:
+                channel_info = await client.conversations_info(channel=channel_id)
+                team_channel = {
+                    "team_id": token.team_id,
+                    "channel_id": channel_id,
+                    "bot_token": token.bot_token,
                     "name": channel_info["channel"]["name"],
                     "is_private": channel_info["channel"]["is_private"],
                 }
-            )
-        except SlackApiError as e:
-            successful = False
-            for token in all_tokens:
-                client.token = token.bot_token
-                try:
-                    channel_info = await client.conversations_info(channel=channel)
-                    team_channel.append(
-                        {
-                            "team_id": token.team_id,
-                            "channel_id": channel,
-                            "bot_token": token.bot_token,
-                            "name": channel_info["channel"]["name"],
-                            "is_private": channel_info["channel"]["is_private"],
-                        }
-                    )
-                    successful = True
-                    break  # Exit the loop if a successful token is found
-                except SlackApiError:
-                    continue
-            if not successful:
-                client.token = old_token
-                raise e  # Raise the original SlackApiError if no token was successful. This will request that the app be added to the workspace/channel.
+                successful = True
+                break  # Exit the loop if a successful token is found
+            except SlackApiError:
+                continue
+        if not successful:
+            client.token = old_token
+            raise e  # Raise the original SlackApiError if no token was successful. This will request that the app be added to the workspace/channel.
     client.token = old_token
+
     return team_channel
 
 
