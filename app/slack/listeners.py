@@ -1698,7 +1698,7 @@ async def evaluate_job_submit(
     context: RayContext,
 ):
     """Evaluate job. Triggered from the Evaluate form view."""
-    await ack()
+    await ack(response_action="clear")
     try:
         if view:
             file_id = view["private_metadata"]
@@ -1707,10 +1707,10 @@ async def evaluate_job_submit(
             # call verify api to submit a file for evaluation
     except ValidationError as e:
         errors = convert_pydantic_to_slack_error(e)
-        print(errors)
-        await ack(response_action="errors", errors=errors)
+        await client.chat_postMessage(
+            channel=context.user_id, text="Error: " + str(errors)
+        )
         return
-    await ack(response_action="clear")
     if await require_ray_client(context, prompt_login=True):
         input_file = await download_file(client=client, file_id=file_id, http=None)
         response = await submit_evaluation_job(
@@ -1788,7 +1788,7 @@ async def verify_job_modal_open_action(
 async def handle_verify_job_submission(
     ack: AsyncAck, body: Dict[str, Any], client: Dict[str, Any], context: RayContext
 ):
-    await ack()
+    await ack(response_action="clear")
 
     # Extract the private metadata (job UUID)
     job_uuid = body["view"]["private_metadata"]
