@@ -878,7 +878,7 @@ async def disable_auto_translate_settings(
         )
 
         team_channel = await resolve_channels_to_team(
-            channel_id, client, context.enterprise_id
+            channel_id, client, context.enterprise_id, team_id
         )
         client.token = team_channel["bot_token"]
         if not channel_id:
