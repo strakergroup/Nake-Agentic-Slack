@@ -1266,11 +1266,34 @@ def translation_settings_view_error(message: str) -> dict[str, Any]:
     }
 
 
+def calculate_total_cost(languages: list[dict], costs: list[dict]) -> float:
+    """Calculate total cost for selected languages.
+
+    Args:
+        languages: List of language objects with selection status
+        costs: List of cost objects with language UUIDs and costs
+
+    Returns:
+        float: Total cost for selected languages
+    """
+    total = 0.0
+    for lang in languages:
+        if lang.get("selected", True):  # Default to True if not specified
+            for cost in costs:
+                if cost.get("language_uuid") == lang.get("uuid"):
+                    try:
+                        total += float(cost.get("cost", 0))
+                    except (TypeError, ValueError):
+                        continue
+    return total
+
+
 def verify_job_modal(
     job: dict[str, Any],
     all_langs: list[dict[str, str]],
     costs: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    """Generate modal for job verification with total cost calculation."""
     languages = job["target_languages"]
     file = job["source_files"][0]
     source_lang_uuid = file["report"]["language_uuid"]
@@ -1278,6 +1301,8 @@ def verify_job_modal(
         (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
     )
     reports = file["report"]["evaluation_reports"]
+
+    # Process languages and set defaults
     for lang in languages:
         for report in reports:
             if lang["uuid"] == report["target_language"]:
@@ -1285,6 +1310,7 @@ def verify_job_modal(
         for target_file in file["target_files"]:
             if lang["uuid"] == target_file["language_uuid"]:
                 lang["human_job_status"] = target_file.get("human_job_status", "")
+
     blocks = [
         {
             "type": "section",
@@ -1295,10 +1321,10 @@ def verify_job_modal(
                 ),
             },
         },
-        # seperator
-        # add file id as hidden input
+        {"type": "divider"},
     ]
 
+    # Add individual language blocks
     for lang in languages:
         blocks.extend(
             verify_job_blocks(
@@ -1311,6 +1337,23 @@ def verify_job_modal(
                 human_job_status=lang.get("human_job_status", ""),
             )
         )
+
+    # Calculate and add total cost if multiple languages
+    if len(languages) > 1:
+        total_cost = calculate_total_cost(languages, costs)
+        blocks.extend(
+            [
+                {"type": "divider"},
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(f"*Total Cost:* USD$${total_cost:2f}"),
+                    },
+                },
+            ]
+        )
+
     return {
         "type": "modal",
         "callback_id": "verify_job",
