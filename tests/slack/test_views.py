@@ -40,6 +40,7 @@ def test_calculate_total_cost(languages, costs, expected):
 
 @patch("app.slack.templates.views.job_summary_string")
 def test_verify_job_modal_multiple_languages(mock_summary):
+    """Test modal with multiple languages and cost calculation."""
     mock_summary.return_value = "Test summary"
 
     job = {
@@ -53,8 +54,30 @@ def test_verify_job_modal_multiple_languages(mock_summary):
                 "report": {
                     "language_uuid": "source1",
                     "evaluation_reports": [
-                        {"target_language": "lang1"},
-                        {"target_language": "lang2"},
+                        {
+                            "target_language": "lang1",
+                            "count": {
+                                "total": 100,
+                                "bad": 15,
+                                "good": 30,
+                                "best": 40,
+                                "acceptable": 15,
+                                "translation_memory": 20,
+                            },
+                            "score": 85,
+                        },
+                        {
+                            "target_language": "lang2",
+                            "count": {
+                                "total": 100,
+                                "bad": 10,
+                                "good": 35,
+                                "best": 45,
+                                "acceptable": 10,
+                                "translation_memory": 25,
+                            },
+                            "score": 90,
+                        },
                     ],
                 },
                 "target_files": [
@@ -67,8 +90,8 @@ def test_verify_job_modal_multiple_languages(mock_summary):
 
     all_langs = [{"uuid": "source1", "name": "English"}]
     costs = [
-        {"language_uuid": "lang1", "cost": "10.50"},
-        {"language_uuid": "lang2", "cost": "15.75"},
+        {"language_uuid": "lang1", "service_list": [{"estimated_cost": 10.50}]},
+        {"language_uuid": "lang2", "service_list": [{"estimated_cost": 15.75}]},
     ]
 
     result = verify_job_modal(job, all_langs, costs)
@@ -83,11 +106,12 @@ def test_verify_job_modal_multiple_languages(mock_summary):
     ]
 
     assert len(total_cost_blocks) == 1
-    assert ":moneybag: *Total Cost:* $26.25" in total_cost_blocks[0]["text"]["text"]
+    assert "*Total Cost:* USD$26.25" in total_cost_blocks[0]["text"]["text"]
 
 
 @patch("app.slack.templates.views.job_summary_string")
 def test_verify_job_modal_single_language(mock_summary):
+    """Test modal with single language."""
     mock_summary.return_value = "Test summary"
 
     job = {
@@ -97,7 +121,20 @@ def test_verify_job_modal_single_language(mock_summary):
             {
                 "report": {
                     "language_uuid": "source1",
-                    "evaluation_reports": [{"target_language": "lang1"}],
+                    "evaluation_reports": [
+                        {
+                            "target_language": "lang1",
+                            "count": {
+                                "total": 100,
+                                "bad": 15,
+                                "good": 30,
+                                "best": 40,
+                                "acceptable": 15,
+                                "translation_memory": 20,
+                            },
+                            "score": 85,
+                        }
+                    ],
                 },
                 "target_files": [{"language_uuid": "lang1"}],
             }
@@ -105,7 +142,7 @@ def test_verify_job_modal_single_language(mock_summary):
     }
 
     all_langs = [{"uuid": "source1", "name": "English"}]
-    costs = [{"language_uuid": "lang1", "cost": "10.50"}]
+    costs = [{"language_uuid": "lang1", "service_list": [{"estimated_cost": 10.50}]}]
 
     result = verify_job_modal(job, all_langs, costs)
 

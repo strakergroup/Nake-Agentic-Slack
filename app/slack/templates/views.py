@@ -1348,7 +1348,7 @@ def verify_job_modal(
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(f"*Total Cost:* USD$${total_cost:2f}"),
+                        "text": _(f"*Total Cost:* USD${total_cost:.2f}"),
                     },
                 },
             ]
