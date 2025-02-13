@@ -3438,19 +3438,22 @@ class AutoTranslateSettingsDisabledMessage(TextMessage):
 
 
 class RequiresMtTokenMessage(SlackMessage):
-
     def __init__(self, tokens: int, required_tokens: int) -> None:
-        title = _(
-            "You have *{tokens} AI tokens* on your account. This job requires *{required_tokens} AI tokens*. Please purchase tokens."
-        )
-        if tokens <= 0 and required_tokens == 1:
-            title = _("Your group account has no AI tokens. Please purchase tokens.")
-        elif tokens <= 0:
-            title = _(
-                "Your group account has no AI tokens. This job requires *{required_tokens} AI tokens*. Please purchase tokens."
-            )
 
-        # create message which contains the output_file
+        match (tokens, required_tokens):
+            case (tokens, 1) if tokens <= 0:
+                title = _(
+                    "Your group account has no AI tokens. Please purchase tokens."
+                )
+            case (tokens, required_tokens) if tokens <= 0:
+                title = _(
+                    "Your group account has no AI tokens. This job requires *{required_tokens} AI tokens*. Please purchase tokens."
+                )
+            case _:
+                title = _(
+                    "You have *{tokens} AI tokens* on your account. Please click the link below to purchase more tokens."
+                )
+
         super().__init__(
             title,
             [
@@ -3472,7 +3475,7 @@ class RequiresMtTokenMessage(SlackMessage):
                                 "emoji": False,
                             },
                             "action_id": "link_1",
-                            "url": f"{domains.languagecloud}/checkout/tokens",
+                            "url": f"{domains.verify}/plans",
                         },
                     ],
                 },
@@ -3481,18 +3484,20 @@ class RequiresMtTokenMessage(SlackMessage):
 
 
 class RequiresMtTokenAdminMessage(SlackMessage):
-
     def __init__(self, tokens: int, required_tokens: int) -> None:
-        title = _(
-            "You have *{tokens} AI tokens* on your group account. This job requires *{required_tokens} AI tokens*. Please contact your group admin to purchase more"
-        )
-        if tokens <= 0 and required_tokens == 1:
-            title = _("Your group has no AI Tokens. Please purchase AI Tokens")
-        elif tokens <= 0:
-            title = _(
-                "Your group has no AI Tokens. This job requires *{required_tokens} AI tokens*. Please contact your group admin to purchase more"
-            )
-        # create message which contains the output_file
+
+        match (tokens, required_tokens):
+            case (tokens, 1) if tokens <= 0:
+                title = _("Your group has no AI Tokens. Please purchase AI Tokens")
+            case (tokens, required_tokens) if tokens <= 0:
+                title = _(
+                    "Your group has no AI Tokens. This job requires *{required_tokens} AI tokens*. Please contact your group admin to purchase more"
+                )
+            case _:
+                title = _(
+                    "You have *{tokens} AI tokens* on your group account. This job requires *{required_tokens} AI tokens*. Please contact your group admin to purchase more"
+                )
+
         super().__init__(
             title,
             [
