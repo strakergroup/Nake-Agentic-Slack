@@ -3451,7 +3451,7 @@ class RequiresMtTokenMessage(SlackMessage):
                 )
             case _:
                 title = _(
-                    "You have *{tokens} AI tokens* on your account. Please click the link below to purchase more tokens."
+                    "You have *{tokens} AI tokens* on your account. This job requires *{required_tokens} AI tokens*. Please purchase tokens."
                 )
 
         super().__init__(
