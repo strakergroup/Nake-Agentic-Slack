@@ -402,7 +402,7 @@ def verify_job_blocks(
             ],
             "action_id": "verification_checkbox_action",
         },
-        "optional": optional,  # Make the input block optional
+        "optional": optional,
     }
     if human_job_status:
         lang_label = f"*{_(lang_name)}*\n"

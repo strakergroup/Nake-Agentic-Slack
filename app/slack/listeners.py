@@ -1826,5 +1826,27 @@ async def handle_verify_job_submission(
     )
 
 
+@app.action("verification_checkbox_action")
+async def handle_checkbox_action(ack, body, client):
+    await ack()
+
+    selected_options = body["actions"][0].get("selected_options", [])
+
+    total_cost = sum(
+        float(option["text"]["text"].replace("USD$", "")) for option in selected_options
+    )
+
+    view = body["view"]
+    blocks = view["blocks"]
+
+    for block in blocks:
+        if block.get("block_id") == "total_cost_block":
+            block["text"]["text"] = f"*Total Cost:* USD${total_cost:.2f}"
+
+    client.views_update(
+        view_id=view["id"], hash=view["hash"], view={"type": "modal", "blocks": blocks}
+    )
+
+
 # FastAPI will use this to handle Slack API requests.
 slack_handler = AsyncSlackRequestHandler(app)

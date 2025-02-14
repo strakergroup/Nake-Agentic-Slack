@@ -1266,28 +1266,6 @@ def translation_settings_view_error(message: str) -> dict[str, Any]:
     }
 
 
-def calculate_total_cost(languages: list[dict], costs: list[dict]) -> float:
-    """Calculate total cost for selected languages.
-
-    Args:
-        languages: List of language objects with selection status
-        costs: List of cost objects with language UUIDs and costs
-
-    Returns:
-        float: Total cost for selected languages
-    """
-    total = 0.0
-    for lang in languages:
-        if lang.get("selected", True):  # Default to True if not specified
-            for cost in costs:
-                if cost.get("language_uuid") == lang.get("uuid"):
-                    try:
-                        total += float(cost.get("cost", 0))
-                    except (TypeError, ValueError):
-                        continue
-    return total
-
-
 def verify_job_modal(
     job: dict[str, Any],
     all_langs: list[dict[str, str]],
@@ -1338,7 +1316,6 @@ def verify_job_modal(
             )
         )
 
-    # Calculate and add total cost if multiple languages
     if len(languages) > 1:
         total_cost = calculate_total_cost(languages, costs)
         blocks.extend(
@@ -1346,9 +1323,10 @@ def verify_job_modal(
                 {"type": "divider"},
                 {
                     "type": "section",
+                    "block_id": "total_cost_block",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(f"*Total Cost:* USD${total_cost:.2f}"),
+                        "text": f"*Total Cost:* USD${total_cost:.2f}",
                     },
                 },
             ]
@@ -1362,3 +1340,16 @@ def verify_job_modal(
         "private_metadata": job["uuid"],
         "blocks": blocks,
     }
+
+
+def calculate_total_cost(
+    selected_languages: list[dict[str, Any]], costs: list[dict[str, Any]]
+) -> float:
+    """Calculate the total cost based on selected languages."""
+    total_cost = 0.0
+    for lang in selected_languages:
+        for cost_item in costs:
+            if cost_item["language_uuid"] == lang["uuid"]:
+                total_cost += cost_item["service_list"][0]["estimated_cost"]
+                break
+    return total_cost

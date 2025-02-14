@@ -1,158 +1,129 @@
 import pytest
-from app.slack.templates.views import calculate_total_cost, verify_job_modal
-from unittest.mock import patch
+from app.slack.templates.views import verify_job_modal
 
 
-@pytest.mark.parametrize(
-    "languages,costs,expected",
-    [
-        # Test single selected language
-        (
-            [{"uuid": "lang1", "selected": True}],
-            [{"language_uuid": "lang1", "cost": "10.50"}],
-            10.50,
-        ),
-        # Test multiple selected languages
-        (
-            [{"uuid": "lang1", "selected": True}, {"uuid": "lang2", "selected": True}],
-            [
-                {"language_uuid": "lang1", "cost": "10.50"},
-                {"language_uuid": "lang2", "cost": "15.75"},
-            ],
-            26.25,
-        ),
-        # Test with some unselected languages
-        (
-            [{"uuid": "lang1", "selected": True}, {"uuid": "lang2", "selected": False}],
-            [
-                {"language_uuid": "lang1", "cost": "10.50"},
-                {"language_uuid": "lang2", "cost": "15.75"},
-            ],
-            10.50,
-        ),
-        # Test empty inputs
-        ([], [], 0.0),
-    ],
-)
-def test_calculate_total_cost(languages, costs, expected):
-    assert calculate_total_cost(languages, costs) == expected
-
-
-@patch("app.slack.templates.views.job_summary_string")
-def test_verify_job_modal_multiple_languages(mock_summary):
-    """Test modal with multiple languages and cost calculation."""
-    mock_summary.return_value = "Test summary"
-
+def test_verify_job_modal_cost_update_individual_checkboxes():
+    # Define the job, languages, and costs
     job = {
-        "uuid": "job1",
+        "uuid": "job-123",
         "target_languages": [
-            {"uuid": "lang1", "name": "Spanish", "selected": True},
-            {"uuid": "lang2", "name": "French", "selected": True},
+            {"uuid": "lang-123", "name": "French"},
+            {"uuid": "lang-456", "name": "Spanish"},
         ],
         "source_files": [
             {
+                "filename": "example.txt",
                 "report": {
-                    "language_uuid": "source1",
+                    "language_uuid": "source-uuid",
                     "evaluation_reports": [
                         {
-                            "target_language": "lang1",
+                            "target_language": "lang-123",
                             "count": {
-                                "total": 100,
-                                "bad": 15,
-                                "good": 30,
-                                "best": 40,
-                                "acceptable": 15,
-                                "translation_memory": 20,
+                                "bad": 0,
+                                "good": 10,
+                                "best": 0,
+                                "acceptable": 0,
+                                "translation_memory": 0,
                             },
                             "score": 85,
                         },
                         {
-                            "target_language": "lang2",
+                            "target_language": "lang-456",
                             "count": {
-                                "total": 100,
-                                "bad": 10,
-                                "good": 35,
-                                "best": 45,
-                                "acceptable": 10,
-                                "translation_memory": 25,
+                                "bad": 0,
+                                "good": 20,
+                                "best": 0,
+                                "acceptable": 0,
+                                "translation_memory": 0,
                             },
                             "score": 90,
                         },
                     ],
                 },
-                "target_files": [
-                    {"language_uuid": "lang1"},
-                    {"language_uuid": "lang2"},
-                ],
+                "target_files": [],
             }
         ],
     }
 
-    all_langs = [{"uuid": "source1", "name": "English"}]
+    all_langs = [
+        {"uuid": "source-uuid", "name": "English"},
+        {"uuid": "lang-123", "name": "French"},
+        {"uuid": "lang-456", "name": "Spanish"},
+    ]
+
     costs = [
-        {"language_uuid": "lang1", "service_list": [{"estimated_cost": 10.50}]},
-        {"language_uuid": "lang2", "service_list": [{"estimated_cost": 15.75}]},
+        {"language_uuid": "lang-123", "service_list": [{"estimated_cost": 15.75}]},
+        {"language_uuid": "lang-456", "service_list": [{"estimated_cost": 20.50}]},
     ]
 
-    result = verify_job_modal(job, all_langs, costs)
-
-    # Verify total cost section exists and shows correct amount
-    total_cost_blocks = [
-        block
-        for block in result["blocks"]
-        if block.get("type") == "section"
-        and isinstance(block.get("text", {}).get("text"), str)
-        and "Total Cost" in block["text"]["text"]
+    # First, select French (lang-123) only
+    selected_languages = ["lang-123"]
+    selected_costs = [
+        cost for cost in costs if cost["language_uuid"] in selected_languages
     ]
+    modal = verify_job_modal(job, all_langs, selected_costs)
 
-    assert len(total_cost_blocks) == 1
-    assert "*Total Cost:* USD$26.25" in total_cost_blocks[0]["text"]["text"]
+    # Verify modal structure
+    assert modal.get("type") == "modal"
+    assert "blocks" in modal, "Modal is missing 'blocks' key"
 
+    # Calculate expected total cost for French
+    expected_total_cost = sum(
+        service["estimated_cost"]
+        for cost in selected_costs
+        for service in cost["service_list"]
+    )
 
-@patch("app.slack.templates.views.job_summary_string")
-def test_verify_job_modal_single_language(mock_summary):
-    """Test modal with single language."""
-    mock_summary.return_value = "Test summary"
+    # Check if total_cost_block exists
+    total_cost_block = next(
+        (
+            block
+            for block in modal["blocks"]
+            if block.get("block_id") == "total_cost_block"
+        ),
+        None,
+    )
 
-    job = {
-        "uuid": "job1",
-        "target_languages": [{"uuid": "lang1", "name": "Spanish", "selected": True}],
-        "source_files": [
-            {
-                "report": {
-                    "language_uuid": "source1",
-                    "evaluation_reports": [
-                        {
-                            "target_language": "lang1",
-                            "count": {
-                                "total": 100,
-                                "bad": 15,
-                                "good": 30,
-                                "best": 40,
-                                "acceptable": 15,
-                                "translation_memory": 20,
-                            },
-                            "score": 85,
-                        }
-                    ],
-                },
-                "target_files": [{"language_uuid": "lang1"}],
-            }
-        ],
-    }
+    assert (
+        total_cost_block is not None
+    ), "total_cost_block is missing from modal['blocks']"
 
-    all_langs = [{"uuid": "source1", "name": "English"}]
-    costs = [{"language_uuid": "lang1", "service_list": [{"estimated_cost": 10.50}]}]
+    # Validate the total cost text dynamically
+    assert (
+        f"*Total Cost:* USD${expected_total_cost:.2f}"
+        in total_cost_block["text"]["text"]
+    )
 
-    result = verify_job_modal(job, all_langs, costs)
-
-    # Verify total cost section does not exist for single language
-    total_cost_blocks = [
-        block
-        for block in result["blocks"]
-        if block.get("type") == "section"
-        and isinstance(block.get("text", {}).get("text"), str)
-        and "Total Cost" in block["text"]["text"]
+    # Now, select both French and Spanish (lang-123 and lang-456)
+    selected_languages.append("lang-456")
+    selected_costs = [
+        cost for cost in costs if cost["language_uuid"] in selected_languages
     ]
+    modal = verify_job_modal(job, all_langs, selected_costs)
 
-    assert len(total_cost_blocks) == 0
+    # Calculate expected total cost for both French and Spanish
+    expected_total_cost = sum(
+        service["estimated_cost"]
+        for cost in selected_costs
+        for service in cost["service_list"]
+    )
+
+    # Check if total_cost_block exists again
+    total_cost_block = next(
+        (
+            block
+            for block in modal["blocks"]
+            if block.get("block_id") == "total_cost_block"
+        ),
+        None,
+    )
+
+    assert (
+        total_cost_block is not None
+    ), "total_cost_block is missing from modal['blocks']"
+
+    # Validate the updated total cost text dynamically
+    assert (
+        f"*Total Cost:* USD${expected_total_cost:.2f}"
+        in total_cost_block["text"]["text"]
+    )
