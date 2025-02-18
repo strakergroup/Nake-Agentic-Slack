@@ -394,7 +394,7 @@ async def document_mt_job_action(
 
         # If the file type is valid but content is invalid
         elif is_valid_file_type and not is_valid_content:
-            msg = error_message
+            msg = "Error: " + error_message
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=msg,
@@ -1775,7 +1775,7 @@ async def evaluate_job_action(
         )
     # If the file type is valid but content is invalid
     elif is_valid_file_type and not is_valid_content:
-        msg = error_message
+        msg = "Error: " + error_message
         await client.chat_postMessage(
             channel=context["user_id"],
             text=msg,

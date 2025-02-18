@@ -29,4 +29,4 @@ def validate_json(content: Union[bytes, str]) -> Tuple[bool, str]:
     except UnicodeDecodeError:
         return False, "Invalid JSON: File must be UTF-8 encoded."  # Error in decoding
     except json.JSONDecodeError as e:
-        return False, f"Invalid JSON structure: {e}"  # JSON structure is invalid
+        return False, "Invalid JSON structure."  # JSON structure is invalid
