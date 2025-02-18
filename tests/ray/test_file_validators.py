@@ -19,7 +19,7 @@ def test_validate_json_invalid_structure():
     """Test validation of invalid JSON structure."""
     is_valid, message = validate_json("invalid json")
     assert is_valid is False
-    assert "Invalid JSON structure" in message
+    assert "Invalid JSON. Please fix the issue and resubmit the file." in message
 
 
 def test_validate_json_invalid_bytes():

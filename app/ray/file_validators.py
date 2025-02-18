@@ -25,8 +25,8 @@ def validate_json(content: Union[bytes, str]) -> Tuple[bool, str]:
     try:
         json_str = content.decode("utf-8") if isinstance(content, bytes) else content
         json.loads(json_str)
-        return True, ""  # JSON is valid
+        return True, ""
     except UnicodeDecodeError:
-        return False, "Invalid JSON: File must be UTF-8 encoded."  # Error in decoding
+        return False, "Invalid JSON: File must be UTF-8 encoded."
     except json.JSONDecodeError as e:
-        return False, "Invalid JSON structure."  # JSON structure is invalid
+        return False, "Invalid JSON. Please fix the issue and resubmit the file."

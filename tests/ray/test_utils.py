@@ -151,7 +151,9 @@ def test_validate_file():
     result = validate_file("json", invalid_json)
     assert result[0] == True  # Extension is valid
     assert result[1] == False  # Content is invalid
-    assert "Invalid JSON" in result[2]
+    assert (
+        "Invalid Invalid JSON. Please fix the issue and resubmit the file." in result[2]
+    )
 
     # Test case insensitivity
     assert validate_file("TXT", "content") == (True, True, "")

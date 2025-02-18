@@ -347,9 +347,9 @@ def validate_file(
         return False, False, f"Unsupported file type: {ext}"
 
     # Get the corresponding validator function (if any)
-    validator = VALID_FILE_TYPES[ext]
-    if validator and content is not None:
-        is_valid, error_message = validator(content)
+    content_validator = VALID_FILE_TYPES[ext]
+    if content_validator and content is not None:
+        is_valid, error_message = content_validator(content)
         return True, is_valid, error_message  # Return content validation results
 
     return (
