@@ -27,7 +27,7 @@ from buglog import notify_exception, notify_message
 from app.ray.utils import (
     download_from_file_server,
     is_ibm_enterprise,
-    supported_file_types,
+    validate_file,
     upload_to_file_server,
 )
 from app.translate import _
@@ -357,7 +357,6 @@ async def show_srt_translate_form(
         )
 
 
-# document_mt_job
 @app.action("document_mt_job", middleware=[ray_connection])
 @slack_log_decorator
 async def document_mt_job_action(
@@ -368,24 +367,42 @@ async def document_mt_job_action(
     client: AsyncWebClient,
 ):
     await ack()
+
     if await require_ray_client(context):
-        output_file = action["value"]
-        file_info = await client.files_info(file=output_file)
-        file_path, file_extension = os.path.splitext(file_info["file"]["name"])
-        is_valid_file_type = supported_file_types(file_extension)
-        # Perform the necessary actions to document the MT job
-        if is_valid_file_type:
-            msg = DocumentMTJobMessage(output_file)
+        # Get file ID and info
+        file_id = action.get("value", "")
+        file_info = await client.files_info(file=file_id)
+
+        # Download file content
+        file_obj = await client.files_info(file=file_id, include_content=True)
+        content = file_obj.get("content", b"")
+
+        # Validate file type and content
+        _, file_extension = os.path.splitext(file_info["file"]["name"])
+        is_valid_file_type, is_valid_content, error_message = validate_file(
+            file_extension, content=content
+        )
+
+        # If the file type is valid and content is also valid
+        if is_valid_file_type and is_valid_content:
+            msg = DocumentMTJobMessage(file_id)
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=msg.text,
                 blocks=msg.blocks,
             )
-        else:
-            msg = _(
-                "This file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
+
+        # If the file type is valid but content is invalid
+        elif is_valid_file_type and not is_valid_content:
+            msg = error_message
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=msg,
             )
-            # Add your code here
+
+        # If the file type is not valid
+        else:
+            msg = "This file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=msg,
@@ -1735,20 +1752,37 @@ async def evaluate_job_action(
 ):
     """Evaluate job. Triggered from the Evaluate Job button."""
     await ack()
-    file_id = action["value"] if "value" in action else ""
+
+    # Get file ID and info
+    file_id = action.get("value", "")
     file_info = await client.files_info(file=file_id)
-    file_path, file_extension = os.path.splitext(file_info["file"]["name"])
-    is_valid_file_type = supported_file_types(file_extension)
-    if is_valid_file_type:
+
+    # Download file content
+    file_obj = await client.files_info(file=file_id, include_content=True)
+    content = file_obj.get("content", b"")
+
+    # Validate file type and content
+    _, file_extension = os.path.splitext(file_info["file"]["name"])
+    is_valid_file_type, is_valid_content, error_message = validate_file(
+        file_extension, content=content
+    )
+
+    # If the file type is valid and content is also valid
+    if is_valid_file_type and is_valid_content:
         await client.views_open(
             trigger_id=body["trigger_id"],
             view=evaluate_job_modal(file_id),
         )
-    else:
-        msg = _(
-            "This file type is currently not supported. Please check the help docs."
+    # If the file type is valid but content is invalid
+    elif is_valid_file_type and not is_valid_content:
+        msg = error_message
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=msg,
         )
-        # Add your code here
+    # If the file type is not valid
+    else:
+        msg = "This file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
         await client.chat_postMessage(
             channel=context["user_id"],
             text=msg,

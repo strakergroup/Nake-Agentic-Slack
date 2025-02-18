@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 import datetime
 
 import app  # Bug - circular import
+from app.ray.utils import validate_file
 from app.auth.connector import get_job_group_quote_settings, get_group_mt_engine
 import app.ray.utils
 from app.config import domains
@@ -118,6 +119,40 @@ def test_get_group_mt():
     # Assuming 'test_group' exists in your test database and is associated with a job group
     test_group = "571E9A50-85BA-4356-887411C111D12FDC"
     is_group = False
-    settings = get_group_mt_engine(test_group,is_group)
+    settings = get_group_mt_engine(test_group, is_group)
     assert settings is not None  # Adjust this assertion based on expected results
     print(settings)
+
+
+def test_validate_file():
+    # Test supported file types with no validator
+    assert validate_file("txt", "content") == (True, True, "")
+    assert validate_file(".txt", "content") == (True, True, "")
+    assert validate_file("docx", None) == (True, True, "")
+    assert validate_file("html", "") == (True, True, "")
+
+    # Test unsupported file types
+    assert validate_file("invalid", None) == (
+        False,
+        False,
+        "Unsupported file type: invalid",
+    )
+    assert validate_file(".exe", None) == (
+        False,
+        False,
+        "Unsupported file type: exe",
+    )
+
+    # Test JSON validation
+    valid_json = '{"key": "value"}'
+    invalid_json = "{key: value}"
+
+    assert validate_file("json", valid_json) == (True, True, "")
+    result = validate_file("json", invalid_json)
+    assert result[0] == True  # Extension is valid
+    assert result[1] == False  # Content is invalid
+    assert "Invalid JSON" in result[2]
+
+    # Test case insensitivity
+    assert validate_file("TXT", "content") == (True, True, "")
+    assert validate_file(".JSON", valid_json) == (True, True, "")
