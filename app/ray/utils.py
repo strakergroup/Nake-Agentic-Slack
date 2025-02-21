@@ -231,6 +231,13 @@ def download_from_file_server(file_id: str):
     return file_result
 
 
+def delete_from_file_server(file_id: str):
+    """Deletes a file from the file server."""
+    url = f"{domains.file_api}/files/{file_id}"
+    response = requests.delete(url)
+    response.raise_for_status()
+
+
 def upload_to_file_server(file_path: str) -> str:
     """
     Upload the file to sup-file-api and return the file ID.
