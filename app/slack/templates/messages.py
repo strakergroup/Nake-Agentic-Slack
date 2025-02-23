@@ -2982,11 +2982,11 @@ class VerifyHelperMessage(SlackMessage):
     def __init__(self) -> None:
         verify_uri = "https://help.strakertranslations.com/hc/en-us/articles/39202694401433-Quality-Evaluation"
         message = _(
-            "Please upload your files to perform the Quality Evaluation in the message composer below. Click me to learn Straker <{verify_uri}|Verify MT>."
+            f"Please upload your files to perform the Quality Evaluation in the message composer below. Click me to learn Straker <{verify_uri}|Quality Evaluation Help>."
         )
         bookEmoji = ":books:"
         super().__init__(
-            _("{bookEmoji} Learn Verify MT"),
+            _(f"{bookEmoji} Learn Quality Evaluation Help"),
             [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
         )
 
