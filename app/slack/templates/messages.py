@@ -1731,7 +1731,7 @@ class NewJobMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "*• Quality Evaluation* - AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification"
+                            "*• Quality Evaluation* - AI translate your content and receive translation quality scores, then verify with Straker to send for human verification"
                         ),
                     },
                     "accessory": {
