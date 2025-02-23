@@ -1271,6 +1271,7 @@ def verify_job_modal(
     all_langs: list[dict[str, str]],
     costs: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    """Generate modal for job verification with total cost calculation."""
     languages = job["target_languages"]
     file = job["source_files"][0]
     source_lang_uuid = file["report"]["language_uuid"]
@@ -1278,6 +1279,8 @@ def verify_job_modal(
         (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
     )
     reports = file["report"]["evaluation_reports"]
+
+    # Process languages and set defaults
     for lang in languages:
         for report in reports:
             if lang["uuid"] == report["target_language"]:
@@ -1285,6 +1288,7 @@ def verify_job_modal(
         for target_file in file["target_files"]:
             if lang["uuid"] == target_file["language_uuid"]:
                 lang["human_job_status"] = target_file.get("human_job_status", "")
+
     blocks = [
         {
             "type": "section",
@@ -1295,10 +1299,10 @@ def verify_job_modal(
                 ),
             },
         },
-        # seperator
-        # add file id as hidden input
+        {"type": "divider"},
     ]
 
+    # Add individual language blocks
     for lang in languages:
         blocks.extend(
             verify_job_blocks(
@@ -1311,6 +1315,23 @@ def verify_job_modal(
                 human_job_status=lang.get("human_job_status", ""),
             )
         )
+
+    if len(languages) > 1:
+        total_cost = calculate_total_cost(languages, costs)
+        blocks.extend(
+            [
+                {"type": "divider"},
+                {
+                    "type": "section",
+                    "block_id": "total_cost_block",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Total Cost:* USD${total_cost:.2f}",
+                    },
+                },
+            ]
+        )
+
     return {
         "type": "modal",
         "callback_id": "verify_job",
@@ -1319,3 +1340,16 @@ def verify_job_modal(
         "private_metadata": job["uuid"],
         "blocks": blocks,
     }
+
+
+def calculate_total_cost(
+    selected_languages: list[dict[str, Any]], costs: list[dict[str, Any]]
+) -> float:
+    """Calculate the total cost based on selected languages."""
+    total_cost = 0.0
+    for lang in selected_languages:
+        for cost_item in costs:
+            if cost_item["language_uuid"] == lang["uuid"]:
+                total_cost += cost_item["service_list"][0]["estimated_cost"]
+                break
+    return total_cost
