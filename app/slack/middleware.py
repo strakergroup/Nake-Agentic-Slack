@@ -187,23 +187,26 @@ async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
         client_type = await get_client_type(
             context["ray"].client.id, context["ray"].client.user_group_id
         )
+
+    # Determine which message to show based on client type and enterprise status
+    message = (
+        RequiresMtTokenMessage(ai_tokens, value)
+        if client_type in ["Admin", "Owner"]
+        and not is_ibm_enterprise(enterprise_id=context.enterprise_id)
+        else RequiresMtTokenAdminMessage(ai_tokens, value)
+    )
+
+    # Use respond if available, otherwise fall back to ephemeral message
+    if context.response_url and context.respond:
+        await context.respond(text=message.text, blocks=message.blocks)
+        return False
+
     if context.client:
-        if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
-            enterprise_id=context.enterprise_id
-        ):
-            message = RequiresMtTokenMessage(ai_tokens, value)
-            await context.client.chat_postEphemeral(
-                channel=context.get("channel_id") or context.get("user_id", ""),
-                user=context.get("user_id", ""),
-                text=message.text,
-                blocks=message.blocks,
-            )
-        else:
-            admin_message = RequiresMtTokenAdminMessage(ai_tokens, value)
-            await context.client.chat_postEphemeral(
-                channel=context.get("channel_id") or context.get("user_id", ""),
-                user=context.get("user_id", ""),
-                text=admin_message.text,
-                blocks=admin_message.blocks,
-            )
+        await context.client.chat_postEphemeral(
+            channel=context.get("channel_id") or context.get("user_id", ""),
+            user=context.get("user_id", ""),
+            text=message.text,
+            blocks=message.blocks,
+        )
+
     return False
