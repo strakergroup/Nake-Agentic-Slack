@@ -1,5 +1,5 @@
 from cgi import parse_header
-from typing import Literal
+from typing import Literal, Tuple, Union
 import math
 import datetime
 from urllib.parse import urlencode, unquote
@@ -13,6 +13,7 @@ from app.translate import _
 
 from app.translate import Translator, translator_var
 
+from .file_validators import validate_json
 from ..config import domains
 from io import BytesIO
 import ffmpeg
@@ -296,31 +297,66 @@ def is_ibm_enterprise(
     return False
 
 
-def supported_file_types(file_type: str) -> bool:
-    VALID_FILE_TYPES = [
-        "csv",
-        "dita",
-        "docx",
-        "html",
-        "idml",
-        "json",
-        "pptx",
-        "properties",
-        "srt",
-        "strings",
-        "ts",
-        "txt",
-        "vtt",
-        "xlf",
-        "xliff",
-        "xlsx",
-        "xml",
-        "text",
-    ]
+VALID_FILE_TYPES = {
+    "csv": None,
+    "dita": None,
+    "docx": None,
+    "html": None,
+    "idml": None,
+    "json": validate_json,
+    "pptx": None,
+    "properties": None,
+    "srt": None,
+    "strings": None,
+    "ts": None,
+    "txt": None,
+    "vtt": None,
+    "xlf": None,
+    "xliff": None,
+    "xlsx": None,
+    "xml": None,
+    "text": None,
+}
 
-    if file_type.lower().lstrip(".") in VALID_FILE_TYPES:
-        return True
-    return False
+
+def validate_file(
+    file_extension: str, content: Union[bytes, str, None]
+) -> Tuple[bool, bool, str]:
+    """Checks if the file type is supported and validates content if applicable.
+
+    Args:
+        file_extension (str): The file extension to validate (with or without leading dot)
+        content (Union[bytes, str, None]): The file content to validate if applicable
+
+    Returns:
+        Tuple[bool, bool, str]: A tuple containing:
+            - bool: Whether the file extension is supported
+            - bool: Whether the content is valid (True if no validation required)
+            - str: Error message if validation fails, empty string otherwise
+
+    Example:
+        >>> validate_file('.txt', 'Some content')
+        (True, True, '')  # If txt is supported with no specific validation
+        >>> validate_file('.unsupported', None)
+        (False, False, 'Unsupported file type: unsupported')
+    """
+    ext = file_extension.lower().lstrip(".")
+
+    # Check if file extension is valid
+    if ext not in VALID_FILE_TYPES:
+        return False, False, f"Unsupported file type: {ext}"
+
+    # Get the corresponding validator function (if any)
+    content_validator = VALID_FILE_TYPES[ext]
+    if content_validator and content is not None:
+        is_valid, error_message = content_validator(content)
+        return True, is_valid, error_message  # Return content validation results
+
+    return (
+        True,
+        True,
+        "",
+    )  # Supported file type but no specific content validation needed
 
 
 def get_media_duration(download_url: str, token: str) -> int:
