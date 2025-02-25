@@ -3475,7 +3475,7 @@ class RequiresMtTokenMessage(SlackMessage):
                                 "emoji": False,
                             },
                             "action_id": "link_1",
-                            "url": f"{domains.verify}/plans",
+                            "url": f"{domains.verify}/settings?tab=usage",
                         },
                     ],
                 },
