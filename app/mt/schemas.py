@@ -12,6 +12,7 @@ class TranslationRequest(BaseModel):
     email: str | None = (
         None  # used when user is not logged in or does not have an lc account
     )
+    group_uuid: str | None = None
 
 
 class TranslationResponse(BaseModel):
