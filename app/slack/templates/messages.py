@@ -3606,7 +3606,7 @@ class EvaluateSuccessMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Send to Human Verification",
+                            "text": _("Send to Human Verification"),
                         },
                         "style": "primary",
                         "value": job["uuid"],
