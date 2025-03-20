@@ -13,6 +13,9 @@ buglog.init(
     hostname=domains.slack_ray_translator,
 )
 
+# Log application version
+APP_VERSION = "1.0.0"  # Replace with your actual version
+print("Starting Slack RAY Translator - Version: {APP_VERSION}")
 
 # Configure FastAPI
 app = FastAPI(
