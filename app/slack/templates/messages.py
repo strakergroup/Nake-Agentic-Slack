@@ -1692,68 +1692,65 @@ class NewJobMessage(SlackMessage):
         is_verify_enabled: bool = False,
     ) -> None:
 
-        ai_verify_blocks = [
+        message_blocks = [
             {
-                "type": "button",
+                "type": "section",
                 "text": {
-                    "type": "plain_text",
-                    "text": _("AI Translate"),
-                    "emoji": True,
+                    "type": "mrkdwn",
+                    "text": _(
+                        "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n"
+                    ),
                 },
-                "action_id": "document_mt_job",
-                "style": "primary",
-                "value": file_id,
-            }
-        ]
-
-        if is_verify_enabled:
-            ai_verify_blocks.append(
-                {
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "*• AI Translation* - AI translate content from one language into multiple languages\n\n"
+                    ),
+                },
+                "accessory": {
                     "type": "button",
                     "text": {
                         "type": "plain_text",
-                        "text": _("Quality Evaluation"),
                         "emoji": True,
+                        "text": _("AI Translation"),
                     },
-                    "action_id": "evaluate_job",
+                    "action_id": "document_mt_job",
                     "style": "primary",
                     "value": file_id,
+                },
+            },
+        ]
+
+        if is_verify_enabled:
+            message_blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "*• Quality Evaluation* - AI translate your content and receive translation quality scores, then verify with Straker to send for human verification"
+                        ),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Quality Evaluation"),
+                        },
+                        "action_id": "evaluate_job",
+                        "style": "primary",
+                        "value": file_id,
+                    },
                 }
             )
 
         super().__init__(
             "Submit a new job",
-            (
-                [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": _(
-                                "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click;\n\n"
-                            )
-                            + (
-                                _(
-                                    "*• AI Translate* - AI Translate content from one language into another language\n\n"
-                                )
-                                if file_id
-                                else ""
-                            )
-                            + (
-                                _(
-                                    "*• Quality Evaluation* - AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification"
-                                )
-                                if is_verify_enabled and file_id
-                                else ""
-                            ),
-                        },
-                    },
-                    {
-                        "type": "actions",
-                        "elements": (ai_verify_blocks),
-                    },
-                ]
-            ),
+            message_blocks,
         )
 
 
@@ -2982,11 +2979,11 @@ class VerifyHelperMessage(SlackMessage):
     def __init__(self) -> None:
         verify_uri = "https://help.strakertranslations.com/hc/en-us/articles/39202694401433-Quality-Evaluation"
         message = _(
-            "Please upload your files to perform the Quality Evaluation in the message composer below. Click me to learn Straker <{verify_uri}|Verify MT>."
+            "Please upload your files to perform the Quality Evaluation in the message composer below. Click me to learn Straker <{verify_uri}|Quality Evaluation Help>."
         )
         bookEmoji = ":books:"
         super().__init__(
-            _("{bookEmoji} Learn Verify MT"),
+            _(f"{bookEmoji} Learn Quality Evaluation Help"),
             [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
         )
 
@@ -3277,7 +3274,7 @@ class JobTranscribedEventMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("AI Translate"),
+                                "text": _("AI Translation"),
                                 "emoji": False,
                             },
                             "action_id": "show_srt_translate_form",
@@ -3312,7 +3309,7 @@ class CancelJobMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("Click the *Cancel translation job* button below"),
+                        "text": _("Click the *Cancel request* button below"),
                     },
                 },
                 {
@@ -3322,7 +3319,7 @@ class CancelJobMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("Cancel translation job"),
+                                "text": _("Cancel request"),
                                 "emoji": True,
                             },
                             "action_id": "cancel_job",
@@ -3438,19 +3435,22 @@ class AutoTranslateSettingsDisabledMessage(TextMessage):
 
 
 class RequiresMtTokenMessage(SlackMessage):
-
     def __init__(self, tokens: int, required_tokens: int) -> None:
-        title = _(
-            "You have *{tokens} AI tokens* on your account. This job requires *{required_tokens} AI tokens*. Please purchase tokens."
-        )
-        if tokens <= 0 and required_tokens == 1:
-            title = _("Your group account has no AI tokens. Please purchase tokens.")
-        elif tokens <= 0:
-            title = _(
-                "Your group account has no AI tokens. This job requires *{required_tokens} AI tokens*. Please purchase tokens."
-            )
 
-        # create message which contains the output_file
+        match (tokens, required_tokens):
+            case (tokens, 1) if tokens <= 0:
+                title = _(
+                    "Your group account has no AI tokens. Please purchase tokens."
+                )
+            case (tokens, required_tokens) if tokens <= 0:
+                title = _(
+                    "Your group account has no AI tokens. This job requires *{required_tokens} AI tokens*. Please purchase tokens."
+                )
+            case _:
+                title = _(
+                    "You have *{tokens} AI tokens* on your account. This job requires *{required_tokens} AI tokens*. Please purchase tokens."
+                )
+
         super().__init__(
             title,
             [
@@ -3472,7 +3472,7 @@ class RequiresMtTokenMessage(SlackMessage):
                                 "emoji": False,
                             },
                             "action_id": "link_1",
-                            "url": f"{domains.languagecloud}/checkout/tokens",
+                            "url": f"{domains.verify}/plans",
                         },
                     ],
                 },
@@ -3481,18 +3481,20 @@ class RequiresMtTokenMessage(SlackMessage):
 
 
 class RequiresMtTokenAdminMessage(SlackMessage):
-
     def __init__(self, tokens: int, required_tokens: int) -> None:
-        title = _(
-            "You have *{tokens} AI tokens* on your group account. This job requires *{required_tokens} AI tokens*. Please contact your group admin to purchase more"
-        )
-        if tokens <= 0 and required_tokens == 1:
-            title = _("Your group has no AI Tokens. Please purchase AI Tokens")
-        elif tokens <= 0:
-            title = _(
-                "Your group has no AI Tokens. This job requires *{required_tokens} AI tokens*. Please contact your group admin to purchase more"
-            )
-        # create message which contains the output_file
+
+        match (tokens, required_tokens):
+            case (tokens, 1) if tokens <= 0:
+                title = _("Your group has no AI Tokens. Please purchase AI Tokens")
+            case (tokens, required_tokens) if tokens <= 0:
+                title = _(
+                    "Your group has no AI Tokens. This job requires *{required_tokens} AI tokens*. Please contact your group admin to purchase more"
+                )
+            case _:
+                title = _(
+                    "You have *{tokens} AI tokens* on your group account. This job requires *{required_tokens} AI tokens*. Please contact your group admin to purchase more"
+                )
+
         super().__init__(
             title,
             [
