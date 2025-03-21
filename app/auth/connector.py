@@ -1234,7 +1234,7 @@ def create_client_and_mglink(
             INSERT INTO obj_m_member
                 (obj_uuid, email_primary, login, password, password_updated, given_name, family_name, created, modified, account_manager, groupid, product, subscribed, active, email_active)
             VALUES
-                (:obj_uuid, :email_primary, :email_primary, :password, now(), :given_name, :family_name, now(), now(), :account_manager, :groupid, 1, 1, 1)
+                (:obj_uuid, :email_primary, :email_primary, :password, now(), :given_name, :family_name, now(), now(), :account_manager, :groupid, :product, 1, 1, 1)
             """
         ).bindparams(
             obj_uuid=member_id,
