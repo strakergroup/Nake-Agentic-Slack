@@ -95,7 +95,7 @@ async def home_view(
                 "text": _("{questionEmoji} Help Centre"),
             },
             "action_id": "link_2",
-            "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+            "url": "https://help.straker.ai/en/docs/workplace-apps",
         },
     ]
     # Domain needs to be updates to verify instead of languagecloud
@@ -598,7 +598,7 @@ def new_job_modal(
         if not any(file["value"] == opt["value"] for opt in file_options):
             file_options.insert(0, file)
     file_options = file_options[:100]
-    website_url = "https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Straker-Translate-functions"
+    website_url = "https://help.straker.ai/en/docs/straker-translate-functions"
     if file_options:
         files_block_element = {
             "type": "multi_static_select",

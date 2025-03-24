@@ -383,7 +383,7 @@ async def document_mt_job_action(
             )
         else:
             msg = _(
-                "This file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
+                "This file type is currently not supported. Please check the <https://help.straker.ai/en/docs/ai-translate-for-documents-in-straker-translate-app-for-slack|help docs>"
             )
             # Add your code here
             await client.chat_postMessage(
@@ -752,7 +752,7 @@ async def ray_command(
                         ),
                     )
                 else:
-                    url_doc = "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Enabling-Channel-Translation"
+                    url_doc = "https://help.straker.ai/en/docs/how-to-use-channel-translations"
                     text_help = "help docs"
                     text = _(f"Please check the <{url_doc}|{text_help}>.")
                     await client.chat_postMessage(
