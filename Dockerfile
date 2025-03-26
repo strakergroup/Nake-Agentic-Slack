@@ -39,3 +39,4 @@ RUN useradd -m -u 1001 -g 33 straker
 USER straker
 
 CMD ["/venv/bin/python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80"]
+

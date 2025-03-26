@@ -27,7 +27,7 @@ from buglog import notify_exception, notify_message
 from app.ray.utils import (
     download_from_file_server,
     is_ibm_enterprise,
-    supported_file_types,
+    validate_file,
     upload_to_file_server,
 )
 from app.translate import _
@@ -357,7 +357,6 @@ async def show_srt_translate_form(
         )
 
 
-# document_mt_job
 @app.action("document_mt_job", middleware=[ray_connection])
 @slack_log_decorator
 async def document_mt_job_action(
@@ -368,24 +367,42 @@ async def document_mt_job_action(
     client: AsyncWebClient,
 ):
     await ack()
+
     if await require_ray_client(context):
-        output_file = action["value"]
-        file_info = await client.files_info(file=output_file)
-        file_path, file_extension = os.path.splitext(file_info["file"]["name"])
-        is_valid_file_type = supported_file_types(file_extension)
-        # Perform the necessary actions to document the MT job
-        if is_valid_file_type:
-            msg = DocumentMTJobMessage(output_file)
+        # Get file ID and info
+        file_id = action.get("value", "")
+        file_info = await client.files_info(file=file_id)
+
+        # Download file content
+        file_obj = await client.files_info(file=file_id, include_content=True)
+        content = file_obj.get("content", b"")
+
+        # Validate file type and content
+        _, file_extension = os.path.splitext(file_info["file"]["name"])
+        is_valid_file_type, is_valid_content, error_message = validate_file(
+            file_extension, content=content
+        )
+
+        # If the file type is valid and content is also valid
+        if is_valid_file_type and is_valid_content:
+            msg = DocumentMTJobMessage(file_id)
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=msg.text,
                 blocks=msg.blocks,
             )
-        else:
-            msg = _(
-                "This file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
+
+        # If the file type is valid but content is invalid
+        elif is_valid_file_type and not is_valid_content:
+            msg = "Error: " + error_message
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=msg,
             )
-            # Add your code here
+
+        # If the file type is not valid
+        else:
+            msg = "This file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=msg,
@@ -872,14 +889,16 @@ async def disable_auto_translate_settings(
         channel_id = channel_info.get("channel_id")
         team_id = channel_info.get("team_id", "")
         disable_auto_translate_group_settings(context, channel_id)
+        context["team_id"] = team_id
+        team_channel = await resolve_channels_to_team(
+            channel_id, client, context.enterprise_id, team_id
+        )
+        client.token = team_channel["bot_token"]
         await client.views_publish(
             user_id=context["user_id"],
             view=await home_view(context, body["api_app_id"], context.get("ray")),
         )
 
-        team_channel = await resolve_channels_to_team(
-            channel_id, client, context.enterprise_id
-        )
         client.token = team_channel["bot_token"]
         if not channel_id:
             notify_message("Channel ID not found in payload", extra=payload)
@@ -1698,7 +1717,7 @@ async def evaluate_job_submit(
     context: RayContext,
 ):
     """Evaluate job. Triggered from the Evaluate form view."""
-    await ack()
+    await ack(response_action="clear")
     try:
         if view:
             file_id = view["private_metadata"]
@@ -1707,10 +1726,10 @@ async def evaluate_job_submit(
             # call verify api to submit a file for evaluation
     except ValidationError as e:
         errors = convert_pydantic_to_slack_error(e)
-        print(errors)
-        await ack(response_action="errors", errors=errors)
+        await client.chat_postMessage(
+            channel=context.user_id, text="Error: " + str(errors)
+        )
         return
-    await ack(response_action="clear")
     if await require_ray_client(context, prompt_login=True):
         input_file = await download_file(client=client, file_id=file_id, http=None)
         response = await submit_evaluation_job(
@@ -1735,20 +1754,37 @@ async def evaluate_job_action(
 ):
     """Evaluate job. Triggered from the Evaluate Job button."""
     await ack()
-    file_id = action["value"] if "value" in action else ""
+
+    # Get file ID and info
+    file_id = action.get("value", "")
     file_info = await client.files_info(file=file_id)
-    file_path, file_extension = os.path.splitext(file_info["file"]["name"])
-    is_valid_file_type = supported_file_types(file_extension)
-    if is_valid_file_type:
+
+    # Download file content
+    file_obj = await client.files_info(file=file_id, include_content=True)
+    content = file_obj.get("content", b"")
+
+    # Validate file type and content
+    _, file_extension = os.path.splitext(file_info["file"]["name"])
+    is_valid_file_type, is_valid_content, error_message = validate_file(
+        file_extension, content=content
+    )
+
+    # If the file type is valid and content is also valid
+    if is_valid_file_type and is_valid_content:
         await client.views_open(
             trigger_id=body["trigger_id"],
             view=evaluate_job_modal(file_id),
         )
-    else:
-        msg = _(
-            "This file type is currently not supported. Please check the help docs."
+    # If the file type is valid but content is invalid
+    elif is_valid_file_type and not is_valid_content:
+        msg = "Error: " + error_message
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=msg,
         )
-        # Add your code here
+    # If the file type is not valid
+    else:
+        msg = "This file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
         await client.chat_postMessage(
             channel=context["user_id"],
             text=msg,
@@ -1788,7 +1824,7 @@ async def verify_job_modal_open_action(
 async def handle_verify_job_submission(
     ack: AsyncAck, body: Dict[str, Any], client: Dict[str, Any], context: RayContext
 ):
-    await ack()
+    await ack(response_action="clear")
 
     # Extract the private metadata (job UUID)
     job_uuid = body["view"]["private_metadata"]
@@ -1823,6 +1859,28 @@ async def handle_verify_job_submission(
     await client.chat_postMessage(
         channel=user_id,
         text=msg,
+    )
+
+
+@app.action("verification_checkbox_action")
+async def handle_checkbox_action(ack, body, client):
+    await ack()
+
+    selected_options = body["actions"][0].get("selected_options", [])
+
+    total_cost = sum(
+        float(option["text"]["text"].replace("USD$", "")) for option in selected_options
+    )
+
+    view = body["view"]
+    blocks = view["blocks"]
+
+    for block in blocks:
+        if block.get("block_id") == "total_cost_block":
+            block["text"]["text"] = f"*Total Cost:* USD${total_cost:.2f}"
+
+    client.views_update(
+        view_id=view["id"], hash=view["hash"], view={"type": "modal", "blocks": blocks}
     )
 
 
