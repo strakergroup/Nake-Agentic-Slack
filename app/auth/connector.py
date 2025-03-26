@@ -1151,7 +1151,7 @@ def connect_ray_account_sso(
             user_data=json.dumps(slack_data), member_id=member_id
         )
         add_to_verify_team(
-            member_id=member_id,
+            user_uuid=member_id,
             enterprise_id=enterprise_id,
         )
         return member_id
@@ -1170,7 +1170,7 @@ def connect_ray_account_sso(
             member_id=member_id,
         )
         add_to_verify_team(
-            member_id=member_id,
+            user_uuid=member_id,
             enterprise_id=enterprise_id,
         )
         return member_id
