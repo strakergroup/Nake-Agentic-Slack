@@ -314,7 +314,7 @@ async def respond_to_message(
                         thread_ts=thread_ts,
                     )
             elif response.reply:
-                help_site = "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack"
+                help_site = "https://help.straker.ai/en/docs/direct-machine-translation-mt-in-straker-translate-app-for-slack"
                 none_msg = _(
                     "I didn't understand, please refer to the <{help_site}|help docs>"
                 )
