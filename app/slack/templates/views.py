@@ -424,7 +424,7 @@ async def home_view(
                             "emoji": False,
                         },
                         "action_id": "link_0",
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions",
+                        "url": "https://help.straker.ai/en/docs/straker-translate-functions",
                     },
                 ],
             },
