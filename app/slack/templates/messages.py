@@ -287,7 +287,7 @@ class WelcomeBackMessage(SlackMessage):
                             "emoji": True,
                             "text": _("Direct MT Help"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
+                        "url": "https://help.straker.ai/en/docs/direct-machine-translation-mt-in-straker-translate-app-for-slack",
                         "action_id": "link_direct_mt",
                     },
                 },
@@ -304,7 +304,7 @@ class WelcomeBackMessage(SlackMessage):
                             "emoji": True,
                             "text": _("Channel Translations Help"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
+                        "url": "https://help.straker.ai/en/docs/how-to-use-channel-translations",
                         "action_id": "link_channel_translations",
                     },
                 },
@@ -321,7 +321,7 @@ class WelcomeBackMessage(SlackMessage):
                             "emoji": True,
                             "text": _("Document MT Help"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
+                        "url": "https://help.straker.ai/en/docs/ai-translate-for-documents-in-straker-translate-app-for-slack",
                         "action_id": "link_document_mt",
                     },
                 },
@@ -432,7 +432,7 @@ class WelcomeBackMessage(SlackMessage):
                             "emoji": True,
                             "text": _("Help Centre"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+                        "url": "https://help.straker.ai/en/docs/workplace-apps",
                         "action_id": "link_2",
                     },
                 },
@@ -440,7 +440,7 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|{_('Show more options')}>*",
+                        "text": f"*<https://help.straker.ai/en/docs/straker-translate-functions|{_('Show more options')}>*",
                     },
                 },
                 {"type": "divider"},
@@ -496,7 +496,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "emoji": True,
                             "text": _("Direct MT Help"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
+                        "url": "https://help.straker.ai/en/docs/direct-machine-translation-mt-in-straker-translate-app-for-slack",
                         "action_id": "cf",
                     },
                 },
@@ -513,7 +513,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "emoji": True,
                             "text": _("Channel Translations Help"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
+                        "url": "https://help.straker.ai/en/docs/how-to-use-channel-translations",
                         "action_id": "link_channel_translations",
                     },
                 },
@@ -530,7 +530,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "emoji": True,
                             "text": _("Document MT Help"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
+                        "url": "https://help.straker.ai/en/docs/ai-translate-for-documents-in-straker-translate-app-for-slack",
                         "action_id": "link_document_mt",
                     },
                 },
@@ -641,7 +641,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "emoji": True,
                             "text": _("Help Centre"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+                        "url": "https://help.straker.ai/en/docs/workplace-apps",
                         "action_id": "link_2",
                     },
                 },
@@ -649,7 +649,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|{_('Show more options')}>*",
+                        "text": f"*<https://help.straker.ai/en/docs/straker-translate-functions|{_('Show more options')}>*",
                     },
                 },
                 {"type": "divider"},
@@ -1960,7 +1960,7 @@ class HelpMessage(SlackMessage):
                             "emoji": True,
                             "text": _("Direct MT Help"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack",
+                        "url": "https://help.straker.ai/en/docs/direct-machine-translation-mt-in-straker-translate-app-for-slack",
                         "action_id": "link_direct_mt",
                     },
                 },
@@ -1977,7 +1977,7 @@ class HelpMessage(SlackMessage):
                             "emoji": True,
                             "text": _("Channel Translations Help"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack",
+                        "url": "https://help.straker.ai/en/docs/how-to-use-channel-translations",
                         "action_id": "link_channel_translations",
                     },
                 },
@@ -1994,7 +1994,7 @@ class HelpMessage(SlackMessage):
                             "emoji": True,
                             "text": _("Document MT Help"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
+                        "url": "https://help.straker.ai/en/docs/ai-translate-for-documents-in-straker-translate-app-for-slack",
                         "action_id": "link_document_mt",
                     },
                 },
@@ -2121,7 +2121,7 @@ class HelpMessage(SlackMessage):
                             "emoji": True,
                             "text": _("Help Centre"),
                         },
-                        "url": "https://help.strakertranslations.com/hc/en-us/categories/10020714644633-Apps",
+                        "url": "https://help.straker.ai/en/docs/workplace-apps",
                         "action_id": "link_2",
                     },
                 },
@@ -2963,8 +2963,10 @@ class ReportInsightsMessage(SlackMessage):
 
 class AIHelperMessage(SlackMessage):
     def __init__(self) -> None:
-        directmt_uri = "https://help.strakertranslations.com/hc/en-us/articles/28180054192153-Direct-Machine-Translation-MT-in-Straker-Translate-App-for-Slack"
-        channelmt_uri = "https://help.strakertranslations.com/hc/en-us/articles/32480860047001-Translation-Settings-Configuration-in-Slack"
+        directmt_uri = "https://help.straker.ai/en/docs/direct-machine-translation-mt-in-straker-translate-app-for-slack"
+        channelmt_uri = (
+            "https://help.straker.ai/en/docs/how-to-use-channel-translations"
+        )
         message = _(
             "Click me to learn Straker <{directmt_uri}|Direct MT> and <{channelmt_uri}|Channel Translations>."
         )
@@ -2977,7 +2979,7 @@ class AIHelperMessage(SlackMessage):
 
 class VerifyHelperMessage(SlackMessage):
     def __init__(self) -> None:
-        verify_uri = "https://help.strakertranslations.com/hc/en-us/articles/39202694401433-Quality-Evaluation"
+        verify_uri = "https://help.straker.ai/en/docs/quality-evaluation"
         message = _(
             "Please upload your files to perform the Quality Evaluation in the message composer below. Click me to learn Straker <{verify_uri}|Quality Evaluation Help>."
         )
