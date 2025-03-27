@@ -443,17 +443,6 @@ class WelcomeBackMessage(SlackMessage):
                         "text": f"*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|{_('Show more options')}>*",
                     },
                 },
-                {"type": "divider"},
-                {
-                    "type": "section",
-                    "block_id": "sectionBlockOnlyMrkdwn",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*"
-                        ),
-                    },
-                },
             ],
         )
 
@@ -650,17 +639,6 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": f"*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|{_('Show more options')}>*",
-                    },
-                },
-                {"type": "divider"},
-                {
-                    "type": "section",
-                    "block_id": "sectionBlockOnlyMrkdwn",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "Instead of buttons try using natural language, ask questions like, *What's the status of TJXZ12345?* or *Show me jobs completed in the last 4 hours.*"
-                        ),
                     },
                 },
             ],
