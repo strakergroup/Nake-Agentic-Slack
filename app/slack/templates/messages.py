@@ -440,7 +440,7 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|{_('Show more options')}>*",
+                        "text": f"*<https://help.straker.ai/en/docs/straker-translate-functions|{_('Show more options')}>*",
                     },
                 },
             ],
@@ -638,7 +638,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*<https://help.strakertranslations.com/hc/en-us/articles/22925760887833-Slack-app-functions|{_('Show more options')}>*",
+                        "text": f"*<https://help.straker.ai/en/docs/straker-translate-functions|{_('Show more options')}>*",
                     },
                 },
             ],
