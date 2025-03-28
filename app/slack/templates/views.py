@@ -494,14 +494,15 @@ def job_search_modal(
     }
 
 
-def evaluate_job_modal(file_id: str):
+def evaluate_job_modal(file_info: list[dict[str, Any]]):
     """The template for the modal to submit a file to verify quality evaluate."""
+    file_ids = [file["file_id"] for file in file_info]
     return {
         "type": "modal",
         "callback_id": "evaluate_job",
         "title": {"type": "plain_text", "text": _("Quality Evaluation", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Submit", 23)[:24]},
-        "private_metadata": file_id,
+        "private_metadata": json.dumps(file_ids),
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
             {
@@ -558,7 +559,7 @@ def evaluate_job_modal(file_id: str):
                 "hint": {
                     "type": "plain_text",
                     "text": _(
-                        "Which language(s) do you want the file to be translated to?"
+                        "Which language(s) do you want the file(s) to be translated to?"
                     ),
                 },
             },
