@@ -426,7 +426,7 @@ async def document_mt_submit_action(
     await ack()
     if await require_ray_client(context):
         slack_file_ids = json.loads(action["value"])
-        selected_language = await redis_conn.get(f"output_file_{slack_file_ids}")
+        selected_language = await redis_conn.get(f"output_file_{action['value']}")
         # get uuid from output_file
         if await require_mt_tokens(context, 1):
             # get selected language from redis keyed on output_file
