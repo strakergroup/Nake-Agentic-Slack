@@ -367,45 +367,49 @@ async def document_mt_job_action(
     client: AsyncWebClient,
 ):
     await ack()
-
+    # wade
     if await require_ray_client(context):
         # Get file ID and info
-        file_id = action.get("value", "")
-        file_info = await client.files_info(file=file_id)
+        file_ids = json.loads(action.get("value", ""))
+        file_submit = []
+        for file_id in file_ids:
+            # Download file content
+            file_obj = await client.files_info(file=file_id, include_content=True)
+            content = file_obj.get("content", b"")
+            file_name = file_obj["file"]["name"]
+            # Validate file type and content
+            _, file_extension = os.path.splitext(file_name)
+            is_valid_file_type, is_valid_content, error_message = validate_file(
+                file_extension, content=content
+            )
 
-        # Download file content
-        file_obj = await client.files_info(file=file_id, include_content=True)
-        content = file_obj.get("content", b"")
+            # If the file type is valid and content is also valid
+            if is_valid_file_type and is_valid_content:
+                file_submit.append(file_id)
 
-        # Validate file type and content
-        _, file_extension = os.path.splitext(file_info["file"]["name"])
-        is_valid_file_type, is_valid_content, error_message = validate_file(
-            file_extension, content=content
-        )
+            # If the file type is valid but content is invalid
+            elif is_valid_file_type and not is_valid_content:
+                msg = _("Error ({file_name}):") + error_message
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=msg,
+                )
 
-        # If the file type is valid and content is also valid
-        if is_valid_file_type and is_valid_content:
-            msg = DocumentMTJobMessage(file_id)
+            # If the file type is not valid
+            else:
+                msg = _(
+                    "The file '{file_name}' file type is currently not supported. Please check the <https://help.straker.ai/en/docs/ai-translate-for-documents-in-straker-translate-app-for-slack|help docs>"
+                )
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=msg,
+                )
+        if file_submit:
+            msg = DocumentMTJobMessage(json.dumps(file_ids))
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=msg.text,
                 blocks=msg.blocks,
-            )
-
-        # If the file type is valid but content is invalid
-        elif is_valid_file_type and not is_valid_content:
-            msg = "Error: " + error_message
-            await client.chat_postMessage(
-                channel=context["user_id"],
-                text=msg,
-            )
-
-        # If the file type is not valid
-        else:
-            msg = "This file type is currently not supported. Please check the <https://help.straker.ai/en/docs/ai-translate-for-documents-in-straker-translate-app-for-slack|help docs>"
-            await client.chat_postMessage(
-                channel=context["user_id"],
-                text=msg,
             )
 
 
@@ -421,27 +425,28 @@ async def document_mt_submit_action(
 ):
     await ack()
     if await require_ray_client(context):
-        slack_file_id = action["value"]
+        slack_file_ids = json.loads(action["value"])
+        selected_language = await redis_conn.get(f"output_file_{slack_file_ids}")
         # get uuid from output_file
         if await require_mt_tokens(context, 1):
             # get selected language from redis keyed on output_file
             # selected from get_auto_translate_language_options
-            selected_language = await redis_conn.get(f"output_file_{slack_file_id}")
-            if selected_language:
-                input_file = await download_file(
-                    client=client, file_id=slack_file_id, http=None
-                )
-                input_file_id = upload_to_file_server(input_file)
-                await document_machine_translate(
-                    context, input_file_id, selected_language
-                )
-                await say(
-                    _(
-                        "The file is being translated. You will be notified when it is ready."
+            for slack_file_id in slack_file_ids:
+                if selected_language:
+                    input_file = await download_file(
+                        client=client, file_id=slack_file_id, http=None
                     )
-                )
-            else:
-                await say(_("Please select a language to translate to."))
+                    input_file_id = upload_to_file_server(input_file)
+                    await document_machine_translate(
+                        context, input_file_id, selected_language
+                    )
+                    await say(
+                        _(
+                            "The file is being translated. You will be notified when it is ready."
+                        )
+                    )
+                else:
+                    await say(_("Please select a language to translate to."))
 
 
 @app.block_action("download_transcribed_file", middleware=[ray_connection])
