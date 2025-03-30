@@ -389,21 +389,21 @@ async def document_mt_job_action(
 
             # If the file type is valid but content is invalid
             elif is_valid_file_type and not is_valid_content:
-                msg = _("Error ({file_name}):") + error_message
+                msg = error_message
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=msg,
+                )
+            # If the file type is not valid
+            else:
+                msg = _(
+                    "This file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
+                )
                 await client.chat_postMessage(
                     channel=context["user_id"],
                     text=msg,
                 )
 
-            # If the file type is not valid
-            else:
-                msg = _(
-                    "The file '{file_name}' file type is currently not supported. Please check the <https://help.straker.ai/en/docs/ai-translate-for-documents-in-straker-translate-app-for-slack|help docs>"
-                )
-                await client.chat_postMessage(
-                    channel=context["user_id"],
-                    text=msg,
-                )
         if file_submit:
             msg = DocumentMTJobMessage(json.dumps(file_ids))
             await client.chat_postMessage(
