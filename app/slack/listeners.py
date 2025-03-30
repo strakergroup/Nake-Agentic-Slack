@@ -367,7 +367,6 @@ async def document_mt_job_action(
     client: AsyncWebClient,
 ):
     await ack()
-    # wade
     if await require_ray_client(context):
         # Get file ID and info
         file_ids = json.loads(action.get("value", ""))
