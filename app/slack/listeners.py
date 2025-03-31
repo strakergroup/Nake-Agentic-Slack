@@ -1746,7 +1746,7 @@ async def evaluate_job_submit(
             )
         if form.workflow_options:
             msg = _(
-                "You've successfully submitted your document(s) for human verification. Your document(s) will be translated and verified by a human translator."
+                "Thank you for sending your document for human verification! We will notify as soon as the translation is complete."
             )
         else:
             msg = _(
