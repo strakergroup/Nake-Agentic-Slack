@@ -1744,11 +1744,14 @@ async def evaluate_job_submit(
                 form.reference,
                 workflow_uuid=form.workflow_options,
             )
-
-        # TODO use form to match spec
-        msg = _(
-            "You've successfully submitted your document(s) for quality evaluation. Your documents will be AI Translated and you will be given a score."
-        )
+        if form.workflow_options:
+            msg = _(
+                "You've successfully submitted your document(s) for human verification. Your document(s) will be translated and verified by a human translator."
+            )
+        else:
+            msg = _(
+                "You've successfully submitted your document(s) for quality evaluation. Your document(s) will be AI Translated and you will be given a score."
+            )
         await client.chat_postMessage(channel=context.user_id, text=msg)
 
 
