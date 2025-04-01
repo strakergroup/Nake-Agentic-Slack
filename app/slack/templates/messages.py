@@ -2981,7 +2981,7 @@ class VerifyHelperMessage(SlackMessage):
     def __init__(self) -> None:
         verify_uri = "https://help.straker.ai/en/docs/quality-evaluation"
         message = _(
-            f"Please upload your files to perform the Quality Evaluation in the message composer below. Click me to learn Straker <{verify_uri}|Quality Evaluation Help>."
+            "Please upload your files to perform the Quality Evaluation in the message composer below. Click me to learn Straker <{verify_uri}|Quality Evaluation Help>."
         )
         bookEmoji = ":books:"
         super().__init__(
@@ -3610,7 +3610,7 @@ class EvaluateSuccessMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": "Send to Human Verification",
+                            "text": _("Send to Human Verification"),
                         },
                         "style": "primary",
                         "value": job["uuid"],

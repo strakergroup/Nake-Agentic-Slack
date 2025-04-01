@@ -129,8 +129,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 success_data = MtSuccessResponseSchema.model_validate(event.data)
                 output_file = download_from_file_server(success_data.file_id)
                 token_count = success_data.tokens
-                target_lang = success_data.target_language
-                title = target_lang + "_" + output_file.get("file_name")
+                title = output_file.get("file_name")
                 token_consumption_message = (
                     _("You have used {token_count} AI tokens.")
                     if not is_ibm_enterprise(auth.slack_user.enterprise_id)

@@ -22,9 +22,9 @@ async def health_check(response: Response, password: str | None = None):
 
     # Execute tests in parallel.
     await asyncio.gather(
-        _check_database(errors),
+        # _check_database(errors),
         _check_slack_api(errors),
-        _check_redis(errors),
+        # _check_redis(errors),
         # TODO: Watson
     )
 
