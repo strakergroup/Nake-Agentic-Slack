@@ -7,10 +7,11 @@ https://docs.sqlalchemy.org/en/20/orm/declarative_tables.html
 """
 
 import datetime
-from typing import TypeAlias, Literal
+from typing import TypeAlias, Literal, Optional
 
 from sqlalchemy import JSON, DateTime, Enum, Integer, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from pydantic import BaseModel
 
 
 class Base(DeclarativeBase):
@@ -161,3 +162,18 @@ class Language(Base):
     parent_lang: Mapped[str]
     is_char_lang: Mapped[bool]  # TODO fix this, always True
     tiers: Mapped[int]
+
+
+class TranscriptionTask(BaseModel):
+    """Model representing input data for a transcription task"""
+
+    file_id: str
+    file_name: str
+    download_url: str
+    token: str
+    service: str = "whisper"
+    language: Optional[str] = None
+    model: Optional[str] = None
+    embed_subtitles: bool = False
+    test_mode: bool = False
+    task_id: Optional[str] = None
