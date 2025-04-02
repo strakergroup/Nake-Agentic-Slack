@@ -288,33 +288,33 @@ async def home_view(
                     }
                 )
     # Note: translation_settings_enabled should be removed once we enable QE for everyone
-    if is_verify_enabled and translation_settings_enabled:
-        verify_settings_block = [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        ":drum_with_drumsticks: Introducing a new option: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
-                    ),
-                },
-            },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _(":star2: Create New Project (QE)"),
-                        },
-                        "action_id": "verify_help",
-                        "url": message_url,
-                    },
-                ],
-            },
-        ]
+    # if is_verify_enabled and translation_settings_enabled:
+    #     verify_settings_block = [
+    #         {
+    #             "type": "section",
+    #             "text": {
+    #                 "type": "mrkdwn",
+    #                 "text": _(
+    #                     ":drum_with_drumsticks: Introducing a new option: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
+    #                 ),
+    #             },
+    #         },
+    #         {
+    #             "type": "actions",
+    #             "elements": [
+    #                 {
+    #                     "type": "button",
+    #                     "text": {
+    #                         "type": "plain_text",
+    #                         "emoji": True,
+    #                         "text": _(":star2: Create New Project (QE)"),
+    #                     },
+    #                     "action_id": "verify_help",
+    #                     "url": message_url,
+    #                 },
+    #             ],
+    #         },
+    #     ]
     return {
         "type": "home",
         "blocks": [
