@@ -68,6 +68,7 @@ from ..ray.settings import (
 from ..ray.utils import get_media_duration, is_ibm_enterprise
 from ..watson import watson_message
 from .select_options import get_file_options_cached
+from app.models import TranscriptionTask
 
 
 async def respond_to_message(
@@ -114,14 +115,22 @@ async def respond_to_message(
                             await log_transcribe_request(
                                 duration_ms, file_name, context["ray"]
                             )
+
+                            task_data = TranscriptionTask(
+                                file_id=file["id"],
+                                file_name=file_name,
+                                download_url=download_url,
+                                token=token,
+                                service="whisper",
+                                language="auto",
+                                model="base",
+                                embed_subtitles=False,
+                            )
                             await create_task(
                                 context["ray"].client.id,
-                                "wb_task:media:asr",
-                                "ray:job:transcribed",
-                                {
-                                    "input_url": download_url,
-                                    "input_token": token,
-                                },
+                                "transcription:tasks",
+                                "transcription:results",
+                                task_data.model_dump(),
                             )
                             msg = TranscriptionMessage()
                             await context.say(text=msg.text, thread_ts=thread_ts)
