@@ -18,6 +18,7 @@ from app.mt.translate import get_ai_translation
 from app.ray.events.models import MtFileRequestSchema
 from app.translate import _
 from app.wb_tasks.tasks import create_task
+from app.transcriber_tasks.tasks import create_asr_task
 
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
@@ -126,10 +127,10 @@ async def respond_to_message(
                                 model="base",
                                 embed_subtitles=False,
                             )
-                            await create_task(
+                            await create_asr_task(
                                 context["ray"].client.id,
-                                "transcription:tasks",
-                                "transcription:results",
+                                "transcription:media:asr",
+                                "transcription:media:results",
                                 task_data.model_dump(),
                             )
                             msg = TranscriptionMessage()
