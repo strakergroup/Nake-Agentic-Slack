@@ -177,3 +177,4 @@ class TranscriptionTask(BaseModel):
     embed_subtitles: bool = False
     test_mode: bool = False
     task_id: Optional[str] = None
+    symlink: Optional[str] = None

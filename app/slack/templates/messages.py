@@ -3223,8 +3223,10 @@ class DocumentMTJobMessage(SlackMessage):
 
 class JobTranscribedEventMessage(SlackMessage):
 
-    def __init__(self, task_uuid: str) -> None:
-        title = _("We have *transcribed* your file and SRT can be downloaded below.")
+    def __init__(self, task_uuid: str, file_name: str, symlink: str) -> None:
+        title = _(
+            "We have *transcribed* your file *{file_name}* and SRT can be downloaded below."
+        )
         # create message which contains the output_file
         super().__init__(
             title,
@@ -3233,7 +3235,7 @@ class JobTranscribedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": title,
+                        "text": title.format(file_name=file_name),
                     },
                 },
                 {
@@ -3267,8 +3269,10 @@ class JobTranscribedEventMessage(SlackMessage):
 
 
 class TranscriptionMessage(TextMessage):
-    def __init__(self) -> None:
-        super().__init__(_("⏱️ Please wait a moment and we will transcribe your file"))
+    def __init__(self, file_name: str) -> None:
+        super().__init__(
+            _("⏱️ Please wait a moment and we will transcribe your file *{file_name}*")
+        )
 
 
 class InvalidMTResultMessage(TextMessage):

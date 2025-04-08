@@ -117,6 +117,12 @@ async def respond_to_message(
                                 duration_ms, file_name, context["ray"]
                             )
 
+                            # Get the message permalink
+                            permalink_info = await client.chat_getPermalink(
+                                channel=context["channel_id"], message_ts=message["ts"]
+                            )
+                            message_permalink = permalink_info["permalink"]
+
                             task_data = TranscriptionTask(
                                 file_id=file["id"],
                                 file_name=file_name,
@@ -126,6 +132,7 @@ async def respond_to_message(
                                 language="auto",
                                 model="base",
                                 embed_subtitles=False,
+                                symlink=message_permalink,
                             )
                             await create_asr_task(
                                 context["ray"].client.id,
@@ -133,7 +140,7 @@ async def respond_to_message(
                                 "transcription:media:results",
                                 task_data.model_dump(),
                             )
-                            msg = TranscriptionMessage()
+                            msg = TranscriptionMessage(file_name)
                             await context.say(text=msg.text, thread_ts=thread_ts)
                 else:
                     new_job_msg = NewJobMessage(
