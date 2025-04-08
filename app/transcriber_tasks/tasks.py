@@ -45,7 +45,7 @@ async def create_asr_task(
     with engines["sitecommons"].begin() as conn:
         sql = text(
             """
-            INSERT INTO wb_task_consumer_queue
+            INSERT INTO transcriber_task_consumer_queue
                 (obj_uuid, member_uuid, event_name, task_data, task_status, entry_id)
             VALUES
                 (:task_uuid, :member_uuid, :event_name, :task_data, :task_status, :entry_id)
@@ -91,7 +91,7 @@ async def get_asr_task(task_uuid: str, member_uuid: str) -> dict:
     with engines["sitecommons"].begin() as conn:
         sql = text(
             """
-            SELECT task_result FROM wb_task_consumer_queue
+            SELECT task_result FROM transcriber_task_consumer_queue
             WHERE obj_uuid = :task_uuid
             AND member_uuid = :member_uuid
             """
