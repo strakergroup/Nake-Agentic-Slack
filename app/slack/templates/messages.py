@@ -3225,7 +3225,7 @@ class JobTranscribedEventMessage(SlackMessage):
 
     def __init__(self, task_uuid: str, file_name: str, symlink: str) -> None:
         title = _(
-            "We have *transcribed* your file *{file_name}* and SRT can be downloaded below."
+            "We have *transcribed* your file <{symlink}|{file_name}> and SRT can be downloaded below."
         )
         # create message which contains the output_file
         super().__init__(
@@ -3235,7 +3235,7 @@ class JobTranscribedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": title.format(file_name=file_name),
+                        "text": title.format(file_name=file_name, symlink=symlink),
                     },
                 },
                 {
