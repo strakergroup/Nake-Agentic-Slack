@@ -167,7 +167,6 @@ class Language(Base):
 class TranscriptionTask(BaseModel):
     """Model representing input data for a transcription task"""
 
-    file_id: str
     file_name: str
     download_url: str
     token: str

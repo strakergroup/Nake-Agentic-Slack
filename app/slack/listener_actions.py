@@ -97,7 +97,15 @@ async def respond_to_message(
             )
             # Handle video file
             for file in message["files"]:
-                if file["filetype"] in ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]:
+                if file["filetype"] in [
+                    "mp4",
+                    "mp3",
+                    "mpeg",
+                    "mpga",
+                    "m4a",
+                    "wav",
+                    "webm",
+                ]:
                     file_info = await client.files_info(file=file["id"])
                     download_url = file_info["file"]["url_private"]
                     # duration_ms = file_info["file"].get("duration_ms", 0)
@@ -124,7 +132,6 @@ async def respond_to_message(
                             message_permalink = permalink_info["permalink"]
 
                             task_data = TranscriptionTask(
-                                file_id=file["id"],
                                 file_name=file_name,
                                 download_url=download_url,
                                 token=token,
