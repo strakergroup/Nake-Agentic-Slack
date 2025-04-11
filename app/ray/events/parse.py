@@ -111,7 +111,7 @@ async def get_ray_event_message(
             job_id=event6.id,
             is_ibm=is_ibm,
         )
-    elif event_type == "transcription:media:results":
+    elif event_type == "transcription:slack:media:results":
         event7 = JobTranscribedEvent.model_validate(event_data)
         # send message which contains event.output_file
         return JobTranscribedEventMessage(
