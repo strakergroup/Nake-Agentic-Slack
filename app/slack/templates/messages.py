@@ -3223,9 +3223,9 @@ class DocumentMTJobMessage(SlackMessage):
 
 class JobTranscribedEventMessage(SlackMessage):
 
-    def __init__(self, task_uuid: str, file_name: str, symlink: str) -> None:
+    def __init__(self, task_uuid: str, source_file_name: str, symlink: str) -> None:
         title = _(
-            "We have *transcribed* your file *{file_name}* and SRT can be downloaded below."
+            "We have *transcribed* your file *{source_file_name}* and SRT can be downloaded below."
         )
         # create message which contains the output_file
         super().__init__(
@@ -3235,7 +3235,9 @@ class JobTranscribedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": title.format(file_name=file_name, symlink=symlink),
+                        "text": title.format(
+                            source_file_name=source_file_name, symlink=symlink
+                        ),
                     },
                 },
                 {
