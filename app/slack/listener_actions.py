@@ -97,7 +97,15 @@ async def respond_to_message(
             )
             # Handle video file
             for file in message["files"]:
-                if file["filetype"] in ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]:
+                if file["filetype"] in [
+                    "mp4",
+                    "mp3",
+                    "mpeg",
+                    "mpga",
+                    "m4a",
+                    "wav",
+                    "webm",
+                ] or (".mpga" in file["name"] and file["name"].endswith(".mpga")):
                     file_info = await client.files_info(file=file["id"])
                     download_url = file_info["file"]["url_private"]
                     # duration_ms = file_info["file"].get("duration_ms", 0)
