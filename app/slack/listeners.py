@@ -32,6 +32,7 @@ from app.ray.utils import (
 )
 from app.translate import _
 from app.wb_tasks.tasks import get_task
+from app.transcriber_tasks.tasks import get_asr_task
 from ..redis import redis_conn
 
 from .app import app
@@ -455,7 +456,7 @@ async def download_transcribed_file(
     await ack()
     if await require_ray_client(context):
         task_uuid = action["value"]
-        task_result = await get_task(task_uuid, context["ray"].client.id)
+        task_result = await get_asr_task(task_uuid, context["ray"].client.id)
         file_id = task_result["file_id"]
         file = download_from_file_server(file_id)
         await client.files_upload_v2(
@@ -537,7 +538,7 @@ async def srt_translate_action(
     if await require_ray_client(context):
         task_uuid = action["value"]
         # get uuid from output_file
-        task_result = await get_task(task_uuid, context["ray"].client.id)
+        task_result = await get_asr_task(task_uuid, context["ray"].client.id)
         if await require_mt_tokens(context, task_result["tokens"]):
             # get selected language from redis keyed on output_file
             # selected from get_auto_translate_language_options
