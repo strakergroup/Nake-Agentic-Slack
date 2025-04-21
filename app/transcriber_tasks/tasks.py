@@ -8,7 +8,6 @@ from ..database import engines
 import httpx
 from ..config import domains
 import json
-from datetime import datetime
 
 
 async def create_asr_task(
@@ -36,11 +35,6 @@ async def create_asr_task(
         "data": {"client_id": member_uuid},
     }
 
-    # print with timestamp
-    print(
-        f"Before insert into database: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}"
-    )
-
     # Insert task into database
     with engines["sitecommons"].begin() as conn:
         sql = text(
@@ -60,21 +54,11 @@ async def create_asr_task(
         )
         conn.execute(sql)
 
-    # print with timestamp with ms
-    print(
-        f"After insert into database: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}"
-    )
-
     async with httpx.AsyncClient() as http:
         await http.post(
             f"{domains.stream_proxy}/events/{event_name}",
             json={"data": task_data, "source": "Straker Translate for Slack"},
         )
-
-    # print with timestamp
-    print(
-        f"After post to event: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}"
-    )
 
     return "Task created!"
 
