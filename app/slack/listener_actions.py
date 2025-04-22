@@ -18,6 +18,7 @@ from app.mt.translate import get_ai_translation
 from app.ray.events.models import MtFileRequestSchema
 from app.translate import _
 from app.wb_tasks.tasks import create_task
+from app.transcriber_tasks.tasks import create_asr_task
 
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
@@ -68,6 +69,7 @@ from ..ray.settings import (
 from ..ray.utils import get_media_duration, is_ibm_enterprise
 from ..watson import watson_message
 from .select_options import get_file_options_cached
+from app.models import TranscriptionTask
 
 
 async def respond_to_message(
@@ -95,7 +97,15 @@ async def respond_to_message(
             )
             # Handle video file
             for file in message["files"]:
-                if file["filetype"] in ["mp4", "mp3"]:
+                if file["filetype"] in [
+                    "mp4",
+                    "mp3",
+                    "mpeg",
+                    "mpga",
+                    "m4a",
+                    "wav",
+                    "webm",
+                ] or (".mpga" in file["name"] and file["name"].endswith(".mpga")):
                     file_info = await client.files_info(file=file["id"])
                     download_url = file_info["file"]["url_private"]
                     # duration_ms = file_info["file"].get("duration_ms", 0)
@@ -114,16 +124,30 @@ async def respond_to_message(
                             await log_transcribe_request(
                                 duration_ms, file_name, context["ray"]
                             )
-                            await create_task(
-                                context["ray"].client.id,
-                                "wb_task:media:asr",
-                                "ray:job:transcribed",
-                                {
-                                    "input_url": download_url,
-                                    "input_token": token,
-                                },
+
+                            # Get the message permalink
+                            permalink_info = await client.chat_getPermalink(
+                                channel=context["channel_id"], message_ts=message["ts"]
                             )
-                            msg = TranscriptionMessage()
+                            message_permalink = permalink_info["permalink"]
+
+                            task_data = TranscriptionTask(
+                                file_name=file_name,
+                                download_url=download_url,
+                                token=token,
+                                service="whisper",
+                                language="auto",
+                                model="base",
+                                embed_subtitles=False,
+                                symlink=message_permalink,
+                            )
+                            await create_asr_task(
+                                context["ray"].client.id,
+                                "transcription:media:asr",
+                                "transcription:slack:media:results",
+                                task_data.model_dump(),
+                            )
+                            msg = TranscriptionMessage(file_name)
                             await context.say(text=msg.text, thread_ts=thread_ts)
                 else:
                     new_job_msg = NewJobMessage(
