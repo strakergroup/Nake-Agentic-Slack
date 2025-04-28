@@ -1739,13 +1739,20 @@ async def evaluate_job_submit(
         for file_id in file_ids:
             input_file = await download_file(client=client, file_id=file_id, http=None)
             response = await submit_evaluation_job(
-                context.ray.client, input_file, form.target_langs_uuid, form.reference
+                context.ray.client,
+                input_file,
+                form.target_langs_uuid,
+                form.reference,
+                workflow_uuid=form.workflow_options,
             )
-
-        # TODO use form to match spec
-        msg = _(
-            "You've successfully submitted your document(s) for quality evaluation. Your documents will be AI Translated and you will be given a score."
-        )
+        if form.workflow_options:
+            msg = _(
+                "Thank you for sending your document for human verification! We will notify as soon as the translation is complete."
+            )
+        else:
+            msg = _(
+                "You've successfully submitted your document(s) for quality evaluation. Your document(s) will be AI Translated and you will be given a score."
+            )
         await client.chat_postMessage(channel=context.user_id, text=msg)
 
 
