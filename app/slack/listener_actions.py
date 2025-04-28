@@ -135,6 +135,7 @@ async def respond_to_message(
                                 file_name=file_name,
                                 download_url=download_url,
                                 token=token,
+                                tokens=tokens,
                                 service="whisper",
                                 language="auto",
                                 model="base",

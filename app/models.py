@@ -170,6 +170,7 @@ class TranscriptionTask(BaseModel):
     file_name: str
     download_url: str
     token: str
+    tokens: int
     service: str = "whisper"
     language: Optional[str] = None
     model: Optional[str] = None
