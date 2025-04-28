@@ -4,6 +4,7 @@ Slack Bolt listener functions.
 """
 
 import asyncio
+import json
 from typing import Any
 import re
 import httpx
@@ -96,6 +97,7 @@ async def respond_to_message(
                 files_list_simple(client, channel_id=context["channel_id"], count=120)
             )
             # Handle video file
+            file_ids = []
             for file in message["files"]:
                 if file["filetype"] in [
                     "mp4",
@@ -150,17 +152,26 @@ async def respond_to_message(
                             msg = TranscriptionMessage(file_name)
                             await context.say(text=msg.text, thread_ts=thread_ts)
                 else:
-                    new_job_msg = NewJobMessage(
-                        context["channel_id"],
-                        message["ts"],
-                        file["id"],
-                        context.ray.super_group[0].enable_verify_in_slack,
-                    )
-                    await context.say(
-                        text=new_job_msg.text,
-                        blocks=new_job_msg.blocks,
-                        thread_ts=thread_ts,
-                    )
+                    file_ids.append(file["id"])
+            if len(file_ids) > 10:
+                await context.say(
+                    text=_(
+                        "Too many files selected. Please upload a maximum of 10 files."
+                    ),
+                    thread_ts=thread_ts,
+                )
+            elif file_ids:
+                new_job_msg = NewJobMessage(
+                    context["channel_id"],
+                    message["ts"],
+                    json.dumps(file_ids),
+                    context.ray.super_group[0].enable_verify_in_slack,
+                )
+                await context.say(
+                    text=new_job_msg.text,
+                    blocks=new_job_msg.blocks,
+                    thread_ts=thread_ts,
+                )
             return
     # process mt
     message_match = re.search(
