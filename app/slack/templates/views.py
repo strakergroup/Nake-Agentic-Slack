@@ -1336,6 +1336,8 @@ def verify_job_modal(
     # Add individual language blocks
     for lang in languages:
         report = lang.get("report", None)
+        if job["workflow_uuid"] == "92741a61-932c-41af-8c84-5a56a2c9b845":
+            report = None
         blocks.extend(
             verify_job_blocks(
                 (
