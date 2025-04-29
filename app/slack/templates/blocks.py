@@ -351,7 +351,7 @@ def job_prediction_block(
 
 def verify_job_blocks(
     summary: str,
-    report: dict[str, Any],
+    report: dict[str, Any] | None,
     lang_name: str,
     language_uuid: str,
     costs: list[dict[str, Any]],
@@ -359,29 +359,12 @@ def verify_job_blocks(
     human_job_status: str,
 ) -> dict[str, Any]:
     """The blocks for the verification job."""
-    segment_count = sum(report["count"].values())
-    if segment_count == 0:
-        bad = good = best = acceptable = memory_percentage = 0
-    else:
-        counts = report["count"]
-        bad = (counts["bad"] / segment_count) * 100
-        good = (counts["good"] / segment_count) * 100
-        best = (counts["best"] / segment_count) * 100
-        acceptable = (counts["acceptable"] / segment_count) * 100
-        memory_percentage = (counts["translation_memory"] / segment_count) * 100
-
-    report_message = (
-        f":large_blue_square: {_('Translation Memory')}: {round(memory_percentage)}%\n"
-    )
-    report_message += f":large_green_square: {_('Best')}: {round(best)}%\n"
-    report_message += f":large_yellow_square: {_('Good')}: {round(good)}%\n"
-    report_message += f":large_orange_square: {_('Acceptable')}: {round(acceptable)}%\n"
-    report_message += f":large_red_square: {_('Bad')}: {round(bad)}%"
     cost = 0.00
     for item in costs:
         if item["language_uuid"] == language_uuid:
             cost = item["service_list"][0]["estimated_cost"]
             break
+
     cost_block = {
         "type": "input",
         "block_id": f"verification_checkbox_{language_uuid}",
@@ -404,6 +387,7 @@ def verify_job_blocks(
         },
         "optional": optional,
     }
+
     if human_job_status:
         lang_label = f"*{_(lang_name)}*\n"
         cost_block = {
@@ -415,6 +399,40 @@ def verify_job_blocks(
                 ),
             },
         }
+
+    if report is None:
+        return [
+            cost_block,
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": _("*Summary:*\n{summary}")},
+                ],
+            },
+            {
+                "type": "divider",
+            },
+        ]
+
+    segment_count = sum(report["count"].values())
+    if segment_count == 0:
+        bad = good = best = acceptable = memory_percentage = 0
+    else:
+        counts = report["count"]
+        bad = (counts["bad"] / segment_count) * 100
+        good = (counts["good"] / segment_count) * 100
+        best = (counts["best"] / segment_count) * 100
+        acceptable = (counts["acceptable"] / segment_count) * 100
+        memory_percentage = (counts["translation_memory"] / segment_count) * 100
+
+    report_message = (
+        f":large_blue_square: {_('Translation Memory')}: {round(memory_percentage)}%\n"
+    )
+    report_message += f":large_green_square: {_('Best')}: {round(best)}%\n"
+    report_message += f":large_yellow_square: {_('Good')}: {round(good)}%\n"
+    report_message += f":large_orange_square: {_('Acceptable')}: {round(acceptable)}%\n"
+    report_message += f":large_red_square: {_('Bad')}: {round(bad)}%"
+
     return [
         cost_block,
         {
@@ -437,7 +455,18 @@ def job_summary_string(
     formatted_source_lang = _(source_lang["name"])
     formatted_target_lang = _(lang["name"])
     file_name = file["filename"]
-    formatted_score = _(segment_quality_score(lang["report"]["score"]))
+    report = lang.get("report", None)
+
+    formatted_score = (
+        _(segment_quality_score(lang["report"]["score"])) if report else ""
+    )
     return _(
         "Detected Source Language: {formatted_source_lang}\nTranslate to: {formatted_target_lang}\nFile Uploaded: {file_name}\n{formatted_score}"
     )
+
+
+def job_summary_no_score(lang: dict[str, Any], file: dict[str, Any]):
+    """Returns the job summary string."""
+    formatted_target_lang = _(lang["name"])
+    file_name = file["filename"]
+    return _("Translate to: {formatted_target_lang}\nFile Uploaded: {file_name}\n")
