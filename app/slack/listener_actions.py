@@ -71,6 +71,16 @@ from ..watson import watson_message
 from .select_options import get_file_options_cached
 from app.models import TranscriptionTask
 
+# --- constants & helpers ----------------------------------------------------
+
+WHISPER_LIMIT_B = 25 * 1024 * 1024  # 25 MiB ➜ 26 214 400 bytes
+BYTES_PER_SEC = 16_000 * 1 * (16 // 8)  # 16 kHz · mono · 16-bit PCM = 32 000 B/s
+
+
+def pcm_size_from_duration(duration_ms: int) -> int:
+    """Return byte-size of 16 kHz/16-bit/mono WAV for a given duration."""
+    return int(duration_ms / 1000 * BYTES_PER_SEC + 44)  # +44 B WAV header
+
 
 async def respond_to_message(
     client: AsyncWebClient,
@@ -113,6 +123,21 @@ async def respond_to_message(
                     if not duration_ms:
                         duration_ms = get_media_duration(download_url, client.token)
                     file_name = file_info["file"]["name"]
+
+                    # ── NEW SIZE CHECK ───────────────────────────────────────
+                    est_bytes = pcm_size_from_duration(duration_ms)
+                    if est_bytes > WHISPER_LIMIT_B:
+                        await context.say(
+                            text=(
+                                f":warning: *{file_name}* is too large for Whisper "
+                                f"(~{est_bytes/1048576:.1f} MiB > 25 MiB). "
+                                "Please trim or compress the audio first."
+                            ),
+                            thread_ts=thread_ts,
+                        )
+                        continue  # skip oversized file
+                    # ─────────────────────────────────────────────────────────
+
                     token = client.token
                     # send video to wb consumer
                     if (
