@@ -139,7 +139,7 @@ async def get_ai_translation(
         context["ray"].client.id_token
         if context["ray"].client
         else create_languagecloud_group_token(
-            context["ray"].super_group[0].id,
+            context["ray"].super_group[0].verify_organization_uuid,
             aud="languagecloud-api",
             secret=config.languagecloud_api_key.get_secret_value(),
         )
@@ -153,6 +153,7 @@ async def get_ai_translation(
         app_name="slack",
         usage_type=usage_type,
         email=context.get("user_info", {}).get("profile", {}).get("email", "unknown"),
+        group_uuid=context["ray"].super_group[0].id,
     )
     async with httpx.AsyncClient() as http:
         response = await http.post(
