@@ -1138,6 +1138,10 @@ def connect_ray_account_sso(
         create_slack_deltaray_link_sso(
             user_data=json.dumps(slack_data), member_id=member_id
         )
+        add_to_verify_team(
+            user_uuid=member_id,
+            enterprise_id=enterprise_id,
+        )
         return member_id
     else:
         result = result1.first()
@@ -1152,6 +1156,10 @@ def connect_ray_account_sso(
         add_client_to_slack_group(
             user_data=slack_data,
             member_id=member_id,
+        )
+        add_to_verify_team(
+            user_uuid=member_id,
+            enterprise_id=enterprise_id,
         )
         return member_id
 
@@ -1169,6 +1177,21 @@ def get_direct_login_group(enterprise_id: str):
     ):
         group_id = "C9E4513A-41BC-419A-BEB9-6EDAFCD04470"
     return group_id
+
+
+def get_direct_login_verify_team(enterprise_id: str | None):
+    # direct login ibm slack group to insert user
+    team_uuid = "27bcf110-e136-48e8-b3c8-0af7eb83da03"
+    if enterprise_id == "E04RDMG8XP1":
+        # on live we treat dev test as ibm team. So when connecting from our enterprise we will add to this team.
+        team_uuid = "120a1ab0-0b89-4175-b205-aec60ce98de7"
+    # for uat ibm slack team id is different
+    if (
+        config.environment != Environment.production
+        and config.environment != Environment.local
+    ):
+        team_uuid = "818832c3-11fb-41bf-ab30-d97739a684c1"
+    return team_uuid
 
 
 def add_client_to_slack_group(user_data: dict, member_id: str):
@@ -1232,9 +1255,9 @@ def create_client_and_mglink(
         sqlMem = text(
             """
             INSERT INTO obj_m_member
-                (obj_uuid, email_primary, login, password, password_updated, given_name, family_name, created, modified, account_manager, groupid, subscribed, active, email_active)
+                (obj_uuid, email_primary, login, password, password_updated, given_name, family_name, created, modified, account_manager, groupid, product, subscribed, active, email_active)
             VALUES
-                (:obj_uuid, :email_primary, :email_primary, :password, now(), :given_name, :family_name, now(), now(), :account_manager, :groupid, 1, 1, 1)
+                (:obj_uuid, :email_primary, :email_primary, :password, now(), :given_name, :family_name, now(), now(), :account_manager, :groupid, :product, 1, 1, 1)
             """
         ).bindparams(
             obj_uuid=member_id,
@@ -1244,6 +1267,7 @@ def create_client_and_mglink(
             password=hash_object.hexdigest().upper(),
             account_manager=account_manager,
             groupid=group_id,
+            product="Slack",
         )
         conn.execute(sqlMem)
         conn.commit()
@@ -1808,3 +1832,39 @@ def get_token_for_team(team_id: str) -> str:
         if not row:
             return None
     return row.bot_token
+
+
+def add_to_verify_team(user_uuid: str, enterprise_id: str | None):
+    """Add user to verify team"""
+    team_uuid = get_direct_login_verify_team(enterprise_id)
+    with engines["sitemanager"].connect() as conn:
+        # check if user is already in the team
+        sql = text(
+            """
+                SELECT team_uuid
+                FROM verify_team_user_link
+                WHERE user_uuid = :user_uuid
+                AND team_uuid = :team_uuid
+            """
+        ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
+        result = conn.execute(sql)
+        if result.rowcount == 0:
+            # delete from existing team
+            sql = text(
+                """
+                    DELETE from verify_team_user_link where user_uuid = :user_uuid
+                """
+            ).bindparams(user_uuid=user_uuid)
+            conn.execute(sql)
+            conn.commit()
+            # add to verify team
+            sql = text(
+                """
+                INSERT INTO verify_team_user_link
+                    (user_uuid, team_uuid, user_role)
+                VALUES
+                    (:user_uuid, :team_uuid, 'member')
+                """
+            ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
+            conn.execute(sql)
+            conn.commit()

@@ -141,6 +141,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     title=title,
                     filename=title,
                 )
+                delete_from_file_server(success_data.file_id)
         elif isinstance(message, JobTranscribedEventMessage):
             if not event.data.get("error"):
                 await post_notification(
