@@ -1721,7 +1721,7 @@ async def evaluate_job_submit(
     await ack(response_action="clear")
     try:
         if view:
-            file_id = view["private_metadata"]
+            file_ids = json.loads(view["private_metadata"])
             form_data = view["state"]["values"]
             form = EvaluateJobForm.parse_slack(form_data)
             # call verify api to submit a file for evaluation
