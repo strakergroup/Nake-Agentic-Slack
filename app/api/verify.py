@@ -15,7 +15,11 @@ from app.ray.utils import get_filename_from_header
 
 
 async def submit_evaluation_job(
-    user: RayClient, file_path: str, target_languages_uuid: List[str], reference: str
+    user: RayClient,
+    file_path: str,
+    target_languages_uuid: List[str],
+    reference: str,
+    workflow_uuid: str | None = None,
 ):
     # Prepare the data for the request
     target_languages_data = {
@@ -23,12 +27,14 @@ async def submit_evaluation_job(
         "title": reference,
         "source": "slack",
     }
-    if (
+    if not workflow_uuid and (
         config.environment != Environment.production
         or domains.slack_ray_translator
         == "https://stage-slack-deltaray.strakertranslations.com"
     ):
         target_languages_data["workflow"] = "ff9d336e-4043-41cd-bd95-0d65a5eeb945"
+    else:
+        target_languages_data["workflow"] = workflow_uuid
     files = {
         "files": (
             os.path.basename(file_path),
