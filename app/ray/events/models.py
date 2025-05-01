@@ -118,6 +118,9 @@ class JobTranscribedPath(BaseModel):
 
 class JobTranscribedEvent(BaseModel):
     task_uuid: str
+    file_name: str
+    source_file_name: str
+    symlink: str
     client_id: str
     error: str | None = None
 
@@ -126,6 +129,9 @@ class JobTranscribedEvent(BaseModel):
         result = values.get("result")
         if result:
             values["task_uuid"] = result.get("task_uuid")
+            values["file_name"] = result.get("file_name")
+            values["source_file_name"] = result.get("source_file_name")
+            values["symlink"] = result.get("symlink")
         return values
 
 

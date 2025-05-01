@@ -32,7 +32,8 @@ from app.ray.utils import (
 )
 from app.translate import _
 from app.wb_tasks.tasks import get_task
-from ..redis import redis_conn
+from app.transcriber_tasks.tasks import get_asr_task
+from ..redis import redis_conn, is_duplicate_event
 
 from .app import app
 from .middleware import ray_connection, require_ray_client, require_mt_tokens
@@ -147,6 +148,10 @@ async def message_event(
     message: Dict[str, Any],
     body: Dict[str, Any],
 ):
+    # Check for duplicate events
+    if await is_duplicate_event(context.enterprise_id, message.get("ts")):
+        return
+
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # use threads in channels or group conversations (see the "app_mention" event).
@@ -182,6 +187,10 @@ async def message_event(
 async def app_mention_event(
     client: AsyncWebClient, context: RayContext, event: Dict[str, Any]
 ):
+    # Check for duplicate events
+    if await is_duplicate_event(context.enterprise_id, event.get("ts")):
+        return
+
     # https://api.slack.com/events/app_mention
     # Respond to messages with threads in channel and group chats if mentioned.
     # Remove user mentions from text before processing.
@@ -459,7 +468,7 @@ async def download_transcribed_file(
     await ack()
     if await require_ray_client(context):
         task_uuid = action["value"]
-        task_result = await get_task(task_uuid, context["ray"].client.id)
+        task_result = await get_asr_task(task_uuid, context["ray"].client.id)
         file_id = task_result["file_id"]
         file = download_from_file_server(file_id)
         await client.files_upload_v2(
@@ -541,7 +550,7 @@ async def srt_translate_action(
     if await require_ray_client(context):
         task_uuid = action["value"]
         # get uuid from output_file
-        task_result = await get_task(task_uuid, context["ray"].client.id)
+        task_result = await get_asr_task(task_uuid, context["ray"].client.id)
         if await require_mt_tokens(context, task_result["tokens"]):
             # get selected language from redis keyed on output_file
             # selected from get_auto_translate_language_options
@@ -1694,6 +1703,10 @@ async def message_changed_event(
     context: RayContext,
     message: Dict[str, Any],
 ):
+    # Check for duplicate events
+    if await is_duplicate_event(context.enterprise_id, message.get("ts")):
+        return
+
     if message.get("subtype") == "message_changed":
         if message.get("message", {}).get("subtype") == "tombstone":
             deleted_ts = body["event"]["previous_message"]["ts"]
@@ -1738,13 +1751,20 @@ async def evaluate_job_submit(
         for file_id in file_ids:
             input_file = await download_file(client=client, file_id=file_id, http=None)
             response = await submit_evaluation_job(
-                context.ray.client, input_file, form.target_langs_uuid, form.reference
+                context.ray.client,
+                input_file,
+                form.target_langs_uuid,
+                form.reference,
+                workflow_uuid=form.workflow_options,
             )
-
-        # TODO use form to match spec
-        msg = _(
-            "You've successfully submitted your document(s) for quality evaluation. Your documents will be AI Translated and you will be given a score."
-        )
+        if form.workflow_options:
+            msg = _(
+                "Thank you for sending your document for human verification! We will notify as soon as the translation is complete."
+            )
+        else:
+            msg = _(
+                "You've successfully submitted your document(s) for quality evaluation. Your document(s) will be AI Translated and you will be given a score."
+            )
         await client.chat_postMessage(channel=context.user_id, text=msg)
 
 

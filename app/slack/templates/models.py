@@ -264,6 +264,7 @@ class EvaluateJobForm(BaseModel):
 
     reference: str  # Max 100 chars, validated in view
     target_langs_uuid: list[str]
+    workflow_options: str | None = None
 
     @classmethod
     def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "EvaluateJobForm":
@@ -275,4 +276,13 @@ class EvaluateJobForm(BaseModel):
             ]
         ]
 
-        return cls(reference=reference, target_langs_uuid=target_langs_uuid)
+        selected_option = values["workflow_options"]["workflow_options"][
+            "selected_option"
+        ]
+        workflow_options = selected_option["value"] if selected_option else None
+
+        return cls(
+            reference=reference,
+            target_langs_uuid=target_langs_uuid,
+            workflow_options=workflow_options,
+        )
