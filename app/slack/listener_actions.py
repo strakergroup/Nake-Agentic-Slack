@@ -117,7 +117,7 @@ async def respond_to_message(
                     "webm",
                 ] or (".mpga" in file["name"] and file["name"].endswith(".mpga")):
                     file_info = await client.files_info(file=file["id"])
-                    download_url = file_info["file"]["url_private"]
+                    download_url = file_info["file"]["url_private_download"]
                     # duration_ms = file_info["file"].get("duration_ms", 0)
                     duration_ms = 0
                     if not duration_ms:
@@ -129,9 +129,9 @@ async def respond_to_message(
                     if est_bytes > WHISPER_LIMIT_B:
                         await context.say(
                             text=(
-                                f":warning: *{file_name}* is too large for Whisper "
-                                f"(~{est_bytes/1048576:.1f} MiB > 25 MiB). "
-                                "Please trim or compress the audio first."
+                                f"*{file_name}* exceeds the current limit of 25MB "
+                                f"(~{est_bytes/1048576:.1f} MiB). "
+                                f"Please compress and re-upload according to the current limit."
                             ),
                             thread_ts=thread_ts,
                         )
