@@ -48,6 +48,7 @@ from .templates.messages import (
     CancelTJMessage,
     CancelJobMessage,
     TranscriptionMessage,
+    FileTooLargeMessage,
 )
 from .templates.models import NewJobForm
 from .templates.views import (
@@ -68,19 +69,13 @@ from ..ray.settings import (
     get_auto_translate_settings_and_langs,
 )
 from ..ray.utils import get_media_duration, is_ibm_enterprise
+from ..slack.utils import (
+    estimate_audio_size,
+    WHISPER_LIMIT_B,
+)
 from ..watson import watson_message
 from .select_options import get_file_options_cached
 from app.models import TranscriptionTask
-
-# --- constants & helpers ----------------------------------------------------
-
-WHISPER_LIMIT_B = 25 * 1024 * 1024  # 25 MiB ➜ 26 214 400 bytes
-BYTES_PER_SEC = 16_000 * 1 * (16 // 8)  # 16 kHz · mono · 16-bit PCM = 32 000 B/s
-
-
-def pcm_size_from_duration(duration_ms: int) -> int:
-    """Return byte-size of 16 kHz/16-bit/mono WAV for a given duration."""
-    return int(duration_ms / 1000 * BYTES_PER_SEC + 44)  # +44 B WAV header
 
 
 async def respond_to_message(
@@ -123,22 +118,23 @@ async def respond_to_message(
                     # duration_ms = file_info["file"].get("duration_ms", 0)
                     duration_ms = 0
                     if not duration_ms:
-                        duration_ms = get_media_duration(download_url, client.token)
+                        duration_ms = get_media_duration(
+                            download_url, client.token or ""
+                        )
                     file_name = file_info["file"]["name"]
 
-                    # ── NEW SIZE CHECK ───────────────────────────────────────
-                    est_bytes = pcm_size_from_duration(duration_ms)
+                    est_bytes = estimate_audio_size(
+                        duration_ms, url=download_url, token=client.token
+                    )
+
                     if est_bytes > WHISPER_LIMIT_B:
+                        msg = FileTooLargeMessage(file_name, est_bytes)
                         await context.say(
-                            text=(
-                                f"*{file_name}* exceeds the current limit of 25MB "
-                                f"(~{est_bytes/1048576:.1f} MiB). "
-                                f"Please compress and re-upload according to the current limit."
-                            ),
+                            text=msg.text,
+                            blocks=msg.blocks,
                             thread_ts=thread_ts,
                         )
                         continue  # skip oversized file
-                    # ─────────────────────────────────────────────────────────
 
                     token = client.token
                     # send video to wb consumer
@@ -161,7 +157,7 @@ async def respond_to_message(
                             task_data = TranscriptionTask(
                                 file_name=file_name,
                                 download_url=download_url,
-                                token=token,
+                                token=token or "",
                                 tokens=tokens,
                                 service="whisper",
                                 language="auto",
