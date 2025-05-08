@@ -33,7 +33,7 @@ from app.ray.utils import (
 from app.translate import _
 from app.wb_tasks.tasks import get_task
 from app.transcriber_tasks.tasks import get_asr_task
-from ..redis import redis_conn
+from ..redis import redis_conn, is_duplicate_event
 
 from .app import app
 from .middleware import ray_connection, require_ray_client, require_mt_tokens
@@ -148,6 +148,10 @@ async def message_event(
     message: Dict[str, Any],
     body: Dict[str, Any],
 ):
+    # Check for duplicate events
+    if await is_duplicate_event(context.enterprise_id, message.get("ts")):
+        return
+
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # use threads in channels or group conversations (see the "app_mention" event).
@@ -183,6 +187,10 @@ async def message_event(
 async def app_mention_event(
     client: AsyncWebClient, context: RayContext, event: Dict[str, Any]
 ):
+    # Check for duplicate events
+    if await is_duplicate_event(context.enterprise_id, event.get("ts")):
+        return
+
     # https://api.slack.com/events/app_mention
     # Respond to messages with threads in channel and group chats if mentioned.
     # Remove user mentions from text before processing.
@@ -1695,6 +1703,10 @@ async def message_changed_event(
     context: RayContext,
     message: Dict[str, Any],
 ):
+    # Check for duplicate events
+    if await is_duplicate_event(context.enterprise_id, message.get("ts")):
+        return
+
     if message.get("subtype") == "message_changed":
         if message.get("message", {}).get("subtype") == "tombstone":
             deleted_ts = body["event"]["previous_message"]["ts"]
