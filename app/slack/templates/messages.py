@@ -3625,28 +3625,3 @@ class DocParseErrorMessage(SlackMessage):
                 }
             ],
         )
-
-
-class FileTooLargeMessage(SlackMessage):
-    """Message to send when a file is too large to be processed."""
-
-    def __init__(self, file_name: str, file_size: int) -> None:
-
-        text = (
-            f"*{file_name}* exceeds the current limit of 25MB "
-            f"(~{file_size/1048576:.1f} MiB). "
-            f"Please compress and re-upload according to the current limit."
-        )
-
-        super().__init__(
-            _("File too large"),
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": text,
-                    },
-                },
-            ],
-        )
