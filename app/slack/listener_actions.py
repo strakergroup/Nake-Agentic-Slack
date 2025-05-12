@@ -148,7 +148,7 @@ async def respond_to_message(
                             )
                             await create_asr_task(
                                 context["ray"].client.id,
-                                "transcription:media:asr:v2",
+                                "transcription:media:asr",
                                 "transcription:slack:media:results",
                                 task_data.model_dump(),
                             )
