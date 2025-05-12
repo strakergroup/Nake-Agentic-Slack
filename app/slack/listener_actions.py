@@ -18,7 +18,6 @@ from buglog import notify_exception, notify_message
 from app.mt.translate import get_ai_translation
 from app.ray.events.models import MtFileRequestSchema
 from app.translate import _
-from app.wb_tasks.tasks import create_task
 from app.transcriber_tasks.tasks import create_asr_task
 
 from .middleware import require_mt_tokens, require_ray_client
@@ -48,7 +47,6 @@ from .templates.messages import (
     CancelTJMessage,
     CancelJobMessage,
     TranscriptionMessage,
-    FileTooLargeMessage,
 )
 from .templates.models import NewJobForm
 from .templates.views import (
@@ -69,10 +67,6 @@ from ..ray.settings import (
     get_auto_translate_settings_and_langs,
 )
 from ..ray.utils import get_media_duration, is_ibm_enterprise
-from ..slack.utils import (
-    estimate_audio_size,
-    WHISPER_LIMIT_B,
-)
 from ..watson import watson_message
 from .select_options import get_file_options_cached
 from app.models import TranscriptionTask
@@ -122,19 +116,6 @@ async def respond_to_message(
                             download_url, client.token or ""
                         )
                     file_name = file_info["file"]["name"]
-
-                    est_bytes = estimate_audio_size(
-                        duration_ms, url=download_url, token=client.token
-                    )
-
-                    if est_bytes > WHISPER_LIMIT_B:
-                        msg = FileTooLargeMessage(file_name, est_bytes)
-                        await context.say(
-                            text=msg.text,
-                            blocks=msg.blocks,
-                            thread_ts=thread_ts,
-                        )
-                        continue  # skip oversized file
 
                     token = client.token
                     # send video to wb consumer
