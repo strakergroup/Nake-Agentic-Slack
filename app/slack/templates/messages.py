@@ -12,6 +12,7 @@ from ray_sdk.api.v3.models import Job, Pagination, Quote
 from .models import NewJobForm
 from .blocks import (
     job_link_block,
+    job_summary_no_score,
     job_summary_string,
     quote_message_block,
     job_prediction_block,
@@ -3623,5 +3624,78 @@ class DocParseErrorMessage(SlackMessage):
                         "text": message,
                     },
                 }
+            ],
+        )
+
+
+class HumanJobQuoteMessage(SlackMessage):
+    def __init__(
+        self,
+        job: dict[str, Any],
+        all_langs: list[dict[str, str]],
+    ) -> None:
+        languages = job["target_languages"]
+        file = job["source_files"][0]
+
+        for lang in languages:
+            for target_file in file["target_files"]:
+                if target_file["language_uuid"] == lang["uuid"]:
+                    lang["target_file_uuid"] = target_file["target_file_uuid"]
+        blocks = []
+        lang_blocks = []
+        for lang in languages:
+            lang_blocks.extend(
+                [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": job_summary_no_score(lang, file),
+                        },
+                    }
+                ]
+            )
+
+        blocks.extend(lang_blocks)
+        blocks.append(
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Send to Human Verification"),
+                        },
+                        "style": "primary",
+                        "value": job["uuid"],
+                        "action_id": "verify_job_modal_open",
+                    },
+                ],
+            },
+        )
+        super().__init__(_("Evaluation Result"), blocks)
+        
+class FileTooLargeMessage(SlackMessage):
+    """Message to send when a file is too large to be processed."""
+
+    def __init__(self, file_name: str, file_size: int) -> None:
+
+        text = (
+            f"*{file_name}* exceeds the current limit of 25MB "
+            f"(~{file_size/1048576:.1f} MiB). "
+            f"Please compress and re-upload according to the current limit."
+        )
+
+        super().__init__(
+            _("File too large"),
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": text,
+                    },
+                },
             ],
         )
