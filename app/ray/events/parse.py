@@ -20,6 +20,7 @@ from .models import (
 from ...slack.templates.messages import (
     DocMtMessage,
     EvaluateSuccessMessage,
+    HumanJobQuoteMessage,
     SlackMessage,
     SuccessfulLoginMessage,
     ClientSignupEventMessage,
@@ -131,6 +132,8 @@ async def get_ray_event_message(
         if job["data"]["workflow_uuid"] == "92741a61-932c-41af-8c84-5a56a2c9b845":
             return None
         all_langs = await _get_languages_cached()
+        if job["data"]["workflow_uuid"] == "92741a61-932c-41af-8c84-5a56a2c9b845":
+            return HumanJobQuoteMessage(job["data"], all_langs)
         return EvaluateSuccessMessage(
             job["data"], all_langs, event_data["tokens"], is_ibm
         )

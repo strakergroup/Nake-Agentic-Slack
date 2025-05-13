@@ -6,6 +6,7 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from app.translate import _
 from .blocks import (
     home_auth_blocks,
+    job_summary_no_score,
     job_summary_string,
     verify_job_blocks,
 )
@@ -1334,10 +1335,17 @@ def verify_job_modal(
 
     # Add individual language blocks
     for lang in languages:
+        report = lang.get("report", None)
+        if job["workflow_uuid"] == "92741a61-932c-41af-8c84-5a56a2c9b845":
+            report = None
         blocks.extend(
             verify_job_blocks(
-                job_summary_string(source_lang, lang, file),
-                report=lang["report"],
+                (
+                    job_summary_string(source_lang, lang, file)
+                    if report
+                    else job_summary_no_score(lang, file)
+                ),
+                report=report,
                 lang_name=lang["name"],
                 language_uuid=lang["uuid"],
                 costs=costs,
