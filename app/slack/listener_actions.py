@@ -379,7 +379,6 @@ async def auto_translate_message(
     # TODO make this fetch all settings for channel
     settings = get_auto_translate_settings_and_langs(context, context.channel_id)
     target_langs = [langs["target_lang"] for langs in settings]
-    assert settings  # TODO Fix typing
     if not settings:
         return
     try:
