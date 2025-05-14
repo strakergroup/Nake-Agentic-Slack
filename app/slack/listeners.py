@@ -386,7 +386,7 @@ async def document_mt_job_action(
             content = file_obj.get("content", b"")
             file_name = file_obj["file"]["name"]
             # Validate file type and content
-            _, file_extension = os.path.splitext(file_name)
+            other, file_extension = os.path.splitext(file_name)
             is_valid_file_type, is_valid_content, error_message = validate_file(
                 file_extension, content=content
             )
@@ -1759,7 +1759,7 @@ async def evaluate_job_submit(
             )
         if form.workflow_options:
             msg = _(
-                "Thank you for sending your document for human verification! We will notify as soon as the translation is complete."
+                "Thanks for creating a new project! We will send you a summary of your file to review before finalising your order."
             )
         else:
             msg = _(
