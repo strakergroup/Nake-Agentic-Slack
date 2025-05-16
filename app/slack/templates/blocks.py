@@ -383,6 +383,15 @@ def verify_job_blocks(
                     "value": language_uuid,
                 },
             ],
+            "initial_options": [
+                {
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"USD${cost:.2f}",
+                    },
+                    "value": language_uuid,
+                },
+            ],
             "action_id": "verification_checkbox_action",
         },
         "optional": optional,
