@@ -1667,7 +1667,7 @@ class NewJobMessage(SlackMessage):
         self,
         channel_id: str,
         timestamp: str,
-        file_id: str = "",
+        file_ids: list[str],
         is_verify_enabled: bool = False,
     ) -> None:
 
@@ -1698,7 +1698,9 @@ class NewJobMessage(SlackMessage):
                     },
                     "action_id": "document_mt_job",
                     "style": "primary",
-                    "value": file_id,
+                    "value": json.dumps(
+                        {"file_ids": file_ids, "channel_id": channel_id}
+                    ),
                 },
             },
         ]
@@ -1722,7 +1724,9 @@ class NewJobMessage(SlackMessage):
                         },
                         "action_id": "evaluate_job",
                         "style": "primary",
-                        "value": file_id,
+                        "value": json.dumps(
+                            {"file_ids": file_ids, "channel_id": channel_id}
+                        ),
                     },
                 }
             )
@@ -3675,7 +3679,8 @@ class HumanJobQuoteMessage(SlackMessage):
             },
         )
         super().__init__(_("Evaluation Result"), blocks)
-        
+
+
 class FileTooLargeMessage(SlackMessage):
     """Message to send when a file is too large to be processed."""
 

@@ -87,6 +87,7 @@ from .templates.messages import (
     AutoTranslateSettingsDisabledMessage,
 )
 from .templates.views import (
+    document_mt_job_modal,
     evaluate_job_modal,
     home_view,
     translation_settings_view,
@@ -377,14 +378,18 @@ async def document_mt_job_action(
 ):
     await ack()
     if await require_ray_client(context):
-        # Get file ID and info
-        file_ids = json.loads(action.get("value", ""))
+        # Get file IDs and channel ID from the action value
+        action_data = json.loads(action.get("value", ""))
+        file_ids = action_data.get("file_ids", [])
+        channel_id = action_data.get("channel_id")
+
         file_submit = []
         for file_id in file_ids:
             # Download file content
             file_obj = await client.files_info(file=file_id, include_content=True)
             content = file_obj.get("content", b"")
             file_name = file_obj["file"]["name"]
+
             # Validate file type and content
             other, file_extension = os.path.splitext(file_name)
             is_valid_file_type, is_valid_content, error_message = validate_file(
@@ -413,11 +418,10 @@ async def document_mt_job_action(
                 )
 
         if file_submit:
-            msg = DocumentMTJobMessage(json.dumps(file_ids))
-            await client.chat_postMessage(
-                channel=context["user_id"],
-                text=msg.text,
-                blocks=msg.blocks,
+            view = document_mt_job_modal(file_submit, channel_id)
+            await client.views_open(
+                trigger_id=body["trigger_id"],
+                view=view,
             )
 
 
@@ -514,18 +518,6 @@ async def handle_translate_shortcut(
     user_info = await context.client.users_info(
         user=context["user_id"], include_locale=True
     )
-
-    # Set user language for AI Translate based on user locale and timezone for Romanian(ro-RO), Polish(pl-PL) and Dutch[Belgium](nl-NL)
-    # Romanian Timezone - (UTC+02:00) Athens, Bucharest.
-    # Polish Timezone - (UTC+01:00) Sarajevo, Skopje, Warsaw, Zagreb.
-    # Dutch(Belgium) Timezone - (UTC+01:00) Brussels, Copenhagen, Madrid, Paris
-    # if user_info["user"]["locale"] == "fr-FR":
-    #     if user_info["user"]["tz"] == "Europe/Athens":
-    #         mt_tl = "ro-RO"
-    #     elif user_info["user"]["tz"] == "Europe/Warsaw":
-    #         mt_tl = "pl-PL"
-    #     elif user_info["user"]["tz"] == "Europe/Brussels":
-    #         mt_tl = "nl-NL"
 
     await get_mt_translation(
         client,
@@ -1916,6 +1908,80 @@ async def handle_checkbox_action(ack, body, client):
     client.views_update(
         view_id=view["id"], hash=view["hash"], view={"type": "modal", "blocks": blocks}
     )
+
+
+@app.view("document_mt_job", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_document_mt_job(
+    ack: AsyncAck,
+    view: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+):
+    """Handle document machine translation job submission."""
+    await ack(response_action="clear")
+    if await require_ray_client(context, prompt_login=False):
+        try:
+            # Get the selected languages from the form
+            form_data = view["state"]["values"] if view else {}
+            selected_languages = (
+                form_data.get("target_langs", {})
+                .get("language_mt_options", {})
+                .get("selected_options", [])
+            )
+
+            if not selected_languages:
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=_(
+                        "Please select at least one target language for translation."
+                    ),
+                )
+                return
+
+            # Get the file IDs and channel ID from private metadata
+            metadata = json.loads(view["private_metadata"])
+            file_ids = metadata.get("file_ids", [])
+            channel_id = metadata.get("channel_id")
+            context["channel_id"] = channel_id or context["user_id"]
+            # Process each file
+            for file_id in file_ids:
+                # Download file content
+                input_file = await download_file(
+                    client=client, file_id=file_id, http=None
+                )
+                input_file_id = upload_to_file_server(input_file)
+
+                # Submit machine translation job for each selected language
+                for lang in selected_languages:
+                    await document_machine_translate(
+                        context, input_file_id, lang["value"]
+                    )
+
+            # Send confirmation message to the original channel if available
+            target_channel = channel_id or context["user_id"]
+            await client.chat_postMessage(
+                channel=target_channel,
+                text=_(
+                    "Your document(s) are being translated. You will be notified when they are ready."
+                ),
+            )
+
+        except Exception as e:
+            notify_exception(e)
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    "There was an error submitting your translation request, please try again."
+                ),
+            )
+    else:
+        await ack(response_action="clear")
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            blocks=context["login_prompt"].blocks,
+            text=context["login_prompt"].text,
+        )
 
 
 # FastAPI will use this to handle Slack API requests.

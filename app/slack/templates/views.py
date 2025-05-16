@@ -1391,3 +1391,48 @@ def calculate_total_cost(
                 total_cost += cost_item["service_list"][0]["estimated_cost"]
                 break
     return total_cost
+
+
+def document_mt_job_modal(file_ids: list[str], channel_id: str) -> dict[str, Any]:
+    language_options = get_auto_translate_language_options()
+    return {
+        "type": "modal",
+        "callback_id": "document_mt_job",
+        "title": {"type": "plain_text", "text": _("Document MT Job", 23)[:24]},
+        "submit": {"type": "plain_text", "text": _("Submit")},
+        "close": {"type": "plain_text", "text": _("Close")},
+        "private_metadata": json.dumps(
+            {"file_ids": file_ids, "channel_id": channel_id}
+        ),
+        "blocks": [
+            {
+                "type": "section",
+                "text": {"type": "plain_text", "text": _("Document MT Job", 23)[:24]},
+            },
+            {
+                "type": "input",
+                "block_id": "target_langs",
+                "element": {
+                    "type": "multi_static_select",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": _("Select languages"),
+                        "emoji": True,
+                    },
+                    "options": language_options,
+                    "action_id": "language_mt_options",
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": _("Translate to"),
+                    "emoji": True,
+                },
+                "hint": {
+                    "type": "plain_text",
+                    "text": _(
+                        "Which language(s) do you want the file(s) to be translated to?"
+                    ),
+                },
+            },
+        ],
+    }

@@ -167,7 +167,7 @@ async def respond_to_message(
                 new_job_msg = NewJobMessage(
                     context["channel_id"],
                     message["ts"],
-                    json.dumps(file_ids),
+                    file_ids,
                     context.ray.super_group[0].enable_verify_in_slack,
                 )
                 await context.say(
@@ -465,6 +465,8 @@ async def document_machine_translate(
     """
 
     is_gropid = False
+    if "channel_id" not in context:
+        context["channel_id"] = context["user_id"]
     if context["ray"].client is None:
         user_group_id = context["ray"].super_group[0].id
         is_gropid = True
