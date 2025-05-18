@@ -153,6 +153,7 @@ async def get_ai_translation(
         app_name="slack",
         usage_type=usage_type,
         email=context.get("user_info", {}).get("profile", {}).get("email", "unknown"),
+        group_uuid=context["ray"].super_group[0].id,
     )
     async with httpx.AsyncClient() as http:
         response = await http.post(

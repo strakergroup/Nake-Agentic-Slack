@@ -28,6 +28,8 @@ def validate_json(content: Union[bytes, str]) -> Tuple[bool, str]:
         json.loads(json_str)
         return True, ""
     except UnicodeDecodeError:
-        return False, _("Invalid JSON: File must be UTF-8 encoded.")
+        return False, _("Error: Invalid JSON. File must be UTF-8 encoded.")
     except json.JSONDecodeError as e:
-        return False, _("Invalid JSON. Please fix the issue and resubmit the file.")
+        return False, _(
+            "Error: Invalid JSON. Please fix the issue and resubmit the file."
+        )

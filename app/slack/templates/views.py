@@ -6,6 +6,7 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from app.translate import _
 from .blocks import (
     home_auth_blocks,
+    job_summary_no_score,
     job_summary_string,
     verify_job_blocks,
 )
@@ -494,14 +495,15 @@ def job_search_modal(
     }
 
 
-def evaluate_job_modal(file_id: str):
+def evaluate_job_modal(file_info: list[dict[str, Any]]):
     """The template for the modal to submit a file to verify quality evaluate."""
+    file_ids = [file["file_id"] for file in file_info]
     return {
         "type": "modal",
         "callback_id": "evaluate_job",
         "title": {"type": "plain_text", "text": _("Quality Evaluation", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Submit", 23)[:24]},
-        "private_metadata": file_id,
+        "private_metadata": json.dumps(file_ids),
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
             {
@@ -558,9 +560,38 @@ def evaluate_job_modal(file_id: str):
                 "hint": {
                     "type": "plain_text",
                     "text": _(
-                        "Which language(s) do you want the file to be translated to?"
+                        "Which language(s) do you want the file(s) to be translated to?"
                     ),
                 },
+            },
+            {
+                "type": "input",
+                "block_id": "workflow_options",
+                "element": {
+                    "type": "static_select",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": _("Select workflow"),
+                        "emoji": True,
+                    },
+                    "options": [
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Human verification only"),
+                                "emoji": False,
+                            },
+                            "value": "92741a61-932c-41af-8c84-5a56a2c9b845",
+                        },
+                    ],
+                    "action_id": "workflow_options",
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": _("Select workflow"),
+                    "emoji": True,
+                },
+                "optional": True,
             },
         ],
     }
@@ -1304,10 +1335,17 @@ def verify_job_modal(
 
     # Add individual language blocks
     for lang in languages:
+        report = lang.get("report", None)
+        if job["workflow_uuid"] == "92741a61-932c-41af-8c84-5a56a2c9b845":
+            report = None
         blocks.extend(
             verify_job_blocks(
-                job_summary_string(source_lang, lang, file),
-                report=lang["report"],
+                (
+                    job_summary_string(source_lang, lang, file)
+                    if report
+                    else job_summary_no_score(lang, file)
+                ),
+                report=report,
                 lang_name=lang["name"],
                 language_uuid=lang["uuid"],
                 costs=costs,
