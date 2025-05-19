@@ -380,49 +380,14 @@ async def document_mt_job_action(
     if await require_ray_client(context):
         # Get file IDs and channel ID from the action value
         action_data = json.loads(action.get("value", ""))
-        file_ids = action_data.get("file_ids", [])
+        files = action_data.get("files", [])
         channel_id = action_data.get("channel_id")
 
-        file_submit = []
-        for file_id in file_ids:
-            # Download file content
-            file_obj = await client.files_info(file=file_id, include_content=True)
-            content = file_obj.get("content", b"")
-            file_name = file_obj["file"]["name"]
-
-            # Validate file type and content
-            other, file_extension = os.path.splitext(file_name)
-            is_valid_file_type, is_valid_content, error_message = validate_file(
-                file_extension, content=content
-            )
-
-            # If the file type is valid and content is also valid
-            if is_valid_file_type and is_valid_content:
-                file_submit.append(file_id)
-
-            # If the file type is valid but content is invalid
-            elif is_valid_file_type and not is_valid_content:
-                msg = error_message
-                await client.chat_postMessage(
-                    channel=context["user_id"],
-                    text=msg,
-                )
-            # If the file type is not valid
-            else:
-                msg = _(
-                    "This file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
-                )
-                await client.chat_postMessage(
-                    channel=context["user_id"],
-                    text=msg,
-                )
-
-        if file_submit:
-            view = document_mt_job_modal(file_submit, channel_id)
-            await client.views_open(
-                trigger_id=body["trigger_id"],
-                view=view,
-            )
+        view = document_mt_job_modal(channel_id, files)
+        await client.views_open(
+            trigger_id=body["trigger_id"],
+            view=view,
+        )
 
 
 @app.action("document_mt_submit", middleware=[ray_connection])
@@ -1924,6 +1889,7 @@ async def handle_document_mt_job(
         try:
             # Get the selected languages from the form
             form_data = view["state"]["values"] if view else {}
+            print(json.dumps(form_data, indent=4))
             selected_languages = (
                 form_data.get("target_langs", {})
                 .get("language_mt_options", {})
@@ -1939,31 +1905,63 @@ async def handle_document_mt_job(
                 )
                 return
 
-            # Get the file IDs and channel ID from private metadata
-            metadata = json.loads(view["private_metadata"])
-            file_ids = metadata.get("file_ids", [])
-            channel_id = metadata.get("channel_id")
+            # Get the file IDs from the form state
+            files = (
+                form_data.get("files", {}).get("files", {}).get("selected_options", [])
+            )
+
+            if not files:
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=_("Please select at least one file to translate."),
+                )
+                return
+
+            channel_id = view["private_metadata"]
             context["channel_id"] = channel_id or context["user_id"]
+            files_uploaded = []
             # Process each file
-            for file_id in file_ids:
+            for file in files:
                 # Download file content
                 input_file = await download_file(
-                    client=client, file_id=file_id, http=None
+                    client=client, file_id=file["value"], http=None
                 )
+                # validate file
+                file_name, file_extension = os.path.splitext(file["text"]["text"])
+                is_valid_file_type, is_valid_content, error_message = validate_file(
+                    file_extension, content=input_file
+                )
+                file_name = file["text"]["text"]
+                if not is_valid_file_type:
+                    await client.chat_postMessage(
+                        channel=context["user_id"],
+                        text=_(
+                            "The file ({file_name}) file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
+                        ),
+                    )
+                    continue
+                elif not is_valid_content:
+                    msg = error_message
+                    await client.chat_postMessage(
+                        channel=context["user_id"],
+                        text=msg,
+                    )
+                    continue
                 input_file_id = upload_to_file_server(input_file)
-
+                files_uploaded.append(file_name)
                 # Submit machine translation job for each selected language
                 for lang in selected_languages:
                     await document_machine_translate(
                         context, input_file_id, lang["value"]
                     )
 
+            # convert files to
             # Send confirmation message to the original channel if available
             target_channel = channel_id or context["user_id"]
             await client.chat_postMessage(
                 channel=target_channel,
                 text=_(
-                    "Your document(s) are being translated. You will be notified when they are ready."
+                    f"Your document(s) ({', '.join(files_uploaded)}) are being translated. You will be notified when they are ready."
                 ),
             )
 

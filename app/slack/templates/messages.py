@@ -1667,10 +1667,10 @@ class NewJobMessage(SlackMessage):
         self,
         channel_id: str,
         timestamp: str,
-        file_ids: list[str],
+        files: list[dict[str, Any]],
         is_verify_enabled: bool = False,
     ) -> None:
-
+        files_dict = [{"id": f["id"], "title": f["title"]} for f in files]
         message_blocks = [
             {
                 "type": "section",
@@ -1699,7 +1699,7 @@ class NewJobMessage(SlackMessage):
                     "action_id": "document_mt_job",
                     "style": "primary",
                     "value": json.dumps(
-                        {"file_ids": file_ids, "channel_id": channel_id}
+                        {"files": files_dict, "channel_id": channel_id}
                     ),
                 },
             },
@@ -1725,7 +1725,10 @@ class NewJobMessage(SlackMessage):
                         "action_id": "evaluate_job",
                         "style": "primary",
                         "value": json.dumps(
-                            {"file_ids": file_ids, "channel_id": channel_id}
+                            {
+                                "files": files_dict,
+                                "channel_id": channel_id,
+                            }
                         ),
                     },
                 }
