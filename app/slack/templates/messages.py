@@ -2236,6 +2236,120 @@ class QuoteMessage(SlackMessage):
         )
 
 
+# -----------------------------------------------------------------------------
+# Helper functions
+# -----------------------------------------------------------------------------
+
+
+def get_workspace_block(ray_connection: RayConnection | None) -> dict[str, Any]:
+    if ray_connection is not None:
+        super_group_names = [group.name for group in ray_connection.super_group]
+        super_group_names_str = ", ".join(super_group_names)
+        text = _("Your Slack workspace is connected with: *{super_group_names_str}*.")
+        return {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": text,
+            },
+        }
+    else:
+        text = _("Your Slack workspace is not connected with an organisation yet.")
+        return {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": text},
+        }
+
+
+def get_account_blocks(
+    ray_connection: RayConnection | None,
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    channel_id: str,
+    is_ibm: bool,
+) -> tuple[list[dict[str, Any]], str]:
+    account_blocks: list[dict[str, Any]] = []
+
+    if ray_connection is not None and ray_connection.client is not None:
+        user_details = f"<{domains.languagecloud}|{ray_connection.client.username}>"
+        if is_ibm_enterprise(enterprise_id=enterprise_id):
+            text = _("Your connected account is: {ray_connection.client.username}")
+        else:
+            text = _("Your connected account is: <{user_details}>")
+        account_blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": text},
+            }
+        )
+    else:
+        account_blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "In order to use the Straker Translate features, please login. Click this button below;"
+                    ),
+                },
+            }
+        )
+        account_blocks.append(
+            {
+                "type": "actions",
+                "elements": [
+                    (
+                        (
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Connect account"),
+                                },
+                                "style": "primary",
+                                "url": get_language_cloud_connect_url(
+                                    user_id, team_id, enterprise_id, channel_id
+                                ),
+                                "action_id": "login",
+                            }
+                            if not is_ibm
+                            else {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Direct Login"),
+                                },
+                                "style": "primary",
+                                "action_id": "login_sso",
+                            }
+                        ),
+                    )
+                ],
+            }
+        )
+
+    return account_blocks, text
+
+
+class InfoMessage(SlackMessage):
+    """Info message to show the current connection details."""
+
+    def __init__(
+        self,
+        ray_connection: RayConnection | None,
+        user_id: str,
+        team_id: str,
+        enterprise_id: str | None,
+        channel_id: str,
+        is_ibm: bool,
+    ) -> None:
+        account_blocks, text = get_account_blocks(
+            ray_connection, user_id, team_id, enterprise_id, channel_id, is_ibm
+        )
+        super().__init__(text, [*account_blocks])
+
+
 class ConnectionInfoMessage(SlackMessage):
     """The current Slack - LanguageCloud connection details."""
 
@@ -2248,85 +2362,10 @@ class ConnectionInfoMessage(SlackMessage):
         channel_id: str,
         is_ibm=False,
     ) -> None:
-        # First get Slack workspace - super group info.
-        if ray_connection is not None:
-            super_group_names = [group.name for group in ray_connection.super_group]
-            super_group_names_str = ", ".join(super_group_names)
-            text = _("Your Slack workspace is connected with: {super_group_names_str}.")
-            workspace_block = {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "Your Slack workspace is connected with: *{super_group_names_str}*.",
-                    ),
-                },
-            }
-        else:
-            text = _("Your Slack workspace is not connected with an organisation yet.")
-            workspace_block = {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": text},
-            }
-        # Next get Slack user - LanguageCloud account info.
-        account_blocks: list[dict[str, Any]] = []
-        if ray_connection is not None and ray_connection.client is not None:
-            user_details = f"<{domains.languagecloud}|{ray_connection.client.username}>"
-            if is_ibm_enterprise(enterprise_id=enterprise_id):
-                text = _("Your connected account is: {ray_connection.client.username}")
-            else:
-                text = _("Your connected account is: <{user_details}>")
-            account_blocks.append(
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": text},
-                }
-            )
-        else:
-            account_blocks.append(
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "In order to use the Straker Translate features, please login. Click this button below;"
-                        ),
-                    },
-                }
-            )
-            account_blocks.append(
-                {
-                    "type": "actions",
-                    "elements": [
-                        (
-                            (
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("Connect account"),
-                                    },
-                                    "style": "primary",
-                                    "url": get_language_cloud_connect_url(
-                                        user_id, team_id, enterprise_id, channel_id
-                                    ),
-                                    "action_id": "login",
-                                }
-                                if not is_ibm
-                                else {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("Direct Login"),
-                                    },
-                                    "style": "primary",
-                                    "action_id": "login_sso",
-                                }
-                            ),
-                        )
-                    ],
-                }
-            )
+        workspace_block = get_workspace_block(ray_connection)
+        account_blocks, text = get_account_blocks(
+            ray_connection, user_id, team_id, enterprise_id, channel_id, is_ibm
+        )
         super().__init__(
             text,
             [workspace_block, *account_blocks],

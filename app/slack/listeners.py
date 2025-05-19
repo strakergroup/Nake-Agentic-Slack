@@ -78,6 +78,7 @@ from .templates.messages import (
     JobSubmitMessage,
     HelpMessage,
     ConnectionInfoMessage,
+    InfoMessage,
     SsoConnectionInfoMessage,
     InvalidCommandMessage,
     ClientApprovedMessage,
@@ -1127,12 +1128,13 @@ async def new_job_action(
 @slack_log_decorator
 async def get_account_info(ack: AsyncAck, context: RayContext, respond: AsyncRespond):
     await ack()
-    msg = ConnectionInfoMessage(
-        context["ray"],
+    msg = InfoMessage(
+        ray_connection=context["ray"],
         user_id=context["user_id"],
         team_id=context["team_id"],
         enterprise_id=context.enterprise_id,
         channel_id=context["channel_id"],
+        is_ibm=is_ibm_enterprise(context.enterprise_id),
     )
     await respond(text=msg.text, blocks=msg.blocks, replace_original=False)
 
