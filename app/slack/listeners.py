@@ -31,7 +31,6 @@ from app.ray.utils import (
     upload_to_file_server,
 )
 from app.translate import _
-from app.wb_tasks.tasks import get_task
 from app.transcriber_tasks.tasks import get_asr_task
 from ..redis import redis_conn, is_duplicate_event
 
@@ -66,7 +65,6 @@ from .templates.models import (
     AutoTranslationSettingsForm,
 )
 from .templates.messages import (
-    DocumentMTJobMessage,
     JobCreationMessage,
     LoginMessage,
     LogoutMessage,
@@ -382,12 +380,19 @@ async def document_mt_job_action(
         action_data = json.loads(action.get("value", ""))
         files = action_data.get("files", [])
         channel_id = action_data.get("channel_id")
-
-        view = document_mt_job_modal(channel_id, files)
-        await client.views_open(
-            trigger_id=body["trigger_id"],
-            view=view,
-        )
+        if files:
+            view = document_mt_job_modal(channel_id, files)
+            await client.views_open(
+                trigger_id=body["trigger_id"],
+                view=view,
+            )
+        else:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    "No files found in the message. Please upload files to translate."
+                ),
+            )
 
 
 @app.action("document_mt_submit", middleware=[ray_connection])
@@ -1693,11 +1698,9 @@ async def evaluate_job_submit(
     """Evaluate job. Triggered from the Evaluate form view."""
     await ack(response_action="clear")
     try:
-        if view:
-            file_ids = json.loads(view["private_metadata"])
-            form_data = view["state"]["values"]
-            form = EvaluateJobForm.parse_slack(form_data)
-            # call verify api to submit a file for evaluation
+        channel_id = view["private_metadata"]
+        form_data = view["state"]["values"]
+        form = EvaluateJobForm.parse_slack(form_data)
     except ValidationError as e:
         errors = convert_pydantic_to_slack_error(e)
         await client.chat_postMessage(
@@ -1705,15 +1708,6 @@ async def evaluate_job_submit(
         )
         return
     if await require_ray_client(context, prompt_login=True):
-        for file_id in file_ids:
-            input_file = await download_file(client=client, file_id=file_id, http=None)
-            response = await submit_evaluation_job(
-                context.ray.client,
-                input_file,
-                form.target_langs_uuid,
-                form.reference,
-                workflow_uuid=form.workflow_options,
-            )
         if form.workflow_options:
             msg = _(
                 "Thanks for creating a new project! We will send you a summary of your file to review before finalising your order."
@@ -1722,7 +1716,23 @@ async def evaluate_job_submit(
             msg = _(
                 "You've successfully submitted your document(s) for quality evaluation. Your document(s) will be AI Translated and you will be given a score."
             )
-        await client.chat_postMessage(channel=context.user_id, text=msg)
+        await client.chat_postMessage(channel=channel_id, text=msg)
+        for file in form.files:
+            input_file = await download_file(client=client, file_id=file.id, http=None)
+            is_valid, is_valid_content, error_message = validate_file(input_file)
+            if not is_valid:
+                await client.chat_postMessage(channel=channel_id, text=error_message)
+                continue
+            if not is_valid_content:
+                await client.chat_postMessage(channel=channel_id, text=error_message)
+                continue
+            await submit_evaluation_job(
+                context.ray.client,
+                input_file,
+                form.target_langs_uuid,
+                form.reference,
+                workflow_uuid=form.workflow_options,
+            )
 
 
 @app.action("evaluate_job", middleware=[ray_connection])
@@ -1736,50 +1746,24 @@ async def evaluate_job_action(
 ):
     """Evaluate job. Triggered from the Evaluate Job button."""
     await ack()
-
-    # Get file ID and info
-    file_ids = json.loads(action.get("value", ""))
-    file_infos = []
-    for file_id in file_ids:
-        # Download file content
-        file_obj = await client.files_info(file=file_id, include_content=True)
-        content = file_obj.get("content", b"")
-
-        # Validate file type and content
-        _, file_extension = os.path.splitext(file_obj["file"]["name"])
-        is_valid_file_type, is_valid_content, error_message = validate_file(
-            file_extension, content=content
-        )
-
-        # If the file type is valid and content is also valid
-        if is_valid_file_type and is_valid_content:
-            file_infos.append(
-                {
-                    "file_id": file_id,
-                    "file_name": file_obj["file"]["name"],
-                    "file_type": file_extension,
-                }
+    if await require_ray_client(context):
+        # Get file IDs and channel ID from the action value
+        action_data = json.loads(action.get("value", ""))
+        files = action_data.get("files", [])
+        channel_id = action_data.get("channel_id")
+        if files:
+            view = evaluate_job_modal(channel_id, files)
+            await client.views_open(
+                trigger_id=body["trigger_id"],
+                view=view,
             )
-        # TODO: fix message
-        # If the file type is valid but content is invalid
-        elif is_valid_file_type and not is_valid_content:
-            msg = "Error: " + error_message
-            await client.chat_postMessage(
-                channel=context["user_id"],
-                text=msg,
-            )
-        # If the file type is not valid
         else:
-            msg = "This file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
             await client.chat_postMessage(
                 channel=context["user_id"],
-                text=msg,
+                text=_(
+                    "No files found in the message. Please try reupload files to translate."
+                ),
             )
-    if file_infos:
-        await client.views_open(
-            trigger_id=body["trigger_id"],
-            view=evaluate_job_modal(file_infos),
-        )
 
 
 @app.action("verify_job_modal_open", middleware=[ray_connection])
@@ -1889,7 +1873,6 @@ async def handle_document_mt_job(
         try:
             # Get the selected languages from the form
             form_data = view["state"]["values"] if view else {}
-            print(json.dumps(form_data, indent=4))
             selected_languages = (
                 form_data.get("target_langs", {})
                 .get("language_mt_options", {})
@@ -1927,9 +1910,8 @@ async def handle_document_mt_job(
                     client=client, file_id=file["value"], http=None
                 )
                 # validate file
-                file_name, file_extension = os.path.splitext(file["text"]["text"])
                 is_valid_file_type, is_valid_content, error_message = validate_file(
-                    file_extension, content=input_file
+                    input_file
                 )
                 file_name = file["text"]["text"]
                 if not is_valid_file_type:

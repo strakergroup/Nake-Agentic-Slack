@@ -1,13 +1,13 @@
 import json
-from typing import Union, Tuple
+from typing import Tuple
 from app.translate import _
 
 
-def validate_json(content: Union[bytes, str]) -> Tuple[bool, str]:
+def validate_json(file_path: str) -> Tuple[bool, str]:
     """Validates JSON file content.
 
     Args:
-        content (Union[bytes, str]): The content to validate, either as bytes or string.
+        file_path (str): The path to the file to validate.
 
     Returns:
         Tuple[bool, str]: A tuple containing:
@@ -24,7 +24,8 @@ def validate_json(content: Union[bytes, str]) -> Tuple[bool, str]:
         (False, 'Invalid JSON structure: Expecting value: line 1 column 1 (char 0)')
     """
     try:
-        json_str = content.decode("utf-8") if isinstance(content, bytes) else content
+        with open(file_path, "r", encoding="utf-8") as f:
+            json_str = f.read()
         json.loads(json_str)
         return True, ""
     except UnicodeDecodeError:

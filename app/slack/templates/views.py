@@ -495,15 +495,28 @@ def job_search_modal(
     }
 
 
-def evaluate_job_modal(file_info: list[dict[str, Any]]):
+def evaluate_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
     """The template for the modal to submit a file to verify quality evaluate."""
-    file_ids = [file["file_id"] for file in file_info]
+    file_options, initial_options = map_file_options(file_info)
+    files_block_element = {
+        "type": "multi_static_select",
+        "action_id": "files",
+        "placeholder": {
+            "type": "plain_text",
+            "text": _("Select file(s)"),
+            "emoji": True,
+        },
+        "options": file_options,
+        "max_selected_items": 10,
+    }
+    if initial_options:
+        files_block_element["initial_options"] = initial_options
     return {
         "type": "modal",
         "callback_id": "evaluate_job",
         "title": {"type": "plain_text", "text": _("Quality Evaluation", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Submit", 23)[:24]},
-        "private_metadata": json.dumps(file_ids),
+        "private_metadata": channel_id,
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
             {
@@ -562,6 +575,16 @@ def evaluate_job_modal(file_info: list[dict[str, Any]]):
                     "text": _(
                         "Which language(s) do you want the file(s) to be translated to?"
                     ),
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "files",
+                "element": files_block_element,
+                "label": {
+                    "type": "plain_text",
+                    "text": _("File(s) to evaluate"),
+                    "emoji": True,
                 },
             },
             {
