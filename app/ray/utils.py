@@ -3,6 +3,7 @@ from typing import Literal, Tuple, Union
 import math
 import datetime
 from urllib.parse import urlencode, unquote
+import os
 
 from buglog import notify_exception
 
@@ -326,9 +327,7 @@ VALID_FILE_TYPES = {
 }
 
 
-def validate_file(
-    file_extension: str, content: Union[bytes, str, None]
-) -> Tuple[bool, bool, str]:
+def validate_file(file_path: str) -> Tuple[bool, bool, str]:
     """Checks if the file type is supported and validates content if applicable.
 
     Args:
@@ -342,21 +341,22 @@ def validate_file(
             - str: Error message if validation fails, empty string otherwise
 
     Example:
-        >>> validate_file('.txt', 'Some content')
+        >>> validate_file('file.txt')
         (True, True, '')  # If txt is supported with no specific validation
-        >>> validate_file('.unsupported', None)
+        >>> validate_file('file.unsupported')
         (False, False, 'Unsupported file type: unsupported')
     """
-    ext = file_extension.lower().lstrip(".")
-
+    # Extract extension from file path
+    other, ext = os.path.splitext(file_path)
+    ext = ext.lower().lstrip(".")
     # Check if file extension is valid
     if ext not in VALID_FILE_TYPES:
         return False, False, f"Unsupported file type: {ext}"
 
     # Get the corresponding validator function (if any)
     content_validator = VALID_FILE_TYPES[ext]
-    if content_validator and content is not None:
-        is_valid, error_message = content_validator(content)
+    if content_validator:
+        is_valid, error_message = content_validator(file_path)
         return True, is_valid, error_message  # Return content validation results
 
     return (
