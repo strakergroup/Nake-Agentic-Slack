@@ -2262,7 +2262,7 @@ def get_workspace_block(ray_connection: RayConnection | None) -> dict[str, Any]:
 
 
 def get_account_blocks(
-    ray_connection: RayConnection | None,
+    ray_client: RayClient | None,
     user_id: str,
     team_id: str,
     enterprise_id: str | None,
@@ -2270,11 +2270,12 @@ def get_account_blocks(
     is_ibm: bool,
 ) -> tuple[list[dict[str, Any]], str]:
     account_blocks: list[dict[str, Any]] = []
+    text: str = ""
 
-    if ray_connection is not None and ray_connection.client is not None:
-        user_details = f"<{domains.languagecloud}|{ray_connection.client.username}>"
+    if ray_client is not None:
+        user_details = f"<{domains.languagecloud}|{ray_client.username}>"
         if is_ibm_enterprise(enterprise_id=enterprise_id):
-            text = _("Your connected account is: {ray_connection.client.username}")
+            text = _("Your connected account is: {ray_client.username}")
         else:
             text = _("Your connected account is: <{user_details}>")
         account_blocks.append(
@@ -2337,7 +2338,7 @@ class InfoMessage(SlackMessage):
 
     def __init__(
         self,
-        ray_connection: RayConnection | None,
+        ray_client: RayClient | None,
         user_id: str,
         team_id: str,
         enterprise_id: str | None,
@@ -2345,7 +2346,7 @@ class InfoMessage(SlackMessage):
         is_ibm: bool,
     ) -> None:
         account_blocks, text = get_account_blocks(
-            ray_connection, user_id, team_id, enterprise_id, channel_id, is_ibm
+            ray_client, user_id, team_id, enterprise_id, channel_id, is_ibm
         )
         super().__init__(text, [*account_blocks])
 
@@ -2362,9 +2363,11 @@ class ConnectionInfoMessage(SlackMessage):
         channel_id: str,
         is_ibm=False,
     ) -> None:
+        ray_client = ray_connection.client if ray_connection is not None else None
+
         workspace_block = get_workspace_block(ray_connection)
         account_blocks, text = get_account_blocks(
-            ray_connection, user_id, team_id, enterprise_id, channel_id, is_ibm
+            ray_client, user_id, team_id, enterprise_id, channel_id, is_ibm
         )
         super().__init__(
             text,

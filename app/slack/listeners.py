@@ -1129,7 +1129,7 @@ async def new_job_action(
 async def get_account_info(ack: AsyncAck, context: RayContext, respond: AsyncRespond):
     await ack()
     msg = InfoMessage(
-        ray_connection=context["ray"],
+        ray_client=context["ray"].client,
         user_id=context["user_id"],
         team_id=context["team_id"],
         enterprise_id=context.enterprise_id,
