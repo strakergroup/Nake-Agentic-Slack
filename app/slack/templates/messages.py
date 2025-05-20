@@ -1686,7 +1686,7 @@ class NewJobMessage(SlackMessage):
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "*• AI Translation* - AI translate content from one language into multiple languages\n\n"
+                        "*AI Translation* - AI translate content from one language into multiple languages\n\n"
                     ),
                 },
                 "accessory": {
@@ -1712,7 +1712,7 @@ class NewJobMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "*• Quality Evaluation* - AI translate your content and receive translation quality scores, then verify with Straker to send for human verification"
+                            "*Quality Evaluation* - AI translate your content and receive translation quality scores, then verify with Straker to send for human verification"
                         ),
                     },
                     "accessory": {
@@ -1731,7 +1731,35 @@ class NewJobMessage(SlackMessage):
                             }
                         ),
                     },
-                }
+                },
+            )
+            message_blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "*Human Translation* - Translating content from one language to another while preserving meaning and context."
+                        ),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Human Translation"),
+                        },
+                        "action_id": "evaluate_job",
+                        "style": "primary",
+                        "value": json.dumps(
+                            {
+                                "files": files_dict,
+                                "channel_id": channel_id,
+                                "job_type": "human",
+                            }
+                        ),
+                    },
+                },
             )
 
         super().__init__(

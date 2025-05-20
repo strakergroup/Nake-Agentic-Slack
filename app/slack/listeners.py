@@ -88,6 +88,7 @@ from .templates.views import (
     document_mt_job_modal,
     evaluate_job_modal,
     home_view,
+    human_job_modal,
     translation_settings_view,
     job_search_modal,
     cancel_job_modal,
@@ -1688,6 +1689,7 @@ async def message_changed_event(
 
 
 @app.view("evaluate_job", middleware=[ray_connection])
+@app.view("evaluate_job_human", middleware=[ray_connection])
 @slack_log_decorator
 async def evaluate_job_submit(
     view: Optional[Dict[str, Any]],
@@ -1700,7 +1702,11 @@ async def evaluate_job_submit(
     try:
         channel_id = view["private_metadata"]
         form_data = view["state"]["values"]
-        form = EvaluateJobForm.parse_slack(form_data)
+        form = (
+            EvaluateJobForm.parse_slack(form_data)
+            if view["callback_id"] == "evaluate_job"
+            else EvaluateJobForm.parse_human_job_form(form_data)
+        )
     except ValidationError as e:
         errors = convert_pydantic_to_slack_error(e)
         await client.chat_postMessage(
@@ -1752,7 +1758,11 @@ async def evaluate_job_action(
         files = action_data.get("files", [])
         channel_id = action_data.get("channel_id")
         if files:
-            view = evaluate_job_modal(channel_id, files)
+            view = (
+                evaluate_job_modal(channel_id, files)
+                if action_data.get("job_type") != "human"
+                else human_job_modal(channel_id, files)
+            )
             await client.views_open(
                 trigger_id=body["trigger_id"],
                 view=view,
