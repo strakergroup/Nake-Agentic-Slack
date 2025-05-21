@@ -351,6 +351,7 @@ def job_prediction_block(
 
 def verify_job_blocks(
     summary: str,
+    source_file_uuid: str,
     report: dict[str, Any] | None,
     lang_name: str,
     language_uuid: str,
@@ -367,7 +368,7 @@ def verify_job_blocks(
 
     cost_block = {
         "type": "input",
-        "block_id": f"verification_checkbox_{language_uuid}",
+        "block_id": f"verification_checkbox_{language_uuid}_{source_file_uuid}",
         "label": {
             "type": "plain_text",
             "text": _(lang_name),
@@ -380,7 +381,7 @@ def verify_job_blocks(
                         "type": "mrkdwn",
                         "text": f"USD${cost:.2f}",
                     },
-                    "value": language_uuid,
+                    "value": f"{source_file_uuid}:{language_uuid}",
                 },
             ],
             "initial_options": [
@@ -389,7 +390,7 @@ def verify_job_blocks(
                         "type": "mrkdwn",
                         "text": f"USD${cost:.2f}",
                     },
-                    "value": language_uuid,
+                    "value": f"{source_file_uuid}:{language_uuid}",
                 },
             ],
             "action_id": "verification_checkbox_action",

@@ -16,7 +16,7 @@ from app.ray.utils import get_filename_from_header
 
 async def submit_evaluation_job(
     user: RayClient,
-    file_path: str,
+    file_path: list[str],
     target_languages_uuid: List[str],
     reference: str,
     workflow_uuid: str | None = None,
@@ -35,26 +35,25 @@ async def submit_evaluation_job(
         target_languages_data["workflow"] = "ff9d336e-4043-41cd-bd95-0d65a5eeb945"
     else:
         target_languages_data["workflow"] = workflow_uuid
-    files = {
-        "files": (
-            os.path.basename(file_path),
-            open(file_path, "rb"),
-            "application/octet-stream",
-        )
-    }
-    # Create a job
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(
-            f"{domains.verify_api}/evaluate/create",
-            files=files,
-            data=target_languages_data,
-            headers={"Authorization": f"Bearer {user.id_token}"},
-        )
-    # Check the response status
-    response.raise_for_status()
 
-    # Return the job response
-    return response.json()
+    # Create a job using streaming for file uploads
+    async with httpx.AsyncClient(timeout=300) as client:
+        # Create a multipart form with streaming files
+        files = [("files", open(file, "rb")) for file in file_path]
+
+        try:
+            response = await client.post(
+                f"{domains.verify_api}/evaluate/create",
+                files=files,
+                data=target_languages_data,
+                headers={"Authorization": f"Bearer {user.id_token}"},
+            )
+            response.raise_for_status()
+            return response.json()
+        finally:
+            # Ensure all file handles are closed
+            for _, file_obj in files:
+                file_obj.close()
 
 
 async def get_evaluation_job(user: SlackUser, job_uuid: str):

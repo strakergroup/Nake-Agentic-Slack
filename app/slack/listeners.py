@@ -1723,6 +1723,7 @@ async def evaluate_job_submit(
                 "You've successfully submitted your document(s) for quality evaluation. Your document(s) will be AI Translated and you will be given a score."
             )
         await client.chat_postMessage(channel=channel_id, text=msg)
+        input_files = []
         for file in form.files:
             input_file = await download_file(client=client, file_id=file.id, http=None)
             is_valid, is_valid_content, error_message = validate_file(input_file)
@@ -1732,13 +1733,14 @@ async def evaluate_job_submit(
             if not is_valid_content:
                 await client.chat_postMessage(channel=channel_id, text=error_message)
                 continue
-            await submit_evaluation_job(
-                context.ray.client,
-                input_file,
-                form.target_langs_uuid,
-                form.reference,
-                workflow_uuid=form.workflow_options,
-            )
+            input_files.append(input_file)
+        await submit_evaluation_job(
+            context.ray.client,
+            input_files,
+            form.target_langs_uuid,
+            form.reference,
+            workflow_uuid=form.workflow_options,
+        )
 
 
 @app.action("evaluate_job", middleware=[ray_connection])
@@ -1814,21 +1816,23 @@ async def handle_verify_job_submission(
     # Extract the private metadata (job UUID)
     job_uuid = body["view"]["private_metadata"]
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
-    source_file = job["data"]["source_files"][0]
     target_languages = job["data"]["target_languages"]
     # Extract the selected checkbox values
     selected_languages = []
-    for lang in target_languages:
-        block_id = f"verification_checkbox_{lang['uuid']}"
-        if block_id in body["view"]["state"]["values"]:
-            selected_options = body["view"]["state"]["values"][block_id][
-                "verification_checkbox_action"
-            ]["selected_options"]
-            selected_languages.extend([option["value"] for option in selected_options])
+    for source_file in job["data"]["source_files"]:
+        for lang in target_languages:
+            block_id = (
+                f"verification_checkbox_{lang['uuid']}_{source_file['file_uuid']}"
+            )
+            if block_id in body["view"]["state"]["values"]:
+                selected_options = body["view"]["state"]["values"][block_id][
+                    "verification_checkbox_action"
+                ]["selected_options"]
+                selected_languages.extend(
+                    [option["value"] for option in selected_options]
+                )
 
-    file_and_languages = [
-        f"{source_file['file_uuid']}:{lang}" for lang in selected_languages
-    ]
+    file_and_languages = selected_languages
     if selected_languages:
         # TODO: handle no langs
         asyncio.create_task(

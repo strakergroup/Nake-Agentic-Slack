@@ -1402,23 +1402,6 @@ def verify_job_modal(
     costs: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Generate modal for job verification with total cost calculation."""
-    languages = job["target_languages"]
-    file = job["source_files"][0]
-    source_lang_uuid = file["report"]["language_uuid"]
-    source_lang = next(
-        (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
-    )
-    reports = file["report"]["evaluation_reports"]
-
-    # Process languages and set defaults
-    for lang in languages:
-        for report in reports:
-            if lang["uuid"] == report["target_language"]:
-                lang["report"] = report
-        for target_file in file["target_files"]:
-            if lang["uuid"] == target_file["language_uuid"]:
-                lang["human_job_status"] = target_file.get("human_job_status", "")
-
     blocks = [
         {
             "type": "section",
@@ -1431,27 +1414,45 @@ def verify_job_modal(
         },
         {"type": "divider"},
     ]
-
-    # Add individual language blocks
-    for lang in languages:
-        report = lang.get("report", None)
-        if job["workflow_uuid"] == "92741a61-932c-41af-8c84-5a56a2c9b845":
-            report = None
-        blocks.extend(
-            verify_job_blocks(
-                (
-                    job_summary_string(source_lang, lang, file)
-                    if report
-                    else job_summary_no_score(lang, file)
-                ),
-                report=report,
-                lang_name=lang["name"],
-                language_uuid=lang["uuid"],
-                costs=costs,
-                optional=len(languages) > 1,
-                human_job_status=lang.get("human_job_status", ""),
-            )
+    languages = job["target_languages"]
+    source_files = job["source_files"]
+    for file in source_files:
+        source_lang_uuid = file["report"]["language_uuid"]
+        source_lang = next(
+            (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
         )
+        reports = file["report"]["evaluation_reports"]
+
+        # Process languages and set defaults
+        for lang in languages:
+            for report in reports:
+                if lang["uuid"] == report["target_language"]:
+                    lang["report"] = report
+            for target_file in file["target_files"]:
+                if lang["uuid"] == target_file["language_uuid"]:
+                    lang["human_job_status"] = target_file.get("human_job_status", "")
+
+        # Add individual language blocks
+        for lang in languages:
+            report = lang.get("report", None)
+            if job["workflow_uuid"] == "92741a61-932c-41af-8c84-5a56a2c9b845":
+                report = None
+            blocks.extend(
+                verify_job_blocks(
+                    (
+                        job_summary_string(source_lang, lang, file)
+                        if report
+                        else job_summary_no_score(lang, file)
+                    ),
+                    source_file_uuid=file["file_uuid"],
+                    report=report,
+                    lang_name=lang["name"],
+                    language_uuid=lang["uuid"],
+                    costs=costs,
+                    optional=len(languages) > 1,
+                    human_job_status=lang.get("human_job_status", ""),
+                )
+            )
 
     if len(languages) > 1:
         total_cost = calculate_total_cost(languages, costs)

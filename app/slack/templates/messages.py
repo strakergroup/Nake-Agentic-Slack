@@ -3559,20 +3559,6 @@ class EvaluateSuccessMessage(SlackMessage):
         tokens: int,
         is_ibm_enterprise: bool,
     ) -> None:
-        languages = job["target_languages"]
-        file = job["source_files"][0]
-        source_lang_uuid = file["report"]["language_uuid"]
-        source_lang = next(
-            (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
-        )
-        reports = file["report"]["evaluation_reports"]
-        for lang in languages:
-            for report in reports:
-                if lang["uuid"] == report["target_language"]:
-                    lang["report"] = report
-            for target_file in file["target_files"]:
-                if target_file["language_uuid"] == lang["uuid"]:
-                    lang["target_file_uuid"] = target_file["target_file_uuid"]
         blocks = []
         if not is_ibm_enterprise:
             blocks.append(
@@ -3593,33 +3579,50 @@ class EvaluateSuccessMessage(SlackMessage):
                 },
             }
         )
+        languages = job["target_languages"]
+        source_files = job["source_files"]
         lang_blocks = []
-        for lang in languages:
-            lang_blocks.extend(
-                [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": job_summary_string(source_lang, lang, file),
-                        },
-                    },
-                    {
-                        "type": "actions",
-                        "elements": [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Download AI Translation"),
-                                },
-                                "value": lang["target_file_uuid"],
-                                "action_id": "download_ai_translation_action",
-                            },
-                        ],
-                    },
-                ]
+
+        for file in source_files:
+            source_lang_uuid = file["report"]["language_uuid"]
+            source_lang = next(
+                (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
             )
+            reports = file["report"]["evaluation_reports"]
+            for lang in languages:
+                for report in reports:
+                    if lang["uuid"] == report["target_language"]:
+                        lang["report"] = report
+                for target_file in file["target_files"]:
+                    if target_file["language_uuid"] == lang["uuid"]:
+                        lang["target_file_uuid"] = target_file["target_file_uuid"]
+
+            for lang in languages:
+                lang_blocks.extend(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": job_summary_string(source_lang, lang, file),
+                            },
+                        },
+                        {
+                            "type": "actions",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("Download AI Translation"),
+                                    },
+                                    "value": lang["target_file_uuid"],
+                                    "action_id": "download_ai_translation_action",
+                                },
+                            ],
+                        },
+                    ]
+                )
 
         blocks.extend(lang_blocks)
         blocks.append(
@@ -3670,26 +3673,30 @@ class HumanJobQuoteMessage(SlackMessage):
         all_langs: list[dict[str, str]],
     ) -> None:
         languages = job["target_languages"]
-        file = job["source_files"][0]
-
-        for lang in languages:
-            for target_file in file["target_files"]:
-                if target_file["language_uuid"] == lang["uuid"]:
-                    lang["target_file_uuid"] = target_file["target_file_uuid"]
         blocks = []
         lang_blocks = []
-        for lang in languages:
-            lang_blocks.extend(
-                [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": job_summary_no_score(lang, file),
-                        },
-                    }
-                ]
-            )
+        source_files = job["source_files"]
+        for file in source_files:
+            for target_file in file["target_files"]:
+                lang = next(
+                    (
+                        lang
+                        for lang in languages
+                        if lang["uuid"] == target_file["language_uuid"]
+                    ),
+                    None,
+                )
+                lang_blocks.extend(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": job_summary_no_score(lang, file),
+                            },
+                        }
+                    ]
+                )
 
         blocks.extend(lang_blocks)
         blocks.append(
