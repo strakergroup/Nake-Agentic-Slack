@@ -3711,7 +3711,7 @@ class HumanJobQuoteMessage(SlackMessage):
                         },
                         "style": "primary",
                         "value": job["uuid"],
-                        "action_id": "verify_job_modal_open",
+                        "action_id": "quote_summary_modal_open",
                     },
                 ],
             },

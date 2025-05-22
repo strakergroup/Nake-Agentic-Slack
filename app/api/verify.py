@@ -162,12 +162,17 @@ async def get_verify_languages():
 
 
 async def get_job_pricing(
-    ray_client: RayClient, job_uuid: str, file_uuid: str, language_uuids: list[str]
+    ray_client: RayClient,
+    job_uuid: str,
+    file_uuids: list[str],
+    language_uuids: list[str],
 ):
     url = f"{domains.verify_api}/automation/service/pricing"
     headers = {"Authorization": f"Bearer {ray_client.id_token}"}
     # TODO: Update for multiple files
-    file_and_languages = [f"{file_uuid}:{lang}" for lang in language_uuids]
+    file_and_languages = [
+        f"{file_uuid}:{lang}" for lang in language_uuids for file_uuid in file_uuids
+    ]
     data = {"job_uuid": job_uuid, "file_and_languages": file_and_languages}
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(url, headers=headers, data=data)

@@ -8,6 +8,7 @@ import json
 from typing import Any
 import re
 import httpx
+from app.api.verify import get_evaluation_job
 import langcodes
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
@@ -22,7 +23,9 @@ from app.transcriber_tasks.tasks import create_asr_task
 
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
+    EvaluateSuccessMessage,
     HelpMessage,
+    HumanJobQuoteMessage,
     LoginMessage,
     LogoutMessage,
     JobStatusNoIdMessage,
@@ -59,6 +62,7 @@ from ..auth.connector import (
     approve_pending_groups,
     duration_to_tokens,
     get_group_mt_engine,
+    get_slack_user,
     log_transcribe_request,
 )
 from ..config import config, domains, Environment
@@ -68,7 +72,7 @@ from ..ray.settings import (
 )
 from ..ray.utils import get_media_duration, is_ibm_enterprise
 from ..watson import watson_message
-from .select_options import get_file_options_cached
+from .select_options import _get_languages_cached, get_file_options_cached
 from app.models import TranscriptionTask
 
 
@@ -176,6 +180,20 @@ async def respond_to_message(
                     thread_ts=thread_ts,
                 )
             return
+    if message["text"] == "debug":
+        slack_user = get_slack_user(context.get("ray").client.id)
+        job = await get_evaluation_job(
+            slack_user, "726bbb97-0357-48c4-97bc-fa53bdae16ea"
+        )
+        all_langs = await _get_languages_cached()
+        # message = EvaluateSuccessMessage(job["data"], all_langs, 20, False)
+        message = HumanJobQuoteMessage(job["data"], all_langs)
+        await context.say(
+            text=message.text,
+            blocks=message.blocks,
+            thread_ts=thread_ts,
+        )
+        return
     # process mt
     message_match = re.search(
         r"mt:?(?:\s+([\w-]+))?\s+to\s+([\w-]+):?\s+(.*)",

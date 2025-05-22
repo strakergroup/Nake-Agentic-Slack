@@ -1480,6 +1480,113 @@ def verify_job_modal(
     }
 
 
+def verify_quote_summary_modal(
+    job: dict[str, Any],
+    all_langs: list[dict[str, str]],
+    costs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    source_files = job["source_files"]
+    blocks = []
+    for file in source_files:
+
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f":paperclip:*{file['filename']}*",
+                },
+            }
+        )
+        for lang in job["target_languages"]:
+            target_file = next(
+                (
+                    target_file
+                    for target_file in file["target_files"]
+                    if target_file["language_uuid"] == lang["uuid"]
+                ),
+                None,
+            )
+            cost = 0.00
+            if target_file.get("human_job_status", ""):
+                lang_label = f"*{_(lang['name'])}*\n"
+                cost_block = {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "{lang_label} Human verification has been submitted for this language."
+                        ),
+                    },
+                }
+                blocks.append(cost_block)
+            else:
+                for item in costs:
+                    if (
+                        item["language_uuid"] == lang["uuid"]
+                        and item["file_uuid"] == file["file_uuid"]
+                    ):
+                        cost = item["service_list"][0]["estimated_cost"]
+                        break
+                blocks.append(
+                    {
+                        "type": "input",
+                        "block_id": f"verification_checkbox_{lang['uuid']}_{file['file_uuid']}",
+                        "label": {
+                            "type": "plain_text",
+                            "text": _(lang["name"]),
+                        },
+                        "element": {
+                            "type": "checkboxes",
+                            "options": [
+                                {
+                                    "text": {
+                                        "type": "mrkdwn",
+                                        "text": f"USD${cost:.2f}",
+                                    },
+                                    "value": f"{file['file_uuid']}:{lang['uuid']}",
+                                },
+                            ],
+                            "initial_options": [
+                                {
+                                    "text": {
+                                        "type": "mrkdwn",
+                                        "text": f"USD${cost:.2f}",
+                                    },
+                                    "value": f"{file['file_uuid']}:{lang['uuid']}",
+                                },
+                            ],
+                            "action_id": "verification_checkbox_action",
+                        },
+                        "optional": True,
+                    }
+                )
+        blocks.append({"type": "divider"})
+    return {
+        "type": "modal",
+        "callback_id": "verify_job",
+        "title": {"type": "plain_text", "text": _("Summary", 23)[:24]},
+        "submit": {"type": "plain_text", "text": _("Submit")},
+        "close": {"type": "plain_text", "text": _("Close")},
+        "private_metadata": job["uuid"],
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "Review your files before submitting for *human translation*. Submitted orders cannot be canceled."
+                    ),
+                },
+            },
+            {
+                "type": "divider",
+            },
+            *blocks,
+        ],
+    }
+
+
 def calculate_total_cost(
     selected_languages: list[dict[str, Any]], costs: list[dict[str, Any]]
 ) -> float:

@@ -93,6 +93,7 @@ from .templates.views import (
     job_search_modal,
     cancel_job_modal,
     verify_job_modal,
+    verify_quote_summary_modal,
 )
 from .web import (
     download_file,
@@ -1779,6 +1780,7 @@ async def evaluate_job_action(
 
 
 @app.action("verify_job_modal_open", middleware=[ray_connection])
+@app.action("quote_summary_modal_open", middleware=[ray_connection])
 @slack_log_decorator
 async def verify_job_modal_open_action(
     client: AsyncWebClient,
@@ -1797,12 +1799,16 @@ async def verify_job_modal_open_action(
         costs = await get_job_pricing(
             context.ray.client,
             job_uuid,
-            job["data"]["source_files"][0]["file_uuid"],
+            [file["file_uuid"] for file in job["data"]["source_files"]],
             langs,
         )
         await client.views_open(
             trigger_id=body["trigger_id"],
-            view=verify_job_modal(job["data"], all_langs, costs["data"]),
+            view=(
+                verify_quote_summary_modal(job["data"], all_langs, costs["data"])
+                if action["action_id"] == "quote_summary_modal_open"
+                else verify_job_modal(job["data"], all_langs, costs["data"])
+            ),
         )
 
 

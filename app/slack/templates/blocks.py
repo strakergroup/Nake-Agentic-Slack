@@ -1,5 +1,6 @@
 """Templates for individual Slack blocks."""
 
+import json
 from typing import Any
 from ray_sdk.api.v3.models import Quote
 
@@ -360,9 +361,11 @@ def verify_job_blocks(
     human_job_status: str,
 ) -> dict[str, Any]:
     """The blocks for the verification job."""
-    cost = 0.00
     for item in costs:
-        if item["language_uuid"] == language_uuid:
+        if (
+            item["language_uuid"] == language_uuid
+            and item["file_uuid"] == source_file_uuid
+        ):
             cost = item["service_list"][0]["estimated_cost"]
             break
 
