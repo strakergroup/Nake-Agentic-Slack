@@ -155,7 +155,7 @@ async def get_ai_translation(
         email=context.get("user_info", {}).get("profile", {}).get("email", "unknown"),
         group_uuid=context["ray"].super_group[0].id,
     )
-    async with httpx.AsyncClient() as http:
+    async with httpx.AsyncClient(timeout=10.0) as http:
         response = await http.post(
             url,
             headers=headers,
