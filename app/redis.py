@@ -21,11 +21,11 @@ async def is_duplicate_event(
     """
     try:
         key = f"event:{enterprise_id}:{event_ts}"
-        # Check if key exists
-        exists = await redis_conn.exists(key)
+        # Check if key exists - Redis exists returns 1 or 0
+        exists = int(await redis_conn.exists(key)) == 1
         if not exists:
             # If key doesn't exist, set it with TTL
             await redis_conn.set(key, "1", ex=ttl)
-        return bool(exists)
+        return exists
     except Exception:
         return False
