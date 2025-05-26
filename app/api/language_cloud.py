@@ -1,4 +1,5 @@
 import httpx
+import buglog
 
 from app.config import config, domains
 from app.mt.translate import create_languagecloud_group_token
@@ -25,11 +26,20 @@ async def detect_language(
         )
     )
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.post(
-            f"{domains.languagecloud_api}/mt/detect",
-            json={"text": text},
-            headers={"Authorization": f"Bearer {token}"},
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                f"{domains.languagecloud_api}/mt/detect",
+                json={"text": text},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        response.raise_for_status()
+        return DetectLanguageResponse(**response.json())
+    except httpx.HTTPStatusError as e:
+        buglog.notify_exception(msg="Error detecting language", exc=e)
+        raise
+    except Exception as e:
+        buglog.notify_exception(
+            msg="An unexpected error occurred during language detection", exc=e
         )
-    response.raise_for_status()
-    return DetectLanguageResponse(**response.json())
+        raise

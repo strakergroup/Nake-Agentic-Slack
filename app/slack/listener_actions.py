@@ -388,7 +388,10 @@ async def auto_translate_message(
     assert context.channel_id  # TODO enforce this
     # TODO make this fetch all settings for channel
     settings = get_auto_translate_settings_and_langs(context, context.channel_id)
-    detected_source_lang_response = await detect_language(context, text)
+    try:
+        detected_source_lang_response = await detect_language(context, text)
+    except Exception as e:
+        notify_exception(msg="Failed to detect language", exc=e)
 
     # Remove the detected source language from the target languages
     target_langs = [
