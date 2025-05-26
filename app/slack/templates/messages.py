@@ -16,6 +16,7 @@ from .blocks import (
     job_summary_string,
     quote_message_block,
     job_prediction_block,
+    verify_quote_blocks,
 )
 from ...ray.events.models import (
     ClientSignupEvent,
@@ -1697,7 +1698,6 @@ class NewJobMessage(SlackMessage):
                         "text": _("AI Translation"),
                     },
                     "action_id": "document_mt_job",
-                    "style": "primary",
                     "value": json.dumps(
                         {"files": files_dict, "channel_id": channel_id}
                     ),
@@ -1750,7 +1750,6 @@ class NewJobMessage(SlackMessage):
                             "text": _("Human Translation"),
                         },
                         "action_id": "evaluate_job",
-                        "style": "primary",
                         "value": json.dumps(
                             {
                                 "files": files_dict,
@@ -3670,35 +3669,11 @@ class HumanJobQuoteMessage(SlackMessage):
     def __init__(
         self,
         job: dict[str, Any],
-        all_langs: list[dict[str, str]],
+        costs: list[dict[str, Any]],
     ) -> None:
         languages = job["target_languages"]
-        blocks = []
-        lang_blocks = []
-        source_files = job["source_files"]
-        for file in source_files:
-            for target_file in file["target_files"]:
-                lang = next(
-                    (
-                        lang
-                        for lang in languages
-                        if lang["uuid"] == target_file["language_uuid"]
-                    ),
-                    None,
-                )
-                lang_blocks.extend(
-                    [
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": job_summary_no_score(lang, file),
-                            },
-                        }
-                    ]
-                )
-
-        blocks.extend(lang_blocks)
+        blocks = verify_quote_blocks(job, costs, False)
+        blocks.insert(0, {"type": "divider"})
         blocks.append(
             {
                 "type": "actions",
@@ -3707,11 +3682,20 @@ class HumanJobQuoteMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": _("Send to Human Verification"),
+                            "text": _("Quote Summary"),
                         },
-                        "style": "primary",
                         "value": job["uuid"],
                         "action_id": "quote_summary_modal_open",
+                    },
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Accept All"),
+                            "style": "primary",
+                        },
+                        "value": job["uuid"],
+                        "action_id": "quote_modal_open",
                     },
                 ],
             },

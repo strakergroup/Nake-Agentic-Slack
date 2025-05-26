@@ -9,6 +9,7 @@ from .blocks import (
     job_summary_no_score,
     job_summary_string,
     verify_job_blocks,
+    verify_quote_blocks,
 )
 from ..select_options import (
     map_file_options,
@@ -640,9 +641,9 @@ def human_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
         "type": "modal",
         "callback_id": "evaluate_job_human",
         "title": {"type": "plain_text", "text": _("Human Translation", 23)[:24]},
-        "submit": {"type": "plain_text", "text": _("Review Summary", 23)[:24]},
+        "submit": {"type": "plain_text", "text": _("Request Quote", 23)[:24]},
         "private_metadata": channel_id,
-        "close": {"type": "plain_text", "text": _("Close")},
+        "close": {"type": "plain_text", "text": _("Cancel")},
         "blocks": [
             {
                 "type": "section",
@@ -655,6 +656,16 @@ def human_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
             },
             # seperator
             {"type": "divider"},
+            {
+                "type": "input",
+                "block_id": "files",
+                "element": files_block_element,
+                "label": {
+                    "type": "plain_text",
+                    "text": _("Select your files to translate"),
+                    "emoji": True,
+                },
+            },
             # add file id as hidden input
             # Add other input fields here...
             {
@@ -680,16 +691,6 @@ def human_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
                     "text": _(
                         "Which language(s) do you want the file(s) to be translated to?"
                     ),
-                },
-            },
-            {
-                "type": "input",
-                "block_id": "files",
-                "element": files_block_element,
-                "label": {
-                    "type": "plain_text",
-                    "text": _("File(s) to evaluate"),
-                    "emoji": True,
                 },
             },
         ],
@@ -1485,83 +1486,8 @@ def verify_quote_summary_modal(
     all_langs: list[dict[str, str]],
     costs: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    source_files = job["source_files"]
-    blocks = []
-    for file in source_files:
+    blocks = verify_quote_blocks(job, costs)
 
-        blocks.append(
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f":paperclip:*{file['filename']}*",
-                },
-            }
-        )
-        for lang in job["target_languages"]:
-            target_file = next(
-                (
-                    target_file
-                    for target_file in file["target_files"]
-                    if target_file["language_uuid"] == lang["uuid"]
-                ),
-                None,
-            )
-            cost = 0.00
-            if target_file.get("human_job_status", ""):
-                lang_label = f"*{_(lang['name'])}*\n"
-                cost_block = {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "{lang_label} Human verification has been submitted for this language."
-                        ),
-                    },
-                }
-                blocks.append(cost_block)
-            else:
-                for item in costs:
-                    if (
-                        item["language_uuid"] == lang["uuid"]
-                        and item["file_uuid"] == file["file_uuid"]
-                    ):
-                        cost = item["service_list"][0]["estimated_cost"]
-                        break
-                blocks.append(
-                    {
-                        "type": "input",
-                        "block_id": f"verification_checkbox_{lang['uuid']}_{file['file_uuid']}",
-                        "label": {
-                            "type": "plain_text",
-                            "text": _(lang["name"]),
-                        },
-                        "element": {
-                            "type": "checkboxes",
-                            "options": [
-                                {
-                                    "text": {
-                                        "type": "mrkdwn",
-                                        "text": f"USD${cost:.2f}",
-                                    },
-                                    "value": f"{file['file_uuid']}:{lang['uuid']}",
-                                },
-                            ],
-                            "initial_options": [
-                                {
-                                    "text": {
-                                        "type": "mrkdwn",
-                                        "text": f"USD${cost:.2f}",
-                                    },
-                                    "value": f"{file['file_uuid']}:{lang['uuid']}",
-                                },
-                            ],
-                            "action_id": "verification_checkbox_action",
-                        },
-                        "optional": True,
-                    }
-                )
-        blocks.append({"type": "divider"})
     return {
         "type": "modal",
         "callback_id": "verify_job",

@@ -4,11 +4,10 @@ Slack Bolt listener functions.
 """
 
 import asyncio
-import json
 from typing import Any
 import re
 import httpx
-from app.api.verify import get_evaluation_job
+from app.api.verify import get_evaluation_job, get_job_pricing
 import langcodes
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
@@ -23,7 +22,6 @@ from app.transcriber_tasks.tasks import create_asr_task
 
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
-    EvaluateSuccessMessage,
     HelpMessage,
     HumanJobQuoteMessage,
     LoginMessage,
@@ -185,9 +183,15 @@ async def respond_to_message(
         job = await get_evaluation_job(
             slack_user, "726bbb97-0357-48c4-97bc-fa53bdae16ea"
         )
-        all_langs = await _get_languages_cached()
+        langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
+        costs = await get_job_pricing(
+            context.ray.client,
+            job["data"]["uuid"],
+            [file["file_uuid"] for file in job["data"]["source_files"]],
+            langs,
+        )
         # message = EvaluateSuccessMessage(job["data"], all_langs, 20, False)
-        message = HumanJobQuoteMessage(job["data"], all_langs)
+        message = HumanJobQuoteMessage(job["data"], costs["data"])
         await context.say(
             text=message.text,
             blocks=message.blocks,
