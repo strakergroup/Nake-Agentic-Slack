@@ -1,5 +1,6 @@
 """Templates for individual Slack blocks."""
 
+import json
 from typing import Any
 from ray_sdk.api.v3.models import Quote
 
@@ -351,6 +352,7 @@ def job_prediction_block(
 
 def verify_job_blocks(
     summary: str,
+    source_file_uuid: str,
     report: dict[str, Any] | None,
     lang_name: str,
     language_uuid: str,
@@ -359,15 +361,17 @@ def verify_job_blocks(
     human_job_status: str,
 ) -> dict[str, Any]:
     """The blocks for the verification job."""
-    cost = 0.00
     for item in costs:
-        if item["language_uuid"] == language_uuid:
+        if (
+            item["language_uuid"] == language_uuid
+            and item["file_uuid"] == source_file_uuid
+        ):
             cost = item["service_list"][0]["estimated_cost"]
             break
 
     cost_block = {
         "type": "input",
-        "block_id": f"verification_checkbox_{language_uuid}",
+        "block_id": f"verification_checkbox_{language_uuid}_{source_file_uuid}",
         "label": {
             "type": "plain_text",
             "text": _(lang_name),
@@ -380,7 +384,7 @@ def verify_job_blocks(
                         "type": "mrkdwn",
                         "text": f"USD${cost:.2f}",
                     },
-                    "value": language_uuid,
+                    "value": f"{source_file_uuid}:{language_uuid}",
                 },
             ],
             "initial_options": [
@@ -389,7 +393,7 @@ def verify_job_blocks(
                         "type": "mrkdwn",
                         "text": f"USD${cost:.2f}",
                     },
-                    "value": language_uuid,
+                    "value": f"{source_file_uuid}:{language_uuid}",
                 },
             ],
             "action_id": "verification_checkbox_action",
@@ -455,6 +459,111 @@ def verify_job_blocks(
             "type": "divider",
         },
     ]
+
+
+def verify_quote_blocks(
+    job: dict[str, Any],
+    costs: list[dict[str, Any]],
+    selectable: bool = True,
+):
+    source_files = job["source_files"]
+    blocks = []
+    for file in source_files:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f":paperclip: *{file['filename']}*",
+                },
+            }
+        )
+        for lang in job["target_languages"]:
+            target_file = next(
+                (
+                    target_file
+                    for target_file in file["target_files"]
+                    if target_file["language_uuid"] == lang["uuid"]
+                ),
+                None,
+            )
+            cost = 0.00
+            if target_file.get("human_job_status", ""):
+                lang_label = f"*{_(lang['name'])}*\n"
+                cost_block = {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "{lang_label} Human verification has been submitted for this language."
+                        ),
+                    },
+                }
+                blocks.append(cost_block)
+            else:
+                for item in costs:
+                    if (
+                        item["language_uuid"] == lang["uuid"]
+                        and item["file_uuid"] == file["file_uuid"]
+                    ):
+                        cost = item["service_list"][0]["estimated_cost"]
+                        break
+                if selectable:
+                    blocks.append(
+                        {
+                            "type": "input",
+                            "block_id": f"verification_checkbox_{lang['uuid']}_{file['file_uuid']}",
+                            "label": {
+                                "type": "plain_text",
+                                "text": _(lang["name"]),
+                            },
+                            "element": {
+                                "type": "checkboxes",
+                                "options": [
+                                    {
+                                        "text": {
+                                            "type": "mrkdwn",
+                                            "text": f"USD${cost:.2f}",
+                                        },
+                                        "value": f"{file['file_uuid']}:{lang['uuid']}",
+                                    },
+                                ],
+                                "initial_options": [
+                                    {
+                                        "text": {
+                                            "type": "mrkdwn",
+                                            "text": f"USD${cost:.2f}",
+                                        },
+                                        "value": f"{file['file_uuid']}:{lang['uuid']}",
+                                    },
+                                ],
+                                "action_id": "verification_checkbox_action",
+                            },
+                            "optional": True,
+                        }
+                    )
+                else:
+                    blocks.append(
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"*{_(lang['name'])}*\n>USD ${cost:.2f}",
+                            },
+                        }
+                    )
+        blocks.append({"type": "divider"})
+    total_cost = sum(cost["service_list"][0]["estimated_cost"] for cost in costs)
+    blocks.append(
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _("*Total Cost*: USD ${total_cost:.2f}"),
+            },
+        }
+    )
+    return blocks
 
 
 def job_summary_string(

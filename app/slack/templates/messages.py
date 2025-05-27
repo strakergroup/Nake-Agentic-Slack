@@ -12,10 +12,10 @@ from ray_sdk.api.v3.models import Job, Pagination, Quote
 from .models import NewJobForm
 from .blocks import (
     job_link_block,
-    job_summary_no_score,
     job_summary_string,
     quote_message_block,
     job_prediction_block,
+    verify_quote_blocks,
 )
 from ...ray.events.models import (
     ClientSignupEvent,
@@ -1686,7 +1686,7 @@ class NewJobMessage(SlackMessage):
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "*• AI Translation* - AI translate content from one language into multiple languages\n\n"
+                        "*AI Translation* - AI translate content from one language into multiple languages\n\n"
                     ),
                 },
                 "accessory": {
@@ -1697,7 +1697,6 @@ class NewJobMessage(SlackMessage):
                         "text": _("AI Translation"),
                     },
                     "action_id": "document_mt_job",
-                    "style": "primary",
                     "value": json.dumps(
                         {"files": files_dict, "channel_id": channel_id}
                     ),
@@ -1712,7 +1711,7 @@ class NewJobMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "*• Quality Evaluation* - AI translate your content and receive translation quality scores, then verify with Straker to send for human verification"
+                            "*Quality Evaluation* - AI translate your content and receive translation quality scores, then verify with Straker to send for human verification"
                         ),
                     },
                     "accessory": {
@@ -1731,7 +1730,34 @@ class NewJobMessage(SlackMessage):
                             }
                         ),
                     },
-                }
+                },
+            )
+            message_blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "*Human Translation* - Translating content from one language to another while preserving meaning and context."
+                        ),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Human Translation"),
+                        },
+                        "action_id": "evaluate_job",
+                        "value": json.dumps(
+                            {
+                                "files": files_dict,
+                                "channel_id": channel_id,
+                                "job_type": "human",
+                            }
+                        ),
+                    },
+                },
             )
 
         super().__init__(
@@ -3531,20 +3557,6 @@ class EvaluateSuccessMessage(SlackMessage):
         tokens: int,
         is_ibm_enterprise: bool,
     ) -> None:
-        languages = job["target_languages"]
-        file = job["source_files"][0]
-        source_lang_uuid = file["report"]["language_uuid"]
-        source_lang = next(
-            (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
-        )
-        reports = file["report"]["evaluation_reports"]
-        for lang in languages:
-            for report in reports:
-                if lang["uuid"] == report["target_language"]:
-                    lang["report"] = report
-            for target_file in file["target_files"]:
-                if target_file["language_uuid"] == lang["uuid"]:
-                    lang["target_file_uuid"] = target_file["target_file_uuid"]
         blocks = []
         if not is_ibm_enterprise:
             blocks.append(
@@ -3565,33 +3577,50 @@ class EvaluateSuccessMessage(SlackMessage):
                 },
             }
         )
+        languages = job["target_languages"]
+        source_files = job["source_files"]
         lang_blocks = []
-        for lang in languages:
-            lang_blocks.extend(
-                [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": job_summary_string(source_lang, lang, file),
-                        },
-                    },
-                    {
-                        "type": "actions",
-                        "elements": [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Download AI Translation"),
-                                },
-                                "value": lang["target_file_uuid"],
-                                "action_id": "download_ai_translation_action",
-                            },
-                        ],
-                    },
-                ]
+
+        for file in source_files:
+            source_lang_uuid = file["report"]["language_uuid"]
+            source_lang = next(
+                (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
             )
+            reports = file["report"]["evaluation_reports"]
+            for lang in languages:
+                for report in reports:
+                    if lang["uuid"] == report["target_language"]:
+                        lang["report"] = report
+                for target_file in file["target_files"]:
+                    if target_file["language_uuid"] == lang["uuid"]:
+                        lang["target_file_uuid"] = target_file["target_file_uuid"]
+
+            for lang in languages:
+                lang_blocks.extend(
+                    [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": job_summary_string(source_lang, lang, file),
+                            },
+                        },
+                        {
+                            "type": "actions",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("Download AI Translation"),
+                                    },
+                                    "value": lang["target_file_uuid"],
+                                    "action_id": "download_ai_translation_action",
+                                },
+                            ],
+                        },
+                    ]
+                )
 
         blocks.extend(lang_blocks)
         blocks.append(
@@ -3639,49 +3668,44 @@ class HumanJobQuoteMessage(SlackMessage):
     def __init__(
         self,
         job: dict[str, Any],
-        all_langs: list[dict[str, str]],
+        costs: list[dict[str, Any]],
     ) -> None:
-        languages = job["target_languages"]
-        file = job["source_files"][0]
-
-        for lang in languages:
-            for target_file in file["target_files"]:
-                if target_file["language_uuid"] == lang["uuid"]:
-                    lang["target_file_uuid"] = target_file["target_file_uuid"]
-        blocks = []
-        lang_blocks = []
-        for lang in languages:
-            lang_blocks.extend(
-                [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": job_summary_no_score(lang, file),
-                        },
-                    }
-                ]
-            )
-
-        blocks.extend(lang_blocks)
-        blocks.append(
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("Send to Human Verification"),
-                        },
-                        "style": "primary",
-                        "value": job["uuid"],
-                        "action_id": "verify_job_modal_open",
-                    },
-                ],
-            },
+        accept_all = any(
+            not target_file.get("human_job_status")
+            for source_file in job["source_files"]
+            for target_file in source_file.get("target_files", [])
         )
-        super().__init__(_("Evaluation Result"), blocks)
+        blocks = []
+        blocks = verify_quote_blocks(job, costs, False)
+        if accept_all:
+            blocks.insert(0, {"type": "divider"})
+            blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Quote Summary"),
+                            },
+                            "value": job["uuid"],
+                            "action_id": "quote_summary_modal_open",
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Accept All"),
+                            },
+                            "style": "primary",
+                            "value": job["uuid"],
+                            "action_id": "quote_accept_all",
+                        },
+                    ],
+                },
+            )
+        super().__init__(_("Quote Summary"), blocks)
 
 
 class FileTooLargeMessage(SlackMessage):
