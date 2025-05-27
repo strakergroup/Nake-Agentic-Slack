@@ -183,24 +183,6 @@ async def respond_to_message(
                     thread_ts=thread_ts,
                 )
             return
-    if message["text"] == "debug":
-        job = await get_client_evaluation_job(
-            context.get("ray").client, "da96fedf-e015-4488-834c-74234a24ab40"
-        )
-        langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
-        costs = await get_job_pricing(
-            context.ray.client,
-            job["data"]["uuid"],
-            [file["file_uuid"] for file in job["data"]["source_files"]],
-            langs,
-        )
-        message = HumanJobQuoteMessage(job["data"], costs["data"])
-        await context.say(
-            text=message.text,
-            blocks=message.blocks,
-            thread_ts=thread_ts,
-        )
-        return
     # process mt
     message_match = re.search(
         r"mt:?(?:\s+([\w-]+))?\s+to\s+([\w-]+):?\s+(.*)",
