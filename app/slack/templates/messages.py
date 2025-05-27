@@ -12,7 +12,6 @@ from ray_sdk.api.v3.models import Job, Pagination, Quote
 from .models import NewJobForm
 from .blocks import (
     job_link_block,
-    job_summary_no_score,
     job_summary_string,
     quote_message_block,
     job_prediction_block,
@@ -3671,36 +3670,42 @@ class HumanJobQuoteMessage(SlackMessage):
         job: dict[str, Any],
         costs: list[dict[str, Any]],
     ) -> None:
-        languages = job["target_languages"]
-        blocks = verify_quote_blocks(job, costs, False)
-        blocks.insert(0, {"type": "divider"})
-        blocks.append(
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("Quote Summary"),
-                        },
-                        "value": job["uuid"],
-                        "action_id": "quote_summary_modal_open",
-                    },
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("Accept All"),
-                            "style": "primary",
-                        },
-                        "value": job["uuid"],
-                        "action_id": "quote_modal_open",
-                    },
-                ],
-            },
+        accept_all = any(
+            not target_file.get("human_job_status")
+            for source_file in job["source_files"]
+            for target_file in source_file.get("target_files", [])
         )
-        super().__init__(_("Evaluation Result"), blocks)
+        blocks = []
+        blocks = verify_quote_blocks(job, costs, False)
+        if accept_all:
+            blocks.insert(0, {"type": "divider"})
+            blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Quote Summary"),
+                            },
+                            "value": job["uuid"],
+                            "action_id": "quote_summary_modal_open",
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Accept All"),
+                            },
+                            "style": "primary",
+                            "value": job["uuid"],
+                            "action_id": "quote_accept_all",
+                        },
+                    ],
+                },
+            )
+        super().__init__(_("Quote Summary"), blocks)
 
 
 class FileTooLargeMessage(SlackMessage):

@@ -9,7 +9,6 @@ import json
 from datetime import datetime, timedelta
 
 from app.api.verify import (
-    create_human_job,
     download_verify_file,
     get_client_evaluation_job,
     get_job_pricing,
@@ -55,6 +54,7 @@ from .listener_actions import (
     post_batch_list,
     post_file_list,
     cancel_job_process,
+    submit_verification_job,
 )
 from .logging import slack_log_decorator
 from .templates.models import (
@@ -1792,6 +1792,8 @@ async def verify_job_modal_open_action(
     """Open modal for human verification. Triggered from the Send for human verification button."""
     await ack()
     job_uuid = action["value"]
+    # Get the message timestamp from the body
+    message_ts = body.get("message", {}).get("ts")
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
     all_langs = await get_verify_languages()
     if await require_ray_client(context, prompt_login=True):
@@ -1805,24 +1807,76 @@ async def verify_job_modal_open_action(
         await client.views_open(
             trigger_id=body["trigger_id"],
             view=(
-                verify_quote_summary_modal(job["data"], all_langs, costs["data"])
+                verify_quote_summary_modal(
+                    job["data"], all_langs, costs["data"], message_ts
+                )
                 if action["action_id"] == "quote_summary_modal_open"
                 else verify_job_modal(job["data"], all_langs, costs["data"])
             ),
         )
 
 
+@app.action("quote_accept_all", middleware=[ray_connection])
+@slack_log_decorator
+async def quote_accept_all_action(
+    ack: AsyncAck,
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+    context: RayContext,
+):
+    """Accept all available language/file combinations for verification."""
+    await ack()
+    timestamp = body.get("message", {}).get("ts")
+    job_uuid = action["value"]
+
+    # Check if this action has already been used for this job
+    redis_key = f"quote_accept_all_{job_uuid}"
+    if await redis_conn.get(redis_key):
+        await client.chat_postMessage(
+            channel=context["channel_id"],
+            text=_("This action has already been used for this job."),
+        )
+        return
+    await redis_conn.set(redis_key, "1", ex=30)
+
+    job = await get_client_evaluation_job(context.ray.client, job_uuid)
+
+    # Get all available language/file combinations that are not in progress
+    selected_languages = []
+    for source_file in job["data"]["source_files"]:
+        # Skip if already has a human job status
+        for target_file in source_file.get("target_files", []):
+            if not target_file.get("human_job_status"):
+                selected_languages.append(
+                    f"{source_file['file_uuid']}:{target_file['language_uuid']}"
+                )
+
+    await submit_verification_job(
+        client=client,
+        context=context,
+        job_uuid=job_uuid,
+        selected_languages=selected_languages,
+        user_id=body["user"]["id"],
+        timestamp=timestamp,
+    )
+
+
 @app.view("verify_job", middleware=[ray_connection])
 @slack_log_decorator
 async def handle_verify_job_submission(
-    ack: AsyncAck, body: Dict[str, Any], client: Dict[str, Any], context: RayContext
+    ack: AsyncAck, body: Dict[str, Any], client: AsyncWebClient, context: RayContext
 ):
     await ack(response_action="clear")
 
-    # Extract the private metadata (job UUID)
-    job_uuid = body["view"]["private_metadata"]
+    # Extract the private metadata (job UUID and message timestamp)
+    private_metadata = json.loads(body["view"]["private_metadata"])
+    job_uuid = private_metadata.get("job_uuid")
+    message_ts = private_metadata.get("timestamp", None)
+
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
     target_languages = job["data"]["target_languages"]
+
     # Extract the selected checkbox values
     selected_languages = []
     for source_file in job["data"]["source_files"]:
@@ -1838,22 +1892,13 @@ async def handle_verify_job_submission(
                     [option["value"] for option in selected_options]
                 )
 
-    file_and_languages = selected_languages
-    if selected_languages:
-        # TODO: handle no langs
-        asyncio.create_task(
-            create_human_job(context.ray.client, job_uuid, file_and_languages)
-        )
-        msg = _(
-            "Thank you for sending your document for human verification! We will notify as soon as the translation is complete."
-        )
-    else:
-        msg = _("Please select at least one language for verification.")
-    user_id = body["user"]["id"]
-
-    await client.chat_postMessage(
-        channel=user_id,
-        text=msg,
+    await submit_verification_job(
+        client=client,
+        context=context,
+        job_uuid=job_uuid,
+        selected_languages=selected_languages,
+        user_id=body["user"]["id"],
+        timestamp=message_ts,
     )
 
 

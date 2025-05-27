@@ -1476,7 +1476,11 @@ def verify_job_modal(
         "callback_id": "verify_job",
         "title": {"type": "plain_text", "text": _("Human Verification", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Human Verification Job", 23)[:24]},
-        "private_metadata": job["uuid"],
+        "private_metadata": json.dumps(
+            {
+                "job_uuid": job["uuid"],
+            }
+        ),
         "blocks": blocks,
     }
 
@@ -1485,6 +1489,7 @@ def verify_quote_summary_modal(
     job: dict[str, Any],
     all_langs: list[dict[str, str]],
     costs: list[dict[str, Any]],
+    timestamp: str,
 ) -> dict[str, Any]:
     blocks = verify_quote_blocks(job, costs)
 
@@ -1492,9 +1497,14 @@ def verify_quote_summary_modal(
         "type": "modal",
         "callback_id": "verify_job",
         "title": {"type": "plain_text", "text": _("Summary", 23)[:24]},
-        "submit": {"type": "plain_text", "text": _("Submit")},
-        "close": {"type": "plain_text", "text": _("Close")},
-        "private_metadata": job["uuid"],
+        "submit": {"type": "plain_text", "text": _("Confirm")},
+        "close": {"type": "plain_text", "text": _("Cancel")},
+        "private_metadata": json.dumps(
+            {
+                "job_uuid": job["uuid"],
+                "timestamp": timestamp,
+            }
+        ),
         "blocks": [
             {
                 "type": "section",
