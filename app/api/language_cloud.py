@@ -20,7 +20,7 @@ async def detect_language(
         context["ray"].client.id_token
         if context["ray"].client
         else create_languagecloud_group_token(
-            context["ray"].super_group[0].id,
+            context["ray"].super_group[0].verify_organization_uuid,
             aud="languagecloud-api",
             secret=config.languagecloud_api_key.get_secret_value(),
         )
