@@ -150,7 +150,7 @@ async def message_event(
     body: Dict[str, Any],
 ):
     # Check for duplicate events
-    if await is_duplicate_event(context.enterprise_id, message.get("ts")):
+    if await is_duplicate_event(context.enterprise_id, "message", message.get("ts")):
         return
 
     # https://api.slack.com/events/message
@@ -189,7 +189,7 @@ async def app_mention_event(
     client: AsyncWebClient, context: RayContext, event: Dict[str, Any]
 ):
     # Check for duplicate events
-    if await is_duplicate_event(context.enterprise_id, event.get("ts")):
+    if await is_duplicate_event(context.enterprise_id, "app_mention", event.get("ts")):
         return
 
     # https://api.slack.com/events/app_mention
@@ -1668,7 +1668,7 @@ async def message_changed_event(
     message: Dict[str, Any],
 ):
     # Check for duplicate events
-    if await is_duplicate_event(context.enterprise_id, message.get("ts")):
+    if await is_duplicate_event(context.enterprise_id, "message", message.get("ts")):
         return
 
     if message.get("subtype") == "message_changed":

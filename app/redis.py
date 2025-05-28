@@ -7,7 +7,7 @@ redis_sync = get_redis_sync()
 
 
 async def is_duplicate_event(
-    enterprise_id: str, event_ts: str, ttl: int = 3600
+    enterprise_id: str, event_type: str, event_ts: str, ttl: int = 3600
 ) -> bool:
     """Check if an event has already been processed.
 
@@ -20,12 +20,15 @@ async def is_duplicate_event(
         bool: True if event is a duplicate, False otherwise
     """
     try:
-        key = f"event:{enterprise_id}:{event_ts}"
-        # Check if key exists
-        exists = await redis_conn.exists(key)
+        key = f"event:{enterprise_id}:{event_type}:{event_ts}"
+        # Check if key exists - Redis exists returns 1 or 0
+        result = await redis_conn.exists(key)
+        if result is None:
+            return False
+        exists = int(result) == 1
         if not exists:
             # If key doesn't exist, set it with TTL
             await redis_conn.set(key, "1", ex=ttl)
-        return bool(exists)
+        return exists
     except Exception:
         return False
