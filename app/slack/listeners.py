@@ -1704,7 +1704,7 @@ async def message_changed_event(
     message: Dict[str, Any],
 ):
     # Check for duplicate events
-    if await is_duplicate_event(context.enterprise_id, message.get("ts")):
+    if await is_duplicate_event(context.enterprise_id, "message", message.get("ts")):
         return
 
     if message.get("subtype") == "message_changed":
