@@ -297,9 +297,11 @@ class EvaluateJobForm(BaseModel):
             ]
         ]
 
-        selected_option = values["workflow_options"]["workflow_options"][
-            "selected_option"
-        ]
+        selected_option = (
+            values.get("workflow_options", {})
+            .get("workflow_options", {})
+            .get("selected_option")
+        )
         workflow_options = selected_option["value"] if selected_option else None
 
         return cls(

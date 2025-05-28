@@ -588,35 +588,35 @@ def evaluate_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
                     "emoji": True,
                 },
             },
-            {
-                "type": "input",
-                "block_id": "workflow_options",
-                "element": {
-                    "type": "static_select",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": _("Select workflow"),
-                        "emoji": True,
-                    },
-                    "options": [
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Human verification only"),
-                                "emoji": False,
-                            },
-                            "value": "92741a61-932c-41af-8c84-5a56a2c9b845",
-                        },
-                    ],
-                    "action_id": "workflow_options",
-                },
-                "label": {
-                    "type": "plain_text",
-                    "text": _("Select workflow"),
-                    "emoji": True,
-                },
-                "optional": True,
-            },
+            # {
+            #     "type": "input",
+            #     "block_id": "workflow_options",
+            #     "element": {
+            #         "type": "static_select",
+            #         "placeholder": {
+            #             "type": "plain_text",
+            #             "text": _("Select workflow"),
+            #             "emoji": True,
+            #         },
+            #         "options": [
+            #             {
+            #                 "text": {
+            #                     "type": "plain_text",
+            #                     "text": _("Human verification only"),
+            #                     "emoji": False,
+            #                 },
+            #                 "value": "92741a61-932c-41af-8c84-5a56a2c9b845",
+            #             },
+            #         ],
+            #         "action_id": "workflow_options",
+            #     },
+            #     "label": {
+            #         "type": "plain_text",
+            #         "text": _("Select workflow"),
+            #         "emoji": True,
+            #     },
+            #     "optional": True,
+            # },
         ],
     }
 
