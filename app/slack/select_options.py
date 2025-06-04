@@ -108,15 +108,15 @@ def filter_auto_translate_language_options(languages: Iterable[str]):
     return [opt for opt in options if opt["value"] in languages]
 
 
-def map_file_options(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def map_file_options(
+    files: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Maps a list of file objects to a list of select options.
 
     - https://api.slack.com/types/file
     - https://api.slack.com/reference/block-kit/composition-objects#option.
     """
     max_title_length = 75
-    # sort files by timestamp descending
-    files.sort(key=lambda f: f["timestamp"], reverse=True)
     # Keep only the latest 10 files
     files = files[:10]
     file_options = []
@@ -130,13 +130,12 @@ def map_file_options(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
         id = file.get("id")
         if not id or len(id) > max_title_length:
             continue
-        file_options.append(
-            {
-                "text": {"type": "plain_text", "text": title, "emoji": False},
-                "value": id,
-            }
-        )
-    return file_options
+        option = {
+            "text": {"type": "plain_text", "text": title, "emoji": False},
+            "value": id,
+        }
+        file_options.append(option)
+    return file_options, file_options
 
 
 def translation_display_format_options() -> list[dict[str, Any]]:

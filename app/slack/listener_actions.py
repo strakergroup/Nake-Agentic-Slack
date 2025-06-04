@@ -97,7 +97,7 @@ async def respond_to_message(
                 files_list_simple(client, channel_id=context["channel_id"], count=120)
             )
             # Handle video file
-            file_ids = []
+            files = []
             for file in message["files"]:
                 if file["filetype"] in [
                     "mp4",
@@ -156,19 +156,19 @@ async def respond_to_message(
                             msg = TranscriptionMessage(file_name)
                             await context.say(text=msg.text, thread_ts=thread_ts)
                 else:
-                    file_ids.append(file["id"])
-            if len(file_ids) > 10:
+                    files.append(file)
+            if len(files) > 10:
                 await context.say(
                     text=_(
                         "Too many files selected. Please upload a maximum of 10 files."
                     ),
                     thread_ts=thread_ts,
                 )
-            elif file_ids:
+            elif files:
                 new_job_msg = NewJobMessage(
                     context["channel_id"],
                     message["ts"],
-                    json.dumps(file_ids),
+                    files,
                     context.ray.super_group[0].enable_verify_in_slack,
                 )
                 await context.say(
@@ -479,6 +479,8 @@ async def document_machine_translate(
     """
 
     is_gropid = False
+    if "channel_id" not in context:
+        context["channel_id"] = context["user_id"]
     if context["ray"].client is None:
         user_group_id = context["ray"].super_group[0].id
         is_gropid = True

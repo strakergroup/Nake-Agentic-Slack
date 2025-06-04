@@ -495,15 +495,28 @@ def job_search_modal(
     }
 
 
-def evaluate_job_modal(file_info: list[dict[str, Any]]):
+def evaluate_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
     """The template for the modal to submit a file to verify quality evaluate."""
-    file_ids = [file["file_id"] for file in file_info]
+    file_options, initial_options = map_file_options(file_info)
+    files_block_element = {
+        "type": "multi_static_select",
+        "action_id": "files",
+        "placeholder": {
+            "type": "plain_text",
+            "text": _("Select file(s)"),
+            "emoji": True,
+        },
+        "options": file_options,
+        "max_selected_items": 10,
+    }
+    if initial_options:
+        files_block_element["initial_options"] = initial_options
     return {
         "type": "modal",
         "callback_id": "evaluate_job",
         "title": {"type": "plain_text", "text": _("Quality Evaluation", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Submit", 23)[:24]},
-        "private_metadata": json.dumps(file_ids),
+        "private_metadata": channel_id,
         "close": {"type": "plain_text", "text": _("Close")},
         "blocks": [
             {
@@ -566,6 +579,16 @@ def evaluate_job_modal(file_info: list[dict[str, Any]]):
             },
             {
                 "type": "input",
+                "block_id": "files",
+                "element": files_block_element,
+                "label": {
+                    "type": "plain_text",
+                    "text": _("File(s) to evaluate"),
+                    "emoji": True,
+                },
+            },
+            {
+                "type": "input",
                 "block_id": "workflow_options",
                 "element": {
                     "type": "static_select",
@@ -622,7 +645,7 @@ def new_job_modal(
 
     file_options = file_options or []
     initial_files = (
-        map_file_options(initial_files[:max_selected_files]) if initial_files else []
+        map_file_options(initial_files[:max_selected_files])[0] if initial_files else []
     )
     # Add the initial files to the file options if they are not there already.
     for file in initial_files:
@@ -1391,3 +1414,75 @@ def calculate_total_cost(
                 total_cost += cost_item["service_list"][0]["estimated_cost"]
                 break
     return total_cost
+
+
+def document_mt_job_modal(
+    channel_id: str,
+    initial_files: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    language_options = get_auto_translate_language_options()
+    file_options, initial_options = (
+        map_file_options(initial_files) if initial_files else ([], [])
+    )
+    files_block_element = {
+        "type": "multi_static_select",
+        "action_id": "files",
+        "placeholder": {
+            "type": "plain_text",
+            "text": _("Select file(s)"),
+            "emoji": True,
+        },
+        "options": file_options,
+        "max_selected_items": 10,
+    }
+    if initial_options:
+        files_block_element["initial_options"] = initial_options
+    return {
+        "type": "modal",
+        "callback_id": "document_mt_job",
+        "title": {"type": "plain_text", "text": _("Document MT Job", 23)[:24]},
+        "submit": {"type": "plain_text", "text": _("Submit")},
+        "close": {"type": "plain_text", "text": _("Close")},
+        "private_metadata": channel_id,
+        "blocks": [
+            {
+                "type": "section",
+                "text": {"type": "plain_text", "text": _("Document MT Job", 23)[:24]},
+            },
+            {
+                "type": "input",
+                "block_id": "target_langs",
+                "element": {
+                    "type": "multi_static_select",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": _("Select languages"),
+                        "emoji": True,
+                    },
+                    "options": language_options,
+                    "action_id": "language_mt_options",
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": _("Translate to"),
+                    "emoji": True,
+                },
+                "hint": {
+                    "type": "plain_text",
+                    "text": _(
+                        "Which language(s) do you want the file(s) to be translated to?"
+                    ),
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "files",
+                "element": files_block_element,
+                "label": {
+                    "type": "plain_text",
+                    "text": _("File(s) to translate"),
+                    "emoji": True,
+                },
+            },
+        ],
+    }

@@ -265,6 +265,7 @@ class EvaluateJobForm(BaseModel):
     reference: str  # Max 100 chars, validated in view
     target_langs_uuid: list[str]
     workflow_options: str | None = None
+    files: list[SlackFile]
 
     @classmethod
     def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "EvaluateJobForm":
@@ -285,4 +286,8 @@ class EvaluateJobForm(BaseModel):
             reference=reference,
             target_langs_uuid=target_langs_uuid,
             workflow_options=workflow_options,
+            files=[
+                SlackFile.parse_slack_option(opt)
+                for opt in values["files"]["files"]["selected_options"]
+            ],
         )

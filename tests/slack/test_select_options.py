@@ -51,9 +51,10 @@ async def test_get_language_options_filter():
 
 
 def test_map_file_options(message_file):
-    options = map_file_options([message_file])
+    options, initial_options = map_file_options([message_file])
     assert isinstance(options, list)
     assert len(options) == 1
+    assert options == initial_options
     assert options[0] == {
         "text": {"type": "plain_text", "text": message_file["title"], "emoji": False},
         "value": message_file["id"],
