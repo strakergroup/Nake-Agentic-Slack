@@ -178,7 +178,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
             await app.client.files_upload_v2(
                 channel=response["channel"],
                 file=output_file.get("file"),
-                title=event.data["job_title"],
+                title=output_file.get("file_name"),
                 filename=output_file.get("file_name"),
             )
         elif (
