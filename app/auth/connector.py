@@ -54,6 +54,8 @@ class RaySuperGroup:
     name: str
     """The name of the group (`obj_m_group.label`)."""
     slack_team_id: str
+    """The Verify Organization UUID (`verify_organization.uuid`)."""
+    verify_organization_uuid: str
     """The Slack team ID linked to the RAY client."""
     slack_enterprise_id: str | None
     """The Slack enterprise ID linked to the RAY client."""
@@ -380,6 +382,7 @@ async def get_demo_super_group(
             slack_team_id=team_id,
             slack_enterprise_id=enterprise_id,
             enable_verify_in_slack=bool(row.enable_verify_in_slack),
+            verify_organization_uuid="",
         )
     ]
 
@@ -397,10 +400,12 @@ async def get_ray_super_group(
         if enterprise_id:
             sql = text(
                 """
-                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack
+                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
                 FROM slack_super_group_link link
                 INNER JOIN sitemanager.obj_m_group g
                 ON link.super_group_uuid = g.obj_uuid
+                INNER JOIN sitemanager.verify_organization vo
+                ON vo.obj_uuid = link.verify_organization_uuid
                 WHERE link.slack_enterprise_id = :enterprise_id
                 AND link.is_active = 1
                 """
@@ -408,10 +413,12 @@ async def get_ray_super_group(
         else:
             sql = text(
                 """
-                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack
+                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
                 FROM slack_super_group_link link
                 INNER JOIN sitemanager.obj_m_group g
                 ON link.super_group_uuid = g.obj_uuid
+                INNER JOIN sitemanager.verify_organization vo
+                ON vo.obj_uuid = link.verify_organization_uuid
                 WHERE link.slack_team_id = :team_id
                 AND link.is_active = 1
                 """
@@ -427,6 +434,7 @@ async def get_ray_super_group(
             slack_team_id=team_id,
             slack_enterprise_id=enterprise_id,
             enable_verify_in_slack=bool(row.enable_verify_in_slack),
+            verify_organization_uuid=row.verify_organization_id,
         )
         for row in rows
     ]
@@ -456,7 +464,7 @@ def is_ibm_super_group(
                 AND (
                     link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
                     OR link.super_group_uuid = '13D8D894-3DC5-49DC-9DD0-AD9EA537E597'
-                )
+                ) AND link.verify_organization_uuid is not null
                 """
             ).bindparams(enterprise_id=enterprise_id)
         result = conn.execute(sql)
@@ -722,22 +730,26 @@ async def get_ray_connection(
     if super_group is None:
         return None
     # When ibm enterprise and user is not admin, disable verify in slack
-    if (
-        client
-        and super_group[0].enable_verify_in_slack
-        and is_ibm_super_group(enterprise_id)
-        and not await is_slack_team_admin(client.id, enterprise_id)
-    ):
-        super_group = [
-            RaySuperGroup(
-                id=group.id,
-                name=group.name,
-                slack_team_id=group.slack_team_id,
-                slack_enterprise_id=group.slack_enterprise_id,
-                enable_verify_in_slack=False,
-            )
-            for group in super_group
-        ]
+    if client and is_ibm_super_group(enterprise_id):
+        # TODO: remove this. This is adding existing users to verify team.
+        add_to_verify_team(
+            user_uuid=client.id,
+            enterprise_id=enterprise_id,
+        )
+        if super_group[0].enable_verify_in_slack and not await is_slack_team_admin(
+            client.id, enterprise_id
+        ):
+            super_group = [
+                RaySuperGroup(
+                    id=group.id,
+                    name=group.name,
+                    slack_team_id=group.slack_team_id,
+                    slack_enterprise_id=group.slack_enterprise_id,
+                    enable_verify_in_slack=False,
+                    verify_organization_uuid=group.verify_organization_uuid,
+                )
+                for group in super_group
+            ]
 
     return RayConnection(super_group, client)
 
@@ -1500,34 +1512,21 @@ async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceRespo
         return GetCreditBalanceResponse(0, 0)
 
 
-async def get_group_tokens(super_group_uuid: str) -> GetCreditBalanceResponse:
+async def get_group_tokens(org_uuid: str) -> GetCreditBalanceResponse:
     """read sitemanager.obj_m_member_credit_transactions to get the group tokens balance."""
-    list_group_uuid = []
-    with engines["sitemanager_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT group_uuid
-            FROM super_group_glink
-            WHERE super_group_uuid = :super_group_uuid
-            """
-        ).bindparams(super_group_uuid=super_group_uuid)
-        result = conn.execute(sql)
-        rows = result.fetchall()
-        for row in rows:
-            list_group_uuid.append(row.group_uuid)
-        list_group_uuid.append(super_group_uuid)
     # first get
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
             """
             SELECT SUM(amount) AS total
             FROM obj_m_member_credit_transactions
-            WHERE group_uuid IN :group_uuids
+            WHERE organization_uuid = :org_uuid
             AND credit_type = 'ai_token'
             """
-        ).bindparams(bindparam("group_uuids", expanding=True))
-        result = conn.execute(sql, {"group_uuids": list_group_uuid})
+        ).bindparams(bindparam("org_uuid", value=org_uuid))
+        result = conn.execute(sql)
         row_total = result.first()
+        print(row_total)
         if not row_total or not row_total.total:
             return GetCreditBalanceResponse(0, 0)
     return GetCreditBalanceResponse(ai_token=row_total.total, mt_token=0)
