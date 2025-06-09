@@ -9,7 +9,6 @@ from .blocks import (
     job_summary_no_score,
     job_summary_string,
     verify_job_blocks,
-    verify_quote_blocks,
 )
 from ..select_options import (
     map_file_options,
@@ -588,110 +587,34 @@ def evaluate_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
                     "emoji": True,
                 },
             },
-            # {
-            #     "type": "input",
-            #     "block_id": "workflow_options",
-            #     "element": {
-            #         "type": "static_select",
-            #         "placeholder": {
-            #             "type": "plain_text",
-            #             "text": _("Select workflow"),
-            #             "emoji": True,
-            #         },
-            #         "options": [
-            #             {
-            #                 "text": {
-            #                     "type": "plain_text",
-            #                     "text": _("Human verification only"),
-            #                     "emoji": False,
-            #                 },
-            #                 "value": "92741a61-932c-41af-8c84-5a56a2c9b845",
-            #             },
-            #         ],
-            #         "action_id": "workflow_options",
-            #     },
-            #     "label": {
-            #         "type": "plain_text",
-            #         "text": _("Select workflow"),
-            #         "emoji": True,
-            #     },
-            #     "optional": True,
-            # },
-        ],
-    }
-
-
-def human_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
-    """The template for the modal to submit a file to verify human verification only."""
-    file_options, initial_options = map_file_options(file_info)
-    files_block_element = {
-        "type": "multi_static_select",
-        "action_id": "files",
-        "placeholder": {
-            "type": "plain_text",
-            "text": _("Select file(s)"),
-            "emoji": True,
-        },
-        "options": file_options,
-        "max_selected_items": 10,
-    }
-    if initial_options:
-        files_block_element["initial_options"] = initial_options
-    return {
-        "type": "modal",
-        "callback_id": "evaluate_job_human",
-        "title": {"type": "plain_text", "text": _("Human Translation", 23)[:24]},
-        "submit": {"type": "plain_text", "text": _("Request Quote", 23)[:24]},
-        "private_metadata": channel_id,
-        "close": {"type": "plain_text", "text": _("Cancel")},
-        "blocks": [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "Select the files and languages for *human translation*."
-                    ),
-                },
-            },
-            # seperator
-            {"type": "divider"},
             {
                 "type": "input",
-                "block_id": "files",
-                "element": files_block_element,
-                "label": {
-                    "type": "plain_text",
-                    "text": _("Select your files to translate"),
-                    "emoji": True,
-                },
-            },
-            # add file id as hidden input
-            # Add other input fields here...
-            {
-                "type": "input",
-                "block_id": "target_langs",
+                "block_id": "workflow_options",
                 "element": {
-                    "type": "multi_external_select",
+                    "type": "static_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": _("Select languages"),
+                        "text": _("Select workflow"),
                         "emoji": True,
                     },
-                    "action_id": "language_options_uuid",
-                    "min_query_length": 0,
+                    "options": [
+                        {
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Human verification only"),
+                                "emoji": False,
+                            },
+                            "value": "92741a61-932c-41af-8c84-5a56a2c9b845",
+                        },
+                    ],
+                    "action_id": "workflow_options",
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": _("Translate to"),
+                    "text": _("Select workflow"),
                     "emoji": True,
                 },
-                "hint": {
-                    "type": "plain_text",
-                    "text": _(
-                        "Which language(s) do you want the file(s) to be translated to?"
-                    ),
-                },
+                "optional": True,
             },
         ],
     }
@@ -1403,6 +1326,23 @@ def verify_job_modal(
     costs: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Generate modal for job verification with total cost calculation."""
+    languages = job["target_languages"]
+    file = job["source_files"][0]
+    source_lang_uuid = file["report"]["language_uuid"]
+    source_lang = next(
+        (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
+    )
+    reports = file["report"]["evaluation_reports"]
+
+    # Process languages and set defaults
+    for lang in languages:
+        for report in reports:
+            if lang["uuid"] == report["target_language"]:
+                lang["report"] = report
+        for target_file in file["target_files"]:
+            if lang["uuid"] == target_file["language_uuid"]:
+                lang["human_job_status"] = target_file.get("human_job_status", "")
+
     blocks = [
         {
             "type": "section",
@@ -1415,45 +1355,27 @@ def verify_job_modal(
         },
         {"type": "divider"},
     ]
-    languages = job["target_languages"]
-    source_files = job["source_files"]
-    for file in source_files:
-        source_lang_uuid = file["report"]["language_uuid"]
-        source_lang = next(
-            (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
-        )
-        reports = file["report"]["evaluation_reports"]
 
-        # Process languages and set defaults
-        for lang in languages:
-            for report in reports:
-                if lang["uuid"] == report["target_language"]:
-                    lang["report"] = report
-            for target_file in file["target_files"]:
-                if lang["uuid"] == target_file["language_uuid"]:
-                    lang["human_job_status"] = target_file.get("human_job_status", "")
-
-        # Add individual language blocks
-        for lang in languages:
-            report = lang.get("report", None)
-            if job["workflow_uuid"] == "92741a61-932c-41af-8c84-5a56a2c9b845":
-                report = None
-            blocks.extend(
-                verify_job_blocks(
-                    (
-                        job_summary_string(source_lang, lang, file)
-                        if report
-                        else job_summary_no_score(lang, file)
-                    ),
-                    source_file_uuid=file["file_uuid"],
-                    report=report,
-                    lang_name=lang["name"],
-                    language_uuid=lang["uuid"],
-                    costs=costs,
-                    optional=len(languages) > 1,
-                    human_job_status=lang.get("human_job_status", ""),
-                )
+    # Add individual language blocks
+    for lang in languages:
+        report = lang.get("report", None)
+        if job["workflow_uuid"] == "92741a61-932c-41af-8c84-5a56a2c9b845":
+            report = None
+        blocks.extend(
+            verify_job_blocks(
+                (
+                    job_summary_string(source_lang, lang, file)
+                    if report
+                    else job_summary_no_score(lang, file)
+                ),
+                report=report,
+                lang_name=lang["name"],
+                language_uuid=lang["uuid"],
+                costs=costs,
+                optional=len(languages) > 1,
+                human_job_status=lang.get("human_job_status", ""),
             )
+        )
 
     if len(languages) > 1:
         total_cost = calculate_total_cost(languages, costs)
@@ -1476,50 +1398,8 @@ def verify_job_modal(
         "callback_id": "verify_job",
         "title": {"type": "plain_text", "text": _("Human Verification", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Human Verification Job", 23)[:24]},
-        "private_metadata": json.dumps(
-            {
-                "job_uuid": job["uuid"],
-            }
-        ),
+        "private_metadata": job["uuid"],
         "blocks": blocks,
-    }
-
-
-def verify_quote_summary_modal(
-    job: dict[str, Any],
-    all_langs: list[dict[str, str]],
-    costs: list[dict[str, Any]],
-    timestamp: str,
-) -> dict[str, Any]:
-    blocks = verify_quote_blocks(job, costs)
-
-    return {
-        "type": "modal",
-        "callback_id": "verify_job",
-        "title": {"type": "plain_text", "text": _("Summary", 23)[:24]},
-        "submit": {"type": "plain_text", "text": _("Confirm")},
-        "close": {"type": "plain_text", "text": _("Cancel")},
-        "private_metadata": json.dumps(
-            {
-                "job_uuid": job["uuid"],
-                "timestamp": timestamp,
-            }
-        ),
-        "blocks": [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "Review your files before submitting for *human translation*. Submitted orders cannot be canceled."
-                    ),
-                },
-            },
-            {
-                "type": "divider",
-            },
-            *blocks,
-        ],
     }
 
 

@@ -4,15 +4,10 @@ Slack Bolt listener functions.
 """
 
 import asyncio
+import json
 from typing import Any
 import re
 import httpx
-from app.api.verify import (
-    create_human_job,
-    get_client_evaluation_job,
-    get_job_pricing,
-    get_verify_languages,
-)
 import langcodes
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
@@ -29,7 +24,6 @@ from app.transcriber_tasks.tasks import create_asr_task
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
     HelpMessage,
-    HumanJobQuoteMessage,
     LoginMessage,
     LogoutMessage,
     JobStatusNoIdMessage,
@@ -66,7 +60,6 @@ from ..auth.connector import (
     approve_pending_groups,
     duration_to_tokens,
     get_group_mt_engine,
-    get_slack_user,
     log_transcribe_request,
 )
 from ..config import config, domains, Environment
@@ -76,7 +69,7 @@ from ..ray.settings import (
 )
 from ..ray.utils import get_media_duration, is_ibm_enterprise
 from ..watson import watson_message
-from .select_options import _get_languages_cached, get_file_options_cached
+from .select_options import get_file_options_cached
 from app.models import TranscriptionTask
 
 
@@ -1884,78 +1877,3 @@ async def resendMT(
             print(e)
 
         return
-
-
-async def submit_verification_job(
-    client: AsyncWebClient,
-    context: RayContext,
-    job_uuid: str,
-    selected_languages: list[str],
-    user_id: str,
-    timestamp: str | None = None,
-):
-    """Submit a verification job with selected languages.
-
-    Args:
-        client (AsyncWebClient): The Slack client.
-        context (RayContext): The context containing ray client.
-        job_uuid (str): The UUID of the job to verify.
-        selected_languages (list[str]): List of selected language and file UUIDs.
-        user_id (str): The user ID to send the response to.
-        timestamp (str | None): Optional timestamp of the message to update.
-        channel_id (str | None): Optional channel ID where the message is posted.
-    """
-    if selected_languages:
-
-        async def update_message_after_job(channel_id: str):
-            try:
-                # Get the updated job details after submission
-                job = await get_client_evaluation_job(context.ray.client, job_uuid)
-                all_langs = await get_verify_languages()
-                costs = await get_job_pricing(
-                    context.ray.client,
-                    job_uuid,
-                    [file["file_uuid"] for file in job["data"]["source_files"]],
-                    [lang["uuid"] for lang in job["data"]["target_languages"]],
-                )
-
-                # Create updated message with the new status
-                updated_msg = HumanJobQuoteMessage(job["data"], costs["data"])
-
-                # Update the original message if timestamp and channel_id are provided
-                if timestamp and channel_id:
-                    await client.chat_update(
-                        channel=channel_id,
-                        text=updated_msg.text,
-                        blocks=updated_msg.blocks,
-                        ts=timestamp,
-                    )
-                elif context.response_url and context.respond:
-                    await context.respond(
-                        text=updated_msg.text,
-                        blocks=updated_msg.blocks,
-                        replace_original=True,
-                    )
-            except Exception as e:
-                notify_exception(e)
-
-        # Send initial confirmation
-        msg = _(
-            "Thank you for sending your document for human verification! We will notify as soon as the translation is complete."
-        )
-        response = await client.chat_postMessage(
-            channel=user_id,
-            text=msg,
-        )
-        # Create task to submit the job and update message after completion
-        asyncio.create_task(
-            create_human_job(context.ray.client, job_uuid, selected_languages)
-        ).add_done_callback(
-            lambda _: asyncio.create_task(update_message_after_job(response["channel"]))
-        )
-    else:
-        msg = _("Please select at least one language for verification.")
-        await client.chat_postMessage(
-            channel=user_id,
-            text=msg,
-        )
