@@ -106,6 +106,21 @@ def home_auth_blocks(
             },
         )
     else:
+        msg: list[dict[str, Any]] = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "\n\nVerify (Quality Evaluation) allows you:\n\n    • Translate content using AI translation.\n    • Assess the quality of the translation to determine the reliability of the AI-translated content along with any existing translation memory you may have with Straker.\n    • Determine whether the translated content is suitable for use or requires further human verification."
+                    ),
+                },
+            },
+            {
+                "type": "actions",
+                "elements": [],
+            },
+        ]
         msg[1]["elements"].insert(
             0,
             {
