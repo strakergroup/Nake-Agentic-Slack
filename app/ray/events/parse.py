@@ -131,7 +131,13 @@ async def get_ray_event_message(
         job = await get_evaluation_job(slack_user, event_data["job_uuid"])
         all_langs = await _get_languages_cached()
         if job["data"]["workflow_uuid"] == "92741a61-932c-41af-8c84-5a56a2c9b845":
-            return HumanJobQuoteMessage(job["data"], all_langs)
+            costs = await get_job_pricing(
+                await get_ray_client(slack_user.user_id, slack_user.team_id),
+                job["data"]["uuid"],
+                [file["file_uuid"] for file in job["data"]["source_files"]],
+                [lang["uuid"] for lang in job["data"]["target_languages"]],
+            )
+            return HumanJobQuoteMessage(job["data"], costs["data"])
         return EvaluateSuccessMessage(
             job["data"], all_langs, event_data["tokens"], is_ibm
         )
