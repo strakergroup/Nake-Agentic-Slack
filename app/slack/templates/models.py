@@ -268,6 +268,26 @@ class EvaluateJobForm(BaseModel):
     files: list[SlackFile]
 
     @classmethod
+    def parse_human_job_form(
+        cls, values: dict[str, dict[str, Any]]
+    ) -> "EvaluateJobForm":
+        target_langs_uuid = [
+            opt["value"]
+            for opt in values["target_langs"]["language_options_uuid"][
+                "selected_options"
+            ]
+        ]
+        return cls(
+            reference="slack job",
+            target_langs_uuid=target_langs_uuid,
+            workflow_options="92741a61-932c-41af-8c84-5a56a2c9b845",
+            files=[
+                SlackFile.parse_slack_option(opt)
+                for opt in values["files"]["files"]["selected_options"]
+            ],
+        )
+
+    @classmethod
     def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "EvaluateJobForm":
         reference = values["reference"]["reference"]["value"]
         target_langs_uuid = [
@@ -277,9 +297,11 @@ class EvaluateJobForm(BaseModel):
             ]
         ]
 
-        selected_option = values["workflow_options"]["workflow_options"][
-            "selected_option"
-        ]
+        selected_option = (
+            values.get("workflow_options", {})
+            .get("workflow_options", {})
+            .get("selected_option")
+        )
         workflow_options = selected_option["value"] if selected_option else None
 
         return cls(
