@@ -55,6 +55,7 @@ from .listener_actions import (
     post_batch_list,
     post_file_list,
     cancel_job_process,
+    submit_verification_job,
 )
 from .logging import slack_log_decorator
 from .templates.models import (
@@ -88,6 +89,7 @@ from .templates.views import (
     document_mt_job_modal,
     evaluate_job_modal,
     home_view,
+    human_job_modal,
     translation_settings_view,
     job_search_modal,
     cancel_job_modal,
