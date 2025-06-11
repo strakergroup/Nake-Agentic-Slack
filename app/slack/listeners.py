@@ -1820,27 +1820,41 @@ async def verify_job_modal_open_action(
                 if action["action_id"] == "quote_summary_modal_open"
                 else verify_job_modal(job["data"], all_langs, costs["data"])
             )
-            await client.views_update(view_id=view_id, view=final_view)
+            try:
+                await client.views_update(view_id=view_id, view=final_view)
+            except SlackApiError as e:
+                if e.response["error"] == "view_closed":
+                    # The modal was closed by the user, no need to do anything
+                    pass
+                else:
+                    raise
     except Exception as e:
         notify_exception(e)
-        # Update the view with an error message
-        error_view = {
-            "type": "modal",
-            "title": {"type": "plain_text", "text": _("Error"), "emoji": True},
-            "blocks": [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "There was an error processing your request. Please try again."
-                        ),
-                        "verbatim": True,
-                    },
-                }
-            ],
-        }
-        await client.views_update(view_id=view_id, view=error_view)
+        try:
+            # Update the view with an error message
+            error_view = {
+                "type": "modal",
+                "title": {"type": "plain_text", "text": _("Error"), "emoji": True},
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": _(
+                                "There was an error processing your request. Please try again."
+                            ),
+                            "verbatim": True,
+                        },
+                    }
+                ],
+            }
+            await client.views_update(view_id=view_id, view=error_view)
+        except SlackApiError as e:
+            if e.response["error"] == "view_closed":
+                # The modal was closed by the user, no need to do anything
+                pass
+            else:
+                raise
 
 
 @app.action("quote_accept_all", middleware=[ray_connection])
