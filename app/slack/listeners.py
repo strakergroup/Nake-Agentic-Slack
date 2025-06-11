@@ -94,6 +94,7 @@ from .templates.views import (
     cancel_job_modal,
     verify_job_modal,
     verify_quote_summary_modal,
+    loading_modal,
 )
 from .web import (
     download_file,
@@ -1794,26 +1795,52 @@ async def verify_job_modal_open_action(
     job_uuid = action["value"]
     # Get the message timestamp from the body
     message_ts = body.get("message", {}).get("ts")
-    job = await get_client_evaluation_job(context.ray.client, job_uuid)
-    all_langs = await get_verify_languages()
-    if await require_ray_client(context, prompt_login=True):
-        langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
-        costs = await get_job_pricing(
-            context.ray.client,
-            job_uuid,
-            [file["file_uuid"] for file in job["data"]["source_files"]],
-            langs,
-        )
-        await client.views_open(
-            trigger_id=body["trigger_id"],
-            view=(
+
+    # Open loading modal immediately
+    loading_view = loading_modal()
+    response = await client.views_open(trigger_id=body["trigger_id"], view=loading_view)
+    view_id = response["view"]["id"]
+
+    try:
+        job = await get_client_evaluation_job(context.ray.client, job_uuid)
+        all_langs = await get_verify_languages()
+        if await require_ray_client(context, prompt_login=True):
+            langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
+            costs = await get_job_pricing(
+                context.ray.client,
+                job_uuid,
+                [file["file_uuid"] for file in job["data"]["source_files"]],
+                langs,
+            )
+            # Update the view with the final content
+            final_view = (
                 verify_quote_summary_modal(
                     job["data"], all_langs, costs["data"], message_ts
                 )
                 if action["action_id"] == "quote_summary_modal_open"
                 else verify_job_modal(job["data"], all_langs, costs["data"])
-            ),
-        )
+            )
+            await client.views_update(view_id=view_id, view=final_view)
+    except Exception as e:
+        notify_exception(e)
+        # Update the view with an error message
+        error_view = {
+            "type": "modal",
+            "title": {"type": "plain_text", "text": _("Error"), "emoji": True},
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "There was an error processing your request. Please try again."
+                        ),
+                        "verbatim": True,
+                    },
+                }
+            ],
+        }
+        await client.views_update(view_id=view_id, view=error_view)
 
 
 @app.action("quote_accept_all", middleware=[ray_connection])

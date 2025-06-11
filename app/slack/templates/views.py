@@ -1606,3 +1606,26 @@ def document_mt_job_modal(
             },
         ],
     }
+
+
+def loading_modal() -> dict[str, Any]:
+    """Creates a simple loading modal template.
+
+    Returns:
+        dict: The view dict for a loading modal.
+    """
+    return {
+        "type": "modal",
+        "title": {"type": "plain_text", "text": _("Processing..."), "emoji": True},
+        "close": {"type": "plain_text", "text": _("Cancel"), "emoji": True},
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _("Please wait while we process your request..."),
+                    "verbatim": True,
+                },
+            }
+        ],
+    }
