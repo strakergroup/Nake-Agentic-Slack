@@ -1623,7 +1623,9 @@ def loading_modal() -> dict[str, Any]:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": _("Please wait while we process your request..."),
+                    "text": _(
+                        ":hourglass: Please wait while we process your request..."
+                    ),
                     "verbatim": True,
                 },
             }
