@@ -133,6 +133,7 @@ class LoginMessage(SlackMessage):
     CANCEL_JOB = "cancel_job"
     AI_HELP = "ai_help"
     QUALITY_EVALUATION = "quality_evaluation"
+    HUMAN_TRANSLATION = "human_translation"
 
     def __init__(
         self,
@@ -178,6 +179,8 @@ class LoginMessage(SlackMessage):
             block_text = (
                 "Connect your account to evaluate the quality of your translation."
             )
+        elif variation == self.HUMAN_TRANSLATION:
+            block_text = "Connect your account to perform human translation."
         elif isinstance(ray_client, RayClient):
             user_details = f"<<{domains.languagecloud}|{ray_client.username}>>"
             block_text = (
@@ -346,7 +349,25 @@ class WelcomeBackMessage(SlackMessage):
                                 # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
                                 "action_id": "verify_help",
                             },
-                        }
+                        },
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    ":man-woman-girl-boy: A professional delivers high-quality translation that faithfully preserves your content's meaning and context."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": _("Human Translation"),
+                                },
+                                "action_id": "human_help",
+                            },
+                        },
                     ]
                     if is_verify_enabled
                     else []
@@ -544,7 +565,25 @@ class SuccessfulLoginMessage(SlackMessage):
                                 # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
                                 "action_id": "verify_help",
                             },
-                        }
+                        },
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    ":man-woman-girl-boy: A professional delivers high-quality translation that faithfully preserves your content's meaning and context."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": _("Human Translation"),
+                                },
+                                "action_id": "human_help",
+                            },
+                        },
                     ]
                     if is_verify_enabled
                     else []
@@ -2030,7 +2069,25 @@ class HelpMessage(SlackMessage):
                                 # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
                                 "action_id": "verify_help",
                             },
-                        }
+                        },
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    ":man-woman-girl-boy: A professional delivers high-quality translation that faithfully preserves your content's meaning and context."
+                                ),
+                            },
+                            "accessory": {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "emoji": True,
+                                    "text": _("Human Translation"),
+                                },
+                                "action_id": "human_help",
+                            },
+                        },
                     ]
                     if is_verify_enabled
                     else []
@@ -3002,6 +3059,19 @@ class VerifyHelperMessage(SlackMessage):
         )
 
 
+class HumanJobMessage(SlackMessage):
+    def __init__(self) -> None:
+        verify_uri = "https://help.straker.ai/en/docs/quality-evaluation"
+        message = _(
+            "Please upload your files to perform the Human Translation in the message composer below."
+        )
+        bookEmoji = ":books:"
+        super().__init__(
+            _(f"{bookEmoji} Learn Human Translation Help"),
+            [{"type": "section", "text": {"type": "mrkdwn", "text": message}}],
+        )
+
+
 class JobTargetsNoIdMessage(TextMessage):
     """Message to send when the user asks for a job targets but has not given
     a TJ number.
@@ -3687,7 +3757,7 @@ class HumanJobQuoteMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("Quote Summary"),
+                                "text": _("Adjust Request"),
                             },
                             "value": job["uuid"],
                             "action_id": "quote_summary_modal_open",
@@ -3705,7 +3775,7 @@ class HumanJobQuoteMessage(SlackMessage):
                     ],
                 },
             )
-        super().__init__(_("Quote Summary"), blocks)
+        super().__init__(_("Adjust Request"), blocks)
 
 
 class FileTooLargeMessage(SlackMessage):

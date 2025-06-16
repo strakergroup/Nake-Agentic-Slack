@@ -65,6 +65,7 @@ from .templates.models import (
     AutoTranslationSettingsForm,
 )
 from .templates.messages import (
+    HumanJobMessage,
     JobCreationMessage,
     LoginMessage,
     LogoutMessage,
@@ -1004,6 +1005,29 @@ async def handle_verify_help_action(
     await ack()
     if await require_ray_client(context, variation=LoginMessage.QUALITY_EVALUATION):
         await verify_help(client, context, context["ray"].client)
+
+
+@app.action("human_help", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_human_help_action(
+    ack: AsyncAck, context: RayContext, client: AsyncWebClient
+):
+    """Get verify help link. Triggered from the Home Verify help button"""
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.HUMAN_TRANSLATION):
+        msg = HumanJobMessage()
+        if context.response_url and context.respond:
+            await context.respond(
+                text=msg.text,
+                blocks=msg.blocks,
+                replace_original=False,
+            )
+        else:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=msg.text,
+                blocks=msg.blocks,
+            )
 
 
 @app.block_action("job_list", middleware=[ray_connection])

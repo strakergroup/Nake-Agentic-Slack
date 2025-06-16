@@ -650,7 +650,7 @@ def human_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Select the files and languages for *human translation*."
+                        "Files and languages to be sent for *human translation*."
                     ),
                 },
             },
@@ -662,7 +662,7 @@ def human_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
                 "element": files_block_element,
                 "label": {
                     "type": "plain_text",
-                    "text": _("Select your files to translate"),
+                    "text": _("Files to be translated"),
                     "emoji": True,
                 },
             },
