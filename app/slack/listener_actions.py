@@ -1954,7 +1954,7 @@ async def submit_verification_job(
             lambda _: asyncio.create_task(update_message_after_job(response["channel"]))
         )
     else:
-        msg = _("Please select at least one language for verification.")
+        msg = _("Your request has been cancelled.")
         await client.chat_postMessage(
             channel=user_id,
             text=msg,
