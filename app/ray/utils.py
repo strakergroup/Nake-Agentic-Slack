@@ -327,6 +327,13 @@ VALID_FILE_TYPES = {
 }
 
 
+def validate_file_type(filename: str) -> bool:
+    """Validate the file type."""
+    other, ext = os.path.splitext(filename)
+    ext = ext.lower().lstrip(".")
+    return ext in VALID_FILE_TYPES
+
+
 def validate_file(file_path: str) -> Tuple[bool, bool, str]:
     """Checks if the file type is supported and validates content if applicable.
 
