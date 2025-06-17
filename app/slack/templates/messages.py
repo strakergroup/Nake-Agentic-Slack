@@ -3061,9 +3061,11 @@ class VerifyHelperMessage(SlackMessage):
 
 class HumanJobMessage(SlackMessage):
     def __init__(self) -> None:
-        verify_uri = "https://help.straker.ai/en/docs/quality-evaluation"
+        verify_uri = (
+            "https://help.straker.ai/en/docs/human-verification-workflow-in-slack"
+        )
         message = _(
-            "Please upload your files to perform the Human Translation in the message composer below."
+            "Please upload your files to perform the Human Translation in the message composer below. Click me to learn Straker <{verify_uri}|Human Verification Help>."
         )
         bookEmoji = ":books:"
         super().__init__(
