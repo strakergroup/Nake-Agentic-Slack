@@ -297,7 +297,7 @@ async def home_view(
     #             "text": {
     #                 "type": "mrkdwn",
     #                 "text": _(
-    #                     ":drum_with_drumsticks: Introducing a new option: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
+    #                     ":drum_with_drumsticks: Introducing a new option: AI Translate your content and receive translation quality scores, then verify with Straker to send for human verification"
     #                 ),
     #             },
     #         },
@@ -525,7 +525,7 @@ def evaluate_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
+                        "AI Translate your content and receive translation quality scores, then verify with Straker to send for human verification"
                     ),
                 },
             },
@@ -1409,7 +1409,7 @@ def verify_job_modal(
             "text": {
                 "type": "mrkdwn",
                 "text": _(
-                    ":sports_medal: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
+                    ":sports_medal: AI Translate your content and receive translation quality scores, then verify with Straker to send for human verification"
                 ),
             },
         },
