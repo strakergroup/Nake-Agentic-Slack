@@ -97,7 +97,7 @@ async def home_view(
                 "text": _("{questionEmoji} Help Centre"),
             },
             "action_id": "link_2",
-            "url": "https://help.straker.ai/en/docs/workplace-apps",
+            "url": "https://help.straker.ai/en/docs/workplace-apps#straker-translate-app-for-slack",
         },
     ]
     # Domain needs to be updates to verify instead of languagecloud
