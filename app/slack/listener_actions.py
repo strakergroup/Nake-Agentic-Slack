@@ -74,7 +74,7 @@ from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
     get_auto_translate_settings_and_langs,
 )
-from ..ray.utils import get_media_duration, is_ibm_enterprise
+from ..ray.utils import get_media_duration, is_ibm_enterprise, validate_file_type
 from ..watson import watson_message
 from .select_options import _get_languages_cached, get_file_options_cached
 from app.models import TranscriptionTask
@@ -105,6 +105,7 @@ async def respond_to_message(
             )
             # Handle video file
             files = []
+            unsupported_files = []
             for file in message["files"]:
                 if file["filetype"] in [
                     "mp4",
@@ -163,7 +164,10 @@ async def respond_to_message(
                             msg = TranscriptionMessage(file_name)
                             await context.say(text=msg.text, thread_ts=thread_ts)
                 else:
-                    files.append(file)
+                    if not validate_file_type(file["name"]):
+                        unsupported_files.append(file)
+                    else:
+                        files.append(file)
             if len(files) > 10:
                 await context.say(
                     text=_(
@@ -181,6 +185,17 @@ async def respond_to_message(
                 await context.say(
                     text=new_job_msg.text,
                     blocks=new_job_msg.blocks,
+                    thread_ts=thread_ts,
+                )
+            if unsupported_files:
+                unsupported_files_str = ", ".join(
+                    [
+                        f"{file['name']} ({file['filetype']})"
+                        for file in unsupported_files
+                    ]
+                )
+                await context.say(
+                    text=_("Unsupported file type: {unsupported_files_str}."),
                     thread_ts=thread_ts,
                 )
             return
