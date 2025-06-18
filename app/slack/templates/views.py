@@ -1496,7 +1496,7 @@ def verify_quote_summary_modal(
     return {
         "type": "modal",
         "callback_id": "verify_job",
-        "title": {"type": "plain_text", "text": _("Summary", 23)[:24]},
+        "title": {"type": "plain_text", "text": _("Adjust Request", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Confirm")},
         "close": {"type": "plain_text", "text": _("Cancel")},
         "private_metadata": json.dumps(
