@@ -355,7 +355,7 @@ class WelcomeBackMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":man-woman-girl-boy: A professional delivers high-quality translation that faithfully preserves your content's meaning and context."
+                                    ":silhouette: A professional delivers high-quality translation that faithfully preserves your content's meaning and context."
                                 ),
                             },
                             "accessory": {
@@ -571,7 +571,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":man-woman-girl-boy: A professional delivers high-quality translation that faithfully preserves your content's meaning and context."
+                                    ":silhouette: A professional delivers high-quality translation that faithfully preserves your content's meaning and context."
                                 ),
                             },
                             "accessory": {
@@ -2075,7 +2075,7 @@ class HelpMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":man-woman-girl-boy: A professional delivers high-quality translation that faithfully preserves your content's meaning and context."
+                                    ":silhouette: A professional delivers high-quality translation that faithfully preserves your content's meaning and context."
                                 ),
                             },
                             "accessory": {
