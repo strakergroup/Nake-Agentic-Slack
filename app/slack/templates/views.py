@@ -97,7 +97,7 @@ async def home_view(
                 "text": _("{questionEmoji} Help Centre"),
             },
             "action_id": "link_2",
-            "url": "https://help.straker.ai/en/docs/workplace-apps",
+            "url": "https://help.straker.ai/en/docs/workplace-apps#straker-translate-app-for-slack",
         },
     ]
     # Domain needs to be updates to verify instead of languagecloud
@@ -290,33 +290,33 @@ async def home_view(
                     }
                 )
     # Note: translation_settings_enabled should be removed once we enable QE for everyone
-    if is_verify_enabled and translation_settings_enabled:
-        verify_settings_block = [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        ":drum_with_drumsticks: Introducing a new option: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
-                    ),
-                },
-            },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _(":star2: Create New Project (QE)"),
-                        },
-                        "action_id": "verify_help",
-                        "url": message_url,
-                    },
-                ],
-            },
-        ]
+    # if is_verify_enabled and translation_settings_enabled:
+    #     verify_settings_block = [
+    #         {
+    #             "type": "section",
+    #             "text": {
+    #                 "type": "mrkdwn",
+    #                 "text": _(
+    #                     ":drum_with_drumsticks: Introducing a new option: AI Translate your content and receive translation quality scores, then verify with Straker to send for human verification"
+    #                 ),
+    #             },
+    #         },
+    #         {
+    #             "type": "actions",
+    #             "elements": [
+    #                 {
+    #                     "type": "button",
+    #                     "text": {
+    #                         "type": "plain_text",
+    #                         "emoji": True,
+    #                         "text": _(":star2: Create New Project (QE)"),
+    #                     },
+    #                     "action_id": "verify_help",
+    #                     "url": message_url,
+    #                 },
+    #             ],
+    #         },
+    #     ]
     return {
         "type": "home",
         "blocks": [
@@ -525,7 +525,7 @@ def evaluate_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
+                        "AI Translate your content and receive translation quality scores, then verify with Straker to send for human verification"
                     ),
                 },
             },
@@ -650,7 +650,7 @@ def human_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Select the files and languages for *human translation*."
+                        "Files and languages to be sent for *human translation*."
                     ),
                 },
             },
@@ -662,7 +662,7 @@ def human_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
                 "element": files_block_element,
                 "label": {
                     "type": "plain_text",
-                    "text": _("Select your files to translate"),
+                    "text": _("Files to be translated"),
                     "emoji": True,
                 },
             },
@@ -1409,7 +1409,7 @@ def verify_job_modal(
             "text": {
                 "type": "mrkdwn",
                 "text": _(
-                    ":sports_medal: AI translate your content and receive quality translation scores, then Verify with Straker to send for human verification."
+                    ":sports_medal: AI Translate your content and receive translation quality scores, then verify with Straker to send for human verification"
                 ),
             },
         },
@@ -1496,7 +1496,7 @@ def verify_quote_summary_modal(
     return {
         "type": "modal",
         "callback_id": "verify_job",
-        "title": {"type": "plain_text", "text": _("Summary", 23)[:24]},
+        "title": {"type": "plain_text", "text": _("Adjust Request", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Confirm")},
         "close": {"type": "plain_text", "text": _("Cancel")},
         "private_metadata": json.dumps(
@@ -1604,5 +1604,30 @@ def document_mt_job_modal(
                     "emoji": True,
                 },
             },
+        ],
+    }
+
+
+def loading_modal() -> dict[str, Any]:
+    """Creates a simple loading modal template.
+
+    Returns:
+        dict: The view dict for a loading modal.
+    """
+    return {
+        "type": "modal",
+        "title": {"type": "plain_text", "text": _("Processing..."), "emoji": True},
+        "close": {"type": "plain_text", "text": _("Cancel"), "emoji": True},
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        ":hourglass: Please wait while we process your request..."
+                    ),
+                    "verbatim": True,
+                },
+            }
         ],
     }

@@ -65,6 +65,7 @@ from .templates.models import (
     AutoTranslationSettingsForm,
 )
 from .templates.messages import (
+    HumanJobMessage,
     JobCreationMessage,
     LoginMessage,
     LogoutMessage,
@@ -94,6 +95,7 @@ from .templates.views import (
     cancel_job_modal,
     verify_job_modal,
     verify_quote_summary_modal,
+    loading_modal,
 )
 from .web import (
     download_file,
@@ -1005,6 +1007,29 @@ async def handle_verify_help_action(
         await verify_help(client, context, context["ray"].client)
 
 
+@app.action("human_help", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_human_help_action(
+    ack: AsyncAck, context: RayContext, client: AsyncWebClient
+):
+    """Get verify help link. Triggered from the Home Verify help button"""
+    await ack()
+    if await require_ray_client(context, variation=LoginMessage.HUMAN_TRANSLATION):
+        msg = HumanJobMessage()
+        if context.response_url and context.respond:
+            await context.respond(
+                text=msg.text,
+                blocks=msg.blocks,
+                replace_original=False,
+            )
+        else:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=msg.text,
+                blocks=msg.blocks,
+            )
+
+
 @app.block_action("job_list", middleware=[ray_connection])
 @slack_log_decorator
 async def job_list_action(
@@ -1794,26 +1819,66 @@ async def verify_job_modal_open_action(
     job_uuid = action["value"]
     # Get the message timestamp from the body
     message_ts = body.get("message", {}).get("ts")
-    job = await get_client_evaluation_job(context.ray.client, job_uuid)
-    all_langs = await get_verify_languages()
-    if await require_ray_client(context, prompt_login=True):
-        langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
-        costs = await get_job_pricing(
-            context.ray.client,
-            job_uuid,
-            [file["file_uuid"] for file in job["data"]["source_files"]],
-            langs,
-        )
-        await client.views_open(
-            trigger_id=body["trigger_id"],
-            view=(
+
+    # Open loading modal immediately
+    loading_view = loading_modal()
+    response = await client.views_open(trigger_id=body["trigger_id"], view=loading_view)
+    view_id = response["view"]["id"]
+
+    try:
+        job = await get_client_evaluation_job(context.ray.client, job_uuid)
+        all_langs = await get_verify_languages()
+        if await require_ray_client(context, prompt_login=True):
+            langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
+            costs = await get_job_pricing(
+                context.ray.client,
+                job_uuid,
+                [file["file_uuid"] for file in job["data"]["source_files"]],
+                langs,
+            )
+            # Update the view with the final content
+            final_view = (
                 verify_quote_summary_modal(
                     job["data"], all_langs, costs["data"], message_ts
                 )
                 if action["action_id"] == "quote_summary_modal_open"
                 else verify_job_modal(job["data"], all_langs, costs["data"])
-            ),
-        )
+            )
+            try:
+                await client.views_update(view_id=view_id, view=final_view)
+            except SlackApiError as e:
+                if e.response["error"] == "view_closed":
+                    # The modal was closed by the user, no need to do anything
+                    pass
+                else:
+                    raise
+    except Exception as e:
+        notify_exception(e)
+        try:
+            # Update the view with an error message
+            error_view = {
+                "type": "modal",
+                "title": {"type": "plain_text", "text": _("Error"), "emoji": True},
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": _(
+                                "There was an error processing your request. Please try again."
+                            ),
+                            "verbatim": True,
+                        },
+                    }
+                ],
+            }
+            await client.views_update(view_id=view_id, view=error_view)
+        except SlackApiError as e:
+            if e.response["error"] == "view_closed":
+                # The modal was closed by the user, no need to do anything
+                pass
+            else:
+                raise
 
 
 @app.action("quote_accept_all", middleware=[ray_connection])
