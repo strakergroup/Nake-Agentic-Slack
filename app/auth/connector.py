@@ -456,6 +456,7 @@ def is_ibm_super_group(
                 AND (
                     link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
                     OR link.super_group_uuid = '13D8D894-3DC5-49DC-9DD0-AD9EA537E597'
+                    OR link.super_group_uuid = '94c8dd41-9029-4aae-883a-57e4b86ead17'
                 )
                 """
             ).bindparams(enterprise_id=enterprise_id)
@@ -1170,6 +1171,8 @@ def get_direct_login_group(enterprise_id: str):
     if enterprise_id == "E04RDMG8XP1":
         # on live we treat dev test as ibm group. So when connecting from our enterprise we will add to this group.
         group_id = "173231FA-D524-42BF-9AF3F4834CAA88A0"
+    if enterprise_id == "E08AHA89Y1L":
+        group_id = "3fcc9bc6-dd12-4bbe-87ac-0633b1585482"
     # for uat ibm slack group uuid is different
     if (
         config.environment != Environment.production
@@ -1185,6 +1188,8 @@ def get_direct_login_verify_team(enterprise_id: str | None):
     if enterprise_id == "E04RDMG8XP1":
         # on live we treat dev test as ibm team. So when connecting from our enterprise we will add to this team.
         team_uuid = "120a1ab0-0b89-4175-b205-aec60ce98de7"
+    if enterprise_id == "E08AHA89Y1L":
+        team_uuid = "9f5b7edc-47e8-428e-9b38-9164c1445325"
     # for uat ibm slack team id is different
     if (
         config.environment != Environment.production
