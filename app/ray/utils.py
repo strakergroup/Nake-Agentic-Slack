@@ -317,6 +317,7 @@ VALID_FILE_TYPES = {
     "xlsx": None,
     "xml": None,
     "text": None,
+    "pdf": None,
 }
 
 
