@@ -346,8 +346,8 @@ class WelcomeBackMessage(SlackMessage):
                                     "emoji": True,
                                     "text": _("Quality Evaluation"),
                                 },
-                                # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
-                                "action_id": "verify_help",
+                                "url": "https://help.straker.ai/en/docs/quality-evaluation",
+                                "action_id": "link_link_verify_help",
                             },
                         },
                         {
@@ -365,7 +365,8 @@ class WelcomeBackMessage(SlackMessage):
                                     "emoji": True,
                                     "text": _("Human Translation"),
                                 },
-                                "action_id": "human_help",
+                                "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
+                                "action_id": "link_human_help",
                             },
                         },
                     ]
@@ -562,8 +563,8 @@ class SuccessfulLoginMessage(SlackMessage):
                                     "emoji": True,
                                     "text": _("Quality Evaluation"),
                                 },
-                                # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
-                                "action_id": "verify_help",
+                                "url": "https://help.straker.ai/en/docs/quality-evaluation",
+                                "action_id": "link_verify_help",
                             },
                         },
                         {
@@ -581,7 +582,8 @@ class SuccessfulLoginMessage(SlackMessage):
                                     "emoji": True,
                                     "text": _("Human Translation"),
                                 },
-                                "action_id": "human_help",
+                                "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
+                                "action_id": "link_human_help",
                             },
                         },
                     ]
@@ -2066,8 +2068,8 @@ class HelpMessage(SlackMessage):
                                     "emoji": True,
                                     "text": _("Quality Evaluation"),
                                 },
-                                # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
-                                "action_id": "verify_help",
+                                "url": "https://help.straker.ai/en/docs/quality-evaluation",
+                                "action_id": "link_verify_help",
                             },
                         },
                         {
@@ -2085,7 +2087,8 @@ class HelpMessage(SlackMessage):
                                     "emoji": True,
                                     "text": _("Human Translation"),
                                 },
-                                "action_id": "human_help",
+                                "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
+                                "action_id": "link_human_help",
                             },
                         },
                     ]
