@@ -347,7 +347,7 @@ class WelcomeBackMessage(SlackMessage):
                                     "text": _("Quality Evaluation"),
                                 },
                                 "url": "https://help.straker.ai/en/docs/quality-evaluation",
-                                "action_id": "link_link_verify_help",
+                                "action_id": "link_verify_help",
                             },
                         },
                         {
