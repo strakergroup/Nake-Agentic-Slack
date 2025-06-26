@@ -1516,6 +1516,18 @@ def verify_quote_summary_modal(
                 },
             },
             {
+                "type": "actions",
+                "block_id": "total_cost_bloddck",
+                "elements": [
+                    {
+                        "type": "button",
+                        "action_id": "verification_checkbox_action",
+                        "text": {"type": "plain_text", "text": "Total Cost"},
+                        "value": "total_cost",
+                    }
+                ],
+            },
+            {
                 "type": "divider",
             },
             *blocks,

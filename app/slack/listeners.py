@@ -1942,7 +1942,7 @@ async def handle_verify_job_submission(
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
     target_languages = job["data"]["target_languages"]
 
-    # Extract the selected checkbox values
+    # Extract the selected checkbox values from input blocks
     selected_languages = []
     for source_file in job["data"]["source_files"]:
         for lang in target_languages:
@@ -1967,26 +1967,67 @@ async def handle_verify_job_submission(
     )
 
 
-@app.action("verification_checkbox_action")
+@app.block_action("verification_checkbox_action", middleware=[ray_connection])
 async def handle_checkbox_action(ack, body, client):
     await ack()
 
-    selected_options = body["actions"][0].get("selected_options", [])
+    try:
 
-    total_cost = sum(
-        float(option["text"]["text"].replace("USD$", "")) for option in selected_options
-    )
+        # Parse all selected options from the state values
+        selected_options = []
+        state_values = body["view"]["state"]["values"]
 
-    view = body["view"]
-    blocks = view["blocks"]
+        # Iterate through all block IDs that contain verification_checkbox_action
+        for block_id, block_data in state_values.items():
+            if "verification_checkbox_action" in block_data:
+                checkbox_data = block_data["verification_checkbox_action"]
+                if checkbox_data.get("type") == "checkboxes":
+                    selected_options.extend(checkbox_data.get("selected_options", []))
 
-    for block in blocks:
-        if block.get("block_id") == "total_cost_block":
-            block["text"]["text"] = f"*Total Cost:* USD${total_cost:.2f}"
+        # Calculate total cost from selected options
+        total_cost = sum(
+            float(re.search(r"USD\$([\d.]+)", option["text"]["text"]).group(1))
+            for option in selected_options
+        )
 
-    client.views_update(
-        view_id=view["id"], hash=view["hash"], view={"type": "modal", "blocks": blocks}
-    )
+        # Update the view
+        view = body["view"]
+        blocks = view["blocks"]
+
+        # Find and update the total cost block
+        for block in blocks:
+            if block.get("block_id") == "total_cost_block":
+                block["text"]["text"] = f"*Total Cost:* USD${total_cost:.2f}"
+                break
+
+        try:
+            await client.views_update(
+                view_id=view["id"],
+                hash=view["hash"],  # Use hash to prevent race conditions
+                view={
+                    "type": "modal",
+                    "title": view["title"],
+                    "blocks": blocks,
+                    "close": view["close"],
+                    "submit": view["submit"],
+                    "private_metadata": view["private_metadata"],
+                    "callback_id": view["callback_id"],
+                },
+            )
+        except SlackApiError as e:
+            if e.response["error"] == "view_closed":
+                # View was closed, nothing to do
+                pass
+            elif "hash" in str(e.response.get("error", "")).lower():
+                # Hash mismatch - another update happened, that's fine
+                print(f"Hash mismatch, skipping update: {e.response}")
+            else:
+                # Some other error, re-raise
+                raise
+
+    except Exception as e:
+        notify_exception(e)
+        raise e
 
 
 @app.view("document_mt_job", middleware=[ray_connection])
