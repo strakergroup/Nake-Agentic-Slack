@@ -490,7 +490,7 @@ def verify_quote_blocks(
                                         {
                                             "text": {
                                                 "type": "mrkdwn",
-                                                "text": f"{lang['name']}: USD${cost:.2f}",
+                                                "text": f"*{lang['name']}*: USD${cost:.2f}",
                                             },
                                             "value": f"{file['file_uuid']}:{lang['uuid']}",
                                         },
@@ -499,7 +499,7 @@ def verify_quote_blocks(
                                         {
                                             "text": {
                                                 "type": "mrkdwn",
-                                                "text": f"{lang['name']}: USD${cost:.2f}",
+                                                "text": f"*{lang['name']}*: USD${cost:.2f}",
                                             },
                                             "value": f"{file['file_uuid']}:{lang['uuid']}",
                                         },
