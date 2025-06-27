@@ -1942,7 +1942,7 @@ async def handle_verify_job_submission(
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
     target_languages = job["data"]["target_languages"]
 
-    # Extract the selected checkbox values
+    # Extract the selected checkbox values from input blocks
     selected_languages = []
     for source_file in job["data"]["source_files"]:
         for lang in target_languages:
@@ -1967,26 +1967,89 @@ async def handle_verify_job_submission(
     )
 
 
-@app.action("verification_checkbox_action")
-async def handle_checkbox_action(ack, body, client):
+@app.block_action("verification_checkbox_action", middleware=[ray_connection])
+async def handle_checkbox_action(ack, body, client, action):
     await ack()
 
-    selected_options = body["actions"][0].get("selected_options", [])
+    try:
+        view_id = body["view"]["id"]
+        action_ts = action.get("action_ts", "0")
+        # Check if this is the latest action for this view
+        latest_action_key = f"latest_action_{view_id}"
+        latest_action_ts = await redis_conn.get(latest_action_key)
 
-    total_cost = sum(
-        float(option["text"]["text"].replace("USD$", "")) for option in selected_options
-    )
+        if latest_action_ts and float(latest_action_ts) > float(action_ts):
+            # A more recent action is already being processed, skip this one
+            return
 
-    view = body["view"]
-    blocks = view["blocks"]
+        # Set this as the latest action
+        await redis_conn.set(latest_action_key, action_ts, ex=2)  # 2 second expiry
 
-    for block in blocks:
-        if block.get("block_id") == "total_cost_block":
-            block["text"]["text"] = f"*Total Cost:* USD${total_cost:.2f}"
+        # Use Redis lock to ensure only one views_update happens at a time
+        lock_key = f"view_update_lock_{view_id}"
+        lock_acquired = await redis_conn.set(
+            lock_key, action_ts, ex=2, nx=True
+        )  # 2 second lock, only if not exists
 
-    client.views_update(
-        view_id=view["id"], hash=view["hash"], view={"type": "modal", "blocks": blocks}
-    )
+        if not lock_acquired:
+            # Another update is in progress, wait for it to complete
+            # Wait up to 5 seconds for the lock to be released
+            for _ in range(20):  # 20 * 0.1 = 2 seconds
+                await asyncio.sleep(0.1)
+                if await redis_conn.get(lock_key) is None:
+                    break
+            else:
+                # Lock still held after 5 seconds, skip this update
+                return
+        try:
+            # Parse all selected options from the state values
+            selected_options = []
+            state_values = body["view"]["state"]["values"]
+
+            # Iterate through all block IDs that contain verification_checkbox_action
+            for block_id, block_data in state_values.items():
+                if "verification_checkbox_action" in block_data:
+                    checkbox_data = block_data["verification_checkbox_action"]
+                    if checkbox_data.get("type") == "checkboxes":
+                        selected_options.extend(
+                            checkbox_data.get("selected_options", [])
+                        )
+
+            # Calculate total cost from selected options
+            total_cost = sum(
+                float(re.search(r"USD\$([\d.]+)", option["text"]["text"]).group(1))
+                for option in selected_options
+            )
+
+            # Update the view
+            view = body["view"]
+            blocks = view["blocks"]
+
+            # Find and update the total cost block
+            for block in blocks:
+                if block.get("block_id") == "total_cost_block":
+                    block["text"]["text"] = f"*Total Cost:* USD${total_cost:.2f}"
+                    break
+
+            await client.views_update(
+                view_id=view["id"],
+                view={
+                    "type": "modal",
+                    "title": view["title"],
+                    "blocks": blocks,
+                    "close": view["close"],
+                    "submit": view["submit"],
+                    "private_metadata": view["private_metadata"],
+                    "callback_id": view["callback_id"],
+                },
+            )
+        finally:
+            # Always release the lock when done
+            await redis_conn.delete(lock_key)
+
+    except Exception as e:
+        notify_exception(e)
+        raise e
 
 
 @app.view("document_mt_job", middleware=[ray_connection])
