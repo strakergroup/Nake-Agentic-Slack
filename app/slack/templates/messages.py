@@ -3771,7 +3771,7 @@ class HumanJobQuoteMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("Accept All"),
+                                "text": _("Accept Quote"),
                             },
                             "style": "primary",
                             "value": job["uuid"],
