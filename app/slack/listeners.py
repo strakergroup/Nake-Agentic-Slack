@@ -1766,6 +1766,7 @@ async def evaluate_job_submit(
             form.target_langs_uuid,
             form.reference,
             workflow_uuid=form.workflow_options,
+            job_notes=form.job_notes or "",
         )
 
 
