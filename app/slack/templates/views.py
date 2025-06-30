@@ -686,12 +686,6 @@ def human_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
                     "text": _("Translate to"),
                     "emoji": True,
                 },
-                "hint": {
-                    "type": "plain_text",
-                    "text": _(
-                        "Which language(s) do you want the file(s) to be translated to?"
-                    ),
-                },
             },
         ],
     }
