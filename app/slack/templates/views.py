@@ -687,6 +687,27 @@ def human_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
                     "emoji": True,
                 },
             },
+            {
+                "type": "input",
+                "block_id": "job_notes",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "job_notes",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": _(" "),
+                        "emoji": True,
+                    },
+                    "multiline": True,
+                    "max_length": 255,
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": _("Job Notes"),
+                    "emoji": True,
+                },
+                "optional": True,
+            },
         ],
     }
 
