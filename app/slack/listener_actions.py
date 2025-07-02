@@ -78,6 +78,25 @@ from ..watson import watson_message
 from .select_options import _get_languages_cached, get_file_options_cached
 from app.models import TranscriptionTask
 
+VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
+
+
+def is_video_file(file_details: dict[str, Any]) -> bool:
+    """Check if a file from Slack event is a video/audio file."""
+    filetype = file_details.get("filetype", "").lower()
+    filename = file_details.get("name", "")
+
+    # Determine the file extension (if any) and convert to lower-case for comparison.
+    extension = ""
+    if "." in filename:
+        extension = filename.rsplit(".", 1)[-1].lower()
+
+    return (
+        filetype in VIDEO_FILE_TYPES
+        or extension in VIDEO_FILE_TYPES
+        or (".mpga" in filename.lower() and filename.lower().endswith(".mpga"))
+    )
+
 
 async def respond_to_message(
     client: AsyncWebClient,
@@ -106,15 +125,7 @@ async def respond_to_message(
             files = []
             unsupported_files = []
             for file in message["files"]:
-                if file["filetype"] in [
-                    "mp4",
-                    "mp3",
-                    "mpeg",
-                    "mpga",
-                    "m4a",
-                    "wav",
-                    "webm",
-                ] or (".mpga" in file["name"] and file["name"].endswith(".mpga")):
+                if is_video_file(file):
                     file_info = await client.files_info(file=file["id"])
                     download_url = file_info["file"]["url_private_download"]
                     # duration_ms = file_info["file"].get("duration_ms", 0)
