@@ -336,7 +336,7 @@ class WelcomeBackMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI translate your content and receive quality translation scores, then opt for human verification if needed"
+                                    ":sports_medal: AI Translate your content and receive translation quality scores, then verify with Straker to send for human verification"
                                 ),
                             },
                             "accessory": {
@@ -344,10 +344,10 @@ class WelcomeBackMessage(SlackMessage):
                                 "text": {
                                     "type": "plain_text",
                                     "emoji": True,
-                                    "text": _("Quality Evaluation"),
+                                    "text": _("Quality Evaluation Help"),
                                 },
-                                # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
-                                "action_id": "verify_help",
+                                "url": "https://help.straker.ai/en/docs/quality-evaluation",
+                                "action_id": "link_verify_help",
                             },
                         },
                         {
@@ -363,9 +363,10 @@ class WelcomeBackMessage(SlackMessage):
                                 "text": {
                                     "type": "plain_text",
                                     "emoji": True,
-                                    "text": _("Human Translation"),
+                                    "text": _("Human Translation Help"),
                                 },
-                                "action_id": "human_help",
+                                "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
+                                "action_id": "link_human_help",
                             },
                         },
                     ]
@@ -552,7 +553,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI translate your content and receive quality translation scores, then opt for human verification if needed"
+                                    ":sports_medal: AI Translate your content and receive translation quality scores, then verify with Straker to send for human verification"
                                 ),
                             },
                             "accessory": {
@@ -560,10 +561,10 @@ class SuccessfulLoginMessage(SlackMessage):
                                 "text": {
                                     "type": "plain_text",
                                     "emoji": True,
-                                    "text": _("Quality Evaluation"),
+                                    "text": _("Quality Evaluation Help"),
                                 },
-                                # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
-                                "action_id": "verify_help",
+                                "url": "https://help.straker.ai/en/docs/quality-evaluation",
+                                "action_id": "link_verify_help",
                             },
                         },
                         {
@@ -579,9 +580,10 @@ class SuccessfulLoginMessage(SlackMessage):
                                 "text": {
                                     "type": "plain_text",
                                     "emoji": True,
-                                    "text": _("Human Translation"),
+                                    "text": _("Human Translation Help"),
                                 },
-                                "action_id": "human_help",
+                                "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
+                                "action_id": "link_human_help",
                             },
                         },
                     ]
@@ -1750,7 +1752,7 @@ class NewJobMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "*Quality Evaluation* - AI translate your content and receive quality translation scores, then opt for human verification if needed"
+                            "*Quality Evaluation* - AI Translate your content and receive translation quality scores, then verify with Straker to send for human verification"
                         ),
                     },
                     "accessory": {
@@ -2056,7 +2058,7 @@ class HelpMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI translate your content and receive quality translation scores, then opt for human verification if needed"
+                                    ":sports_medal: AI Translate your content and receive translation quality scores, then verify with Straker to send for human verification"
                                 ),
                             },
                             "accessory": {
@@ -2064,10 +2066,10 @@ class HelpMessage(SlackMessage):
                                 "text": {
                                     "type": "plain_text",
                                     "emoji": True,
-                                    "text": _("Quality Evaluation"),
+                                    "text": _("Quality Evaluation Help"),
                                 },
-                                # "url": "https://help.strakertranslations.com/hc/en-us/articles/35943216049945-Instant-Document-Machine-Translation-AI-Translate-in-Straker-Translate-App-for-Slack",
-                                "action_id": "verify_help",
+                                "url": "https://help.straker.ai/en/docs/quality-evaluation",
+                                "action_id": "link_verify_help",
                             },
                         },
                         {
@@ -2083,9 +2085,10 @@ class HelpMessage(SlackMessage):
                                 "text": {
                                     "type": "plain_text",
                                     "emoji": True,
-                                    "text": _("Human Translation"),
+                                    "text": _("Human Translation Help"),
                                 },
-                                "action_id": "human_help",
+                                "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
+                                "action_id": "link_human_help",
                             },
                         },
                     ]
@@ -3766,7 +3769,7 @@ class HumanJobQuoteMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("Accept All"),
+                                "text": _("Accept Quote"),
                             },
                             "style": "primary",
                             "value": job["uuid"],
