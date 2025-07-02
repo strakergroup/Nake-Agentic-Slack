@@ -20,6 +20,7 @@ async def submit_evaluation_job(
     target_languages_uuid: List[str],
     reference: str,
     workflow_uuid: str | None = None,
+    job_notes: str = "",
 ):
     # Prepare the data for the request
     target_languages_data = {
@@ -27,6 +28,8 @@ async def submit_evaluation_job(
         "title": reference,
         "source": "slack",
     }
+    if job_notes:
+        target_languages_data["client_notes"] = job_notes
     if not workflow_uuid and (
         config.environment != Environment.production
         or domains.slack_ray_translator

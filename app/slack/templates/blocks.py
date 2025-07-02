@@ -511,35 +511,32 @@ def verify_quote_blocks(
                 if selectable:
                     blocks.append(
                         {
-                            "type": "input",
+                            "type": "actions",
                             "block_id": f"verification_checkbox_{lang['uuid']}_{file['file_uuid']}",
-                            "label": {
-                                "type": "plain_text",
-                                "text": _(lang["name"]),
-                            },
-                            "element": {
-                                "type": "checkboxes",
-                                "options": [
-                                    {
-                                        "text": {
-                                            "type": "mrkdwn",
-                                            "text": f"USD${cost:.2f}",
+                            "elements": [
+                                {
+                                    "type": "checkboxes",
+                                    "options": [
+                                        {
+                                            "text": {
+                                                "type": "mrkdwn",
+                                                "text": f"*{lang['name']}*: USD${cost:.2f}",
+                                            },
+                                            "value": f"{file['file_uuid']}:{lang['uuid']}",
                                         },
-                                        "value": f"{file['file_uuid']}:{lang['uuid']}",
-                                    },
-                                ],
-                                "initial_options": [
-                                    {
-                                        "text": {
-                                            "type": "mrkdwn",
-                                            "text": f"USD${cost:.2f}",
+                                    ],
+                                    "initial_options": [
+                                        {
+                                            "text": {
+                                                "type": "mrkdwn",
+                                                "text": f"*{lang['name']}*: USD${cost:.2f}",
+                                            },
+                                            "value": f"{file['file_uuid']}:{lang['uuid']}",
                                         },
-                                        "value": f"{file['file_uuid']}:{lang['uuid']}",
-                                    },
-                                ],
-                                "action_id": "verification_checkbox_action",
-                            },
-                            "optional": True,
+                                    ],
+                                    "action_id": "verification_checkbox_action",
+                                },
+                            ],
                         }
                     )
                 else:
@@ -557,6 +554,7 @@ def verify_quote_blocks(
     blocks.append(
         {
             "type": "section",
+            "block_id": "total_cost_block",
             "text": {
                 "type": "mrkdwn",
                 "text": _("*Total Cost*: USD ${total_cost:.2f}"),

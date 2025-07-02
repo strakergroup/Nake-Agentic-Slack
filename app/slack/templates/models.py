@@ -266,6 +266,7 @@ class EvaluateJobForm(BaseModel):
     target_langs_uuid: list[str]
     workflow_options: str | None = None
     files: list[SlackFile]
+    job_notes: str | None = None
 
     @classmethod
     def parse_human_job_form(
@@ -277,6 +278,7 @@ class EvaluateJobForm(BaseModel):
                 "selected_options"
             ]
         ]
+        job_notes = values.get("job_notes", {}).get("job_notes", {}).get("value", "")
         return cls(
             reference="slack job",
             target_langs_uuid=target_langs_uuid,
@@ -285,6 +287,7 @@ class EvaluateJobForm(BaseModel):
                 SlackFile.parse_slack_option(opt)
                 for opt in values["files"]["files"]["selected_options"]
             ],
+            job_notes=job_notes,
         )
 
     @classmethod
