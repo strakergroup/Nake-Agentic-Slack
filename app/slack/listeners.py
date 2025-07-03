@@ -3,6 +3,7 @@ commands, etc. from the Slack API.
 """
 
 import asyncio
+import math
 import os
 import re
 import json
@@ -1955,7 +1956,14 @@ async def handle_verify_job_submission(
                     "verification_checkbox_action"
                 ]["selected_options"]
                 selected_languages.extend(
-                    [option["value"] for option in selected_options]
+                    [
+                        (
+                            option["value"].rsplit(":", 1)[0]
+                            if ":" in option["value"]
+                            else option["value"]
+                        )
+                        for option in selected_options
+                    ]
                 )
 
     await submit_verification_job(
@@ -2000,13 +2008,12 @@ async def handle_checkbox_action(ack, body, client, action):
                 if await redis_conn.get(lock_key) is None:
                     break
             else:
-                # Lock still held after 5 seconds, skip this update
                 return
         try:
             # Parse all selected options from the state values
             selected_options = []
             state_values = body["view"]["state"]["values"]
-
+            print(json.dumps(state_values, indent=2))
             # Iterate through all block IDs that contain verification_checkbox_action
             for block_id, block_data in state_values.items():
                 if "verification_checkbox_action" in block_data:
@@ -2022,6 +2029,22 @@ async def handle_checkbox_action(ack, body, client, action):
                 for option in selected_options
             )
 
+            # Calculate total estimated time from selected options
+            grouped_times = {}
+            for option in selected_options:
+                file_uuid, language_uuid, estimated_time = option["value"].split(":")
+                if (
+                    file_uuid not in grouped_times
+                    or float(estimated_time) > grouped_times[file_uuid]
+                ):
+                    grouped_times[file_uuid] = float(estimated_time)
+
+            total_estimated_days = math.ceil(sum(grouped_times.values()))
+
+            # Calculate completion date
+            completion_date = datetime.now() + timedelta(days=total_estimated_days)
+            formatted_date = completion_date.strftime("%d %B %Y")
+
             # Update the view
             view = body["view"]
             blocks = view["blocks"]
@@ -2030,6 +2053,12 @@ async def handle_checkbox_action(ack, body, client, action):
             for block in blocks:
                 if block.get("block_id") == "total_cost_block":
                     block["text"]["text"] = f"*Total Cost:* USD${total_cost:.2f}"
+                    break
+
+            # Find and update the total estimated time block
+            for block in blocks:
+                if block.get("block_id") == "total_estimated_time_block":
+                    block["text"]["text"] = f"*Estimated Completion:* {formatted_date}"
                     break
 
             await client.views_update(
