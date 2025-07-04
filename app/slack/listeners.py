@@ -2033,13 +2033,28 @@ async def handle_checkbox_action(ack, body, client, action):
             grouped_times = {}
             for option in selected_options:
                 file_uuid, language_uuid, estimated_time = option["value"].split(":")
-                if (
-                    file_uuid not in grouped_times
-                    or float(estimated_time) > grouped_times[file_uuid]
-                ):
-                    grouped_times[file_uuid] = float(estimated_time)
+                if file_uuid not in grouped_times:
+                    grouped_times[file_uuid] = {
+                        "time_estimate": float(estimated_time),
+                        "count": 1,
+                    }
+                else:
+                    grouped_times[file_uuid]["count"] += 1
+                    if (
+                        float(estimated_time)
+                        > grouped_times[file_uuid]["time_estimate"]
+                    ):
+                        grouped_times[file_uuid]["time_estimate"] = float(
+                            estimated_time
+                        )
 
-            total_estimated_days = math.ceil(sum(grouped_times.values()))
+            # Calculate total time by multiplying max time estimate by count for each file
+            total_estimated_days = math.ceil(
+                sum(
+                    group["time_estimate"] * group["count"]
+                    for group in grouped_times.values()
+                )
+            )
 
             # Calculate completion date
             completion_date = datetime.now() + timedelta(days=total_estimated_days)

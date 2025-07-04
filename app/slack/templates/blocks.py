@@ -524,16 +524,24 @@ def verify_quote_blocks(
                         }
                     )
         blocks.append({"type": "divider"})
-    # Group costs by file_uuid  and get max time_estimate_days for each group
+    # Group costs by file_uuid and multiply time_estimate_days by count for each group
     grouped_times = {}
     for cost in costs:
         key = cost["file_uuid"]
         time_estimate = cost["service_list"][0]["time_estimate_days"]
-        if key not in grouped_times or time_estimate > grouped_times[key]:
-            grouped_times[key] = time_estimate
+        if key not in grouped_times:
+            grouped_times[key] = {"time_estimate": time_estimate, "count": 1}
+        else:
+            grouped_times[key]["count"] += 1
+            if time_estimate > grouped_times[key]["time_estimate"]:
+                grouped_times[key]["time_estimate"] = time_estimate
+
+    # Calculate total time by multiplying max time estimate by count for each file
+    total_estimated_days = math.ceil(
+        sum(group["time_estimate"] * group["count"] for group in grouped_times.values())
+    )
 
     total_cost = sum(cost["service_list"][0]["estimated_cost"] for cost in costs)
-    total_estimated_days = math.ceil(sum(grouped_times.values()))
 
     # Calculate completion date
     completion_date = datetime.now() + timedelta(days=total_estimated_days)
