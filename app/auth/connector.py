@@ -464,6 +464,7 @@ def is_ibm_super_group(
                 AND (
                     link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
                     OR link.super_group_uuid = '13D8D894-3DC5-49DC-9DD0-AD9EA537E597'
+                    OR link.super_group_uuid = '94c8dd41-9029-4aae-883a-57e4b86ead17'
                 ) AND link.verify_organization_uuid is not null
                 """
             ).bindparams(enterprise_id=enterprise_id)
@@ -730,26 +731,22 @@ async def get_ray_connection(
     if super_group is None:
         return None
     # When ibm enterprise and user is not admin, disable verify in slack
-    if client and is_ibm_super_group(enterprise_id):
-        # TODO: remove this. This is adding existing users to verify team.
-        add_to_verify_team(
-            user_uuid=client.id,
-            enterprise_id=enterprise_id,
-        )
-        if super_group[0].enable_verify_in_slack and not await is_slack_team_admin(
-            client.id, enterprise_id
-        ):
-            super_group = [
-                RaySuperGroup(
-                    id=group.id,
-                    name=group.name,
-                    slack_team_id=group.slack_team_id,
-                    slack_enterprise_id=group.slack_enterprise_id,
-                    enable_verify_in_slack=False,
-                    verify_organization_uuid=group.verify_organization_uuid,
-                )
-                for group in super_group
-            ]
+    if (
+        client
+        and super_group[0].enable_verify_in_slack
+        and is_ibm_super_group(enterprise_id)
+        and not await is_slack_team_admin(client.id, enterprise_id)
+    ):
+        super_group = [
+            RaySuperGroup(
+                id=group.id,
+                name=group.name,
+                slack_team_id=group.slack_team_id,
+                slack_enterprise_id=group.slack_enterprise_id,
+                enable_verify_in_slack=False,
+            )
+            for group in super_group
+        ]
 
     return RayConnection(super_group, client)
 
@@ -1182,6 +1179,8 @@ def get_direct_login_group(enterprise_id: str):
     if enterprise_id == "E04RDMG8XP1":
         # on live we treat dev test as ibm group. So when connecting from our enterprise we will add to this group.
         group_id = "173231FA-D524-42BF-9AF3F4834CAA88A0"
+    if enterprise_id == "E08AHA89Y1L":
+        group_id = "3fcc9bc6-dd12-4bbe-87ac-0633b1585482"
     # for uat ibm slack group uuid is different
     if (
         config.environment != Environment.production
@@ -1197,6 +1196,8 @@ def get_direct_login_verify_team(enterprise_id: str | None):
     if enterprise_id == "E04RDMG8XP1":
         # on live we treat dev test as ibm team. So when connecting from our enterprise we will add to this team.
         team_uuid = "120a1ab0-0b89-4175-b205-aec60ce98de7"
+    if enterprise_id == "E08AHA89Y1L":
+        team_uuid = "9f5b7edc-47e8-428e-9b38-9164c1445325"
     # for uat ibm slack team id is different
     if (
         config.environment != Environment.production
@@ -1512,21 +1513,34 @@ async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceRespo
         return GetCreditBalanceResponse(0, 0)
 
 
-async def get_group_tokens(org_uuid: str) -> GetCreditBalanceResponse:
+async def get_group_tokens(super_group_uuid: str) -> GetCreditBalanceResponse:
     """read sitemanager.obj_m_member_credit_transactions to get the group tokens balance."""
+    list_group_uuid = []
+    with engines["sitemanager_readonly"].connect() as conn:
+        sql = text(
+            """
+            SELECT group_uuid
+            FROM super_group_glink
+            WHERE super_group_uuid = :super_group_uuid
+            """
+        ).bindparams(super_group_uuid=super_group_uuid)
+        result = conn.execute(sql)
+        rows = result.fetchall()
+        for row in rows:
+            list_group_uuid.append(row.group_uuid)
+        list_group_uuid.append(super_group_uuid)
     # first get
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
             """
             SELECT SUM(amount) AS total
             FROM obj_m_member_credit_transactions
-            WHERE organization_uuid = :org_uuid
+            WHERE group_uuid IN :group_uuids
             AND credit_type = 'ai_token'
             """
-        ).bindparams(bindparam("org_uuid", value=org_uuid))
-        result = conn.execute(sql)
+        ).bindparams(bindparam("group_uuids", expanding=True))
+        result = conn.execute(sql, {"group_uuids": list_group_uuid})
         row_total = result.first()
-        print(row_total)
         if not row_total or not row_total.total:
             return GetCreditBalanceResponse(0, 0)
     return GetCreditBalanceResponse(ai_token=row_total.total, mt_token=0)

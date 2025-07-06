@@ -20,7 +20,6 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
 from buglog import notify_exception, notify_message
 
-from app.api.language_cloud import detect_language
 from app.mt.translate import get_ai_translation
 from app.ray.events.models import MtFileRequestSchema
 from app.translate import _
@@ -79,6 +78,25 @@ from ..watson import watson_message
 from .select_options import _get_languages_cached, get_file_options_cached
 from app.models import TranscriptionTask
 
+VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
+
+
+def is_video_file(file_details: dict[str, Any]) -> bool:
+    """Check if a file from Slack event is a video/audio file."""
+    filetype = file_details.get("filetype", "").lower()
+    filename = file_details.get("name", "")
+
+    # Determine the file extension (if any) and convert to lower-case for comparison.
+    extension = ""
+    if "." in filename:
+        extension = filename.rsplit(".", 1)[-1].lower()
+
+    return (
+        filetype in VIDEO_FILE_TYPES
+        or extension in VIDEO_FILE_TYPES
+        or (".mpga" in filename.lower() and filename.lower().endswith(".mpga"))
+    )
+
 
 async def respond_to_message(
     client: AsyncWebClient,
@@ -107,15 +125,7 @@ async def respond_to_message(
             files = []
             unsupported_files = []
             for file in message["files"]:
-                if file["filetype"] in [
-                    "mp4",
-                    "mp3",
-                    "mpeg",
-                    "mpga",
-                    "m4a",
-                    "wav",
-                    "webm",
-                ] or (".mpga" in file["name"] and file["name"].endswith(".mpga")):
+                if is_video_file(file):
                     file_info = await client.files_info(file=file["id"])
                     download_url = file_info["file"]["url_private_download"]
                     # duration_ms = file_info["file"].get("duration_ms", 0)
@@ -402,21 +412,8 @@ async def auto_translate_message(
     # TODO make this fetch all settings for channel
     settings = get_auto_translate_settings_and_langs(context, context.channel_id)
     target_langs = [langs["target_lang"] for langs in settings]
-    # detected_source_lang_response = await detect_language(context["ray"].client, text)
-
-    # # Remove the detected source language from the target languages
-    # target_langs = [
-    #     langs["target_lang"]
-    #     for langs in settings
-    #     if langs["target_lang"] != detected_source_lang_response.language
-    # ]
-
-    # if not target_langs or not settings:
-    #     return
-
     if not settings:
         return
-
     try:
         source_lang, translations = await get_ai_translation(
             context, text, target_langs, "channel_translation"

@@ -1742,7 +1742,7 @@ async def evaluate_job_submit(
     if await require_ray_client(context, prompt_login=True):
         if form.workflow_options:
             msg = _(
-                "Thanks for creating a new project! We will send you a summary of your file to review before finalising your order."
+                "Your request is being processed. You will receive a summary to review before you finalise the order."
             )
         else:
             msg = _(

@@ -4,7 +4,6 @@ from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from pydantic import BaseModel, ValidationError
 
 from app.ray.utils import (
-    delete_from_file_server,
     download_from_file_server,
     is_ibm_enterprise,
     set_user_language,
@@ -142,7 +141,6 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     title=title,
                     filename=title,
                 )
-                delete_from_file_server(success_data.file_id)
         elif isinstance(message, JobTranscribedEventMessage):
             if not event.data.get("error"):
                 await post_notification(
@@ -180,7 +178,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
             await app.client.files_upload_v2(
                 channel=response["channel"],
                 file=output_file.get("file"),
-                title=event.data["job_title"],
+                title=output_file.get("file_name"),
                 filename=output_file.get("file_name"),
             )
         elif (
