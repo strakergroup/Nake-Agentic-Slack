@@ -54,6 +54,8 @@ class RaySuperGroup:
     name: str
     """The name of the group (`obj_m_group.label`)."""
     slack_team_id: str
+    """The Verify Organization UUID (`verify_organization.uuid`)."""
+    verify_organization_uuid: str
     """The Slack team ID linked to the RAY client."""
     slack_enterprise_id: str | None
     """The Slack enterprise ID linked to the RAY client."""
@@ -380,6 +382,7 @@ async def get_demo_super_group(
             slack_team_id=team_id,
             slack_enterprise_id=enterprise_id,
             enable_verify_in_slack=bool(row.enable_verify_in_slack),
+            verify_organization_uuid="",
         )
     ]
 
@@ -397,10 +400,12 @@ async def get_ray_super_group(
         if enterprise_id:
             sql = text(
                 """
-                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack
+                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
                 FROM slack_super_group_link link
                 INNER JOIN sitemanager.obj_m_group g
                 ON link.super_group_uuid = g.obj_uuid
+                INNER JOIN sitemanager.verify_organization vo
+                ON vo.obj_uuid = link.verify_organization_uuid
                 WHERE link.slack_enterprise_id = :enterprise_id
                 AND link.is_active = 1
                 """
@@ -408,10 +413,12 @@ async def get_ray_super_group(
         else:
             sql = text(
                 """
-                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack
+                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
                 FROM slack_super_group_link link
                 INNER JOIN sitemanager.obj_m_group g
                 ON link.super_group_uuid = g.obj_uuid
+                INNER JOIN sitemanager.verify_organization vo
+                ON vo.obj_uuid = link.verify_organization_uuid
                 WHERE link.slack_team_id = :team_id
                 AND link.is_active = 1
                 """
@@ -427,6 +434,7 @@ async def get_ray_super_group(
             slack_team_id=team_id,
             slack_enterprise_id=enterprise_id,
             enable_verify_in_slack=bool(row.enable_verify_in_slack),
+            verify_organization_uuid=row.verify_organization_id,
         )
         for row in rows
     ]
@@ -457,7 +465,7 @@ def is_ibm_super_group(
                     link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
                     OR link.super_group_uuid = '13D8D894-3DC5-49DC-9DD0-AD9EA537E597'
                     OR link.super_group_uuid = '94c8dd41-9029-4aae-883a-57e4b86ead17'
-                )
+                ) AND link.verify_organization_uuid is not null
                 """
             ).bindparams(enterprise_id=enterprise_id)
         result = conn.execute(sql)
