@@ -744,6 +744,7 @@ async def get_ray_connection(
                 slack_team_id=group.slack_team_id,
                 slack_enterprise_id=group.slack_enterprise_id,
                 enable_verify_in_slack=False,
+                verify_organization_uuid=group.verify_organization_uuid,
             )
             for group in super_group
         ]
