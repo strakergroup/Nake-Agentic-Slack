@@ -1514,33 +1514,19 @@ async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceRespo
         return GetCreditBalanceResponse(0, 0)
 
 
-async def get_group_tokens(super_group_uuid: str) -> GetCreditBalanceResponse:
+async def get_group_tokens(org_uuid: str) -> GetCreditBalanceResponse:
     """read sitemanager.obj_m_member_credit_transactions to get the group tokens balance."""
-    list_group_uuid = []
-    with engines["sitemanager_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT group_uuid
-            FROM super_group_glink
-            WHERE super_group_uuid = :super_group_uuid
-            """
-        ).bindparams(super_group_uuid=super_group_uuid)
-        result = conn.execute(sql)
-        rows = result.fetchall()
-        for row in rows:
-            list_group_uuid.append(row.group_uuid)
-        list_group_uuid.append(super_group_uuid)
     # first get
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
             """
             SELECT SUM(amount) AS total
             FROM obj_m_member_credit_transactions
-            WHERE group_uuid IN :group_uuids
+            WHERE organization_uuid = :org_uuid
             AND credit_type = 'ai_token'
             """
-        ).bindparams(bindparam("group_uuids", expanding=True))
-        result = conn.execute(sql, {"group_uuids": list_group_uuid})
+        ).bindparams(bindparam("org_uuid", value=org_uuid))
+        result = conn.execute(sql)
         row_total = result.first()
         if not row_total or not row_total.total:
             return GetCreditBalanceResponse(0, 0)
