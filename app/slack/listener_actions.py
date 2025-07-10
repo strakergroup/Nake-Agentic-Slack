@@ -12,6 +12,7 @@ from app.api.verify import (
     get_client_evaluation_job,
     get_job_pricing,
     get_verify_languages,
+    VerifyAPIError,
 )
 import langcodes
 from slack_sdk.errors import SlackApiError
@@ -1948,8 +1949,23 @@ async def submit_verification_job(
                         blocks=updated_msg.blocks,
                         replace_original=True,
                     )
+            except VerifyAPIError as e:
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=_(
+                        "You do not have permission to access this verification job"
+                    ),
+                )
+                return
             except Exception as e:
                 notify_exception(e)
+                await client.chat_postMessage(
+                    channel=user_id,
+                    text=_(
+                        "There was an error updating the verification job status. Please try again."
+                    ),
+                )
+                return
 
         # Send initial confirmation
         msg = _(
