@@ -1773,9 +1773,7 @@ async def evaluate_job_submit(
         except VerifyAPIError as e:
             await client.chat_postMessage(
                 channel=channel_id,
-                text=_(
-                    "You do not have permission to submit a quality evaluation job. Please ensure you are a verified user."
-                ),
+                text=_("You do not have permission to submit a quality evaluation job"),
             )
         except Exception as e:
             notify_exception(e)
