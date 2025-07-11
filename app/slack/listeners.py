@@ -1773,7 +1773,9 @@ async def evaluate_job_submit(
         except VerifyAPIError as e:
             await client.chat_postMessage(
                 channel=channel_id,
-                text=_("You do not have permission to submit a quality evaluation job"),
+                text=_(
+                    "There was an error processing your request. You do not have permission to perform this action. Please contact your team administrator."
+                ),
             )
         except Exception as e:
             notify_exception(e)
@@ -1884,7 +1886,7 @@ async def verify_job_modal_open_action(
                         "text": {
                             "type": "mrkdwn",
                             "text": _(
-                                "You do not have permission to access this verification job. Please ensure you are a verified user."
+                                "You do not have permission to access this verification job. Please contact your team administrator."
                             ),
                             "verbatim": True,
                         },
@@ -1957,7 +1959,7 @@ async def quote_accept_all_action(
         await client.chat_postMessage(
             channel=context["channel_id"],
             text=_(
-                "You do not have permission to access this verification job. Please ensure you are a verified user."
+                "You do not have permission to access this verification job. You do not have permission to perform this action. Please contact your team administrator."
             ),
         )
         return
@@ -2007,7 +2009,7 @@ async def handle_verify_job_submission(
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_(
-                "You do not have permission to access this verification job. Please ensure you are a verified user."
+                "There was an error processing your request. You do not have permission to perform this action. Please contact your team administrator."
             ),
         )
         return
