@@ -70,7 +70,7 @@ def home_auth_blocks(
             "text": {
                 "type": "mrkdwn",
                 "text": _(
-                    "\n\nVerify (Quality Evaluation) allows you:\n\n    • Translate content using AI translation.\n    • Assess the quality of the translation to determine the reliability of the AI-translated content along with any existing translation memory you may have with Straker.\n    • Determine whether the translated content is suitable for use or requires further human verification."
+                    "\n\nVerify (Quality Evaluation) allows you:\n\n    • Translate content using AI translation.\n    • Assess the quality of the translation to determine the reliability of the AI-translated content along with any existing translation memory you may have with Straker.\n    • Determine whether the translated content is suitable for use or requires further human translation."
                 ),
             },
         },
@@ -380,7 +380,7 @@ def verify_job_blocks(
             "text": {
                 "type": "mrkdwn",
                 "text": _(
-                    "{lang_label} Human verification has been submitted for this language."
+                    "{lang_label} Human translation has been submitted for this language."
                 ),
             },
         }
@@ -468,7 +468,7 @@ def verify_quote_blocks(
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "{lang_label} Human verification has been submitted for this language."
+                            "{lang_label} Human translation has been submitted for this language."
                         ),
                     },
                 }

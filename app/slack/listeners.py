@@ -1816,7 +1816,7 @@ async def verify_job_modal_open_action(
     context: RayContext,
     ack: AsyncAck,
 ):
-    """Open modal for human verification. Triggered from the Send for human verification button."""
+    """Open modal for human translation. Triggered from the Send for human translation button."""
     await ack()
     job_uuid = action["value"]
     # Get the message timestamp from the body
