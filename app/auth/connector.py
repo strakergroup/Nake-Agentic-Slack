@@ -465,6 +465,7 @@ def is_ibm_super_group(
                     link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
                     OR link.super_group_uuid = '13D8D894-3DC5-49DC-9DD0-AD9EA537E597'
                     OR link.super_group_uuid = '94c8dd41-9029-4aae-883a-57e4b86ead17'
+                    OR link.super_group_uuid = '7f8bcd96-3856-43d6-a01e-3d4c4c196558'
                 ) AND link.verify_organization_uuid is not null
                 """
             ).bindparams(enterprise_id=enterprise_id)
@@ -1188,6 +1189,8 @@ def get_direct_login_group(enterprise_id: str):
         and config.environment != Environment.local
     ):
         group_id = "C9E4513A-41BC-419A-BEB9-6EDAFCD04470"
+        if enterprise_id == "E08AHA89Y1L":
+            group_id = "286e0877-ac0a-4252-a1e8-df02cb92b9a8"
     return group_id
 
 
@@ -1205,6 +1208,8 @@ def get_direct_login_verify_team(enterprise_id: str | None):
         and config.environment != Environment.local
     ):
         team_uuid = "818832c3-11fb-41bf-ab30-d97739a684c1"
+        if enterprise_id == "E08AHA89Y1L":
+            team_uuid = "3b03ca7d-32d9-4bd9-b0e9-5d4dc5dced62"
     return team_uuid
 
 
