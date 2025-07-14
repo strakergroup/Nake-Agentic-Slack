@@ -465,6 +465,7 @@ def is_ibm_super_group(
                     link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
                     OR link.super_group_uuid = '13D8D894-3DC5-49DC-9DD0-AD9EA537E597'
                     OR link.super_group_uuid = '94c8dd41-9029-4aae-883a-57e4b86ead17'
+                    OR link.super_group_uuid = '7f8bcd96-3856-43d6-a01e-3d4c4c196558'
                 ) AND link.verify_organization_uuid is not null
                 """
             ).bindparams(enterprise_id=enterprise_id)
@@ -1188,6 +1189,8 @@ def get_direct_login_group(enterprise_id: str):
         and config.environment != Environment.local
     ):
         group_id = "C9E4513A-41BC-419A-BEB9-6EDAFCD04470"
+        if enterprise_id == "E08AHA89Y1L":
+            group_id = "286e0877-ac0a-4252-a1e8-df02cb92b9a8"
     return group_id
 
 
@@ -1205,6 +1208,8 @@ def get_direct_login_verify_team(enterprise_id: str | None):
         and config.environment != Environment.local
     ):
         team_uuid = "818832c3-11fb-41bf-ab30-d97739a684c1"
+        if enterprise_id == "E08AHA89Y1L":
+            team_uuid = "3b03ca7d-32d9-4bd9-b0e9-5d4dc5dced62"
     return team_uuid
 
 
@@ -1514,33 +1519,19 @@ async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceRespo
         return GetCreditBalanceResponse(0, 0)
 
 
-async def get_group_tokens(super_group_uuid: str) -> GetCreditBalanceResponse:
+async def get_group_tokens(org_uuid: str) -> GetCreditBalanceResponse:
     """read sitemanager.obj_m_member_credit_transactions to get the group tokens balance."""
-    list_group_uuid = []
-    with engines["sitemanager_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT group_uuid
-            FROM super_group_glink
-            WHERE super_group_uuid = :super_group_uuid
-            """
-        ).bindparams(super_group_uuid=super_group_uuid)
-        result = conn.execute(sql)
-        rows = result.fetchall()
-        for row in rows:
-            list_group_uuid.append(row.group_uuid)
-        list_group_uuid.append(super_group_uuid)
     # first get
     with engines["sitemanager_readonly"].connect() as conn:
         sql = text(
             """
             SELECT SUM(amount) AS total
             FROM obj_m_member_credit_transactions
-            WHERE group_uuid IN :group_uuids
+            WHERE organization_uuid = :org_uuid
             AND credit_type = 'ai_token'
             """
-        ).bindparams(bindparam("group_uuids", expanding=True))
-        result = conn.execute(sql, {"group_uuids": list_group_uuid})
+        ).bindparams(bindparam("org_uuid", value=org_uuid))
+        result = conn.execute(sql)
         row_total = result.first()
         if not row_total or not row_total.total:
             return GetCreditBalanceResponse(0, 0)
@@ -1871,6 +1862,14 @@ def add_to_verify_team(user_uuid: str, enterprise_id: str | None):
             ).bindparams(user_uuid=user_uuid)
             conn.execute(sql)
             conn.commit()
+            # delete from user_roles
+            sql = text(
+                """
+                    DELETE from user_roles where user_id = :user_id
+                """
+            ).bindparams(user_id=user_uuid)
+            conn.execute(sql)
+            conn.commit()
             # add to verify team
             sql = text(
                 """
@@ -1880,5 +1879,16 @@ def add_to_verify_team(user_uuid: str, enterprise_id: str | None):
                     (:user_uuid, :team_uuid, 'member')
                 """
             ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
+            conn.execute(sql)
+            conn.commit()
+            # add to user_roles
+            sql = text(
+                """
+                INSERT INTO user_roles
+                    (user_id, team_id, role_id)
+                VALUES
+                    (:user_uuid, :team_uuid, '83d64046-770b-43f5-abbf-e96ca0b3db9a')
+                """
+            ).bindparams(user_id=user_uuid, team_id=team_uuid)
             conn.execute(sql)
             conn.commit()
