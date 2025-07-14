@@ -1,6 +1,8 @@
 """Templates for individual Slack blocks."""
 
 import json
+import math
+from datetime import datetime, timedelta
 from typing import Any
 from ray_sdk.api.v3.models import Quote
 
@@ -408,7 +410,7 @@ def verify_job_blocks(
             "text": {
                 "type": "mrkdwn",
                 "text": _(
-                    "{lang_label} Human verification has been submitted for this language."
+                    "{lang_label} Human translation has been submitted for this language."
                 ),
             },
         }
@@ -488,6 +490,7 @@ def verify_quote_blocks(
                 None,
             )
             cost = 0.00
+            estimated_time = 0
             if target_file.get("human_job_status", ""):
                 lang_label = f"*{_(lang['name'])}*\n"
                 cost_block = {
@@ -495,7 +498,7 @@ def verify_quote_blocks(
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "{lang_label} Human verification has been submitted for this language."
+                            "{lang_label} Human translation has been submitted for this language."
                         ),
                     },
                 }
@@ -507,6 +510,7 @@ def verify_quote_blocks(
                         and item["file_uuid"] == file["file_uuid"]
                     ):
                         cost = item["service_list"][0]["estimated_cost"]
+                        estimated_time = item["service_list"][0]["time_estimate_days"]
                         break
                 if selectable:
                     blocks.append(
@@ -522,7 +526,7 @@ def verify_quote_blocks(
                                                 "type": "mrkdwn",
                                                 "text": f"*{lang['name']}*: USD${cost:.2f}",
                                             },
-                                            "value": f"{file['file_uuid']}:{lang['uuid']}",
+                                            "value": f"{file['file_uuid']}:{lang['uuid']}:{estimated_time}",
                                         },
                                     ],
                                     "initial_options": [
@@ -531,7 +535,7 @@ def verify_quote_blocks(
                                                 "type": "mrkdwn",
                                                 "text": f"*{lang['name']}*: USD${cost:.2f}",
                                             },
-                                            "value": f"{file['file_uuid']}:{lang['uuid']}",
+                                            "value": f"{file['file_uuid']}:{lang['uuid']}:{estimated_time}",
                                         },
                                     ],
                                     "action_id": "verification_checkbox_action",
@@ -550,7 +554,29 @@ def verify_quote_blocks(
                         }
                     )
         blocks.append({"type": "divider"})
+    # Group costs by file_uuid and multiply time_estimate_days by count for each group
+    grouped_times = {}
+    for cost in costs:
+        key = cost["file_uuid"]
+        time_estimate = cost["service_list"][0]["time_estimate_days"]
+        if key not in grouped_times:
+            grouped_times[key] = {"time_estimate": time_estimate, "count": 1}
+        else:
+            grouped_times[key]["count"] += 1
+            if time_estimate > grouped_times[key]["time_estimate"]:
+                grouped_times[key]["time_estimate"] = time_estimate
+
+    # Calculate total time by multiplying max time estimate by count for each file
+    total_estimated_days = math.ceil(
+        sum(group["time_estimate"] * group["count"] for group in grouped_times.values())
+    )
+
     total_cost = sum(cost["service_list"][0]["estimated_cost"] for cost in costs)
+
+    # Calculate completion date
+    completion_date = datetime.now() + timedelta(days=total_estimated_days)
+    formatted_date = completion_date.strftime("%d %B %Y")
+
     blocks.append(
         {
             "type": "section",
@@ -558,6 +584,16 @@ def verify_quote_blocks(
             "text": {
                 "type": "mrkdwn",
                 "text": _("*Total Cost*: USD ${total_cost:.2f}"),
+            },
+        }
+    )
+    blocks.append(
+        {
+            "type": "section",
+            "block_id": "total_estimated_time_block",
+            "text": {
+                "type": "mrkdwn",
+                "text": _("*Estimated Completion*: {formatted_date}"),
             },
         }
     )

@@ -1953,7 +1953,7 @@ async def submit_verification_job(
 
         # Send initial confirmation
         msg = _(
-            "Thank you for sending your document for human verification! We will notify as soon as the translation is complete."
+            "Thank you for sending your document for human translation! We will notify as soon as the translation is complete."
         )
         response = await client.chat_postMessage(
             channel=user_id,

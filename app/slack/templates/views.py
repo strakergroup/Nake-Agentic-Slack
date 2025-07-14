@@ -297,7 +297,7 @@ async def home_view(
     #             "text": {
     #                 "type": "mrkdwn",
     #                 "text": _(
-    #                     ":drum_with_drumsticks: Introducing a new option: AI Translate your content and receive translation quality scores, then verify with Straker to send for human verification"
+    #                     ":drum_with_drumsticks: Introducing a new option: AI Translate your content and receive translation quality scores, then verify with Straker to send for human translation"
     #                 ),
     #             },
     #         },
@@ -525,7 +525,7 @@ def evaluate_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "AI Translate your content and receive translation quality scores, then verify with Straker to send for human verification"
+                        "AI Translate your content and receive translation quality scores, then verify with Straker to send for human translation"
                     ),
                 },
             },
@@ -602,7 +602,7 @@ def evaluate_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
             #             {
             #                 "text": {
             #                     "type": "plain_text",
-            #                     "text": _("Human verification only"),
+            #                     "text": _("Human translation only"),
             #                     "emoji": False,
             #                 },
             #                 "value": "92741a61-932c-41af-8c84-5a56a2c9b845",
@@ -622,7 +622,7 @@ def evaluate_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
 
 
 def human_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
-    """The template for the modal to submit a file to verify human verification only."""
+    """The template for the modal to submit a file to verify human translation only."""
     file_options, initial_options = map_file_options(file_info)
     files_block_element = {
         "type": "multi_static_select",
@@ -1424,7 +1424,7 @@ def verify_job_modal(
             "text": {
                 "type": "mrkdwn",
                 "text": _(
-                    ":sports_medal: AI Translate your content and receive translation quality scores, then verify with Straker to send for human verification"
+                    ":sports_medal: AI Translate your content and receive translation quality scores, then verify with Straker to send for human translation"
                 ),
             },
         },
@@ -1489,8 +1489,8 @@ def verify_job_modal(
     return {
         "type": "modal",
         "callback_id": "verify_job",
-        "title": {"type": "plain_text", "text": _("Human Verification", 23)[:24]},
-        "submit": {"type": "plain_text", "text": _("Human Verification Job", 23)[:24]},
+        "title": {"type": "plain_text", "text": _("Human Translation", 23)[:24]},
+        "submit": {"type": "plain_text", "text": _("Human Translation Job", 23)[:24]},
         "private_metadata": json.dumps(
             {
                 "job_uuid": job["uuid"],
