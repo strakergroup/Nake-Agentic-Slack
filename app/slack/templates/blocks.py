@@ -410,7 +410,7 @@ def verify_job_blocks(
             "text": {
                 "type": "mrkdwn",
                 "text": _(
-                    "{lang_label} Human verification has been submitted for this language."
+                    "{lang_label} Human translation has been submitted for this language."
                 ),
             },
         }
@@ -498,7 +498,7 @@ def verify_quote_blocks(
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "{lang_label} Human verification has been submitted for this language."
+                            "{lang_label} Human translation has been submitted for this language."
                         ),
                     },
                 }

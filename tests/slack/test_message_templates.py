@@ -112,7 +112,7 @@ class TestVerifyCompleteMessage:
 
         # Check that the text includes the correct job title and language
         expected_text = (
-            f"Quality Evaluation Job '{job_title}' human verification complete. "
+            f"Quality Evaluation Job '{job_title}' human translation complete. "
             f"The file has been verified for language {localized_lang_label}."
         )
         assert message.blocks[0]["text"]["text"] == expected_text
