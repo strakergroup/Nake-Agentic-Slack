@@ -2013,7 +2013,6 @@ async def handle_checkbox_action(ack, body, client, action):
             # Parse all selected options from the state values
             selected_options = []
             state_values = body["view"]["state"]["values"]
-            print(json.dumps(state_values, indent=2))
             # Iterate through all block IDs that contain verification_checkbox_action
             for block_id, block_data in state_values.items():
                 if "verification_checkbox_action" in block_data:
