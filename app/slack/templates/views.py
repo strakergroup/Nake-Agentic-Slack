@@ -508,7 +508,6 @@ def evaluate_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
             "emoji": True,
         },
         "options": file_options,
-        "max_selected_items": 10,
     }
     if initial_options:
         files_block_element["initial_options"] = initial_options
@@ -633,7 +632,6 @@ def human_job_modal(channel_id: str, file_info: list[dict[str, Any]]):
             "emoji": True,
         },
         "options": file_options,
-        "max_selected_items": 10,
     }
     if initial_options:
         files_block_element["initial_options"] = initial_options
@@ -1526,7 +1524,7 @@ def verify_quote_summary_modal(
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Review your files before submitting for *human translation*. Submitted orders cannot be canceled."
+                        "Please deselect any unneeded files or target languages before submitting for human translation. Submitted orders cannot be cancelled"
                     ),
                 },
             },
@@ -1568,7 +1566,6 @@ def document_mt_job_modal(
             "emoji": True,
         },
         "options": file_options,
-        "max_selected_items": 10,
     }
     if initial_options:
         files_block_element["initial_options"] = initial_options
