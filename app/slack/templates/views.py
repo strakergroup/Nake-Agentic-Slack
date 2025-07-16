@@ -1524,7 +1524,7 @@ def verify_quote_summary_modal(
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Review your files before submitting for *human translation*. Submitted orders cannot be canceled."
+                        "Please deselect any unneeded files or target languages before submitting for human translation. Submitted orders cannot be cancelled"
                     ),
                 },
             },
