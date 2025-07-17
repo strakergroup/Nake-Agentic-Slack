@@ -1732,6 +1732,7 @@ class NewJobMessage(SlackMessage):
                 },
                 "accessory": {
                     "type": "button",
+                    "style": "primary",
                     "text": {
                         "type": "plain_text",
                         "emoji": True,
@@ -1790,6 +1791,7 @@ class NewJobMessage(SlackMessage):
                             "text": _("Human Translation"),
                         },
                         "action_id": "evaluate_job",
+                        "style": "primary",
                         "value": json.dumps(
                             {
                                 "files": files_dict,
