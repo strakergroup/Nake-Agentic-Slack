@@ -982,7 +982,7 @@ def get_language_cloud_connect_url(
         )
     }
     # TODO: link to apps page
-    return f"{domains.verify}/marketplace?{urlencode(params)}"
+    return f"{domains.verify}/integrations?{urlencode(params)}"
 
 
 async def approve_pending_groups(
