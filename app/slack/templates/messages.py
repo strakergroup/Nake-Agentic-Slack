@@ -3332,7 +3332,7 @@ class DocumentMTJobMessage(SlackMessage):
 
 class JobTranscribedEventMessage(SlackMessage):
 
-    def __init__(self, task_uuid: str, source_file_name: str, symlink: str) -> None:
+    def __init__(self, task_uuid: str, source_file_name: str) -> None:
         title = _(
             "We have *transcribed* your file *{source_file_name}* and SRT can be downloaded below."
         )
@@ -3344,9 +3344,7 @@ class JobTranscribedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": title.format(
-                            source_file_name=source_file_name, symlink=symlink
-                        ),
+                        "text": title.format(source_file_name=source_file_name),
                     },
                 },
                 {
@@ -3356,21 +3354,11 @@ class JobTranscribedEventMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("Download"),
-                                "emoji": False,
-                            },
-                            "action_id": "download_transcribed_file",
-                            "style": "primary",
-                            "value": task_uuid,
-                        },
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
                                 "text": _("AI Translation"),
                                 "emoji": False,
                             },
                             "action_id": "show_srt_translate_form",
+                            "style": "primary",
                             "value": task_uuid,
                         },
                     ],

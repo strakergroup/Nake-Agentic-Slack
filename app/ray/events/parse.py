@@ -116,9 +116,7 @@ async def get_ray_event_message(
     elif event_type == "transcription:slack:media:results":
         event7 = JobTranscribedEvent.model_validate(event_data)
         # send message which contains event.output_file
-        return JobTranscribedEventMessage(
-            event7.task_uuid, event7.source_file_name, event7.symlink
-        )
+        return JobTranscribedEventMessage(event7.task_uuid, event7.source_file_name)
     elif event_type == "verify:slack:document:translated":
         event8 = MtFileReponseSchema.model_validate(event_data)
         return DocMtMessage()
