@@ -1331,7 +1331,7 @@ def verify_job_modal(
         "type": "modal",
         "callback_id": "verify_job",
         "title": {"type": "plain_text", "text": _("Adjust Request", 23)[:24]},
-        "submit": {"type": "plain_text", "text": _("Confirm")},
+        "submit": {"type": "plain_text", "text": _("Submit")},
         "close": {"type": "plain_text", "text": _("Cancel")},
         "private_metadata": json.dumps(
             {
@@ -1368,7 +1368,7 @@ def verify_quote_summary_modal(
         "type": "modal",
         "callback_id": "verify_job",
         "title": {"type": "plain_text", "text": _("Adjust Request", 23)[:24]},
-        "submit": {"type": "plain_text", "text": _("Confirm")},
+        "submit": {"type": "plain_text", "text": _("Submit")},
         "close": {"type": "plain_text", "text": _("Cancel")},
         "private_metadata": json.dumps(
             {
