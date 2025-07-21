@@ -143,11 +143,20 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 )
         elif isinstance(message, JobTranscribedEventMessage):
             if not event.data.get("error"):
-                await post_notification(
+                response = await post_notification(
                     app.client,
                     event,
                     auth.slack_user,
                     message,
+                )
+                output_file = download_from_file_server(
+                    event.data["file_id"],
+                )
+                await app.client.files_upload_v2(
+                    channel=response["channel"],
+                    file=output_file.get("file"),
+                    title=event.data["file_name"],
+                    filename=output_file.get("file_name"),
                 )
             else:
                 await app.client.chat_postEphemeral(
