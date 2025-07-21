@@ -5,6 +5,7 @@ import math
 from datetime import datetime, timedelta
 from typing import Any
 from ray_sdk.api.v3.models import Quote
+from app.slack.select_options import get_languages_sync
 
 from app.ray.events.models import JobQuoteCreatedEvent
 from app.slack.utils import segment_quality_score
@@ -541,6 +542,29 @@ def verify_quote_blocks(
                                     "action_id": "verification_checkbox_action",
                                 },
                             ],
+                        }
+                    )
+                    source_lang_uuid = file["report"]["language_uuid"]
+                    all_langs = get_languages_sync()
+                    if not all_langs:
+                        # Fallback: return a default message if languages cache is empty
+                        source_lang = {"name": "Unknown Language"}
+                    else:
+                        source_lang = next(
+                            (
+                                lang
+                                for lang in all_langs
+                                if lang["uuid"] == source_lang_uuid
+                            ),
+                            None,
+                        )
+                    blocks.append(
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": job_summary_string(source_lang, lang, file),
+                            },
                         }
                     )
                 else:

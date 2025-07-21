@@ -1,7 +1,21 @@
-import functools
+"""
+Language selection and caching utilities for the Slack app.
+
+This module provides both async and sync access to language data from the RAY API.
+The languages are cached in Redis and also stored in a global variable for synchronous access.
+
+Key functions:
+- _get_languages_cached(): Async function that fetches and caches languages from Redis/API
+- get_languages_sync(): Sync function that returns the globally cached languages
+- initialize_languages_cache(): Called on app startup to populate the global cache
+
+The global cache is automatically initialized on app startup.
+"""
+
 from typing import Any, Iterable
 from itertools import islice
 import json
+import asyncio
 
 from buglog import notify_exception
 
@@ -12,6 +26,9 @@ from ..ray import get_languages
 from ..ray.settings import get_auto_translate_languages
 from ..models import SlackGroupSettingsTranslation
 from app.translate import _
+
+# Global variable to store cached languages
+_cached_languages: list[dict[str, str]] = []
 
 
 async def _get_languages_cached() -> list[dict[str, str]]:
@@ -39,6 +56,36 @@ async def _get_languages_cached() -> list[dict[str, str]]:
     except Exception as e:
         notify_exception(e)
     return languages
+
+
+async def _update_global_cache() -> None:
+    """Update the global cache with fresh language data."""
+    global _cached_languages
+    _cached_languages = await _get_languages_cached()
+
+
+def get_languages_sync() -> list[dict[str, str]]:
+    """Synchronous getter for cached languages. Returns the globally cached languages.
+    If the global cache is empty, triggers _update_global_cache() in background to populate it.
+    """
+    global _cached_languages
+    if not _cached_languages:
+        # Start the async function in background without waiting
+        try:
+            asyncio.create_task(_update_global_cache())
+        except RuntimeError:
+            # If no event loop is running, we can't create a task
+            # The cache will remain empty for this call
+            pass
+        except Exception as e:
+            notify_exception(e)
+    return _cached_languages
+
+
+async def initialize_languages_cache() -> None:
+    """Initialize the global languages cache on app startup."""
+    global _cached_languages
+    _cached_languages = await _get_languages_cached()
 
 
 async def get_language_options(

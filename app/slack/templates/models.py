@@ -270,7 +270,7 @@ class EvaluateJobForm(BaseModel):
 
     @classmethod
     def parse_human_job_form(
-        cls, values: dict[str, dict[str, Any]]
+        cls, values: dict[str, dict[str, Any]], callback_id: str = "evaluate_job_human"
     ) -> "EvaluateJobForm":
         target_langs_uuid = [
             opt["value"]
@@ -279,10 +279,24 @@ class EvaluateJobForm(BaseModel):
             ]
         ]
         job_notes = values.get("job_notes", {}).get("job_notes", {}).get("value", "")
+
+        # Set workflow_options based on callback_id
+        if callback_id == "evaluate_job":
+            # For evaluate jobs, try to get workflow_options from form, default to None
+            selected_option = (
+                values.get("workflow_options", {})
+                .get("workflow_options", {})
+                .get("selected_option")
+            )
+            workflow_options = selected_option["value"] if selected_option else None
+        else:
+            # For human jobs, use the hardcoded workflow UUID
+            workflow_options = "92741a61-932c-41af-8c84-5a56a2c9b845"
+
         return cls(
             reference="slack job",
             target_langs_uuid=target_langs_uuid,
-            workflow_options="92741a61-932c-41af-8c84-5a56a2c9b845",
+            workflow_options=workflow_options,
             files=[
                 SlackFile.parse_slack_option(opt)
                 for opt in values["files"]["files"]["selected_options"]
