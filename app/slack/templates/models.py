@@ -11,6 +11,7 @@ from pydantic import (
 from ray_sdk.api.v3.file import is_valid_file_ext
 
 from ...models import SlackGroupSettingsTranslation
+from ...constants import HUMAN_EVALUATION_WORKFLOW_UUID
 
 
 def convert_pydantic_to_slack_error(error: ValidationError) -> dict[str, str]:
@@ -291,7 +292,7 @@ class EvaluateJobForm(BaseModel):
             workflow_options = selected_option["value"] if selected_option else None
         else:
             # For human jobs, use the hardcoded workflow UUID
-            workflow_options = "92741a61-932c-41af-8c84-5a56a2c9b845"
+            workflow_options = HUMAN_EVALUATION_WORKFLOW_UUID
 
         return cls(
             reference="slack job",
