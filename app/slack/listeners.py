@@ -1821,7 +1821,6 @@ async def verify_job_modal_open_action(
 
     try:
         job = await get_client_evaluation_job(context.ray.client, job_uuid)
-        print(json.dumps(job, indent=4))
         all_langs = await get_verify_languages()
         if await require_ray_client(context, prompt_login=True):
             langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
