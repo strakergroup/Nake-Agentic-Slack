@@ -297,7 +297,7 @@ async def home_view(
     #             "text": {
     #                 "type": "mrkdwn",
     #                 "text": _(
-    #                     ":drum_with_drumsticks: Introducing a new option: AI Translate your content and receive translation quality scores, then verify with Straker to send for human translation"
+    #                     ":drum_with_drumsticks: Introducing a new option: AI Translate your content and receive translation quality scores, then opt for human verification if needed."
     #                 ),
     #             },
     #         },
@@ -527,7 +527,7 @@ def human_job_modal(
         title = _("Quality Evaluation", 23)[:24]
         submit_text = _("Submit", 23)[:24]
         description = _(
-            "AI Translate your content and receive translation quality scores, then verify with Straker to send for human translation"
+            "AI Translate your content and receive translation quality scores, then opt for human verification if needed."
         )
         callback_id = "evaluate_job"
         close_text = _("Close")
