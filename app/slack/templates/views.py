@@ -6,9 +6,6 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from app.translate import _
 from .blocks import (
     home_auth_blocks,
-    job_summary_no_score,
-    job_summary_string,
-    verify_job_blocks,
     verify_quote_blocks,
 )
 from ..select_options import (

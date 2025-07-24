@@ -3706,7 +3706,7 @@ class EvaluateSuccessMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": _("Send to Human Translation"),
+                            "text": _("View QE Scores"),
                         },
                         "style": "primary",
                         "value": job["uuid"],
