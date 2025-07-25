@@ -32,7 +32,7 @@ _cached_languages: list[dict[str, str]] = []
 
 
 async def _get_languages_cached() -> list[dict[str, str]]:
-    key = "slack-ray-translator:languages:v2"
+    key = "slack-ray-translator:languages:v1"
     cached = ""
     try:
         cached = await redis_conn.get(key)
@@ -48,13 +48,7 @@ async def _get_languages_cached() -> list[dict[str, str]]:
 
     languages = (await get_languages()).data
     languages = [
-        {
-            "code": lang.code,
-            "name": lang.name,
-            "uuid": lang.uuid,
-            "parent_label": "English" if lang.name.startswith("English") else lang.name,
-        }
-        for lang in languages
+        {"code": lang.code, "name": lang.name, "uuid": lang.uuid} for lang in languages
     ]
     # Cache languages for 1 hour.
     try:

@@ -683,7 +683,7 @@ def job_summary_string(
     source_lang: dict[str, Any], lang: dict[str, Any], file: dict[str, Any]
 ):
     """Returns the job summary string."""
-    formatted_source_lang = _(source_lang["parent_label"])
+    formatted_source_lang = _(source_lang["name"])
     formatted_target_lang = _(lang["name"])
     file_name = file["filename"]
     report = lang.get("report", None)
