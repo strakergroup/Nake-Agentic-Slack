@@ -6,12 +6,14 @@ from app.slack.select_options import (
     _get_languages_cached,
     get_language_options,
     map_file_options,
+    get_languages_sync,
+    initialize_languages_cache,
 )
 
 
 @pytest.mark.asyncio
 async def test_get_languages_cached(redis: Redis):
-    key = "slack-ray-translator:languages"
+    key = "slack-ray-translator:languages:v1"
     await redis.delete(key)
     languages = await _get_languages_cached()
     assert isinstance(languages, list)
@@ -20,7 +22,31 @@ async def test_get_languages_cached(redis: Redis):
     assert "code" in languages[0]
     assert "name" in languages[0]
     # Test that the result is cached in Redis.
-    assert (await redis.ttl(key)) > 0
+    ttl = await redis.ttl(key)
+    assert ttl > 0, f"Expected TTL > 0, got {ttl}"
+
+
+def test_get_languages_sync():
+    """Test the synchronous getter for cached languages."""
+    languages = get_languages_sync()
+    assert isinstance(languages, list)
+    # The cache might be empty if not initialized, but should still be a list
+    if languages:
+        assert isinstance(languages[0], dict)
+        assert "code" in languages[0]
+        assert "name" in languages[0]
+
+
+@pytest.mark.asyncio
+async def test_initialize_languages_cache():
+    """Test initializing the languages cache."""
+    await initialize_languages_cache()
+    languages = get_languages_sync()
+    assert isinstance(languages, list)
+    assert len(languages) > 0
+    assert isinstance(languages[0], dict)
+    assert "code" in languages[0]
+    assert "name" in languages[0]
 
 
 @pytest.mark.asyncio

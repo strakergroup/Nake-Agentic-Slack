@@ -336,7 +336,7 @@ class WelcomeBackMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI Translate your content and receive translation quality scores, then verify with Straker to send for human translation"
+                                    ":sports_medal: AI Translate your content and receive translation quality scores, then opt for human verification if needed."
                                 ),
                             },
                             "accessory": {
@@ -553,7 +553,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI Translate your content and receive translation quality scores, then verify with Straker to send for human translation"
+                                    ":sports_medal: AI Translate your content and receive translation quality scores, then opt for human verification if needed."
                                 ),
                             },
                             "accessory": {
@@ -1753,7 +1753,7 @@ class NewJobMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "*Quality Evaluation* - AI Translate your content and receive translation quality scores, then verify with Straker to send for human translation"
+                            "*Quality Evaluation* - AI Translate your content and receive translation quality scores, then opt for human verification if needed."
                         ),
                     },
                     "accessory": {
@@ -2060,7 +2060,7 @@ class HelpMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI Translate your content and receive translation quality scores, then verify with Straker to send for human translation"
+                                    ":sports_medal: AI Translate your content and receive translation quality scores, then opt for human verification if needed."
                                 ),
                             },
                             "accessory": {
@@ -3694,7 +3694,7 @@ class EvaluateSuccessMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": _("Send to Human Translation"),
+                            "text": _("View QE Scores"),
                         },
                         "style": "primary",
                         "value": job["uuid"],
