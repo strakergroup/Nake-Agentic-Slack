@@ -3,6 +3,7 @@ from typing import Any
 
 from app.api.verify import get_evaluation_job, get_job_pricing
 from app.auth.connector import SlackUser, get_ray_client
+from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.ray.utils import is_ibm_enterprise
 from app.slack.select_options import _get_languages_cached
 
@@ -128,7 +129,7 @@ async def get_ray_event_message(
         # TODO type job
         job = await get_evaluation_job(slack_user, event_data["job_uuid"])
         all_langs = await _get_languages_cached()
-        if job["data"]["workflow_uuid"] == "92741a61-932c-41af-8c84-5a56a2c9b845":
+        if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
             costs = await get_job_pricing(
                 await get_ray_client(slack_user.user_id, slack_user.team_id),
                 job["data"]["uuid"],
