@@ -1833,7 +1833,7 @@ async def verify_job_modal_open_action(
             final_view = (
                 verify_quote_summary_modal(job["data"], costs["data"], message_ts)
                 if action["action_id"] == "quote_summary_modal_open"
-                else verify_job_modal(job["data"], costs["data"])
+                else verify_job_modal(job["data"], costs["data"], message_ts)
             )
             try:
                 await client.views_update(view_id=view_id, view=final_view)

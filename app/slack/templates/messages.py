@@ -3630,10 +3630,10 @@ class EvaluateSuccessMessage(SlackMessage):
         self,
         job: dict[str, Any],
         is_ibm_enterprise: bool,
-        tokens: int,
+        tokens: int | None = None,
     ) -> None:
         blocks = []
-        if not is_ibm_enterprise:
+        if not is_ibm_enterprise and tokens:
             blocks.append(
                 {
                     "type": "section",
@@ -3652,7 +3652,7 @@ class EvaluateSuccessMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": _("View QE Scores"),
+                            "text": _("Send for Human Verification"),
                         },
                         "style": "primary",
                         "value": job["uuid"],

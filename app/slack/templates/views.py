@@ -1320,6 +1320,7 @@ def translation_settings_view_error(message: str) -> dict[str, Any]:
 def verify_job_modal(
     job: dict[str, Any],
     costs: list[dict[str, Any]],
+    timestamp: str,
 ) -> dict[str, Any]:
     """Generate modal for job verification with total cost calculation."""
     blocks = verify_quote_blocks(job, costs)
@@ -1332,6 +1333,7 @@ def verify_job_modal(
         "private_metadata": json.dumps(
             {
                 "job_uuid": job["uuid"],
+                "timestamp": timestamp,
             }
         ),
         "blocks": [
