@@ -1742,7 +1742,7 @@ async def evaluate_job_submit(
             )
         else:
             msg = _(
-                "You've successfully submitted your document(s) for quality evaluation. Click on the button below to view the overall scores and proceed further to send for human translation."
+                "You've successfully submitted your document(s) for quality evaluation. If you would like to proceed further, click on the button below to send for human translation."
             )
         await client.chat_postMessage(channel=channel_id, text=msg)
         input_files = []
