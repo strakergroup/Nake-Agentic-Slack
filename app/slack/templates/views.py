@@ -1319,7 +1319,6 @@ def translation_settings_view_error(message: str) -> dict[str, Any]:
 
 def verify_job_modal(
     job: dict[str, Any],
-    all_langs: list[dict[str, str]],
     costs: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Generate modal for job verification with total cost calculation."""
@@ -1355,7 +1354,6 @@ def verify_job_modal(
 
 def verify_quote_summary_modal(
     job: dict[str, Any],
-    all_langs: list[dict[str, str]],
     costs: list[dict[str, Any]],
     timestamp: str,
 ) -> dict[str, Any]:
