@@ -137,9 +137,7 @@ async def get_ray_event_message(
                 [lang["uuid"] for lang in job["data"]["target_languages"]],
             )
             return HumanJobQuoteMessage(job["data"], costs["data"])
-        return EvaluateSuccessMessage(
-            job["data"], all_langs, event_data["tokens"], is_ibm
-        )
+        return EvaluateSuccessMessage(job["data"], is_ibm, event_data["tokens"])
     elif event_type == "verify:human_verification:completed":
         all_langs = await _get_languages_cached()
         lang_label = ""

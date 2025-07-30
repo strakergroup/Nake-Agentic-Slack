@@ -1742,7 +1742,7 @@ async def evaluate_job_submit(
             )
         else:
             msg = _(
-                "You've successfully submitted your document(s) for quality evaluation. Click on the button below to view the overall scores and proceed further to send for human translation."
+                "You've successfully submitted your document(s) for quality evaluation. If you would like to proceed further, click on the button below to send for human translation."
             )
         await client.chat_postMessage(channel=channel_id, text=msg)
         input_files = []
@@ -1821,7 +1821,6 @@ async def verify_job_modal_open_action(
 
     try:
         job = await get_client_evaluation_job(context.ray.client, job_uuid)
-        all_langs = await get_verify_languages()
         if await require_ray_client(context, prompt_login=True):
             langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
             costs = await get_job_pricing(
@@ -1832,11 +1831,9 @@ async def verify_job_modal_open_action(
             )
             # Update the view with the final content
             final_view = (
-                verify_quote_summary_modal(
-                    job["data"], all_langs, costs["data"], message_ts
-                )
+                verify_quote_summary_modal(job["data"], costs["data"], message_ts)
                 if action["action_id"] == "quote_summary_modal_open"
-                else verify_job_modal(job["data"], all_langs, costs["data"])
+                else verify_job_modal(job["data"], costs["data"], message_ts)
             )
             try:
                 await client.views_update(view_id=view_id, view=final_view)
