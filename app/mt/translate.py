@@ -1,10 +1,11 @@
+from buglog import notify_exception
 import httpx
 import langcodes
 from slack_bolt.context.async_context import AsyncBoltContext
 
 from app.mt.schemas import TranslationRequest, TranslationResponse
 from ..config import domains
-from app.auth.connector import get_group_mt_engine
+from app.auth.connector import get_channel_info, get_group_mt_engine
 from app.slack.utils import escape_slack_emoji, unescape_slack_emoji
 from ..models import Language
 from ..database import engines
@@ -147,6 +148,19 @@ async def get_ai_translation(
     headers = {
         "Authorization": f"Bearer {token}",
     }
+    channel_id = context.get("channel_id", "")
+    channel_name = None
+    if channel_id:
+        if not channel_id.startswith("C"):
+            channel_name = "direct message"
+        else:
+            try:
+                channel_name = await context.client.conversations_info(
+                    channel=channel_id
+                )
+                channel_name = channel_name.get("channel", {}).get("name", None)
+            except Exception as e:
+                notify_exception(e, "Failed to get channel info")
     task_data = TranslationRequest(
         text=escaped_text,
         target_languages=target_langs,
@@ -154,6 +168,7 @@ async def get_ai_translation(
         usage_type=usage_type,
         email=context.get("user_info", {}).get("profile", {}).get("email", "unknown"),
         group_uuid=context["ray"].super_group[0].id,
+        channel_name=channel_name,
     )
     async with httpx.AsyncClient() as http:
         response = await http.post(

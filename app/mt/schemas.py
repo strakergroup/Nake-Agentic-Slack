@@ -13,6 +13,7 @@ class TranslationRequest(BaseModel):
         None  # used when user is not logged in or does not have an lc account
     )
     group_uuid: str | None = None
+    channel_name: str | None = None
 
 
 class TranslationResponse(BaseModel):
