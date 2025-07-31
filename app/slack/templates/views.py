@@ -494,7 +494,10 @@ def job_search_modal(
 
 
 def human_job_modal(
-    channel_id: str, file_info: list[dict[str, Any]], job_type: str = "human"
+    channel_id: str,
+    file_info: list[dict[str, Any]],
+    is_ibm_enterprise: bool,
+    job_type: str = "human",
 ):
     """The template for the modal to submit a file to verify quality evaluation or human translation."""
     file_options, initial_options = map_file_options(file_info)
@@ -542,7 +545,6 @@ def human_job_modal(
         # separator
         {"type": "divider"},
     ]
-
     # Add files block
     blocks.append(
         {
@@ -556,6 +558,30 @@ def human_job_modal(
             },
         }
     )
+
+    if not is_ibm_enterprise:
+        blocks.append(
+            {
+                "type": "input",
+                "block_id": "reference",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "reference",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": _("Project Name"),
+                        "emoji": True,
+                    },
+                    "min_length": 4,
+                    "max_length": 110,
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": _("Create a name for your project"),
+                    "emoji": True,
+                },
+            },
+        )
 
     # Add target languages block (shared for both job types)
     target_langs_block = {
