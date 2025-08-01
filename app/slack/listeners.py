@@ -1967,6 +1967,7 @@ async def handle_verify_job_submission(
 
 
 @app.block_action("verification_checkbox_action", middleware=[ray_connection])
+@slack_log_decorator
 async def handle_checkbox_action(ack, body, client, action):
     await ack()
 
@@ -2077,6 +2078,8 @@ async def handle_checkbox_action(ack, body, client, action):
                     "callback_id": view["callback_id"],
                 },
             )
+        except Exception as e:
+            notify_exception(e)
         finally:
             # Always release the lock when done
             await redis_conn.delete(lock_key)
