@@ -1935,10 +1935,7 @@ async def submit_verification_job(
                     )
                     updated_msg = HumanJobQuoteMessage(job["data"], costs["data"])
                 else:
-                    updated_msg = EvaluateSuccessMessage(
-                        job["data"],
-                        is_ibm_enterprise=False,
-                    )
+                    return
 
                 # Create updated message with the new status
 

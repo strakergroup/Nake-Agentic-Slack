@@ -293,9 +293,11 @@ class EvaluateJobForm(BaseModel):
         else:
             # For human jobs, use the hardcoded workflow UUID
             workflow_options = HUMAN_EVALUATION_WORKFLOW_UUID
-
+        reference = (
+            values.get("reference", {}).get("reference", {}).get("value", "slack job")
+        )
         return cls(
-            reference="slack job",
+            reference=reference,
             target_langs_uuid=target_langs_uuid,
             workflow_options=workflow_options,
             files=[

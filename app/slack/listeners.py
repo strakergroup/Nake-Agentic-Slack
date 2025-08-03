@@ -1784,7 +1784,9 @@ async def evaluate_job_action(
         channel_id = action_data.get("channel_id")
         if files:
             job_type = action_data.get("job_type", "evaluate")
-            view = human_job_modal(channel_id, files, job_type)
+            view = human_job_modal(
+                channel_id, files, is_ibm_enterprise(context.enterprise_id), job_type
+            )
             await client.views_open(
                 trigger_id=body["trigger_id"],
                 view=view,
