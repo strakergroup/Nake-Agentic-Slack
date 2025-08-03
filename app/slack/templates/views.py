@@ -577,7 +577,7 @@ def human_job_modal(
                 },
                 "label": {
                     "type": "plain_text",
-                    "text": _("Create a name for your project"),
+                    "text": _("Project Name"),
                     "emoji": True,
                 },
             },
