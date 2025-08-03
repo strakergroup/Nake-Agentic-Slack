@@ -2000,6 +2000,22 @@ async def handle_checkbox_action(ack, body, client, action):
                     break
             else:
                 return
+
+            # Re-check if this is still the latest action after lock acquisition
+            latest_action_ts = await redis_conn.get(latest_action_key)
+            if latest_action_ts and float(latest_action_ts) > float(action_ts):
+                # A more recent action is already being processed, skip this one
+                return
+            else:
+                # We are still the latest action, try to acquire the lock
+                lock_acquired = await redis_conn.set(
+                    lock_key, action_ts, ex=2, nx=True
+                )  # 2 second lock, only if not exists
+
+                if not lock_acquired:
+                    # Still can't acquire lock, give up
+                    return
+
         try:
             # Parse all selected options from the state values
             selected_options = []
