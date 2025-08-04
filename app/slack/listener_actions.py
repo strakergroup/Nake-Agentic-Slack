@@ -11,7 +11,6 @@ from app.api.verify import (
     create_human_job,
     get_client_evaluation_job,
     get_job_pricing,
-    get_verify_languages,
 )
 import langcodes
 from slack_sdk.errors import SlackApiError
@@ -28,7 +27,6 @@ from app.transcriber_tasks.tasks import create_asr_task
 
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
-    EvaluateSuccessMessage,
     HelpMessage,
     HumanJobQuoteMessage,
     LoginMessage,

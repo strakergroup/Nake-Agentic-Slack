@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from pydantic import BaseModel, ValidationError
 
 from app.ray.utils import (
-    download_from_file_server,
+    download_from_file_server_async,
     is_ibm_enterprise,
     set_user_language,
 )
@@ -126,7 +126,9 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
             except ValidationError:
                 app.client.token = auth.slack_user.bot_token
                 success_data = MtSuccessResponseSchema.model_validate(event.data)
-                output_file = download_from_file_server(success_data.file_id)
+                output_file = await download_from_file_server_async(
+                    success_data.file_id
+                )
                 token_count = success_data.tokens
                 title = output_file.get("file_name")
                 token_consumption_message = (
@@ -149,7 +151,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     auth.slack_user,
                     message,
                 )
-                output_file = download_from_file_server(
+                output_file = await download_from_file_server_async(
                     event.data["file_id"],
                 )
                 await app.client.files_upload_v2(
@@ -181,7 +183,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 auth.slack_user,
                 message,
             )
-            output_file = download_from_file_server(
+            output_file = await download_from_file_server_async(
                 event.data["grid_file_id"],
             )
             await app.client.files_upload_v2(
