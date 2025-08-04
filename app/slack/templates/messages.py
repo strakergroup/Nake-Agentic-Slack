@@ -183,13 +183,13 @@ class LoginMessage(SlackMessage):
         elif variation == self.HUMAN_TRANSLATION:
             block_text = "Connect your account to perform human translation."
         elif isinstance(ray_client, RayClient):
-            user_details = f"<<{domains.languagecloud}|{ray_client.username}>>"
+            user_details = f"<{domains.languagecloud}|{ray_client.username}>"
             block_text = (
                 "Your connected account is: {user_details}. "
                 + "\nYou can connect a different account by clicking this button."
             )
             if ray_client.sso:
-                block_text = "Your connected account is: *{ray_client.username}*."
+                block_text = "Your connected account is: {user_details}"
         msg: list[dict[str, Any]] = [
             {
                 "type": "section",
