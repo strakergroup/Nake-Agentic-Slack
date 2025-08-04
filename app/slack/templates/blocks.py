@@ -431,16 +431,19 @@ def verify_job_blocks(
             },
         ]
 
-    segment_count = sum(report["count"].values())
+    # Filter out unscored/untranslated segments to match cloud-verify-ui behavior
+    counts = report["count"]
+    scored_categories = ["translation_memory", "best", "good", "acceptable", "bad"]
+    segment_count = sum(counts.get(category, 0) for category in scored_categories)
+
     if segment_count == 0:
         bad = good = best = acceptable = memory_percentage = 0
     else:
-        counts = report["count"]
-        bad = (counts["bad"] / segment_count) * 100
-        good = (counts["good"] / segment_count) * 100
-        best = (counts["best"] / segment_count) * 100
-        acceptable = (counts["acceptable"] / segment_count) * 100
-        memory_percentage = (counts["translation_memory"] / segment_count) * 100
+        bad = (counts.get("bad", 0) / segment_count) * 100
+        good = (counts.get("good", 0) / segment_count) * 100
+        best = (counts.get("best", 0) / segment_count) * 100
+        acceptable = (counts.get("acceptable", 0) / segment_count) * 100
+        memory_percentage = (counts.get("translation_memory", 0) / segment_count) * 100
 
     report_message = (
         f":large_blue_square: {_('Translation Memory')}: {round(memory_percentage)}%\n"
@@ -574,17 +577,20 @@ def verify_quote_blocks(
                     summary = job_summary_string(source_lang, lang, file)
 
                     if report:
-                        segment_count = sum(report["count"].values())
+                        # Filter out unscored/untranslated segments to match cloud-verify-ui behavior
+                        counts = report["count"]
+                        scored_categories = ["translation_memory", "best", "good", "acceptable", "bad"]
+                        segment_count = sum(counts.get(category, 0) for category in scored_categories)
+
                         if segment_count == 0:
                             bad = good = best = acceptable = memory_percentage = 0
                         else:
-                            counts = report["count"]
-                            bad = (counts["bad"] / segment_count) * 100
-                            good = (counts["good"] / segment_count) * 100
-                            best = (counts["best"] / segment_count) * 100
-                            acceptable = (counts["acceptable"] / segment_count) * 100
+                            bad = (counts.get("bad", 0) / segment_count) * 100
+                            good = (counts.get("good", 0) / segment_count) * 100
+                            best = (counts.get("best", 0) / segment_count) * 100
+                            acceptable = (counts.get("acceptable", 0) / segment_count) * 100
                             memory_percentage = (
-                                counts["translation_memory"] / segment_count
+                                counts.get("translation_memory", 0) / segment_count
                             ) * 100
                         report_message = f":large_blue_square: {_('Translation Memory')}: {round(memory_percentage)}%\n"
                         report_message += (
@@ -743,17 +749,20 @@ def evaluate_success_blocks(
                 summary = job_summary_string(source_lang, lang, file)
 
                 if report:
-                    segment_count = sum(report["count"].values())
+                    # Filter out unscored/untranslated segments to match cloud-verify-ui behavior
+                    counts = report["count"]
+                    scored_categories = ["translation_memory", "best", "good", "acceptable", "bad"]
+                    segment_count = sum(counts.get(category, 0) for category in scored_categories)
+
                     if segment_count == 0:
                         bad = good = best = acceptable = memory_percentage = 0
                     else:
-                        counts = report["count"]
-                        bad = (counts["bad"] / segment_count) * 100
-                        good = (counts["good"] / segment_count) * 100
-                        best = (counts["best"] / segment_count) * 100
-                        acceptable = (counts["acceptable"] / segment_count) * 100
+                        bad = (counts.get("bad", 0) / segment_count) * 100
+                        good = (counts.get("good", 0) / segment_count) * 100
+                        best = (counts.get("best", 0) / segment_count) * 100
+                        acceptable = (counts.get("acceptable", 0) / segment_count) * 100
                         memory_percentage = (
-                            counts["translation_memory"] / segment_count
+                            counts.get("translation_memory", 0) / segment_count
                         ) * 100
                     report_message = f":large_blue_square: {_('Translation Memory')}: {round(memory_percentage)}%\n"
                     report_message += (
