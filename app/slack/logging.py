@@ -4,6 +4,8 @@ import asyncio
 import inspect
 import logging
 import functools
+import resource
+import sys
 
 from buglog import notify_exception
 from slack_bolt.request.payload_utils import (
@@ -30,6 +32,19 @@ slack_app_logger = SlackMySQLLogger(
     watson_log_table="slack_logs_watson",
     api_log_table="slack_logs_api",
 )
+
+
+def get_memory_mb() -> float:
+    """Return the current RSS memory usage of the running process in megabytes.
+
+    On macOS (darwin) ru_maxrss is reported in bytes, whereas on Linux it is
+    reported in kilobytes. This helper normalises both to megabytes (MB).
+    """
+    usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    # Convert to MB
+    if sys.platform == "darwin":
+        return usage / (1024 * 1024)
+    return usage / 1024
 
 
 def init_slack_app_log(body: dict[str, Any], context: dict[str, Any]) -> SlackAppLog:
@@ -102,7 +117,7 @@ async def log_slack(log: SlackAppLog):
 
 
 def slack_log_decorator(
-    listener_func: Callable[..., Coroutine]
+    listener_func: Callable[..., Coroutine],
 ) -> Callable[..., Coroutine]:
     """A decorator for Slack Bolt listener functions to log with `ray_logger`
     at the end of the function.
@@ -132,6 +147,7 @@ def slack_log_decorator(
     @functools.wraps(wrapper_sig_func)
     async def wrapper(context, *args, **kwargs):
         start_time = time.time()
+        mem_start = get_memory_mb()
         # Put the context back into kwargs if needed.
         if context_in_listener:
             kwargs["context"] = RayContext(context)
@@ -139,6 +155,9 @@ def slack_log_decorator(
         await listener_func(*args, **kwargs)
         end_time = time.time()
         duration = end_time - start_time
+
+        mem_end = get_memory_mb()
+        mem_delta = mem_end - mem_start
 
         # Log with ray_logger at the end of the function.
         if "log" in context and isinstance(context["log"], SlackAppLog):
@@ -152,6 +171,13 @@ def slack_log_decorator(
                 ts = context["log"].slack_log.ts
             logging.error(
                 f"Slack request took too long Function {listener_func.__name__} {ts} took {duration:.2f} seconds"
+            )
+        if mem_delta > 50:
+            ts = ""
+            if "log" in context and isinstance(context["log"], SlackAppLog):
+                ts = context["log"].slack_log.ts
+            logging.error(
+                f"High memory usage Function {listener_func.__name__} {ts} increased by {mem_delta:.2f} MB - total {mem_end:.2f} MB"
             )
 
     return wrapper

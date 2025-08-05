@@ -8,6 +8,7 @@ from buglog import notify_exception, notify_message
 from ..auth.connector import get_ray_client
 from ..config import config, domains
 from ..slack import slack_handler
+from ..slack.logging import get_memory_mb
 
 
 # Connect the Slack Bolt endpoints to FastAPI
@@ -112,11 +113,14 @@ async def slack_openid_connect(request: Request):
 async def slack(request: Request):
     """Called by the Slack API to handle events, actions, commands, etc."""
     start_time = time.time()
+    mem_start = get_memory_mb()
 
     response = await slack_handler.handle(request)
     end_time = time.time()
+    mem_end = get_memory_mb()
     duration = end_time - start_time
-    if duration > 5:
+    mem_delta = mem_end - mem_start
+    if duration > 5 or mem_delta > 50:
         data = await request.json()
         event = data.get("event", {})
         ts = event.get("event_ts", "")
@@ -124,6 +128,6 @@ async def slack(request: Request):
         channel_type = event.get("channel_type", "")
         if ts:
             print(
-                f"Error: Slack request took too long {ts} took {duration:.2f} seconds {event_type} {channel_type}"
+                f"Warning: Slack request performance issue {ts} took {duration:.2f} seconds {event_type} {channel_type} | Memory +{mem_delta:.2f} MB (total {mem_end:.2f} MB)"
             )
     return response
