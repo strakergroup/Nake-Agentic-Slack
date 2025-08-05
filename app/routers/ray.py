@@ -38,6 +38,7 @@ from ..slack.templates.messages import (
     JobCompletedEventMessage,
     VerifyCompleteMessage,
 )
+from ..slack.web import upload_file_to_slack_memory_efficient
 from ..ray.events.parse import get_ray_event_message
 from ..ray.events.models import (
     Balance,
@@ -136,12 +137,14 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     if not is_ibm_enterprise(auth.slack_user.enterprise_id)
                     else ""
                 )
-                await app.client.files_upload_v2(
-                    channel=success_data.channel_id,
-                    file=output_file.get("file"),
-                    initial_comment=token_consumption_message,
+                # Upload file using memory-efficient method
+                await upload_file_to_slack_memory_efficient(
+                    client=app.client,
+                    file_path=output_file.get("file"),
+                    channel_id=success_data.channel_id,
                     title=title,
                     filename=title,
+                    initial_comment=token_consumption_message,
                 )
         elif isinstance(message, JobTranscribedEventMessage):
             if not event.data.get("error"):
@@ -154,9 +157,11 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 output_file = await download_from_file_server_async(
                     event.data["file_id"],
                 )
-                await app.client.files_upload_v2(
-                    channel=response["channel"],
-                    file=output_file.get("file"),
+                # Upload file using memory-efficient method
+                await upload_file_to_slack_memory_efficient(
+                    client=app.client,
+                    file_path=output_file.get("file"),
+                    channel_id=response["channel"],
                     title=event.data["file_name"],
                     filename=output_file.get("file_name"),
                 )
@@ -186,9 +191,11 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
             output_file = await download_from_file_server_async(
                 event.data["grid_file_id"],
             )
-            await app.client.files_upload_v2(
-                channel=response["channel"],
-                file=output_file.get("file"),
+            # Upload file using memory-efficient method
+            await upload_file_to_slack_memory_efficient(
+                client=app.client,
+                file_path=output_file.get("file"),
+                channel_id=response["channel"],
                 title=output_file.get("file_name"),
                 filename=output_file.get("file_name"),
             )

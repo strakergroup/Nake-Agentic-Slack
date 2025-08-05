@@ -6,6 +6,7 @@ import datetime
 from urllib.parse import urlencode, unquote
 import os
 import asyncio
+import tempfile
 
 from buglog import notify_exception
 
@@ -228,21 +229,24 @@ async def download_from_file_server_async(file_id: str):
             content_disposition = response.headers.get("Content-Disposition")
             filename = get_filename_from_header(content_disposition)
 
-            # Create a BytesIO buffer and stream content in chunks
-            buffer = BytesIO()
+            # Create a temporary file to avoid loading entire file into memory
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{filename}")
+            try:
+                # Stream content directly to temp file in chunks
+                chunk_size = 8192  # 8KB chunks for better memory management
+                async for chunk in response.aiter_bytes(chunk_size):
+                    temp_file.write(chunk)
+                temp_file.close()
 
-            # Stream in smaller chunks to minimize memory usage
-            chunk_size = 8192  # 8KB chunks for better memory management
-            async for chunk in response.aiter_bytes(chunk_size):
-                buffer.write(chunk)
-
-            # Reset buffer position for reading
-            buffer.seek(0)
-
-            return {
-                "file_name": filename,
-                "file": buffer,
-            }
+                return {
+                    "file_name": filename,
+                    "file": temp_file.name,  # Return file path instead of BytesIO
+                }
+            except Exception:
+                # Clean up temp file on error
+                if os.path.exists(temp_file.name):
+                    os.unlink(temp_file.name)
+                raise
 
 
 def download_from_file_server(file_id: str):

@@ -36,6 +36,7 @@ from ..redis import redis_conn, is_duplicate_event
 
 from .app import app
 from .middleware import ray_connection, require_ray_client, require_mt_tokens
+from .web import upload_file_to_slack_memory_efficient
 from .listener_actions import (
     document_machine_translate,
     get_mt_translation,
@@ -450,12 +451,20 @@ async def download_transcribed_file(
         task_result = await get_asr_task(task_uuid, context["ray"].client.id)
         file_id = task_result["file_id"]
         file = download_from_file_server(file_id)
-        await client.files_upload_v2(
-            channel=context["channel_id"],
-            file=file["file"],
-            title=file["file_name"],
-            filename=file["file_name"],
-        )
+
+        try:
+            # Upload file to Slack using memory-efficient method
+            await upload_file_to_slack_memory_efficient(
+                client=client,
+                file_path=file["file"],
+                channel_id=context["channel_id"],
+                title=file["file_name"],
+                filename=file["file_name"],
+            )
+        finally:
+            # Clean up the temporary file
+            if os.path.exists(file["file"]):
+                os.unlink(file["file"])
 
 
 @app.block_action("download_ai_translation_action", middleware=[ray_connection])
@@ -470,12 +479,20 @@ async def download_ai_translation_action(
     if await require_ray_client(context):
         file_uuid = action["value"]
         file = await download_verify_file(context.ray.client, file_uuid)
-        await client.files_upload_v2(
-            channel=context["channel_id"],
-            file=file["file"],
-            title=file["file_name"],
-            filename=file["file_name"],
-        )
+
+        try:
+            # Upload file to Slack using memory-efficient method
+            await upload_file_to_slack_memory_efficient(
+                client=client,
+                file_path=file["file"],
+                channel_id=context["channel_id"],
+                title=file["file_name"],
+                filename=file["file_name"],
+            )
+        finally:
+            # Clean up the temporary file
+            if os.path.exists(file["file"]):
+                os.unlink(file["file"])
 
 
 @app.shortcut("shortcut_translate", middleware=[ray_connection])

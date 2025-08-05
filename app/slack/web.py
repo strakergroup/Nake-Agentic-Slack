@@ -170,6 +170,106 @@ async def download_files(client: AsyncWebClient, files: Iterable[str]) -> list[s
     return [result for result in file_paths if isinstance(result, str)]
 
 
+async def upload_file_to_slack_memory_efficient(
+    client: AsyncWebClient,
+    file_path: str,
+    channel_id: str,
+    title: str = None,
+    filename: str = None,
+    initial_comment: str = None,
+    thread_ts: str = None,
+) -> dict:
+    """
+    Upload a file to Slack using the memory-efficient files.getUploadURLExternal workflow.
+
+    This method avoids loading the entire file into memory by using Slack's external upload API.
+
+    Args:
+        client (AsyncWebClient): The Slack WebClient instance
+        file_path (str): Path to the file to upload
+        channel_id (str): Channel ID to upload to
+        title (str, optional): Title for the file
+        filename (str, optional): Filename for the file
+        initial_comment (str, optional): Initial comment with the file
+        thread_ts (str, optional): Thread timestamp to reply to
+
+    Returns:
+        dict: Response from Slack API containing file information
+
+    Raises:
+        SlackApiError: If the upload fails
+        Exception: If any other error occurs during upload
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    # Get file size for the upload URL request
+    file_size = os.path.getsize(file_path)
+
+    # Use provided filename or extract from path
+    if not filename:
+        filename = os.path.basename(file_path)
+
+    # Step 1: Get upload URL from Slack
+    try:
+        upload_response = await client.files_getUploadURLExternal(
+            filename=filename,
+            length=file_size,
+        )
+
+        if not upload_response.get("ok"):
+            raise SlackApiError("Failed to get upload URL", upload_response)
+
+        upload_url = upload_response["upload_url"]
+        file_id = upload_response["file_id"]
+
+    except SlackApiError as e:
+        notify_exception(e, f"Failed to get upload URL for {filename}")
+        raise
+
+    # Step 2: Upload file to the provided URL using streaming
+    try:
+        async with httpx.AsyncClient() as http_client:
+            with open(file_path, "rb") as file_obj:
+                # Use multipart form data for streaming upload
+                files = {"file": (filename, file_obj, "application/octet-stream")}
+                data = {"filename": filename}
+
+                response = await http_client.post(
+                    upload_url,
+                    files=files,
+                    data=data,
+                    timeout=300.0,  # 5 minute timeout for large files
+                )
+
+                if response.status_code != 200:
+                    raise Exception(
+                        f"Upload failed with status {response.status_code}: {response.text}"
+                    )
+
+    except Exception as e:
+        notify_exception(e, f"Failed to upload file {filename} to Slack")
+        raise
+
+    # Step 3: Complete the upload
+    try:
+        complete_response = await client.files_completeUploadExternal(
+            files=[{"id": file_id, "title": title or filename}],
+            channel_id=channel_id,
+            initial_comment=initial_comment,
+            thread_ts=thread_ts,
+        )
+
+        if not complete_response.get("ok"):
+            raise SlackApiError("Failed to complete upload", complete_response)
+
+        return complete_response
+
+    except SlackApiError as e:
+        notify_exception(e, f"Failed to complete upload for {filename}")
+        raise
+
+
 async def set_mt_ts_edit(
     send_ts: str,
     reply_ts: str,
