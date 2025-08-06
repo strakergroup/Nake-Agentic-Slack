@@ -5,6 +5,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.ray.utils import (
     download_from_file_server_async,
+    delete_from_file_server,
     is_ibm_enterprise,
     set_user_language,
 )
@@ -146,6 +147,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     filename=title,
                     initial_comment=token_consumption_message,
                 )
+                delete_from_file_server(success_data.file_id)
         elif isinstance(message, JobTranscribedEventMessage):
             if not event.data.get("error"):
                 response = await post_notification(
