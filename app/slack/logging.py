@@ -165,19 +165,12 @@ def slack_log_decorator(
         else:
             logging.warning("The SlackAppLog object ('log') is not in the context")
 
-        if duration > 5:
+        if duration > 5 or mem_delta > 50:
             ts = ""
             if "log" in context and isinstance(context["log"], SlackAppLog):
                 ts = context["log"].slack_log.ts
             logging.error(
-                f"Slack request took too long Function {listener_func.__name__} {ts} took {duration:.2f} seconds"
-            )
-        if mem_delta > 50:
-            ts = ""
-            if "log" in context and isinstance(context["log"], SlackAppLog):
-                ts = context["log"].slack_log.ts
-            logging.error(
-                f"High memory usage Function {listener_func.__name__} {ts} increased by {mem_delta:.2f} MB - total {mem_end:.2f} MB"
+                f"Slack request performance issue Function {listener_func.__name__} {ts} took {duration:.2f} seconds | Memory +{mem_delta:.2f} MB (total {mem_end:.2f} MB)"
             )
 
     return wrapper
