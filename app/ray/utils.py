@@ -1,9 +1,12 @@
+import httpx
 from cgi import parse_header
 from typing import Literal, Tuple, Union
 import math
 import datetime
 from urllib.parse import urlencode, unquote
 import os
+import asyncio
+import tempfile
 
 from buglog import notify_exception
 
@@ -214,23 +217,56 @@ def get_filename_from_header(header):
     return filename
 
 
-def download_from_file_server(file_id: str):
-    """Downloads a file from the file server."""
-
+async def download_from_file_server_async(file_id: str):
+    """Downloads a file from the file server using async streaming to avoid loading entire file into memory."""
     url = f"{domains.file_api}/files/{file_id}"
-    # Download the file.
-    response = requests.get(url)
-    response.raise_for_status()
-    # Get the Content-Disposition header
-    content_disposition = response.headers.get("Content-Disposition")
 
-    # Parse the header to get the filename
-    filename = get_filename_from_header(content_disposition)
-    file_result = {
-        "file_name": filename,
-        "file": BytesIO(response.content),
-    }
-    return file_result
+    async with httpx.AsyncClient() as client:
+        async with client.stream("GET", url) as response:
+            response.raise_for_status()
+
+            # Get the Content-Disposition header
+            content_disposition = response.headers.get("Content-Disposition")
+            filename = get_filename_from_header(content_disposition)
+
+            # Create a temporary file to avoid loading entire file into memory
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{filename}")
+            try:
+                # Stream content directly to temp file in chunks
+                chunk_size = 8192  # 8KB chunks for better memory management
+                async for chunk in response.aiter_bytes(chunk_size):
+                    temp_file.write(chunk)
+                temp_file.close()
+
+                return {
+                    "file_name": filename,
+                    "file": temp_file.name,  # Return file path instead of BytesIO
+                }
+            except Exception:
+                # Clean up temp file on error
+                if os.path.exists(temp_file.name):
+                    os.unlink(temp_file.name)
+                raise
+
+
+def download_from_file_server(file_id: str):
+    """Downloads a file from the file server. This is a synchronous wrapper around the async version."""
+
+    # Run the async function in a new event loop if one doesn't exist
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+    return loop.run_until_complete(download_from_file_server_async(file_id))
+
+
+def delete_from_file_server(file_id: str):
+    """Deletes a file from the file server."""
+    url = f"{domains.file_api}/files/{file_id}"
+    response = requests.delete(url)
+    response.raise_for_status()
 
 
 def upload_to_file_server(file_path: str) -> str:

@@ -4,7 +4,8 @@ from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from pydantic import BaseModel, ValidationError
 
 from app.ray.utils import (
-    download_from_file_server,
+    download_from_file_server_async,
+    delete_from_file_server,
     is_ibm_enterprise,
     set_user_language,
 )
@@ -38,6 +39,7 @@ from ..slack.templates.messages import (
     JobCompletedEventMessage,
     VerifyCompleteMessage,
 )
+from ..slack.web import upload_file_to_slack_memory_efficient
 from ..ray.events.parse import get_ray_event_message
 from ..ray.events.models import (
     Balance,
@@ -126,7 +128,9 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
             except ValidationError:
                 app.client.token = auth.slack_user.bot_token
                 success_data = MtSuccessResponseSchema.model_validate(event.data)
-                output_file = download_from_file_server(success_data.file_id)
+                output_file = await download_from_file_server_async(
+                    success_data.file_id
+                )
                 token_count = success_data.tokens
                 title = output_file.get("file_name")
                 token_consumption_message = (
@@ -134,13 +138,16 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     if not is_ibm_enterprise(auth.slack_user.enterprise_id)
                     else ""
                 )
-                await app.client.files_upload_v2(
-                    channel=success_data.channel_id,
-                    file=output_file.get("file"),
-                    initial_comment=token_consumption_message,
+                # Upload file using memory-efficient method
+                await upload_file_to_slack_memory_efficient(
+                    client=app.client,
+                    file_path=output_file.get("file"),
+                    channel_id=success_data.channel_id,
                     title=title,
                     filename=title,
+                    initial_comment=token_consumption_message,
                 )
+                delete_from_file_server(success_data.file_id)
         elif isinstance(message, JobTranscribedEventMessage):
             if not event.data.get("error"):
                 response = await post_notification(
@@ -149,12 +156,14 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     auth.slack_user,
                     message,
                 )
-                output_file = download_from_file_server(
+                output_file = await download_from_file_server_async(
                     event.data["file_id"],
                 )
-                await app.client.files_upload_v2(
-                    channel=response["channel"],
-                    file=output_file.get("file"),
+                # Upload file using memory-efficient method
+                await upload_file_to_slack_memory_efficient(
+                    client=app.client,
+                    file_path=output_file.get("file"),
+                    channel_id=response["channel"],
                     title=event.data["file_name"],
                     filename=output_file.get("file_name"),
                 )
@@ -181,12 +190,14 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 auth.slack_user,
                 message,
             )
-            output_file = download_from_file_server(
+            output_file = await download_from_file_server_async(
                 event.data["grid_file_id"],
             )
-            await app.client.files_upload_v2(
-                channel=response["channel"],
-                file=output_file.get("file"),
+            # Upload file using memory-efficient method
+            await upload_file_to_slack_memory_efficient(
+                client=app.client,
+                file_path=output_file.get("file"),
+                channel_id=response["channel"],
                 title=output_file.get("file_name"),
                 filename=output_file.get("file_name"),
             )
