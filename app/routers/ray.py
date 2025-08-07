@@ -109,7 +109,7 @@ async def _handle_mt_success_background(
             filename=title,
             initial_comment=token_consumption_message,
         )
-        await delete_from_file_server(success_data.file_id)
+        delete_from_file_server(success_data.file_id)
     except Exception as e:
         notify_exception(e, "Background MT success file handling failed")
 
@@ -230,7 +230,6 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 _create_background_task(
                     _handle_mt_success_background(success_data, auth)
                 )
-                delete_from_file_server(success_data.file_id)
         elif isinstance(message, JobTranscribedEventMessage):
             if not event.data.get("error"):
                 response = await post_notification(
