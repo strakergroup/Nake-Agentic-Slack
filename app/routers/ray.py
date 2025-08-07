@@ -1,7 +1,9 @@
+import asyncio
 from typing import Any, Annotated
 from buglog import notify_exception, notify_message
 from fastapi import APIRouter, HTTPException, Depends, Header, Request
 from pydantic import BaseModel, ValidationError
+from slack_sdk.web.async_client import AsyncWebClient
 
 from app.ray.utils import (
     download_from_file_server_async,
@@ -23,7 +25,6 @@ from ..auth.connector import (
     get_group_admin_slack_users,
 )
 from ..dependencies import RayEventAuth, RayEvent
-from ..slack import app
 from ..slack.templates.messages import (
     DocMtMessage,
     DocParseErrorMessage,
@@ -53,6 +54,105 @@ from dataclasses import replace
 
 router = APIRouter()
 
+# Track background tasks for potential cleanup
+_background_tasks = set()
+
+
+def _create_background_task(coro):
+    """Create a background task with proper cleanup and error handling."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+
+    def _cleanup_task(task):
+        try:
+            _background_tasks.discard(task)
+        except Exception:
+            pass
+
+    task.add_done_callback(_cleanup_task)
+    return task
+
+
+def get_background_task_info():
+    """Get information about running background tasks."""
+    running_tasks = [task for task in _background_tasks if not task.done()]
+    return {
+        "total_tasks": len(_background_tasks),
+        "running_tasks": len(running_tasks),
+        "completed_tasks": len(_background_tasks) - len(running_tasks),
+    }
+
+
+async def _handle_mt_success_background(
+    success_data: MtSuccessResponseSchema, auth: RayEventAuth
+):
+    """Background task to handle MT success file download and upload."""
+    try:
+        # Create a new client instance with the correct token for this user
+        client = AsyncWebClient(token=auth.slack_user.bot_token)
+
+        # Download file from server
+        output_file = await download_from_file_server_async(success_data.file_id)
+        token_count = success_data.tokens
+        title = output_file.get("file_name")
+        token_consumption_message = (
+            _("You have used {token_count} AI tokens.")
+            if not is_ibm_enterprise(auth.slack_user.enterprise_id)
+            else ""
+        )
+        # Upload file using memory-efficient method
+        await upload_file_to_slack_memory_efficient(
+            client=client,
+            file_path=output_file.get("file"),
+            channel_id=success_data.channel_id,
+            title=title,
+            filename=title,
+            initial_comment=token_consumption_message,
+        )
+        delete_from_file_server(success_data.file_id)
+    except Exception as e:
+        notify_exception(e, "Background MT success file handling failed")
+
+
+async def _handle_transcribe_success_background(
+    event_data: JobTranscribedEventMessage, auth: RayEventAuth, response: dict[str, Any]
+):
+    """Background task to handle transcription success file download and upload."""
+    try:
+        # Create a new client instance with the correct token for this user
+        client = AsyncWebClient(token=auth.slack_user.bot_token)
+
+        # Download file from server
+        output_file = await download_from_file_server_async(event_data["file_id"])
+        # Upload file using memory-efficient method
+        await upload_file_to_slack_memory_efficient(
+            client=client,
+            file_path=output_file.get("file"),
+            channel_id=response["channel"],
+            title=event_data["file_name"],
+            filename=output_file.get("file_name"),
+        )
+    except Exception as e:
+        notify_exception(e, "Background transcription file handling failed")
+
+
+async def _handle_verify_complete_background(event_data, auth, response):
+    """Background task to handle verify complete file download and upload."""
+    try:
+        # Create a new client instance with the correct token for this user
+        client = AsyncWebClient(token=auth.slack_user.bot_token)
+
+        output_file = await download_from_file_server_async(event_data["grid_file_id"])
+        await upload_file_to_slack_memory_efficient(
+            client=client,
+            file_path=output_file.get("file"),
+            channel_id=response["channel"],
+            title=output_file.get("file_name"),
+            filename=output_file.get("file_name"),
+        )
+    except Exception as e:
+        notify_exception(e, "Background verify complete file handling failed")
+
 
 @router.post("/ray/events")
 async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
@@ -60,8 +160,8 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
     try:
         message = None
         if auth.slack_user:
-            app.client.token = auth.slack_user.bot_token
-            user_info = await app.client.users_info(
+            client = AsyncWebClient(token=auth.slack_user.bot_token)
+            user_info = await client.users_info(
                 user=auth.slack_user.user_id, include_locale=True
             )
             set_user_language(user_info)
@@ -82,11 +182,11 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
         # Send login message to the same conversation where it was prompted.
         if isinstance(message, SuccessfulLoginMessage):
             await post_notification_ephemeral(
-                app.client, auth.slack_user.channel_id, event, auth.slack_user, message
+                client, auth.slack_user.channel_id, event, auth.slack_user, message
             )
         elif isinstance(message, EvaluateSuccessMessage):
             await post_notification(
-                app.client,
+                client,
                 event,
                 auth.slack_user,
                 message,
@@ -119,56 +219,30 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     )
 
                 await post_notification_ephemeral(
-                    app.client,
+                    client,
                     event_data.channel_id or auth.slack_user.channel_id,
                     event,
                     auth.slack_user,
                     message,
                 )
             except ValidationError:
-                app.client.token = auth.slack_user.bot_token
                 success_data = MtSuccessResponseSchema.model_validate(event.data)
-                output_file = await download_from_file_server_async(
-                    success_data.file_id
+                _create_background_task(
+                    _handle_mt_success_background(success_data, auth)
                 )
-                token_count = success_data.tokens
-                title = output_file.get("file_name")
-                token_consumption_message = (
-                    _("You have used {token_count} AI tokens.")
-                    if not is_ibm_enterprise(auth.slack_user.enterprise_id)
-                    else ""
-                )
-                # Upload file using memory-efficient method
-                await upload_file_to_slack_memory_efficient(
-                    client=app.client,
-                    file_path=output_file.get("file"),
-                    channel_id=success_data.channel_id,
-                    title=title,
-                    filename=title,
-                    initial_comment=token_consumption_message,
-                )
-                delete_from_file_server(success_data.file_id)
         elif isinstance(message, JobTranscribedEventMessage):
             if not event.data.get("error"):
                 response = await post_notification(
-                    app.client,
+                    client,
                     event,
                     auth.slack_user,
                     message,
                 )
-                output_file = await download_from_file_server_async(
-                    event.data["file_id"],
-                )
-                # Upload file using memory-efficient method
-                await upload_file_to_slack_memory_efficient(
-                    client=app.client,
-                    file_path=output_file.get("file"),
-                    channel_id=response["channel"],
-                    title=event.data["file_name"],
-                    filename=output_file.get("file_name"),
+                _create_background_task(
+                    _handle_transcribe_success_background(event.data, auth, response)
                 )
             else:
-                await app.client.chat_postEphemeral(
+                await client.chat_postEphemeral(
                     channel=auth.slack_user.channel_id,
                     user=auth.slack_user.user_id,
                     text=_(
@@ -178,28 +252,20 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
         elif isinstance(message, JobCompletedEventMessage):
             if not is_verify_job(event.data["uuid"]):
                 await post_notification(
-                    app.client,
+                    client,
                     event,
                     auth.slack_user,
                     message,
                 )
         elif isinstance(message, VerifyCompleteMessage):
             response = await post_notification(
-                app.client,
+                client,
                 event,
                 auth.slack_user,
                 message,
             )
-            output_file = await download_from_file_server_async(
-                event.data["grid_file_id"],
-            )
-            # Upload file using memory-efficient method
-            await upload_file_to_slack_memory_efficient(
-                client=app.client,
-                file_path=output_file.get("file"),
-                channel_id=response["channel"],
-                title=output_file.get("file_name"),
-                filename=output_file.get("file_name"),
+            _create_background_task(
+                _handle_verify_complete_background(event.data, auth, response)
             )
         elif (
             # Send important messages regardless of subscribed status.
@@ -212,15 +278,13 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     new_slack_user = replace(auth.slack_user, user_id=slack_user_id)
                     # auth.slack_user.user_id = slack_user_id
                     try:
-                        await post_notification(
-                            app.client, event, new_slack_user, message
-                        )
+                        await post_notification(client, event, new_slack_user, message)
                     except Exception as e:
                         notify_exception(
                             e, "Failed to send notification to send demo message"
                         )
             else:
-                await post_notification(app.client, event, auth.slack_user, message)
+                await post_notification(client, event, auth.slack_user, message)
 
     # Send notifications to group admins when a new client signs up.
     if isinstance(message, ClientSignupEventMessage):
@@ -237,7 +301,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 event=message.event,
                 groups=groups,
             )
-            await post_notification(app.client, event, user, admin_message)
+            await post_notification(client, event, user, admin_message)
 
     return {"message": "success", "data": {"event": event.event}}
 
@@ -263,10 +327,8 @@ async def api_job_callback(
     if slack_user is None:
         notify_message("Slack user not found in callback endpoint", severity="WARNING")
         raise HTTPException(401)
-    app.client.token = slack_user.bot_token
-    user_info = await app.client.users_info(
-        user=slack_user.user_id, include_locale=True
-    )
+    client = AsyncWebClient(token=slack_user.bot_token)
+    user_info = await client.users_info(user=slack_user.user_id, include_locale=True)
     set_user_language(user_info)
     # Validate X-Straker-Signature.
     raw_body = await request.body()
@@ -291,17 +353,16 @@ async def api_job_callback(
                 message = JobCreationMessage(job_data["tj_number"], True)
         except (KeyError, IndexError):
             raise HTTPException(422, "The callback payload format is invalid") from None
-        app.client.token = slack_user.bot_token
         if demo_slack_users:
             for slack_user_id in demo_slack_users:
-                await app.client.chat_postMessage(
+                await client.chat_postMessage(
                     channel=slack_user_id,
                     text=message.text,
                     blocks=message.blocks,
                 )
         else:
             if is_auto_quote:
-                await app.client.chat_postMessage(
+                await client.chat_postMessage(
                     channel=slack_user.user_id,
                     text=message.text,
                     blocks=message.blocks,
