@@ -82,7 +82,9 @@ def get_background_task_info():
     }
 
 
-async def _handle_mt_success_background(success_data, auth):
+async def _handle_mt_success_background(
+    success_data: MtSuccessResponseSchema, auth: RayEventAuth
+):
     """Background task to handle MT success file download and upload."""
     try:
         # Create a new client instance with the correct token for this user
@@ -106,11 +108,14 @@ async def _handle_mt_success_background(success_data, auth):
             filename=title,
             initial_comment=token_consumption_message,
         )
+        await delete_from_file_server(success_data.file_id)
     except Exception as e:
         notify_exception(e, "Background MT success file handling failed")
 
 
-async def _handle_transcribe_success_background(event_data, auth, response):
+async def _handle_transcribe_success_background(
+    event_data: JobTranscribedEventMessage, auth: RayEventAuth, response: dict[str, Any]
+):
     """Background task to handle transcription success file download and upload."""
     try:
         # Create a new client instance with the correct token for this user
