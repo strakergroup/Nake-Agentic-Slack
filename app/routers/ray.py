@@ -7,6 +7,7 @@ from slack_sdk.web.async_client import AsyncWebClient
 
 from app.ray.utils import (
     download_from_file_server_async,
+    delete_from_file_server,
     is_ibm_enterprise,
     set_user_language,
 )
@@ -229,6 +230,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 _create_background_task(
                     _handle_mt_success_background(success_data, auth)
                 )
+                delete_from_file_server(success_data.file_id)
         elif isinstance(message, JobTranscribedEventMessage):
             if not event.data.get("error"):
                 response = await post_notification(

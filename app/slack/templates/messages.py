@@ -3663,16 +3663,32 @@ class EvaluateSuccessMessage(SlackMessage):
         tokens: int | None = None,
     ) -> None:
         blocks = []
+        info_text = _(
+            'The AI translation quality of your document(s) has been evaluated. Download the AI translation if you\'re satisfied, or click "Send for Human Verification" to request human verification'
+        )
         if not is_ibm_enterprise and tokens:
             blocks.append(
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("You have used {tokens} AI tokens."),
+                        "text": info_text
+                        + "\n"
+                        + _("You have used {tokens} AI tokens."),
                     },
                 }
             )
+        else:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": info_text,
+                    },
+                }
+            )
+
         blocks.extend(evaluate_success_blocks(job))
         blocks.append(
             {

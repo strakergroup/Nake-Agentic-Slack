@@ -1761,7 +1761,7 @@ async def evaluate_job_submit(
             )
         else:
             msg = _(
-                "You've successfully submitted your document(s) for quality evaluation. If you would like to proceed further, click on the button below to send for human translation."
+                "You've successfully submitted your document(s) for quality evaluation."
             )
         await client.chat_postMessage(channel=channel_id, text=msg)
         input_files = []
@@ -2021,6 +2021,22 @@ async def handle_checkbox_action(ack, body, client, action):
                     break
             else:
                 return
+
+            # Re-check if this is still the latest action after lock acquisition
+            latest_action_ts = await redis_conn.get(latest_action_key)
+            if latest_action_ts and float(latest_action_ts) > float(action_ts):
+                # A more recent action is already being processed, skip this one
+                return
+            else:
+                # We are still the latest action, try to acquire the lock
+                lock_acquired = await redis_conn.set(
+                    lock_key, action_ts, ex=2, nx=True
+                )  # 2 second lock, only if not exists
+
+                if not lock_acquired:
+                    # Still can't acquire lock, give up
+                    return
+
         try:
             # Parse all selected options from the state values
             selected_options = []
