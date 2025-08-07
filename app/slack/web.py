@@ -239,7 +239,6 @@ async def upload_file_to_slack_memory_efficient(
                     upload_url,
                     files=files,
                     data=data,
-                    timeout=300.0,  # 5 minute timeout for large files
                 )
 
                 if response.status_code != 200:

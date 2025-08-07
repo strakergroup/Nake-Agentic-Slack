@@ -149,10 +149,8 @@ async def _handle_transcribe_success_background(event_data, auth, response):
 async def _handle_verify_complete_background(event_data, response):
     """Background task to handle verify complete file download and upload."""
     try:
-        # Add timeout to prevent hanging operations
         output_file = await asyncio.wait_for(
             download_from_file_server_async(event_data["grid_file_id"]),
-            timeout=300,  # 5 minutes timeout
         )
         # Upload file using memory-efficient method with timeout
         await asyncio.wait_for(
@@ -163,7 +161,6 @@ async def _handle_verify_complete_background(event_data, response):
                 title=output_file.get("file_name"),
                 filename=output_file.get("file_name"),
             ),
-            timeout=300,  # 5 minutes timeout
         )
     except asyncio.TimeoutError:
         notify_exception(
