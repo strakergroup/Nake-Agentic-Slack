@@ -1907,14 +1907,6 @@ async def quote_accept_all_action(
     timestamp = body.get("message", {}).get("ts")
     job_uuid = action["value"]
 
-    # Check if this action has already been used for this job
-    redis_key = f"quote_accept_all_{job_uuid}"
-    if await redis_conn.get(redis_key):
-        await client.chat_postMessage(
-            channel=context["channel_id"],
-            text=_("This action has already been used for this job."),
-        )
-        return
     redis_key = f"verify_job_submission_{job_uuid}"
     if await redis_conn.get(redis_key):
         await client.chat_postMessage(
@@ -1922,7 +1914,7 @@ async def quote_accept_all_action(
             text=_("A request is already in progress. Please try again in a few seconds."),
         )
         return
-    await redis_conn.set(redis_key, "1", ex=30)
+    await redis_conn.set(redis_key, "1", ex=60)
 
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
 

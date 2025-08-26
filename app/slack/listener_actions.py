@@ -1917,14 +1917,13 @@ async def submit_verification_job(
         timestamp (str | None): Optional timestamp of the message to update.
         channel_id (str | None): Optional channel ID where the message is posted.
     """
+    lock_key = f"verify_job_submission_{job_uuid}"
     if selected_languages:
-
         async def update_message_after_job(channel_id: str):
             try:
                 # Get the updated job details after submission
                 job = await get_client_evaluation_job(context.ray.client, job_uuid)
                 # release lock
-                lock_key = f"verify_job_submission_{job_uuid}"
                 if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
                     costs = await get_job_pricing(
                         context.ray.client,
@@ -1974,6 +1973,7 @@ async def submit_verification_job(
         )
     else:
         msg = _("Your request has been cancelled.")
+        await redis_conn.delete(lock_key)
         await client.chat_postMessage(
             channel=user_id,
             text=msg,

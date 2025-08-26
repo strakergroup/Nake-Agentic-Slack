@@ -1,6 +1,5 @@
 """Templates for individual Slack blocks."""
 
-import json
 import math
 from datetime import datetime, timedelta
 from typing import Any
@@ -354,119 +353,6 @@ def job_prediction_block(
         return {}
 
 
-def verify_job_blocks(
-    summary: str,
-    source_file_uuid: str,
-    report: dict[str, Any] | None,
-    lang_name: str,
-    language_uuid: str,
-    costs: list[dict[str, Any]],
-    optional: bool,
-    human_job_status: str,
-) -> dict[str, Any]:
-    """The blocks for the verification job."""
-    for item in costs:
-        if (
-            item["language_uuid"] == language_uuid
-            and item["file_uuid"] == source_file_uuid
-        ):
-            cost = item["service_list"][0]["estimated_cost"]
-            break
-
-    cost_block = {
-        "type": "input",
-        "block_id": f"verification_checkbox_{language_uuid}_{source_file_uuid}",
-        "label": {
-            "type": "plain_text",
-            "text": _(lang_name),
-        },
-        "element": {
-            "type": "checkboxes",
-            "options": [
-                {
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"USD${cost:.2f}",
-                    },
-                    "value": f"{source_file_uuid}:{language_uuid}",
-                },
-            ],
-            "initial_options": [
-                {
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"USD${cost:.2f}",
-                    },
-                    "value": f"{source_file_uuid}:{language_uuid}",
-                },
-            ],
-            "action_id": "verification_checkbox_action",
-        },
-        "optional": optional,
-    }
-
-    if human_job_status:
-        lang_label = f"*{_(lang_name)}*\n"
-        cost_block = {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": _(
-                    "{lang_label} Human translation has been submitted for this language."
-                ),
-            },
-        }
-
-    if report is None:
-        return [
-            cost_block,
-            {
-                "type": "section",
-                "fields": [
-                    {"type": "mrkdwn", "text": _("*Summary:*\n{summary}")},
-                ],
-            },
-            {
-                "type": "divider",
-            },
-        ]
-
-    # Filter out unscored/untranslated segments to match cloud-verify-ui behavior
-    counts = report["count"]
-    scored_categories = ["translation_memory", "best", "good", "acceptable", "bad"]
-    segment_count = sum(counts.get(category, 0) for category in scored_categories)
-
-    if segment_count == 0:
-        bad = good = best = acceptable = memory_percentage = 0
-    else:
-        bad = (counts.get("bad", 0) / segment_count) * 100
-        good = (counts.get("good", 0) / segment_count) * 100
-        best = (counts.get("best", 0) / segment_count) * 100
-        acceptable = (counts.get("acceptable", 0) / segment_count) * 100
-        memory_percentage = (counts.get("translation_memory", 0) / segment_count) * 100
-
-    report_message = (
-        f":large_blue_square: {_('Translation Memory')}: {round(memory_percentage)}%\n"
-    )
-    report_message += f":large_green_square: {_('Best')}: {round(best)}%\n"
-    report_message += f":large_yellow_square: {_('Good')}: {round(good)}%\n"
-    report_message += f":large_orange_square: {_('Acceptable')}: {round(acceptable)}%\n"
-    report_message += f":large_red_square: {_('Bad')}: {round(bad)}%"
-
-    return [
-        cost_block,
-        {
-            "type": "section",
-            "fields": [
-                {"type": "mrkdwn", "text": _("*Summary:*\n{summary}")},
-                {"type": "mrkdwn", "text": _("*Overall Score:*\n{report_message}")},
-            ],
-        },
-        {
-            "type": "divider",
-        },
-    ]
-
 
 def verify_quote_blocks(
     job: dict[str, Any],
@@ -476,6 +362,7 @@ def verify_quote_blocks(
     source_files = job["source_files"]
     workflow_uuid = job["workflow_uuid"]
     blocks = []
+    total_cost = 0
     for file in source_files:
         blocks.append(
             {
@@ -509,8 +396,11 @@ def verify_quote_blocks(
                     },
                 }
                 blocks.append(cost_block)
+                if selectable:
+                    total_cost += cost
             else:
                 report = None
+                total_cost += cost
                 if workflow_uuid != HUMAN_EVALUATION_WORKFLOW_UUID:
                     if "report" in file and "evaluation_reports" in file["report"]:
                         report = next(
@@ -656,7 +546,6 @@ def verify_quote_blocks(
         sum(group["time_estimate"] * group["count"] for group in grouped_times.values())
     )
 
-    total_cost = sum(cost["service_list"][0]["estimated_cost"] for cost in costs)
 
     # Calculate completion date
     completion_date = datetime.now() + timedelta(days=total_estimated_days)
