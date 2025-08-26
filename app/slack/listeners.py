@@ -13,7 +13,6 @@ from app.api.verify import (
     download_verify_file,
     get_client_evaluation_job,
     get_job_pricing,
-    get_verify_languages,
     submit_evaluation_job,
 )
 from ..database import engines
@@ -1916,6 +1915,13 @@ async def quote_accept_all_action(
             text=_("This action has already been used for this job."),
         )
         return
+    redis_key = f"verify_job_submission_{job_uuid}"
+    if await redis_conn.get(redis_key):
+        await client.chat_postMessage(
+            channel=context["channel_id"],
+            text=_("A request is already in progress. Please try again in a few seconds."),
+        )
+        return
     await redis_conn.set(redis_key, "1", ex=30)
 
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
@@ -1951,7 +1957,15 @@ async def handle_verify_job_submission(
     private_metadata = json.loads(body["view"]["private_metadata"])
     job_uuid = private_metadata.get("job_uuid")
     message_ts = private_metadata.get("timestamp", None)
-
+    # lock so that if submission is in progress, it will not be submitted again
+    lock_key = f"verify_job_submission_{job_uuid}"
+    lock_acquired = await redis_conn.set(lock_key, "1", ex=60, nx=True)
+    if not lock_acquired:
+        await client.chat_postMessage(
+            channel=body["user"]["id"],
+            text=_("A request is already in progress. Please try again in a few seconds."),
+        )
+        return
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
     target_languages = job["data"]["target_languages"]
 
@@ -1976,7 +1990,8 @@ async def handle_verify_job_submission(
                         for option in selected_options
                     ]
                 )
-
+    # update origial message ts to remove buttons
+    # fetch original message
     await submit_verification_job(
         client=client,
         context=context,

@@ -2,6 +2,7 @@
 This module contains functions for common actions which are executed in
 Slack Bolt listener functions.
 """
+from ..redis import redis_conn
 
 import asyncio
 from typing import Any
@@ -65,7 +66,6 @@ from ..auth.connector import (
     approve_pending_groups,
     duration_to_tokens,
     get_group_mt_engine,
-    get_slack_user,
     log_transcribe_request,
 )
 from ..config import config, domains, Environment
@@ -75,7 +75,7 @@ from ..ray.settings import (
 )
 from ..ray.utils import get_media_duration, is_ibm_enterprise, validate_file_type
 from ..watson import watson_message
-from .select_options import _get_languages_cached, get_file_options_cached
+from .select_options import get_file_options_cached
 from app.models import TranscriptionTask
 
 VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
@@ -1923,7 +1923,8 @@ async def submit_verification_job(
             try:
                 # Get the updated job details after submission
                 job = await get_client_evaluation_job(context.ray.client, job_uuid)
-
+                # release lock
+                lock_key = f"verify_job_submission_{job_uuid}"
                 if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
                     costs = await get_job_pricing(
                         context.ray.client,
@@ -1933,6 +1934,7 @@ async def submit_verification_job(
                     )
                     updated_msg = HumanJobQuoteMessage(job["data"], costs["data"])
                 else:
+                    await redis_conn.delete(lock_key)
                     return
 
                 # Create updated message with the new status
@@ -1951,8 +1953,8 @@ async def submit_verification_job(
                         blocks=updated_msg.blocks,
                         replace_original=True,
                     )
+                await redis_conn.delete(lock_key)
             except Exception as e:
-                print(e)
                 notify_exception(e)
 
         # Send initial confirmation
@@ -1963,6 +1965,7 @@ async def submit_verification_job(
             channel=user_id,
             text=msg,
         )
+
         # Create task to submit the job and update message after completion
         asyncio.create_task(
             create_human_job(context.ray.client, job_uuid, selected_languages)
