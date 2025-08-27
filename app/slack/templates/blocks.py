@@ -384,6 +384,14 @@ def verify_quote_blocks(
             )
             cost = 0.00
             estimated_time = 0
+            for item in costs:
+                    if (
+                        item["language_uuid"] == lang["uuid"]
+                        and item["file_uuid"] == file["file_uuid"]
+                    ):
+                        cost = item["service_list"][0]["estimated_cost"]
+                        estimated_time = item["service_list"][0]["time_estimate_days"]
+                        break
             if target_file.get("human_job_status", ""):
                 lang_label = f"*{_(lang['name'])}*\n"
                 cost_block = {
@@ -396,11 +404,11 @@ def verify_quote_blocks(
                     },
                 }
                 blocks.append(cost_block)
-                if selectable:
+                if not selectable:
                     total_cost += cost
             else:
-                report = None
                 total_cost += cost
+                report = None
                 if workflow_uuid != HUMAN_EVALUATION_WORKFLOW_UUID:
                     if "report" in file and "evaluation_reports" in file["report"]:
                         report = next(
@@ -411,14 +419,7 @@ def verify_quote_blocks(
                             ),
                             None,
                         )
-                for item in costs:
-                    if (
-                        item["language_uuid"] == lang["uuid"]
-                        and item["file_uuid"] == file["file_uuid"]
-                    ):
-                        cost = item["service_list"][0]["estimated_cost"]
-                        estimated_time = item["service_list"][0]["time_estimate_days"]
-                        break
+
                 if selectable:
                     blocks.append(
                         {
