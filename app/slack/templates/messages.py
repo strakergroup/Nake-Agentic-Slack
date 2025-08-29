@@ -13,7 +13,6 @@ from .models import NewJobForm
 from .blocks import (
     evaluate_success_blocks,
     job_link_block,
-    job_summary_string,
     quote_message_block,
     job_prediction_block,
     verify_quote_blocks,
@@ -81,7 +80,7 @@ class OnboardingMessage(SlackMessage):
         channel_id: str,
         prompt_login: bool = True,
     ) -> None:
-        tadaEmoji = f":tada:"
+        tadaEmoji = ":tada:"
         blocks: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -262,7 +261,7 @@ class WelcomeBackMessage(SlackMessage):
     """
 
     def __init__(self, user_id: str, ray_connection: RayConnection) -> None:
-        waveEmoji = f":wave:"
+        waveEmoji = ":wave:"
         is_verify_enabled = (
             ray_connection.super_group[0].enable_verify_in_slack
             if ray_connection
@@ -479,7 +478,7 @@ class SuccessfulLoginMessage(SlackMessage):
     def __init__(
         self, user_id: str, ray_username: str, ray_connection: RayConnection
     ) -> None:
-        waveEmoji = f":wave:"
+        waveEmoji = ":wave:"
         is_verify_enabled = (
             ray_connection.super_group[0].enable_verify_in_slack
             if ray_connection
@@ -1007,7 +1006,7 @@ class JobDetailsMessage(SlackMessage):
                 "fields": [
                     {
                         "type": "mrkdwn",
-                        "text": _(f"*Job Status:*\n")
+                        "text": _("*Job Status:*\n")
                         + f"{format_job_status(job.status)}",
                     },
                     {
@@ -1426,7 +1425,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f" ",
+                        "text": " ",
                     },
                     "accessory": {
                         "type": "button",
@@ -1877,7 +1876,7 @@ class JobCreationMessage(SlackMessage):
     """A job TJ number is created after submitting a new job (from API v3 callback)."""
 
     def __init__(self, job_id: str = "", is_auto_quote: bool = False) -> None:
-        tadeEmoji = f":tada:"
+        tadeEmoji = ":tada:"
         quote_message = _(
             "Human translation is currently not supported, please continue to use Translate@IBM for human translation requests until further notice."
         )
@@ -3661,6 +3660,7 @@ class EvaluateSuccessMessage(SlackMessage):
         job: dict[str, Any],
         is_ibm_enterprise: bool,
         tokens: int | None = None,
+        actions: bool = True,
     ) -> None:
         blocks = []
         info_text = _(
@@ -3690,23 +3690,24 @@ class EvaluateSuccessMessage(SlackMessage):
             )
 
         blocks.extend(evaluate_success_blocks(job))
-        blocks.append(
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("Send for Human Verification"),
+        if actions:
+            blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Send for Human Verification"),
+                            },
+                            "style": "primary",
+                            "value": job["uuid"],
+                            "action_id": "verify_job_modal_open",
                         },
-                        "style": "primary",
-                        "value": job["uuid"],
-                        "action_id": "verify_job_modal_open",
-                    },
-                ],
-            },
-        )
+                    ],
+                },
+            )
         super().__init__(_("Evaluation Result"), blocks)
 
 
@@ -3736,15 +3737,11 @@ class HumanJobQuoteMessage(SlackMessage):
         self,
         job: dict[str, Any],
         costs: list[dict[str, Any]],
+        actions: bool = True,
     ) -> None:
-        accept_all = any(
-            not target_file.get("human_job_status")
-            for source_file in job["source_files"]
-            for target_file in source_file.get("target_files", [])
-        )
         blocks = []
         blocks = verify_quote_blocks(job, costs, False)
-        if accept_all:
+        if actions:
             blocks.insert(0, {"type": "divider"})
             blocks.append(
                 {

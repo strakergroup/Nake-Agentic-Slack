@@ -1935,6 +1935,7 @@ async def quote_accept_all_action(
         selected_languages=selected_languages,
         user_id=body["user"]["id"],
         timestamp=timestamp,
+        job=job,
     )
 
 
@@ -1955,7 +1956,7 @@ async def handle_verify_job_submission(
     if not lock_acquired:
         await client.chat_postMessage(
             channel=body["user"]["id"],
-            text=_("A request is already in progress. Please try again in a few seconds."),
+            text=_("This request is no longer available. Please resubmit your documents in the message pane below"),
         )
         return
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
@@ -1991,6 +1992,7 @@ async def handle_verify_job_submission(
         selected_languages=selected_languages,
         user_id=body["user"]["id"],
         timestamp=message_ts,
+        job=job,
     )
 
 
