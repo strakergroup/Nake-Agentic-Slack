@@ -15,6 +15,7 @@ from app.api.verify import (
     get_job_pricing,
     submit_evaluation_job,
 )
+from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from ..database import engines
 
 from pydantic import ValidationError
@@ -1927,6 +1928,8 @@ async def quote_accept_all_action(
                 selected_languages.append(
                     f"{source_file['file_uuid']}:{target_file['language_uuid']}"
                 )
+            if job["data"]["workflow_uuid"] != HUMAN_EVALUATION_WORKFLOW_UUID:
+                target_file["human_job_status"] = "Submitted"
 
     await submit_verification_job(
         client=client,
@@ -1983,6 +1986,20 @@ async def handle_verify_job_submission(
                         for option in selected_options
                     ]
                 )
+                if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+                    for target_lang_option in selected_languages:
+                        lang_uuid = target_lang_option.rsplit(":", 1)[1]
+                        for target_file in source_file["target_files"]:
+                            if target_file["language_uuid"] == lang_uuid:
+                                target_file["human_job_status"] = "Submitted"
+                                break
+
+    if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+        for source_file in job["data"]["source_files"]:
+            for target_file in source_file["target_files"]:
+                if target_file.get("human_job_status") != "Submitted":
+                    target_file["human_job_status"] = "Cancelled"
+
     # update origial message ts to remove buttons
     # fetch original message
     await submit_verification_job(

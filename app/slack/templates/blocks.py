@@ -393,19 +393,32 @@ def verify_quote_blocks(
                         estimated_time = item["service_list"][0]["time_estimate_days"]
                         break
             if target_file.get("human_job_status", ""):
-                lang_label = f"*{_(lang['name'])}*\n"
-                cost_block = {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "{lang_label} Human translation has been submitted for this language."
-                        ),
-                    },
-                }
-                blocks.append(cost_block)
-                if not selectable:
-                    total_cost += cost
+                if target_file["human_job_status"] == "Submitted":
+                    lang_label = f"*{_(lang['name'])}*\n"
+                    cost_block = {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": _(
+                                "{lang_label} Human translation has been submitted for this language."
+                            ),
+                        },
+                    }
+                    if not selectable:
+                        total_cost += cost
+                    blocks.append(cost_block)
+                elif target_file["human_job_status"] == "Cancelled":
+                    lang_label = f"*{_(lang['name'])}*\n"
+                    cost_block = {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": _(
+                                "{lang_label} Human translation has been cancelled for this language."
+                            ),
+                        },
+                    }
+                    blocks.append(cost_block)
             else:
                 total_cost += cost
                 report = None
