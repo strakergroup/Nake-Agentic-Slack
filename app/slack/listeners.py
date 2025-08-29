@@ -1928,7 +1928,7 @@ async def quote_accept_all_action(
                 selected_languages.append(
                     f"{source_file['file_uuid']}:{target_file['language_uuid']}"
                 )
-            if job["data"]["workflow_uuid"] != HUMAN_EVALUATION_WORKFLOW_UUID:
+            if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
                 target_file["human_job_status"] = "Submitted"
 
     await submit_verification_job(
