@@ -2,6 +2,7 @@
 This module contains functions for common actions which are executed in
 Slack Bolt listener functions.
 """
+from ..redis import redis_conn
 
 import asyncio
 from typing import Any
@@ -9,7 +10,6 @@ import re
 import httpx
 from app.api.verify import (
     create_human_job,
-    get_client_evaluation_job,
     get_job_pricing,
 )
 import langcodes
@@ -27,6 +27,7 @@ from app.transcriber_tasks.tasks import create_asr_task
 
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
+    EvaluateSuccessMessage,
     HelpMessage,
     HumanJobQuoteMessage,
     LoginMessage,
@@ -65,7 +66,6 @@ from ..auth.connector import (
     approve_pending_groups,
     duration_to_tokens,
     get_group_mt_engine,
-    get_slack_user,
     log_transcribe_request,
 )
 from ..config import config, domains, Environment
@@ -75,7 +75,7 @@ from ..ray.settings import (
 )
 from ..ray.utils import get_media_duration, is_ibm_enterprise, validate_file_type
 from ..watson import watson_message
-from .select_options import _get_languages_cached, get_file_options_cached
+from .select_options import get_file_options_cached
 from app.models import TranscriptionTask
 
 VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
@@ -1904,7 +1904,8 @@ async def submit_verification_job(
     job_uuid: str,
     selected_languages: list[str],
     user_id: str,
-    timestamp: str | None = None,
+    timestamp: str,
+    job: dict[str, Any],
 ):
     """Submit a verification job with selected languages.
 
@@ -1917,61 +1918,53 @@ async def submit_verification_job(
         timestamp (str | None): Optional timestamp of the message to update.
         channel_id (str | None): Optional channel ID where the message is posted.
     """
-    if selected_languages:
+    # Send initial confirmation
+    msg = _(
+        "Thank you for sending your document(s) for human translation! We will notify you as soon as the translation is complete."
+    )
+    response = await client.chat_postMessage(
+        channel=user_id,
+        text=msg,
+    )
+    try:
+        # Get the updated job details after submission
+        if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+            costs = await get_job_pricing(
+                context.ray.client,
+                job_uuid,
+                [file["file_uuid"] for file in job["data"]["source_files"]],
+                [lang["uuid"] for lang in job["data"]["target_languages"]],
+            )
+            #
+            updated_msg = HumanJobQuoteMessage(job["data"], costs["data"], actions=False)
+        else:
+            updated_msg = EvaluateSuccessMessage(job["data"], is_ibm_enterprise(context.ray.client.slack_enterprise_id), actions=False)
 
-        async def update_message_after_job(channel_id: str):
-            try:
-                # Get the updated job details after submission
-                job = await get_client_evaluation_job(context.ray.client, job_uuid)
-
-                if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
-                    costs = await get_job_pricing(
-                        context.ray.client,
-                        job_uuid,
-                        [file["file_uuid"] for file in job["data"]["source_files"]],
-                        [lang["uuid"] for lang in job["data"]["target_languages"]],
-                    )
-                    updated_msg = HumanJobQuoteMessage(job["data"], costs["data"])
-                else:
-                    return
-
-                # Create updated message with the new status
-
-                # Update the original message if timestamp and channel_id are provided
-                if timestamp and channel_id:
-                    await client.chat_update(
-                        channel=channel_id,
-                        text=updated_msg.text,
-                        blocks=updated_msg.blocks,
-                        ts=timestamp,
-                    )
-                elif context.response_url and context.respond:
-                    await context.respond(
-                        text=updated_msg.text,
-                        blocks=updated_msg.blocks,
-                        replace_original=True,
-                    )
-            except Exception as e:
-                print(e)
-                notify_exception(e)
-
-        # Send initial confirmation
-        msg = _(
-            "Thank you for sending your document(s) for human translation! We will notify you as soon as the translation is complete."
+        # Update the original message if timestamp and channel_id are provided
+        if timestamp and response["channel"]:
+            await client.chat_update(
+                channel=response["channel"],
+                text=updated_msg.text,
+                blocks=updated_msg.blocks,
+                ts=timestamp,
+            )
+        elif context.response_url and context.respond:
+            await context.respond(
+                text=updated_msg.text,
+                blocks=updated_msg.blocks,
+                replace_original=True,
+            )
+        if selected_languages:
+            # submit the job
+            await create_human_job(context.ray.client, job_uuid, selected_languages)
+        else:
+            msg = _("Your request has been cancelled.")
+            await client.chat_postMessage(
+                channel=user_id,
+                text=msg,
         )
-        response = await client.chat_postMessage(
-            channel=user_id,
-            text=msg,
-        )
-        # Create task to submit the job and update message after completion
-        asyncio.create_task(
-            create_human_job(context.ray.client, job_uuid, selected_languages)
-        ).add_done_callback(
-            lambda _: asyncio.create_task(update_message_after_job(response["channel"]))
-        )
-    else:
-        msg = _("Your request has been cancelled.")
-        await client.chat_postMessage(
-            channel=user_id,
-            text=msg,
-        )
+    except Exception as e:
+        notify_exception(e)
+        raise
+    finally:
+        await redis_conn.delete(f"verify_job_submission_{job_uuid}")

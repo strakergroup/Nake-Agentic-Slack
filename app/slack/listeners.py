@@ -13,9 +13,9 @@ from app.api.verify import (
     download_verify_file,
     get_client_evaluation_job,
     get_job_pricing,
-    get_verify_languages,
     submit_evaluation_job,
 )
+from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from ..database import engines
 
 from pydantic import ValidationError
@@ -1908,15 +1908,14 @@ async def quote_accept_all_action(
     timestamp = body.get("message", {}).get("ts")
     job_uuid = action["value"]
 
-    # Check if this action has already been used for this job
-    redis_key = f"quote_accept_all_{job_uuid}"
+    redis_key = f"verify_job_submission_{job_uuid}"
     if await redis_conn.get(redis_key):
         await client.chat_postMessage(
             channel=context["channel_id"],
-            text=_("This action has already been used for this job."),
+            text=_("A request is already in progress. Please try again in a few seconds."),
         )
         return
-    await redis_conn.set(redis_key, "1", ex=30)
+    await redis_conn.set(redis_key, "1", ex=60)
 
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
 
@@ -1929,6 +1928,8 @@ async def quote_accept_all_action(
                 selected_languages.append(
                     f"{source_file['file_uuid']}:{target_file['language_uuid']}"
                 )
+            if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+                target_file["human_job_status"] = "Submitted"
 
     await submit_verification_job(
         client=client,
@@ -1937,6 +1938,7 @@ async def quote_accept_all_action(
         selected_languages=selected_languages,
         user_id=body["user"]["id"],
         timestamp=timestamp,
+        job=job,
     )
 
 
@@ -1951,7 +1953,15 @@ async def handle_verify_job_submission(
     private_metadata = json.loads(body["view"]["private_metadata"])
     job_uuid = private_metadata.get("job_uuid")
     message_ts = private_metadata.get("timestamp", None)
-
+    # lock so that if submission is in progress, it will not be submitted again
+    lock_key = f"verify_job_submission_{job_uuid}"
+    lock_acquired = await redis_conn.set(lock_key, "1", ex=60, nx=True)
+    if not lock_acquired:
+        await client.chat_postMessage(
+            channel=body["user"]["id"],
+            text=_("This request is no longer available. Please resubmit your documents in the message pane below"),
+        )
+        return
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
     target_languages = job["data"]["target_languages"]
 
@@ -1976,7 +1986,22 @@ async def handle_verify_job_submission(
                         for option in selected_options
                     ]
                 )
+                if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+                    for target_lang_option in selected_languages:
+                        lang_uuid = target_lang_option.rsplit(":", 1)[1]
+                        for target_file in source_file["target_files"]:
+                            if target_file["language_uuid"] == lang_uuid:
+                                target_file["human_job_status"] = "Submitted"
+                                break
 
+    if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+        for source_file in job["data"]["source_files"]:
+            for target_file in source_file["target_files"]:
+                if target_file.get("human_job_status") != "Submitted":
+                    target_file["human_job_status"] = "Cancelled"
+
+    # update origial message ts to remove buttons
+    # fetch original message
     await submit_verification_job(
         client=client,
         context=context,
@@ -1984,6 +2009,7 @@ async def handle_verify_job_submission(
         selected_languages=selected_languages,
         user_id=body["user"]["id"],
         timestamp=message_ts,
+        job=job,
     )
 
 
