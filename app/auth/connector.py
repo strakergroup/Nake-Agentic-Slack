@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 from dataclasses import dataclass
 from urllib.parse import urlencode
-import uuid
 
 import httpx
 from sqlalchemy import bindparam, text
@@ -400,7 +399,7 @@ async def get_ray_super_group(
         if enterprise_id:
             sql = text(
                 """
-                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
+                SELECT link.super_group_uuid, g.label, vo.organization_name, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
                 FROM slack_super_group_link link
                 INNER JOIN sitemanager.obj_m_group g
                 ON link.super_group_uuid = g.obj_uuid
@@ -413,7 +412,7 @@ async def get_ray_super_group(
         else:
             sql = text(
                 """
-                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
+                SELECT link.super_group_uuid, g.label, vo.organization_name, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
                 FROM slack_super_group_link link
                 INNER JOIN sitemanager.obj_m_group g
                 ON link.super_group_uuid = g.obj_uuid
@@ -430,7 +429,7 @@ async def get_ray_super_group(
     return [
         RaySuperGroup(
             id=row.super_group_uuid,
-            name=row.label,
+            name=row.organization_name,
             slack_team_id=team_id,
             slack_enterprise_id=enterprise_id,
             enable_verify_in_slack=bool(row.enable_verify_in_slack),
