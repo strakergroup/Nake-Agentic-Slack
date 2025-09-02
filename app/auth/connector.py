@@ -739,7 +739,7 @@ async def get_ray_connection(
         super_group = [
             RaySuperGroup(
                 id=group.id,
-                name=group.name,
+                name=group.organization_name,
                 slack_team_id=group.slack_team_id,
                 slack_enterprise_id=group.slack_enterprise_id,
                 enable_verify_in_slack=False,
