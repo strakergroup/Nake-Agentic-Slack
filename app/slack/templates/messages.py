@@ -3664,7 +3664,7 @@ class EvaluateSuccessMessage(SlackMessage):
     ) -> None:
         blocks = []
         info_text = _(
-            'The AI translation quality of your document(s) has been evaluated. Download the AI translation if you\'re satisfied, or click "Send for Human Verification" to request human verification'
+            'The AI translation quality of your document(s) has been evaluated. Download the AI translation if you\'re satisfied, or click "Send for Human Verification" to request human verification.'
         )
         if not is_ibm_enterprise and tokens:
             blocks.append(
