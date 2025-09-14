@@ -1,4 +1,3 @@
-import json
 from typing import Any
 
 from app.api.verify import get_evaluation_job, get_job_pricing
@@ -7,33 +6,33 @@ from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.ray.utils import is_ibm_enterprise
 from app.slack.select_options import _get_languages_cached
 
-from .models import (
-    MtFileReponseSchema,
-    SlackAccountConnectedEvent,
-    ClientSignupEvent,
-    ClientApprovedEvent,
-    JobStatusChangedEvent,
-    JobQuoteCreatedEvent,
-    JobQuoteAcceptedEvent,
-    JobQuoteCancelledEvent,
-    JobTranscribedEvent,
-)
 from ...slack.templates.messages import (
+    ClientApprovedEventMessage,
+    ClientSignupEventMessage,
     DocMtMessage,
     EvaluateSuccessMessage,
     HumanJobQuoteMessage,
-    SlackMessage,
-    SuccessfulLoginMessage,
-    ClientSignupEventMessage,
-    ClientApprovedEventMessage,
-    JobStatusChangedEventMessage,
-    JobCompletedEventMessage,
     JobCancelledEventMessage,
-    JobQuotedEventMessage,
+    JobCompletedEventMessage,
     JobQuoteAcceptedEventMessage,
     JobQuoteCancelledEventMessage,
+    JobQuotedEventMessage,
+    JobStatusChangedEventMessage,
     JobTranscribedEventMessage,
+    SlackMessage,
+    SuccessfulLoginMessage,
     VerifyCompleteMessage,
+)
+from .models import (
+    ClientApprovedEvent,
+    ClientSignupEvent,
+    JobQuoteAcceptedEvent,
+    JobQuoteCancelledEvent,
+    JobQuoteCreatedEvent,
+    JobStatusChangedEvent,
+    JobTranscribedEvent,
+    MtFileReponseSchema,
+    SlackAccountConnectedEvent,
 )
 
 

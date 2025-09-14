@@ -1,14 +1,12 @@
-import hashlib
-import inspect
 import contextvars
-import re
+import inspect
 import logging
+import re
 
 from buglog import notify_exception
-from .database import engines
 from sqlalchemy import text
-from .redis import redis_sync as redis_conn
-from .config import Environment, config
+
+from .database import engines
 
 
 class Translator:
@@ -34,7 +32,6 @@ class Translator:
         return language_map
 
     def translate(self, input: str, max_length: int = 0) -> str:
-
         if self.lang.lower().startswith(("en", "gb", "us")):
             return input, True
         if input in self.cache:

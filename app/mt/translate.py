@@ -1,22 +1,20 @@
-from buglog import notify_exception
 import httpx
 import langcodes
+from buglog import notify_exception
 from slack_bolt.context.async_context import AsyncBoltContext
-
-from app.mt.schemas import TranslationRequest, TranslationResponse
-from ..config import domains
-from app.auth.connector import get_channel_info, get_group_mt_engine
-from app.slack.utils import escape_slack_emoji, unescape_slack_emoji
-from ..models import Language
-from ..database import engines
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from straker_auth.languagecloud import create_languagecloud_group_token
 
+from app.auth.connector import get_group_mt_engine
+from app.mt.schemas import TranslationRequest, TranslationResponse
 from app.ray.settings import get_auto_translate_languages
 from app.slack.middleware import require_mt_tokens
+from app.slack.utils import escape_slack_emoji, unescape_slack_emoji
 
-from ..config import config
+from ..config import config, domains
+from ..database import engines
+from ..models import Language
 
 
 # TODO: get microsoft code
