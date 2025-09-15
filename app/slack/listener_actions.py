@@ -1689,6 +1689,7 @@ async def get_mt_translation(
     sentence: str,
     thread_ts: str | None = None,
     is_edit: bool = False,
+    usage_type: str = "direct_machine_translation",
 ):
     """Get google machine translation for sentence by correct language pair.
 
@@ -1707,7 +1708,7 @@ async def get_mt_translation(
         target_lang = target_lang.lower()
 
         result_source_lang, translation = await get_ai_translation(
-            context, sentence, [target_lang], "direct_machine_translation"
+            context, sentence, [target_lang], usage_type
         )
         if not result_source_lang:
             return
