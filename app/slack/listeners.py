@@ -74,7 +74,6 @@ from .listener_actions import (
     post_job_summary,
     post_report_insights,
     respond_to_message,
-    show_quote_form_modal,
     submit_job,
     submit_verification_job,
     verify_help,
@@ -100,6 +99,7 @@ from .templates.messages import (
     JobSubmitMessage,
     LoginMessage,
     LogoutMessage,
+    NewJobMessage,
     OnboardingMessage,
     QuoteMessage,
     SrtTranslateMessage,
@@ -129,7 +129,6 @@ from .utils import is_channel_im
 from .web import (
     download_file,
     files_list_simple,
-    get_bot_accessible_files,
     get_mt_ts_cached,
     upload_file_to_slack_memory_efficient,
 )
@@ -305,20 +304,19 @@ async def new_job_shortcut(
 ):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        asyncio.create_task(
-            files_list_simple(client, channel_id=context["channel_id"], count=120)
-        )
-        # Set files in the message as initial values if the bot has access to them.
-        init_files = await get_bot_accessible_files(
-            client, (f["id"] for f in shortcut["message"].get("files", []))
-        )
-        await show_quote_form_modal(
-            client,
-            context,
-            shortcut["trigger_id"],
-            context["ray"].client,
-            initial_files=init_files,
-        )
+        # check if the message has files
+        if shortcut and shortcut["message"] and shortcut["message"].get("files"):
+            new_job_msg = NewJobMessage(
+                context["channel_id"],
+                shortcut["message"]["ts"],
+                shortcut["message"].get("files", []),
+                context.ray.super_group[0].enable_verify_in_slack,
+            )
+            await context.say(
+                text=new_job_msg.text,
+                blocks=new_job_msg.blocks,
+                thread_ts=shortcut["message"]["ts"],
+            )
 
 
 @app.action("show_srt_translate_form", middleware=[ray_connection])
@@ -769,26 +767,11 @@ async def ray_command(
             # Get summary of jobs.
             if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                 await post_job_summary(client, context, context["ray"].client)
-
-        case ["new"]:
-            # Show quote form modal.
-            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-                asyncio.create_task(
-                    files_list_simple(
-                        client, channel_id=context["channel_id"], count=120
-                    )
-                )
-                await show_quote_form_modal(
-                    client,
-                    context,
-                    command["trigger_id"],
-                    context["ray"].client,
-                    check_last_messages=4,
-                )
-
-        case ["quote"]:
+        case ["quote"] | ["new"]:
             # Show quote message.
-            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+            if await require_ray_client(
+                context, variation=LoginMessage.QUALITY_EVALUATION
+            ):
                 # quote is like new job except it doesn't open the modal.
                 await ack()
                 msg = QuoteMessage()
@@ -1068,46 +1051,6 @@ async def job_list_paginated_action(
                 page_size=page_size,
                 replace_original=True,
             )
-
-
-@app.block_action("new_job", middleware=[ray_connection])
-@slack_log_decorator
-async def new_job_action(
-    ack: AsyncAck,
-    payload: Dict[str, Any],
-    context: RayContext,
-    client: AsyncWebClient,
-    body: Dict[str, Any],
-):
-    await ack()
-    if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        init_files = []
-        try:
-            value = json.loads(payload["value"])
-            response = await client.conversations_history(
-                channel=value["channel_id"],
-                latest=value["ts"],
-                inclusive=True,
-                limit=1,
-            )
-            message = response["messages"][0]
-            # Assume the files are accessible if we are able to get the message
-            init_files = message.get("files", [])
-        except (SlackApiError, json.JSONDecodeError, KeyError):
-            # The payload value does not exist, is malformed, or no access to the files.
-            pass
-        asyncio.create_task(
-            files_list_simple(client, channel_id=context["channel_id"], count=120)
-        )
-        await show_quote_form_modal(
-            client,
-            context,
-            body["trigger_id"],
-            context["ray"].client,
-            initial_files=init_files,
-            # Check message history for initial files if not in payload.
-            check_last_messages=4,
-        )
 
 
 # The "Account Info" button short cut

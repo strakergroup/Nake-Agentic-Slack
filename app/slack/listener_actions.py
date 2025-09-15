@@ -12,7 +12,6 @@ import langcodes
 from buglog import notify_exception, notify_message
 from ray_sdk import RayResponse
 from slack_bolt.context.async_context import AsyncBoltContext
-from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.api.verify import (
@@ -43,7 +42,6 @@ from ..ray.utils import get_media_duration, is_ibm_enterprise, validate_file_typ
 from ..redis import redis_conn
 from ..watson import watson_message
 from .middleware import require_mt_tokens, require_ray_client
-from .select_options import get_file_options_cached
 from .templates.messages import (
     AIHelperMessage,
     AutoTranslationMessage,
@@ -74,9 +72,6 @@ from .templates.messages import (
     VerifyHelperMessage,
 )
 from .templates.models import NewJobForm
-from .templates.views import (
-    new_job_modal,
-)
 from .web import download_files, files_list_simple, get_mt_ts_cached, set_mt_ts_edit
 
 VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
@@ -313,24 +308,6 @@ async def respond_to_message(
                     )
             else:
                 await context.say(JobTargetsNoIdMessage().text, thread_ts=thread_ts)
-        # case "New_Translation_Job":
-        #     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        #         asyncio.create_task(
-        #             files_list_simple(
-        #                 client, channel_id=context["channel_id"], count=120
-        #             )
-        #         )
-        #         new_job_msg = NewJobMessage(
-        #             context["channel_id"],
-        #             message["ts"],
-        #             "",
-        #             context.ray.super_group[0].enable_verify_in_slack,
-        #         )
-        #         await context.say(
-        #             text=new_job_msg.text,
-        #             blocks=new_job_msg.blocks,
-        #             thread_ts=thread_ts,
-        #         )
         case "Show_Insights":
             if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
                 await post_insights(
@@ -1198,63 +1175,6 @@ async def post_insights(
 
     # Send insights message async because it might take a long time.
     asyncio.create_task(send_insights_message())
-
-
-async def show_quote_form_modal(
-    client: AsyncWebClient,
-    context: AsyncBoltContext,
-    trigger_id: str,
-    ray_client: RayClient,
-    *,
-    initial_files: list[dict[str, Any]] | None = None,
-    check_last_messages: int = 0,
-):
-    """Show the quote form (new job form) modal.
-
-    Args:
-        context (AsyncBoltContext): The context from the listener.
-        trigger_id (str): The trigger ID.
-        ray_client (RayClient): The RAY client details.
-        initial_files (list[dict[str, Any]] | None): The files to be selected
-            in the source file dropdown when the form is shown.
-        check_last_messages (int, optional): If no initial files set and this
-            argument is greater than 0, check the last `check_last_messages`
-            messages with the bot to find files to set as the initial files. If
-            a message has files attached, select those files and stop finding.
-            Only works with DM with the bot, not channels or groups.
-    """
-    # Include a bit more than the max 100 options due to hidden files.
-    files = await get_file_options_cached(context["channel_id"])
-    # Reduce list to 10 if initial files are set.
-    if initial_files and len(files) + len(initial_files) > 10:
-        files = files[: 10 - len(initial_files)]
-    # Set initial selected files.
-    if not initial_files and check_last_messages > 0:
-        # Check last 100 messages maximum.
-        check_last_messages = min(check_last_messages, 100)
-        # Try to get the files from the last n messages to set as the
-        # default files in the form dropdown.
-        try:
-            response = await client.conversations_history(
-                channel=context["channel_id"],
-                limit=check_last_messages,
-            )
-            for message in response["messages"]:
-                if message.get("files"):
-                    initial_files = message.get("files")
-                    break
-        except SlackApiError:
-            # Unknown or forbidden conversation (e.g. channel, DM with other user).
-            pass
-    await client.views_open(
-        trigger_id=trigger_id,
-        view=new_job_modal(
-            ray_client.username,
-            channel_id=context["channel_id"],
-            file_options=files,
-            initial_files=initial_files,
-        ),
-    )
 
 
 async def submit_job(
