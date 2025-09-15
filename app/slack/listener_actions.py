@@ -2,64 +2,30 @@
 This module contains functions for common actions which are executed in
 Slack Bolt listener functions.
 """
-from ..redis import redis_conn
 
 import asyncio
-from typing import Any
 import re
+from typing import Any
+
 import httpx
+import langcodes
+from buglog import notify_exception, notify_message
+from ray_sdk import RayResponse
+from slack_bolt.context.async_context import AsyncBoltContext
+from slack_sdk.errors import SlackApiError
+from slack_sdk.web.async_client import AsyncWebClient
+
 from app.api.verify import (
     create_human_job,
     get_job_pricing,
 )
-import langcodes
-from slack_sdk.errors import SlackApiError
-from slack_sdk.web.async_client import AsyncWebClient
-from slack_bolt.context.async_context import AsyncBoltContext
-from ray_sdk import RayResponse
-from buglog import notify_exception, notify_message
-
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+from app.models import TranscriptionTask
 from app.mt.translate import get_ai_translation
 from app.ray.events.models import MtFileRequestSchema
-from app.translate import _
 from app.transcriber_tasks.tasks import create_asr_task
+from app.translate import _
 
-from .middleware import require_mt_tokens, require_ray_client
-from .templates.messages import (
-    EvaluateSuccessMessage,
-    HelpMessage,
-    HumanJobQuoteMessage,
-    LoginMessage,
-    LogoutMessage,
-    JobStatusNoIdMessage,
-    NewJobMessage,
-    JobQuotedMessage,
-    JobStatusMessage,
-    InvalidJobMessage,
-    JobSummaryMessage,
-    JobListMessage,
-    JobDetailsMessage,
-    InsightsMessage,
-    ReportInsightsMessage,
-    AIHelperMessage,
-    VerifyHelperMessage,
-    BatchListMessage,
-    FileListMessage,
-    JobTargetsNoIdMessage,
-    JobTargetLangMessage,
-    AutoTranslationMessage,
-    MachineTranslationMessage,
-    InvalidMTResultMessage,
-    CancelTJMessage,
-    CancelJobMessage,
-    TranscriptionMessage,
-)
-from .templates.models import NewJobForm
-from .templates.views import (
-    new_job_modal,
-)
-from .web import files_list_simple, download_files, get_mt_ts_cached, set_mt_ts_edit
 from ..auth.connector import (
     RayClient,
     RayContext,
@@ -68,15 +34,50 @@ from ..auth.connector import (
     get_group_mt_engine,
     log_transcribe_request,
 )
-from ..config import config, domains, Environment
+from ..config import Environment, config, domains
 from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
     get_auto_translate_settings_and_langs,
 )
 from ..ray.utils import get_media_duration, is_ibm_enterprise, validate_file_type
+from ..redis import redis_conn
 from ..watson import watson_message
+from .middleware import require_mt_tokens, require_ray_client
 from .select_options import get_file_options_cached
-from app.models import TranscriptionTask
+from .templates.messages import (
+    AIHelperMessage,
+    AutoTranslationMessage,
+    BatchListMessage,
+    CancelJobMessage,
+    CancelTJMessage,
+    EvaluateSuccessMessage,
+    FileListMessage,
+    HelpMessage,
+    HumanJobQuoteMessage,
+    InsightsMessage,
+    InvalidJobMessage,
+    InvalidMTResultMessage,
+    JobDetailsMessage,
+    JobListMessage,
+    JobQuotedMessage,
+    JobStatusMessage,
+    JobStatusNoIdMessage,
+    JobSummaryMessage,
+    JobTargetLangMessage,
+    JobTargetsNoIdMessage,
+    LoginMessage,
+    LogoutMessage,
+    MachineTranslationMessage,
+    NewJobMessage,
+    ReportInsightsMessage,
+    TranscriptionMessage,
+    VerifyHelperMessage,
+)
+from .templates.models import NewJobForm
+from .templates.views import (
+    new_job_modal,
+)
+from .web import download_files, files_list_simple, get_mt_ts_cached, set_mt_ts_edit
 
 VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
 
@@ -222,15 +223,14 @@ async def respond_to_message(
             # TODO: read user lang to default target
             mt_tl = message_match.group(2) or context.get("locale") or "en"
             mt_text = message_match.group(3)
-            if await require_mt_tokens(context, len(mt_text)):
-                await get_mt_translation(
-                    client,
-                    context,
-                    source_lang=mt_sl,
-                    target_lang=mt_tl,
-                    sentence=mt_text,
-                    thread_ts=thread_ts,
-                )
+            await get_mt_translation(
+                client,
+                context,
+                source_lang=mt_sl,
+                target_lang=mt_tl,
+                sentence=mt_text,
+                thread_ts=thread_ts,
+            )
         return
     if message["text"] == "debug":
         # retrieve workspace name based on bot token
@@ -1936,9 +1936,15 @@ async def submit_verification_job(
                 [lang["uuid"] for lang in job["data"]["target_languages"]],
             )
             #
-            updated_msg = HumanJobQuoteMessage(job["data"], costs["data"], actions=False)
+            updated_msg = HumanJobQuoteMessage(
+                job["data"], costs["data"], actions=False
+            )
         else:
-            updated_msg = EvaluateSuccessMessage(job["data"], is_ibm_enterprise(context.ray.client.slack_enterprise_id), actions=False)
+            updated_msg = EvaluateSuccessMessage(
+                job["data"],
+                is_ibm_enterprise(context.ray.client.slack_enterprise_id),
+                actions=False,
+            )
 
         # Update the original message if timestamp and channel_id are provided
         if timestamp and response["channel"]:
@@ -1962,7 +1968,7 @@ async def submit_verification_job(
             await client.chat_postMessage(
                 channel=user_id,
                 text=msg,
-        )
+            )
     except Exception as e:
         notify_exception(e)
         raise
