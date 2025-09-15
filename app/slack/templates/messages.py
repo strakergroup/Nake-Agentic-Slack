@@ -1,49 +1,48 @@
 """Slack Messages templates."""
 
-from typing import Any, Dict, List
 import json
+from typing import Any, Dict, List
 
 import langcodes
+from ray_sdk.api.v3.models import Job, Pagination, Quote
+
 from app.slack.select_options import (
     get_auto_translate_language_options,
 )
-from ray_sdk.api.v3.models import Job, Pagination, Quote
+from app.translate import _
 
-from .models import NewJobForm
-from .blocks import (
-    evaluate_success_blocks,
-    job_link_block,
-    quote_message_block,
-    job_prediction_block,
-    verify_quote_blocks,
-)
-from ...ray.events.models import (
-    ClientSignupEvent,
-    JobQuoteCreatedEvent,
-    ClientGroup,
-    JobQuoteAcceptedEvent,
-)
-
-from ...ray.utils import (
-    get_job_url,
-    format_job_status,
-    format_datetime_slack,
-    format_job_due_date_slack,
-    format_job_prediction,
-    is_ibm_enterprise,
-    is_min_langugagecloud_plan,
-)
-from ...ray.settings import get_auto_translate_language_name
-from ..utils import format_strings_display
-from ...config import config, domains, Environment
 from ...auth.connector import (
     RayClient,
     RayConnection,
     RayContext,
     get_language_cloud_connect_url,
-    encrpyt_slack_sso_token,
 )
-from app.translate import _
+from ...config import Environment, config, domains
+from ...ray.events.models import (
+    ClientGroup,
+    ClientSignupEvent,
+    JobQuoteAcceptedEvent,
+    JobQuoteCreatedEvent,
+)
+from ...ray.settings import get_auto_translate_language_name
+from ...ray.utils import (
+    format_datetime_slack,
+    format_job_due_date_slack,
+    format_job_prediction,
+    format_job_status,
+    get_job_url,
+    is_ibm_enterprise,
+    is_min_langugagecloud_plan,
+)
+from ..utils import format_strings_display
+from .blocks import (
+    evaluate_success_blocks,
+    job_link_block,
+    job_prediction_block,
+    quote_message_block,
+    verify_quote_blocks,
+)
+from .models import NewJobForm
 
 
 class TextMessage:
@@ -182,7 +181,7 @@ class LoginMessage(SlackMessage):
         elif variation == self.HUMAN_TRANSLATION:
             block_text = "Connect your account to perform human translation."
         elif isinstance(ray_client, RayClient):
-            user_details = f"<{domains.languagecloud}|{ray_client.username}>"
+            user_details = f"<{domains.verify}|{ray_client.username}>"
             block_text = (
                 "Your connected account is: {user_details}. "
                 + "\nYou can connect a different account by clicking this button."
@@ -691,7 +690,7 @@ class LogoutMessage(SlackMessage):
     """Message with a button disconnect a user's LanguageCloud account."""
 
     def __init__(self, ray_client: RayClient) -> None:
-        user_details = f"<{domains.languagecloud}|{ray_client.username}>"
+        user_details = f"<{domains.verify}|{ray_client.username}>"
         text = _("Click this button to disconnect your account: {user_details}.")
         if ray_client.sso:
             text = _(
@@ -741,7 +740,7 @@ class SuccessfulLogoutMessage(SlackMessage):
         self, user_id: str, is_sso: bool = False, ray_username: str | None = None
     ) -> None:
         # TODO: Translation fix this
-        user_details = f"<{domains.languagecloud}|{ray_username}>"
+        user_details = f"<{domains.verify}|{ray_username}>"
         user_link = f"<@{user_id}>"
         text = _("Your account {user_details} is now disconnected from {user_link}.")
         if is_sso:
@@ -2272,7 +2271,7 @@ def get_account_blocks(
     text: str = ""
 
     if ray_client is not None:
-        user_details = f"<{domains.languagecloud}|{ray_client.username}>"
+        user_details = f"<{domains.verify}|{ray_client.username}>"
         if is_ibm_enterprise(enterprise_id=enterprise_id):
             text = _("Your connected account is: {ray_client.username}")
         else:
@@ -2442,33 +2441,6 @@ class SsoConnectionInfoMessage(SlackMessage):
                 "text": {"type": "mrkdwn", "text": text},
             },
         ]
-        if ray_connection.client:
-            msg.extend(
-                [
-                    {
-                        "type": "actions",
-                        "elements": (
-                            [
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("Login to Verify"),
-                                    },
-                                    "style": "primary",
-                                    # TODO: ray_connection.client could be None
-                                    "url": encrpyt_slack_sso_token(
-                                        ray_connection.client.username
-                                    ),
-                                    "action_id": "login",
-                                }
-                            ]
-                        ),
-                    }
-                ]
-                if not is_ibm
-                else []
-            )
         super().__init__(
             "Login Successfull",
             msg,
@@ -2573,7 +2545,7 @@ class ClientSignupEventAdminMessage(SlackMessage):
                                 "emoji": True,
                                 "text": _("Log into Verify"),
                             },
-                            "url": domains.languagecloud,
+                            "url": domains.verify,
                             "action_id": "link",
                         },
                     ],
@@ -2809,7 +2781,9 @@ class JobQuotedEventMessage(SlackMessage):
                             )
                             + f"<{job_url}|{reference}>**"
                             if not is_ibm
-                            else reference if is_ibm else f"{reference}"
+                            else reference
+                            if is_ibm
+                            else f"{reference}"
                         ),
                     },
                 },
@@ -3373,7 +3347,6 @@ class DocumentMTJobMessage(SlackMessage):
 
 
 class JobTranscribedEventMessage(SlackMessage):
-
     def __init__(self, task_uuid: str, source_file_name: str) -> None:
         title = _(
             "We have *transcribed* your file *{source_file_name}* and SRT can be downloaded below."
@@ -3468,7 +3441,6 @@ class CancelTJMessage(SlackMessage):
     """
 
     def __init__(self, jobdetail: dict[str, Any]) -> None:
-
         target_labels = [_(target.label) for target in jobdetail["targetlang"]]
         jobid = jobdetail["job_id"]
         jobstatus = _(format_job_status(jobdetail["status"]))
@@ -3561,7 +3533,6 @@ class AutoTranslateSettingsDisabledMessage(TextMessage):
 
 class RequiresMtTokenMessage(SlackMessage):
     def __init__(self, tokens: int, required_tokens: int) -> None:
-
         match (tokens, required_tokens):
             case (tokens, 1) if tokens <= 0:
                 title = _(
@@ -3607,7 +3578,6 @@ class RequiresMtTokenMessage(SlackMessage):
 
 class RequiresMtTokenAdminMessage(SlackMessage):
     def __init__(self, tokens: int, required_tokens: int) -> None:
-
         match (tokens, required_tokens):
             case (tokens, 1) if tokens <= 0:
                 title = _("Your group has no AI Tokens. Please purchase AI Tokens")
@@ -3776,7 +3746,6 @@ class FileTooLargeMessage(SlackMessage):
     """Message to send when a file is too large to be processed."""
 
     def __init__(self, file_name: str, file_size: int) -> None:
-
         text = (
             f"*{file_name}* exceeds the current limit of 25MB "
             f"(~{file_size/1048576:.1f} MiB). "
