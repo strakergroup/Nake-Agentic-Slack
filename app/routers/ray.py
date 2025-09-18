@@ -1,56 +1,57 @@
 import asyncio
-from typing import Any, Annotated
+from dataclasses import replace
+from typing import Annotated, Any
+
 from buglog import notify_exception, notify_message
-from fastapi import APIRouter, HTTPException, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ValidationError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.ray.utils import (
-    download_from_file_server_async,
     delete_from_file_server,
+    download_from_file_server_async,
     is_ibm_enterprise,
     set_user_language,
 )
+from app.slack_job import update_slack_job
 from app.translate import _
 
 from ..auth.connector import (
     SlackUser,
+    get_client_access_tokens,
     get_client_type,
     get_demo_link,
+    get_group_admin_slack_users,
     get_job_group_quote_settings,
+    get_slack_user,
     is_verify_job,
     validate_api_callback_signature,
-    get_slack_user,
-    get_client_access_tokens,
-    get_group_admin_slack_users,
 )
-from ..dependencies import RayEventAuth, RayEvent
-from ..slack.templates.messages import (
-    DocMtMessage,
-    DocParseErrorMessage,
-    EvaluateSuccessMessage,
-    RequiresMtTokenAdminMessage,
-    RequiresMtTokenMessage,
-    SuccessfulLoginMessage,
-    ClientSignupEventMessage,
-    ClientSignupEventAdminMessage,
-    ClientApprovedEventMessage,
-    JobCreationMessage,
-    JobTranscribedEventMessage,
-    JobCompletedEventMessage,
-    VerifyCompleteMessage,
-)
-from ..slack.web import upload_file_to_slack_memory_efficient
-from ..ray.events.parse import get_ray_event_message
+from ..dependencies import RayEvent, RayEventAuth
+from ..ray.events.logging import post_notification, post_notification_ephemeral
 from ..ray.events.models import (
     Balance,
     ClientGroup,
     MtErrorResponseSchema,
     MtSuccessResponseSchema,
 )
-from ..ray.events.logging import post_notification, post_notification_ephemeral
-from dataclasses import replace
-
+from ..ray.events.parse import get_ray_event_message
+from ..slack.templates.messages import (
+    ClientApprovedEventMessage,
+    ClientSignupEventAdminMessage,
+    ClientSignupEventMessage,
+    DocMtMessage,
+    DocParseErrorMessage,
+    EvaluateSuccessMessage,
+    JobCompletedEventMessage,
+    JobCreationMessage,
+    JobTranscribedEventMessage,
+    RequiresMtTokenAdminMessage,
+    RequiresMtTokenMessage,
+    SuccessfulLoginMessage,
+    VerifyCompleteMessage,
+)
+from ..slack.web import upload_file_to_slack_memory_efficient
 
 router = APIRouter()
 
@@ -88,6 +89,10 @@ async def _handle_mt_success_background(
 ):
     """Background task to handle MT success file download and upload."""
     try:
+        update_slack_job(
+            task_uuid=success_data.task_uuid,
+            status="slack_uploading",
+        )
         # Create a new client instance with the correct token for this user
         client = AsyncWebClient(token=auth.slack_user.bot_token)
 
@@ -109,9 +114,18 @@ async def _handle_mt_success_background(
             filename=title,
             initial_comment=token_consumption_message,
         )
+
+        update_slack_job(
+            task_uuid=success_data.task_uuid,
+            status="delivered",
+        )
         delete_from_file_server(success_data.file_id)
     except Exception as e:
         notify_exception(e, "Background MT success file handling failed")
+        update_slack_job(
+            task_uuid=success_data.task_uuid,
+            status="failed_delivery",
+        )
 
 
 async def _handle_transcribe_success_background(
