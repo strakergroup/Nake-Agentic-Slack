@@ -25,6 +25,7 @@ from app.api.verify import (
     submit_evaluation_job,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+from app.ray.submissions import check_and_record_submission_async
 from app.ray.utils import (
     download_from_file_server,
     is_ibm_enterprise,
@@ -394,14 +395,31 @@ async def document_mt_submit_action(
                         client=client, file_id=slack_file_id, http=None
                     )
                     input_file_id = upload_to_file_server(input_file)
-                    await document_machine_translate(
-                        context, input_file_id, selected_language
+                    # Dedupe check and record in DB
+                    is_dup, _record = await check_and_record_submission_async(
+                        path=input_file,
+                        file_name=os.path.basename(input_file),
+                        file_id=input_file_id,
+                        user_id=context["user_id"],
+                        team_id=context["team_id"],
+                        channel_id=context.get("channel_id", context["user_id"]),
+                        target_language=str(selected_language),
                     )
-                    await say(
-                        _(
-                            "The file is being translated. You will be notified when it is ready."
+                    if is_dup:
+                        await say(
+                            _(
+                                f"This file has already been submitted for {selected_language}. Skipping duplicate."
+                            )
                         )
-                    )
+                    else:
+                        await document_machine_translate(
+                            context, input_file_id, selected_language
+                        )
+                        await say(
+                            _(
+                                "The file is being translated. You will be notified when it is ready."
+                            )
+                        )
                 else:
                     await say(_("Please select a language to translate to."))
 
@@ -2141,22 +2159,45 @@ async def handle_document_mt_job(
                     )
                     continue
                 input_file_id = upload_to_file_server(input_file)
-                files_uploaded.append(file_name)
+                submitted_for_file = False
                 # Submit machine translation job for each selected language
                 for lang in selected_languages:
+                    is_dup, _record = await check_and_record_submission_async(
+                        path=input_file,
+                        file_name=os.path.basename(input_file),
+                        file_id=input_file_id,
+                        user_id=context["user_id"],
+                        team_id=context["team_id"],
+                        channel_id=context["channel_id"],
+                        target_language=str(lang["value"]),
+                    )
+                    if is_dup:
+                        await client.chat_postMessage(
+                            channel=context["user_id"],
+                            text=_(
+                                f"Skipping duplicate submission for {file_name} ({lang['value']})."
+                            ),
+                        )
+                        continue
+
                     await document_machine_translate(
                         context, input_file_id, lang["value"]
                     )
+                    submitted_for_file = True
+
+                if submitted_for_file:
+                    files_uploaded.append(file_name)
 
             # convert files to
             # Send confirmation message to the original channel if available
             target_channel = channel_id or context["user_id"]
-            await client.chat_postMessage(
-                channel=target_channel,
-                text=_(
-                    f"Your document(s) ({', '.join(files_uploaded)}) are being translated. You will be notified when they are ready."
-                ),
-            )
+            if files_uploaded:
+                await client.chat_postMessage(
+                    channel=target_channel,
+                    text=_(
+                        f"Your document(s) ({', '.join(files_uploaded)}) are being translated. You will be notified when they are ready."
+                    ),
+                )
 
         except Exception as e:
             notify_exception(e)
