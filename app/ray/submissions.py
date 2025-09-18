@@ -1,5 +1,6 @@
 import hashlib
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
 from sqlalchemy import select
@@ -89,19 +90,24 @@ async def check_and_record_submission_async(
 ) -> Tuple[bool, SlackFileTranslationSubmission]:
     """
     Returns (is_duplicate, record). If duplicate, record is the existing one.
+    Only checks for duplicates within the last 24 hours.
     """
     file_hash = _hash_file_content_sha256_hex(path)
     file_size = _get_file_size(path)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
 
     with Session(engines["ray_integration"]) as session:
-        existing = _find_existing(
-            session,
-            user_id=user_id,
-            team_id=team_id,
-            file_hash=file_hash,
-            file_name=file_name,
-            target_language=target_language,
-        )
+        existing = session.scalars(
+            select(SlackFileTranslationSubmission)
+            .where(SlackFileTranslationSubmission.user_id == user_id)
+            .where(SlackFileTranslationSubmission.team_id == team_id)
+            .where(SlackFileTranslationSubmission.file_hash == file_hash)
+            .where(SlackFileTranslationSubmission.file_name == file_name)
+            .where(SlackFileTranslationSubmission.target_language == target_language)
+            .where(SlackFileTranslationSubmission.created_at >= cutoff)
+            .limit(1)
+        ).first()
+
         if existing is not None:
             return True, existing
 
