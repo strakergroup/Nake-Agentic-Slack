@@ -194,7 +194,8 @@ class SlackFileTranslationSubmission(Base):
     file_hash: Mapped[str] = mapped_column(String(64), index=True)
     file_name: Mapped[str] = mapped_column(String(255))
     file_size: Mapped[int]
-    target_language: Mapped[str] = mapped_column(String(10))
+    source_language: Mapped[str] = mapped_column(String(10), default="")
+    target_language: Mapped[str] = mapped_column(String(10), default="")
     file_id: Mapped[str] = mapped_column(String(50))
     channel_id: Mapped[str] = mapped_column(String(50))
     created_at: Mapped[datetime.datetime] = mapped_column(
