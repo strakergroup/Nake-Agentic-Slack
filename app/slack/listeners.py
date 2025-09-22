@@ -517,6 +517,7 @@ async def handle_translate_shortcut(
         source_lang="",
         target_lang=mt_tl,
         sentence=mt_text,
+        usage_type="shortcut_translate",
     )
 
 
@@ -561,7 +562,6 @@ async def login_sso_action(
     client: AsyncWebClient,
     view: Optional[Dict[str, Any]],
 ):
-
     try:
         if "channel_id" not in context:
             context["channel_id"] = context["user_id"]
@@ -1912,7 +1912,9 @@ async def quote_accept_all_action(
     if await redis_conn.get(redis_key):
         await client.chat_postMessage(
             channel=context["channel_id"],
-            text=_("A request is already in progress. Please try again in a few seconds."),
+            text=_(
+                "A request is already in progress. Please try again in a few seconds."
+            ),
         )
         return
     await redis_conn.set(redis_key, "1", ex=60)
@@ -1959,7 +1961,9 @@ async def handle_verify_job_submission(
     if not lock_acquired:
         await client.chat_postMessage(
             channel=body["user"]["id"],
-            text=_("This request is no longer available. Please resubmit your documents in the message pane below"),
+            text=_(
+                "This request is no longer available. Please resubmit your documents in the message pane below"
+            ),
         )
         return
     job = await get_client_evaluation_job(context.ray.client, job_uuid)
