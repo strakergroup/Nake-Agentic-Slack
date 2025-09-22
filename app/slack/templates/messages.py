@@ -15,7 +15,6 @@ from ...auth.connector import (
     RayClient,
     RayConnection,
     RayContext,
-    encrpyt_slack_sso_token,
     get_language_cloud_connect_url,
 )
 from ...config import Environment, config, domains
@@ -182,7 +181,7 @@ class LoginMessage(SlackMessage):
         elif variation == self.HUMAN_TRANSLATION:
             block_text = "Connect your account to perform human translation."
         elif isinstance(ray_client, RayClient):
-            user_details = f"<{domains.languagecloud}|{ray_client.username}>"
+            user_details = f"<{domains.verify}|{ray_client.username}>"
             block_text = (
                 "Your connected account is: {user_details}. "
                 + "\nYou can connect a different account by clicking this button."
@@ -691,7 +690,7 @@ class LogoutMessage(SlackMessage):
     """Message with a button disconnect a user's LanguageCloud account."""
 
     def __init__(self, ray_client: RayClient) -> None:
-        user_details = f"<{domains.languagecloud}|{ray_client.username}>"
+        user_details = f"<{domains.verify}|{ray_client.username}>"
         text = _("Click this button to disconnect your account: {user_details}.")
         if ray_client.sso:
             text = _(
@@ -741,7 +740,7 @@ class SuccessfulLogoutMessage(SlackMessage):
         self, user_id: str, is_sso: bool = False, ray_username: str | None = None
     ) -> None:
         # TODO: Translation fix this
-        user_details = f"<{domains.languagecloud}|{ray_username}>"
+        user_details = f"<{domains.verify}|{ray_username}>"
         user_link = f"<@{user_id}>"
         text = _("Your account {user_details} is now disconnected from {user_link}.")
         if is_sso:
@@ -2272,7 +2271,7 @@ def get_account_blocks(
     text: str = ""
 
     if ray_client is not None:
-        user_details = f"<{domains.languagecloud}|{ray_client.username}>"
+        user_details = f"<{domains.verify}|{ray_client.username}>"
         if is_ibm_enterprise(enterprise_id=enterprise_id):
             text = _("Your connected account is: {ray_client.username}")
         else:
@@ -2442,33 +2441,6 @@ class SsoConnectionInfoMessage(SlackMessage):
                 "text": {"type": "mrkdwn", "text": text},
             },
         ]
-        if ray_connection.client:
-            msg.extend(
-                [
-                    {
-                        "type": "actions",
-                        "elements": (
-                            [
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("Login to Verify"),
-                                    },
-                                    "style": "primary",
-                                    # TODO: ray_connection.client could be None
-                                    "url": encrpyt_slack_sso_token(
-                                        ray_connection.client.username
-                                    ),
-                                    "action_id": "login",
-                                }
-                            ]
-                        ),
-                    }
-                ]
-                if not is_ibm
-                else []
-            )
         super().__init__(
             "Login Successfull",
             msg,
@@ -2573,7 +2545,7 @@ class ClientSignupEventAdminMessage(SlackMessage):
                                 "emoji": True,
                                 "text": _("Log into Verify"),
                             },
-                            "url": domains.languagecloud,
+                            "url": domains.verify,
                             "action_id": "link",
                         },
                     ],
@@ -3776,7 +3748,7 @@ class FileTooLargeMessage(SlackMessage):
     def __init__(self, file_name: str, file_size: int) -> None:
         text = (
             f"*{file_name}* exceeds the current limit of 25MB "
-            f"(~{file_size/1048576:.1f} MiB). "
+            f"(~{file_size / 1048576:.1f} MiB). "
             f"Please compress and re-upload according to the current limit."
         )
 

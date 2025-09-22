@@ -3,30 +3,29 @@ other services, e.g. Slack, RAY apps.
 """
 
 import asyncio
+import hashlib
+import json
 import math
 import time
-import json
-import hashlib
-from typing import Any, Dict, List, Optional
-from uuid import uuid4
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
+from uuid import uuid4
 
 import httpx
-from sqlalchemy import bindparam, text
-from sqlalchemy.engine import Connection
+from buglog import notify_exception
+from ray_logger.slack import SlackAppLog
+from slack_bolt.context.async_context import AsyncBoltContext
+from slack_sdk.errors import SlackApiError
 from slack_sdk.oauth.installation_store import Installation
 from slack_sdk.web.async_client import AsyncWebClient
-from slack_sdk.errors import SlackApiError
-from slack_bolt.context.async_context import AsyncBoltContext
-from ray_logger.slack import SlackAppLog
-
+from sqlalchemy import bindparam, text
+from sqlalchemy.engine import Connection
 from straker_auth.languagecloud import create_languagecloud_id_token
-from buglog import notify_exception
 
-from .algorithms import encrypt_aes, hash_hmac_sha1
-from ..config import config, domains, Environment
+from ..config import Environment, config, domains
 from ..database import engines
+from .algorithms import encrypt_aes, hash_hmac_sha1
 
 
 @dataclass(frozen=True, slots=True)
@@ -1471,27 +1470,6 @@ def crete_slack_logs_sso(user_data: str, member_id: str, message: str):
             message=message,
         )
         conn.execute(sql)
-
-
-def encrpyt_slack_sso_token(
-    email_id: str,
-) -> str:
-    """Generates sso token to allow the Slack app users to communicate
-    with the RAY platform securely.
-
-    Args:
-        email_id (str): The Slack user Email ID.
-
-    Returns:
-        str: The encrypted token.
-    """
-    data = {"email_id": email_id}
-    params = {
-        "token": encrypt_aes(
-            json.dumps(data), config.slack_deltaray_key.get_secret_value()
-        )
-    }
-    return f"{domains.languagecloud}/auth/slacksso?{urlencode(params)}"
 
 
 async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceResponse:
