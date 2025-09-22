@@ -127,6 +127,8 @@ async def get_ray_event_message(
             return DocMtMessage()
         # TODO type job
         job = await get_evaluation_job(slack_user, event_data["job_uuid"])
+        if job["data"].get("human_job_in_progress", False):
+            raise ValueError(f"Invalid RAY event type: {event_type}")
         all_langs = await _get_languages_cached()
         if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
             costs = await get_job_pricing(
