@@ -1,35 +1,38 @@
 """Slack view templates (modals, home tab)."""
 
 import asyncio
+import json
 from typing import Any
+
 from slack_bolt.context.async_context import AsyncBoltContext
+
 from app.translate import _
-from .blocks import (
-    home_auth_blocks,
-    verify_quote_blocks,
-)
-from ..select_options import (
-    map_file_options,
-    get_auto_translate_language_options,
-    translation_display_format_options,
-    map_translation_display_format_option,
-    filter_auto_translate_language_options,
-)
+
 from ...auth.connector import (
     RayConnection,
     get_channel_info,
     is_slack_team_admin,
 )
+from ...config import domains
+from ...models import SlackGroupSettingsTranslation
 from ...ray.settings import (
-    get_full_group_translation_settings,
     get_auto_translate_language_name,
+    get_full_group_translation_settings,
     get_pagination,
 )
 from ...ray.utils import is_ibm_enterprise
 from ...slack.utils import format_strings_display
-from ...config import domains
-from ...models import SlackGroupSettingsTranslation
-import json
+from ..select_options import (
+    filter_auto_translate_language_options,
+    get_auto_translate_language_options,
+    map_file_options,
+    map_translation_display_format_option,
+    translation_display_format_options,
+)
+from .blocks import (
+    home_auth_blocks,
+    verify_quote_blocks,
+)
 
 
 async def home_view(
@@ -1368,7 +1371,7 @@ def verify_job_modal(
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Please deselect any unneeded files or target languages before submitting for human translation. Submitted orders cannot be cancelled"
+                        "Please deselect any unneeded files or target languages before submitting for human translation. Submitted orders cannot be cancelled."
                     ),
                 },
             },
@@ -1405,7 +1408,7 @@ def verify_quote_summary_modal(
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Please deselect any unneeded files or target languages before submitting for human translation. Submitted orders cannot be cancelled"
+                        "Please deselect any unneeded files or target languages before submitting for human translation. Submitted orders cannot be cancelled."
                     ),
                 },
             },
