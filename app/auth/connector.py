@@ -1847,3 +1847,30 @@ def add_to_verify_team(user_uuid: str, enterprise_id: str | None):
             ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
             conn.execute(sql)
             conn.commit()
+        sql = text(
+            """
+            SELECT user_id
+            FROM user_roles
+            WHERE user_uuid = :user_uuid
+            AND team_uuid = :team_uuid
+        """
+        ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
+        result = conn.execute(sql)
+        if result.rowcount == 0:
+            sql = text(
+                """
+                    DELETE from user_roles where user_id = :user_id
+                """
+            ).bindparams(user_uuid=user_uuid)
+            conn.execute(sql)
+            conn.commit()
+            sql = text(
+                """
+                INSERT INTO user_roles
+                    (user_id, team_id, role_id)
+                VALUES
+                    (:user_id, :team_id, '83d64046-770b-43f5-abbf-e96ca0b3db9a')
+                """
+            ).bindparams(user_id=user_uuid, team_id=team_uuid)
+            conn.execute(sql)
+            conn.commit()
