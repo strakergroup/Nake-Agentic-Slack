@@ -1851,8 +1851,8 @@ def add_to_verify_team(user_uuid: str, enterprise_id: str | None):
             """
             SELECT user_id
             FROM user_roles
-            WHERE user_uuid = :user_uuid
-            AND team_uuid = :team_uuid
+            WHERE user_id = :user_uuid
+            AND team_id = :team_uuid
         """
         ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
         result = conn.execute(sql)
@@ -1861,7 +1861,7 @@ def add_to_verify_team(user_uuid: str, enterprise_id: str | None):
                 """
                     DELETE from user_roles where user_id = :user_id
                 """
-            ).bindparams(user_uuid=user_uuid)
+            ).bindparams(user_id=user_uuid)
             conn.execute(sql)
             conn.commit()
             sql = text(
