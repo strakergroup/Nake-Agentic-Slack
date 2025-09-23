@@ -672,8 +672,9 @@ async def get_ray_client(
         result = conn.execute(sql)
         row = result.first()
         if not row:
-            return None
-        access_token = row[0]
+            access_token = ""
+        else:
+            access_token = row[0]
 
     # TODO Fix this, sometimes the plan is incorrect.
     # get group subscription plan
