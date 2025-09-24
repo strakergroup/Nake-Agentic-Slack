@@ -2195,7 +2195,7 @@ async def handle_document_mt_job(
                 await client.chat_postMessage(
                     channel=target_channel,
                     text=_(
-                        f"Your document(s) ({', '.join(files_uploaded)}) are being translated. You will be notified when they are ready."
+                        f"Your document(s) ({', '.join(files_uploaded)}) file names here are currently being processed for translation. Please allow the system to complete the ongoing translation, and you will be notified once it is ready."
                     ),
                 )
 
