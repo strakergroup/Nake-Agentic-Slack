@@ -2191,14 +2191,14 @@ async def handle_document_mt_job(
                 await client.chat_postMessage(
                     channel=target_channel,
                     text=_(
-                        f"Your document(s) ({', '.join(files_uploaded)}) are being translated. You will be notified when they are ready."
+                        f"Your document(s) *({', '.join(files_uploaded)})* are being translated. You will be notified when they are ready."
                     ),
                 )
             if duplicate_submissions:
                 await client.chat_postMessage(
                     channel=context["user_id"],
                     text=_(
-                        f"Please allow the system to complete the ongoing translation(s) {', '.join(duplicate_submissions)} to prevent duplicate submissions."
+                        f"Please allow the system to complete the ongoing translation(s) *({', '.join(duplicate_submissions)})* to prevent duplicate submissions."
                     ),
                 )
 
