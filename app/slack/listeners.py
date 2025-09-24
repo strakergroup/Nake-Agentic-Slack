@@ -2132,6 +2132,7 @@ async def handle_document_mt_job(
             channel_id = view["private_metadata"]
             context["channel_id"] = channel_id or context["user_id"]
             files_uploaded = []
+            duplicate_submissions = []
             # Process each file
             for file in files:
                 # Download file content
@@ -2172,12 +2173,7 @@ async def handle_document_mt_job(
                         target_language=str(lang["value"]),
                     )
                     if is_dup:
-                        await client.chat_postMessage(
-                            channel=context["user_id"],
-                            text=_(
-                                f"Skipping duplicate submission for {file_name} ({lang['value']})."
-                            ),
-                        )
+                        duplicate_submissions.append(f"{file_name} ({lang['value']})")
                         continue
 
                     await document_machine_translate(
@@ -2195,7 +2191,14 @@ async def handle_document_mt_job(
                 await client.chat_postMessage(
                     channel=target_channel,
                     text=_(
-                        f"Your document(s) ({', '.join(files_uploaded)}) file names here are currently being processed for translation. Please allow the system to complete the ongoing translation, and you will be notified once it is ready."
+                        f"Your document(s) ({', '.join(files_uploaded)}) are being translated. You will be notified when they are ready."
+                    ),
+                )
+            if duplicate_submissions:
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=_(
+                        f"Please allow the system to complete the ongoing translation(s) {', '.join(duplicate_submissions)} to prevent duplicate submissions."
                     ),
                 )
 
