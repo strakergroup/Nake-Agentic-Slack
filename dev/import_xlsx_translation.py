@@ -1,10 +1,11 @@
 import os
 import uuid
+
 import openpyxl
 
 #  "fr-ca",
 # UPDATE this to required lang code
-langs = ["fr", "de", "es", "jp"]
+langs = ["fr", "de", "es", "jp", "fr-ca"]
 # Get the directory where the script is located
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
