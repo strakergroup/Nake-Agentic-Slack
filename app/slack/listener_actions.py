@@ -14,6 +14,7 @@ from ray_sdk import RayResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.web.async_client import AsyncWebClient
 
+from app.api.language_cloud import detect_language
 from app.api.verify import (
     create_human_job,
     get_job_pricing,
