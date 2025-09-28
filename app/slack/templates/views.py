@@ -901,7 +901,7 @@ def verify_job_modal(
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Please deselect any unneeded files or target languages before submitting for human translation. Submitted orders cannot be cancelled."
+                        "Please deselect any unneeded files or target languages before submitting for human verification. Submitted orders cannot be cancelled. "
                     ),
                 },
             },
