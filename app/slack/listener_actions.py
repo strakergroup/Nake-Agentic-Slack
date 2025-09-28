@@ -216,7 +216,9 @@ async def respond_to_message(
     if message_match:
         if await require_ray_client(context):
             mt_sl = message_match.group(1) or ""
-            # TODO: read user lang to default target
+            if not mt_sl:
+                mt_sl = await detect_language(context, message["text"])
+                mt_sl = mt_sl.language
             mt_tl = message_match.group(2) or context.get("locale") or "en"
             mt_text = message_match.group(3)
             await get_mt_translation(
@@ -403,7 +405,11 @@ async def auto_translate_message(
         return
     try:
         source_lang, translations = await get_ai_translation(
-            context, text, target_langs, "channel_translation"
+            context,
+            text,
+            target_langs,
+            "channel_translation",
+            detected_source_lang_response.language,
         )
     except Exception as e:
         notify_exception(e, "Slack channel MT failed")
@@ -1638,7 +1644,7 @@ async def get_mt_translation(
         target_lang = target_lang.lower()
 
         result_source_lang, translation = await get_ai_translation(
-            context, sentence, [target_lang], usage_type
+            context, sentence, [target_lang], usage_type, source_lang
         )
         if not result_source_lang:
             return

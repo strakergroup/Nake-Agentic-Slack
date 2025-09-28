@@ -115,7 +115,11 @@ def get_mt_engine(target_langs: list[str], mt_id: str, is_gropid: bool) -> str:
 
 # TODO: Add tests
 async def get_ai_translation(
-    context: AsyncBoltContext, text: str, target_langs: list[str], usage_type: str
+    context: AsyncBoltContext,
+    text: str,
+    target_langs: list[str],
+    usage_type: str,
+    source_lang: str | None = None,
 ) -> tuple[str | None, list[tuple[str, str]]]:
     """Get google or microsoft machine translation for sentence by correct language pair.
 
@@ -162,6 +166,7 @@ async def get_ai_translation(
     task_data = TranslationRequest(
         text=escaped_text,
         target_languages=target_langs,
+        source_language=source_lang,
         app_name="slack",
         usage_type=usage_type,
         email=context.get("user_info", {}).get("profile", {}).get("email", "unknown"),
