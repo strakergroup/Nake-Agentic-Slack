@@ -14,6 +14,7 @@ from ray_sdk import RayResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.web.async_client import AsyncWebClient
 
+from app.api.language_cloud import detect_language
 from app.api.verify import (
     create_human_job,
     get_job_pricing,
@@ -388,8 +389,17 @@ async def auto_translate_message(
     assert context.channel_id  # TODO enforce this
     # TODO make this fetch all settings for channel
     settings = get_auto_translate_settings_and_langs(context, context.channel_id)
-    target_langs = [langs["target_lang"] for langs in settings]
-    if not settings:
+
+    detected_source_lang_response = await detect_language(context, text)
+
+    # Remove the detected source language from the target languages
+    target_langs = [
+        langs["target_lang"]
+        for langs in settings
+        if langs["target_lang"] != detected_source_lang_response.language
+    ]
+
+    if not target_langs or not settings:
         return
     try:
         source_lang, translations = await get_ai_translation(
