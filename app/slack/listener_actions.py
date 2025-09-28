@@ -12,7 +12,6 @@ import langcodes
 from buglog import notify_exception, notify_message
 from ray_sdk import RayResponse
 from slack_bolt.context.async_context import AsyncBoltContext
-from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.api.verify import (
@@ -43,7 +42,6 @@ from ..ray.utils import get_media_duration, is_ibm_enterprise, validate_file_typ
 from ..redis import redis_conn
 from ..watson import watson_message
 from .middleware import require_mt_tokens, require_ray_client
-from .select_options import get_file_options_cached
 from .templates.messages import (
     AIHelperMessage,
     AutoTranslationMessage,
@@ -74,9 +72,6 @@ from .templates.messages import (
     VerifyHelperMessage,
 )
 from .templates.models import NewJobForm
-from .templates.views import (
-    new_job_modal,
-)
 from .web import download_files, files_list_simple, get_mt_ts_cached, set_mt_ts_edit
 
 VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
