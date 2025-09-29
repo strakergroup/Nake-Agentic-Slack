@@ -1,16 +1,12 @@
 import contextvars
-import hashlib
 import inspect
 import logging
-import re
 import re
 
 from buglog import notify_exception
 from sqlalchemy import text
 
-from .config import Environment, config
 from .database import engines
-from .redis import redis_sync as redis_conn
 
 
 class Translator:
