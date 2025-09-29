@@ -1,4 +1,5 @@
 import glob
+import itertools
 import json
 import os
 import re
@@ -9,7 +10,7 @@ import openpyxl
 
 try:
     from app.config import domains  # type: ignore
-    from app.mt.schemas import TranslationRequest  # type: ignore
+    from app.mt.schemas import TranslationRequest, TranslationResponse  # type: ignore
 except Exception:
     # Ensure app imports work when running from the dev folder
     parent_dir = os.path.abspath(
@@ -17,7 +18,7 @@ except Exception:
     )
     sys.path.append(parent_dir)
     from app.config import domains  # type: ignore
-    from app.mt.schemas import TranslationRequest  # type: ignore
+    from app.mt.schemas import TranslationRequest, TranslationResponse  # type: ignore
 
 
 def build_auth_header() -> dict:
@@ -30,19 +31,23 @@ def build_auth_header() -> dict:
     return {"Authorization": f"Bearer {env_token}"}
 
 
+PLACEHOLDER_PATTERN = re.compile(r":\w+:|\{.*?\}")
+
+
 def protect_placeholders(text: str) -> tuple[str, dict[str, str]]:
     """Replace emoji and Python-format placeholders with xml-like tags to avoid MT corruption.
 
-    Replaces occurrences of Slack emoji :emoji: and python format placeholders {var}
+    Replaces occurrences of Slack emoji (colon-format or literal) and python format placeholders {var}
     with <x id=n> tags. Returns the modified text and a map of original->tag to allow restore.
     """
     replacements: dict[str, str] = {}
-    # Match :emoji: or {anything}
-    pattern = r":\w+:|\{.*?\}"
     protected = text
-    for i, match in enumerate(re.finditer(pattern, text)):
+    counter = itertools.count(1)
+    for match in PLACEHOLDER_PATTERN.finditer(text):
         original = match.group()
-        tag = f"<x id={i + 1}>"
+        if original in replacements:
+            continue
+        tag = f"<x id={next(counter)}>"
         replacements[original] = tag
         protected = protected.replace(original, tag)
     return protected, replacements
@@ -71,7 +76,18 @@ def mt_translate(text: str, target_lang: str) -> str:
         resp = client.post(url, headers=headers, json=payload.model_dump())
         resp.raise_for_status()
         data = resp.json()
-    translations = data.translations or {}
+        print(data)
+    translations: dict[str, str] | None = None
+    if isinstance(data, dict):
+        raw_translations = data.get("translations")
+        if isinstance(raw_translations, dict):
+            translations = raw_translations
+    if translations is None:
+        try:
+            translations = TranslationResponse.model_validate(data).translations
+        except Exception:
+            translations = {}
+    translations = translations or {}
     # Prefer the requested language; otherwise fall back to first value
     mt_text = translations.get(target_lang)
     if mt_text is None and translations:
