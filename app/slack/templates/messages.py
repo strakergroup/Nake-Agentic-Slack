@@ -15,7 +15,6 @@ from ...auth.connector import (
     RayClient,
     RayConnection,
     RayContext,
-    encrpyt_slack_sso_token,
     get_language_cloud_connect_url,
 )
 from ...config import Environment, config, domains
