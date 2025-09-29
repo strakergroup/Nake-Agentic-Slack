@@ -16,7 +16,7 @@ sys.path.append(parent_dir)
 
 from app.translate import Translator, translator_var  # type: ignore
 
-langs = ["fr", "de", "es", "fr-ca", "jp"]
+langs = ["fr", "de", "es", "fr-ca", "ja"]
 
 PLACEHOLDER_PATTERN = re.compile(r":\w+:|\{.*?\}")
 

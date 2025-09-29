@@ -4,14 +4,12 @@ import json
 import os
 import re
 import sys
-from functools import lru_cache
 
 import httpx
 import openpyxl
 
 try:
     from app.config import domains  # type: ignore
-    from app.database import engines  # type: ignore
     from app.mt.schemas import TranslationRequest, TranslationResponse  # type: ignore
 except Exception:
     # Ensure app imports work when running from the dev folder
@@ -20,10 +18,7 @@ except Exception:
     )
     sys.path.append(parent_dir)
     from app.config import domains  # type: ignore
-    from app.database import engines  # type: ignore
     from app.mt.schemas import TranslationRequest, TranslationResponse  # type: ignore
-
-from sqlalchemy import text
 
 
 def build_auth_header() -> dict:
@@ -65,41 +60,14 @@ def restore_placeholders(text: str, replacements: dict[str, str]) -> str:
     return restored
 
 
-@lru_cache(maxsize=None)
-def resolve_target_lang(lang: str) -> str:
-    canonical = lang.strip()
-    if not canonical:
-        return lang
-    query = text(
-        """
-        SELECT google_code
-        FROM obj_m_langs
-        WHERE shortname = :value OR bcp_47 = :value OR google_code = :value
-        LIMIT 1
-        """
-    )
-    with engines["translators_readonly"].connect() as conn:  # type: ignore[index]
-        row = conn.execute(query, {"value": canonical}).fetchone()
-    if row:
-        code = row[0]
-        if code:
-            return code
-    # fall back to lowercase for common aliases
-    lower = canonical.lower()
-    if lower == "jp":
-        return "ja"
-    return canonical
-
-
 def mt_translate(text: str, target_lang: str) -> str:
     prepared, replacements = protect_placeholders(text)
     base_url = os.getenv("LANGUAGECLOUD_API_URL") or f"{domains.languagecloud_api}"
     url = f"{base_url.rstrip('/')}/mt/translate"
     headers = build_auth_header()
-    resolved_lang = resolve_target_lang(target_lang)
     payload = TranslationRequest(
         text=prepared,
-        target_languages=[resolved_lang],
+        target_languages=[target_lang],
         app_name="slack-dev",
         usage_type="dev_machine_translation",
     )
@@ -108,6 +76,7 @@ def mt_translate(text: str, target_lang: str) -> str:
         resp = client.post(url, headers=headers, json=payload.model_dump())
         resp.raise_for_status()
         data = resp.json()
+        print(data)
     translations: dict[str, str] | None = None
     if isinstance(data, dict):
         raw_translations = data.get("translations")
@@ -120,7 +89,7 @@ def mt_translate(text: str, target_lang: str) -> str:
             translations = {}
     translations = translations or {}
     # Prefer the requested language; otherwise fall back to first value
-    mt_text = translations.get(resolved_lang)
+    mt_text = translations.get(target_lang)
     if mt_text is None and translations:
         # take arbitrary first
         mt_text = next(iter(translations.values()))
