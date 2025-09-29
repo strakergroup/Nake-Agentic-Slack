@@ -1,8 +1,11 @@
 # Dev script to extract strings from the app source code and write them to an Excel file for translation
+import ast
+import itertools
 import os
 import re
 import sys
-import ast
+from dataclasses import dataclass
+
 import openpyxl
 
 # Add the parent directory to sys.path
@@ -11,80 +14,113 @@ parent_dir = os.path.abspath(
 )
 sys.path.append(parent_dir)
 
-from app.translate import Translator, translator_var
+from app.translate import Translator, translator_var  # type: ignore
 
-langs = ["fr", "de", "es", "fr-ca", "jp"]
+langs = ["fr", "de", "es", "fr-ca", "ja"]
 
-# You should probably remove log statements from the translate.py translate function
-# cases where varibles are used in the translation should be handled manually. The line should be printed
+PLACEHOLDER_PATTERN = re.compile(r":\w+:|\{.*?\}")
 
 
-def extract_strings_from_file(filepath, translator, sheet):
+@dataclass(frozen=True)
+class StringEntry:
+    text: str
+    max_length: int
+
+
+def tag_placeholders(text: str) -> str:
+    if not text:
+        return ""
+    counter = itertools.count(1)
+    return PLACEHOLDER_PATTERN.sub(lambda _: f"<x id={next(counter)}>", text)
+
+
+def extract_max_length(node: ast.Call) -> int:
+    if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
+        value = node.args[1].value
+        if isinstance(value, int):
+            return value
+    for keyword in node.keywords:
+        if keyword.arg == "max_length" and isinstance(keyword.value, ast.Constant):
+            value = keyword.value.value
+            if isinstance(value, int):
+                return value
+    return 0
+
+
+def extract_entries_from_file(filepath: str) -> list[StringEntry]:
     with open(filepath, "r", encoding="utf-8") as file:
-        tree = ast.parse(file.read(), filename=filepath)
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id == "_"
-            ):
-                if node.args:
-                    if isinstance(node.args[0], ast.JoinedStr):
-                        print(f"Extracted f-string: {filepath}:{node.lineno}")
-                    if isinstance(node.args[0], ast.Constant):
-                        source_text = node.args[0].s
-                        max_length = node.args[1].n if len(node.args) > 1 else 0
-                        result, success = translator.translate(source_text, max_length)
-                        translation = result
-
-                        if not success:
-                            if max_length and len(translation) > max_length:
-                                for i, match in enumerate(
-                                    re.finditer(r":\w+:|\{.*?\}", result)
-                                ):
-                                    tag = f"<x id={i+1}>"
-                                    translation = translation.replace(
-                                        match.group(), tag
-                                    )
-                                # Write the source text and translation to the Excel sheet
-                                sheet.append(
-                                    [
-                                        source_text,
-                                        translator.translate(source_text)[0],
-                                        "Needs maxmimum length: " + str(max_length),
-                                    ]
-                                )
-                            else:
-                                sheet.append([translation, "", ""])
-                    elif isinstance(node.args[0], ast.Name):
-                        variable_name = node.args[0].id
-                        line_number = node.lineno
-                        print(
-                            f"Found variable '{variable_name}' in file {filepath}:{line_number}"
-                        )
-                        # Handle the variable case if needed
+        source = file.read()
+    tree = ast.parse(source, filename=filepath)
+    entries: list[StringEntry] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_"
+        ):
+            if not node.args:
+                continue
+            first_arg = node.args[0]
+            if isinstance(first_arg, ast.JoinedStr):
+                print(f"Extracted f-string: {filepath}:{node.lineno}")
+                continue
+            if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
+                max_length = extract_max_length(node)
+                entries.append(StringEntry(first_arg.value, max_length))
+                continue
+            if isinstance(first_arg, ast.Name):
+                variable_name = first_arg.id
+                print(
+                    f"Found variable '{variable_name}' in file {filepath}:{node.lineno}"
+                )
+    return entries
 
 
-def extract_strings_from_directory(directory, translator, sheet):
+def collect_unique_entries(directory: str) -> list[StringEntry]:
+    unique_entries: dict[tuple[str, int], StringEntry] = {}
     for root, _, files in os.walk(directory):
-        for file in files:
-            if file.endswith(".py"):
-                extract_strings_from_file(os.path.join(root, file), translator, sheet)
+        files.sort()
+        for filename in files:
+            if not filename.endswith(".py"):
+                continue
+            filepath = os.path.join(root, filename)
+            for entry in extract_entries_from_file(filepath):
+                key = (entry.text, entry.max_length)
+                if key not in unique_entries:
+                    unique_entries[key] = entry
+    return list(unique_entries.values())
 
+
+def append_missing_translations(
+    entries: list[StringEntry], translator: Translator, sheet
+) -> None:
+    for entry in entries:
+        result, success = translator.translate(entry.text, entry.max_length)
+        if success:
+            continue
+        source_cell = tag_placeholders(entry.text)
+        translation_cell = ""
+        if result != entry.text:
+            translation_cell = tag_placeholders(result)
+        notes: list[str] = []
+        if entry.max_length:
+            notes.append(f"Needs maximum length: {entry.max_length}")
+        sheet.append([source_cell, translation_cell, " ".join(notes)])
+
+
+src_directory = os.path.join(os.path.dirname(__file__), "../app")
+entries = collect_unique_entries(src_directory)
 
 for lang in langs:
     translator_var.set(Translator(lang))
     translator = translator_var.get()
 
-    # Create a new Excel workbook and sheet
     workbook = openpyxl.Workbook()
     sheet = workbook.active
     sheet.title = "Translations"
     sheet.append(["source_text", "translation", "notes"])
 
     print(f"Extracting strings for language: {lang}")
-    src_directory = os.path.join(os.path.dirname(__file__), "../app")
-    extract_strings_from_directory(src_directory, translator, sheet)
+    append_missing_translations(entries, translator, sheet)
 
-    # Save the workbook with the language code in the file name
     workbook.save(f"translations_{lang}.xlsx")

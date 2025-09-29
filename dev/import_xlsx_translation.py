@@ -1,32 +1,61 @@
-import os
 import uuid
+from datetime import datetime
+from pathlib import Path
+
 import openpyxl
 
-#  "fr-ca",
-# UPDATE this to required lang code
-langs = ["fr", "de", "es", "jp"]
-# Get the directory where the script is located
-script_dir = os.path.dirname(os.path.abspath(__file__))
+LANGS = ["fr", "de", "es", "ja", "fr-ca"]
+WORKDIR = Path(__file__).resolve().parent
+OUTPUT_PATH = WORKDIR / "import.sql"
+CREATED_TIMESTAMP = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+MODIFIED_TIMESTAMP = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-# Open the file in write mode
-with open(os.path.join(script_dir, "import.sql"), "w") as sql_file:
-    for lang_code in langs:
-        file_path = os.path.join(script_dir, f"translations_{lang_code}.xlsx")
-        # Load the Excel file
-        wb = openpyxl.load_workbook(file_path)
-        sheet = wb.active
+def escape_sql_value(value: object) -> str:
+    text = "" if value is None else str(value)
+    return (
+        text.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+    )
 
-        # Loop through the rows and print the values in the first and second columns
-        for row in sheet.iter_rows(
-            min_row=2, max_row=sheet.max_row, min_col=1, max_col=2
-        ):
-            first_column_value = row[0].value
-            second_column_value = row[1].value
-            string_uuid = uuid.uuid4()
-            sql_file.write(
-                f"""
-                INSERT INTO `obj_stringtranslator` (`obj_uuid`, `created`, `modified`, `label`, `lang`, `langstring`, `active`) VALUES
-                    ('{string_uuid}', '2024-11-15 00:00:00', '2024-11-15 00:00:00', "{first_column_value}", "{lang_code}", "{second_column_value}", 1);
-                """
-            )
+
+def format_insert_statement(
+    label: object,
+    lang: str,
+    translation: object,
+    created: str,
+    modified: str,
+) -> str:
+    uuid_str = str(uuid.uuid4())
+    label_sql = escape_sql_value(label)
+    lang_sql = escape_sql_value(lang)
+    translation_sql = escape_sql_value(translation)
+    return (
+        "INSERT INTO `obj_stringtranslator` "
+        "(`obj_uuid`, `created`, `modified`, `label`, `lang`, `langstring`, `active`) "
+        f"VALUES ('{uuid_str}', '{created}', '{modified}', \"{label_sql}\", \"{lang_sql}\", \"{translation_sql}\", 1);\n"
+    )
+
+
+def main() -> None:
+    with OUTPUT_PATH.open("w", encoding="utf-8") as sql_file:
+        for lang in LANGS:
+            workbook_path = WORKDIR / f"translations_{lang}.xlsx"
+            workbook = openpyxl.load_workbook(workbook_path)
+            try:
+                sheet = workbook.active
+                for label, translation in sheet.iter_rows(
+                    min_row=2, min_col=1, max_col=2, values_only=True
+                ):
+                    statement = format_insert_statement(
+                        label, lang, translation, CREATED_TIMESTAMP, MODIFIED_TIMESTAMP
+                    )
+                    sql_file.write(statement)
+            finally:
+                workbook.close()
+
+
+if __name__ == "__main__":
+    main()
