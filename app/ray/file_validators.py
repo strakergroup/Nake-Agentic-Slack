@@ -1,5 +1,8 @@
 import json
 from typing import Tuple
+
+from PyPDF2 import PdfReader
+
 from app.translate import _
 
 
@@ -33,4 +36,37 @@ def validate_json(file_path: str) -> Tuple[bool, str]:
     except json.JSONDecodeError as e:
         return False, _(
             "Error: Invalid JSON. Please fix the issue and resubmit the file."
+        )
+
+
+def validate_pdf(file_path: str) -> Tuple[bool, str]:
+    """Validates that a PDF is not exported from Google Slides.
+
+    Args:
+        file_path (str): The path to the file to validate.
+
+    Returns:
+        Tuple[bool, str]: A tuple containing:
+            - bool: True if the PDF is acceptable, False otherwise
+            - str: Empty string if valid, error message if invalid
+    """
+
+    try:
+        reader = PdfReader(file_path)
+        metadata = reader.metadata or {}  # type: ignore
+
+        producer = (metadata.get("/Producer") or "").lower()
+        creator = (metadata.get("/Creator") or "").lower()
+
+        if "skia/pdf" in producer or "google" in creator:
+            return False, _(
+                "Error: PDFs exported from Google Slides are not supported. "
+                "Please download the original Slides file or export to PPTX."
+            )
+
+        return True, ""
+
+    except Exception:
+        return False, _(
+            "Error: Unable to read PDF metadata. Please verify the file and try again."
         )

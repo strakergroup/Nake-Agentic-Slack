@@ -2124,6 +2124,9 @@ async def handle_document_mt_job(
                 is_valid_file_type, is_valid_content, error_message = validate_file(
                     input_file
                 )
+                print(f"[DEBUG] is_valid_file_type: {is_valid_file_type}")
+                print(f"[DEBUG] is_valid_content: {is_valid_content}")
+                print(f"[DEBUG] error_message: {error_message}")
                 file_name = file["text"]["text"]
                 if not is_valid_file_type:
                     await client.chat_postMessage(
@@ -2148,15 +2151,15 @@ async def handle_document_mt_job(
                         context, input_file_id, lang["value"]
                     )
 
-            # convert files to
-            # Send confirmation message to the original channel if available
-            target_channel = channel_id or context["user_id"]
-            await client.chat_postMessage(
-                channel=target_channel,
-                text=_(
-                    f"Your document(s) ({', '.join(files_uploaded)}) are being translated. You will be notified when they are ready."
-                ),
-            )
+            # Send confirmation message only if at least one file was accepted
+            if files_uploaded:
+                target_channel = channel_id or context["user_id"]
+                await client.chat_postMessage(
+                    channel=target_channel,
+                    text=_(
+                        f"Your document(s) ({', '.join(files_uploaded)}) are being translated. You will be notified when they are ready."
+                    ),
+                )
 
         except Exception as e:
             notify_exception(e)
