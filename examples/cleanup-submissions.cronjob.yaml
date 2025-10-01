@@ -1,0 +1,55 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: slack-ray-cleanup-submissions
+  namespace: int-slack-ray-translator
+spec:
+  schedule: "0 6 * * *"
+  timeZone: "UTC"
+  suspend: false
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: cleanup-submissions
+              image: docker.io/strakertech/int-slack-ray-translator:develop-latest
+              imagePullPolicy: IfNotPresent
+              command:
+                - python
+                - -c
+              args:
+                - |
+                  from datetime import timedelta
+                  from app.maintenance.cleanup_submissions import cleanup_submissions
+
+                  deleted = cleanup_submissions(timedelta(days=1))
+                  print(f"Deleted {deleted} submissions older than one day")
+              volumeMounts:
+                - name: application-env
+                  mountPath: /code/.env
+                  subPath: .env
+                - name: ibm-env
+                  mountPath: /code/ibm-credentials.env
+                  subPath: ibm-credentials.env
+          volumes:
+            - name: application-env
+              secret:
+                secretName: int-slack-ray-translator-env
+                items:
+                  - key: .env
+                    path: .env
+            - name: ibm-env
+              secret:
+                secretName: int-slack-ray-ibm-env
+                items:
+                  - key: ibm-credentials.env
+                    path: ibm-credentials.env
+          imagePullSecrets:
+            - name: regcred
