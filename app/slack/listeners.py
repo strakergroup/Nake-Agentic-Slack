@@ -2124,9 +2124,6 @@ async def handle_document_mt_job(
                 is_valid_file_type, is_valid_content, error_message = validate_file(
                     input_file
                 )
-                print(f"[DEBUG] is_valid_file_type: {is_valid_file_type}")
-                print(f"[DEBUG] is_valid_content: {is_valid_content}")
-                print(f"[DEBUG] error_message: {error_message}")
                 file_name = file["text"]["text"]
                 if not is_valid_file_type:
                     await client.chat_postMessage(
