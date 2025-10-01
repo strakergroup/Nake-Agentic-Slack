@@ -35,9 +35,6 @@ spec:
                 - name: application-env
                   mountPath: /code/.env
                   subPath: .env
-                - name: ibm-env
-                  mountPath: /code/ibm-credentials.env
-                  subPath: ibm-credentials.env
           volumes:
             - name: application-env
               secret:
