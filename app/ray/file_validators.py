@@ -52,9 +52,9 @@ def validate_pdf(file_path: str) -> Tuple[bool, str]:
             if _is_slide_layout(ratio_label, ratio_value):
                 ratio_text = ratio_label or f"{ratio_value:.2f}"
                 return False, _(
-                    "Error: This PDF looks like a Google Slides export (detected %(ratio)s layout). "
+                    "Error: This PDF looks like a Google Slides export (detected {ratio_text} layout). "
                     "Please upload the original Slides file or export it as PPTX and try again."
-                ) % {"ratio": ratio_text}
+                )
 
         return True, ""
 
