@@ -78,18 +78,47 @@ def _is_generated_by_google(creator: str) -> bool:
 
 
 def _identify_slide_ratio(reader: PdfReader) -> tuple[str | None, float | None]:
+    """Determine the aspect ratio of the primary page in a PDF and match it to known slide ratios.
+
+    This function calculates the aspect ratio of the first page in a PDF document. It then compares this calculated ratio
+    against a predefined set of common slide ratios (e.g., "16:9", "4:3"). If the calculated ratio closely matches one of
+    these known ratios within a specified tolerance, the function returns the label of the matched ratio along with the
+    calculated ratio. If no match is found, it returns None for the label and the calculated ratio.
+
+    Args:
+        reader (PdfReader): The PDF reader object containing the PDF data.
+
+    Returns:
+        tuple[str | None, float | None]: A tuple containing:
+            - str: The label of the identified slide ratio (e.g., "16:9") or None if no match is found.
+            - float: The calculated ratio of the primary page or None if it cannot be determined.
+    """
+    # Calculate the aspect ratio of the primary page
     ratio = _calculate_primary_page_ratio(reader)
     if ratio is None:
+        # If the ratio cannot be determined, return None for both values
         return None, None
 
+    # Compare the calculated ratio with known slide ratios
     for label, target in SLIDE_RATIOS.items():
+        # Check if the calculated ratio is within the tolerance of a known ratio
         if abs(ratio - target) <= SLIDE_RATIO_TOLERANCE:
+            # Return the label of the matched ratio and the calculated ratio
             return label, ratio
 
+    # If no known ratio matches, return None for the label and the calculated ratio
     return None, ratio
 
 
 def _calculate_primary_page_ratio(reader: PdfReader) -> float | None:
+    """Calculate the aspect ratio of the primary page in a PDF.
+
+    Args:
+        reader (PdfReader): The PDF reader object containing the PDF data.
+
+    Returns:
+        float | None: The aspect ratio of the primary page or None if it cannot be determined.
+    """
     try:
         if not reader.pages:
             return None
@@ -104,6 +133,15 @@ def _calculate_primary_page_ratio(reader: PdfReader) -> float | None:
 
 
 def _is_slide_layout(label: str | None, ratio: float | None) -> bool:
+    """Determine if a given ratio or label corresponds to a slide layout.
+
+    Args:
+        label (str | None): The label of the slide ratio (e.g., "16:9").
+        ratio (float | None): The calculated ratio of the primary page.
+
+    Returns:
+        bool: True if the label indicates a slide layout or if the ratio is above the widescreen minimum, False otherwise.
+    """
     if label:
         return True
     if ratio is None:
@@ -112,6 +150,14 @@ def _is_slide_layout(label: str | None, ratio: float | None) -> bool:
 
 
 def _normalize_metadata_string(value: object | None) -> str:
+    """Normalize a metadata value to a lowercase string.
+
+    Args:
+        value (object | None): The metadata value to normalize.
+
+    Returns:
+        str: The normalized string representation of the metadata value.
+    """
     if value is None:
         return ""
     if hasattr(value, "get_object"):
