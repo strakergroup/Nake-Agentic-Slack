@@ -45,11 +45,5 @@ spec:
                 items:
                   - key: .env
                     path: .env
-            - name: ibm-env
-              secret:
-                secretName: int-slack-ray-ibm-env
-                items:
-                  - key: ibm-credentials.env
-                    path: ibm-credentials.env
           imagePullSecrets:
             - name: regcred
