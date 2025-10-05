@@ -49,7 +49,6 @@ from ..auth.connector import (
 )
 from ..config import domains
 from ..database import engines
-from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
     disable_auto_translate_group_settings,
     get_auto_translate_settings_and_langs,
@@ -104,6 +103,7 @@ from .templates.messages import (
     QuoteMessage,
     SrtTranslateMessage,
     SsoConnectionInfoMessage,
+    SuccessfulLoginMessage,
     SuccessfulLogoutMessage,
     WelcomeBackMessage,
 )
@@ -476,10 +476,6 @@ async def handle_translate_shortcut(
     mt_tl = context.get("locale", "en")
     mt_text = body["message"]["text"]
 
-    user_info = await context.client.users_info(
-        user=context["user_id"], include_locale=True
-    )
-
     await get_mt_translation(
         client,
         context,
@@ -540,7 +536,7 @@ async def login_sso_action(
                 info_response_json = await client.users_info(user=context["user_id"])
                 if info_response_json["ok"]:
                     user_info = info_response_json["user"]
-                    ray_user_id = connect_ray_account_sso(
+                    connect_ray_account_sso(
                         context["user_id"],
                         context["team_id"],
                         user_info["profile"]["email"],
@@ -569,16 +565,10 @@ async def login_sso_action(
                             blocks=sso_msg.blocks,
                         )
 
-                    data = {
-                        "client_id": ray_user_id,
-                        "username": user_info["profile"]["email"],
-                        "user_id": context["user_id"],
-                        "team_id": context["team_id"],
-                        "channel_id": context["channel_id"],
-                        "enterprise_id": context.enterprise_id,
-                    }
-                    msg = await get_ray_event_message(
-                        "ray:slack:account_connected", data, None, context["ray"]
+                    msg = SuccessfulLoginMessage(
+                        context["user_id"],
+                        user_info["profile"]["email"],
+                        context["ray"],
                     )
                     await ack(response_action="clear")
                     if msg:

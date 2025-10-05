@@ -15,6 +15,8 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.api.language_cloud import detect_language
+from app.api.models import MtTranslationExtraData
+from app.api.stream_proxy import send_mt_translation_request
 from app.api.verify import (
     create_human_job,
     get_job_pricing,
@@ -66,7 +68,6 @@ from .templates.messages import (
     JobTargetsNoIdMessage,
     LoginMessage,
     LogoutMessage,
-    MachineTranslationMessage,
     NewJobMessage,
     ReportInsightsMessage,
     TranscriptionMessage,
@@ -1619,7 +1620,7 @@ async def verify_help(
 
 async def get_mt_translation(
     client: AsyncWebClient,
-    context: AsyncBoltContext,
+    context: RayContext,
     target_lang: str,
     source_lang: str,
     sentence: str,
@@ -1643,32 +1644,30 @@ async def get_mt_translation(
             raise AssertionError("No channel to post to")
         target_lang = target_lang.lower()
 
-        result_source_lang, translation = await get_ai_translation(
-            context, sentence, [target_lang], usage_type, source_lang
+        assert context.ray
+        assert context.ray.client
+
+        extra_data = MtTranslationExtraData(
+            client_id=context.ray.client.id,
+            target_language=target_lang,
+            source_language=source_lang,
+            organization_uuid=context.ray.super_group[0].verify_organization_uuid,
+            channel_id=channel_id,
+            text_length=len(sentence),
+            usage_type=usage_type,
+            # Response method fields
+            response_url=context.get("response_url"),
+            thread_ts=thread_ts,
+            is_edit=is_edit,
         )
-        if not result_source_lang:
-            return
-        target_lang, translation_direct = translation[0]
-        msg = MachineTranslationMessage(
-            target_lang, result_source_lang, translation_direct
+
+        await send_mt_translation_request(
+            text=[sentence],
+            target_language=target_lang,
+            source_language=source_lang,
+            extra_data=extra_data,
         )
-        if context.response_url and context.respond:
-            return await context.respond(text=msg.text, blocks=msg.blocks)
-        else:
-            if is_edit and thread_ts:
-                return await client.chat_update(
-                    channel=channel_id,
-                    text=msg.text,
-                    blocks=msg.blocks,
-                    ts=thread_ts,
-                )
-            else:
-                return await client.chat_postMessage(
-                    channel=channel_id,
-                    text=msg.text,
-                    blocks=msg.blocks,
-                    thread_ts=thread_ts,
-                )
+
     except Exception as e:
         notify_exception(e, "Failed to get machine translation")
         error_msg = InvalidMTResultMessage()
@@ -1678,7 +1677,7 @@ async def get_mt_translation(
             if channel_id:
                 return await client.chat_postMessage(
                     channel=channel_id,
-                    text=msg.text,
+                    text=error_msg.text,
                     thread_ts=thread_ts,
                 )
 
@@ -1801,38 +1800,6 @@ async def job_tj_cancel(
                 headers=dict(response.headers.items()),
                 version="v3",
             )
-
-
-async def resendMT(
-    client: AsyncWebClient,
-    context: AsyncBoltContext,
-    message: dict[str, Any],
-):
-    # process mt
-    message_match = re.search(
-        r"mt:?(?:\s+([\w-]+))?\s+to\s+([\w-]+):?\s+(.*)",
-        message["text"],
-        re.I | re.S,
-    )
-
-    if message_match and await require_ray_client(context, prompt_login=False):
-        mt_sl = message_match.group(1) or ""
-        mt_tl = message_match.group(2) or context.get("locale") or "en"
-        mt_text = message_match.group(3)
-        try:
-            await get_mt_translation(
-                client=client,
-                context=context,
-                source_lang=mt_sl,
-                target_lang=mt_tl,
-                sentence=mt_text,
-                thread_ts=message["message"]["latest_reply"],
-                is_edit=True,
-            )
-        except Exception as e:
-            print(e)
-
-        return
 
 
 async def submit_verification_job(

@@ -1,10 +1,10 @@
-import httpx
 import buglog
+import httpx
+from pydantic import BaseModel
+from slack_bolt.context.async_context import AsyncBoltContext
 
 from app.config import config, domains
 from app.mt.translate import create_languagecloud_group_token
-from slack_bolt.context.async_context import AsyncBoltContext
-from pydantic import BaseModel
 
 
 class DetectLanguageResponse(BaseModel):
@@ -15,7 +15,6 @@ class DetectLanguageResponse(BaseModel):
 async def detect_language(
     context: AsyncBoltContext, text: str
 ) -> DetectLanguageResponse:
-
     token = (
         context["ray"].client.id_token
         if context["ray"].client

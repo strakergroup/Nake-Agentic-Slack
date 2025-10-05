@@ -1,15 +1,15 @@
-from typing import Any, Annotated
+from typing import Annotated, Any
+
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 
 from .auth.connector import (
     SlackUser,
-    validate_queue_proxy_secret,
-    get_slack_user,
     get_demo_link,
+    get_slack_user,
+    validate_queue_proxy_secret,
 )
-
 
 # Sub-dependency to get the bearer token.
 _oauth2_scheme = OAuth2PasswordBearer(tokenUrl="")
@@ -36,7 +36,8 @@ class RayEventAuth:
     ) -> None:
         self.slack_user: SlackUser | None = None
         self.demo_slack_users = []
-
+        print(event.data)
+        print(event.event)
         is_token_valid = validate_queue_proxy_secret(token)
         if not is_token_valid:
             raise HTTPException(401)
@@ -44,3 +45,9 @@ class RayEventAuth:
         if "client_id" in event.data:
             self.slack_user = get_slack_user(event.data["client_id"])
             self.demo_slack_users = get_demo_link(event.data["client_id"])
+        if "extra_data" in event.data:
+            if "client_id" in event.data["extra_data"]:
+                self.slack_user = get_slack_user(event.data["extra_data"]["client_id"])
+                self.demo_slack_users = get_demo_link(
+                    event.data["extra_data"]["client_id"]
+                )

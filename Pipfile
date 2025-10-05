@@ -24,7 +24,6 @@ cryptography = "*"
 python-dateutil = "*"
 babel = "*"
 elastic-apm = "==6.*"
-straker-utils = {version = "==0.2.5", index = "straker"}
 straker-auth = {version = "==0.1.8", index = "straker"}
 ray-sdk = {version = "==0.6.3", index = "straker"}
 ray-logger = {version = "==0.1.2", index = "straker"}
@@ -32,6 +31,7 @@ buglog = {version = "==0.1.3", index = "straker"}
 cachetools = "*"
 langcodes = "*"
 ffmpeg-python = "*"
+straker-utils = {file = "../../straker-python-utils/dist/straker_utils-0.3.0.0-py3-none-any.whl"}
 
 [dev-packages]
 pytest = "*"
