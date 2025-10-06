@@ -4,7 +4,7 @@ import math
 import os
 import tempfile
 from cgi import parse_header
-from typing import Literal, Tuple
+from typing import Callable, Literal, Tuple
 from urllib.parse import unquote, urlencode
 
 import ffmpeg
@@ -17,7 +17,7 @@ from app.auth.connector import is_ibm_super_group
 from app.translate import Translator, _, translator_var
 
 from ..config import domains
-from .file_validators import validate_json
+from .file_validators import validate_json, validate_pdf
 
 
 def get_job_url(job_uuid: str, client_id: str | None = None) -> str:
@@ -331,13 +331,14 @@ def is_ibm_enterprise(
     return False
 
 
-VALID_FILE_TYPES = {
+VALID_FILE_TYPES: dict[str, Callable[[str], Tuple[bool, str]] | None] = {
     "csv": None,
     "dita": None,
     "docx": None,
     "html": None,
     "idml": None,
     "json": validate_json,
+    "pdf": validate_pdf,
     "pptx": None,
     "properties": None,
     "srt": None,
@@ -381,7 +382,7 @@ def validate_file(file_path: str) -> Tuple[bool, bool, str]:
         (False, False, 'Unsupported file type: unsupported')
     """
     # Extract extension from file path
-    other, ext = os.path.splitext(file_path)
+    _, ext = os.path.splitext(file_path)
     ext = ext.lower().lstrip(".")
     # Check if file extension is valid
     if ext not in VALID_FILE_TYPES:
