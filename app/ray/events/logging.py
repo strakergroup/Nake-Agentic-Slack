@@ -11,6 +11,7 @@ from ...auth.connector import SlackUser
 from ...database import engines
 from ...dependencies import RayEvent
 from ...slack.templates.messages import SlackMessage
+from ...slack.web import get_mt_ts_cached, set_mt_ts_edit
 
 
 async def log_notification(
@@ -53,6 +54,8 @@ async def post_notification(
     thread_ts: str | None = None,
     is_edit: bool = False,
     response_url: str | None = None,
+    display_format: str | None = None,
+    post_thread: bool = False,
 ):
     """Post a notification message to a Slack user. This is logged to the
     database.
@@ -66,35 +69,84 @@ async def post_notification(
         thread_ts: Optional thread timestamp for threading
         is_edit: Whether this is an edit operation
         response_url: Optional response URL for interactive responses
+        display_format: Display format for the message ("thread" or "message")
+        post_thread: Whether to post in thread
     """
     client.token = slack_user.bot_token
     target_channel = channel_id or slack_user.user_id
 
-    # Determine the appropriate response method based on parameters
-    if response_url and not is_edit:
-        # Use AsyncRespond for webhook responses
-        respond = AsyncRespond(response_url=response_url)
-        response = await respond(
-            text=message.text,
-            blocks=message.blocks,
-            thread_ts=thread_ts,
-        )
-    elif is_edit and thread_ts:
-        # Use chat_update for editing existing messages
-        response = await client.chat_update(
-            channel=target_channel,
-            text=message.text,
-            blocks=message.blocks,
-            ts=thread_ts,
-        )
+    # Handle display_format logic for channel_translation
+    if display_format:
+        timestamp = None
+        if is_edit:
+            timestamp = await get_mt_ts_cached(thread_ts) if thread_ts else None
+
+        if display_format == "thread":
+            if timestamp:
+                response = await client.chat_update(
+                    channel=target_channel,
+                    text=message.text,
+                    blocks=message.blocks,
+                    ts=timestamp,
+                )
+            else:
+                response = await client.chat_postMessage(
+                    channel=target_channel,
+                    text=message.text,
+                    blocks=message.blocks,
+                    thread_ts=thread_ts,
+                )
+                # save timestamp to cache
+                if thread_ts:
+                    asyncio.create_task(
+                        set_mt_ts_edit(send_ts=thread_ts, reply_ts=response["ts"])
+                    )
+        elif display_format == "message":
+            if timestamp:
+                response = await client.chat_update(
+                    channel=target_channel,
+                    text=message.text,
+                    blocks=message.blocks,
+                    ts=timestamp,
+                )
+            else:
+                response = await client.chat_postMessage(
+                    channel=target_channel,
+                    text=message.text,
+                    blocks=message.blocks,
+                    thread_ts=thread_ts if post_thread else None,
+                )
+                # save timestamp to cache
+                if thread_ts:
+                    asyncio.create_task(
+                        set_mt_ts_edit(send_ts=thread_ts, reply_ts=response["ts"])
+                    )
     else:
-        # Default to chat_postMessage
-        response = await client.chat_postMessage(
-            channel=target_channel,
-            text=message.text,
-            blocks=message.blocks,
-            thread_ts=thread_ts,
-        )
+        # Determine the appropriate response method based on parameters
+        if response_url and not is_edit:
+            # Use AsyncRespond for webhook responses
+            respond = AsyncRespond(response_url=response_url)
+            response = await respond(
+                text=message.text,
+                blocks=message.blocks,
+                thread_ts=thread_ts,
+            )
+        elif is_edit and thread_ts:
+            # Use chat_update for editing existing messages
+            response = await client.chat_update(
+                channel=target_channel,
+                text=message.text,
+                blocks=message.blocks,
+                ts=thread_ts,
+            )
+        else:
+            # Default to chat_postMessage
+            response = await client.chat_postMessage(
+                channel=target_channel,
+                text=message.text,
+                blocks=message.blocks,
+                thread_ts=thread_ts,
+            )
 
     asyncio.create_task(
         log_notification(
@@ -102,6 +154,81 @@ async def post_notification(
             event_data=event.data,
             user_id=slack_user.user_id,
             channel_id=target_channel,
+            ray_client_id=slack_user.ray_client_id,
+            message=type(message).__name__,
+        )
+    )
+    return response
+
+
+async def post_channel_translation_notification(
+    client: AsyncWebClient,
+    event: RayEvent,
+    slack_user: SlackUser,
+    message: SlackMessage,
+    channel_id: str,
+    thread_ts: str | None = None,
+    is_edit: bool = False,
+    display_format: str | None = None,
+    message_ts: str | None = None,
+):
+    """Post a channel translation notification with display format handling.
+
+    Args:
+        client: The Slack client
+        event: The Ray event
+        slack_user: The Slack user
+        message: The message to send
+        channel_id: Channel ID to post to
+        thread_ts: Optional thread timestamp for threading
+        is_edit: Whether this is an edit operation
+        display_format: Display format for the message ("thread" or "message")
+        message_ts: Message timestamp to use for thread creation
+    """
+    client.token = slack_user.bot_token
+
+    # Handle display_format logic for channel_translation
+    timestamp = None
+    if is_edit:
+        timestamp = await get_mt_ts_cached(message_ts) if message_ts else None
+
+    # Use message_ts for thread creation if available, otherwise fall back to thread_ts
+    thread_timestamp = message_ts or thread_ts
+
+    # Determine thread behavior based on display_format
+    use_thread = False
+    if display_format == "thread":
+        use_thread = True
+    elif display_format == "message":
+        use_thread = False  # Messages are posted as standalone messages, not in threads
+    # If no display_format specified, default to no thread
+
+    if timestamp:
+        response = await client.chat_update(
+            channel=channel_id,
+            text=message.text,
+            blocks=message.blocks,
+            ts=timestamp,
+        )
+    else:
+        response = await client.chat_postMessage(
+            channel=channel_id,
+            text=message.text,
+            blocks=message.blocks,
+            thread_ts=thread_timestamp if use_thread else None,
+        )
+        # save timestamp to cache
+        if thread_timestamp:
+            asyncio.create_task(
+                set_mt_ts_edit(send_ts=thread_timestamp, reply_ts=response["ts"])
+            )
+
+    asyncio.create_task(
+        log_notification(
+            event=event.event,
+            event_data=event.data,
+            user_id=slack_user.user_id,
+            channel_id=channel_id,
             ray_client_id=slack_user.ray_client_id,
             message=type(message).__name__,
         )

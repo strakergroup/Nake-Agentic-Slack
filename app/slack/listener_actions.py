@@ -410,6 +410,8 @@ async def auto_translate_message(
         for target_lang in target_langs:
             org_uuid = context["ray"].super_group[0].verify_organization_uuid
             client_id = context["ray"].client.id if context["ray"].client else org_uuid
+            # Get display_format from settings
+            display_format = settings[0]["display_format"] if settings else None
             await send_mt_translation_request(
                 [text],
                 target_lang,
@@ -425,7 +427,8 @@ async def auto_translate_message(
                     response_url=context.response_url,
                     thread_ts=context.thread_ts,
                     is_edit=is_edit,
-                    slack_user_id=context.user_id,
+                    display_format=display_format,
+                    message_ts=ts,
                 ),
             )
     except Exception as e:

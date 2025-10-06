@@ -34,7 +34,11 @@ from ..auth.connector import (
     validate_api_callback_signature,
 )
 from ..dependencies import RayEvent, RayEventAuth
-from ..ray.events.logging import post_notification, post_notification_ephemeral
+from ..ray.events.logging import (
+    post_channel_translation_notification,
+    post_notification,
+    post_notification_ephemeral,
+)
 from ..ray.events.models import (
     Balance,
     ClientApprovedEvent,
@@ -691,7 +695,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         response_url=extra_data.response_url,
                     )
                 elif extra_data.usage_type == "channel_translation":
-                    await post_notification(
+                    await post_channel_translation_notification(
                         client,
                         event,
                         auth.slack_user,
@@ -699,6 +703,8 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         channel_id=extra_data.channel_id,
                         thread_ts=extra_data.thread_ts,
                         is_edit=extra_data.is_edit,
+                        display_format=extra_data.display_format,
+                        message_ts=extra_data.message_ts,
                     )
                 else:
                     raise HTTPException(
