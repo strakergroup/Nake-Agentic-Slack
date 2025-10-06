@@ -89,7 +89,6 @@ from .templates.messages import (
 )
 from .templates.views import (
     document_mt_job_modal,
-    evaluate_job_modal,
     home_view,
     human_job_modal,
     translation_settings_view,
@@ -1730,11 +1729,7 @@ async def evaluate_job_submit(
     try:
         channel_id = view["private_metadata"]
         form_data = view["state"]["values"]
-        form = (
-            EvaluateJobForm.parse_slack(form_data)
-            if view["callback_id"] == "evaluate_job"
-            else EvaluateJobForm.parse_human_job_form(form_data)
-        )
+        form = EvaluateJobForm.parse_human_job_form(form_data, view["callback_id"])
     except ValidationError as e:
         errors = convert_pydantic_to_slack_error(e)
         await client.chat_postMessage(
@@ -1748,7 +1743,7 @@ async def evaluate_job_submit(
             )
         else:
             msg = _(
-                "You've successfully submitted your document(s) for quality evaluation. Your document(s) will be AI Translated and you will be given a score."
+                "You've successfully submitted your document(s) for quality evaluation."
             )
         await client.chat_postMessage(channel=channel_id, text=msg)
         input_files = []
@@ -1805,10 +1800,9 @@ async def evaluate_job_action(
         files = action_data.get("files", [])
         channel_id = action_data.get("channel_id")
         if files:
-            view = (
-                evaluate_job_modal(channel_id, files)
-                if action_data.get("job_type") != "human"
-                else human_job_modal(channel_id, files)
+            job_type = action_data.get("job_type", "evaluate")
+            view = human_job_modal(
+                channel_id, files, is_ibm_enterprise(context.enterprise_id), job_type
             )
             await client.views_open(
                 trigger_id=body["trigger_id"],
@@ -1846,7 +1840,6 @@ async def verify_job_modal_open_action(
 
     try:
         job = await get_client_evaluation_job(context.ray.client, job_uuid)
-        all_langs = await get_verify_languages()
         if await require_ray_client(context, prompt_login=True):
             langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
             costs = await get_job_pricing(
@@ -1857,11 +1850,9 @@ async def verify_job_modal_open_action(
             )
             # Update the view with the final content
             final_view = (
-                verify_quote_summary_modal(
-                    job["data"], all_langs, costs["data"], message_ts
-                )
+                verify_quote_summary_modal(job["data"], costs["data"], message_ts)
                 if action["action_id"] == "quote_summary_modal_open"
-                else verify_job_modal(job["data"], all_langs, costs["data"])
+                else verify_job_modal(job["data"], costs["data"], message_ts)
             )
             try:
                 await client.views_update(view_id=view_id, view=final_view)
@@ -1928,6 +1919,7 @@ async def verify_job_modal_open_action(
                 pass
             else:
                 raise
+        raise e
 
 
 @app.action("quote_accept_all", middleware=[ray_connection])

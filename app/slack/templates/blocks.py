@@ -5,6 +5,8 @@ import math
 from datetime import datetime, timedelta
 from typing import Any
 from ray_sdk.api.v3.models import Quote
+from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+from app.slack.select_options import get_languages_sync
 
 from app.ray.events.models import JobQuoteCreatedEvent
 from app.slack.utils import segment_quality_score
@@ -469,6 +471,7 @@ def verify_quote_blocks(
     selectable: bool = True,
 ):
     source_files = job["source_files"]
+    workflow_uuid = job["workflow_uuid"]
     blocks = []
     for file in source_files:
         blocks.append(
@@ -504,6 +507,17 @@ def verify_quote_blocks(
                 }
                 blocks.append(cost_block)
             else:
+                report = None
+                if workflow_uuid != HUMAN_EVALUATION_WORKFLOW_UUID:
+                    if "report" in file and "evaluation_reports" in file["report"]:
+                        report = next(
+                            (
+                                report
+                                for report in file["report"]["evaluation_reports"]
+                                if report["target_language"] == lang["uuid"]
+                            ),
+                            None,
+                        )
                 for item in costs:
                     if (
                         item["language_uuid"] == lang["uuid"]
@@ -543,6 +557,71 @@ def verify_quote_blocks(
                             ],
                         }
                     )
+                    source_lang_uuid = file["report"]["language_uuid"]
+                    all_langs = get_languages_sync()
+                    if not all_langs:
+                        # Fallback: return a default message if languages cache is empty
+                        source_lang = {"name": "Unknown Language"}
+                    else:
+                        source_lang = next(
+                            (
+                                lang
+                                for lang in all_langs
+                                if lang["uuid"] == source_lang_uuid
+                            ),
+                            None,
+                        )
+                    summary = job_summary_string(source_lang, lang, file)
+
+                    if report:
+                        segment_count = sum(report["count"].values())
+                        if segment_count == 0:
+                            bad = good = best = acceptable = memory_percentage = 0
+                        else:
+                            counts = report["count"]
+                            bad = (counts["bad"] / segment_count) * 100
+                            good = (counts["good"] / segment_count) * 100
+                            best = (counts["best"] / segment_count) * 100
+                            acceptable = (counts["acceptable"] / segment_count) * 100
+                            memory_percentage = (
+                                counts["translation_memory"] / segment_count
+                            ) * 100
+                        report_message = f":large_blue_square: {_('Translation Memory')}: {round(memory_percentage)}%\n"
+                        report_message += (
+                            f":large_green_square: {_('Best')}: {round(best)}%\n"
+                        )
+                        report_message += (
+                            f":large_yellow_square: {_('Good')}: {round(good)}%\n"
+                        )
+                        report_message += f":large_orange_square: {_('Acceptable')}: {round(acceptable)}%\n"
+                        report_message += (
+                            f":large_red_square: {_('Bad')}: {round(bad)}%"
+                        )
+                        blocks.append(
+                            {
+                                "type": "section",
+                                "fields": [
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": _("*Summary:*\n{summary}"),
+                                    },
+                                    {
+                                        "type": "mrkdwn",
+                                        "text": _("*Overall Score:*\n{report_message}"),
+                                    },
+                                ],
+                            },
+                        )
+                    else:
+                        blocks.append(
+                            {
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": summary,
+                                },
+                            }
+                        )
                 else:
                     blocks.append(
                         {
@@ -597,6 +676,142 @@ def verify_quote_blocks(
             },
         }
     )
+    return blocks
+
+
+def evaluate_success_blocks(
+    job: dict[str, Any],
+):
+    source_files = job["source_files"]
+    blocks = []
+    for file in source_files:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f":paperclip: *{file['filename']}*",
+                },
+            }
+        )
+        for lang in job["target_languages"]:
+            target_file = next(
+                (
+                    target_file
+                    for target_file in file["target_files"]
+                    if target_file["language_uuid"] == lang["uuid"]
+                ),
+                None,
+            )
+            if target_file.get("human_job_status", ""):
+                lang_label = f"*{_(lang['name'])}*\n"
+                cost_block = {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "{lang_label} Human translation has been submitted for this language."
+                        ),
+                    },
+                }
+                blocks.append(cost_block)
+            else:
+                report = None
+                if "report" in file and "evaluation_reports" in file["report"]:
+                    report = next(
+                        (
+                            report
+                            for report in file["report"]["evaluation_reports"]
+                            if report["target_language"] == lang["uuid"]
+                        ),
+                        None,
+                    )
+                source_lang_uuid = file["report"]["language_uuid"]
+                all_langs = get_languages_sync()
+                if not all_langs:
+                    # Fallback: return a default message if languages cache is empty
+                    source_lang = {"name": "Unknown Language"}
+                else:
+                    source_lang = next(
+                        (
+                            lang
+                            for lang in all_langs
+                            if lang["uuid"] == source_lang_uuid
+                        ),
+                        None,
+                    )
+                summary = job_summary_string(source_lang, lang, file)
+
+                if report:
+                    segment_count = sum(report["count"].values())
+                    if segment_count == 0:
+                        bad = good = best = acceptable = memory_percentage = 0
+                    else:
+                        counts = report["count"]
+                        bad = (counts["bad"] / segment_count) * 100
+                        good = (counts["good"] / segment_count) * 100
+                        best = (counts["best"] / segment_count) * 100
+                        acceptable = (counts["acceptable"] / segment_count) * 100
+                        memory_percentage = (
+                            counts["translation_memory"] / segment_count
+                        ) * 100
+                    report_message = f":large_blue_square: {_('Translation Memory')}: {round(memory_percentage)}%\n"
+                    report_message += (
+                        f":large_green_square: {_('Best')}: {round(best)}%\n"
+                    )
+                    report_message += (
+                        f":large_yellow_square: {_('Good')}: {round(good)}%\n"
+                    )
+                    report_message += f":large_orange_square: {_('Acceptable')}: {round(acceptable)}%\n"
+                    report_message += f":large_red_square: {_('Bad')}: {round(bad)}%"
+                    blocks.append(
+                        {
+                            "type": "section",
+                            "fields": [
+                                {
+                                    "type": "mrkdwn",
+                                    "text": _("*Summary:*\n{summary}"),
+                                },
+                                {
+                                    "type": "mrkdwn",
+                                    "text": _("*Overall Score:*\n{report_message}"),
+                                },
+                            ],
+                        },
+                    )
+                else:
+                    blocks.append(
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": summary,
+                            },
+                        }
+                    )
+                target_file_uuid = ""
+                for target_file in file["target_files"]:
+                    if target_file["language_uuid"] == lang["uuid"]:
+                        target_file_uuid = target_file["target_file_uuid"]
+                        break
+                if target_file_uuid:
+                    blocks.append(
+                        {
+                            "type": "actions",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": _("Download AI Translation"),
+                                    },
+                                    "value": target_file_uuid,
+                                    "action_id": "download_ai_translation_action",
+                                },
+                            ],
+                        },
+                    )
+
     return blocks
 
 

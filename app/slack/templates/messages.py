@@ -11,6 +11,7 @@ from ray_sdk.api.v3.models import Job, Pagination, Quote
 
 from .models import NewJobForm
 from .blocks import (
+    evaluate_success_blocks,
     job_link_block,
     job_summary_string,
     quote_message_block,
@@ -336,7 +337,7 @@ class WelcomeBackMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI Translate your content and receive translation quality scores, then verify with Straker to send for human translation"
+                                    ":sports_medal: AI Translate your content and receive translation quality scores, then opt for human verification if needed."
                                 ),
                             },
                             "accessory": {
@@ -553,7 +554,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI Translate your content and receive translation quality scores, then verify with Straker to send for human translation"
+                                    ":sports_medal: AI Translate your content and receive translation quality scores, then opt for human verification if needed."
                                 ),
                             },
                             "accessory": {
@@ -1753,7 +1754,7 @@ class NewJobMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "*Quality Evaluation* - AI Translate your content and receive translation quality scores, then verify with Straker to send for human translation"
+                            "*Quality Evaluation* - AI Translate your content and receive translation quality scores, then opt for human verification if needed."
                         ),
                     },
                     "accessory": {
@@ -2060,7 +2061,7 @@ class HelpMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI Translate your content and receive translation quality scores, then verify with Straker to send for human translation"
+                                    ":sports_medal: AI Translate your content and receive translation quality scores, then opt for human verification if needed."
                                 ),
                             },
                             "accessory": {
@@ -3628,76 +3629,37 @@ class EvaluateSuccessMessage(SlackMessage):
     def __init__(
         self,
         job: dict[str, Any],
-        all_langs: list[dict[str, str]],
-        tokens: int,
         is_ibm_enterprise: bool,
+        tokens: int | None = None,
     ) -> None:
         blocks = []
-        if not is_ibm_enterprise:
+        info_text = _(
+            'The AI translation quality of your document(s) has been evaluated. Download the AI translation if you\'re satisfied, or click "Send for Human Verification" to request human verification'
+        )
+        if not is_ibm_enterprise and tokens:
             blocks.append(
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("You have used {tokens} AI tokens."),
+                        "text": info_text
+                        + "\n"
+                        + _("You have used {tokens} AI tokens."),
                     },
                 }
             )
-        blocks.append(
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _("AI quality evaluation of your translated files:"),
-                },
-            }
-        )
-        languages = job["target_languages"]
-        source_files = job["source_files"]
-        lang_blocks = []
-
-        for file in source_files:
-            source_lang_uuid = file["report"]["language_uuid"]
-            source_lang = next(
-                (lang for lang in all_langs if lang["uuid"] == source_lang_uuid), None
+        else:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": info_text,
+                    },
+                }
             )
-            reports = file["report"]["evaluation_reports"]
-            for lang in languages:
-                for report in reports:
-                    if lang["uuid"] == report["target_language"]:
-                        lang["report"] = report
-                for target_file in file["target_files"]:
-                    if target_file["language_uuid"] == lang["uuid"]:
-                        lang["target_file_uuid"] = target_file["target_file_uuid"]
 
-            for lang in languages:
-                lang_blocks.extend(
-                    [
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": job_summary_string(source_lang, lang, file),
-                            },
-                        },
-                        {
-                            "type": "actions",
-                            "elements": [
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("Download AI Translation"),
-                                    },
-                                    "value": lang["target_file_uuid"],
-                                    "action_id": "download_ai_translation_action",
-                                },
-                            ],
-                        },
-                    ]
-                )
-
-        blocks.extend(lang_blocks)
+        blocks.extend(evaluate_success_blocks(job))
         blocks.append(
             {
                 "type": "actions",
@@ -3706,7 +3668,7 @@ class EvaluateSuccessMessage(SlackMessage):
                         "type": "button",
                         "text": {
                             "type": "plain_text",
-                            "text": _("Send to Human Translation"),
+                            "text": _("Send for Human Verification"),
                         },
                         "style": "primary",
                         "value": job["uuid"],

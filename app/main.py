@@ -1,9 +1,13 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from elasticapm.contrib.starlette import make_apm_client, ElasticAPM
 import buglog
 
 from .config import Environment, config, domains
 from .routers import slack, ray, health
+from .slack.select_options import (
+    initialize_languages_cache,
+)
 
 
 # Configure BugLog
@@ -17,12 +21,28 @@ buglog.init(
 APP_VERSION = "1.0.0"  # Replace with your actual version
 print("Starting Slack RAY Translator - Version: {APP_VERSION}")
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for app startup/shutdown events."""
+    # Startup
+    try:
+        await initialize_languages_cache()
+    except Exception as e:
+        buglog.notify_exception(e)
+
+    yield
+
+    # Shutdown (if needed)
+
+
 # Configure FastAPI
 app = FastAPI(
     title="Straker Translate for Slack",
     description="The Slack app API for Straker LanguageCloud",
     docs_url="/docs" if config.environment != Environment.production else None,
     redoc_url="/redoc" if config.environment != Environment.production else None,
+    lifespan=lifespan,
 )
 app.include_router(slack.router, tags=["slack"])
 app.include_router(ray.router, tags=["ray"])

@@ -21,6 +21,7 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from ray_sdk import RayResponse
 from buglog import notify_exception, notify_message
 
+from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.mt.translate import get_ai_translation
 from app.ray.events.models import MtFileRequestSchema
 from app.translate import _
@@ -28,6 +29,7 @@ from app.transcriber_tasks.tasks import create_asr_task
 
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
+    EvaluateSuccessMessage,
     HelpMessage,
     HumanJobQuoteMessage,
     LoginMessage,
@@ -1924,16 +1926,19 @@ async def submit_verification_job(
             try:
                 # Get the updated job details after submission
                 job = await get_client_evaluation_job(context.ray.client, job_uuid)
-                all_langs = await get_verify_languages()
-                costs = await get_job_pricing(
-                    context.ray.client,
-                    job_uuid,
-                    [file["file_uuid"] for file in job["data"]["source_files"]],
-                    [lang["uuid"] for lang in job["data"]["target_languages"]],
-                )
+
+                if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+                    costs = await get_job_pricing(
+                        context.ray.client,
+                        job_uuid,
+                        [file["file_uuid"] for file in job["data"]["source_files"]],
+                        [lang["uuid"] for lang in job["data"]["target_languages"]],
+                    )
+                    updated_msg = HumanJobQuoteMessage(job["data"], costs["data"])
+                else:
+                    return
 
                 # Create updated message with the new status
-                updated_msg = HumanJobQuoteMessage(job["data"], costs["data"])
 
                 # Update the original message if timestamp and channel_id are provided
                 if timestamp and channel_id:
@@ -1958,6 +1963,7 @@ async def submit_verification_job(
                 )
                 return
             except Exception as e:
+                print(e)
                 notify_exception(e)
                 await client.chat_postMessage(
                     channel=user_id,
@@ -1969,7 +1975,7 @@ async def submit_verification_job(
 
         # Send initial confirmation
         msg = _(
-            "Thank you for sending your document for human translation! We will notify as soon as the translation is complete."
+            "Thank you for sending your document(s) for human translation! We will notify you as soon as the translation is complete."
         )
         response = await client.chat_postMessage(
             channel=user_id,
