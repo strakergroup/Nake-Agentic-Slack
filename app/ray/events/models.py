@@ -141,6 +141,7 @@ class MtErrorTypes(str, Enum):
     INSUFFICIENT_BALANCE = "insufficient_balance"
     SAMPLE_TEXT_NOT_FOUND = "sample_text_not_found"
     CONVERSION_ERROR = "conversion_error"
+    FILE_COMPLEXITY_ERROR = "file_complexity_error"
     OTHER = "other"
 
 
