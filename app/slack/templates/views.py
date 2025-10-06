@@ -620,7 +620,8 @@ def human_job_modal(
                     "action_id": "job_notes",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": _(" "),
+                        # Slack will throw an error if this is 0 characters
+                        "text": " ",
                         "emoji": True,
                     },
                     "multiline": True,

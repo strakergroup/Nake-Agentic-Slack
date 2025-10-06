@@ -377,7 +377,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🔍 Search allows you to search for specific Translation Jobs (TJs)."
+                            ":mag: Search allows you to search for specific Translation Jobs (TJs)."
                         ),
                     },
                     "accessory": {
@@ -412,7 +412,7 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 " + _("Cancel your job"),
+                        "text": ":red_circle: " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -594,7 +594,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🔍 Search allows you to search for specific Translation Jobs (TJs). "
+                            ":mag: Search allows you to search for specific Translation Jobs (TJs). "
                         ),
                     },
                     "accessory": {
@@ -629,7 +629,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 " + _("Cancel your job"),
+                        "text": ":red_circle: " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -1511,7 +1511,7 @@ class JobListMessage(SlackMessage):
                             "type": "section",
                             "text": {
                                 "type": "mrkdwn",
-                                "text": _("🔴 Cancel this job"),
+                                "text": _(":red_circle: Cancel this job"),
                             },
                             "accessory": {
                                 "type": "button",
@@ -1900,7 +1900,7 @@ class JobCreationMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 " + _("Cancel your job"),
+                        "text": ":red_circle: " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -2101,7 +2101,7 @@ class HelpMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🔍 Search allows you to search for specific Translation Jobs (TJs). "
+                            ":mag: Search allows you to search for specific Translation Jobs (TJs). "
                         ),
                     },
                     "accessory": {
@@ -2170,7 +2170,7 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 " + _("Cancel your job"),
+                        "text": ":red_circle: " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -3385,7 +3385,9 @@ class JobTranscribedEventMessage(SlackMessage):
 class TranscriptionMessage(TextMessage):
     def __init__(self, file_name: str) -> None:
         super().__init__(
-            _("⏱️ Please wait a moment and we will transcribe your file *{file_name}*")
+            _(
+                ":stopwatch: Please wait a moment and we will transcribe your file *{file_name}*"
+            )
         )
 
 

@@ -1,8 +1,8 @@
 import os
 import sys
+
 import requests
 from sqlalchemy import text
-from time import sleep
 
 # Add the parent directory to sys.path
 parent_dir = os.path.abspath(
@@ -14,7 +14,6 @@ from app.database import engines
 
 # Use the ray_integration engine from database.py
 with open("update.sql", "w", buffering=1) as sql_file:
-
     query = """
     SELECT channel_id
     FROM slack_group_settings_translation

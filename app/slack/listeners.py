@@ -19,6 +19,7 @@ from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.api.verify import (
+    VerifyAPIError,
     download_verify_file,
     get_client_evaluation_job,
     get_job_pricing,
@@ -1707,14 +1708,30 @@ async def evaluate_job_submit(
                 await client.chat_postMessage(channel=channel_id, text=error_message)
                 continue
             input_files.append(input_file)
-        await submit_evaluation_job(
-            context.ray.client,
-            input_files,
-            form.target_langs_uuid,
-            form.reference,
-            workflow_uuid=form.workflow_options,
-            job_notes=form.job_notes or "",
-        )
+        try:
+            await submit_evaluation_job(
+                context.ray.client,
+                input_files,
+                form.target_langs_uuid,
+                form.reference,
+                workflow_uuid=form.workflow_options,
+                job_notes=form.job_notes or "",
+            )
+        except VerifyAPIError as e:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=_(
+                    "There was an error processing your request. You do not have permission to perform this action. Please contact your team administrator."
+                ),
+            )
+        except Exception as e:
+            notify_exception(e)
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=_(
+                    "There was an error submitting your quality evaluation request, please try again."
+                ),
+            )
 
 
 @app.action("evaluate_job", middleware=[ray_connection])
@@ -1796,6 +1813,36 @@ async def verify_job_modal_open_action(
                     pass
                 else:
                     raise
+    except VerifyAPIError as e:
+        try:
+            # Update the view with an unauthorized error message
+            error_view = {
+                "type": "modal",
+                "title": {
+                    "type": "plain_text",
+                    "text": _("Unauthorized"),
+                    "emoji": True,
+                },
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": _(
+                                "You do not have permission to access this verification job. Please contact your team administrator."
+                            ),
+                            "verbatim": True,
+                        },
+                    }
+                ],
+            }
+            await client.views_update(view_id=view_id, view=error_view)
+        except SlackApiError as e:
+            if e.response["error"] == "view_closed":
+                # The modal was closed by the user, no need to do anything
+                pass
+            else:
+                raise
     except Exception as e:
         notify_exception(e)
         try:
@@ -1851,7 +1898,23 @@ async def quote_accept_all_action(
         return
     await redis_conn.set(redis_key, "1", ex=60)
 
-    job = await get_client_evaluation_job(context.ray.client, job_uuid)
+    try:
+        job = await get_client_evaluation_job(context.ray.client, job_uuid)
+    except VerifyAPIError as e:
+        await client.chat_postMessage(
+            channel=context["channel_id"],
+            text=_(
+                "You do not have permission to access this verification job. You do not have permission to perform this action. Please contact your team administrator."
+            ),
+        )
+        return
+    except Exception as e:
+        notify_exception(e)
+        await client.chat_postMessage(
+            channel=context["channel_id"],
+            text=_("There was an error processing your request. Please try again."),
+        )
+        return
 
     # Get all available language/file combinations that are not in progress
     selected_languages = []
