@@ -1,13 +1,15 @@
 import asyncio
-from typing import Any, Annotated
+from dataclasses import replace
+from typing import Annotated, Any
+
 from buglog import notify_exception, notify_message
-from fastapi import APIRouter, HTTPException, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ValidationError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.ray.utils import (
-    download_from_file_server_async,
     delete_from_file_server,
+    download_from_file_server_async,
     is_ibm_enterprise,
     set_user_language,
 )
@@ -15,42 +17,41 @@ from app.translate import _
 
 from ..auth.connector import (
     SlackUser,
+    get_client_access_tokens,
     get_client_type,
     get_demo_link,
+    get_group_admin_slack_users,
     get_job_group_quote_settings,
+    get_slack_user,
     is_verify_job,
     validate_api_callback_signature,
-    get_slack_user,
-    get_client_access_tokens,
-    get_group_admin_slack_users,
 )
-from ..dependencies import RayEventAuth, RayEvent
-from ..slack.templates.messages import (
-    DocMtMessage,
-    DocParseErrorMessage,
-    EvaluateSuccessMessage,
-    RequiresMtTokenAdminMessage,
-    RequiresMtTokenMessage,
-    SuccessfulLoginMessage,
-    ClientSignupEventMessage,
-    ClientSignupEventAdminMessage,
-    ClientApprovedEventMessage,
-    JobCreationMessage,
-    JobTranscribedEventMessage,
-    JobCompletedEventMessage,
-    VerifyCompleteMessage,
-)
-from ..slack.web import upload_file_to_slack_memory_efficient
-from ..ray.events.parse import get_ray_event_message
+from ..dependencies import RayEvent, RayEventAuth
+from ..ray.events.logging import post_notification, post_notification_ephemeral
 from ..ray.events.models import (
     Balance,
     ClientGroup,
     MtErrorResponseSchema,
     MtSuccessResponseSchema,
 )
-from ..ray.events.logging import post_notification, post_notification_ephemeral
-from dataclasses import replace
-
+from ..ray.events.parse import get_ray_event_message
+from ..slack.templates.messages import (
+    ClientApprovedEventMessage,
+    ClientSignupEventAdminMessage,
+    ClientSignupEventMessage,
+    DocComplexityErrorMessage,
+    DocMtMessage,
+    DocParseErrorMessage,
+    EvaluateSuccessMessage,
+    JobCompletedEventMessage,
+    JobCreationMessage,
+    JobTranscribedEventMessage,
+    RequiresMtTokenAdminMessage,
+    RequiresMtTokenMessage,
+    SuccessfulLoginMessage,
+    VerifyCompleteMessage,
+)
+from ..slack.web import upload_file_to_slack_memory_efficient
 
 router = APIRouter()
 
@@ -216,6 +217,11 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     message = DocParseErrorMessage(
                         event_data.error_data["ext"],
                         event_data.error_data["file_expected"],
+                    )
+
+                elif event_data.error_type == "file_complexity_error":
+                    message = DocComplexityErrorMessage(
+                        event_data.error_data["ext"],
                     )
 
                 await post_notification_ephemeral(
