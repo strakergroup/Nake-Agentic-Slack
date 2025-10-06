@@ -62,3 +62,4 @@ class MtTranslationExtraData(BaseModel):
     response_url: str | None = None
     thread_ts: str | None = None
     is_edit: bool = False
+    slack_user_id: str | None = None

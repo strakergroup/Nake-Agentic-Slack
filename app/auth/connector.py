@@ -28,7 +28,7 @@ from ..database import engines
 from .algorithms import encrypt_aes, hash_hmac_sha1
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class SlackUser:
     """Dataclass representing a Slack user."""
 
@@ -40,6 +40,17 @@ class SlackUser:
     bot_token: str
     ray_client_id: str
     ray_username: str
+    ray_user_group_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SlackOrg:
+    """Dataclass representing a Slack user."""
+
+    team_id: str
+    enterprise_id: str | None
+    bot_token: str
+    ray_org_uuid: str
     ray_user_group_id: str | None = None
 
 
@@ -268,6 +279,38 @@ async def save_user_token_from_installation(
         planname=user.planname,
         sso=user.sso,
     )
+
+
+def get_slack_org(org_uuid: str) -> SlackUser | None:
+    """Gets the Slack organization connected to a RAY client."""
+    with engines["ray_integration"].connect() as conn:
+        sql = text(
+            """
+            SELECT slack_team_id, slack_enterprise_id, verify_organization_uuid, super_group_uuid from slack_super_group_link
+            WHERE verify_organization_uuid = :org_uuid
+            and is_active = 1
+            """
+        ).bindparams(org_uuid=org_uuid)
+        result = conn.execute(sql)
+        row = result.first()
+        if not row:
+            return None
+        bot_token = get_bot_token(
+            conn, team_id=row.slack_team_id, enterprise_id=row.slack_enterprise_id
+        )
+        if not bot_token:
+            return None
+        return SlackUser(
+            user_id=row.verify_organization_uuid,
+            team_id=row.slack_team_id,
+            enterprise_id=row.slack_enterprise_id,
+            channel_id="",
+            is_subscribed=False,
+            bot_token=bot_token,
+            ray_client_id=org_uuid,
+            ray_username="",
+            ray_user_group_id=row.super_group_uuid,
+        )
 
 
 def get_slack_user(ray_client_id: str) -> SlackUser | None:

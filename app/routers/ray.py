@@ -51,6 +51,7 @@ from ..ray.events.models import (
     SlackAccountConnectedEvent,
 )
 from ..slack.templates.messages import (
+    AutoTranslationMessage,
     ClientApprovedEventMessage,
     ClientSignupEventAdminMessage,
     ClientSignupEventMessage,
@@ -662,6 +663,18 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         "".join(event.data["translations"]),
                     )
                 )
+                auto_translation_message: AutoTranslationMessage = (
+                    AutoTranslationMessage(
+                        None,
+                        extra_data.source_language,
+                        translations=[
+                            (
+                                extra_data.target_language,
+                                "".join(event.data["translations"]),
+                            )
+                        ],
+                    )
+                )
                 if (
                     extra_data.usage_type == "direct_machine_translation"
                     or extra_data.usage_type == "shortcut_translate"
@@ -677,8 +690,23 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         is_edit=extra_data.is_edit,
                         response_url=extra_data.response_url,
                     )
+                elif extra_data.usage_type == "channel_translation":
+                    await post_notification(
+                        client,
+                        event,
+                        auth.slack_user,
+                        auto_translation_message,
+                        channel_id=extra_data.channel_id,
+                        thread_ts=extra_data.thread_ts,
+                        is_edit=extra_data.is_edit,
+                    )
                 else:
-                    pass
+                    raise HTTPException(
+                        422,
+                        {
+                            "message": f"Invalid usage type: {extra_data.usage_type}",
+                        },
+                    )
                 database_engine = engines["sitemanager"]
                 amount = calculate_cost(len(event.data["translations"]))
                 assert auth.slack_user.ray_user_group_id is not None
@@ -690,7 +718,6 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     "slack",
                     extra_data.usage_type,
                     "Machine Translation",
-                    auth.slack_user.ray_client_id,
                     extra_data.organization_uuid,
                 )
             except Exception as e:

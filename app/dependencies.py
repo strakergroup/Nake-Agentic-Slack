@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from .auth.connector import (
     SlackUser,
     get_demo_link,
+    get_slack_org,
     get_slack_user,
     validate_queue_proxy_secret,
 )
@@ -36,8 +37,6 @@ class RayEventAuth:
     ) -> None:
         self.slack_user: SlackUser | None = None
         self.demo_slack_users = []
-        print(event.data)
-        print(event.event)
         is_token_valid = validate_queue_proxy_secret(token)
         if not is_token_valid:
             raise HTTPException(401)
@@ -48,6 +47,14 @@ class RayEventAuth:
         if "extra_data" in event.data:
             if "client_id" in event.data["extra_data"]:
                 self.slack_user = get_slack_user(event.data["extra_data"]["client_id"])
+                if not self.slack_user:
+                    self.slack_user = get_slack_org(
+                        event.data["extra_data"]["client_id"]
+                    )
+                    if self.slack_user:
+                        self.slack_user.user_id = event.data["extra_data"][
+                            "slack_user_id"
+                        ]
                 self.demo_slack_users = get_demo_link(
                     event.data["extra_data"]["client_id"]
                 )

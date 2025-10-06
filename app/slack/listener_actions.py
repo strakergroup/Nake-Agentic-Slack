@@ -8,7 +8,6 @@ import re
 from typing import Any
 
 import httpx
-import langcodes
 from buglog import notify_exception, notify_message
 from ray_sdk import RayResponse
 from slack_bolt.context.async_context import AsyncBoltContext
@@ -23,7 +22,6 @@ from app.api.verify import (
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.models import TranscriptionTask
-from app.mt.translate import get_ai_translation
 from app.ray.events.models import MtFileRequestSchema
 from app.transcriber_tasks.tasks import create_asr_task
 from app.translate import _
@@ -74,7 +72,7 @@ from .templates.messages import (
     VerifyHelperMessage,
 )
 from .templates.models import NewJobForm
-from .web import download_files, files_list_simple, get_mt_ts_cached, set_mt_ts_edit
+from .web import download_files, files_list_simple
 
 VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
 
@@ -215,21 +213,21 @@ async def respond_to_message(
     )
 
     if message_match:
-        if await require_ray_client(context):
-            mt_sl = message_match.group(1) or ""
-            if not mt_sl:
-                mt_sl = await detect_language(context, message["text"])
-                mt_sl = mt_sl.language
-            mt_tl = message_match.group(2) or context.get("locale") or "en"
-            mt_text = message_match.group(3)
-            await get_mt_translation(
-                client,
-                context,
-                source_lang=mt_sl,
-                target_lang=mt_tl,
-                sentence=mt_text,
-                thread_ts=thread_ts,
-            )
+        # if await require_ray_client(context):
+        mt_sl = message_match.group(1) or ""
+        if not mt_sl:
+            mt_sl = await detect_language(context, message["text"])
+            mt_sl = mt_sl.language
+        mt_tl = message_match.group(2) or context.get("locale") or "en"
+        mt_text = message_match.group(3)
+        await get_mt_translation(
+            client,
+            context,
+            source_lang=mt_sl,
+            target_lang=mt_tl,
+            sentence=mt_text,
+            thread_ts=thread_ts,
+        )
         return
     if message["text"] == "debug":
         # retrieve workspace name based on bot token
@@ -390,9 +388,12 @@ async def auto_translate_message(
         # Do not translate bot messages.
         return
     assert context.channel_id  # TODO enforce this
+
     # TODO make this fetch all settings for channel
     settings = get_auto_translate_settings_and_langs(context, context.channel_id)
-
+    required_tokens = len(text) * len(settings)
+    if not required_tokens or not await require_mt_tokens(context, required_tokens):
+        return None
     detected_source_lang_response = await detect_language(context, text)
 
     # Remove the detected source language from the target languages
@@ -404,78 +405,47 @@ async def auto_translate_message(
 
     if not target_langs or not settings:
         return
+    source_lang = detected_source_lang_response.language
     try:
-        source_lang, translations = await get_ai_translation(
-            context,
-            text,
-            target_langs,
-            "channel_translation",
-            detected_source_lang_response.language,
-        )
+        for target_lang in target_langs:
+            org_uuid = context["ray"].super_group[0].verify_organization_uuid
+            client_id = context["ray"].client.id if context["ray"].client else org_uuid
+            await send_mt_translation_request(
+                [text],
+                target_lang,
+                source_lang,
+                MtTranslationExtraData(
+                    client_id=client_id,
+                    target_language=target_lang,
+                    source_language=detected_source_lang_response.language,
+                    organization_uuid=org_uuid,
+                    channel_id=context.channel_id,
+                    text_length=len(text),
+                    usage_type="channel_translation",
+                    response_url=context.response_url,
+                    thread_ts=context.thread_ts,
+                    is_edit=is_edit,
+                    slack_user_id=context.user_id,
+                ),
+            )
     except Exception as e:
         notify_exception(e, "Slack channel MT failed")
         return
-    if not source_lang:
-        return
-    translations = [
-        (target_lang, translated)
-        for target_lang, translated in translations
-        if target_lang != source_lang
-        and langcodes.get(target_lang).language != langcodes.get(source_lang).language
-    ]
-    if not translations:
-        return
-    msg = AutoTranslationMessage(
-        None,
-        source_lang,
-        translations=translations,
-    )
-    try:
-        timestamp = None
-        if is_edit:
-            timestamp = await get_mt_ts_cached(ts)
-        if settings[0]["display_format"] == "thread":
-            if timestamp:
-                await client.chat_update(
-                    channel=context.channel_id,
-                    text=msg.text,
-                    blocks=msg.blocks,
-                    ts=timestamp,
-                )
-            else:
-                request = await client.chat_postMessage(
-                    channel=context.channel_id,
-                    text=msg.text,
-                    blocks=msg.blocks,
-                    thread_ts=ts,
-                )
-                # save timestamp to cache
-                asyncio.create_task(set_mt_ts_edit(send_ts=ts, reply_ts=request["ts"]))
-        elif settings[0]["display_format"] == "message":
-            if timestamp:
-                await client.chat_update(
-                    channel=context.channel_id,
-                    text=msg.text,
-                    blocks=msg.blocks,
-                    ts=timestamp,
-                )
-            else:
-                request = await client.chat_postMessage(
-                    channel=context.channel_id,
-                    text=msg.text,
-                    blocks=msg.blocks,
-                    thread_ts=thread_ts,
-                )
-                # save timestamp to cache
-                asyncio.create_task(set_mt_ts_edit(send_ts=ts, reply_ts=request["ts"]))
-        else:
-            notify_message("Slack app: Invalid display format")
-
-    except Exception as e:
-        notify_exception(
-            e,
-            "Failed to get machine translation from LanguageCloud API or Microsoft API",
-        )
+    # if not source_lang:
+    #     return
+    # translations = [
+    #     (target_lang, translated)
+    #     for target_lang, translated in translations
+    #     if target_lang != source_lang
+    #     and langcodes.get(target_lang).language != langcodes.get(source_lang).language
+    # ]
+    # if not translations:
+    #     return
+    # msg = AutoTranslationMessage(
+    #     None,
+    #     source_lang,
+    #     translations=translations,
+    # )
 
 
 async def document_machine_translate(
@@ -1639,16 +1609,23 @@ async def get_mt_translation(
         thread_ts (str | None, optional): The message thread to reply to.
     """
     try:
+        required_tokens = len(sentence)
+        if not required_tokens or not await require_mt_tokens(context, required_tokens):
+            return None
         channel_id = context.channel_id or context.user_id
         if not channel_id:
             raise AssertionError("No channel to post to")
         target_lang = target_lang.lower()
 
         assert context.ray
-        assert context.ray.client
-
+        assert context.ray.super_group
+        client_id = (
+            context.ray.client.id
+            if context.ray.client
+            else context.ray.super_group[0].verify_organization_uuid
+        )
         extra_data = MtTranslationExtraData(
-            client_id=context.ray.client.id,
+            client_id=client_id,
             target_language=target_lang,
             source_language=source_lang,
             organization_uuid=context.ray.super_group[0].verify_organization_uuid,
@@ -1659,6 +1636,7 @@ async def get_mt_translation(
             response_url=context.get("response_url"),
             thread_ts=thread_ts,
             is_edit=is_edit,
+            slack_user_id=context.user_id,
         )
 
         await send_mt_translation_request(
