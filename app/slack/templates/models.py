@@ -1,17 +1,17 @@
-from typing import Any, Dict, List
+from typing import Any
 
 from pydantic import (
     BaseModel,
-    ValidationError,
-    Field,
     EmailStr,
-    field_validator,
+    Field,
+    ValidationError,
     ValidationInfo,
+    field_validator,
 )
 from ray_sdk.api.v3.file import is_valid_file_ext
 
-from ...models import SlackGroupSettingsTranslation
 from ...constants import HUMAN_EVALUATION_WORKFLOW_UUID
+from ...models import SlackGroupSettingsTranslation
 
 
 def convert_pydantic_to_slack_error(error: ValidationError) -> dict[str, str]:

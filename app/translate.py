@@ -1,14 +1,12 @@
-import hashlib
-import inspect
 import contextvars
-import re
+import inspect
 import logging
+import re
 
 from buglog import notify_exception
-from .database import engines
 from sqlalchemy import text
-from .redis import redis_sync as redis_conn
-from .config import Environment, config
+
+from .database import engines
 
 
 class Translator:
@@ -33,8 +31,7 @@ class Translator:
                 language_map[row[0]] = row[1]
         return language_map
 
-    def translate(self, input: str, max_length: int = 0) -> str:
-
+    def translate(self, input: str, max_length: int = 0) -> tuple[str, bool]:
         if self.lang.lower().startswith(("en", "gb", "us")):
             return input, True
         if input in self.cache:
@@ -48,7 +45,7 @@ class Translator:
         # prepare input for translation by replacing emojis and python varible expansion with x tags
         replacements = {}
         for i, match in enumerate(re.finditer(r":\w+:|\{.*?\}", input)):
-            tag = f"<x id={i+1}>"
+            tag = f"<x id={i + 1}>"
             replacements[match.group()] = tag
             translation = translation.replace(match.group(), tag)
 

@@ -3,138 +3,136 @@ commands, etc. from the Slack API.
 """
 
 import asyncio
+import json
 import math
 import os
 import re
-import json
 from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
+
+from buglog import notify_exception, notify_message
+from pydantic import ValidationError
+from ray_sdk import RayAPIResponseError
+from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
+from slack_bolt.kwargs_injection.async_args import AsyncAck, AsyncRespond, AsyncSay
+from slack_sdk.errors import SlackApiError
+from slack_sdk.web.async_client import AsyncWebClient
 
 from app.api.verify import (
+    VerifyAPIError,
     download_verify_file,
     get_client_evaluation_job,
     get_job_pricing,
-    get_verify_languages,
     submit_evaluation_job,
-    VerifyAPIError,
 )
-from ..database import engines
-
-from pydantic import ValidationError
-from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
-from slack_sdk.errors import SlackApiError
-from ray_sdk import RayAPIResponseError
-from buglog import notify_exception, notify_message
-
+from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.ray.utils import (
     download_from_file_server,
     is_ibm_enterprise,
-    validate_file,
     upload_to_file_server,
+    validate_file,
 )
-from app.translate import _
 from app.transcriber_tasks.tasks import get_asr_task
-from ..redis import redis_conn, is_duplicate_event
+from app.translate import _
 
-from .app import app
-from .middleware import ray_connection, require_ray_client, require_mt_tokens
-from .listener_actions import (
-    document_machine_translate,
-    get_mt_translation,
-    respond_to_message,
-    auto_translate_message,
-    get_groups,
-    post_job_status,
-    post_job_details,
-    post_job_summary,
-    post_job_list,
-    show_quote_form_modal,
-    submit_job,
-    approve_pending_client,
-    post_report_insights,
-    ai_translate_help,
-    verify_help,
-    post_batch_list,
-    post_file_list,
-    cancel_job_process,
-    submit_verification_job,
-)
-from .logging import slack_log_decorator
-from .templates.models import (
-    convert_pydantic_to_slack_error,
-    NewJobForm,
-    EvaluateJobForm,
-    JobSearchForm,
-    AutoTranslationSettingsForm,
-)
-from .templates.messages import (
-    HumanJobMessage,
-    JobCreationMessage,
-    LoginMessage,
-    LogoutMessage,
-    OnboardingMessage,
-    QuoteMessage,
-    WelcomeBackMessage,
-    SuccessfulLogoutMessage,
-    SrtTranslateMessage,
-    JobSubmitMessage,
-    HelpMessage,
-    ConnectionInfoMessage,
-    SsoConnectionInfoMessage,
-    InvalidCommandMessage,
-    ClientApprovedMessage,
-    ClientAlreadyApprovedMessage,
-    JobDelayMessage,
-    AutoTranslateSettingsChangedMessage,
-    AutoTranslateSettingsDisabledMessage,
-)
-from .templates.views import (
-    document_mt_job_modal,
-    home_view,
-    human_job_modal,
-    translation_settings_view,
-    job_search_modal,
-    cancel_job_modal,
-    verify_job_modal,
-    verify_quote_summary_modal,
-    loading_modal,
-)
-from .web import (
-    download_file,
-    files_list_simple,
-    get_bot_accessible_files,
-    get_mt_ts_cached,
-)
-from .select_options import (
-    get_language_options,
-    get_file_options_cached,
-)
-from .utils import is_channel_im
 from ..auth.connector import (
     RayContext,
+    connect_ray_account_sso,
     disconnect_ray_account,
     disconnect_ray_super_group_and_users,
-    connect_ray_account_sso,
     get_all_tokens_for_enterprise,
     get_bot_token,
     get_group_quote_settings,
     get_ray_connection,
     get_token_for_team,
-    resolve_channels_to_team,
     is_slack_team_admin,
+    resolve_channels_to_team,
 )
+from ..config import domains
+from ..database import engines
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
+    disable_auto_translate_group_settings,
     get_auto_translate_settings_and_langs,
     update_auto_translate_group_settings,
-    disable_auto_translate_group_settings,
     update_channel_id,
 )
-
-from ..config import domains
-
-from typing import Dict, Any, Optional
-from slack_sdk.web.async_client import AsyncWebClient
-from slack_bolt.kwargs_injection.async_args import AsyncAck, AsyncSay, AsyncRespond
+from ..redis import is_duplicate_event, redis_conn
+from .app import app
+from .listener_actions import (
+    ai_translate_help,
+    approve_pending_client,
+    auto_translate_message,
+    cancel_job_process,
+    document_machine_translate,
+    get_groups,
+    get_mt_translation,
+    post_batch_list,
+    post_file_list,
+    post_job_details,
+    post_job_list,
+    post_job_status,
+    post_job_summary,
+    post_report_insights,
+    respond_to_message,
+    submit_job,
+    submit_verification_job,
+    verify_help,
+)
+from .logging import slack_log_decorator
+from .middleware import ray_connection, require_mt_tokens, require_ray_client
+from .select_options import (
+    get_file_options_cached,
+    get_language_options,
+)
+from .templates.messages import (
+    AutoTranslateSettingsChangedMessage,
+    AutoTranslateSettingsDisabledMessage,
+    ClientAlreadyApprovedMessage,
+    ClientApprovedMessage,
+    ConnectionInfoMessage,
+    HelpMessage,
+    HumanJobMessage,
+    InfoMessage,
+    InvalidCommandMessage,
+    JobCreationMessage,
+    JobDelayMessage,
+    JobSubmitMessage,
+    LoginMessage,
+    LogoutMessage,
+    NewJobMessage,
+    OnboardingMessage,
+    QuoteMessage,
+    SrtTranslateMessage,
+    SsoConnectionInfoMessage,
+    SuccessfulLogoutMessage,
+    WelcomeBackMessage,
+)
+from .templates.models import (
+    AutoTranslationSettingsForm,
+    EvaluateJobForm,
+    JobSearchForm,
+    NewJobForm,
+    convert_pydantic_to_slack_error,
+)
+from .templates.views import (
+    cancel_job_modal,
+    document_mt_job_modal,
+    home_view,
+    human_job_modal,
+    job_search_modal,
+    loading_modal,
+    translation_settings_view,
+    verify_job_modal,
+    verify_quote_summary_modal,
+)
+from .utils import is_channel_im
+from .web import (
+    download_file,
+    files_list_simple,
+    get_mt_ts_cached,
+    upload_file_to_slack_memory_efficient,
+)
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -307,46 +305,19 @@ async def new_job_shortcut(
 ):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        asyncio.create_task(
-            files_list_simple(client, channel_id=context["channel_id"], count=120)
-        )
-        # Set files in the message as initial values if the bot has access to them.
-        init_files = await get_bot_accessible_files(
-            client, (f["id"] for f in shortcut["message"].get("files", []))
-        )
-        await show_quote_form_modal(
-            client,
-            context,
-            shortcut["trigger_id"],
-            context["ray"].client,
-            initial_files=init_files,
-        )
-
-
-# @app.block_action("login_sso", middleware=[ray_connection])
-# @slack_log_decorator
-# async def login_sso_action(ack: AsyncAck, context: RayContext, body: Dict[str, Any], respond: AsyncRespond, client: AsyncWebClient):
-#     if context["ray"].client is None:
-#         await ack()
-#         await client.views_open(
-#             trigger_id=body["trigger_id"],
-#             view=sso_form_modal(),
-#         )
-#     else:
-#         await ack()
-#         if context["ray"].client.sso:
-#             msg = SsoConnectionInfoMessage(
-#                 context["ray"],
-#             )
-#         else:
-#             msg = ConnectionInfoMessage(
-#                 context["ray"],
-#                 user_id=context["user_id"],
-#                 team_id=context["team_id"],
-#                 enterprise_id=context.enterprise_id,
-#                 channel_id=context["channel_id"],
-#             )
-#         await respond(text=msg.text, blocks=msg.blocks)
+        # check if the message has files
+        if shortcut and shortcut["message"] and shortcut["message"].get("files"):
+            new_job_msg = NewJobMessage(
+                context["channel_id"],
+                shortcut["message"]["ts"],
+                shortcut["message"].get("files", []),
+                context.ray.super_group[0].enable_verify_in_slack,
+            )
+            await context.say(
+                text=new_job_msg.text,
+                blocks=new_job_msg.blocks,
+                thread_ts=shortcut["message"]["ts"],
+            )
 
 
 @app.action("show_srt_translate_form", middleware=[ray_connection])
@@ -450,12 +421,20 @@ async def download_transcribed_file(
         task_result = await get_asr_task(task_uuid, context["ray"].client.id)
         file_id = task_result["file_id"]
         file = download_from_file_server(file_id)
-        await client.files_upload_v2(
-            channel=context["channel_id"],
-            file=file["file"],
-            title=file["file_name"],
-            filename=file["file_name"],
-        )
+
+        try:
+            # Upload file to Slack using memory-efficient method
+            await upload_file_to_slack_memory_efficient(
+                client=client,
+                file_path=file["file"],
+                channel_id=context["channel_id"],
+                title=file["file_name"],
+                filename=file["file_name"],
+            )
+        finally:
+            # Clean up the temporary file
+            if os.path.exists(file["file"]):
+                os.unlink(file["file"])
 
 
 @app.block_action("download_ai_translation_action", middleware=[ray_connection])
@@ -470,12 +449,20 @@ async def download_ai_translation_action(
     if await require_ray_client(context):
         file_uuid = action["value"]
         file = await download_verify_file(context.ray.client, file_uuid)
-        await client.files_upload_v2(
-            channel=context["channel_id"],
-            file=file["file"],
-            title=file["file_name"],
-            filename=file["file_name"],
-        )
+
+        try:
+            # Upload file to Slack using memory-efficient method
+            await upload_file_to_slack_memory_efficient(
+                client=client,
+                file_path=file["file"],
+                channel_id=context["channel_id"],
+                title=file["file_name"],
+                filename=file["file_name"],
+            )
+        finally:
+            # Clean up the temporary file
+            if os.path.exists(file["file"]):
+                os.unlink(file["file"])
 
 
 @app.shortcut("shortcut_translate", middleware=[ray_connection])
@@ -500,6 +487,7 @@ async def handle_translate_shortcut(
         source_lang="",
         target_lang=mt_tl,
         sentence=mt_text,
+        usage_type="shortcut_translate",
     )
 
 
@@ -544,7 +532,6 @@ async def login_sso_action(
     client: AsyncWebClient,
     view: Optional[Dict[str, Any]],
 ):
-
     try:
         if "channel_id" not in context:
             context["channel_id"] = context["user_id"]
@@ -782,26 +769,11 @@ async def ray_command(
             # Get summary of jobs.
             if await require_ray_client(context, variation=LoginMessage.GET_JOB):
                 await post_job_summary(client, context, context["ray"].client)
-
-        case ["new"]:
-            # Show quote form modal.
-            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-                asyncio.create_task(
-                    files_list_simple(
-                        client, channel_id=context["channel_id"], count=120
-                    )
-                )
-                await show_quote_form_modal(
-                    client,
-                    context,
-                    command["trigger_id"],
-                    context["ray"].client,
-                    check_last_messages=4,
-                )
-
-        case ["quote"]:
+        case ["quote"] | ["new"]:
             # Show quote message.
-            if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+            if await require_ray_client(
+                context, variation=LoginMessage.QUALITY_EVALUATION
+            ):
                 # quote is like new job except it doesn't open the modal.
                 await ack()
                 msg = QuoteMessage()
@@ -1083,57 +1055,18 @@ async def job_list_paginated_action(
             )
 
 
-@app.block_action("new_job", middleware=[ray_connection])
-@slack_log_decorator
-async def new_job_action(
-    ack: AsyncAck,
-    payload: Dict[str, Any],
-    context: RayContext,
-    client: AsyncWebClient,
-    body: Dict[str, Any],
-):
-    await ack()
-    if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        init_files = []
-        try:
-            value = json.loads(payload["value"])
-            response = await client.conversations_history(
-                channel=value["channel_id"],
-                latest=value["ts"],
-                inclusive=True,
-                limit=1,
-            )
-            message = response["messages"][0]
-            # Assume the files are accessible if we are able to get the message
-            init_files = message.get("files", [])
-        except (SlackApiError, json.JSONDecodeError, KeyError):
-            # The payload value does not exist, is malformed, or no access to the files.
-            pass
-        asyncio.create_task(
-            files_list_simple(client, channel_id=context["channel_id"], count=120)
-        )
-        await show_quote_form_modal(
-            client,
-            context,
-            body["trigger_id"],
-            context["ray"].client,
-            initial_files=init_files,
-            # Check message history for initial files if not in payload.
-            check_last_messages=4,
-        )
-
-
 # The "Account Info" button short cut
 @app.block_action("account_info", middleware=[ray_connection])
 @slack_log_decorator
 async def get_account_info(ack: AsyncAck, context: RayContext, respond: AsyncRespond):
     await ack()
-    msg = ConnectionInfoMessage(
-        context["ray"],
+    msg = InfoMessage(
+        ray_client=context["ray"].client,
         user_id=context["user_id"],
         team_id=context["team_id"],
         enterprise_id=context.enterprise_id,
         channel_id=context["channel_id"],
+        is_ibm=is_ibm_enterprise(context.enterprise_id),
     )
     await respond(text=msg.text, blocks=msg.blocks, replace_original=False)
 
@@ -1936,15 +1869,16 @@ async def quote_accept_all_action(
     timestamp = body.get("message", {}).get("ts")
     job_uuid = action["value"]
 
-    # Check if this action has already been used for this job
-    redis_key = f"quote_accept_all_{job_uuid}"
+    redis_key = f"verify_job_submission_{job_uuid}"
     if await redis_conn.get(redis_key):
         await client.chat_postMessage(
             channel=context["channel_id"],
-            text=_("This action has already been used for this job."),
+            text=_(
+                "A request is already in progress. Please try again in a few seconds."
+            ),
         )
         return
-    await redis_conn.set(redis_key, "1", ex=30)
+    await redis_conn.set(redis_key, "1", ex=60)
 
     try:
         job = await get_client_evaluation_job(context.ray.client, job_uuid)
@@ -1973,6 +1907,8 @@ async def quote_accept_all_action(
                 selected_languages.append(
                     f"{source_file['file_uuid']}:{target_file['language_uuid']}"
                 )
+            if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+                target_file["human_job_status"] = "Submitted"
 
     await submit_verification_job(
         client=client,
@@ -1981,6 +1917,7 @@ async def quote_accept_all_action(
         selected_languages=selected_languages,
         user_id=body["user"]["id"],
         timestamp=timestamp,
+        job=job,
     )
 
 
@@ -1995,25 +1932,18 @@ async def handle_verify_job_submission(
     private_metadata = json.loads(body["view"]["private_metadata"])
     job_uuid = private_metadata.get("job_uuid")
     message_ts = private_metadata.get("timestamp", None)
-
-    try:
-        job = await get_client_evaluation_job(context.ray.client, job_uuid)
-    except VerifyAPIError as e:
+    # lock so that if submission is in progress, it will not be submitted again
+    lock_key = f"verify_job_submission_{job_uuid}"
+    lock_acquired = await redis_conn.set(lock_key, "1", ex=60, nx=True)
+    if not lock_acquired:
         await client.chat_postMessage(
-            channel=context["user_id"],
+            channel=body["user"]["id"],
             text=_(
-                "There was an error processing your request. You do not have permission to perform this action. Please contact your team administrator."
+                "This request is no longer available. Please resubmit your documents in the message pane below"
             ),
         )
         return
-    except Exception as e:
-        notify_exception(e)
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=_("There was an error processing your request. Please try again."),
-        )
-        return
-
+    job = await get_client_evaluation_job(context.ray.client, job_uuid)
     target_languages = job["data"]["target_languages"]
 
     # Extract the selected checkbox values from input blocks
@@ -2037,7 +1967,22 @@ async def handle_verify_job_submission(
                         for option in selected_options
                     ]
                 )
+                if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+                    for target_lang_option in selected_languages:
+                        lang_uuid = target_lang_option.rsplit(":", 1)[1]
+                        for target_file in source_file["target_files"]:
+                            if target_file["language_uuid"] == lang_uuid:
+                                target_file["human_job_status"] = "Submitted"
+                                break
 
+    if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+        for source_file in job["data"]["source_files"]:
+            for target_file in source_file["target_files"]:
+                if target_file.get("human_job_status") != "Submitted":
+                    target_file["human_job_status"] = "Cancelled"
+
+    # update origial message ts to remove buttons
+    # fetch original message
     await submit_verification_job(
         client=client,
         context=context,
@@ -2045,10 +1990,12 @@ async def handle_verify_job_submission(
         selected_languages=selected_languages,
         user_id=body["user"]["id"],
         timestamp=message_ts,
+        job=job,
     )
 
 
 @app.block_action("verification_checkbox_action", middleware=[ray_connection])
+@slack_log_decorator
 async def handle_checkbox_action(ack, body, client, action):
     await ack()
 
@@ -2081,6 +2028,22 @@ async def handle_checkbox_action(ack, body, client, action):
                     break
             else:
                 return
+
+            # Re-check if this is still the latest action after lock acquisition
+            latest_action_ts = await redis_conn.get(latest_action_key)
+            if latest_action_ts and float(latest_action_ts) > float(action_ts):
+                # A more recent action is already being processed, skip this one
+                return
+            else:
+                # We are still the latest action, try to acquire the lock
+                lock_acquired = await redis_conn.set(
+                    lock_key, action_ts, ex=2, nx=True
+                )  # 2 second lock, only if not exists
+
+                if not lock_acquired:
+                    # Still can't acquire lock, give up
+                    return
+
         try:
             # Parse all selected options from the state values
             selected_options = []
@@ -2159,6 +2122,8 @@ async def handle_checkbox_action(ack, body, client, action):
                     "callback_id": view["callback_id"],
                 },
             )
+        except Exception as e:
+            notify_exception(e)
         finally:
             # Always release the lock when done
             await redis_conn.delete(lock_key)

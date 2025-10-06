@@ -1,50 +1,48 @@
 """Slack Messages templates."""
 
-from typing import Any, Dict, List
 import json
+from typing import Any, Dict, List
 
 import langcodes
+from ray_sdk.api.v3.models import Job, Pagination, Quote
+
 from app.slack.select_options import (
     get_auto_translate_language_options,
 )
-from ray_sdk.api.v3.models import Job, Pagination, Quote
+from app.translate import _
 
-from .models import NewJobForm
-from .blocks import (
-    evaluate_success_blocks,
-    job_link_block,
-    job_summary_string,
-    quote_message_block,
-    job_prediction_block,
-    verify_quote_blocks,
-)
-from ...ray.events.models import (
-    ClientSignupEvent,
-    JobQuoteCreatedEvent,
-    ClientGroup,
-    JobQuoteAcceptedEvent,
-)
-
-from ...ray.utils import (
-    get_job_url,
-    format_job_status,
-    format_datetime_slack,
-    format_job_due_date_slack,
-    format_job_prediction,
-    is_ibm_enterprise,
-    is_min_langugagecloud_plan,
-)
-from ...ray.settings import get_auto_translate_language_name
-from ..utils import format_strings_display
-from ...config import config, domains, Environment
 from ...auth.connector import (
     RayClient,
     RayConnection,
     RayContext,
     get_language_cloud_connect_url,
-    encrpyt_slack_sso_token,
 )
-from app.translate import _
+from ...config import Environment, config, domains
+from ...ray.events.models import (
+    ClientGroup,
+    ClientSignupEvent,
+    JobQuoteAcceptedEvent,
+    JobQuoteCreatedEvent,
+)
+from ...ray.settings import get_auto_translate_language_name
+from ...ray.utils import (
+    format_datetime_slack,
+    format_job_due_date_slack,
+    format_job_prediction,
+    format_job_status,
+    get_job_url,
+    is_ibm_enterprise,
+    is_min_langugagecloud_plan,
+)
+from ..utils import format_strings_display
+from .blocks import (
+    evaluate_success_blocks,
+    job_link_block,
+    job_prediction_block,
+    quote_message_block,
+    verify_quote_blocks,
+)
+from .models import NewJobForm
 
 
 class TextMessage:
@@ -81,7 +79,7 @@ class OnboardingMessage(SlackMessage):
         channel_id: str,
         prompt_login: bool = True,
     ) -> None:
-        tadaEmoji = f":tada:"
+        tadaEmoji = ":tada:"
         blocks: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -183,13 +181,13 @@ class LoginMessage(SlackMessage):
         elif variation == self.HUMAN_TRANSLATION:
             block_text = "Connect your account to perform human translation."
         elif isinstance(ray_client, RayClient):
-            user_details = f"<<{domains.languagecloud}|{ray_client.username}>>"
+            user_details = f"<{domains.verify}|{ray_client.username}>"
             block_text = (
                 "Your connected account is: {user_details}. "
                 + "\nYou can connect a different account by clicking this button."
             )
             if ray_client.sso:
-                block_text = "Your connected account is: *{ray_client.username}*."
+                block_text = "Your connected account is: {user_details}"
         msg: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -262,7 +260,7 @@ class WelcomeBackMessage(SlackMessage):
     """
 
     def __init__(self, user_id: str, ray_connection: RayConnection) -> None:
-        waveEmoji = f":wave:"
+        waveEmoji = ":wave:"
         is_verify_enabled = (
             ray_connection.super_group[0].enable_verify_in_slack
             if ray_connection
@@ -379,7 +377,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🔍 Search allows you to search for specific Translation Jobs (TJs)."
+                            ":mag: Search allows you to search for specific Translation Jobs (TJs)."
                         ),
                     },
                     "accessory": {
@@ -414,7 +412,7 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 " + _("Cancel your job"),
+                        "text": ":red_circle: " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -479,7 +477,7 @@ class SuccessfulLoginMessage(SlackMessage):
     def __init__(
         self, user_id: str, ray_username: str, ray_connection: RayConnection
     ) -> None:
-        waveEmoji = f":wave:"
+        waveEmoji = ":wave:"
         is_verify_enabled = (
             ray_connection.super_group[0].enable_verify_in_slack
             if ray_connection
@@ -596,7 +594,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🔍 Search allows you to search for specific Translation Jobs (TJs). "
+                            ":mag: Search allows you to search for specific Translation Jobs (TJs). "
                         ),
                     },
                     "accessory": {
@@ -631,7 +629,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 " + _("Cancel your job"),
+                        "text": ":red_circle: " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -692,7 +690,7 @@ class LogoutMessage(SlackMessage):
     """Message with a button disconnect a user's LanguageCloud account."""
 
     def __init__(self, ray_client: RayClient) -> None:
-        user_details = f"<{domains.languagecloud}|{ray_client.username}>"
+        user_details = f"<{domains.verify}|{ray_client.username}>"
         text = _("Click this button to disconnect your account: {user_details}.")
         if ray_client.sso:
             text = _(
@@ -742,7 +740,7 @@ class SuccessfulLogoutMessage(SlackMessage):
         self, user_id: str, is_sso: bool = False, ray_username: str | None = None
     ) -> None:
         # TODO: Translation fix this
-        user_details = f"<{domains.languagecloud}|{ray_username}>"
+        user_details = f"<{domains.verify}|{ray_username}>"
         user_link = f"<@{user_id}>"
         text = _("Your account {user_details} is now disconnected from {user_link}.")
         if is_sso:
@@ -1007,7 +1005,7 @@ class JobDetailsMessage(SlackMessage):
                 "fields": [
                     {
                         "type": "mrkdwn",
-                        "text": _(f"*Job Status:*\n")
+                        "text": _("*Job Status:*\n")
                         + f"{format_job_status(job.status)}",
                     },
                     {
@@ -1426,7 +1424,7 @@ class JobSummaryMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f" ",
+                        "text": " ",
                     },
                     "accessory": {
                         "type": "button",
@@ -1513,7 +1511,7 @@ class JobListMessage(SlackMessage):
                             "type": "section",
                             "text": {
                                 "type": "mrkdwn",
-                                "text": _("🔴 Cancel this job"),
+                                "text": _(":red_circle: Cancel this job"),
                             },
                             "accessory": {
                                 "type": "button",
@@ -1711,7 +1709,7 @@ class NewJobMessage(SlackMessage):
         timestamp: str,
         files: list[dict[str, Any]],
         is_verify_enabled: bool = False,
-    ) -> None:
+    ):
         files_dict = [{"id": f["id"], "title": f["title"]} for f in files]
         message_blocks = [
             {
@@ -1877,7 +1875,7 @@ class JobCreationMessage(SlackMessage):
     """A job TJ number is created after submitting a new job (from API v3 callback)."""
 
     def __init__(self, job_id: str = "", is_auto_quote: bool = False) -> None:
-        tadeEmoji = f":tada:"
+        tadeEmoji = ":tada:"
         quote_message = _(
             "Human translation is currently not supported, please continue to use Translate@IBM for human translation requests until further notice."
         )
@@ -1902,7 +1900,7 @@ class JobCreationMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 " + _("Cancel your job"),
+                        "text": ":red_circle: " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -2103,7 +2101,7 @@ class HelpMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "🔍 Search allows you to search for specific Translation Jobs (TJs). "
+                            ":mag: Search allows you to search for specific Translation Jobs (TJs). "
                         ),
                     },
                     "accessory": {
@@ -2172,7 +2170,7 @@ class HelpMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "🔴 " + _("Cancel your job"),
+                        "text": ":red_circle: " + _("Cancel your job"),
                     },
                     "accessory": {
                         "type": "button",
@@ -2228,12 +2226,127 @@ class QuoteMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "Please upload your files to translate in the message composer below, or alternatively, if you have already uploaded your files, click the *New translation job* button below"
+                            "Please upload your files to translate in the message composer below."
                         ),
                     },
                 },
             ],
         )
+
+
+# -----------------------------------------------------------------------------
+# Helper functions
+# -----------------------------------------------------------------------------
+
+
+def get_workspace_block(ray_connection: RayConnection | None) -> dict[str, Any]:
+    if ray_connection is not None:
+        super_group_names = [group.name for group in ray_connection.super_group]
+        super_group_names_str = ", ".join(super_group_names)
+        text = _("Your Slack workspace is connected with: *{super_group_names_str}*.")
+        return {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": text,
+            },
+        }
+    else:
+        text = _("Your Slack workspace is not connected with an organisation yet.")
+        return {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": text},
+        }
+
+
+def get_account_blocks(
+    ray_client: RayClient | None,
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    channel_id: str,
+    is_ibm: bool,
+) -> tuple[list[dict[str, Any]], str]:
+    account_blocks: list[dict[str, Any]] = []
+    text: str = ""
+
+    if ray_client is not None:
+        user_details = f"<{domains.verify}|{ray_client.username}>"
+        if is_ibm_enterprise(enterprise_id=enterprise_id):
+            text = _("Your connected account is: {ray_client.username}")
+        else:
+            text = _("Your connected account is: <{user_details}>")
+        account_blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": text},
+            }
+        )
+    else:
+        account_blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "In order to use the Straker Translate features, please login. Click this button below;"
+                    ),
+                },
+            }
+        )
+        account_blocks.append(
+            {
+                "type": "actions",
+                "elements": [
+                    (
+                        (
+                            {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Connect account"),
+                                },
+                                "style": "primary",
+                                "url": get_language_cloud_connect_url(
+                                    user_id, team_id, enterprise_id, channel_id
+                                ),
+                                "action_id": "login",
+                            }
+                            if not is_ibm
+                            else {
+                                "type": "button",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": _("Direct Login"),
+                                },
+                                "style": "primary",
+                                "action_id": "login_sso",
+                            }
+                        ),
+                    )
+                ],
+            }
+        )
+
+    return account_blocks, text
+
+
+class InfoMessage(SlackMessage):
+    """Info message to show the current connection details."""
+
+    def __init__(
+        self,
+        ray_client: RayClient | None,
+        user_id: str,
+        team_id: str,
+        enterprise_id: str | None,
+        channel_id: str,
+        is_ibm: bool,
+    ) -> None:
+        account_blocks, text = get_account_blocks(
+            ray_client, user_id, team_id, enterprise_id, channel_id, is_ibm
+        )
+        super().__init__(text, [*account_blocks])
 
 
 class ConnectionInfoMessage(SlackMessage):
@@ -2248,85 +2361,12 @@ class ConnectionInfoMessage(SlackMessage):
         channel_id: str,
         is_ibm=False,
     ) -> None:
-        # First get Slack workspace - super group info.
-        if ray_connection is not None:
-            super_group_names = [group.name for group in ray_connection.super_group]
-            super_group_names_str = ", ".join(super_group_names)
-            text = _("Your Slack workspace is connected with: {super_group_names_str}.")
-            workspace_block = {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "Your Slack workspace is connected with: *{super_group_names_str}*.",
-                    ),
-                },
-            }
-        else:
-            text = _("Your Slack workspace is not connected with an organisation yet.")
-            workspace_block = {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": text},
-            }
-        # Next get Slack user - LanguageCloud account info.
-        account_blocks: list[dict[str, Any]] = []
-        if ray_connection is not None and ray_connection.client is not None:
-            user_details = f"<{domains.languagecloud}|{ray_connection.client.username}>"
-            if is_ibm_enterprise(enterprise_id=enterprise_id):
-                text = _("Your connected account is: {ray_connection.client.username}")
-            else:
-                text = _("Your connected account is: <{user_details}>")
-            account_blocks.append(
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": text},
-                }
-            )
-        else:
-            account_blocks.append(
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "In order to use the Straker Translate features, please login. Click this button below;"
-                        ),
-                    },
-                }
-            )
-            account_blocks.append(
-                {
-                    "type": "actions",
-                    "elements": [
-                        (
-                            (
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("Connect account"),
-                                    },
-                                    "style": "primary",
-                                    "url": get_language_cloud_connect_url(
-                                        user_id, team_id, enterprise_id, channel_id
-                                    ),
-                                    "action_id": "login",
-                                }
-                                if not is_ibm
-                                else {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("Direct Login"),
-                                    },
-                                    "style": "primary",
-                                    "action_id": "login_sso",
-                                }
-                            ),
-                        )
-                    ],
-                }
-            )
+        ray_client = ray_connection.client if ray_connection is not None else None
+
+        workspace_block = get_workspace_block(ray_connection)
+        account_blocks, text = get_account_blocks(
+            ray_client, user_id, team_id, enterprise_id, channel_id, is_ibm
+        )
         super().__init__(
             text,
             [workspace_block, *account_blocks],
@@ -2401,33 +2441,6 @@ class SsoConnectionInfoMessage(SlackMessage):
                 "text": {"type": "mrkdwn", "text": text},
             },
         ]
-        if ray_connection.client:
-            msg.extend(
-                [
-                    {
-                        "type": "actions",
-                        "elements": (
-                            [
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": _("Login to Verify"),
-                                    },
-                                    "style": "primary",
-                                    # TODO: ray_connection.client could be None
-                                    "url": encrpyt_slack_sso_token(
-                                        ray_connection.client.username
-                                    ),
-                                    "action_id": "login",
-                                }
-                            ]
-                        ),
-                    }
-                ]
-                if not is_ibm
-                else []
-            )
         super().__init__(
             "Login Successfull",
             msg,
@@ -2532,7 +2545,7 @@ class ClientSignupEventAdminMessage(SlackMessage):
                                 "emoji": True,
                                 "text": _("Log into Verify"),
                             },
-                            "url": domains.languagecloud,
+                            "url": domains.verify,
                             "action_id": "link",
                         },
                     ],
@@ -2768,7 +2781,9 @@ class JobQuotedEventMessage(SlackMessage):
                             )
                             + f"<{job_url}|{reference}>**"
                             if not is_ibm
-                            else reference if is_ibm else f"{reference}"
+                            else reference
+                            if is_ibm
+                            else f"{reference}"
                         ),
                     },
                 },
@@ -3332,8 +3347,7 @@ class DocumentMTJobMessage(SlackMessage):
 
 
 class JobTranscribedEventMessage(SlackMessage):
-
-    def __init__(self, task_uuid: str, source_file_name: str, symlink: str) -> None:
+    def __init__(self, task_uuid: str, source_file_name: str) -> None:
         title = _(
             "We have *transcribed* your file *{source_file_name}* and SRT can be downloaded below."
         )
@@ -3345,9 +3359,7 @@ class JobTranscribedEventMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": title.format(
-                            source_file_name=source_file_name, symlink=symlink
-                        ),
+                        "text": title.format(source_file_name=source_file_name),
                     },
                 },
                 {
@@ -3357,21 +3369,11 @@ class JobTranscribedEventMessage(SlackMessage):
                             "type": "button",
                             "text": {
                                 "type": "plain_text",
-                                "text": _("Download"),
-                                "emoji": False,
-                            },
-                            "action_id": "download_transcribed_file",
-                            "style": "primary",
-                            "value": task_uuid,
-                        },
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
                                 "text": _("AI Translation"),
                                 "emoji": False,
                             },
                             "action_id": "show_srt_translate_form",
+                            "style": "primary",
                             "value": task_uuid,
                         },
                     ],
@@ -3383,7 +3385,9 @@ class JobTranscribedEventMessage(SlackMessage):
 class TranscriptionMessage(TextMessage):
     def __init__(self, file_name: str) -> None:
         super().__init__(
-            _("⏱️ Please wait a moment and we will transcribe your file *{file_name}*")
+            _(
+                ":stopwatch: Please wait a moment and we will transcribe your file *{file_name}*"
+            )
         )
 
 
@@ -3439,7 +3443,6 @@ class CancelTJMessage(SlackMessage):
     """
 
     def __init__(self, jobdetail: dict[str, Any]) -> None:
-
         target_labels = [_(target.label) for target in jobdetail["targetlang"]]
         jobid = jobdetail["job_id"]
         jobstatus = _(format_job_status(jobdetail["status"]))
@@ -3532,7 +3535,6 @@ class AutoTranslateSettingsDisabledMessage(TextMessage):
 
 class RequiresMtTokenMessage(SlackMessage):
     def __init__(self, tokens: int, required_tokens: int) -> None:
-
         match (tokens, required_tokens):
             case (tokens, 1) if tokens <= 0:
                 title = _(
@@ -3578,7 +3580,6 @@ class RequiresMtTokenMessage(SlackMessage):
 
 class RequiresMtTokenAdminMessage(SlackMessage):
     def __init__(self, tokens: int, required_tokens: int) -> None:
-
         match (tokens, required_tokens):
             case (tokens, 1) if tokens <= 0:
                 title = _("Your group has no AI Tokens. Please purchase AI Tokens")
@@ -3631,10 +3632,11 @@ class EvaluateSuccessMessage(SlackMessage):
         job: dict[str, Any],
         is_ibm_enterprise: bool,
         tokens: int | None = None,
+        actions: bool = True,
     ) -> None:
         blocks = []
         info_text = _(
-            'The AI translation quality of your document(s) has been evaluated. Download the AI translation if you\'re satisfied, or click "Send for Human Verification" to request human verification'
+            'The AI translation quality of your document(s) has been evaluated. Download the AI translation if you\'re satisfied, or click "Send for Human Verification" to request human verification.'
         )
         if not is_ibm_enterprise and tokens:
             blocks.append(
@@ -3660,23 +3662,24 @@ class EvaluateSuccessMessage(SlackMessage):
             )
 
         blocks.extend(evaluate_success_blocks(job))
-        blocks.append(
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("Send for Human Verification"),
+        if actions:
+            blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Send for Human Verification"),
+                            },
+                            "style": "primary",
+                            "value": job["uuid"],
+                            "action_id": "verify_job_modal_open",
                         },
-                        "style": "primary",
-                        "value": job["uuid"],
-                        "action_id": "verify_job_modal_open",
-                    },
-                ],
-            },
-        )
+                    ],
+                },
+            )
         super().__init__(_("Evaluation Result"), blocks)
 
 
@@ -3706,15 +3709,11 @@ class HumanJobQuoteMessage(SlackMessage):
         self,
         job: dict[str, Any],
         costs: list[dict[str, Any]],
+        actions: bool = True,
     ) -> None:
-        accept_all = any(
-            not target_file.get("human_job_status")
-            for source_file in job["source_files"]
-            for target_file in source_file.get("target_files", [])
-        )
         blocks = []
         blocks = verify_quote_blocks(job, costs, False)
-        if accept_all:
+        if actions:
             blocks.insert(0, {"type": "divider"})
             blocks.append(
                 {
@@ -3749,10 +3748,9 @@ class FileTooLargeMessage(SlackMessage):
     """Message to send when a file is too large to be processed."""
 
     def __init__(self, file_name: str, file_size: int) -> None:
-
         text = (
             f"*{file_name}* exceeds the current limit of 25MB "
-            f"(~{file_size/1048576:.1f} MiB). "
+            f"(~{file_size / 1048576:.1f} MiB). "
             f"Please compress and re-upload according to the current limit."
         )
 

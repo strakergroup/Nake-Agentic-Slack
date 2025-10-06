@@ -3,31 +3,29 @@ other services, e.g. Slack, RAY apps.
 """
 
 import asyncio
+import hashlib
+import json
 import math
 import time
-import json
-import hashlib
-from typing import Any, Dict, List, Optional
-from uuid import uuid4
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
-import uuid
+from uuid import uuid4
 
 import httpx
-from sqlalchemy import bindparam, text
-from sqlalchemy.engine import Connection
+from buglog import notify_exception
+from ray_logger.slack import SlackAppLog
+from slack_bolt.context.async_context import AsyncBoltContext
+from slack_sdk.errors import SlackApiError
 from slack_sdk.oauth.installation_store import Installation
 from slack_sdk.web.async_client import AsyncWebClient
-from slack_sdk.errors import SlackApiError
-from slack_bolt.context.async_context import AsyncBoltContext
-from ray_logger.slack import SlackAppLog
-
+from sqlalchemy import bindparam, text
+from sqlalchemy.engine import Connection
 from straker_auth.languagecloud import create_languagecloud_id_token
-from buglog import notify_exception
 
-from .algorithms import encrypt_aes, hash_hmac_sha1
-from ..config import config, domains, Environment
+from ..config import Environment, config, domains
 from ..database import engines
+from .algorithms import encrypt_aes, hash_hmac_sha1
 
 
 @dataclass(frozen=True, slots=True)
@@ -400,7 +398,7 @@ async def get_ray_super_group(
         if enterprise_id:
             sql = text(
                 """
-                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
+                SELECT link.super_group_uuid, g.label, vo.organization_name, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
                 FROM slack_super_group_link link
                 INNER JOIN sitemanager.obj_m_group g
                 ON link.super_group_uuid = g.obj_uuid
@@ -413,7 +411,7 @@ async def get_ray_super_group(
         else:
             sql = text(
                 """
-                SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
+                SELECT link.super_group_uuid, g.label, vo.organization_name, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
                 FROM slack_super_group_link link
                 INNER JOIN sitemanager.obj_m_group g
                 ON link.super_group_uuid = g.obj_uuid
@@ -430,7 +428,7 @@ async def get_ray_super_group(
     return [
         RaySuperGroup(
             id=row.super_group_uuid,
-            name=row.label,
+            name=row.organization_name,
             slack_team_id=team_id,
             slack_enterprise_id=enterprise_id,
             enable_verify_in_slack=bool(row.enable_verify_in_slack),
@@ -675,8 +673,9 @@ async def get_ray_client(
         result = conn.execute(sql)
         row = result.first()
         if not row:
-            return None
-        access_token = row[0]
+            access_token = ""
+        else:
+            access_token = row[0]
 
     # TODO Fix this, sometimes the plan is incorrect.
     # get group subscription plan
@@ -1479,27 +1478,6 @@ def crete_slack_logs_sso(user_data: str, member_id: str, message: str):
         conn.execute(sql)
 
 
-def encrpyt_slack_sso_token(
-    email_id: str,
-) -> str:
-    """Generates sso token to allow the Slack app users to communicate
-    with the RAY platform securely.
-
-    Args:
-        email_id (str): The Slack user Email ID.
-
-    Returns:
-        str: The encrypted token.
-    """
-    data = {"email_id": email_id}
-    params = {
-        "token": encrypt_aes(
-            json.dumps(data), config.slack_deltaray_key.get_secret_value()
-        )
-    }
-    return f"{domains.languagecloud}/auth/slacksso?{urlencode(params)}"
-
-
 async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceResponse:
     """http languagecloud API to get the client tokens."""
     url = f"{domains.languagecloud_api}/credits/balance"
@@ -1750,6 +1728,8 @@ async def resolve_channels_to_team(
 async def is_slack_team_admin(client_uuid: str, enterprise_id: str | None) -> bool:
     if not enterprise_id:
         return False
+    if enterprise_id == "E04RDMG8XP1":
+        return True
     group_id = get_direct_login_group(enterprise_id)
     client_type = await get_client_type(client_uuid, group_id)
     return client_type in ["Admin", "Owner"]

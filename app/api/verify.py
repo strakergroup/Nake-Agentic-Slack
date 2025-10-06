@@ -1,17 +1,17 @@
-from io import BytesIO
 import json
 import os
-from buglog import notify_exception
-import httpx
+import tempfile
 from typing import List
-from ..redis import redis_conn
 
-from app.auth.connector import RayClient, SlackUser, get_ray_client
-from app.config import domains, config
+import httpx
+from buglog import notify_exception
 from straker_utils.environment import Environment
 
-
+from app.auth.connector import RayClient, SlackUser, get_ray_client
+from app.config import config, domains
 from app.ray.utils import get_filename_from_header
+
+from ..redis import redis_conn
 
 
 class VerifyAPIError(Exception):
@@ -148,11 +148,26 @@ async def download_verify_file(ray_client: RayClient, file_uuid: str):
 
     # Parse the header to get the filename
     filename = get_filename_from_header(content_disposition)
-    file_result = {
-        "file_name": filename,
-        "file": BytesIO(response.content),
-    }
-    return file_result
+
+    # Create a temporary file to avoid loading entire file into memory
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{filename}")
+    try:
+        # Write the content to temp file in chunks
+        async for chunk in response.aiter_bytes():
+            temp_file.write(chunk)
+        temp_file.close()
+
+        # Return file path instead of BytesIO to avoid memory issues
+        file_result = {
+            "file_name": filename,
+            "file": temp_file.name,  # Return file path instead of BytesIO
+        }
+        return file_result
+    except Exception:
+        # Clean up temp file on error
+        if os.path.exists(temp_file.name):
+            os.unlink(temp_file.name)
+        raise
 
 
 async def create_human_job(

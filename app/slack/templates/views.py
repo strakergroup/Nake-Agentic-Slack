@@ -1,35 +1,38 @@
 """Slack view templates (modals, home tab)."""
 
 import asyncio
+import json
 from typing import Any
+
 from slack_bolt.context.async_context import AsyncBoltContext
+
 from app.translate import _
-from .blocks import (
-    home_auth_blocks,
-    verify_quote_blocks,
-)
-from ..select_options import (
-    map_file_options,
-    get_auto_translate_language_options,
-    translation_display_format_options,
-    map_translation_display_format_option,
-    filter_auto_translate_language_options,
-)
+
 from ...auth.connector import (
     RayConnection,
     get_channel_info,
     is_slack_team_admin,
 )
+from ...config import domains
+from ...models import SlackGroupSettingsTranslation
 from ...ray.settings import (
-    get_full_group_translation_settings,
     get_auto_translate_language_name,
+    get_full_group_translation_settings,
     get_pagination,
 )
 from ...ray.utils import is_ibm_enterprise
 from ...slack.utils import format_strings_display
-from ...config import domains
-from ...models import SlackGroupSettingsTranslation
-import json
+from ..select_options import (
+    filter_auto_translate_language_options,
+    get_auto_translate_language_options,
+    map_file_options,
+    map_translation_display_format_option,
+    translation_display_format_options,
+)
+from .blocks import (
+    home_auth_blocks,
+    verify_quote_blocks,
+)
 
 
 async def home_view(
@@ -38,9 +41,9 @@ async def home_view(
     assert context.client
 
     message_url = f"slack://app?team={context['team_id']}&id={app_id}&tab=messages"
-    barEmoji = f":bar_chart:"
-    helpEmoji = f":question:"
-    speechEmoji = f":speech_balloon:"
+    barEmoji = ":bar_chart:"
+    helpEmoji = ":question:"
+    speechEmoji = ":speech_balloon:"
     is_straker_admin = (
         rayConnection
         and rayConnection.client
@@ -56,7 +59,7 @@ async def home_view(
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str], dict[str, str]]
     ] = []
-    questionEmoji = f":question:"
+    questionEmoji = ":question:"
     rows_per_page = 5
     total_pages = get_pagination(context, rows_per_page)
     translation_settings = get_full_group_translation_settings(
@@ -617,7 +620,8 @@ def human_job_modal(
                     "action_id": "job_notes",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": _(" "),
+                        # Slack will throw an error if this is 0 characters
+                        "text": " ",
                         "emoji": True,
                     },
                     "multiline": True,
@@ -640,476 +644,6 @@ def human_job_modal(
         "private_metadata": channel_id,
         "close": {"type": "plain_text", "text": close_text},
         "blocks": blocks,
-    }
-
-
-def new_job_modal(
-    client_name: str,
-    channel_id: str,
-    file_options: list[dict[str, Any]] | None = None,
-    initial_files: list[dict[str, Any]] | None = None,
-    max_selected_files: int = 10,
-) -> dict[str, Any]:
-    """The template for the modal to submit a new translation job. The user can
-    select the files they want to translate and enter the job details, e.g.
-    category, source and target languages.
-
-    Args:
-        client_name (str): The user's LanguageCloud username.
-        file_options (list[dict] | None, optional): A list of file objects to set as available
-            options for the "Files to translate" select input. Defaults to None.
-        initial_files (list[dict] | None, optional): A list of file objects to initally select.
-            Defaults to None.
-        max_selected_files (int, optional): The maximum number of files to translate. Defaults to 10.
-
-    Returns:
-        dict: The view dict.
-    """
-
-    file_options = file_options or []
-    initial_files = (
-        map_file_options(initial_files[:max_selected_files])[0] if initial_files else []
-    )
-    # Add the initial files to the file options if they are not there already.
-    for file in initial_files:
-        if not any(file["value"] == opt["value"] for opt in file_options):
-            file_options.insert(0, file)
-    file_options = file_options[:100]
-    website_url = "https://help.straker.ai/en/docs/straker-translate-functions"
-    if file_options:
-        files_block_element = {
-            "type": "multi_static_select",
-            "placeholder": {
-                "type": "plain_text",
-                "text": _("Select file(s)"),
-                "emoji": True,
-            },
-            "options": file_options,
-            "action_id": f"file_options_{channel_id}",
-            "max_selected_items": max_selected_files,
-        }
-    else:
-        # Use external select if no files are given because options cannot be empty.
-        files_block_element = {
-            "type": "multi_external_select",
-            "placeholder": {
-                "type": "plain_text",
-                "text": _("Select file(s)"),
-                "emoji": True,
-            },
-            "action_id": f"file_options_{channel_id}",
-            "max_selected_items": max_selected_files,
-            "min_query_length": 0,
-        }
-    if initial_files:
-        files_block_element["initial_options"] = initial_files
-
-    return {
-        "type": "modal",
-        "callback_id": "new_job",
-        "title": {"type": "plain_text", "text": _("New Job", 23)[:24]},
-        "submit": {"type": "plain_text", "text": _("Submit")},
-        "close": {"type": "plain_text", "text": _("Close")},
-        "blocks": [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _("You are submitting a new job as `{client_name}`."),
-                    "verbatim": True,
-                },
-            },
-            {
-                "type": "context",
-                "elements": [
-                    {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "For more support information, visit our <{website_url}|website>."
-                        ),
-                    }
-                ],
-            },
-            {
-                "type": "input",
-                "block_id": "files",
-                "element": files_block_element,
-                "label": {
-                    "type": "plain_text",
-                    "text": _("File(s) to translate"),
-                    "emoji": True,
-                },
-            },
-            {
-                "type": "input",
-                "block_id": "reference",
-                "element": {
-                    "type": "plain_text_input",
-                    "action_id": "reference",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": _("Your job reference"),
-                        "emoji": True,
-                    },
-                    "max_length": 100,
-                },
-                "label": {
-                    "type": "plain_text",
-                    "text": _("Your reference"),
-                    "emoji": True,
-                },
-                "optional": True,
-            },
-            {
-                "type": "input",
-                "block_id": "source_lang",
-                "element": {
-                    "type": "external_select",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": _("Select a source language"),
-                        "emoji": True,
-                    },
-                    "action_id": "language_options",
-                    "min_query_length": 0,
-                },
-                "label": {
-                    "type": "plain_text",
-                    "text": _("Source language"),
-                    "emoji": True,
-                },
-                "hint": {
-                    "type": "plain_text",
-                    "text": _(
-                        "What is the original language of the file(s)? Type to show more languages."
-                    ),
-                },
-            },
-            {
-                "type": "input",
-                "block_id": "target_langs",
-                "element": {
-                    "type": "multi_external_select",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": _("Select target language(s)"),
-                        "emoji": True,
-                    },
-                    "action_id": "language_options",
-                    "min_query_length": 0,
-                },
-                "label": {
-                    "type": "plain_text",
-                    "text": _("Target language(s)"),
-                    "emoji": True,
-                },
-                "hint": {
-                    "type": "plain_text",
-                    "text": _(
-                        "Which language(s) do you want the file(s) to be translated to?"
-                    ),
-                },
-            },
-            {
-                "type": "input",
-                "block_id": "group",
-                "element": {
-                    "type": "external_select",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": _("Select group"),
-                        "emoji": True,
-                    },
-                    "action_id": "group_options",
-                    "min_query_length": 0,
-                },
-                "label": {
-                    "type": "plain_text",
-                    "text": _("Group"),
-                    "emoji": True,
-                },
-                "hint": {
-                    "type": "plain_text",
-                    "text": _("Which group do you want to submit job for?"),
-                },
-                "optional": True,
-            },
-            # {
-            #     "type": "input",
-            #     "block_id": "target_date",
-            #     "element": {
-            #         "type": "datepicker",
-            #         "placeholder": {
-            #             "type": "plain_text",
-            #             "text": _("Select a date"),
-            #             "emoji": True,
-            #         },
-            #         "action_id": "target_date",
-            #     },
-            #     "label": {"type": "plain_text", "text": _("Target date", "emoji": True}),
-            # },
-            {
-                "type": "input",
-                "block_id": "service",
-                "element": {
-                    "type": "static_select",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": _("Select a service"),
-                        "emoji": True,
-                    },
-                    "options": [
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Translation"),
-                                "emoji": False,
-                            },
-                            "value": "Translation",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Translation + Edit"),
-                                "emoji": False,
-                            },
-                            "value": "Translation + Edit",
-                        },
-                    ],
-                    "initial_option": {
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("Translation"),
-                            "emoji": False,
-                        },
-                        "value": "Translation",
-                    },
-                    "action_id": "service",
-                },
-                "label": {"type": "plain_text", "text": _("Service"), "emoji": True},
-            },
-            {
-                "type": "input",
-                "block_id": "timeframe",
-                "element": {
-                    "type": "static_select",
-                    "placeholder": {
-                        "type": "plain_text",
-                        "text": _("Select a timeframe"),
-                        "emoji": True,
-                    },
-                    "options": [
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Within 12 hours"),
-                                "emoji": False,
-                            },
-                            "value": "1",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Within 24 hours"),
-                                "emoji": False,
-                            },
-                            "value": "2",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Within 36 hours"),
-                                "emoji": False,
-                            },
-                            "value": "3",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Within 48 hours"),
-                                "emoji": False,
-                            },
-                            "value": "4",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Within 3 days"),
-                                "emoji": False,
-                            },
-                            "value": "5",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Within 5 days"),
-                                "emoji": False,
-                            },
-                            "value": "6",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Within 10 days"),
-                                "emoji": False,
-                            },
-                            "value": "7",
-                        },
-                        {
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Within 15 days"),
-                                "emoji": False,
-                            },
-                            "value": "8",
-                        },
-                    ],
-                    "initial_option": {
-                        "text": {
-                            "type": "plain_text",
-                            "text": _("Within 3 days"),
-                            "emoji": False,
-                        },
-                        "value": "5",
-                    },
-                    "action_id": "timeframe",
-                },
-                "label": {"type": "plain_text", "text": _("Timeframe"), "emoji": True},
-            },
-            # {
-            #     "type": "input",
-            #     "block_id": "validation",
-            #     "element": {
-            #         "type": "checkboxes",
-            #         "options": [
-            #             {
-            #                 "text": {
-            #                     "type": "plain_text",
-            #                     "text": _("Yes"),
-            #                     "emoji": True,
-            #                 },
-            #                 "value": "1",
-            #             },
-            #         ],
-            #         "action_id": "validation",
-            #     },
-            #     "label": {"type": "plain_text", "text": _("Validation"), "emoji": True},
-            #     "optional": True,
-            # },
-            {
-                "type": "input",
-                "block_id": "notes",
-                "element": {
-                    "type": "plain_text_input",
-                    "action_id": "notes",
-                    "multiline": True,
-                    "max_length": 250,
-                },
-                "label": {
-                    "type": "plain_text",
-                    "text": _("Notes"),
-                    "emoji": True,
-                },
-                "optional": True,
-            },
-            # {
-            #     "type": "input",
-            #     "block_id": "translation_notes",
-            #     "element": {
-            #         "type": "plain_text_input",
-            #         "action_id": "translation_notes",
-            #         "multiline": True,
-            #         "max_length": 250,
-            #     },
-            #     "label": {
-            #         "type": "plain_text",
-            #         "text": _("Job Notes"),
-            #         "emoji": True,
-            #     },
-            #     "optional": True,
-            # },
-            # TODO: job category?
-            # {
-            #     "type": "input",
-            #     "block_id": "category",
-            #     "element": {
-            #         "type": "static_select",
-            #         "placeholder": {
-            #             "type": "plain_text",
-            #             "text": _("Select a category"),
-            #             "emoji": True,
-            #         },
-            #         "option_groups": [
-            #             {
-            #                 "label": {
-            #                     "type": "plain_text",
-            #                     "text": _("Advertising/Marketing"),
-            #                 },
-            #                 "options": [
-            #                     {
-            #                         "text": {
-            #                             "type": "plain_text",
-            #                             "text": _("Art/Literary"),
-            #                             "emoji": False,
-            #                         },
-            #                         "value": "art_literary",
-            #                     },
-            #                     {
-            #                         "text": {
-            #                             "type": "plain_text",
-            #                             "text": _("Cosmetics"),
-            #                             "emoji": False,
-            #                         },
-            #                         "value": "cosmetics",
-            #                     },
-            #                     {
-            #                         "text": {
-            #                             "type": "plain_text",
-            #                             "text": _("Cultural"),
-            #                             "emoji": False,
-            #                         },
-            #                         "value": "cultural",
-            #                     },
-            #                 ],
-            #             },
-            #             {
-            #                 "label": {
-            #                     "type": "plain_text",
-            #                     "text": _("Finance, Business & HR"),
-            #                 },
-            #                 "options": [
-            #                     {
-            #                         "text": {
-            #                             "type": "plain_text",
-            #                             "text": _("Accounting"),
-            #                             "emoji": False,
-            #                         },
-            #                         "value": "accounting",
-            #                     },
-            #                     {
-            #                         "text": {
-            #                             "type": "plain_text",
-            #                             "text": _("Banking"),
-            #                             "emoji": False,
-            #                         },
-            #                         "value": "banking",
-            #                     },
-            #                     {
-            #                         "text": {
-            #                             "type": "plain_text",
-            #                             "text": _("Business"),
-            #                             "emoji": False,
-            #                         },
-            #                         "value": "business",
-            #                     },
-            #                 ],
-            #             },
-            #         ],
-            #         "action_id": "category",
-            #     },
-            #     "label": {"type": "plain_text", "text": _("Category", "emoji": True}),
-            # },
-        ],
     }
 
 
@@ -1368,7 +902,7 @@ def verify_job_modal(
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Please deselect any unneeded files or target languages before submitting for human translation. Submitted orders cannot be cancelled"
+                        "Please deselect any unneeded files or target languages before submitting for human verification. Submitted orders cannot be cancelled. "
                     ),
                 },
             },
@@ -1405,7 +939,7 @@ def verify_quote_summary_modal(
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Please deselect any unneeded files or target languages before submitting for human translation. Submitted orders cannot be cancelled"
+                        "Please deselect any unneeded files or target languages before submitting for human translation. Submitted orders cannot be cancelled."
                     ),
                 },
             },

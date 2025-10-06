@@ -4,82 +4,76 @@ Slack Bolt listener functions.
 """
 
 import asyncio
-from typing import Any
 import re
+from typing import Any
+
 import httpx
+import langcodes
+from buglog import notify_exception, notify_message
+from ray_sdk import RayResponse
+from slack_bolt.context.async_context import AsyncBoltContext
+from slack_sdk.web.async_client import AsyncWebClient
+
+from app.api.language_cloud import detect_language
 from app.api.verify import (
     create_human_job,
-    get_client_evaluation_job,
     get_job_pricing,
-    get_verify_languages,
-    VerifyAPIError,
 )
-import langcodes
-from slack_sdk.errors import SlackApiError
-from slack_sdk.web.async_client import AsyncWebClient
-from slack_bolt.context.async_context import AsyncBoltContext
-from ray_sdk import RayResponse
-from buglog import notify_exception, notify_message
-
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+from app.models import TranscriptionTask
 from app.mt.translate import get_ai_translation
 from app.ray.events.models import MtFileRequestSchema
-from app.translate import _
 from app.transcriber_tasks.tasks import create_asr_task
+from app.translate import _
 
-from .middleware import require_mt_tokens, require_ray_client
-from .templates.messages import (
-    EvaluateSuccessMessage,
-    HelpMessage,
-    HumanJobQuoteMessage,
-    LoginMessage,
-    LogoutMessage,
-    JobStatusNoIdMessage,
-    NewJobMessage,
-    JobQuotedMessage,
-    JobStatusMessage,
-    InvalidJobMessage,
-    JobSummaryMessage,
-    JobListMessage,
-    JobDetailsMessage,
-    InsightsMessage,
-    ReportInsightsMessage,
-    AIHelperMessage,
-    VerifyHelperMessage,
-    BatchListMessage,
-    FileListMessage,
-    JobTargetsNoIdMessage,
-    JobTargetLangMessage,
-    AutoTranslationMessage,
-    MachineTranslationMessage,
-    InvalidMTResultMessage,
-    CancelTJMessage,
-    CancelJobMessage,
-    TranscriptionMessage,
-)
-from .templates.models import NewJobForm
-from .templates.views import (
-    new_job_modal,
-)
-from .web import files_list_simple, download_files, get_mt_ts_cached, set_mt_ts_edit
 from ..auth.connector import (
     RayClient,
     RayContext,
     approve_pending_groups,
     duration_to_tokens,
     get_group_mt_engine,
-    get_slack_user,
     log_transcribe_request,
 )
-from ..config import config, domains, Environment
+from ..config import Environment, config, domains
 from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
     get_auto_translate_settings_and_langs,
 )
 from ..ray.utils import get_media_duration, is_ibm_enterprise, validate_file_type
+from ..redis import redis_conn
 from ..watson import watson_message
-from .select_options import _get_languages_cached, get_file_options_cached
-from app.models import TranscriptionTask
+from .middleware import require_mt_tokens, require_ray_client
+from .templates.messages import (
+    AIHelperMessage,
+    AutoTranslationMessage,
+    BatchListMessage,
+    CancelJobMessage,
+    CancelTJMessage,
+    EvaluateSuccessMessage,
+    FileListMessage,
+    HelpMessage,
+    HumanJobQuoteMessage,
+    InsightsMessage,
+    InvalidJobMessage,
+    InvalidMTResultMessage,
+    JobDetailsMessage,
+    JobListMessage,
+    JobQuotedMessage,
+    JobStatusMessage,
+    JobStatusNoIdMessage,
+    JobSummaryMessage,
+    JobTargetLangMessage,
+    JobTargetsNoIdMessage,
+    LoginMessage,
+    LogoutMessage,
+    MachineTranslationMessage,
+    NewJobMessage,
+    ReportInsightsMessage,
+    TranscriptionMessage,
+    VerifyHelperMessage,
+)
+from .templates.models import NewJobForm
+from .web import download_files, files_list_simple, get_mt_ts_cached, set_mt_ts_edit
 
 VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
 
@@ -216,7 +210,7 @@ async def respond_to_message(
     message_match = re.search(
         r"mt:?(?:\s+([\w-]+))?\s+to\s+([\w-]+):?\s+(.*)",
         message["text"],
-        re.I,
+        re.I | re.S,
     )
 
     if message_match:
@@ -225,15 +219,14 @@ async def respond_to_message(
             # TODO: read user lang to default target
             mt_tl = message_match.group(2) or context.get("locale") or "en"
             mt_text = message_match.group(3)
-            if await require_mt_tokens(context, len(mt_text)):
-                await get_mt_translation(
-                    client,
-                    context,
-                    source_lang=mt_sl,
-                    target_lang=mt_tl,
-                    sentence=mt_text,
-                    thread_ts=thread_ts,
-                )
+            await get_mt_translation(
+                client,
+                context,
+                source_lang=mt_sl,
+                target_lang=mt_tl,
+                sentence=mt_text,
+                thread_ts=thread_ts,
+            )
         return
     if message["text"] == "debug":
         # retrieve workspace name based on bot token
@@ -316,24 +309,6 @@ async def respond_to_message(
                     )
             else:
                 await context.say(JobTargetsNoIdMessage().text, thread_ts=thread_ts)
-        # case "New_Translation_Job":
-        #     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        #         asyncio.create_task(
-        #             files_list_simple(
-        #                 client, channel_id=context["channel_id"], count=120
-        #             )
-        #         )
-        #         new_job_msg = NewJobMessage(
-        #             context["channel_id"],
-        #             message["ts"],
-        #             "",
-        #             context.ray.super_group[0].enable_verify_in_slack,
-        #         )
-        #         await context.say(
-        #             text=new_job_msg.text,
-        #             blocks=new_job_msg.blocks,
-        #             thread_ts=thread_ts,
-        #         )
         case "Show_Insights":
             if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
                 await post_insights(
@@ -414,8 +389,17 @@ async def auto_translate_message(
     assert context.channel_id  # TODO enforce this
     # TODO make this fetch all settings for channel
     settings = get_auto_translate_settings_and_langs(context, context.channel_id)
-    target_langs = [langs["target_lang"] for langs in settings]
-    if not settings:
+
+    detected_source_lang_response = await detect_language(context, text)
+
+    # Remove the detected source language from the target languages
+    target_langs = [
+        langs["target_lang"]
+        for langs in settings
+        if langs["target_lang"] != detected_source_lang_response.language
+    ]
+
+    if not target_langs or not settings:
         return
     try:
         source_lang, translations = await get_ai_translation(
@@ -1203,63 +1187,6 @@ async def post_insights(
     asyncio.create_task(send_insights_message())
 
 
-async def show_quote_form_modal(
-    client: AsyncWebClient,
-    context: AsyncBoltContext,
-    trigger_id: str,
-    ray_client: RayClient,
-    *,
-    initial_files: list[dict[str, Any]] | None = None,
-    check_last_messages: int = 0,
-):
-    """Show the quote form (new job form) modal.
-
-    Args:
-        context (AsyncBoltContext): The context from the listener.
-        trigger_id (str): The trigger ID.
-        ray_client (RayClient): The RAY client details.
-        initial_files (list[dict[str, Any]] | None): The files to be selected
-            in the source file dropdown when the form is shown.
-        check_last_messages (int, optional): If no initial files set and this
-            argument is greater than 0, check the last `check_last_messages`
-            messages with the bot to find files to set as the initial files. If
-            a message has files attached, select those files and stop finding.
-            Only works with DM with the bot, not channels or groups.
-    """
-    # Include a bit more than the max 100 options due to hidden files.
-    files = await get_file_options_cached(context["channel_id"])
-    # Reduce list to 10 if initial files are set.
-    if initial_files and len(files) + len(initial_files) > 10:
-        files = files[: 10 - len(initial_files)]
-    # Set initial selected files.
-    if not initial_files and check_last_messages > 0:
-        # Check last 100 messages maximum.
-        check_last_messages = min(check_last_messages, 100)
-        # Try to get the files from the last n messages to set as the
-        # default files in the form dropdown.
-        try:
-            response = await client.conversations_history(
-                channel=context["channel_id"],
-                limit=check_last_messages,
-            )
-            for message in response["messages"]:
-                if message.get("files"):
-                    initial_files = message.get("files")
-                    break
-        except SlackApiError:
-            # Unknown or forbidden conversation (e.g. channel, DM with other user).
-            pass
-    await client.views_open(
-        trigger_id=trigger_id,
-        view=new_job_modal(
-            ray_client.username,
-            channel_id=context["channel_id"],
-            file_options=files,
-            initial_files=initial_files,
-        ),
-    )
-
-
 async def submit_job(
     client: AsyncWebClient, ray_client: RayClient, form: NewJobForm
 ) -> list[RayResponse[None]]:
@@ -1692,6 +1619,7 @@ async def get_mt_translation(
     sentence: str,
     thread_ts: str | None = None,
     is_edit: bool = False,
+    usage_type: str = "direct_machine_translation",
 ):
     """Get google machine translation for sentence by correct language pair.
 
@@ -1710,7 +1638,7 @@ async def get_mt_translation(
         target_lang = target_lang.lower()
 
         result_source_lang, translation = await get_ai_translation(
-            context, sentence, [target_lang], "direct_machine_translation"
+            context, sentence, [target_lang], usage_type
         )
         if not result_source_lang:
             return
@@ -1877,8 +1805,8 @@ async def resendMT(
     # process mt
     message_match = re.search(
         r"mt:?(?:\s+([\w-]+))?\s+to\s+([\w-]+):?\s+(.*)",
-        message["message"]["text"],
-        re.I,
+        message["text"],
+        re.I | re.S,
     )
 
     if message_match and await require_ray_client(context, prompt_login=False):
@@ -1907,7 +1835,8 @@ async def submit_verification_job(
     job_uuid: str,
     selected_languages: list[str],
     user_id: str,
-    timestamp: str | None = None,
+    timestamp: str,
+    job: dict[str, Any],
 ):
     """Submit a verification job with selected languages.
 
@@ -1920,76 +1849,59 @@ async def submit_verification_job(
         timestamp (str | None): Optional timestamp of the message to update.
         channel_id (str | None): Optional channel ID where the message is posted.
     """
-    if selected_languages:
+    # Send initial confirmation
+    msg = _(
+        "Thank you for sending your document(s) for human translation! We will notify you as soon as the translation is complete."
+    )
+    response = await client.chat_postMessage(
+        channel=user_id,
+        text=msg,
+    )
+    try:
+        # Get the updated job details after submission
+        if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+            costs = await get_job_pricing(
+                context.ray.client,
+                job_uuid,
+                [file["file_uuid"] for file in job["data"]["source_files"]],
+                [lang["uuid"] for lang in job["data"]["target_languages"]],
+            )
+            #
+            updated_msg = HumanJobQuoteMessage(
+                job["data"], costs["data"], actions=False
+            )
+        else:
+            updated_msg = EvaluateSuccessMessage(
+                job["data"],
+                is_ibm_enterprise(context.ray.client.slack_enterprise_id),
+                actions=False,
+            )
 
-        async def update_message_after_job(channel_id: str):
-            try:
-                # Get the updated job details after submission
-                job = await get_client_evaluation_job(context.ray.client, job_uuid)
-
-                if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
-                    costs = await get_job_pricing(
-                        context.ray.client,
-                        job_uuid,
-                        [file["file_uuid"] for file in job["data"]["source_files"]],
-                        [lang["uuid"] for lang in job["data"]["target_languages"]],
-                    )
-                    updated_msg = HumanJobQuoteMessage(job["data"], costs["data"])
-                else:
-                    return
-
-                # Create updated message with the new status
-
-                # Update the original message if timestamp and channel_id are provided
-                if timestamp and channel_id:
-                    await client.chat_update(
-                        channel=channel_id,
-                        text=updated_msg.text,
-                        blocks=updated_msg.blocks,
-                        ts=timestamp,
-                    )
-                elif context.response_url and context.respond:
-                    await context.respond(
-                        text=updated_msg.text,
-                        blocks=updated_msg.blocks,
-                        replace_original=True,
-                    )
-            except VerifyAPIError as e:
-                await client.chat_postMessage(
-                    channel=user_id,
-                    text=_(
-                        "You do not have permission to access this verification job"
-                    ),
-                )
-                return
-            except Exception as e:
-                print(e)
-                notify_exception(e)
-                await client.chat_postMessage(
-                    channel=user_id,
-                    text=_(
-                        "There was an error updating the verification job status. Please try again."
-                    ),
-                )
-                return
-
-        # Send initial confirmation
-        msg = _(
-            "Thank you for sending your document(s) for human translation! We will notify you as soon as the translation is complete."
-        )
-        response = await client.chat_postMessage(
-            channel=user_id,
-            text=msg,
-        )
-        # Create task to submit the job and update message after completion
-        asyncio.create_task(
-            create_human_job(context.ray.client, job_uuid, selected_languages)
-        ).add_done_callback(
-            lambda _: asyncio.create_task(update_message_after_job(response["channel"]))
-        )
-    else:
-        msg = _("Your request has been cancelled.")
-        await client.chat_postMessage(
-            channel=user_id,
-            text=msg,
-        )
+        # Update the original message if timestamp and channel_id are provided
+        if timestamp and response["channel"]:
+            await client.chat_update(
+                channel=response["channel"],
+                text=updated_msg.text,
+                blocks=updated_msg.blocks,
+                ts=timestamp,
+            )
+        elif context.response_url and context.respond:
+            await context.respond(
+                text=updated_msg.text,
+                blocks=updated_msg.blocks,
+                replace_original=True,
+            )
+        if selected_languages:
+            # submit the job
+            await create_human_job(context.ray.client, job_uuid, selected_languages)
+        else:
+            msg = _("Your request has been cancelled.")
+            await client.chat_postMessage(
+                channel=user_id,
+                text=msg,
+            )
+    except Exception as e:
+        notify_exception(e)
+        raise
+    finally:
+        await redis_conn.delete(f"verify_job_submission_{job_uuid}")
