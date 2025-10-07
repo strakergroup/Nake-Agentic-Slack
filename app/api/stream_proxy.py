@@ -13,7 +13,7 @@ from app.config import domains
 
 async def send_mt_translation_request(
     text: List[str],
-    target_language: str,
+    target_languages: List[str],
     source_language: str,
     extra_data: MtTranslationExtraData,
 ) -> None:
@@ -21,19 +21,19 @@ async def send_mt_translation_request(
 
     Args:
         text: List of text strings to translate
-        target_language: Target language code
+        target_languages: Target language codes
         source_language: Source language code
         extra_data: Extra data for the translation request
     """
     async with httpx.AsyncClient() as http:
         await http.post(
-            f"{domains.stream_proxy}/events/mt-service:mt:translate",
+            f"{domains.stream_proxy}/events/mt-service:mt:translate:multi",
             json={
                 "data": {
                     "app_id": "slack",
                     "task_id": str(uuid4()),
                     "text": text,
-                    "target_language": target_language,
+                    "target_languages": target_languages,
                     "source_language": source_language,
                     "output_stream": "slack:direct:mt:result",
                     "extra_data": extra_data.model_dump(),

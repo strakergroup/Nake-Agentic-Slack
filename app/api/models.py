@@ -1,5 +1,5 @@
 import datetime
-from typing import Literal, TypeAlias
+from typing import List, Literal, TypeAlias
 
 from pydantic import BaseModel
 from sqlalchemy import (
@@ -52,7 +52,7 @@ class MtTranslationExtraData(BaseModel):
     """Extra data for MT translation requests."""
 
     client_id: str
-    target_language: str
+    target_languages: List[str]
     source_language: str
     organization_uuid: str
     channel_id: str

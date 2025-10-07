@@ -407,30 +407,29 @@ async def auto_translate_message(
         return
     source_lang = detected_source_lang_response.language
     try:
-        for target_lang in target_langs:
-            org_uuid = context["ray"].super_group[0].verify_organization_uuid
-            client_id = context["ray"].client.id if context["ray"].client else org_uuid
-            # Get display_format from settings
-            display_format = settings[0]["display_format"] if settings else None
-            await send_mt_translation_request(
-                [text],
-                target_lang,
-                source_lang,
-                MtTranslationExtraData(
-                    client_id=client_id,
-                    target_language=target_lang,
-                    source_language=detected_source_lang_response.language,
-                    organization_uuid=org_uuid,
-                    channel_id=context.channel_id,
-                    text_length=len(text),
-                    usage_type="channel_translation",
-                    response_url=context.response_url,
-                    thread_ts=context.thread_ts,
-                    is_edit=is_edit,
-                    display_format=display_format,
-                    message_ts=ts,
-                ),
-            )
+        org_uuid = context["ray"].super_group[0].verify_organization_uuid
+        client_id = context["ray"].client.id if context["ray"].client else org_uuid
+        # Get display_format from settings
+        display_format = settings[0]["display_format"] if settings else None
+        await send_mt_translation_request(
+            [text],
+            target_langs,
+            source_lang,
+            MtTranslationExtraData(
+                client_id=client_id,
+                target_languages=target_langs,
+                source_language=detected_source_lang_response.language,
+                organization_uuid=org_uuid,
+                channel_id=context.channel_id,
+                text_length=len(text),
+                usage_type="channel_translation",
+                response_url=context.response_url,
+                thread_ts=context.thread_ts,
+                is_edit=is_edit,
+                display_format=display_format,
+                message_ts=ts,
+            ),
+        )
     except Exception as e:
         notify_exception(e, "Slack channel MT failed")
         return
@@ -1629,7 +1628,7 @@ async def get_mt_translation(
         )
         extra_data = MtTranslationExtraData(
             client_id=client_id,
-            target_language=target_lang,
+            target_languages=[target_lang],
             source_language=source_lang,
             organization_uuid=context.ray.super_group[0].verify_organization_uuid,
             channel_id=channel_id,
@@ -1644,7 +1643,7 @@ async def get_mt_translation(
 
         await send_mt_translation_request(
             text=[sentence],
-            target_language=target_lang,
+            target_languages=[target_lang],
             source_language=source_lang,
             extra_data=extra_data,
         )

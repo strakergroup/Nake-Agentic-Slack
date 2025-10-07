@@ -660,29 +660,25 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
         elif event.event == "slack:direct:mt:result":
             try:
                 extra_data = MtTranslationExtraData(**event.data["extra_data"])
-                mt_result_message: MachineTranslationMessage = (
-                    MachineTranslationMessage(
-                        extra_data.target_language,
-                        extra_data.source_language,
-                        "".join(event.data["translations"]),
-                    )
-                )
-                auto_translation_message: AutoTranslationMessage = (
-                    AutoTranslationMessage(
-                        None,
-                        extra_data.source_language,
-                        translations=[
-                            (
-                                extra_data.target_language,
-                                "".join(event.data["translations"]),
-                            )
-                        ],
-                    )
-                )
                 if (
                     extra_data.usage_type == "direct_machine_translation"
                     or extra_data.usage_type == "shortcut_translate"
                 ):
+                    # convert translations from dict to list of strings then convert to just a single string
+                    translations = " ".join(
+                        [
+                            item
+                            for sublist in event.data["translations"].values()
+                            for item in sublist
+                        ]
+                    )
+                    mt_result_message: MachineTranslationMessage = (
+                        MachineTranslationMessage(
+                            extra_data.target_languages[0],
+                            extra_data.source_language,
+                            translations,
+                        )
+                    )
                     # Send message with response method configuration
                     await post_notification(
                         client,
@@ -695,6 +691,14 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         response_url=extra_data.response_url,
                     )
                 elif extra_data.usage_type == "channel_translation":
+                    print(event.data)
+                    auto_translation_message: AutoTranslationMessage = (
+                        AutoTranslationMessage(
+                            None,
+                            extra_data.source_language,
+                            translations=event.data["translations"],
+                        )
+                    )
                     await post_channel_translation_notification(
                         client,
                         event,
@@ -727,6 +731,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     extra_data.organization_uuid,
                 )
             except Exception as e:
+                raise e
                 raise HTTPException(
                     422,
                     {
