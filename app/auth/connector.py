@@ -1869,6 +1869,6 @@ def add_to_verify_team(user_uuid: str, enterprise_id: str | None):
                 VALUES
                     (:user_uuid, :team_uuid, '83d64046-770b-43f5-abbf-e96ca0b3db9a')
                 """
-            ).bindparams(user_id=user_uuid, team_id=team_uuid)
+            ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
             conn.execute(sql)
             conn.commit()
