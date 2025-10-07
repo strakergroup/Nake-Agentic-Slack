@@ -620,7 +620,8 @@ def human_job_modal(
                     "action_id": "job_notes",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": _(" "),
+                        # Slack will throw an error if this is 0 characters
+                        "text": " ",
                         "emoji": True,
                     },
                     "multiline": True,
@@ -901,7 +902,7 @@ def verify_job_modal(
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Please deselect any unneeded files or target languages before submitting for human translation. Submitted orders cannot be cancelled."
+                        "Please deselect any unneeded files or target languages before submitting for human verification. Submitted orders cannot be cancelled. "
                     ),
                 },
             },
