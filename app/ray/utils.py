@@ -351,7 +351,6 @@ VALID_FILE_TYPES: dict[str, Callable[[str], Tuple[bool, str]] | None] = {
     "xlsx": None,
     "xml": None,
     "text": None,
-    "pdf": None,
 }
 
 
