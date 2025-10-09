@@ -194,12 +194,21 @@ class SlackFileTranslationSubmission(Base):
     file_hash: Mapped[str] = mapped_column(String(64), index=True)
     file_name: Mapped[str] = mapped_column(String(255))
     file_size: Mapped[int]
-    source_language: Mapped[str] = mapped_column(String(10), default="")
     target_language: Mapped[str] = mapped_column(String(10), default="")
+    source_language: Mapped[str] = mapped_column(String(10), default="")
     file_id: Mapped[str] = mapped_column(String(50))
     channel_id: Mapped[str] = mapped_column(String(50))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), index=True
+    )
+    processing_status: Mapped[str] = mapped_column(
+        Enum("created", "completed", "failed", name="submission_status"),
+        default="created",
+        nullable=False,
+    )
+    is_deleted: Mapped[bool] = mapped_column(default=False, nullable=False)
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime, nullable=True
     )
 
     def __repr__(self) -> str:

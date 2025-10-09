@@ -26,7 +26,11 @@ from app.api.verify import (
     submit_evaluation_job,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
-from app.ray.submissions import check_and_record_submission_async
+from app.ray.submissions import (
+    SubmissionStatus,
+    check_and_record_submission_async,
+    updated_submission_status,
+)
 from app.ray.utils import (
     download_from_file_server,
     is_ibm_enterprise,
@@ -414,7 +418,7 @@ async def document_mt_submit_action(
                         )
                     else:
                         await document_machine_translate(
-                            context, input_file_id, selected_language
+                            context, input_file_id, selected_language, _record.id
                         )
                         await say(
                             _(
@@ -528,14 +532,29 @@ async def srt_translate_action(
             # get selected language from redis keyed on output_file
             # selected from get_auto_translate_language_options
             selected_language = await redis_conn.get(f"output_file_{task_uuid}")
+            file_name = os.path.basename(task_result["file_id"])
+            is_dup, _record = await check_and_record_submission_async(
+                path=task_result["file_id"],
+                file_name=file_name,
+                file_id=task_result["file_id"],
+                user_id=context["user_id"],
+                team_id=context["team_id"],
+                channel_id=context["channel_id"],
+                target_language=str(selected_language),
+            )
             if selected_language:
-                await document_machine_translate(
-                    context, task_result["file_id"], selected_language
-                )
                 await say(
                     _(
                         "The file is being translated. You will be notified when it is ready."
                     )
+                )
+
+            elif is_dup:
+                duplicate_submission = f"{file_name} ({selected_language})"
+                await say(
+                    text=_(
+                        "Your document(s) *({duplicate_submission})* are being translated. You will be notified when they are ready."
+                    ),
                 )
             else:
                 await say(_("Please select a language to translate to."))
@@ -2240,7 +2259,7 @@ async def handle_document_mt_job(
                         continue
 
                     await document_machine_translate(
-                        context, input_file_id, lang["value"]
+                        context, input_file_id, lang["value"], _record.id
                     )
                     submitted_for_file = True
 
@@ -2266,6 +2285,13 @@ async def handle_document_mt_job(
                 )
 
         except Exception as e:
+            # Remove existing submissions if error occurs so that the user can submit again
+            for input_file in files:
+                for lang in selected_languages:
+                    updated_submission_status(
+                        submission_id=_record.id,
+                        processing_status=SubmissionStatus.FAILED,
+                    )
             notify_exception(e)
             await client.chat_postMessage(
                 channel=context["user_id"],
