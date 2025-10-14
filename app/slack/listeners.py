@@ -19,12 +19,14 @@ from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.api.verify import (
+    VerifyAPIError,
     download_verify_file,
     get_client_evaluation_job,
     get_job_pricing,
     submit_evaluation_job,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+from app.ray.submissions import check_and_record_submission_async
 from app.ray.utils import (
     download_from_file_server,
     is_ibm_enterprise,
@@ -394,14 +396,31 @@ async def document_mt_submit_action(
                         client=client, file_id=slack_file_id, http=None
                     )
                     input_file_id = upload_to_file_server(input_file)
-                    await document_machine_translate(
-                        context, input_file_id, selected_language
+                    # Dedupe check and record in DB
+                    is_dup, _record = await check_and_record_submission_async(
+                        path=input_file,
+                        file_name=os.path.basename(input_file),
+                        file_id=input_file_id,
+                        user_id=context["user_id"],
+                        team_id=context["team_id"],
+                        channel_id=context.get("channel_id", context["user_id"]),
+                        target_language=str(selected_language),
                     )
-                    await say(
-                        _(
-                            "The file is being translated. You will be notified when it is ready."
+                    if is_dup:
+                        await say(
+                            _(
+                                f"This file has already been submitted for {selected_language}. Skipping duplicate."
+                            )
                         )
-                    )
+                    else:
+                        await document_machine_translate(
+                            context, input_file_id, selected_language
+                        )
+                        await say(
+                            _(
+                                "The file is being translated. You will be notified when it is ready."
+                            )
+                        )
                 else:
                     await say(_("Please select a language to translate to."))
 
@@ -1679,14 +1698,30 @@ async def evaluate_job_submit(
                 await client.chat_postMessage(channel=channel_id, text=error_message)
                 continue
             input_files.append(input_file)
-        await submit_evaluation_job(
-            context.ray.client,
-            input_files,
-            form.target_langs_uuid,
-            form.reference,
-            workflow_uuid=form.workflow_options,
-            job_notes=form.job_notes or "",
-        )
+        try:
+            await submit_evaluation_job(
+                context.ray.client,
+                input_files,
+                form.target_langs_uuid,
+                form.reference,
+                workflow_uuid=form.workflow_options,
+                job_notes=form.job_notes or "",
+            )
+        except VerifyAPIError as e:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=_(
+                    "There was an error processing your request. You do not have permission to perform this action. Please contact your team administrator."
+                ),
+            )
+        except Exception as e:
+            notify_exception(e)
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=_(
+                    "There was an error submitting your quality evaluation request, please try again."
+                ),
+            )
 
 
 @app.action("evaluate_job", middleware=[ray_connection])
@@ -1768,6 +1803,36 @@ async def verify_job_modal_open_action(
                     pass
                 else:
                     raise
+    except VerifyAPIError as e:
+        try:
+            # Update the view with an unauthorized error message
+            error_view = {
+                "type": "modal",
+                "title": {
+                    "type": "plain_text",
+                    "text": _("Unauthorized"),
+                    "emoji": True,
+                },
+                "blocks": [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": _(
+                                "You do not have permission to access this verification job. Please contact your team administrator."
+                            ),
+                            "verbatim": True,
+                        },
+                    }
+                ],
+            }
+            await client.views_update(view_id=view_id, view=error_view)
+        except SlackApiError as e:
+            if e.response["error"] == "view_closed":
+                # The modal was closed by the user, no need to do anything
+                pass
+            else:
+                raise
     except Exception as e:
         notify_exception(e)
         try:
@@ -1823,7 +1888,23 @@ async def quote_accept_all_action(
         return
     await redis_conn.set(redis_key, "1", ex=60)
 
-    job = await get_client_evaluation_job(context.ray.client, job_uuid)
+    try:
+        job = await get_client_evaluation_job(context.ray.client, job_uuid)
+    except VerifyAPIError as e:
+        await client.chat_postMessage(
+            channel=context["channel_id"],
+            text=_(
+                "You do not have permission to access this verification job. You do not have permission to perform this action. Please contact your team administrator."
+            ),
+        )
+        return
+    except Exception as e:
+        notify_exception(e)
+        await client.chat_postMessage(
+            channel=context["channel_id"],
+            text=_("There was an error processing your request. Please try again."),
+        )
+        return
 
     # Get all available language/file combinations that are not in progress
     selected_languages = []
@@ -2028,13 +2109,17 @@ async def handle_checkbox_action(ack, body, client, action):
             # Find and update the total cost block
             for block in blocks:
                 if block.get("block_id") == "total_cost_block":
-                    block["text"]["text"] = f"*Total Cost:* USD${total_cost:.2f}"
+                    existing_text = block["text"]["text"]
+                    localized_prefix = existing_text.split("USD")[0]
+                    block["text"]["text"] = f"{localized_prefix}USD ${total_cost:.2f}"
                     break
 
             # Find and update the total estimated time block
             for block in blocks:
                 if block.get("block_id") == "total_estimated_time_block":
-                    block["text"]["text"] = f"*Estimated Completion:* {formatted_date}"
+                    existing_text = block["text"]["text"]
+                    prefix, _ = existing_text.split(":", 1)
+                    block["text"]["text"] = f"{prefix}: {formatted_date}"
                     break
 
             await client.views_update(
@@ -2104,6 +2189,7 @@ async def handle_document_mt_job(
             channel_id = view["private_metadata"]
             context["channel_id"] = channel_id or context["user_id"]
             files_uploaded = []
+            duplicate_submissions = []
             # Process each file
             for file in files:
                 # Download file content
@@ -2131,22 +2217,47 @@ async def handle_document_mt_job(
                     )
                     continue
                 input_file_id = upload_to_file_server(input_file)
-                files_uploaded.append(file_name)
+                submitted_for_file = False
                 # Submit machine translation job for each selected language
                 for lang in selected_languages:
+                    is_dup, _record = await check_and_record_submission_async(
+                        path=input_file,
+                        file_name=os.path.basename(input_file),
+                        file_id=input_file_id,
+                        user_id=context["user_id"],
+                        team_id=context["team_id"],
+                        channel_id=context["channel_id"],
+                        target_language=str(lang["value"]),
+                    )
+                    if is_dup:
+                        duplicate_submissions.append(f"{file_name} ({lang['value']})")
+                        continue
+
                     await document_machine_translate(
                         context, input_file_id, lang["value"]
                     )
+                    submitted_for_file = True
+
+                if submitted_for_file:
+                    files_uploaded.append(file_name)
 
             # convert files to
             # Send confirmation message to the original channel if available
             target_channel = channel_id or context["user_id"]
-            await client.chat_postMessage(
-                channel=target_channel,
-                text=_(
-                    f"Your document(s) ({', '.join(files_uploaded)}) are being translated. You will be notified when they are ready."
-                ),
-            )
+            if files_uploaded:
+                await client.chat_postMessage(
+                    channel=target_channel,
+                    text=_(
+                        f"Your document(s) *({', '.join(files_uploaded)})* are being translated. You will be notified when they are ready."
+                    ),
+                )
+            if duplicate_submissions:
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=_(
+                        f"Please allow the system to complete the ongoing translation(s) *({', '.join(duplicate_submissions)})* to prevent duplicate submissions."
+                    ),
+                )
 
         except Exception as e:
             notify_exception(e)

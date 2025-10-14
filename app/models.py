@@ -184,3 +184,32 @@ class TranscriptionTask(BaseModel):
     test_mode: bool = False
     task_id: Optional[str] = None
     symlink: Optional[str] = None
+
+
+class SlackFileTranslationSubmission(Base):
+    """Track file translation submissions to prevent duplicates.
+
+    Table: `ray_integration.slack_file_translation_submissions`
+    """
+
+    __tablename__ = "slack_file_translation_submissions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(50), index=True)
+    team_id: Mapped[str] = mapped_column(String(50), index=True)
+    file_hash: Mapped[str] = mapped_column(String(64), index=True)
+    file_name: Mapped[str] = mapped_column(String(255))
+    file_size: Mapped[int]
+    source_language: Mapped[str] = mapped_column(String(10), default="")
+    target_language: Mapped[str] = mapped_column(String(10), default="")
+    file_id: Mapped[str] = mapped_column(String(50))
+    channel_id: Mapped[str] = mapped_column(String(50))
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), index=True
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<SlackFileTranslationSubmission(user_id='{self.user_id}', "
+            f"file_hash='{self.file_hash}', target_language='{self.target_language}')>"
+        )

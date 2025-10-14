@@ -32,6 +32,7 @@ cachetools = "*"
 langcodes = "*"
 ffmpeg-python = "*"
 straker-utils = {file = "../../straker-python-utils/dist/straker_utils-0.3.0.0-py3-none-any.whl"}
+pypdf2 = "*"
 
 [dev-packages]
 pytest = "*"

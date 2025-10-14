@@ -1,17 +1,26 @@
 import json
 import os
 import tempfile
-from buglog import notify_exception
-import httpx
 from typing import List
-from ..redis import redis_conn
 
-from app.auth.connector import RayClient, SlackUser, get_ray_client
-from app.config import domains, config
+import httpx
+from buglog import notify_exception
 from straker_utils.environment import Environment
 
-
+from app.auth.connector import RayClient, SlackUser, get_ray_client
+from app.config import config, domains
 from app.ray.utils import get_filename_from_header
+
+from ..redis import redis_conn
+
+
+class VerifyAPIError(Exception):
+    """Custom exception for Verify API errors"""
+
+    def __init__(self, message: str, status_code: int = None):
+        self.message = message
+        self.status_code = status_code
+        super().__init__(self.message)
 
 
 async def submit_evaluation_job(
@@ -51,6 +60,18 @@ async def submit_evaluation_job(
                 data=target_languages_data,
                 headers={"Authorization": f"Bearer {user.id_token}"},
             )
+
+            # Check for unauthorized error
+            if response.status_code == 401:
+                raise VerifyAPIError(
+                    "Unauthorized: Your authentication token is invalid or expired. Please reconnect your account.",
+                    401,
+                )
+            elif response.status_code == 403:
+                raise VerifyAPIError(
+                    "Forbidden: You don't have permission to access this resource.", 403
+                )
+
             response.raise_for_status()
             return response.json()
         finally:
@@ -66,6 +87,18 @@ async def get_evaluation_job(user: SlackUser, job_uuid: str):
             f"{domains.verify_api}/evaluate/{job_uuid}",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )
+
+        # Check for unauthorized error
+        if response.status_code == 401:
+            raise VerifyAPIError(
+                "Unauthorized: Your authentication token is invalid or expired. Please reconnect your account.",
+                401,
+            )
+        elif response.status_code == 403:
+            raise VerifyAPIError(
+                "Forbidden: You don't have permission to access this resource.", 403
+            )
+
     response.raise_for_status()
     return response.json()
 
@@ -76,6 +109,18 @@ async def get_client_evaluation_job(ray_client: RayClient, job_uuid: str):
             f"{domains.verify_api}/evaluate/{job_uuid}",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )
+
+        # Check for unauthorized error
+        if response.status_code == 401:
+            raise VerifyAPIError(
+                "Unauthorized: Your authentication token is invalid or expired. Please reconnect your account.",
+                401,
+            )
+        elif response.status_code == 403:
+            raise VerifyAPIError(
+                "Forbidden: You don't have permission to access this resource.", 403
+            )
+
     response.raise_for_status()
     return response.json()
 
@@ -86,6 +131,18 @@ async def download_verify_file(ray_client: RayClient, file_uuid: str):
             f"{domains.verify_api}/files/{file_uuid}",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )
+
+        # Check for unauthorized error
+        if response.status_code == 401:
+            raise VerifyAPIError(
+                "Unauthorized: Your authentication token is invalid or expired. Please reconnect your account.",
+                401,
+            )
+        elif response.status_code == 403:
+            raise VerifyAPIError(
+                "Forbidden: You don't have permission to access this resource.", 403
+            )
+
     response.raise_for_status()
     content_disposition = response.headers.get("Content-Disposition")
 
@@ -142,6 +199,17 @@ async def create_human_job(
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
         response = await client.post(url, headers=headers, data=data)
 
+        # Check for unauthorized error
+        if response.status_code == 401:
+            raise VerifyAPIError(
+                "Unauthorized: Your authentication token is invalid or expired. Please reconnect your account.",
+                401,
+            )
+        elif response.status_code == 403:
+            raise VerifyAPIError(
+                "Forbidden: You don't have permission to access this resource.", 403
+            )
+
     response.raise_for_status()
     return response.json()
 
@@ -164,6 +232,18 @@ async def get_verify_languages():
     url = f"{domains.verify_api}/languages"
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.get(url)
+
+        # Check for unauthorized error
+        if response.status_code == 401:
+            raise VerifyAPIError(
+                "Unauthorized: Your authentication token is invalid or expired. Please reconnect your account.",
+                401,
+            )
+        elif response.status_code == 403:
+            raise VerifyAPIError(
+                "Forbidden: You don't have permission to access this resource.", 403
+            )
+
     response.raise_for_status()
     languages = response.json()["data"]
 
@@ -194,5 +274,17 @@ async def get_job_pricing(
     data = {"job_uuid": job_uuid, "file_and_languages": file_and_languages}
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(url, headers=headers, data=data)
+
+        # Check for unauthorized error
+        if response.status_code == 401:
+            raise VerifyAPIError(
+                "Unauthorized: Your authentication token is invalid or expired. Please reconnect your account.",
+                401,
+            )
+        elif response.status_code == 403:
+            raise VerifyAPIError(
+                "Forbidden: You don't have permission to access this resource.", 403
+            )
+
     response.raise_for_status()
     return response.json()
