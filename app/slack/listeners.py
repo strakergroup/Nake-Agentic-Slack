@@ -2119,13 +2119,17 @@ async def handle_checkbox_action(ack, body, client, action):
             # Find and update the total cost block
             for block in blocks:
                 if block.get("block_id") == "total_cost_block":
-                    block["text"]["text"] = f"*Total Cost:* USD${total_cost:.2f}"
+                    existing_text = block["text"]["text"]
+                    localized_prefix = existing_text.split("USD")[0]
+                    block["text"]["text"] = f"{localized_prefix}USD ${total_cost:.2f}"
                     break
 
             # Find and update the total estimated time block
             for block in blocks:
                 if block.get("block_id") == "total_estimated_time_block":
-                    block["text"]["text"] = f"*Estimated Completion:* {formatted_date}"
+                    existing_text = block["text"]["text"]
+                    prefix, _ = existing_text.split(":", 1)
+                    block["text"]["text"] = f"{prefix}: {formatted_date}"
                     break
 
             await client.views_update(
