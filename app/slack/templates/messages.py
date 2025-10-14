@@ -34,7 +34,7 @@ from ...ray.utils import (
     is_ibm_enterprise,
     is_min_langugagecloud_plan,
 )
-from ..utils import format_strings_display
+from ..utils import format_strings_display, unescape_slack_emoji
 from .blocks import (
     evaluate_success_blocks,
     job_link_block,
@@ -3133,7 +3133,7 @@ class JobTargetLangMessage(SlackMessage):
 class AutoTranslationMessage(SlackMessage):
     def __init__(
         self,
-        source_text: str | None,
+        source_text: str,
         source_language: str,
         translations: dict[str, list[str]],
     ) -> None:
@@ -3150,21 +3150,16 @@ class AutoTranslationMessage(SlackMessage):
         self.source_language = source_language
         # Filter translations where target language does not equal source language
         self.translations = translations
+        assert self.source_text
         # TODO what happens when no translations?
         super().__init__("", self.generate_blocks())
 
     def generate_blocks(self) -> list[dict[str, Any]]:
         blocks: list[dict[str, Any]] = []
-        if self.source_text:
-            blocks.append(
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": self.source_text},
-                }
-            )
         for target_lang, translated_list in self.translations.items():
             # Join all strings in the list with spaces
             translated = " ".join(translated_list)
+            translated = unescape_slack_emoji(translated, self.source_text)
             if (
                 target_lang != self.source_language
                 and langcodes.get(target_lang).language
@@ -3201,8 +3196,9 @@ class AutoTranslationMessage(SlackMessage):
 class MachineTranslationMessage(SlackMessage):
     """Message showing the list of translation files."""
 
-    def __init__(self, tl: str, sl: str, mt_text: str) -> None:
+    def __init__(self, tl: str, sl: str, source_text: str, mt_text: str) -> None:
         mt_label = _("Machine translation result:")
+        mt_text = unescape_slack_emoji(mt_text, source_text)
         super().__init__(
             f"{mt_label} {mt_text}",
             [

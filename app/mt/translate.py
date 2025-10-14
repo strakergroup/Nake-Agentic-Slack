@@ -117,7 +117,7 @@ def get_mt_engine(target_langs: list[str], mt_id: str, is_gropid: bool) -> str:
 async def get_ai_translation(
     context: AsyncBoltContext,
     text: str,
-    target_langs: list[str],
+    service_language_mapping: dict[str, list[str]],
     usage_type: str,
     source_lang: str | None = None,
 ) -> tuple[str | None, list[tuple[str, str]]]:
@@ -125,15 +125,17 @@ async def get_ai_translation(
 
     Args:
         context (AsyncBoltContext): The context from the listener.
-        ray_client (RayClient): The RAY client details.
-        target_lang (str): The target language use for translation.
-        source_lang (str): The source language use for detect sentence.
-        sentence (str): The sentence post on RAY need to be translated.
-        thread_ts (str | None, optional): The message thread to reply to.
+        text (str): The text to translate.
+        service_language_mapping (dict[str, list[str]]): Mapping of services to their supported languages.
+        usage_type (str): The type of usage for the translation.
+        source_lang (str | None): The source language for detection.
     """
     if not context.channel_id and not context.user_id and not context.response_url:
         raise AssertionError("No channel to post to")
-    required_tokens = len(text) * len(target_langs)
+
+    # Calculate total languages across all services
+    total_languages = sum(len(langs) for langs in service_language_mapping.values())
+    required_tokens = len(text) * total_languages
     if not required_tokens or not await require_mt_tokens(context, required_tokens):
         return None, []
     escaped_text = escape_slack_emoji(text)
@@ -157,15 +159,15 @@ async def get_ai_translation(
             channel_name = "direct message"
         else:
             try:
-                channel_name = await context.client.conversations_info(
+                channel_info = await context.client.conversations_info(
                     channel=channel_id
                 )
-                channel_name = channel_name.get("channel", {}).get("name", None)
+                channel_name = channel_info.get("channel", {}).get("name", None)
             except Exception as e:
                 notify_exception(e, "Failed to get channel info")
     task_data = TranslationRequest(
         text=escaped_text,
-        target_languages=target_langs,
+        service_language_mapping=service_language_mapping,
         source_language=source_lang,
         app_name="slack",
         usage_type=usage_type,

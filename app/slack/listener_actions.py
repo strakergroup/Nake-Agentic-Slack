@@ -23,6 +23,7 @@ from app.api.verify import (
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.models import TranscriptionTask
 from app.ray.events.models import MtFileRequestSchema
+from app.slack.utils import escape_slack_emoji
 from app.transcriber_tasks.tasks import create_asr_task
 from app.translate import _
 
@@ -75,6 +76,30 @@ from .templates.models import NewJobForm
 from .web import download_files, files_list_simple
 
 VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
+
+
+def create_service_language_mapping(target_langs: list[str]) -> dict[str, list[str]]:
+    """Create service language mapping based on target languages.
+
+    Args:
+        target_langs: List of target languages
+
+    Returns:
+        Dictionary mapping services to their supported languages
+    """
+    service_language_mapping: dict[str, list[str]] = {}
+
+    for target_lang in target_langs:
+        if target_lang in ["fr-ca", "french-canada", "french-canadian"]:
+            if "microsoft" not in service_language_mapping:
+                service_language_mapping["microsoft"] = []
+            service_language_mapping["microsoft"].append(target_lang)
+        else:
+            if "google" not in service_language_mapping:
+                service_language_mapping["google"] = []
+            service_language_mapping["google"].append(target_lang)
+
+    return service_language_mapping
 
 
 def is_video_file(file_details: dict[str, Any]) -> bool:
@@ -406,23 +431,28 @@ async def auto_translate_message(
     if not target_langs or not settings:
         return
     source_lang = detected_source_lang_response.language
+
+    # Create service language mapping based on target languages
+    service_language_mapping = create_service_language_mapping(target_langs)
+
     try:
         org_uuid = context["ray"].super_group[0].verify_organization_uuid
         client_id = context["ray"].client.id if context["ray"].client else org_uuid
         # Get display_format from settings
         display_format = settings[0]["display_format"] if settings else None
         await send_mt_translation_request(
-            [text],
-            target_langs,
+            [escape_slack_emoji(text)],
+            service_language_mapping,
             source_lang,
             MtTranslationExtraData(
                 client_id=client_id,
-                target_languages=target_langs,
+                service_language_mapping=service_language_mapping,
                 source_language=detected_source_lang_response.language,
                 organization_uuid=org_uuid,
                 channel_id=context.channel_id,
                 text_length=len(text),
                 usage_type="channel_translation",
+                source_text=text,
                 response_url=context.response_url,
                 thread_ts=context.thread_ts,
                 is_edit=is_edit,
@@ -1626,14 +1656,19 @@ async def get_mt_translation(
             if context.ray.client
             else context.ray.super_group[0].verify_organization_uuid
         )
+
+        # Create service language mapping based on target language
+        service_language_mapping = create_service_language_mapping([target_lang])
+
         extra_data = MtTranslationExtraData(
             client_id=client_id,
-            target_languages=[target_lang],
+            service_language_mapping=service_language_mapping,
             source_language=source_lang,
             organization_uuid=context.ray.super_group[0].verify_organization_uuid,
             channel_id=channel_id,
             text_length=len(sentence),
             usage_type=usage_type,
+            source_text=sentence,
             # Response method fields
             response_url=context.get("response_url"),
             thread_ts=thread_ts,
@@ -1642,8 +1677,8 @@ async def get_mt_translation(
         )
 
         await send_mt_translation_request(
-            text=[sentence],
-            target_languages=[target_lang],
+            text=[escape_slack_emoji(sentence)],
+            service_language_mapping=service_language_mapping,
             source_language=source_lang,
             extra_data=extra_data,
         )

@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 class TranslationRequest(BaseModel):
     text: str
-    target_languages: List[str]
+    service_language_mapping: dict[str, List[str]]
     source_language: str | None = None
     app_name: str
     usage_type: str = "direct_machine_translation"

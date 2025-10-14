@@ -7,11 +7,11 @@ https://docs.sqlalchemy.org/en/20/orm/declarative_tables.html
 """
 
 import datetime
-from typing import TypeAlias, Literal, Optional
+from typing import Literal, Optional, TypeAlias
 
+from pydantic import BaseModel
 from sqlalchemy import JSON, DateTime, Enum, Integer, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from pydantic import BaseModel
 
 
 class Base(DeclarativeBase):
@@ -112,6 +112,7 @@ class GoogleApiLog(Base):
     user_uuid: Mapped[str]
     group_uuid: Mapped[str]
     super_group_uuid: Mapped[str]
+    verify_organization_uuid: Mapped[str | None]
     app_name: Mapped[str | None]
     sl: Mapped[str | None]
     tl: Mapped[str | None]
@@ -120,6 +121,11 @@ class GoogleApiLog(Base):
     response: Mapped[dict | None] = mapped_column(JSON)
     word_count: Mapped[int]
     character_count: Mapped[int]
+    email: Mapped[str | None]
+    usage_type: Mapped[str | None]
+    transaction_uuid: Mapped[str | None]
+    channel_name: Mapped[str | None]
+    gridfs_file_id: Mapped[str | None]
 
 
 class MicrosoftApiLog(Base):

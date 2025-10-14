@@ -52,12 +52,13 @@ class MtTranslationExtraData(BaseModel):
     """Extra data for MT translation requests."""
 
     client_id: str
-    target_languages: List[str]
+    service_language_mapping: dict[str, List[str]]
     source_language: str
     organization_uuid: str
     channel_id: str
     text_length: int
     usage_type: str
+    source_text: str | None = None
     # Response method fields
     response_url: str | None = None
     thread_ts: str | None = None

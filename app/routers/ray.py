@@ -13,6 +13,7 @@ from app.api.verify import get_evaluation_job, get_job_pricing
 from app.auth.connector import get_ray_client, get_ray_connection
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.database import engines
+from app.mt.logs import log_google_api_usage
 from app.ray.utils import (
     delete_from_file_server,
     download_from_file_server_async,
@@ -660,23 +661,47 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
         elif event.event == "slack:direct:mt:result":
             try:
                 extra_data = MtTranslationExtraData(**event.data["extra_data"])
+
+                # Parse translations from the new service-based response format
+                translations = event.data.get("translations", {})
+
+                # Log the response for debugging
+                notify_message(
+                    f"MT Result - Service mapping: {extra_data.service_language_mapping}, Translations: {translations}"
+                )
+
                 if (
                     extra_data.usage_type == "direct_machine_translation"
                     or extra_data.usage_type == "shortcut_translate"
                 ):
-                    # convert translations from dict to list of strings then convert to just a single string
-                    translations = " ".join(
+                    # For direct translation, we need to get the first target language
+                    # and combine all translations into a single string
+                    first_target_lang = None
+                    for langs in extra_data.service_language_mapping.values():
+                        if langs:
+                            first_target_lang = langs[0]
+                            break
+
+                    # Combine all translations into a single string
+                    # The translations dict should be {lang: [text1, text2, ...]}
+                    combined_translations = " ".join(
                         [
-                            item
-                            for sublist in event.data["translations"].values()
-                            for item in sublist
+                            text
+                            for lang_translations in translations.values()
+                            for text in (
+                                lang_translations
+                                if isinstance(lang_translations, list)
+                                else [lang_translations]
+                            )
                         ]
                     )
+                    assert extra_data.source_text
                     mt_result_message: MachineTranslationMessage = (
                         MachineTranslationMessage(
-                            extra_data.target_languages[0],
+                            first_target_lang or "unknown",
                             extra_data.source_language,
-                            translations,
+                            extra_data.source_text,
+                            combined_translations,
                         )
                     )
                     # Send message with response method configuration
@@ -691,12 +716,14 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         response_url=extra_data.response_url,
                     )
                 elif extra_data.usage_type == "channel_translation":
-                    print(event.data)
+                    # For channel translation, pass the translations dict directly
+                    # The AutoTranslationMessage expects {lang: [text1, text2, ...]} format
+                    assert extra_data.source_text
                     auto_translation_message: AutoTranslationMessage = (
                         AutoTranslationMessage(
-                            None,
+                            extra_data.source_text,
                             extra_data.source_language,
-                            translations=event.data["translations"],
+                            translations=translations,
                         )
                     )
                     await post_channel_translation_notification(
@@ -718,9 +745,13 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                         },
                     )
                 database_engine = engines["sitemanager"]
-                amount = calculate_cost(len(event.data["translations"]))
+                # Calculate total languages across all services
+                total_languages = sum(
+                    len(langs) for langs in extra_data.service_language_mapping.values()
+                )
+                amount = calculate_cost(extra_data.text_length * total_languages)
                 assert auth.slack_user.ray_user_group_id is not None
-                spend_credits(
+                transaction_uuid = spend_credits(
                     database_engine,
                     auth.slack_user.ray_client_id,
                     auth.slack_user.ray_user_group_id,
@@ -729,6 +760,45 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     extra_data.usage_type,
                     "Machine Translation",
                     extra_data.organization_uuid,
+                )
+
+                # Log Google API usage
+                # Convert translations from dict[lang, list[str]] to dict[lang, str]
+                translations_for_log = {
+                    lang: " ".join(texts) if isinstance(texts, list) else texts
+                    for lang, texts in event.data["translations"].items()
+                }
+
+                channel_name = None
+                if extra_data.channel_id:
+                    if not extra_data.channel_id.startswith("C"):
+                        channel_name = "direct message"
+                    else:
+                        try:
+                            channel_info = await client.conversations_info(
+                                channel=extra_data.channel_id
+                            )
+                            channel = channel_info.get("channel")
+                            channel_name = (
+                                channel["name"]
+                                if channel and "name" in channel
+                                else None
+                            )
+                        except Exception as e:
+                            notify_exception(e, "Failed to get channel info")
+
+                await log_google_api_usage(
+                    user_uuid=auth.slack_user.ray_client_id,
+                    group_uuid=auth.slack_user.ray_user_group_id,
+                    organization_uuid=extra_data.organization_uuid,
+                    text=extra_data.source_text or "[Source text not available]",
+                    source_lang=extra_data.source_language,
+                    translations=translations_for_log,
+                    transaction_uuid=transaction_uuid,
+                    app_name="slack",
+                    usage_type=extra_data.usage_type,
+                    text_length=extra_data.text_length,
+                    channel_name=channel_name,
                 )
             except Exception as e:
                 raise e

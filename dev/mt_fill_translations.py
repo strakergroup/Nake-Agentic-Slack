@@ -65,9 +65,16 @@ def mt_translate(text: str, target_lang: str) -> str:
     base_url = os.getenv("LANGUAGECLOUD_API_URL") or f"{domains.languagecloud_api}"
     url = f"{base_url.rstrip('/')}/mt/translate"
     headers = build_auth_header()
+    # Determine service based on target language
+    service_language_mapping = {}
+    if target_lang in ["fr-ca", "french-canada", "french-canadian"]:
+        service_language_mapping["microsoft"] = [target_lang]
+    else:
+        service_language_mapping["google"] = [target_lang]
+
     payload = TranslationRequest(
         text=prepared,
-        target_languages=[target_lang],
+        service_language_mapping=service_language_mapping,
         app_name="slack-dev",
         usage_type="dev_machine_translation",
     )
