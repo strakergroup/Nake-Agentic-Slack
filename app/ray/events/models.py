@@ -143,6 +143,7 @@ class MtErrorTypes(str, Enum):
 
 
 class MtFileRequestSchema(BaseModel):
+    task_uuid: str | None = None
     file_id: str
     client_id: str
     channel_id: str
@@ -152,6 +153,7 @@ class MtFileRequestSchema(BaseModel):
 
 
 class MtSuccessResponseSchema(BaseModel):
+    task_uuid: str | None = None
     file_id: str
     tokens: int
     client_id: str

@@ -23,6 +23,7 @@ from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.models import TranscriptionTask
 from app.mt.translate import get_ai_translation
 from app.ray.events.models import MtFileRequestSchema
+from app.slack_job import create_slack_job
 from app.transcriber_tasks.tasks import create_asr_task
 from app.translate import _
 
@@ -513,6 +514,8 @@ async def document_machine_translate(
                 "data_source": "slack",
             }
         )
+        task_uuid = create_slack_job(task_data, status="pending")
+        task_data.task_uuid = task_uuid
         async with httpx.AsyncClient() as http:
             await http.post(
                 f"{domains.stream_proxy}/events/slack:job:machine:translate",
