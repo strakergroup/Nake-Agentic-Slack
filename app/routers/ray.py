@@ -62,6 +62,7 @@ from ..slack.templates.messages import (
     ClientSignupEventMessage,
     DocMtMessage,
     DocParseErrorMessage,
+    EvaluateErrorMessage,
     EvaluateSuccessMessage,
     HumanJobQuoteMessage,
     JobCancelledEventMessage,
@@ -542,7 +543,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
 
         elif event.event == "verify:slack:evaluate:complete":
             if event.data.get("error"):
-                message = DocMtMessage()
+                message = EvaluateErrorMessage()
             else:
                 try:
                     job = await get_evaluation_job(

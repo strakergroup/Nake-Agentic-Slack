@@ -3579,13 +3579,33 @@ class DocMtMessage(SlackMessage):
 
     def __init__(self) -> None:
         super().__init__(
-            _("Verify the translation"),
+            _("Document translation failed"),
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
                         "text": _("Error occurred while translating your document"),
+                    },
+                }
+            ],
+        )
+
+
+class EvaluateErrorMessage(SlackMessage):
+    """Message verify consumer event response"""
+
+    def __init__(self) -> None:
+        super().__init__(
+            _("Quality Evaluation failed"),
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            ":alert_triangle: Quality Evaluation failed for this submission. Please review the details and re-run the evaluation once the issues are resolved."
+                        ),
                     },
                 }
             ],
