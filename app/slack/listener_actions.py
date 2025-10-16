@@ -22,6 +22,7 @@ from app.api.verify import (
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.models import TranscriptionTask
+from app.mt.service import evaluate_get_glossary_resource
 from app.ray.events.models import MtFileRequestSchema
 from app.slack.utils import escape_slack_emoji
 from app.transcriber_tasks.tasks import create_asr_task
@@ -440,6 +441,10 @@ async def auto_translate_message(
         client_id = context["ray"].client.id if context["ray"].client else org_uuid
         # Get display_format from settings
         display_format = settings[0]["display_format"] if settings else None
+        glossary_resource = evaluate_get_glossary_resource(
+            org_uuid, source_lang, target_langs[0], "google"
+        )
+        service_language_mapping = create_service_language_mapping(target_langs)
         await send_mt_translation_request(
             [escape_slack_emoji(text)],
             service_language_mapping,
@@ -458,6 +463,7 @@ async def auto_translate_message(
                 is_edit=is_edit,
                 display_format=display_format,
                 message_ts=ts,
+                glossary_resource=glossary_resource,
             ),
         )
     except Exception as e:
