@@ -1,18 +1,20 @@
 import functools
 from typing import Iterable
+
 import langcodes
-from sqlalchemy import delete, distinct, func, select, text, update, or_
-from sqlalchemy.orm import Session
 from slack_bolt.context.async_context import AsyncBoltContext
+from sqlalchemy import delete, distinct, func, or_, select, text, update
+from sqlalchemy.orm import Session
+
+from app.translate import _
 
 from ..auth.connector import RayClient
 from ..database import engines
 from ..models import (
     SlackGroupSettings,
-    SlackGroupSettingsTranslationLangs,
     SlackGroupSettingsTranslation,
+    SlackGroupSettingsTranslationLangs,
 )
-from app.translate import _
 
 
 def get_auto_translate_languages(
@@ -615,5 +617,17 @@ def update_channel_id(old_channel_id, new_channel_id):
             update(SlackGroupSettingsTranslation)
             .where(SlackGroupSettingsTranslation.channel_id == old_channel_id)
             .values(channel_id=new_channel_id)
+        )
+        session.commit()
+
+
+def delete_channel_id(channel_id: str | None):
+    if not channel_id:
+        return
+    with Session(engines["ray_integration"]) as session:
+        session.execute(
+            delete(SlackGroupSettingsTranslation).where(
+                SlackGroupSettingsTranslation.channel_id == channel_id
+            )
         )
         session.commit()

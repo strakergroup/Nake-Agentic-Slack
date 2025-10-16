@@ -53,6 +53,7 @@ from ..config import domains
 from ..database import engines
 from ..ray.events.parse import get_ray_event_message
 from ..ray.settings import (
+    delete_channel_id,
     disable_auto_translate_group_settings,
     get_auto_translate_settings_and_langs,
     update_auto_translate_group_settings,
@@ -183,6 +184,15 @@ async def message_event(
             # Do nothing if the Slack app is not mentioned in group chats and
             # auto-translate is disabled.
             pass
+
+
+# chhanel deletion
+@app.event("channel_deleted")
+@slack_log_decorator
+async def channel_deleted_event(
+    client: AsyncWebClient, context: RayContext, event: Dict[str, Any]
+):
+    delete_channel_id(event.get("channel"))
 
 
 @app.event("app_mention", middleware=[ray_connection])
