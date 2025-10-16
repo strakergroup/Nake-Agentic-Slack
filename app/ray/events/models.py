@@ -117,11 +117,12 @@ class JobTranscribedPath(BaseModel):
 
 
 class JobTranscribedEvent(BaseModel):
+    client_id: str
     task_uuid: str
+    file_id: str
     file_name: str
     source_file_name: str
-    symlink: str
-    client_id: str
+    tokens: int
     error: str | None = None
 
     @model_validator(mode="before")
@@ -131,7 +132,8 @@ class JobTranscribedEvent(BaseModel):
             values["task_uuid"] = result.get("task_uuid")
             values["file_name"] = result.get("file_name")
             values["source_file_name"] = result.get("source_file_name")
-            values["symlink"] = result.get("symlink")
+            values["file_id"] = result.get("file_id")
+            values["tokens"] = result.get("tokens")
         return values
 
 

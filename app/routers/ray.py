@@ -137,13 +137,14 @@ async def _handle_transcribe_success_background(
         client = AsyncWebClient(token=auth.slack_user.bot_token)
 
         # Download file from server
-        output_file = await download_from_file_server_async(event_data["file_id"])
+        output_file = await download_from_file_server_async(event_data.get("file_id"))
+
         # Upload file using memory-efficient method
         await upload_file_to_slack_memory_efficient(
             client=client,
             file_path=output_file.get("file"),
             channel_id=response["channel"],
-            title=event_data["file_name"],
+            title=event_data.get("file_name"),
             filename=output_file.get("file_name"),
         )
     except Exception as e:

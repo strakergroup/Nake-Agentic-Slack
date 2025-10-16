@@ -164,20 +164,42 @@ class Language(Base):
     tiers: Mapped[int]
 
 
-class TranscriptionTask(BaseModel):
+class TranscriptionTaskData(BaseModel):
     """Model representing input data for a transcription task"""
 
+    client_id: str
     file_name: str
     download_url: str
-    token: str
-    tokens: int
-    service: str = "whisper"
-    language: Optional[str] = None
-    model: Optional[str] = None
+    app_token: str
+    out_stream_name: str
+    service: str
+    model: str
     embed_subtitles: bool = False
-    test_mode: bool = False
-    task_id: Optional[str] = None
-    symlink: Optional[str] = None
+    tokens_consumed: int
+    sandbox: bool = False
+
+
+class ASRTask(BaseModel):
+    """Model representing input data for an ASR task"""
+
+    member_uuid: str
+    event_name: str
+    app_source: str
+    len_ms: int
+    service: str
+    model: str
+    extra_data: dict
+    task_data: TranscriptionTaskData
+
+
+class JobTranscribedResult(BaseModel):
+    client_id: str
+    error: str | None = None
+    task_uuid: str
+    file_name: str
+    source_file_name: str
+    file_id: str
+    tokens_consumed: int
 
 
 class SlackFileTranslationSubmission(Base):
