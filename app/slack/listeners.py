@@ -447,7 +447,7 @@ async def download_transcribed_file(
     if await require_ray_client(context):
         task_uuid = action["value"]
         task_result = await get_asr_task(task_uuid, context["ray"].client.id)
-        file_id = task_result["file_id"]
+        file_id = task_result.file_id
         file = download_from_file_server(file_id)
 
         try:
@@ -534,13 +534,14 @@ async def srt_translate_action(
         task_uuid = action["value"]
         # get uuid from output_file
         task_result = await get_asr_task(task_uuid, context["ray"].client.id)
-        if await require_mt_tokens(context, task_result["tokens"]):
+
+        if await require_mt_tokens(context, task_result.get("tokens_consumed")):
             # get selected language from redis keyed on output_file
             # selected from get_auto_translate_language_options
             selected_language = await redis_conn.get(f"output_file_{task_uuid}")
             if selected_language:
                 await document_machine_translate(
-                    context, task_result["file_id"], selected_language
+                    context, task_result.get("file_id"), selected_language
                 )
                 await say(
                     _(
