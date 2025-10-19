@@ -291,7 +291,10 @@ def get_or_create_group_settings(
 
 
 def get_or_create_setting_for_team(
-    session: Session, context: AsyncBoltContext, channel_id: str, team_id: str
+    session: Session,
+    context: AsyncBoltContext,
+    channel_id: str,
+    team_id: str,
 ) -> SlackGroupSettingsTranslation:
     # Get setting for team and channel
     setting = get_team_setting(session, context, team_id)
@@ -374,7 +377,7 @@ async def get_auto_translate_settings_and_langs(
 
 async def update_auto_translate_group_settings(
     context: AsyncBoltContext,
-    channels: list[dict[str, str]],
+    channels: list[dict[str, bool | str | None]],
     languages: list[str],
     display_format: SlackGroupSettingsTranslation.DisplayFormatType,
 ) -> None:
@@ -391,7 +394,12 @@ async def update_auto_translate_group_settings(
         for channel in channels:
             # insert for team
             channel_setting = get_or_create_setting_for_team(
-                session, context, channel["channel_id"], channel["team_id"]
+                session,
+                context,
+                str(channel["channel_id"])
+                if channel.get("channel_id") is not None
+                else "",
+                str(channel["team_id"]) if channel.get("team_id") is not None else "",
             )
             channel_setting.display_format = display_format
             current_settings = session.scalars(

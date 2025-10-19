@@ -8,7 +8,7 @@ import json
 import math
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 from uuid import uuid4
 
@@ -1672,7 +1672,7 @@ async def get_channel_info(channel_id: str, client: AsyncWebClient, team_id: str
 
 async def resolve_channels_to_team(
     channel_id: str, client: AsyncWebClient, enterprise_id: str | None, team_id: str
-) -> List[dict[str, str]]:
+) -> dict[str, bool | str | None]:
     """Resolve a channel ID to a team ID. Use conversation info API to get the team ID.
         When error attempt to get all tokens for the enterprise with each token
     Args:
@@ -1690,7 +1690,7 @@ async def resolve_channels_to_team(
     }
     old_token = client.token
     if enterprise_id:
-        all_tokens = get_all_tokens_for_enterprise(enterprise_id)
+        all_tokens = await get_all_tokens_for_enterprise(enterprise_id)
     else:
         all_tokens = []
     try:

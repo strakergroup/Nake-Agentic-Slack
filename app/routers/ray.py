@@ -860,7 +860,7 @@ async def api_job_callback(
 ):
     """Callback endpoint for API jobs."""
     # Check if the callback can be linked to a Slack user.
-    slack_user = get_slack_user(client_id)
+    slack_user = await get_slack_user(client_id)
     demo_slack_users = await get_demo_link(client_id)
     if slack_user is None:
         notify_message("Slack user not found in callback endpoint", severity="WARNING")

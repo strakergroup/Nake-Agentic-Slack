@@ -737,8 +737,9 @@ class SuccessfulLogoutMessage(SlackMessage):
     """A Slack user's LanguageCloud account was successfully disconnected."""
 
     def __init__(
-        self, user_id: str, is_sso: bool = False, ray_username: str | None = None
+        self, user_id: str | None, is_sso: bool = False, ray_username: str | None = None
     ) -> None:
+        assert user_id is not None
         # TODO: Translation fix this
         user_details = f"<{domains.verify}|{ray_username}>"
         user_link = f"<@{user_id}>"

@@ -753,7 +753,7 @@ def cancel_job_modal(client_name: str) -> dict[str, Any]:
 def translation_settings_view(
     initial_channels: list[str] | None = None,
     initial_langs: list[str] | None = None,
-    display_format: SlackGroupSettingsTranslation.DisplayFormatType = "thread",
+    display_format: str = "thread",
     team_id: str = "",
 ) -> dict[str, Any]:
     # TODO: Detect message max length (5000)

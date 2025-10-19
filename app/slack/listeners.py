@@ -221,32 +221,32 @@ async def home_opened(
     # TODO: put try catch around this
     await ack()
     try:
-        history = await client.conversations_history(
-            channel=event.get("channel"), limit=1
-        )
-        is_ibm = is_ibm_enterprise(enterprise_id=context.enterprise_id)
-        if not history.get("messages"):
-            message = OnboardingMessage(
-                context["user_id"],
-                context["team_id"],
-                context.enterprise_id,
-                event.get("channel"),
-                not is_ibm,
-            )
-            await say(blocks=message.blocks, text=message.text)
-        # Send a welcome message if the app home has been idle for 24 hours
-        else:
-            history_last_24_hours = await client.conversations_history(
-                channel=event.get("channel"),
-                oldest=int((datetime.now() - timedelta(hours=24)).timestamp()),
-                latest=int(datetime.now().timestamp()),
-            )
-            if not history_last_24_hours.get("messages"):
-                message = WelcomeBackMessage(context["user_id"], context["ray"])
+        channel = event.get("channel")
+        if isinstance(channel, str):
+            history = await client.conversations_history(channel=channel, limit=1)
+            is_ibm = is_ibm_enterprise(enterprise_id=context.enterprise_id)
+            if not history.get("messages"):
+                message = OnboardingMessage(
+                    context["user_id"],
+                    context["team_id"],
+                    context.enterprise_id,
+                    channel,
+                    not is_ibm,
+                )
                 await say(blocks=message.blocks, text=message.text)
+            # Send a welcome message if the app home has been idle for 24 hours
             else:
-                # There had been some activity in the last 24 hours
-                pass
+                history_last_24_hours = await client.conversations_history(
+                    channel=channel,
+                    oldest=str((datetime.now() - timedelta(hours=24)).timestamp()),
+                    latest=str(datetime.now().timestamp()),
+                )
+                if not history_last_24_hours.get("messages"):
+                    message = WelcomeBackMessage(context["user_id"], context["ray"])
+                    await say(blocks=message.blocks, text=message.text)
+                else:
+                    # There had been some activity in the last 24 hours
+                    pass
     except SlackApiError as e:
         notify_exception(e)
     # Publish view to home tab.
@@ -267,7 +267,8 @@ async def home_load(
 ):
     await ack()
     # submit from next button on transation settings view
-    home_info = json.loads(action["value"])
+    assert action is not None
+    home_info = json.loads(action["value"]) if isinstance(action["value"], str) else {}
     page = int(home_info.get("page", 1))
     team_id = home_info.get("team_id", "")
     if team_id:
@@ -313,7 +314,9 @@ async def new_job_shortcut(
                 context["channel_id"],
                 shortcut["message"]["ts"],
                 shortcut["message"].get("files", []),
-                context.ray.super_group[0].enable_verify_in_slack,
+                context.ray.super_group[0].enable_verify_in_slack
+                if context.ray and context.ray.super_group
+                else False,
             )
             await context.say(
                 text=new_job_msg.text,
@@ -333,6 +336,7 @@ async def show_srt_translate_form(
 ):
     await ack()
     if await require_ray_client(context):
+        assert action is not None
         task_uuid = action["value"]
         # SrtTranslateMessage normal message no modal just message
         msg = SrtTranslateMessage(task_uuid)
@@ -355,6 +359,7 @@ async def document_mt_job_action(
     await ack()
     if await require_ray_client(context):
         # Get file IDs and channel ID from the action value
+        assert action is not None
         action_data = json.loads(action.get("value", ""))
         files = action_data.get("files", [])
         channel_id = action_data.get("channel_id")
@@ -385,6 +390,7 @@ async def document_mt_submit_action(
 ):
     await ack()
     if await require_ray_client(context):
+        assert action is not None
         slack_file_ids = json.loads(action["value"])
         selected_language = await redis_conn.get(f"output_file_{action['value']}")
         # get uuid from output_file
@@ -438,8 +444,10 @@ async def download_transcribed_file(
     if await require_ray_client(context):
         assert context["ray"] is not None
         assert context["ray"].client is not None
+        assert action is not None
         task_uuid = action["value"]
         task_result = await get_asr_task(task_uuid, context["ray"].client.id)
+        assert task_result is not None
         file_id = task_result["file_id"]
         file = download_from_file_server(file_id)
 
@@ -468,6 +476,7 @@ async def download_ai_translation_action(
 ):
     await ack()
     if await require_ray_client(context):
+        assert action is not None
         file_uuid = action["value"]
         assert context["ray"] is not None
         assert context["ray"].client is not None
@@ -524,9 +533,11 @@ async def srt_translate_action(
     if await require_ray_client(context):
         assert context["ray"] is not None
         assert context["ray"].client is not None
+        assert action is not None
         task_uuid = action["value"]
         # get uuid from output_file
         task_result = await get_asr_task(task_uuid, context["ray"].client.id)
+        assert task_result is not None
         if await require_mt_tokens(context, task_result["tokens"]):
             # get selected language from redis keyed on output_file
             # selected from get_auto_translate_language_options
@@ -686,6 +697,7 @@ async def ray_command(
             return text[1:-1]
         return text
 
+    assert command is not None
     command_formatted = strip_formatting(command.get("text", "").strip())
     command_args = re.split(r"\s+", command_formatted.lower())
     command_args = [strip_formatting(arg) for arg in command_args]
@@ -742,6 +754,7 @@ async def ray_command(
                     auto_translate_langs = [
                         setting["target_lang"] for setting in settings
                     ]
+                    assert context.channel_id is not None
                     await client.views_open(
                         trigger_id=command["trigger_id"],
                         view=translation_settings_view(
@@ -1151,6 +1164,7 @@ async def approve_pending_client_action(
         assert context["ray"] is not None
         assert context["ray"].client is not None
         try:
+            assert action is not None
             # action["value"] should contain the new client details.
             pending_client_details = json.loads(action["value"])
             client_id = pending_client_details["id"]
@@ -1219,9 +1233,13 @@ async def disconnect_account_action(
     # action["value"] should contain the LanguageCloud account username.
     assert context["ray"] is not None
     assert context["ray"].client is not None
-    msg = SuccessfulLogoutMessage(
-        context.user_id, context["ray"].client.sso, action.get("value")
-    )
+    if action is not None:
+        username = action.get("value") if isinstance(action.get("value"), str) else None
+        msg = SuccessfulLogoutMessage(
+            context.user_id, context["ray"].client.sso, username
+        )
+    else:
+        msg = SuccessfulLogoutMessage(context.user_id, context["ray"].client.sso)
     await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
 
 
@@ -1369,6 +1387,8 @@ async def view_update_auto_translate_settings(
     client: AsyncWebClient,
 ):
     try:
+        assert view is not None
+        assert context.team_id is not None
         # get team_id from private_metadata
         team_id = view.get("private_metadata", "")
         form_data = view.get("state", {}).get("values") if view else {}
@@ -1406,18 +1426,14 @@ async def view_update_auto_translate_settings(
         if not form.languages:
             for channel_list in team_channels:
                 if channel_list:  # Check if the list is not empty
-                    channel = channel_list[0]  # Get the first (and only) item
-                    await disable_auto_translate_group_settings(
-                        context, channel["channel_id"]
-                    )
+                    channel_id = channel_list["channel_id"]
+                    if isinstance(channel_id, str):
+                        await disable_auto_translate_group_settings(context, channel_id)
         else:
             # Flatten the team_channels list since each item is a list with one dict
-            flattened_channels = [
-                channel_list[0] for channel_list in team_channels if channel_list
-            ]
             await update_auto_translate_group_settings(
                 context,
-                channels=flattened_channels,
+                channels=team_channels,
                 languages=form.languages,
                 display_format=form.display_format,
             )
@@ -1474,7 +1490,7 @@ async def view_update_auto_translate_settings(
 
         for channel_list in team_channels:
             if channel_list:  # Check if the list is not empty
-                channel = channel_list[0]  # Get the first (and only) item
+                channel = channel_list  # Get the first (and only) item
                 assert isinstance(channel, dict)  # Type assertion for type checker
                 await join_channel(channel["channel_id"], channel["bot_token"])
                 await notify_channel(channel["channel_id"], channel["bot_token"])

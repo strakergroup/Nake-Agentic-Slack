@@ -974,7 +974,7 @@ async def post_job_list(
     client: AsyncWebClient,
     context: AsyncBoltContext,
     ray_client: RayClient,
-    preset: str,
+    preset: str | None,
     client_ref: str = "",
     page: int = 1,
     page_size: int = 5,
@@ -1854,6 +1854,8 @@ async def submit_verification_job(
     try:
         # Get the updated job details after submission
         if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+            assert context.ray is not None
+            assert context.ray.client is not None
             costs = await get_job_pricing(
                 context.ray.client,
                 job_uuid,
@@ -1867,7 +1869,11 @@ async def submit_verification_job(
         else:
             updated_msg = EvaluateSuccessMessage(
                 job["data"],
-                is_ibm_enterprise(context.ray.client.slack_enterprise_id),
+                is_ibm_enterprise(
+                    context.ray.client.slack_enterprise_id
+                    if context.ray and context.ray.client
+                    else None
+                ),
                 actions=False,
             )
 
@@ -1886,8 +1892,14 @@ async def submit_verification_job(
                 replace_original=True,
             )
         if selected_languages:
+            assert context.ray is not None
+            assert context.ray.client is not None
             # submit the job
-            await create_human_job(context.ray.client, job_uuid, selected_languages)
+            await create_human_job(
+                context.ray.client,
+                job_uuid,
+                selected_languages,
+            )
         else:
             msg = _("Your request has been cancelled.")
             await client.chat_postMessage(
