@@ -366,7 +366,12 @@ async def get_demo_link(member_uuid: str) -> list[str]:
             """
         )
         result = await fetch_all(sql, async_engines["ray_integration_readonly"])
-        slack_user_ids = [row["slack_user_id"] for row in result]
+        slack_user_ids: list[str] = []
+        for row in result:
+            if hasattr(row, "get"):
+                slack_user_id = row.get("slack_user_id")
+                if slack_user_id:
+                    slack_user_ids.append(slack_user_id)
         return slack_user_ids
     return []
 
@@ -425,45 +430,45 @@ async def get_ray_super_group(
     Args:
         team_id (str): The ID of the team.
     """
-    with engines["ray_integration_readonly"].connect() as conn:
-        if enterprise_id:
-            sql = text(
-                """
-                SELECT link.super_group_uuid, g.label, vo.organization_name, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
-                FROM slack_super_group_link link
-                INNER JOIN sitemanager.obj_m_group g
-                ON link.super_group_uuid = g.obj_uuid
-                INNER JOIN sitemanager.verify_organization vo
-                ON vo.obj_uuid = link.verify_organization_uuid
-                WHERE link.slack_enterprise_id = :enterprise_id
-                AND link.is_active = 1
-                """
-            ).bindparams(enterprise_id=enterprise_id)
-        else:
-            sql = text(
-                """
-                SELECT link.super_group_uuid, g.label, vo.organization_name, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
-                FROM slack_super_group_link link
-                INNER JOIN sitemanager.obj_m_group g
-                ON link.super_group_uuid = g.obj_uuid
-                INNER JOIN sitemanager.verify_organization vo
-                ON vo.obj_uuid = link.verify_organization_uuid
-                WHERE link.slack_team_id = :team_id
-                AND link.is_active = 1
-                """
-            ).bindparams(team_id=team_id)
-        result = conn.execute(sql)
-        rows = result.fetchall()
-        if not rows:
-            return None
+    if enterprise_id:
+        sql = text(
+            """
+            SELECT link.super_group_uuid, g.label, vo.organization_name, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
+            FROM slack_super_group_link link
+            INNER JOIN sitemanager.obj_m_group g
+            ON link.super_group_uuid = g.obj_uuid
+            INNER JOIN sitemanager.verify_organization vo
+            ON vo.obj_uuid = link.verify_organization_uuid
+            WHERE link.slack_enterprise_id = :enterprise_id
+            AND link.is_active = 1
+            """
+        ).bindparams(enterprise_id=enterprise_id)
+    else:
+        sql = text(
+            """
+            SELECT link.super_group_uuid, g.label, vo.organization_name, g.enable_verify_in_slack, vo.obj_uuid AS verify_organization_id
+            FROM slack_super_group_link link
+            INNER JOIN sitemanager.obj_m_group g
+            ON link.super_group_uuid = g.obj_uuid
+            INNER JOIN sitemanager.verify_organization vo
+            ON vo.obj_uuid = link.verify_organization_uuid
+            WHERE link.slack_team_id = :team_id
+            AND link.is_active = 1
+            """
+        ).bindparams(team_id=team_id)
+
+    rows = await fetch_all(sql, async_engines["ray_integration_readonly"])
+    if not rows:
+        return None
+
     return [
         RaySuperGroup(
-            id=row.super_group_uuid,
-            name=row.organization_name,
+            id=row["super_group_uuid"],
+            name=row["organization_name"],
             slack_team_id=team_id,
             slack_enterprise_id=enterprise_id,
-            enable_verify_in_slack=bool(row.enable_verify_in_slack),
-            verify_organization_uuid=row.verify_organization_id,
+            enable_verify_in_slack=bool(row["enable_verify_in_slack"]),
+            verify_organization_uuid=row["verify_organization_id"],
         )
         for row in rows
     ]
@@ -480,24 +485,24 @@ def is_ibm_super_group(
     """
     if not enterprise_id:
         return False
+
     with engines["ray_integration_readonly"].connect() as conn:
-        if enterprise_id:
-            sql = text(
-                """
-                SELECT link.super_group_uuid, g.label
-                FROM slack_super_group_link link
-                INNER JOIN sitemanager.obj_m_group g
-                ON link.super_group_uuid = g.obj_uuid
-                WHERE link.slack_enterprise_id = :enterprise_id
-                AND link.is_active = 1
-                AND (
-                    link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
-                    OR link.super_group_uuid = '13D8D894-3DC5-49DC-9DD0-AD9EA537E597'
-                    OR link.super_group_uuid = '94c8dd41-9029-4aae-883a-57e4b86ead17'
-                    OR link.super_group_uuid = '7f8bcd96-3856-43d6-a01e-3d4c4c196558'
-                ) AND link.verify_organization_uuid is not null
-                """
-            ).bindparams(enterprise_id=enterprise_id)
+        sql = text(
+            """
+            SELECT link.super_group_uuid, g.label
+            FROM slack_super_group_link link
+            INNER JOIN sitemanager.obj_m_group g
+            ON link.super_group_uuid = g.obj_uuid
+            WHERE link.slack_enterprise_id = :enterprise_id
+            AND link.is_active = 1
+            AND (
+                link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
+                OR link.super_group_uuid = '13D8D894-3DC5-49DC-9DD0-AD9EA537E597'
+                OR link.super_group_uuid = '94c8dd41-9029-4aae-883a-57e4b86ead17'
+                OR link.super_group_uuid = '7f8bcd96-3856-43d6-a01e-3d4c4c196558'
+            ) AND link.verify_organization_uuid is not null
+            """
+        ).bindparams(enterprise_id=enterprise_id)
         result = conn.execute(sql)
         rows = result.fetchall()
         if not rows:
@@ -508,79 +513,75 @@ def is_ibm_super_group(
 async def get_ray_demo_client(
     user_id: str, team_id: str, slack_enterprise_id: str | None
 ) -> RayClient | None:
-    with engines["ray_integration_readonly"].connect() as conn:
-        sql = text(
+    sql = text(
+        """
+            SELECT id
+            FROM slack_demo_link link
+            WHERE slack_user_id = :user_id
             """
-                SELECT id
-                FROM slack_demo_link link
-                WHERE slack_user_id = :user_id
-                """
-        ).bindparams(user_id=user_id)
-        result = conn.execute(sql)
-        row = result.first()
-        if not row:
-            return None
-    with engines["ray_integration_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT link.member_uuid, link.slack_enterprise_id, mem.login, mem.email_primary, mem.given_name, mem.family_name,
-            mem.active, mem.groupid, link.access_token, settings.id AS settings_id
-            FROM slack_deltaray_link link
-            INNER JOIN sitemanager.obj_m_member mem
-            ON link.member_uuid = mem.obj_uuid
-            INNER JOIN slack_demo_users dmem
-            ON dmem.member_uuid = link.member_uuid
-            LEFT JOIN slack_user_settings settings
-            ON link.member_uuid = settings.member_uuid
-            WHERE mem.active = 1
-            AND link.slack_enterprise_id = :slack_enterprise_id
-            AND mem.is_deleted = 0
-            LIMIT 1
-            """
-        ).bindparams(slack_enterprise_id=slack_enterprise_id)
-        result = conn.execute(sql)
-        row = result.first()
-        if not row:
-            return None
-        (
-            ray_client_id,
-            user_group_id,
-            username,
-            slack_enterprise_id,
-            slack_access_token,
-            settings_id,
-        ) = (
-            row.member_uuid,
-            row.groupid,
-            row.login,
-            row.slack_enterprise_id,
-            row.access_token,
-            row.settings_id,
-        )
-        id_token = create_languagecloud_id_token(
-            uuid=ray_client_id,
-            given_name=row.given_name,
-            family_name=row.family_name,
-            email=row.email_primary,
-            is_active=bool(row.active),
-            aud="languagecloud-api",
-            secret=config.languagecloud_api_key.get_secret_value(),
-        )
+    ).bindparams(user_id=user_id)
+    result = await fetch_one(sql, async_engines["ray_integration_readonly"])
+    if not result:
+        return None
+
+    sql = text(
+        """
+        SELECT link.member_uuid, link.slack_enterprise_id, mem.login, mem.email_primary, mem.given_name, mem.family_name,
+        mem.active, mem.groupid, link.access_token, settings.id AS settings_id
+        FROM slack_deltaray_link link
+        INNER JOIN sitemanager.obj_m_member mem
+        ON link.member_uuid = mem.obj_uuid
+        INNER JOIN slack_demo_users dmem
+        ON dmem.member_uuid = link.member_uuid
+        LEFT JOIN slack_user_settings settings
+        ON link.member_uuid = settings.member_uuid
+        WHERE mem.active = 1
+        AND link.slack_enterprise_id = :slack_enterprise_id
+        AND mem.is_deleted = 0
+        LIMIT 1
+        """
+    ).bindparams(slack_enterprise_id=slack_enterprise_id)
+    row = await fetch_one(sql, async_engines["ray_integration_readonly"])
+    if not row:
+        return None
+
+    (
+        ray_client_id,
+        user_group_id,
+        username,
+        slack_enterprise_id,
+        slack_access_token,
+        settings_id,
+    ) = (
+        row["member_uuid"],
+        row["groupid"],
+        row["login"],
+        row["slack_enterprise_id"],
+        row["access_token"],
+        row["settings_id"],
+    )
+    id_token = create_languagecloud_id_token(
+        uuid=ray_client_id,
+        given_name=row["given_name"],
+        family_name=row["family_name"],
+        email=row["email_primary"],
+        is_active=bool(row["active"]),
+        aud="languagecloud-api",
+        secret=config.languagecloud_api_key.get_secret_value(),
+    )
     # Now get the access token for authentication.
-    with engines["api_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT obj_uuid FROM access_token
-            WHERE account_id = :client_id
-            AND active = 1
-            LIMIT 1
-            """
-        ).bindparams(client_id=ray_client_id)
-        result = conn.execute(sql)
-        row = result.first()
-        if not row:
-            return None
-        access_token = row[0]
+    sql = text(
+        """
+        SELECT obj_uuid FROM access_token
+        WHERE account_id = :client_id
+        AND active = 1
+        LIMIT 1
+        """
+    ).bindparams(client_id=ray_client_id)
+    access_token_result = await fetch_one(sql, async_engines["api_readonly"])
+    if not access_token_result:
+        return None
+    access_token = access_token_result["obj_uuid"]
     return RayClient(
         id=ray_client_id,
         user_group_id=user_group_id,
@@ -609,129 +610,123 @@ async def get_ray_client(
         enterprise_id (str | None): The Slack enterprise ID.
     """
     # First find the client details.
-    with engines["ray_integration"].connect() as conn:
-        if enterprise_id:
-            sql = text(
-                """
-                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, link.slack_team_id,
-                mem.active, mem.groupid, link.is_sso, link.access_token, settings.id AS settings_id
-                FROM slack_deltaray_link link
-                INNER JOIN sitemanager.obj_m_member mem
-                ON link.member_uuid = mem.obj_uuid
-                LEFT JOIN slack_user_settings settings
-                ON link.member_uuid = settings.member_uuid
-                WHERE link.slack_user_id = :user_id
-                AND link.slack_enterprise_id = :enterprise_id
-                AND link.is_active = 1
-                AND mem.active = 1
-                AND mem.is_deleted = 0
-                LIMIT 1
-                """
-            ).bindparams(user_id=user_id, enterprise_id=enterprise_id)
-        else:
-            sql = text(
-                """
-                SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, link.slack_team_id,
-                mem.active, mem.groupid, link.is_sso, link.access_token, settings.id AS settings_id
-                FROM slack_deltaray_link link
-                INNER JOIN sitemanager.obj_m_member mem
-                ON link.member_uuid = mem.obj_uuid
-                LEFT JOIN slack_user_settings settings
-                ON link.member_uuid = settings.member_uuid
-                WHERE link.slack_user_id = :user_id
-                AND link.slack_team_id = :team_id
-                AND link.is_active = 1
-                AND mem.active = 1
-                AND mem.is_deleted = 0
-                LIMIT 1
-                """
-            ).bindparams(user_id=user_id, team_id=team_id)
-        result = conn.execute(sql)
-        row = result.first()
-        if not row:
-            return None
-        if row.slack_team_id != team_id:
-            # update slack_team_id of link to team_id
-            with engines["ray_integration"].begin() as conn:
-                sql = text(
-                    """
-                    UPDATE slack_deltaray_link SET
-                        slack_team_id = :team_id
-                    WHERE slack_user_id = :user_id
-                    AND slack_enterprise_id = :enterprise_id
-                    AND is_active = 1
-                    """
-                ).bindparams(
-                    user_id=user_id, team_id=team_id, enterprise_id=enterprise_id
-                )
-                conn.execute(sql)
-        id_token = create_languagecloud_id_token(
-            uuid=row.member_uuid,
-            given_name=row.given_name,
-            family_name=row.family_name,
-            email=row.email_primary,
-            is_active=bool(row.active),
-            aud="languagecloud-api",
-            secret=config.languagecloud_api_key.get_secret_value(),
-        )
-        (
-            ray_client_id,
-            user_group_id,
-            username,
-            groupid,
-            is_sso,
-            slack_access_token,
-            settings_id,
-        ) = (
-            row.member_uuid,
-            row.groupid,
-            row.login,
-            row.groupid,
-            row.is_sso,
-            row.access_token,
-            row.settings_id,
-        )
-    # Now get the access token for authentication.
-    with engines["api"].connect() as conn:
+    if enterprise_id:
         sql = text(
             """
-            SELECT obj_uuid FROM access_token
-            WHERE account_id = :client_id
-            AND active = 1
+            SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, link.slack_team_id,
+            mem.active, mem.groupid, link.is_sso, link.access_token, settings.id AS settings_id
+            FROM slack_deltaray_link link
+            INNER JOIN sitemanager.obj_m_member mem
+            ON link.member_uuid = mem.obj_uuid
+            LEFT JOIN slack_user_settings settings
+            ON link.member_uuid = settings.member_uuid
+            WHERE link.slack_user_id = :user_id
+            AND link.slack_enterprise_id = :enterprise_id
+            AND link.is_active = 1
+            AND mem.active = 1
+            AND mem.is_deleted = 0
             LIMIT 1
             """
-        ).bindparams(client_id=ray_client_id)
-        result = conn.execute(sql)
-        row = result.first()
-        if not row:
-            access_token = ""
-        else:
-            access_token = row[0]
+        ).bindparams(user_id=user_id, enterprise_id=enterprise_id)
+    else:
+        sql = text(
+            """
+            SELECT link.member_uuid, mem.login, mem.email_primary, mem.given_name, mem.family_name, link.slack_team_id,
+            mem.active, mem.groupid, link.is_sso, link.access_token, settings.id AS settings_id
+            FROM slack_deltaray_link link
+            INNER JOIN sitemanager.obj_m_member mem
+            ON link.member_uuid = mem.obj_uuid
+            LEFT JOIN slack_user_settings settings
+            ON link.member_uuid = settings.member_uuid
+            WHERE link.slack_user_id = :user_id
+            AND link.slack_team_id = :team_id
+            AND link.is_active = 1
+            AND mem.active = 1
+            AND mem.is_deleted = 0
+            LIMIT 1
+            """
+        ).bindparams(user_id=user_id, team_id=team_id)
+
+    row = await fetch_one(sql, async_engines["ray_integration"])
+    if not row:
+        return None
+
+    if row["slack_team_id"] != team_id:
+        # update slack_team_id of link to team_id
+        sql = text(
+            """
+            UPDATE slack_deltaray_link SET
+                slack_team_id = :team_id
+            WHERE slack_user_id = :user_id
+            AND slack_enterprise_id = :enterprise_id
+            AND is_active = 1
+            """
+        ).bindparams(user_id=user_id, team_id=team_id, enterprise_id=enterprise_id)
+        await execute(sql, async_engines["ray_integration"], commit_after=True)
+
+    id_token = create_languagecloud_id_token(
+        uuid=row["member_uuid"],
+        given_name=row["given_name"],
+        family_name=row["family_name"],
+        email=row["email_primary"],
+        is_active=bool(row["active"]),
+        aud="languagecloud-api",
+        secret=config.languagecloud_api_key.get_secret_value(),
+    )
+    (
+        ray_client_id,
+        user_group_id,
+        username,
+        groupid,
+        is_sso,
+        slack_access_token,
+        settings_id,
+    ) = (
+        row["member_uuid"],
+        row["groupid"],
+        row["login"],
+        row["groupid"],
+        row["is_sso"],
+        row["access_token"],
+        row["settings_id"],
+    )
+    # Now get the access token for authentication.
+    sql = text(
+        """
+        SELECT obj_uuid FROM access_token
+        WHERE account_id = :client_id
+        AND active = 1
+        LIMIT 1
+        """
+    ).bindparams(client_id=ray_client_id)
+    access_token_result = await fetch_one(sql, async_engines["api"])
+    if not access_token_result:
+        access_token = ""
+    else:
+        access_token = access_token_result["obj_uuid"]
 
     # TODO Fix this, sometimes the plan is incorrect.
     # get group subscription plan
-    with engines["sitemanager_readonly"].connect() as conn:
-        sql = text(
-            """
-                    SELECT psp.plan_name
-                    FROM ps_service ps
-                    LEFT JOIN ps_plan psp
-                    ON psp.service_type_uuid = ps.service_type_uuid
-                    LEFT JOIN ps_subscription pss
-                    ON pss.ps_service_uuid = ps.obj_uuid
-                    LEFT JOIN ps_subscription_billing psb
-                    ON psb.ps_subscription_uuid = pss.obj_uuid
-                    WHERE ps.group_uuid = :group_uuid
-                    AND pss.is_active = 1
-                    AND psb.expiry > NOW()
-                    """
-        ).bindparams(group_uuid=groupid)
-        result = conn.execute(sql)
-        plan_row = result.fetchall()
-        if not plan_row:
-            plan = "Free"
-        else:
-            plan = plan_row[0].plan_name
+    sql = text(
+        """
+                SELECT psp.plan_name
+                FROM ps_service ps
+                LEFT JOIN ps_plan psp
+                ON psp.service_type_uuid = ps.service_type_uuid
+                LEFT JOIN ps_subscription pss
+                ON pss.ps_service_uuid = ps.obj_uuid
+                LEFT JOIN ps_subscription_billing psb
+                ON psb.ps_subscription_uuid = pss.obj_uuid
+                WHERE ps.group_uuid = :group_uuid
+                AND pss.is_active = 1
+                AND psb.expiry > NOW()
+                """
+    ).bindparams(group_uuid=groupid)
+    plan_rows = await fetch_all(sql, async_engines["sitemanager_readonly"])
+    if not plan_rows:
+        plan = "Free"
+    else:
+        plan = plan_rows[0]["plan_name"]
     return RayClient(
         id=ray_client_id,
         user_group_id=user_group_id,
@@ -1121,7 +1116,7 @@ async def log_new_user_info(user):
     await execute(sql, async_engines["ray_integration"], commit_after=True)
 
 
-def connect_ray_account_sso(
+async def connect_ray_account_sso(
     user_id: str,
     team_id: str,
     email_id: str,
@@ -1164,19 +1159,19 @@ def connect_ray_account_sso(
     if result1.rowcount == 0:
         member_id = str(uuid4()).upper()
         # Create User and User Group Link
-        create_client_and_mglink(
+        await create_client_and_mglink(
             user_data=json.dumps(slack_data),
             member_id=member_id,
         )
         # Create log
         # crete_slack_logs_sso(user_data=json.dumps(slack_data), member_id=member_id, message="New User")
         # Create User Access Token
-        create_client_access_tokens(client_id=member_id, type="public")
+        await create_client_access_tokens(client_id=member_id, type="public")
         # Create User Slack Link
-        create_slack_deltaray_link_sso(
+        await create_slack_deltaray_link_sso(
             user_data=json.dumps(slack_data), member_id=member_id
         )
-        add_to_verify_team(
+        await add_to_verify_team(
             user_uuid=member_id,
             enterprise_id=enterprise_id,
         )
@@ -1187,15 +1182,15 @@ def connect_ray_account_sso(
             raise Exception("Member ID not found")
         member_id = result.obj_uuid
 
-        create_client_access_tokens(client_id=member_id, type="public")
-        create_slack_deltaray_link_sso(
+        await create_client_access_tokens(client_id=member_id, type="public")
+        await create_slack_deltaray_link_sso(
             user_data=json.dumps(slack_data), member_id=member_id
         )
-        add_client_to_slack_group(
+        await add_client_to_slack_group(
             user_data=slack_data,
             member_id=member_id,
         )
-        add_to_verify_team(
+        await add_to_verify_team(
             user_uuid=member_id,
             enterprise_id=enterprise_id,
         )
@@ -1274,7 +1269,7 @@ async def add_client_to_slack_group(user_data: dict, member_id: str):
     await execute(sql, async_engines["sitemanager"], commit_after=True)
 
 
-def create_client_and_mglink(
+async def create_client_and_mglink(
     user_data: str,
     member_id: str,
 ):
@@ -1543,6 +1538,8 @@ async def log_transcribe_request(
     tokens = duration_to_tokens(duration_ms)
     if not tokens:
         raise Exception("Duration is 0")
+    if not ray_connection.client:
+        raise Exception("No client connection")
     url = f"{domains.languagecloud_api}/mt/transcribe"
     headers = {
         "Authorization": f"Bearer {ray_connection.client.id_token}",
@@ -1740,7 +1737,7 @@ async def is_slack_team_admin(client_uuid: str, enterprise_id: str | None) -> bo
     return client_type in ["Admin", "Owner"]
 
 
-def get_group_mt_engine(
+async def get_group_mt_engine(
     group_uuid: str,
     is_group: bool = False,
 ) -> str:
@@ -1755,35 +1752,31 @@ def get_group_mt_engine(
     group_id = group_uuid
     mt_engine = "google"
     if not is_group:
-        # CHEKC IF IS INHERITE FROM SUPER GROUP
-        with engines["sitemanager"].connect() as conn:
-            sql = text(
-                """
-                    SELECT super_group_uuid
-                    FROM super_group_glink
-                    WHERE group_uuid = :group_uuid
-                    AND property_to_inherit = :ai_inherit
-                """
-            ).bindparams(group_uuid=group_uuid, ai_inherit=ai_inherit)
-            super_group_inherit = conn.execute(sql)
-            rows = super_group_inherit.fetchall()
-            if rows:
-                group_id = rows[0].super_group_uuid
-
-    # GET GROUP MT ENGINE
-    with engines["sitemanager_readonly"].connect() as conn:
+        # CHECK IF IS INHERIT FROM SUPER GROUP
         sql = text(
             """
-            SELECT ai_mt
-            FROM obj_m_group
-            WHERE obj_uuid = :group_id
+                SELECT super_group_uuid
+                FROM super_group_glink
+                WHERE group_uuid = :group_uuid
+                AND property_to_inherit = :ai_inherit
             """
-        ).bindparams(group_id=group_id)
-        result = conn.execute(sql)
-        row = result.first()
+        ).bindparams(group_uuid=group_uuid, ai_inherit=ai_inherit)
+        rows = await fetch_all(sql, async_engines["sitemanager"])
+        if rows:
+            group_id = rows[0]["super_group_uuid"]
 
-    if row is not None and row.ai_mt is not None and row.ai_mt != "":
-        mt_engine = row.ai_mt
+    # GET GROUP MT ENGINE
+    sql = text(
+        """
+        SELECT ai_mt
+        FROM obj_m_group
+        WHERE obj_uuid = :group_id
+        """
+    ).bindparams(group_id=group_id)
+    row = await fetch_one(sql, async_engines["sitemanager_readonly"])
+
+    if row is not None and row["ai_mt"] is not None and row["ai_mt"] != "":
+        mt_engine = row["ai_mt"]
 
     return mt_engine
 
@@ -1803,7 +1796,7 @@ async def is_verify_job(job_uuid: str) -> bool:
     return result["jobtype"] == "Verify"
 
 
-async def get_token_for_team(team_id: str) -> str:
+async def get_token_for_team(team_id: str) -> str | None:
     """Get the bot token for a team."""
     sql = text(
         """

@@ -416,7 +416,7 @@ async def auto_translate_message(
     assert context.channel_id  # TODO enforce this
 
     # TODO make this fetch all settings for channel
-    settings = get_auto_translate_settings_and_langs(context, context.channel_id)
+    settings = await get_auto_translate_settings_and_langs(context, context.channel_id)
     required_tokens = len(text) * len(settings)
     if not required_tokens or not await require_mt_tokens(context, required_tokens):
         return None
@@ -441,7 +441,7 @@ async def auto_translate_message(
         client_id = context["ray"].client.id if context["ray"].client else org_uuid
         # Get display_format from settings
         display_format = settings[0]["display_format"] if settings else None
-        glossary_resource = evaluate_get_glossary_resource(
+        glossary_resource = await evaluate_get_glossary_resource(
             org_uuid, source_lang, target_langs[0], "google"
         )
         service_language_mapping = create_service_language_mapping(target_langs)

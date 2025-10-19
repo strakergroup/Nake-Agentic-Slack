@@ -3,9 +3,9 @@ from typing import Iterable
 
 import langcodes
 from slack_bolt.context.async_context import AsyncBoltContext
-from sqlalchemy import delete, distinct, func, or_, select, text, update
+from sqlalchemy import delete, distinct, func, or_, select, text
 from sqlalchemy.orm import Session
-from straker_utils.sql.async_engine import fetch_all
+from straker_utils.sql.async_engine import execute, fetch_all
 
 from app.translate import _
 
@@ -338,7 +338,7 @@ def get_all_settings_for_channel(
     return [new_settings]
 
 
-def get_auto_translate_settings_and_langs(
+async def get_auto_translate_settings_and_langs(
     context: AsyncBoltContext, channel_id: str | None = None, team_id: str | None = None
 ) -> list[dict[str, str]]:
     """Get the auto-translate languages for a channel for a LanugageCloud group.
@@ -350,30 +350,29 @@ def get_auto_translate_settings_and_langs(
     if not channel_id:
         return []  # Modal triggers do not have channel_id
     team_id = team_id or context.team_id
-    with Session(engines["ray_integration"]) as session:
-        get_all_settings_for_channel(session, context, channel_id)
-        results = session.execute(
-            select(
-                distinct(SlackGroupSettingsTranslationLangs.lang).label("target_lang"),
-                SlackGroupSettingsTranslation.display_format,
-            )
-            .join(
-                SlackGroupSettingsTranslation,
-                SlackGroupSettingsTranslation.id
-                == SlackGroupSettingsTranslationLangs.translation_settings_id,
-            )
-            .where(
-                SlackGroupSettingsTranslation.channel_id == channel_id,
-            )
-        ).all()
+
+    # Use async engine for database operations
+    from sqlalchemy import text
+
+    sql = text(
+        """
+        SELECT DISTINCT langslang.lang as target_lang, sgt.display_format
+        FROM slack_group_settings_translation_langs langslang
+        JOIN slack_group_settings_translation sgt
+        ON sgt.id = langslang.translation_settings_id
+        WHERE sgt.channel_id = :channel_id
+        """
+    ).bindparams(channel_id=channel_id)
+
+    results = await fetch_all(sql, async_engines["ray_integration"])
 
     return [
-        {"target_lang": row.target_lang, "display_format": row.display_format}
+        {"target_lang": row["target_lang"], "display_format": row["display_format"]}
         for row in results
     ]
 
 
-def update_auto_translate_group_settings(
+async def update_auto_translate_group_settings(
     context: AsyncBoltContext,
     channels: list[dict[str, str]],
     languages: list[str],
@@ -386,6 +385,8 @@ def update_auto_translate_group_settings(
         languages (list[str]): The languages to auto-translate to.
         display_format: The display format setting.
     """
+    # Note: This function uses complex ORM operations that would need significant refactoring
+    # to work with async engines. For now, keeping the sync version.
     with Session(engines["ray_integration"]) as session:
         for channel in channels:
             # insert for team
@@ -415,7 +416,7 @@ def update_auto_translate_group_settings(
         session.commit()
 
 
-def disable_auto_translate_group_settings(
+async def disable_auto_translate_group_settings(
     context: AsyncBoltContext, channel_id: str
 ) -> None:
     """Disable the auto-translate settings for a channel for a LanugageCloud group
@@ -424,6 +425,8 @@ def disable_auto_translate_group_settings(
     Args:
         channel_id str: The ID of the channel (conversations) to auto-translate.
     """
+    # Note: This function uses complex ORM operations that would need significant refactoring
+    # to work with async engines. For now, keeping the sync version.
     with Session(engines["ray_integration"]) as session:
         channel_settings = get_all_settings_for_channel(session, context, channel_id)
         settings_ids = [setting.id for setting in channel_settings]
@@ -437,7 +440,7 @@ def disable_auto_translate_group_settings(
         session.commit()
 
 
-def get_full_group_translation_settings(
+async def get_full_group_translation_settings(
     context: AsyncBoltContext, page: int = 1, rows_per_page: int = 5
 ) -> list[tuple[SlackGroupSettingsTranslation, list[str]]]:
     """Get the group translation settings for all channels.
@@ -447,6 +450,8 @@ def get_full_group_translation_settings(
             the channel settings and the languages to translate to.
     """
     # TODO Refactor
+    # Note: This function uses complex ORM operations that would need significant refactoring
+    # to work with async engines. For now, keeping the sync version.
     with Session(engines["ray_integration"]) as session:
         settings = get_or_create_group_settings(session, context, context.team_id)
         settings_id = [setting.id for setting in settings]
@@ -484,7 +489,7 @@ def get_full_group_translation_settings(
 
 
 # pagination - get number of pages based on rows per page and number of records
-def get_pagination(context: AsyncBoltContext, rows_per_page: int) -> int:
+async def get_pagination(context: AsyncBoltContext, rows_per_page: int) -> int:
     """Get the number of pages based on the number of rows per page and total rows.
 
     Args:
@@ -493,6 +498,8 @@ def get_pagination(context: AsyncBoltContext, rows_per_page: int) -> int:
     Returns:
         int: The number of pages.
     """
+    # Note: This function uses complex ORM operations that would need significant refactoring
+    # to work with async engines. For now, keeping the sync version.
     with Session(engines["ray_integration"]) as session:
         settings = get_or_create_group_settings(session, context)
         settings_id = [setting.id for setting in settings]
@@ -510,11 +517,16 @@ def get_pagination(context: AsyncBoltContext, rows_per_page: int) -> int:
     return (total_rows + rows_per_page - 1) // rows_per_page
 
 
-def update_channel_id(old_channel_id, new_channel_id):
-    with Session(engines["ray_integration"]) as session:
-        session.execute(
-            update(SlackGroupSettingsTranslation)
-            .where(SlackGroupSettingsTranslation.channel_id == old_channel_id)
-            .values(channel_id=new_channel_id)
-        )
-        session.commit()
+async def update_channel_id(old_channel_id, new_channel_id):
+    # Use async engine for database operations
+    from sqlalchemy import text
+
+    sql = text(
+        """
+        UPDATE slack_group_settings_translation
+        SET channel_id = :new_channel_id
+        WHERE channel_id = :old_channel_id
+        """
+    ).bindparams(new_channel_id=new_channel_id, old_channel_id=old_channel_id)
+
+    await execute(sql, async_engines["ray_integration"], commit_after=True)

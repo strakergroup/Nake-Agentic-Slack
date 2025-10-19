@@ -151,7 +151,9 @@ async def message_event(
     body: Dict[str, Any],
 ):
     # Check for duplicate events
-    if await is_duplicate_event(context.enterprise_id, "message", message.get("ts")):
+    if context.enterprise_id and await is_duplicate_event(
+        context.enterprise_id, "message", message.get("ts")
+    ):
         return
 
     # https://api.slack.com/events/message
@@ -188,7 +190,9 @@ async def app_mention_event(
     client: AsyncWebClient, context: RayContext, event: Dict[str, Any]
 ):
     # Check for duplicate events
-    if await is_duplicate_event(context.enterprise_id, "app_mention", event.get("ts")):
+    if context.enterprise_id and await is_duplicate_event(
+        context.enterprise_id, "app_mention", str(event.get("ts"))
+    ):
         return
 
     # https://api.slack.com/events/app_mention
@@ -290,7 +294,7 @@ async def app_uninstalled(context: RayContext):
 @app.event("channel_id_changed")
 @slack_log_decorator
 async def channel_id_changed(event: Dict[str, Any]):
-    update_channel_id(event.get("old_channel_id"), event.get("new_channel_id"))
+    await update_channel_id(event.get("old_channel_id"), event.get("new_channel_id"))
 
 
 @app.message_shortcut("new_job", middleware=[ray_connection])
@@ -432,6 +436,8 @@ async def download_transcribed_file(
 ):
     await ack()
     if await require_ray_client(context):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         task_uuid = action["value"]
         task_result = await get_asr_task(task_uuid, context["ray"].client.id)
         file_id = task_result["file_id"]
@@ -463,7 +469,9 @@ async def download_ai_translation_action(
     await ack()
     if await require_ray_client(context):
         file_uuid = action["value"]
-        file = await download_verify_file(context.ray.client, file_uuid)
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
+        file = await download_verify_file(context["ray"].client, file_uuid)
 
         try:
             # Upload file to Slack using memory-efficient method
@@ -514,6 +522,8 @@ async def srt_translate_action(
 ):
     await ack()
     if await require_ray_client(context):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         task_uuid = action["value"]
         # get uuid from output_file
         task_result = await get_asr_task(task_uuid, context["ray"].client.id)
@@ -552,7 +562,7 @@ async def login_sso_action(
                 info_response_json = await client.users_info(user=context["user_id"])
                 if info_response_json["ok"]:
                     user_info = info_response_json["user"]
-                    connect_ray_account_sso(
+                    await connect_ray_account_sso(
                         context["user_id"],
                         context["team_id"],
                         user_info["profile"]["email"],
@@ -648,6 +658,8 @@ async def job_search_action(
 ):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         await client.views_open(
             trigger_id=body["trigger_id"],
             view=job_search_modal(
@@ -701,6 +713,8 @@ async def ray_command(
         case ["logout" | "signout" | "disconnect"]:
             # Logout and respond with message.
             if await require_ray_client(context):
+                assert context["ray"] is not None
+                assert context["ray"].client is not None
                 msg = LogoutMessage(context["ray"].client)
                 await respond(text=msg.text, blocks=msg.blocks)
 
@@ -722,7 +736,7 @@ async def ray_command(
                 ) or (context["ray"] and context["ray"].client and is_straker_admin)
 
                 if translation_settings_enabled:
-                    settings = get_auto_translate_settings_and_langs(
+                    settings = await get_auto_translate_settings_and_langs(
                         context, context.channel_id
                     )
                     auto_translate_langs = [
@@ -752,6 +766,8 @@ async def ray_command(
         case ["job", reference, *reference_other]:
             # Get job status or list of jobs.
             if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+                assert context["ray"] is not None
+                assert context["ray"].client is not None
                 # Try searching job by TJ number if the format is correct.
                 if not reference_other and re.fullmatch(
                     r"tj\d+", reference, re.IGNORECASE
@@ -773,6 +789,8 @@ async def ray_command(
         case ["jobs"] | ["my", "jobs"]:
             # Get summary of jobs.
             if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+                assert context["ray"] is not None
+                assert context["ray"].client is not None
                 await post_job_summary(client, context, context["ray"].client)
         case ["quote"] | ["new"]:
             # Show quote message.
@@ -795,6 +813,8 @@ async def ray_command(
             match = re.fullmatch(r"tj\d+", command_text, re.IGNORECASE)
             if match:
                 if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+                    assert context["ray"] is not None
+                    assert context["ray"].client is not None
                     await post_job_status(
                         client, context, context["ray"].client, command_text
                     )
@@ -819,14 +839,14 @@ async def show_auto_translate_settings(
     channel_info = json.loads(payload["value"])
     channel_id = channel_info.get("channel_id")
     team_id = channel_info.get("team_id", "")
-    settings = get_auto_translate_settings_and_langs(context, channel_id, team_id)
+    settings = await get_auto_translate_settings_and_langs(context, channel_id, team_id)
     auto_translate_langs = [setting["target_lang"] for setting in settings]
     await client.views_open(
         trigger_id=body["trigger_id"],
         view=translation_settings_view(
             [channel_id] if channel_id else None,
             auto_translate_langs,
-            settings[0]["display_format"] if settings else "thread",
+            settings[0].get("display_format", "thread") if settings else "thread",
             team_id,
         ),
     )
@@ -845,7 +865,7 @@ async def disable_auto_translate_settings(
         channel_info = json.loads(payload["value"])
         channel_id = channel_info.get("channel_id")
         team_id = channel_info.get("team_id", "")
-        disable_auto_translate_group_settings(context, channel_id)
+        await disable_auto_translate_group_settings(context, channel_id)
         context["team_id"] = team_id
         team_channel = await resolve_channels_to_team(
             channel_id, client, context.enterprise_id, team_id
@@ -907,6 +927,8 @@ async def show_job_details(
     """Get job info. Triggered from the "View More Info" in the job list"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         try:
             job_info = json.loads(payload["value"])
             job_id, status = job_info["id"], job_info["status"]
@@ -938,6 +960,8 @@ async def daily_summary(ack: AsyncAck, context: RayContext, client: AsyncWebClie
     """Get daily summary. Triggered from the Home View Daily Summary button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         await post_job_summary(client, context, context["ray"].client)
 
 
@@ -947,6 +971,8 @@ async def all_summary(ack: AsyncAck, context: RayContext, client: AsyncWebClient
     """Get daily summary. Triggered from the Home View Daily Summary button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         await post_job_summary(
             client, context=context, ray_client=context["ray"].client, all_jobs=True
         )
@@ -960,6 +986,8 @@ async def handle_report_insights_action(
     """Get Report and Insights. Triggered from the Home Report Insights button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         await post_report_insights(client, context, context["ray"].client)
 
 
@@ -971,6 +999,8 @@ async def handle_ai_translate_help_action(
     """Get ai translate help link. Triggered from the Home AI Translate help button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         await ai_translate_help(client, context, context["ray"].client)
 
 
@@ -982,6 +1012,8 @@ async def handle_verify_help_action(
     """Get verify help link. Triggered from the Home Verify help button"""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.QUALITY_EVALUATION):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         await verify_help(client, context, context["ray"].client)
 
 
@@ -1019,6 +1051,8 @@ async def job_list_action(
     """Paginated job list. Triggered from the job summary dropdown."""
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         if "selected_option" in payload:
             preset = payload["selected_option"].get("value")
             await post_job_list(client, context, context["ray"].client, preset=preset)
@@ -1040,6 +1074,8 @@ async def job_list_paginated_action(
     """
     await ack()
     if await require_ray_client(context, variation=LoginMessage.GET_JOB):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         try:
             settings = json.loads(payload["value"])
             preset = settings["preset"]
@@ -1065,15 +1101,18 @@ async def job_list_paginated_action(
 @slack_log_decorator
 async def get_account_info(ack: AsyncAck, context: RayContext, respond: AsyncRespond):
     await ack()
-    msg = InfoMessage(
-        ray_client=context["ray"].client,
-        user_id=context["user_id"],
-        team_id=context["team_id"],
-        enterprise_id=context.enterprise_id,
-        channel_id=context["channel_id"],
-        is_ibm=is_ibm_enterprise(context.enterprise_id),
-    )
-    await respond(text=msg.text, blocks=msg.blocks, replace_original=False)
+    if await require_ray_client(context):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
+        msg = InfoMessage(
+            ray_client=context["ray"].client,
+            user_id=context["user_id"],
+            team_id=context["team_id"],
+            enterprise_id=context.enterprise_id,
+            channel_id=context["channel_id"],
+            is_ibm=is_ibm_enterprise(context.enterprise_id),
+        )
+        await respond(text=msg.text, blocks=msg.blocks, replace_original=False)
 
 
 # The "Connect" button short cut in Help Message
@@ -1109,6 +1148,8 @@ async def approve_pending_client_action(
 ):
     await ack()
     if await require_ray_client(context):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         try:
             # action["value"] should contain the new client details.
             pending_client_details = json.loads(action["value"])
@@ -1176,8 +1217,10 @@ async def disconnect_account_action(
         context["user_id"], context["team_id"], context.enterprise_id
     )
     # action["value"] should contain the LanguageCloud account username.
+    assert context["ray"] is not None
+    assert context["ray"].client is not None
     msg = SuccessfulLogoutMessage(
-        context.user_id, context.ray.client.sso, action.get("value")
+        context.user_id, context["ray"].client.sso, action.get("value")
     )
     await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
 
@@ -1223,6 +1266,8 @@ async def handle_new_job(
 
         # Process files and submit job.
         try:
+            assert context["ray"] is not None
+            assert context["ray"].client is not None
             responses = await submit_job(client, context["ray"].client, form)
             result = responses[0].response.json()["Message"]
             group_id = form.group_id or context["ray"].client.user_group_id
@@ -1359,12 +1404,20 @@ async def view_update_auto_translate_settings(
         return
     try:
         if not form.languages:
-            for channel in team_channels:
-                disable_auto_translate_group_settings(context, channel["channel_id"])
+            for channel_list in team_channels:
+                if channel_list:  # Check if the list is not empty
+                    channel = channel_list[0]  # Get the first (and only) item
+                    await disable_auto_translate_group_settings(
+                        context, channel["channel_id"]
+                    )
         else:
-            update_auto_translate_group_settings(
+            # Flatten the team_channels list since each item is a list with one dict
+            flattened_channels = [
+                channel_list[0] for channel_list in team_channels if channel_list
+            ]
+            await update_auto_translate_group_settings(
                 context,
-                channels=team_channels,
+                channels=flattened_channels,
                 languages=form.languages,
                 display_format=form.display_format,
             )
@@ -1406,7 +1459,9 @@ async def view_update_auto_translate_settings(
             except Exception as e:
                 notify_exception(e)
                 if context.enterprise_id:
-                    all_tokens = get_all_tokens_for_enterprise(context.enterprise_id)
+                    all_tokens = await get_all_tokens_for_enterprise(
+                        context.enterprise_id
+                    )
                     for token in all_tokens:
                         client.token = token.bot_token
                         try:
@@ -1417,9 +1472,12 @@ async def view_update_auto_translate_settings(
                         except Exception as e:
                             pass
 
-        for channel in team_channels:
-            await join_channel(channel["channel_id"], channel["bot_token"])
-            await notify_channel(channel["channel_id"], channel["bot_token"])
+        for channel_list in team_channels:
+            if channel_list:  # Check if the list is not empty
+                channel = channel_list[0]  # Get the first (and only) item
+                assert isinstance(channel, dict)  # Type assertion for type checker
+                await join_channel(channel["channel_id"], channel["bot_token"])
+                await notify_channel(channel["channel_id"], channel["bot_token"])
 
     except Exception as e:
         print(e)
@@ -1451,6 +1509,8 @@ async def language_options_uuid(ack: AsyncAck, payload: Dict[str, Any]):
 @app.options("group_options", middleware=[ray_connection])
 async def group_options(ack: AsyncAck, context: RayContext):
     if await require_ray_client(context):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         options = await get_groups(context["ray"].client)
         await ack(options=options)
 
@@ -1542,6 +1602,8 @@ async def cancel_job_action(
 ):
     await ack()
     if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         if "value" in payload:
             job_info = json.loads(payload["value"])
             if job_info.get("job_action") == "list":
@@ -1576,6 +1638,8 @@ async def handle_cancel_job(
     """Get job info. Triggered from the "View More Info" in the job list"""
     await ack()
     if await require_ray_client(context, prompt_login=False):
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         try:
             form_state = view["state"]["values"] if view else {}
             form = JobSearchForm.parse_slack(form_state)
@@ -1632,7 +1696,13 @@ async def message_changed_event(
     message: Dict[str, Any],
 ):
     # Check for duplicate events
-    if await is_duplicate_event(context.enterprise_id, "message", message.get("ts")):
+    if (
+        context.enterprise_id
+        and message.get("ts")
+        and await is_duplicate_event(
+            context.enterprise_id, "message", str(message.get("ts"))
+        )
+    ):
         return
 
     if message.get("subtype") == "message_changed":
@@ -1665,13 +1735,17 @@ async def evaluate_job_submit(
     """Evaluate job. Triggered from the Evaluate form view."""
     await ack(response_action="clear")
     try:
-        channel_id = view["private_metadata"]
+        if not view:
+            return
+        channel_id = view.get("private_metadata")
+        if not channel_id:
+            return
         form_data = view["state"]["values"]
         form = EvaluateJobForm.parse_human_job_form(form_data, view["callback_id"])
     except ValidationError as e:
         errors = convert_pydantic_to_slack_error(e)
         await client.chat_postMessage(
-            channel=context.user_id, text="Error: " + str(errors)
+            channel=context.user_id or "", text="Error: " + str(errors)
         )
         return
     if await require_ray_client(context, prompt_login=True):
@@ -1696,8 +1770,10 @@ async def evaluate_job_submit(
                 continue
             input_files.append(input_file)
         try:
+            assert context["ray"] is not None
+            assert context["ray"].client is not None
             await submit_evaluation_job(
-                context.ray.client,
+                context["ray"].client,
                 input_files,
                 form.target_langs_uuid,
                 form.reference,
@@ -1777,11 +1853,13 @@ async def verify_job_modal_open_action(
     view_id = response["view"]["id"]
 
     try:
-        job = await get_client_evaluation_job(context.ray.client, job_uuid)
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
         if await require_ray_client(context, prompt_login=True):
+            job = await get_client_evaluation_job(context["ray"].client, job_uuid)
             langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
             costs = await get_job_pricing(
-                context.ray.client,
+                context["ray"].client,
                 job_uuid,
                 [file["file_uuid"] for file in job["data"]["source_files"]],
                 langs,
@@ -1794,8 +1872,8 @@ async def verify_job_modal_open_action(
             )
             try:
                 await client.views_update(view_id=view_id, view=final_view)
-            except SlackApiError as e:
-                if e.response["error"] == "view_closed":
+            except SlackApiError as slack_e:
+                if slack_e.response["error"] == "view_closed":
                     # The modal was closed by the user, no need to do anything
                     pass
                 else:
@@ -1824,8 +1902,8 @@ async def verify_job_modal_open_action(
                 ],
             }
             await client.views_update(view_id=view_id, view=error_view)
-        except SlackApiError as e:
-            if e.response["error"] == "view_closed":
+        except SlackApiError as slack_e:
+            if slack_e.response["error"] == "view_closed":
                 # The modal was closed by the user, no need to do anything
                 pass
             else:
@@ -1856,8 +1934,7 @@ async def verify_job_modal_open_action(
                 # The modal was closed by the user, no need to do anything
                 pass
             else:
-                raise
-        raise e
+                raise e
 
 
 @app.action("quote_accept_all", middleware=[ray_connection])
@@ -1886,7 +1963,9 @@ async def quote_accept_all_action(
     await redis_conn.set(redis_key, "1", ex=60)
 
     try:
-        job = await get_client_evaluation_job(context.ray.client, job_uuid)
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
+        job = await get_client_evaluation_job(context["ray"].client, job_uuid)
     except VerifyAPIError as e:
         await client.chat_postMessage(
             channel=context["channel_id"],
@@ -1948,7 +2027,10 @@ async def handle_verify_job_submission(
             ),
         )
         return
-    job = await get_client_evaluation_job(context.ray.client, job_uuid)
+    assert context["ray"] is not None
+    assert context["ray"].client is not None
+
+    job = await get_client_evaluation_job(context["ray"].client, job_uuid)
     target_languages = job["data"]["target_languages"]
 
     # Extract the selected checkbox values from input blocks
@@ -2183,7 +2265,11 @@ async def handle_document_mt_job(
                 )
                 return
 
-            channel_id = view["private_metadata"]
+            channel_id = (
+                view["private_metadata"]
+                if view and "private_metadata" in view
+                else None
+            )
             context["channel_id"] = channel_id or context["user_id"]
             files_uploaded = []
             duplicate_submissions = []

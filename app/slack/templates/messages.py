@@ -259,7 +259,7 @@ class WelcomeBackMessage(SlackMessage):
     account.
     """
 
-    def __init__(self, user_id: str, ray_connection: RayConnection) -> None:
+    def __init__(self, user_id: str, ray_connection: RayConnection | None) -> None:
         waveEmoji = ":wave:"
         is_verify_enabled = (
             ray_connection.super_group[0].enable_verify_in_slack

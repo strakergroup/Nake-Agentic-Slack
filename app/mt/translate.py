@@ -100,7 +100,7 @@ def resolve_language(target_langs: list[str], engine: str) -> list[str]:
 
 
 # TODO: this should check if lang is supported by api. Should return array of google_langs and mircosoft_langs
-def get_mt_engine(target_langs: list[str], mt_id: str, is_gropid: bool) -> str:
+async def get_mt_engine(target_langs: list[str], mt_id: str, is_gropid: bool) -> str:
     """Gets engine that should be used based on group setting and language."""
     microsoft_languages = {
         "fr-ca": "fr-ca",
@@ -109,7 +109,7 @@ def get_mt_engine(target_langs: list[str], mt_id: str, is_gropid: bool) -> str:
     }
     if any(lang.lower() in microsoft_languages for lang in target_langs):
         return "microsoft"
-    ai_engine = get_group_mt_engine(mt_id, is_gropid)
+    ai_engine = await get_group_mt_engine(mt_id, is_gropid)
     return ai_engine
 
 

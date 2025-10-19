@@ -792,7 +792,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     user_uuid=auth.slack_user.ray_client_id,
                     group_uuid=auth.slack_user.ray_user_group_id,
                     organization_uuid=extra_data.organization_uuid,
-                    text=extra_data.source_text or "[Source text not available]",
+                    input_text=extra_data.source_text or "[Source text not available]",
                     source_lang=extra_data.source_language,
                     translations=translations_for_log,
                     transaction_uuid=transaction_uuid,
@@ -824,7 +824,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
             signup_event = ClientSignupEvent.model_validate(event.data)
             admins: dict[str, tuple[SlackUser, list[ClientGroup]]] = {}
             for group in signup_event.groups:
-                admin_slack_users = get_group_admin_slack_users(group.uuid)
+                admin_slack_users = await get_group_admin_slack_users(group.uuid)
                 for admin in admin_slack_users:
                     if admin.ray_client_id not in admins:
                         admins[admin.ray_client_id] = (admin, [])
@@ -861,7 +861,7 @@ async def api_job_callback(
     """Callback endpoint for API jobs."""
     # Check if the callback can be linked to a Slack user.
     slack_user = get_slack_user(client_id)
-    demo_slack_users = get_demo_link(client_id)
+    demo_slack_users = await get_demo_link(client_id)
     if slack_user is None:
         notify_message("Slack user not found in callback endpoint", severity="WARNING")
         raise HTTPException(401)
@@ -870,7 +870,7 @@ async def api_job_callback(
     set_user_language(user_info)
     # Validate X-Straker-Signature.
     raw_body = await request.body()
-    access_tokens = get_client_access_tokens(slack_user.ray_client_id)
+    access_tokens = await get_client_access_tokens(slack_user.ray_client_id)
     is_header_valid = any(
         validate_api_callback_signature(raw_body, token, x_straker_signature)
         for token in access_tokens

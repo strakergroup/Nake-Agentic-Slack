@@ -6,9 +6,10 @@ from buglog import notify_exception
 from slack_bolt.context.respond.async_respond import AsyncRespond
 from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import text
+from straker_utils.sql.async_engine import execute
 
 from ...auth.connector import SlackUser
-from ...database import engines
+from ...database import async_engines
 from ...dependencies import RayEvent
 from ...slack.templates.messages import SlackMessage
 from ...slack.web import get_mt_ts_cached, set_mt_ts_edit
@@ -24,23 +25,23 @@ async def log_notification(
 ):
     """Logs a Slack notification which was sent to a Slack user to the database."""
     try:
-        with engines["ray_integration_log"].begin() as conn:
-            sql = text(
-                """
-                INSERT INTO slack_logs_notifications
-                    (event, user_id, channel_id, client_uuid, payload, message)
-                VALUES
-                    (:event, :user_id, :channel_id, :client_uuid, :payload, :message)
-                """
-            ).bindparams(
-                event=event,
-                user_id=user_id,
-                channel_id=channel_id,
-                client_uuid=ray_client_id,
-                payload=json.dumps(event_data),
-                message=message,
-            )
-            conn.execute(sql)
+        # Use async engine for database operations
+        sql = text(
+            """
+            INSERT INTO slack_logs_notifications
+                (event, user_id, channel_id, client_uuid, payload, message)
+            VALUES
+                (:event, :user_id, :channel_id, :client_uuid, :payload, :message)
+            """
+        ).bindparams(
+            event=event,
+            user_id=user_id,
+            channel_id=channel_id,
+            client_uuid=ray_client_id,
+            payload=json.dumps(event_data),
+            message=message,
+        )
+        await execute(sql, async_engines["ray_integration_log"], commit_after=True)
     except Exception as e:
         notify_exception(e)
 
