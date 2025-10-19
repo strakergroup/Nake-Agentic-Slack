@@ -6,10 +6,9 @@ from typing import Any
 from fastapi import APIRouter, Response, status
 
 from ..config import config
-from ..database import engines
+from ..database import async_engines
 from ..redis import redis_conn
 from ..slack import app as slack_app
-
 
 router = APIRouter()
 
@@ -49,7 +48,7 @@ async def health_check(response: Response, password: str | None = None):
 
 async def _check_database(errors: dict[str, Any]) -> None:
     try:
-        await engines.ping_all_async()
+        await async_engines.ping_all()
     except Exception as e:
         errors["database"] = str(e)
 

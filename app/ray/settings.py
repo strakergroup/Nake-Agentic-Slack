@@ -1,18 +1,21 @@
 import functools
 from typing import Iterable
+
 import langcodes
-from sqlalchemy import delete, distinct, func, select, text, update, or_
-from sqlalchemy.orm import Session
 from slack_bolt.context.async_context import AsyncBoltContext
+from sqlalchemy import delete, distinct, func, or_, select, text, update
+from sqlalchemy.orm import Session
+from straker_utils.sql.async_engine import fetch_all
+
+from app.translate import _
 
 from ..auth.connector import RayClient
-from ..database import engines
+from ..database import async_engines, engines
 from ..models import (
     SlackGroupSettings,
-    SlackGroupSettingsTranslationLangs,
     SlackGroupSettingsTranslation,
+    SlackGroupSettingsTranslationLangs,
 )
-from app.translate import _
 
 
 def get_auto_translate_languages(
@@ -189,7 +192,7 @@ def filter_invalid_auto_translate_languages(languages: Iterable[str]) -> list[st
     return [lang for lang in languages if is_valid_auto_translate_language(lang)]
 
 
-def get_auto_translate_user_settings_channels(ray_client: RayClient) -> list[str]:
+async def get_auto_translate_user_settings_channels(ray_client: RayClient) -> list[str]:
     """Get the auto-translate settings (channels) for a LanugageCloud user.
 
     Returns:
@@ -197,20 +200,19 @@ def get_auto_translate_user_settings_channels(ray_client: RayClient) -> list[str
     """
     if ray_client.settings_id is None:
         return []
-    with engines["ray_integration_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT channel_id
-            FROM slack_user_settings_auto_translate_channels
-            WHERE settings_id = :settings_id
-            """
-        ).bindparams(settings_id=ray_client.settings_id)
-        result = conn.execute(sql)
-        channel_ids = [row[0] for row in result]
+    sql = text(
+        """
+        SELECT channel_id
+        FROM slack_user_settings_auto_translate_channels
+        WHERE settings_id = :settings_id
+        """
+    ).bindparams(settings_id=ray_client.settings_id)
+    result = await fetch_all(sql, async_engines["ray_integration_readonly"])
+    channel_ids = [row["channel_id"] for row in result]
     return channel_ids
 
 
-def get_auto_translate_user_settings_langs(ray_client: RayClient) -> list[str]:
+async def get_auto_translate_user_settings_langs(ray_client: RayClient) -> list[str]:
     """Get the auto-translate settings (languages) for a LanugageCloud user.
 
     Returns:
@@ -218,92 +220,16 @@ def get_auto_translate_user_settings_langs(ray_client: RayClient) -> list[str]:
     """
     if ray_client.settings_id is None:
         return []
-    with engines["ray_integration_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT lang
-            FROM slack_user_settings_auto_translate_langs
-            WHERE settings_id = :settings_id
-            """
-        ).bindparams(settings_id=ray_client.settings_id)
-        result = conn.execute(sql)
-        langs = [row[0] for row in result]
+    sql = text(
+        """
+        SELECT lang
+        FROM slack_user_settings_auto_translate_langs
+        WHERE settings_id = :settings_id
+        """
+    ).bindparams(settings_id=ray_client.settings_id)
+    result = await fetch_all(sql, async_engines["ray_integration_readonly"])
+    langs = [row["lang"] for row in result]
     return langs
-
-
-def update_auto_translate_user_settings(
-    ray_client: RayClient, channels: list[str], languages: list[str]
-) -> None:
-    """Update the auto-translate settings for a LanugageCloud user.
-
-    Args:
-        ray_client (RayClient): The client to update the settings for
-        channels (list[str]): The IDs of the channels (conversations) to auto-translate.
-        languages (list[str]): The languages to auto-translate to.
-    """
-    with engines["ray_integration"].begin() as conn:
-        if ray_client.settings_id is None:
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO slack_user_settings
-                    (member_uuid)
-                    VALUES
-                    (:member_uuid)
-                    """
-                ).bindparams(member_uuid=ray_client.id)
-            )
-            settings_id_result = conn.execute(
-                text(
-                    """
-                    SELECT id
-                    FROM slack_user_settings
-                    WHERE member_uuid = :member_uuid
-                    """
-                ).bindparams(member_uuid=ray_client.id)
-            ).first()
-            if settings_id_result:
-                ray_client.settings_id = settings_id_result[0]
-        else:
-            conn.execute(
-                text(
-                    """
-                    DELETE FROM slack_user_settings_auto_translate_channels
-                    WHERE settings_id = :settings_id
-                    """
-                ).bindparams(settings_id=ray_client.settings_id)
-            )
-            conn.execute(
-                text(
-                    """
-                    DELETE FROM slack_user_settings_auto_translate_langs
-                    WHERE settings_id = :settings_id
-                    """
-                ).bindparams(settings_id=ray_client.settings_id)
-            )
-
-        for channel_id in channels:
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO slack_user_settings_auto_translate_channels
-                    (settings_id, channel_id)
-                    VALUES
-                    (:settings_id, :channel_id)
-                    """
-                ).bindparams(settings_id=ray_client.settings_id, channel_id=channel_id)
-            )
-        for lang in languages:
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO slack_user_settings_auto_translate_langs
-                    (settings_id, lang)
-                    VALUES
-                    (:settings_id, :lang)
-                    """
-                ).bindparams(settings_id=ray_client.settings_id, lang=lang)
-            )
 
 
 # Gets back all for enterprise. Creates entry for team if it doesn't exist
@@ -361,7 +287,7 @@ def get_or_create_group_settings(
     else:
         query = query.where(SlackGroupSettings.slack_team_id == team_id)
     settings = session.scalars(query).all()
-    return settings
+    return list(settings)
 
 
 def get_or_create_setting_for_team(
@@ -401,32 +327,7 @@ def get_all_settings_for_channel(
         )
     ).all()
     if auto_translate_settings:
-        return auto_translate_settings
-    # Create record if doesn't exist yet.
-    new_settings = SlackGroupSettingsTranslation(
-        settings_id=settings[0].id, channel_id=channel_id
-    )
-    session.add(new_settings)
-    session.commit()
-    session.refresh(new_settings)
-    return [new_settings]
-
-
-def get_or_create_auto_translate_group_settings(
-    session: Session, context: AsyncBoltContext, channel_id: str
-) -> list[SlackGroupSettingsTranslation]:
-    # TODO streamline this (join)
-    settings = get_or_create_group_settings(session, context)
-    # Extract the list of settings.id
-    settings_ids = [setting.id for setting in settings]
-
-    auto_translate_settings = session.scalars(
-        select(SlackGroupSettingsTranslation)
-        .where(SlackGroupSettingsTranslation.settings_id.in_(settings_ids))
-        .where(SlackGroupSettingsTranslation.channel_id == channel_id)
-    ).all()
-    if auto_translate_settings:
-        return auto_translate_settings
+        return list(auto_translate_settings)
     # Create record if doesn't exist yet.
     new_settings = SlackGroupSettingsTranslation(
         settings_id=settings[0].id, channel_id=channel_id
@@ -462,7 +363,7 @@ def get_auto_translate_settings_and_langs(
                 == SlackGroupSettingsTranslationLangs.translation_settings_id,
             )
             .where(
-                channel_id == SlackGroupSettingsTranslation.channel_id,
+                SlackGroupSettingsTranslation.channel_id == channel_id,
             )
         ).all()
 

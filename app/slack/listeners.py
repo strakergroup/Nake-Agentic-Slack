@@ -42,7 +42,7 @@ from ..auth.connector import (
     disconnect_ray_account,
     disconnect_ray_super_group_and_users,
     get_all_tokens_for_enterprise,
-    get_bot_token,
+    get_bot_token_async,
     get_group_quote_settings,
     get_ray_connection,
     get_token_for_team,
@@ -50,7 +50,6 @@ from ..auth.connector import (
     resolve_channels_to_team,
 )
 from ..config import domains
-from ..database import engines
 from ..ray.settings import (
     disable_auto_translate_group_settings,
     get_auto_translate_settings_and_langs,
@@ -160,18 +159,16 @@ async def message_event(
     # use threads in channels or group conversations (see the "app_mention" event).
     if not context.is_bot:
         if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
-            with engines["ray_integration_readonly"].connect() as conn:
-                # extract team id from body
-                body_team_id = body.get("event", {}).get("team")
-                if body_team_id:
-                    token = get_bot_token(
-                        conn=conn,
-                        team_id=body_team_id,
-                        enterprise_id=context.enterprise_id,
-                    )
-                    if token:
-                        if token != client.token:
-                            client.token = token
+            # extract team id from body
+            body_team_id = body.get("event", {}).get("team")
+            if body_team_id:
+                token = await get_bot_token_async(
+                    team_id=body_team_id,
+                    enterprise_id=context.enterprise_id,
+                )
+                if token:
+                    if token != client.token:
+                        client.token = token
             await respond_to_message(client, context, message, use_thread=False)
         elif (
             message.get("text")

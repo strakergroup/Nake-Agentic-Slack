@@ -2,12 +2,15 @@
 Insert into database and add to redis
 """
 
-from uuid import uuid4
-from sqlalchemy import text
-from ..database import engines
-import httpx
-from ..config import domains
 import json
+from uuid import uuid4
+
+import httpx
+from sqlalchemy import text
+from straker_utils.sql.async_engine import execute, fetch_one
+
+from ..config import domains
+from ..database import async_engines
 
 
 async def create_asr_task(
@@ -36,23 +39,22 @@ async def create_asr_task(
     }
 
     # Insert task into database
-    with engines["sitecommons"].begin() as conn:
-        sql = text(
-            """
-            INSERT INTO transcriber_task_consumer_queue
-                (obj_uuid, member_uuid, event_name, task_data, task_status, entry_id)
-            VALUES
-                (:task_uuid, :member_uuid, :event_name, :task_data, :task_status, :entry_id)
-            """
-        ).bindparams(
-            task_uuid=task_uuid,
-            member_uuid=member_uuid,
-            event_name=event_name,
-            task_data=json.dumps(task_data),
-            task_status=task_status,
-            entry_id=entry_id,
-        )
-        conn.execute(sql)
+    sql = text(
+        """
+        INSERT INTO transcriber_task_consumer_queue
+            (obj_uuid, member_uuid, event_name, task_data, task_status, entry_id)
+        VALUES
+            (:task_uuid, :member_uuid, :event_name, :task_data, :task_status, :entry_id)
+        """
+    ).bindparams(
+        task_uuid=task_uuid,
+        member_uuid=member_uuid,
+        event_name=event_name,
+        task_data=json.dumps(task_data),
+        task_status=task_status,
+        entry_id=entry_id,
+    )
+    await execute(sql, async_engines["sitecommons"], commit_after=True)
 
     async with httpx.AsyncClient() as http:
         await http.post(
@@ -63,7 +65,7 @@ async def create_asr_task(
     return "Task created!"
 
 
-async def get_asr_task(task_uuid: str, member_uuid: str) -> dict:
+async def get_asr_task(task_uuid: str, member_uuid: str) -> dict | None:
     """Get task from transcriber_tasks_consumer_queue table
 
     Args:
@@ -72,14 +74,13 @@ async def get_asr_task(task_uuid: str, member_uuid: str) -> dict:
     Returns:
         dict: Task data
     """
-    with engines["sitecommons"].begin() as conn:
-        sql = text(
-            """
-            SELECT task_result FROM transcriber_task_consumer_queue
-            WHERE obj_uuid = :task_uuid
-            AND member_uuid = :member_uuid
-            """
-        ).bindparams(task_uuid=task_uuid, member_uuid=member_uuid)
-        result = conn.execute(sql).fetchone()
+    sql = text(
+        """
+        SELECT task_result FROM transcriber_task_consumer_queue
+        WHERE obj_uuid = :task_uuid
+        AND member_uuid = :member_uuid
+        """
+    ).bindparams(task_uuid=task_uuid, member_uuid=member_uuid)
+    result = await fetch_one(sql, async_engines["sitecommons"])
 
-        return json.loads(result[0]) if result else None
+    return json.loads(result["task_result"]) if result else None

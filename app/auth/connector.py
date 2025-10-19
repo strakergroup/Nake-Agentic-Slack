@@ -20,11 +20,11 @@ from slack_sdk.errors import SlackApiError
 from slack_sdk.oauth.installation_store import Installation
 from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import bindparam, text
-from sqlalchemy.engine import Connection
 from straker_auth.languagecloud import create_languagecloud_id_token
+from straker_utils.sql.async_engine import execute, fetch_all, fetch_one
 
 from ..config import Environment, config, domains
-from ..database import engines
+from ..database import async_engines, engines
 from .algorithms import encrypt_aes, hash_hmac_sha1
 
 
@@ -175,12 +175,11 @@ def validate_api_callback_signature(
     return signature == hash
 
 
-def get_bot_token(
-    conn: Connection,
+async def get_bot_token_async(
     team_id: str,
     enterprise_id: str | None = None,
 ) -> str | None:
-    """Gets the Slack bot token for a workspace."""
+    """Gets the Slack bot token for a workspace using async engines."""
     if enterprise_id:
         sql = text(
             """
@@ -200,8 +199,8 @@ def get_bot_token(
             LIMIT 1
             """
         ).bindparams(team_id=team_id)
-    result = conn.execute(sql).first()
-    return result[0] if result else None
+    result = await fetch_one(sql, async_engines["ray_integration_readonly"])
+    return result["bot_token"] if result else None
 
 
 async def save_user_token_from_installation(
@@ -231,40 +230,39 @@ async def save_user_token_from_installation(
     scopes_string = (
         ",".join(installation.user_scopes) if installation.user_scopes else None
     )
-    with engines["ray_integration"].begin() as conn:
-        if installation.enterprise_id:
-            sql = text(
-                """
-                UPDATE slack_deltaray_link SET
-                    slack_team_id = :team_id,
-                    access_token = :access_token,
-                    access_token_scopes = :access_token_scopes
-                WHERE slack_user_id = :user_id
-                AND slack_enterprise_id = :enterprise_id
-                """
-            ).bindparams(
-                user_id=installation.user_id,
-                team_id=installation.team_id,
-                enterprise_id=installation.enterprise_id,
-                access_token=installation.user_token,
-                access_token_scopes=scopes_string,
-            )
-        else:
-            sql = text(
-                """
-                UPDATE slack_deltaray_link SET
-                    access_token = :access_token,
-                    access_token_scopes = :access_token_scopes
-                WHERE slack_user_id = :user_id
-                AND slack_team_id = :team_id
-                """
-            ).bindparams(
-                user_id=installation.user_id,
-                team_id=installation.team_id,
-                access_token=installation.user_token,
-                access_token_scopes=scopes_string,
-            )
-        conn.execute(sql)
+    if installation.enterprise_id:
+        sql = text(
+            """
+            UPDATE slack_deltaray_link SET
+                slack_team_id = :team_id,
+                access_token = :access_token,
+                access_token_scopes = :access_token_scopes
+            WHERE slack_user_id = :user_id
+            AND slack_enterprise_id = :enterprise_id
+            """
+        ).bindparams(
+            user_id=installation.user_id,
+            team_id=installation.team_id,
+            enterprise_id=installation.enterprise_id,
+            access_token=installation.user_token,
+            access_token_scopes=scopes_string,
+        )
+    else:
+        sql = text(
+            """
+            UPDATE slack_deltaray_link SET
+                access_token = :access_token,
+                access_token_scopes = :access_token_scopes
+            WHERE slack_user_id = :user_id
+            AND slack_team_id = :team_id
+            """
+        ).bindparams(
+            user_id=installation.user_id,
+            team_id=installation.team_id,
+            access_token=installation.user_token,
+            access_token_scopes=scopes_string,
+        )
+    await execute(sql, async_engines["ray_integration"], commit_after=True)
     return RayClient(
         id=user.id,
         username=user.username,
@@ -281,148 +279,138 @@ async def save_user_token_from_installation(
     )
 
 
-def get_slack_org(org_uuid: str) -> SlackUser | None:
+async def get_slack_org(org_uuid: str) -> SlackUser | None:
     """Gets the Slack organization connected to a RAY client."""
-    with engines["ray_integration"].connect() as conn:
-        sql = text(
-            """
-            SELECT slack_team_id, slack_enterprise_id, verify_organization_uuid, super_group_uuid from slack_super_group_link
-            WHERE verify_organization_uuid = :org_uuid
-            and is_active = 1
-            """
-        ).bindparams(org_uuid=org_uuid)
-        result = conn.execute(sql)
-        row = result.first()
-        if not row:
-            return None
-        bot_token = get_bot_token(
-            conn, team_id=row.slack_team_id, enterprise_id=row.slack_enterprise_id
-        )
-        if not bot_token:
-            return None
-        return SlackUser(
-            user_id=row.verify_organization_uuid,
-            team_id=row.slack_team_id,
-            enterprise_id=row.slack_enterprise_id,
-            channel_id="",
-            is_subscribed=False,
-            bot_token=bot_token,
-            ray_client_id=org_uuid,
-            ray_username="",
-            ray_user_group_id=row.super_group_uuid,
-        )
+    sql = text(
+        """
+        SELECT slack_team_id, slack_enterprise_id, verify_organization_uuid, super_group_uuid from slack_super_group_link
+        WHERE verify_organization_uuid = :org_uuid
+        and is_active = 1
+        """
+    ).bindparams(org_uuid=org_uuid)
+    result = await fetch_one(sql, async_engines["ray_integration"])
+    if not result:
+        return None
+    bot_token = await get_bot_token_async(
+        team_id=result["slack_team_id"], enterprise_id=result["slack_enterprise_id"]
+    )
+    if not bot_token:
+        return None
+    return SlackUser(
+        user_id=result["verify_organization_uuid"],
+        team_id=result["slack_team_id"],
+        enterprise_id=result["slack_enterprise_id"],
+        channel_id="",
+        is_subscribed=False,
+        bot_token=bot_token,
+        ray_client_id=org_uuid,
+        ray_username="",
+        ray_user_group_id=result["super_group_uuid"],
+    )
 
 
-def get_slack_user(ray_client_id: str) -> SlackUser | None:
+async def get_slack_user(ray_client_id: str) -> SlackUser | None:
     """Gets the Slack user connected to a RAY client.
 
     Args:
         ray_client_id (str): The LanguageCloud user ID.
     """
-    with engines["ray_integration"].connect() as conn:
-        sql = text(
-            """
-            SELECT link.slack_user_id,link.slack_team_id,link.slack_enterprise_id,
-                link.slack_channel_id,link.is_subscribed,mem.login,mem.groupid
-            FROM slack_deltaray_link link
-            INNER JOIN sitemanager.obj_m_member mem
-            ON link.member_uuid = mem.obj_uuid
-            WHERE link.member_uuid = :member_uuid
-            AND link.is_active = 1
-            AND mem.active = 1
-            AND mem.is_deleted = 0
-            LIMIT 1
-            """
-        ).bindparams(member_uuid=ray_client_id)
-        result = conn.execute(sql)
-        row = result.first()
-        if row:
-            bot_token = get_bot_token(
-                conn, team_id=row.slack_team_id, enterprise_id=row.slack_enterprise_id
+    sql = text(
+        """
+        SELECT link.slack_user_id,link.slack_team_id,link.slack_enterprise_id,
+            link.slack_channel_id,link.is_subscribed,mem.login,mem.groupid
+        FROM slack_deltaray_link link
+        INNER JOIN sitemanager.obj_m_member mem
+        ON link.member_uuid = mem.obj_uuid
+        WHERE link.member_uuid = :member_uuid
+        AND link.is_active = 1
+        AND mem.active = 1
+        AND mem.is_deleted = 0
+        LIMIT 1
+        """
+    ).bindparams(member_uuid=ray_client_id)
+    result = await fetch_one(sql, async_engines["ray_integration"])
+    if result:
+        bot_token = await get_bot_token_async(
+            team_id=result["slack_team_id"], enterprise_id=result["slack_enterprise_id"]
+        )
+        if bot_token:
+            return SlackUser(
+                user_id=result["slack_user_id"],
+                team_id=result["slack_team_id"],
+                enterprise_id=result["slack_enterprise_id"],
+                channel_id=result["slack_channel_id"],
+                is_subscribed=bool(result["is_subscribed"]),
+                bot_token=bot_token,
+                ray_client_id=ray_client_id,
+                ray_username=result["login"],
+                ray_user_group_id=result["groupid"],
             )
-            if bot_token:
-                return SlackUser(
-                    user_id=row.slack_user_id,
-                    team_id=row.slack_team_id,
-                    enterprise_id=row.slack_enterprise_id,
-                    channel_id=row.slack_channel_id,
-                    is_subscribed=bool(row.is_subscribed),
-                    bot_token=bot_token,
-                    ray_client_id=ray_client_id,
-                    ray_username=row.login,
-                    ray_user_group_id=row.groupid,
-                )
     return None
 
 
-def get_demo_link(member_uuid: str) -> list[str]:
-    with engines["ray_integration_readonly"].connect() as conn:
+async def get_demo_link(member_uuid: str) -> list[str]:
+    sql = text(
+        """
+        SELECT member_uuid
+        FROM slack_demo_users
+        WHERE member_uuid = :member_uuid
+        """
+    ).bindparams(member_uuid=member_uuid)
+    result = await fetch_one(sql, async_engines["ray_integration_readonly"])
+    if result:
         sql = text(
             """
-            SELECT member_uuid
-            FROM slack_demo_users
-            WHERE member_uuid = :member_uuid
+            SELECT link.slack_user_id
+            FROM slack_demo_link link
             """
-        ).bindparams(member_uuid=member_uuid)
-        result = conn.execute(sql)
-        row = result.first()
-        if row:
-            sql = text(
-                """
-                SELECT link.slack_user_id
-                FROM slack_demo_link link
-                """
-            )
-            result = conn.execute(sql)
-            slack_user_ids = [row[0] for row in result]
-            return slack_user_ids
-        return []
+        )
+        result = await fetch_all(sql, async_engines["ray_integration_readonly"])
+        slack_user_ids = [row["slack_user_id"] for row in result]
+        return slack_user_ids
+    return []
 
 
-def get_client_access_tokens(ray_client_id: str) -> tuple[str]:
+async def get_client_access_tokens(ray_client_id: str) -> tuple[str]:
     """Gets all the active API access tokens of a RAY client."""
-    with engines["api_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT obj_uuid FROM access_token
-            WHERE account_id = :client_id
-            AND active = 1
-            """
-        ).bindparams(client_id=ray_client_id)
-        result = conn.execute(sql)
-        rows = result.all()
-    return tuple(row[0] for row in rows)
+    sql = text(
+        """
+        SELECT obj_uuid FROM access_token
+        WHERE account_id = :client_id
+        AND active = 1
+        """
+    ).bindparams(client_id=ray_client_id)
+    result = await fetch_all(sql, async_engines["api_readonly"])
+    return tuple(row["obj_uuid"] for row in result)
 
 
 async def get_demo_super_group(
     team_id: str, enterprise_id: str | None
 ) -> list[RaySuperGroup] | None:
-    with engines["ray_integration_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack
-            FROM slack_super_group_link link
-            INNER JOIN sitemanager.obj_m_group g
-            ON link.super_group_uuid = g.obj_uuid
-            INNER JOIN slack_deltaray_link dlink
-            ON dlink.slack_enterprise_id = link.slack_enterprise_id
-            INNER JOIN slack_demo_users dmem on dmem.member_uuid = dlink.member_uuid
-            WHERE link.is_active = 1
-            AND link.slack_enterprise_id = :enterprise_id
-            LIMIT 1
-            """
-        ).bindparams(enterprise_id=enterprise_id)
-        result = conn.execute(sql)
-        row = result.first()
-        if not row:
-            return None
+    sql = text(
+        """
+        SELECT link.super_group_uuid, g.label, g.enable_verify_in_slack
+        FROM slack_super_group_link link
+        INNER JOIN sitemanager.obj_m_group g
+        ON link.super_group_uuid = g.obj_uuid
+        INNER JOIN slack_deltaray_link dlink
+        ON dlink.slack_enterprise_id = link.slack_enterprise_id
+        INNER JOIN slack_demo_users dmem on dmem.member_uuid = dlink.member_uuid
+        WHERE link.is_active = 1
+        AND link.slack_enterprise_id = :enterprise_id
+        LIMIT 1
+        """
+    ).bindparams(enterprise_id=enterprise_id)
+    result = await fetch_one(sql, async_engines["ray_integration_readonly"])
+    if not result:
+        return None
     return [
         RaySuperGroup(
-            id=row.super_group_uuid,
-            name=row.label,
+            id=result["super_group_uuid"],
+            name=result["label"],
             slack_team_id=team_id,
             slack_enterprise_id=enterprise_id,
-            enable_verify_in_slack=bool(row.enable_verify_in_slack),
+            enable_verify_in_slack=bool(result["enable_verify_in_slack"]),
             verify_organization_uuid="",
         )
     ]
@@ -811,48 +799,47 @@ async def get_ray_connection_demo(
     return RayConnection(super_group, client)
 
 
-def get_group_admin_slack_users(group_id: str) -> list[SlackUser]:
+async def get_group_admin_slack_users(group_id: str) -> list[SlackUser]:
     """Gets the Slack users of the admins of a LanguageCloud group."""
-    with engines["sitemanager_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT slack.slack_user_id, slack.slack_team_id, slack.slack_enterprise_id,
-                slack.slack_channel_id, slack.is_subscribed, bots.bot_token,
-                mem.obj_uuid, mem.login
-            FROM obj_m_mglink link
-            INNER JOIN obj_m_member mem
-            ON link.memberid = mem.obj_uuid
-            INNER JOIN ray_integration.slack_deltaray_link slack
-            ON link.memberid = slack.member_uuid
-            INNER JOIN ray_integration.slack_bots bots
-            ON bots.id = (
-                SELECT id FROM ray_integration.slack_bots bots2
-                WHERE bots2.team_id = slack.slack_team_id
-                OR bots2.enterprise_id = slack.slack_enterprise_id
-                ORDER BY id DESC LIMIT 1
-            )
-            WHERE link.groupid = :group_id
-            AND link.client_type IN ('Admin', 'Owner')
-            AND mem.active = 1
-            AND mem.is_deleted = 0
-            AND slack.is_active = 1
-            GROUP BY link.memberid
-            """
-        ).bindparams(group_id=group_id)
-        result = conn.execute(sql)
+    sql = text(
+        """
+        SELECT slack.slack_user_id, slack.slack_team_id, slack.slack_enterprise_id,
+            slack.slack_channel_id, slack.is_subscribed, bots.bot_token,
+            mem.obj_uuid, mem.login
+        FROM obj_m_mglink link
+        INNER JOIN obj_m_member mem
+        ON link.memberid = mem.obj_uuid
+        INNER JOIN ray_integration.slack_deltaray_link slack
+        ON link.memberid = slack.member_uuid
+        INNER JOIN ray_integration.slack_bots bots
+        ON bots.id = (
+            SELECT id FROM ray_integration.slack_bots bots2
+            WHERE bots2.team_id = slack.slack_team_id
+            OR bots2.enterprise_id = slack.slack_enterprise_id
+            ORDER BY id DESC LIMIT 1
+        )
+        WHERE link.groupid = :group_id
+        AND link.client_type IN ('Admin', 'Owner')
+        AND mem.active = 1
+        AND mem.is_deleted = 0
+        AND slack.is_active = 1
+        GROUP BY link.memberid
+        """
+    ).bindparams(group_id=group_id)
+    result = await fetch_all(sql, async_engines["sitemanager_readonly"])
 
     slack_users = []
     for row in result:
         slack_users.append(
             SlackUser(
-                user_id=row.slack_user_id,
-                team_id=row.slack_team_id,
-                enterprise_id=row.slack_enterprise_id,
-                channel_id=row.slack_channel_id,
-                is_subscribed=bool(row.is_subscribed),
-                bot_token=row.bot_token,
-                ray_client_id=row.obj_uuid,
-                ray_username=row.login,
+                user_id=row["slack_user_id"],
+                team_id=row["slack_team_id"],
+                enterprise_id=row["slack_enterprise_id"],
+                channel_id=row["slack_channel_id"],
+                is_subscribed=bool(row["is_subscribed"]),
+                bot_token=row["bot_token"],
+                ray_client_id=row["obj_uuid"],
+                ray_username=row["login"],
             )
         )
     return slack_users
@@ -1114,26 +1101,24 @@ async def approve_pending_groups(
 
 # log new user info
 async def log_new_user_info(user):
-    with engines["ray_integration"].connect() as conn:
-        sql = text(
-            """
-            INSERT IGNORE INTO slack_user_details
-                (slack_user_id, slack_team_id, slack_enterprise_id, slack_enterprise_name, timezone, timezone_label, client_email, client_full_name)
-            VALUES
-                (:user_id, :team_id, :enterprise_id, :enterprise_name, :timezone, :timezone_label, :client_email, :client_full_name)
-            """
-        ).bindparams(
-            user_id=user.get("id", ""),
-            team_id=user.get("team_id", ""),
-            enterprise_id=user.get("enterprise_user", {}).get("enterprise_id", ""),
-            enterprise_name=user.get("enterprise_user", {}).get("enterprise_name", ""),
-            timezone=user.get("tz", ""),
-            timezone_label=user.get("tz_label", ""),
-            client_email=user.get("profile", {}).get("email", ""),
-            client_full_name=user.get("profile", {}).get("real_name_normalized", ""),
-        )
-        conn.execute(sql)
-        conn.commit()
+    sql = text(
+        """
+        INSERT IGNORE INTO slack_user_details
+            (slack_user_id, slack_team_id, slack_enterprise_id, slack_enterprise_name, timezone, timezone_label, client_email, client_full_name)
+        VALUES
+            (:user_id, :team_id, :enterprise_id, :enterprise_name, :timezone, :timezone_label, :client_email, :client_full_name)
+        """
+    ).bindparams(
+        user_id=user.get("id", ""),
+        team_id=user.get("team_id", ""),
+        enterprise_id=user.get("enterprise_user", {}).get("enterprise_id", ""),
+        enterprise_name=user.get("enterprise_user", {}).get("enterprise_name", ""),
+        timezone=user.get("tz", ""),
+        timezone_label=user.get("tz_label", ""),
+        client_email=user.get("profile", {}).get("email", ""),
+        client_full_name=user.get("profile", {}).get("real_name_normalized", ""),
+    )
+    await execute(sql, async_engines["ray_integration"], commit_after=True)
 
 
 def connect_ray_account_sso(
@@ -1255,41 +1240,38 @@ def get_direct_login_verify_team(enterprise_id: str | None):
     return team_uuid
 
 
-def add_client_to_slack_group(user_data: dict, member_id: str):
+async def add_client_to_slack_group(user_data: dict, member_id: str):
     # function to add user to ibm slack group when they are not in the group
-    with engines["sitemanager"].connect() as conn:
-        group_id = get_direct_login_group(user_data.get("enterprise_id", ""))
+    group_id = get_direct_login_group(user_data.get("enterprise_id", ""))
 
-        sql = text(
+    sql = text(
+        """
+        SELECT obj_uuid FROM obj_m_mglink WHERE groupid = :group_id and memberid = :member_id
+        """
+    ).bindparams(group_id=group_id, member_id=member_id)
+    users_in_group = await fetch_one(sql, async_engines["sitemanager"])
+    if not users_in_group:
+        sqlMgLink = text(
             """
-            SELECT obj_uuid FROM obj_m_mglink WHERE groupid = :group_id and memberid = :member_id
+            INSERT INTO obj_m_mglink
+                (obj_uuid, groupid, memberid, label, client_type, created, modified)
+            VALUES
+                (:obj_uuid, :groupid, :memberid, :label, :client_type, now(), now())
             """
-        ).bindparams(group_id=group_id, member_id=member_id)
-        users_in_group = conn.execute(sql)
-        if users_in_group.rowcount == 0:
-            sqlMgLink = text(
-                """
-                INSERT INTO obj_m_mglink
-                    (obj_uuid, groupid, memberid, label, client_type, created, modified)
-                VALUES
-                    (:obj_uuid, :groupid, :memberid, :label, :client_type, now(), now())
-                """
-            ).bindparams(
-                obj_uuid=str(uuid4()).upper(),
-                groupid=group_id,
-                memberid=member_id,
-                label=f"{member_id}-{group_id}",
-                client_type="Normal",
-            )
-            conn.execute(sqlMgLink)
-            conn.commit()
-        sql = text(
+        ).bindparams(
+            obj_uuid=str(uuid4()).upper(),
+            groupid=group_id,
+            memberid=member_id,
+            label=f"{member_id}-{group_id}",
+            client_type="Normal",
+        )
+        await execute(sqlMgLink, async_engines["sitemanager"], commit_after=True)
+    sql = text(
+        """
+            UPDATE obj_m_member SET groupid = :groupid WHERE obj_uuid = :uuid AND (groupid IS NULL or groupid = '')
             """
-                UPDATE obj_m_member SET groupid = :groupid WHERE obj_uuid = :uuid AND (groupid IS NULL or groupid = '')
-                """
-        ).bindparams(uuid=member_id, groupid=group_id)
-        conn.execute(sql)
-        conn.commit()
+    ).bindparams(uuid=member_id, groupid=group_id)
+    await execute(sql, async_engines["sitemanager"], commit_after=True)
 
 
 def create_client_and_mglink(
@@ -1351,174 +1333,166 @@ def create_client_and_mglink(
         conn.commit()
 
 
-def create_client_access_tokens(client_id: str, type: str = "public"):
+async def create_client_access_tokens(client_id: str, type: str = "public"):
     """Create API access tokens of a RAY client."""
-    with engines["api"].connect() as conn:
-        # Check if an access token for the account_id already exists
-        sql_check = text(
-            """
-                SELECT 1 FROM access_token
-                WHERE account_id = :account_id
-            """
-        ).bindparams(account_id=client_id)
-        result = conn.execute(sql_check).fetchone()
+    # Check if an access token for the account_id already exists
+    sql_check = text(
+        """
+            SELECT 1 FROM access_token
+            WHERE account_id = :account_id
+        """
+    ).bindparams(account_id=client_id)
+    result = await fetch_one(sql_check, async_engines["api"])
 
-        # If an access token for the account_id does not exist, insert a new one
-        if result is None:
-            sql_insert = text(
-                """
-                    INSERT INTO access_token
-                        (obj_uuid, account_id, active, `type`, application_id, created_at)
-                    VALUES
-                        (:obj_uuid, :account_id, 1, :type, '', now())
-                """
-            ).bindparams(obj_uuid=str(uuid4()).upper(), account_id=client_id, type=type)
-            conn.execute(sql_insert)
-            conn.commit()
+    # If an access token for the account_id does not exist, insert a new one
+    if result is None:
+        sql_insert = text(
+            """
+                INSERT INTO access_token
+                    (obj_uuid, account_id, active, `type`, application_id, created_at)
+                VALUES
+                    (:obj_uuid, :account_id, 1, :type, '', now())
+            """
+        ).bindparams(obj_uuid=str(uuid4()).upper(), account_id=client_id, type=type)
+        await execute(sql_insert, async_engines["api"], commit_after=True)
     # Enable API Access
-    with engines["sitemanager"].connect() as conn:
-        sqlMemUpdate = text(
-            """
-                UPDATE obj_m_member
-                SET api_access = 1
-                WHERE obj_uuid = :obj_uuid
-            """
-        ).bindparams(obj_uuid=client_id)
-        conn.execute(sqlMemUpdate)
-        conn.commit()
+    sqlMemUpdate = text(
+        """
+            UPDATE obj_m_member
+            SET api_access = 1
+            WHERE obj_uuid = :obj_uuid
+        """
+    ).bindparams(obj_uuid=client_id)
+    await execute(sqlMemUpdate, async_engines["sitemanager"], commit_after=True)
 
 
-def create_slack_deltaray_link_sso(user_data: str, member_id: str):
+async def create_slack_deltaray_link_sso(user_data: str, member_id: str):
     json_data = json.loads(user_data)
-    with engines["ray_integration"].connect() as conn:
-        sqlSlackDelete = text(
-            """
-            DELETE FROM slack_deltaray_link
-            WHERE member_uuid = :member_uuid
-            """
-        ).bindparams(member_uuid=member_id)
-        conn.execute(sqlSlackDelete)
-        conn.commit()
-    with engines["ray_integration"].connect() as conn:
+    sqlSlackDelete = text(
+        """
+        DELETE FROM slack_deltaray_link
+        WHERE member_uuid = :member_uuid
+        """
+    ).bindparams(member_uuid=member_id)
+    await execute(sqlSlackDelete, async_engines["ray_integration"], commit_after=True)
+
+    sqlSlackAccount = text(
+        """
+        SELECT slack_user_id
+        FROM slack_deltaray_link
+        WHERE slack_user_id = :slack_user_id
+        AND slack_team_id = :slack_team_id
+        AND is_active = 0
+        """
+    ).bindparams(
+        slack_user_id=json_data.get("user_id"),
+        slack_team_id=json_data.get("team_id"),
+    )
+    if json_data.get("enterprise_id") is not None:
         sqlSlackAccount = text(
             """
             SELECT slack_user_id
             FROM slack_deltaray_link
             WHERE slack_user_id = :slack_user_id
-            AND slack_team_id = :slack_team_id
+            AND (slack_enterprise_id = :slack_enterprise_id OR slack_team_id = :slack_team_id)
             AND is_active = 0
             """
         ).bindparams(
             slack_user_id=json_data.get("user_id"),
             slack_team_id=json_data.get("team_id"),
+            slack_enterprise_id=json_data.get("enterprise_id"),
         )
-        if json_data.get("enterprise_id") is not None:
-            sqlSlackAccount = text(
-                """
-                SELECT slack_user_id
-                FROM slack_deltaray_link
-                WHERE slack_user_id = :slack_user_id
-                AND (slack_enterprise_id = :slack_enterprise_id OR slack_team_id = :slack_team_id)
-                AND is_active = 0
-                """
-            ).bindparams(
-                slack_user_id=json_data.get("user_id"),
-                slack_team_id=json_data.get("team_id"),
-                slack_enterprise_id=json_data.get("enterprise_id"),
-            )
-        resultSlackAccount = conn.execute(sqlSlackAccount).first()
+    resultSlackAccount = await fetch_one(
+        sqlSlackAccount, async_engines["ray_integration"]
+    )
+
     if resultSlackAccount is not None:
-        with engines["ray_integration"].connect() as conn:
-            if json_data.get("enterprise_id") is not None:
-                sqlRayUpdate = text(
-                    """
-                    UPDATE slack_deltaray_link SET
-                        member_uuid = :member_uuid,
-                        slack_user_id = :user_id,
-                        slack_team_id = :team_id,
-                        slack_enterprise_id = :enterprise_id,
-                        slack_channel_id = :channel_id,
-                        is_subscribed = 1,
-                        is_active = 1,
-                        is_sso = 1,
-                        activated_at = now()
-                    WHERE (slack_user_id = :user_id)
-                    AND (
-                        slack_team_id = :team_id
-                        OR slack_enterprise_id = :enterprise_id
-                    )
-                    """
-                ).bindparams(
-                    member_uuid=member_id,
-                    user_id=json_data.get("user_id"),
-                    team_id=json_data.get("team_id"),
-                    enterprise_id=json_data.get("enterprise_id"),
-                    channel_id=json_data.get("channel_id"),
-                )
-            else:
-                sqlRayUpdate = text(
-                    """
-                    UPDATE slack_deltaray_link SET
-                        member_uuid = :member_uuid,
-                        slack_user_id = :user_id,
-                        slack_team_id = :team_id,
-                        slack_enterprise_id = :enterprise_id,
-                        slack_channel_id = :channel_id,
-                        is_subscribed = 1,
-                        is_active = 1,
-                        is_sso = 1,
-                        activated_at = now()
-                    WHERE slack_user_id = :user_id
-                    AND slack_team_id = :team_id
-                    """
-                ).bindparams(
-                    member_uuid=member_id,
-                    user_id=json_data.get("user_id"),
-                    team_id=json_data.get("team_id"),
-                    enterprise_id=json_data.get("enterprise_id"),
-                    channel_id=json_data.get("channel_id"),
-                )
-            conn.execute(sqlRayUpdate)
-            conn.commit()
-    else:
-        with engines["ray_integration"].connect() as conn:
-            sqlRay = text(
+        if json_data.get("enterprise_id") is not None:
+            sqlRayUpdate = text(
                 """
-                INSERT INTO slack_deltaray_link
-                    (slack_user_id, slack_team_id, slack_enterprise_id, slack_channel_id, member_uuid, is_subscribed, is_active, is_sso, activated_at)
-                VALUES
-                    (:user_id, :team_id, :enterprise_id, :channel_id, :member_uuid, 1, 1, 1, now())
+                UPDATE slack_deltaray_link SET
+                    member_uuid = :member_uuid,
+                    slack_user_id = :user_id,
+                    slack_team_id = :team_id,
+                    slack_enterprise_id = :enterprise_id,
+                    slack_channel_id = :channel_id,
+                    is_subscribed = 1,
+                    is_active = 1,
+                    is_sso = 1,
+                    activated_at = now()
+                WHERE (slack_user_id = :user_id)
+                AND (
+                    slack_team_id = :team_id
+                    OR slack_enterprise_id = :enterprise_id
+                )
                 """
             ).bindparams(
+                member_uuid=member_id,
                 user_id=json_data.get("user_id"),
                 team_id=json_data.get("team_id"),
                 enterprise_id=json_data.get("enterprise_id"),
                 channel_id=json_data.get("channel_id"),
-                member_uuid=member_id,
             )
-            conn.execute(sqlRay)
-            conn.commit()
-
-
-def crete_slack_logs_sso(user_data: str, member_id: str, message: str):
-    json_data = json.loads(user_data)
-    with engines["ray_integration_log"].begin() as conn:
-        sql = text(
+        else:
+            sqlRayUpdate = text(
+                """
+                UPDATE slack_deltaray_link SET
+                    member_uuid = :member_uuid,
+                    slack_user_id = :user_id,
+                    slack_team_id = :team_id,
+                    slack_enterprise_id = :enterprise_id,
+                    slack_channel_id = :channel_id,
+                    is_subscribed = 1,
+                    is_active = 1,
+                    is_sso = 1,
+                    activated_at = now()
+                WHERE slack_user_id = :user_id
+                AND slack_team_id = :team_id
+                """
+            ).bindparams(
+                member_uuid=member_id,
+                user_id=json_data.get("user_id"),
+                team_id=json_data.get("team_id"),
+                enterprise_id=json_data.get("enterprise_id"),
+                channel_id=json_data.get("channel_id"),
+            )
+        await execute(sqlRayUpdate, async_engines["ray_integration"], commit_after=True)
+    else:
+        sqlRay = text(
             """
-            INSERT INTO slack_logs_sso
-                (user_id, team_id, channel_id, client_uuid, payload, message)
+            INSERT INTO slack_deltaray_link
+                (slack_user_id, slack_team_id, slack_enterprise_id, slack_channel_id, member_uuid, is_subscribed, is_active, is_sso, activated_at)
             VALUES
-                (:user_id, :team_id, :channel_id, :client_uuid, :payload, :message)
+                (:user_id, :team_id, :enterprise_id, :channel_id, :member_uuid, 1, 1, 1, now())
             """
         ).bindparams(
             user_id=json_data.get("user_id"),
             team_id=json_data.get("team_id"),
+            enterprise_id=json_data.get("enterprise_id"),
             channel_id=json_data.get("channel_id"),
-            client_uuid=member_id,
-            payload=user_data,
-            message=message,
+            member_uuid=member_id,
         )
-        conn.execute(sql)
+        await execute(sqlRay, async_engines["ray_integration"], commit_after=True)
+
+
+async def crete_slack_logs_sso(user_data: str, member_id: str, message: str):
+    json_data = json.loads(user_data)
+    sql = text(
+        """
+        INSERT INTO slack_logs_sso
+            (user_id, team_id, channel_id, client_uuid, payload, message)
+        VALUES
+            (:user_id, :team_id, :channel_id, :client_uuid, :payload, :message)
+        """
+    ).bindparams(
+        user_id=json_data.get("user_id"),
+        team_id=json_data.get("team_id"),
+        channel_id=json_data.get("channel_id"),
+        client_uuid=member_id,
+        payload=user_data,
+        message=message,
+    )
+    await execute(sql, async_engines["ray_integration_log"], commit_after=True)
 
 
 async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceResponse:
@@ -1542,21 +1516,19 @@ async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceRespo
 
 async def get_group_tokens(org_uuid: str) -> GetCreditBalanceResponse:
     """read sitemanager.obj_m_member_credit_transactions to get the group tokens balance."""
-    # first get
-    with engines["sitemanager_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT SUM(amount) AS total
-            FROM obj_m_member_credit_transactions
-            WHERE organization_uuid = :org_uuid
-            AND credit_type = 'ai_token'
-            """
-        ).bindparams(bindparam("org_uuid", value=org_uuid))
-        result = conn.execute(sql)
-        row_total = result.first()
-        if not row_total or not row_total.total:
-            return GetCreditBalanceResponse(0, 0)
-    return GetCreditBalanceResponse(ai_token=row_total.total, mt_token=0)
+
+    sql = text(
+        """
+        SELECT SUM(amount) AS total
+        FROM obj_m_member_credit_transactions
+        WHERE organization_uuid = :org_uuid
+        AND credit_type = 'ai_token'
+        """
+    ).bindparams(bindparam("org_uuid", value=org_uuid))
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    if not result or not result["total"]:
+        return GetCreditBalanceResponse(0, 0)
+    return GetCreditBalanceResponse(ai_token=result["total"], mt_token=0)
 
 
 async def log_transcribe_request(
@@ -1602,101 +1574,91 @@ async def get_client_type(client_id: str, group_id: str | None) -> str | None:
     """Get the client type for a group. Owner Admin or Normal client"""
     if not group_id:
         return None
-    with engines["sitemanager_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT client_type
-            FROM obj_m_mglink
-            WHERE memberid = :client_id
-            AND groupid = :group_id
-            """
-        ).bindparams(client_id=client_id, group_id=group_id)
-        result = conn.execute(sql)
-        row = result.first()
-        if not row:
-            return None
-    return row.client_type
+    sql = text(
+        """
+        SELECT client_type
+        FROM obj_m_mglink
+        WHERE memberid = :client_id
+        AND groupid = :group_id
+        """
+    ).bindparams(client_id=client_id, group_id=group_id)
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    if not result:
+        return None
+    return result["client_type"]
 
 
-def get_job_group_quote_settings(job_id: str):
+async def get_job_group_quote_settings(job_id: str):
     """Get the quote settings for the job group."""
-    with engines["sitemanager_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT api_enabled
-            FROM obj_m_group g
-            JOIN franchise.obj_tp_job j
-            ON g.obj_uuid = j.groupid
-            WHERE j.id = :job_id
-            """
-        ).bindparams(job_id=job_id)
-        result = conn.execute(sql)
-        row = result.first()
-        if not row:
-            return False
-    return row.api_enabled
+    sql = text(
+        """
+        SELECT api_enabled
+        FROM obj_m_group g
+        JOIN franchise.obj_tp_job j
+        ON g.obj_uuid = j.groupid
+        WHERE j.id = :job_id
+        """
+    ).bindparams(job_id=job_id)
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    if not result:
+        return False
+    return result["api_enabled"]
 
 
-def get_group_quote_settings(group_uuid: str):
+async def get_group_quote_settings(group_uuid: str):
     """Get the quote settings for the job group."""
-    with engines["sitemanager_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT api_enabled
-            FROM obj_m_group g
-            WHERE g.obj_uuid = :group_uuid
-            """
-        ).bindparams(group_uuid=group_uuid)
-        result = conn.execute(sql)
-        row = result.first()
-        if not row:
-            return False
-    return row.api_enabled
+    sql = text(
+        """
+        SELECT api_enabled
+        FROM obj_m_group g
+        WHERE g.obj_uuid = :group_uuid
+        """
+    ).bindparams(group_uuid=group_uuid)
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    if not result:
+        return False
+    return result["api_enabled"]
 
 
-def get_all_tokens_for_enterprise(enterprise_id: str | None):
+async def get_all_tokens_for_enterprise(enterprise_id: str | None):
     """Get all the tokens for the enterprise"""
     if not enterprise_id:
         return None
-    with engines["ray_integration"].connect() as conn:
-        sql = text(
-            """
-            SELECT sb.team_id, sb.bot_token
-            FROM slack_bots sb
-            JOIN (
-                SELECT team_id, MAX(id) as max_id
-                FROM slack_bots
-                WHERE enterprise_id = :enterprise_id
-                GROUP BY team_id
-            ) latest_bots ON sb.id = latest_bots.max_id
-            WHERE sb.bot_token IS NOT NULL AND sb.bot_token <> ''
-            ORDER BY sb.id DESC
-            """
-        ).bindparams(enterprise_id=enterprise_id)
-        result = conn.execute(sql)
-        rows = result.fetchall()
-        if not rows:
-            return None
-    return rows
+    sql = text(
+        """
+        SELECT sb.team_id, sb.bot_token
+        FROM slack_bots sb
+        JOIN (
+            SELECT team_id, MAX(id) as max_id
+            FROM slack_bots
+            WHERE enterprise_id = :enterprise_id
+            GROUP BY team_id
+        ) latest_bots ON sb.id = latest_bots.max_id
+        WHERE sb.bot_token IS NOT NULL AND sb.bot_token <> ''
+        ORDER BY sb.id DESC
+        """
+    ).bindparams(enterprise_id=enterprise_id)
+    result = await fetch_all(sql, async_engines["ray_integration"])
+    if not result:
+        return None
+    return result
 
 
-def get_team_from_token(token: str | None) -> str | None:
+async def get_team_from_token(token: str | None) -> str | None:
     """Get the team ID from the bot token"""
     if not token:
         return None
-    with engines["ray_integration"].connect() as conn:
-        sql = text(
-            """
-            SELECT team_id
-            FROM slack_bots
-            WHERE bot_token = :bot_token
-            """
-        ).bindparams(bot_token=token)
-        result = conn.execute(sql)
-        row = result.first()
-        if not row:
-            return None
-    return row.team_id
+    sql = text(
+        """
+        SELECT team_id
+        FROM slack_bots
+        WHERE bot_token = :bot_token
+        """
+    ).bindparams(bot_token=token)
+    result = await fetch_one(sql, async_engines["ray_integration"])
+    if not result:
+        return None
+    return result["team_id"]
 
 
 async def get_channel_info(channel_id: str, client: AsyncWebClient, team_id: str):
@@ -1826,92 +1788,83 @@ def get_group_mt_engine(
     return mt_engine
 
 
-def is_verify_job(job_uuid: str) -> bool:
+async def is_verify_job(job_uuid: str) -> bool:
     """Check if the job is a verify job."""
-    with engines["sitemanager_readonly"].connect() as conn:
-        sql = text(
-            """
-            SELECT jobtype
-            FROM franchise.obj_tp_job
-            WHERE obj_uuid = :job_uuid
-            """
-        ).bindparams(job_uuid=job_uuid)
-        result = conn.execute(sql)
-        row = result.first()
-        if not row:
-            return False
-    return row.jobtype == "Verify"
+    sql = text(
+        """
+        SELECT jobtype
+        FROM franchise.obj_tp_job
+        WHERE obj_uuid = :job_uuid
+        """
+    ).bindparams(job_uuid=job_uuid)
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    if not result:
+        return False
+    return result["jobtype"] == "Verify"
 
 
-def get_token_for_team(team_id: str) -> str:
+async def get_token_for_team(team_id: str) -> str:
     """Get the bot token for a team."""
-    with engines["ray_integration"].connect() as conn:
-        sql = text(
-            """
-            SELECT bot_token
-            FROM slack_bots
-            WHERE team_id = :team_id
-            ORDER BY id DESC
-            LIMIT 1
-            """
-        ).bindparams(team_id=team_id)
-        result = conn.execute(sql)
-        row = result.first()
-        if not row:
-            return None
-    return row.bot_token
+    sql = text(
+        """
+        SELECT bot_token
+        FROM slack_bots
+        WHERE team_id = :team_id
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).bindparams(team_id=team_id)
+    result = await fetch_one(sql, async_engines["ray_integration"])
+    if not result:
+        return None
+    return result["bot_token"]
 
 
-def add_to_verify_team(user_uuid: str, enterprise_id: str | None):
+async def add_to_verify_team(user_uuid: str, enterprise_id: str | None):
     """Add user to verify team"""
     team_uuid = get_direct_login_verify_team(enterprise_id)
-    with engines["sitemanager"].connect() as conn:
-        # check if user is already in the team
+    # check if user is already in the team
+    sql = text(
+        """
+            SELECT team_uuid
+            FROM verify_team_user_link
+            WHERE user_uuid = :user_uuid
+            AND team_uuid = :team_uuid
+        """
+    ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
+    result = await fetch_one(sql, async_engines["sitemanager"])
+    if not result:
+        # delete from existing team
         sql = text(
             """
-                SELECT team_uuid
-                FROM verify_team_user_link
-                WHERE user_uuid = :user_uuid
-                AND team_uuid = :team_uuid
+                DELETE from verify_team_user_link where user_uuid = :user_uuid
+            """
+        ).bindparams(user_uuid=user_uuid)
+        await execute(sql, async_engines["sitemanager"], commit_after=True)
+        # delete from user_roles
+        sql = text(
+            """
+                DELETE from user_roles where user_id = :user_id
+            """
+        ).bindparams(user_id=user_uuid)
+        await execute(sql, async_engines["sitemanager"], commit_after=True)
+        # add to verify team
+        sql = text(
+            """
+            INSERT INTO verify_team_user_link
+                (user_uuid, team_uuid, user_role)
+            VALUES
+                (:user_uuid, :team_uuid, 'member')
             """
         ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
-        result = conn.execute(sql)
-        if result.rowcount == 0:
-            # delete from existing team
-            sql = text(
-                """
-                    DELETE from verify_team_user_link where user_uuid = :user_uuid
-                """
-            ).bindparams(user_uuid=user_uuid)
-            conn.execute(sql)
-            conn.commit()
-            # delete from user_roles
-            sql = text(
-                """
-                    DELETE from user_roles where user_id = :user_id
-                """
-            ).bindparams(user_id=user_uuid)
-            conn.execute(sql)
-            conn.commit()
-            # add to verify team
-            sql = text(
-                """
-                INSERT INTO verify_team_user_link
-                    (user_uuid, team_uuid, user_role)
-                VALUES
-                    (:user_uuid, :team_uuid, 'member')
-                """
-            ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
-            conn.execute(sql)
-            conn.commit()
-            # add to user_roles
-            sql = text(
-                """
-                INSERT INTO user_roles
-                    (user_id, team_id, role_id)
-                VALUES
-                    (:user_uuid, :team_uuid, '83d64046-770b-43f5-abbf-e96ca0b3db9a')
-                """
-            ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
-            conn.execute(sql)
-            conn.commit()
+        await execute(sql, async_engines["sitemanager"], commit_after=True)
+        # add to user_roles
+        sql = text(
+            """
+            INSERT INTO user_roles
+                (user_id, team_id, role_id)
+            VALUES
+                (:user_uuid, :team_uuid, '83d64046-770b-43f5-abbf-e96ca0b3db9a')
+            """
+        ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
+        await execute(sql, async_engines["sitemanager"], commit_after=True)

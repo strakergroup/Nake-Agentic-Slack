@@ -31,7 +31,7 @@ buglog = {version = "==0.1.3", index = "straker"}
 cachetools = "*"
 langcodes = "*"
 ffmpeg-python = "*"
-straker-utils = {file = "../../straker-python-utils/dist/straker_utils-0.3.0.0-py3-none-any.whl"}
+straker-utils = {file = "../../straker-python-utils/dist/straker_utils-0.3.0.6-py3-none-any.whl"}
 pypdf2 = "*"
 
 [dev-packages]
