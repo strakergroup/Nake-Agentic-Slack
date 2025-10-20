@@ -3,9 +3,9 @@ from typing import Iterable
 
 import langcodes
 from slack_bolt.context.async_context import AsyncBoltContext
-from sqlalchemy import delete, distinct, func, or_, select, text
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from straker_utils.sql.async_engine import execute, fetch_all
+from sqlalchemy import distinct, func, or_, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+from straker_utils.sql.async_engine import execute, fetch_all, fetch_one
 
 from app.translate import _
 
@@ -232,6 +232,91 @@ async def get_auto_translate_user_settings_langs(ray_client: RayClient) -> list[
     return langs
 
 
+async def update_auto_translate_user_settings(
+    ray_client: RayClient, channels: list[str], languages: list[str]
+) -> None:
+    """Update the auto-translate settings for a LanugageCloud user.
+
+    Args:
+        ray_client (RayClient): The client to update the settings for
+        channels (list[str]): The IDs of the channels (conversations) to auto-translate.
+        languages (list[str]): The languages to auto-translate to.
+    """
+    if ray_client.settings_id is None:
+        await execute(
+            text(
+                """
+                INSERT INTO slack_user_settings
+                (member_uuid)
+                VALUES
+                (:member_uuid)
+                """
+            ).bindparams(member_uuid=ray_client.id),
+            async_engines["ray_integration"],
+            commit_after=True,
+        )
+        settings_id_result = await fetch_one(
+            text(
+                """
+                SELECT id
+                FROM slack_user_settings
+                WHERE member_uuid = :member_uuid
+                """
+            ).bindparams(member_uuid=ray_client.id),
+            async_engines["ray_integration"],
+        )
+        if settings_id_result:
+            ray_client.settings_id = settings_id_result["id"]
+    else:
+        await execute(
+            text(
+                """
+                DELETE FROM slack_user_settings_auto_translate_channels
+                WHERE settings_id = :settings_id
+                """
+            ).bindparams(settings_id=ray_client.settings_id),
+            async_engines["ray_integration"],
+            commit_after=True,
+        )
+        await execute(
+            text(
+                """
+                DELETE FROM slack_user_settings_auto_translate_langs
+                WHERE settings_id = :settings_id
+                """
+            ).bindparams(settings_id=ray_client.settings_id),
+            async_engines["ray_integration"],
+            commit_after=True,
+        )
+
+    for channel_id in channels:
+        await execute(
+            text(
+                """
+                INSERT INTO slack_user_settings_auto_translate_channels
+                (settings_id, channel_id)
+                VALUES
+                (:settings_id, :channel_id)
+                """
+            ).bindparams(settings_id=ray_client.settings_id, channel_id=channel_id),
+            async_engines["ray_integration"],
+            commit_after=True,
+        )
+    for lang in languages:
+        await execute(
+            text(
+                """
+                INSERT INTO slack_user_settings_auto_translate_langs
+                (settings_id, lang)
+                VALUES
+                (:settings_id, :lang)
+                """
+            ).bindparams(settings_id=ray_client.settings_id, lang=lang),
+            async_engines["ray_integration"],
+            commit_after=True,
+        )
+
+
 # Gets back all for enterprise. Creates entry for team if it doesn't exist
 # TODO comeback to this
 async def get_team_setting(
@@ -239,18 +324,13 @@ async def get_team_setting(
 ) -> SlackGroupSettings:
     # NOTE: The logic for getting group settings is not stable and WILL change in the future.
     # Please don't touch this file yet
-    team_id = team_id or context.team_id
-
-    async_session = async_sessionmaker(bind=async_engines["ray_integration"])
-
-    async with async_session() as session:
-        # First, try to get existing settings
-        result = await session.execute(
-            select(SlackGroupSettings).where(
-                SlackGroupSettings.slack_team_id == team_id
-            )
+    async with AsyncSession(async_engines["ray_integration"]) as session:
+        team_id = team_id or context.team_id
+        query = select(SlackGroupSettings).where(
+            SlackGroupSettings.slack_team_id == team_id
         )
-        settings = result.scalar_one_or_none()
+        result = await session.execute(query)
+        settings = result.scalars().all()
 
         if not settings:
             # Create record if doesn't exist yet.
@@ -262,7 +342,7 @@ async def get_team_setting(
             await session.refresh(new_settings)
             return new_settings
 
-        return settings
+        return settings[0]
 
 
 # Gets back all for enterprise. Creates entry for team if it doesn't exist
@@ -272,83 +352,68 @@ async def get_or_create_group_settings(
 ) -> list[SlackGroupSettings]:
     # NOTE: The logic for getting group settings is not stable and WILL change in the future.
     # Please don't touch this file yet
-    team_id = team_id or context.team_id
-    enterprise_id = context.enterprise_id
-
-    async_session = async_sessionmaker(bind=async_engines["ray_integration"])
-
-    async with async_session() as session:
-        # First, try to get existing settings for the team
-        result = await session.execute(
-            select(SlackGroupSettings).where(
-                SlackGroupSettings.slack_team_id == team_id
-            )
+    async with AsyncSession(async_engines["ray_integration"]) as session:
+        team_id = team_id or context.team_id
+        query = select(SlackGroupSettings).where(
+            SlackGroupSettings.slack_team_id == team_id
         )
-        team_settings = result.scalar_one_or_none()
+        result = await session.execute(query)
+        settings = result.scalars().all()
 
-        if not team_settings:
+        if not settings:
             # Create record if doesn't exist yet.
             new_settings = SlackGroupSettings(
-                slack_team_id=team_id, slack_enterprise_id=enterprise_id
+                slack_team_id=team_id, slack_enterprise_id=context.enterprise_id
             )
             session.add(new_settings)
             await session.commit()
+            await session.refresh(new_settings)
 
-        # Now get all settings for the team/enterprise
+        # Query for all relevant settings
+        team_id = team_id or context.team_id
+        enterprise_id = context.enterprise_id
         if enterprise_id:
-            result = await session.execute(
-                select(SlackGroupSettings).where(
-                    or_(
-                        SlackGroupSettings.slack_team_id == team_id,
-                        SlackGroupSettings.slack_team_id == enterprise_id,
-                    )
+            query = select(SlackGroupSettings).where(
+                or_(
+                    SlackGroupSettings.slack_team_id == team_id,
+                    SlackGroupSettings.slack_team_id == enterprise_id,
                 )
             )
         else:
-            result = await session.execute(
-                select(SlackGroupSettings).where(
-                    SlackGroupSettings.slack_team_id == team_id
-                )
+            query = select(SlackGroupSettings).where(
+                SlackGroupSettings.slack_team_id == team_id
             )
 
+        result = await session.execute(query)
         settings = result.scalars().all()
         return list(settings)
 
 
 async def get_or_create_setting_for_team(
-    context: AsyncBoltContext,
-    channel_id: str,
-    team_id: str,
+    context: AsyncBoltContext, channel_id: str, team_id: str
 ) -> SlackGroupSettingsTranslation:
     # Get setting for team and channel
     setting = await get_team_setting(context, team_id)
-    # Extract the list of settings.id
-    # settings_ids = [setting.id for setting in settings]
 
-    async_session = async_sessionmaker(bind=async_engines["ray_integration"])
-
-    async with async_session() as session:
-        # Check if translation setting already exists
-        result = await session.execute(
-            select(SlackGroupSettingsTranslation).where(
-                SlackGroupSettingsTranslation.settings_id == setting.id,
-                SlackGroupSettingsTranslation.channel_id == channel_id,
-            )
+    async with AsyncSession(async_engines["ray_integration"]) as session:
+        query = select(SlackGroupSettingsTranslation).where(
+            SlackGroupSettingsTranslation.settings_id == setting.id,
+            SlackGroupSettingsTranslation.channel_id == channel_id,
         )
-        translation_setting = result.scalar_one_or_none()
+        result = await session.execute(query)
+        auto_translate_settings = result.scalars().first()
 
-        if translation_setting:
-            return translation_setting
+        if auto_translate_settings:
+            return auto_translate_settings
 
         # Create record if doesn't exist yet.
-        new_translation_setting = SlackGroupSettingsTranslation(
-            settings_id=setting.id, channel_id=channel_id, display_format="inline"
+        new_settings = SlackGroupSettingsTranslation(
+            settings_id=setting.id, channel_id=channel_id
         )
-        session.add(new_translation_setting)
+        session.add(new_settings)
         await session.commit()
-        await session.refresh(new_translation_setting)
-
-        return new_translation_setting
+        await session.refresh(new_settings)
+        return new_settings
 
 
 async def get_all_settings_for_channel(
@@ -357,29 +422,53 @@ async def get_all_settings_for_channel(
     # TODO streamline this (join)
     settings = await get_or_create_group_settings(context)
 
-    async_session = async_sessionmaker(bind=async_engines["ray_integration"])
-
-    async with async_session() as session:
-        # Get existing translation settings for the channel
-        result = await session.execute(
-            select(SlackGroupSettingsTranslation).where(
-                SlackGroupSettingsTranslation.channel_id == channel_id
-            )
+    async with AsyncSession(async_engines["ray_integration"]) as session:
+        query = select(SlackGroupSettingsTranslation).where(
+            SlackGroupSettingsTranslation.channel_id == channel_id
         )
-        translation_settings = result.scalars().all()
+        result = await session.execute(query)
+        auto_translate_settings = result.scalars().all()
 
-        if translation_settings:
-            return list(translation_settings)
+        if auto_translate_settings:
+            return list(auto_translate_settings)
 
         # Create record if doesn't exist yet.
-        new_translation_setting = SlackGroupSettingsTranslation(
-            settings_id=settings[0].id, channel_id=channel_id, display_format="inline"
+        new_settings = SlackGroupSettingsTranslation(
+            settings_id=settings[0].id, channel_id=channel_id
         )
-        session.add(new_translation_setting)
+        session.add(new_settings)
         await session.commit()
-        await session.refresh(new_translation_setting)
+        await session.refresh(new_settings)
+        return [new_settings]
 
-        return [new_translation_setting]
+
+async def get_or_create_auto_translate_group_settings(
+    context: AsyncBoltContext, channel_id: str
+) -> list[SlackGroupSettingsTranslation]:
+    # TODO streamline this (join)
+    settings = await get_or_create_group_settings(context)
+    # Extract the list of settings.id
+    settings_ids = [setting.id for setting in settings]
+
+    async with AsyncSession(async_engines["ray_integration"]) as session:
+        query = select(SlackGroupSettingsTranslation).where(
+            SlackGroupSettingsTranslation.settings_id.in_(settings_ids),
+            SlackGroupSettingsTranslation.channel_id == channel_id,
+        )
+        result = await session.execute(query)
+        auto_translate_settings = result.scalars().all()
+
+        if auto_translate_settings:
+            return list(auto_translate_settings)
+
+        # Create record if doesn't exist yet.
+        new_settings = SlackGroupSettingsTranslation(
+            settings_id=settings[0].id, channel_id=channel_id
+        )
+        session.add(new_settings)
+        await session.commit()
+        await session.refresh(new_settings)
+        return [new_settings]
 
 
 async def get_auto_translate_settings_and_langs(
@@ -394,30 +483,35 @@ async def get_auto_translate_settings_and_langs(
     if not channel_id:
         return []  # Modal triggers do not have channel_id
     team_id = team_id or context.team_id
+    await get_all_settings_for_channel(context, channel_id)
 
-    # Use async engine for database operations
+    async with AsyncSession(async_engines["ray_integration"]) as session:
+        query = (
+            select(
+                distinct(SlackGroupSettingsTranslationLangs.lang).label("target_lang"),
+                SlackGroupSettingsTranslation.display_format,
+            )
+            .join(
+                SlackGroupSettingsTranslation,
+                SlackGroupSettingsTranslation.id
+                == SlackGroupSettingsTranslationLangs.translation_settings_id,
+            )
+            .where(
+                SlackGroupSettingsTranslation.channel_id == channel_id,
+            )
+        )
+        result = await session.execute(query)
+        results = result.all()
 
-    sql = text(
-        """
-        SELECT DISTINCT langslang.lang as target_lang, sgt.display_format
-        FROM slack_group_settings_translation_langs langslang
-        JOIN slack_group_settings_translation sgt
-        ON sgt.id = langslang.translation_settings_id
-        WHERE sgt.channel_id = :channel_id
-        """
-    ).bindparams(channel_id=channel_id)
-
-    results = await fetch_all(sql, async_engines["ray_integration"])
-
-    return [
-        {"target_lang": row["target_lang"], "display_format": row["display_format"]}
-        for row in results
-    ]
+        return [
+            {"target_lang": row.target_lang, "display_format": row.display_format}
+            for row in results
+        ]
 
 
 async def update_auto_translate_group_settings(
     context: AsyncBoltContext,
-    channels: list[dict[str, bool | str | None]],
+    channels: list[dict[str, str]],
     languages: list[str],
     display_format: SlackGroupSettingsTranslation.DisplayFormatType,
 ) -> None:
@@ -431,52 +525,40 @@ async def update_auto_translate_group_settings(
     for channel in channels:
         # insert for team
         channel_setting = await get_or_create_setting_for_team(
-            context,
-            str(channel["channel_id"]) if channel.get("channel_id") is not None else "",
-            str(channel["team_id"]) if channel.get("team_id") is not None else "",
+            context, channel["channel_id"], channel["team_id"]
         )
 
-        # Update display format
-        await execute(
-            text("""
-                UPDATE slack_group_settings_translation
-                SET display_format = :display_format, modified_at = NOW()
-                WHERE id = :setting_id
-            """).bindparams(
-                display_format=display_format, setting_id=channel_setting.id
-            ),
-            async_engines["ray_integration"],
-            commit_after=True,
-        )
+        async with AsyncSession(async_engines["ray_integration"]) as session:
+            # Update display format
+            channel_setting.display_format = display_format
+            session.add(channel_setting)
 
-        # Get current settings for the channel and update language settings
-        async_session = async_sessionmaker(bind=async_engines["ray_integration"])
-
-        async with async_session() as session:
-            result = await session.execute(
-                select(SlackGroupSettingsTranslation).where(
-                    SlackGroupSettingsTranslation.channel_id == channel["channel_id"]
-                )
+            # Get current settings for this channel
+            query = select(SlackGroupSettingsTranslation).where(
+                SlackGroupSettingsTranslation.channel_id == channel["channel_id"]
             )
+            result = await session.execute(query)
             current_settings = result.scalars().all()
             current_setting_ids = [setting.id for setting in current_settings]
 
             # Delete existing language settings
             if current_setting_ids:
-                await session.execute(
-                    delete(SlackGroupSettingsTranslationLangs).where(
-                        SlackGroupSettingsTranslationLangs.translation_settings_id.in_(
-                            current_setting_ids
-                        )
+                delete_query = select(SlackGroupSettingsTranslationLangs).where(
+                    SlackGroupSettingsTranslationLangs.translation_settings_id.in_(
+                        current_setting_ids
                     )
                 )
+                delete_result = await session.execute(delete_query)
+                existing_langs = delete_result.scalars().all()
+                for lang in existing_langs:
+                    await session.delete(lang)
 
-            # Insert new language settings
+            # Add new language settings
             for lang in languages:
-                new_lang_setting = SlackGroupSettingsTranslationLangs(
+                new_lang = SlackGroupSettingsTranslationLangs(
                     translation_settings_id=channel_setting.id, lang=lang
                 )
-                session.add(new_lang_setting)
+                session.add(new_lang)
 
             await session.commit()
 
@@ -493,17 +575,17 @@ async def disable_auto_translate_group_settings(
     channel_settings = await get_all_settings_for_channel(context, channel_id)
     settings_ids = [setting.id for setting in channel_settings]
 
-    if settings_ids:
-        async_session = async_sessionmaker(bind=async_engines["ray_integration"])
-
-        async with async_session() as session:
-            await session.execute(
-                delete(SlackGroupSettingsTranslationLangs).where(
-                    SlackGroupSettingsTranslationLangs.translation_settings_id.in_(
-                        settings_ids
-                    )
+    async with AsyncSession(async_engines["ray_integration"]) as session:
+        if settings_ids:
+            query = select(SlackGroupSettingsTranslationLangs).where(
+                SlackGroupSettingsTranslationLangs.translation_settings_id.in_(
+                    settings_ids
                 )
             )
+            result = await session.execute(query)
+            existing_langs = result.scalars().all()
+            for lang in existing_langs:
+                await session.delete(lang)
             await session.commit()
 
 
@@ -520,50 +602,50 @@ async def get_full_group_translation_settings(
     settings = await get_or_create_group_settings(context, context.team_id)
     settings_id = [setting.id for setting in settings]
 
-    async_session = async_sessionmaker(bind=async_engines["ray_integration"])
-
-    async with async_session() as session:
-        # Get channel settings with pagination using ORM
-        result = await session.execute(
+    async with AsyncSession(async_engines["ray_integration"]) as session:
+        # Get channel settings
+        query = (
             select(SlackGroupSettingsTranslation)
-            .join(SlackGroupSettingsTranslationLangs)
+            .join(
+                SlackGroupSettingsTranslationLangs,
+                SlackGroupSettingsTranslation.id
+                == SlackGroupSettingsTranslationLangs.translation_settings_id,
+            )
             .where(SlackGroupSettingsTranslation.settings_id.in_(settings_id))
             .group_by(SlackGroupSettingsTranslation.id)
-            .order_by(SlackGroupSettingsTranslation.id.desc())
             .limit(rows_per_page)
             .offset((page - 1) * rows_per_page)
+            .order_by(SlackGroupSettingsTranslation.id.desc())
         )
 
+        result = await session.execute(query)
         channel_settings = result.scalars().all()
 
         if not channel_settings:
             return []
 
-        # Get languages for these channel settings using ORM
-        channel_setting_ids = [setting.id for setting in channel_settings]
-
-        result = await session.execute(
+        # Get language settings for these channels
+        channel_ids = [setting.id for setting in channel_settings]
+        lang_query = (
             select(SlackGroupSettingsTranslationLangs)
             .where(
                 SlackGroupSettingsTranslationLangs.translation_settings_id.in_(
-                    channel_setting_ids
+                    channel_ids
                 )
             )
             .order_by(SlackGroupSettingsTranslationLangs.id)
         )
 
-        channel_langs: list[SlackGroupSettingsTranslationLangs] = result.scalars().all()
+        lang_result = await session.execute(lang_query)
+        channel_langs = lang_result.scalars().all()
 
         # Map channels to languages.
         settings_lang_map: dict[
             int, tuple[SlackGroupSettingsTranslation, list[str]]
         ] = {setting.id: (setting, []) for setting in channel_settings}
-
-        for lang_setting in channel_langs:
-            # Type annotation to help linter understand this is a SlackGroupSettingsTranslationLangs object
-            translation_settings_id: int = lang_setting.translation_settings_id  # type: ignore
-            if translation_settings_id in settings_lang_map:
-                settings_lang_map[translation_settings_id][1].append(lang_setting.lang)  # type: ignore
+        for lang in channel_langs:
+            if lang.translation_settings_id in settings_lang_map:
+                settings_lang_map[lang.translation_settings_id][1].append(lang.lang)
 
         # Remove channels with no languages.
         return [(channel, langs) for channel, langs in settings_lang_map.values()]
@@ -582,29 +664,35 @@ async def get_pagination(context: AsyncBoltContext, rows_per_page: int) -> int:
     settings = await get_or_create_group_settings(context)
     settings_id = [setting.id for setting in settings]
 
-    async_session = async_sessionmaker(bind=async_engines["ray_integration"])
-
-    async with async_session() as session:
-        # Count distinct channel settings using ORM
-        result = await session.execute(
+    async with AsyncSession(async_engines["ray_integration"]) as session:
+        query = (
             select(func.count(distinct(SlackGroupSettingsTranslation.id)))
-            .join(SlackGroupSettingsTranslationLangs)
+            .join(
+                SlackGroupSettingsTranslationLangs,
+                SlackGroupSettingsTranslation.id
+                == SlackGroupSettingsTranslationLangs.translation_settings_id,
+            )
             .where(SlackGroupSettingsTranslation.settings_id.in_(settings_id))
         )
 
-        total_rows = result.scalar() or 0
+        result = await session.execute(query)
+        total_rows = result.scalar()
 
         if not total_rows:
             return 0
-
         return (total_rows + rows_per_page - 1) // rows_per_page
 
 
-async def update_channel_id(old_channel_id: str, new_channel_id: str) -> None:
-    sql = text("""
-        UPDATE slack_group_settings_translation
-        SET channel_id = :new_channel_id
-        WHERE channel_id = :old_channel_id
-    """).bindparams(new_channel_id=new_channel_id, old_channel_id=old_channel_id)
+async def update_channel_id(old_channel_id, new_channel_id):
+    async with AsyncSession(async_engines["ray_integration"]) as session:
+        query = select(SlackGroupSettingsTranslation).where(
+            SlackGroupSettingsTranslation.channel_id == old_channel_id
+        )
+        result = await session.execute(query)
+        settings = result.scalars().all()
 
-    await execute(sql, async_engines["ray_integration"], commit_after=True)
+        for setting in settings:
+            setting.channel_id = new_channel_id
+            session.add(setting)
+
+        await session.commit()
