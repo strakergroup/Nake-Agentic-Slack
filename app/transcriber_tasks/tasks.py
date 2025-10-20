@@ -7,10 +7,10 @@ from uuid import uuid4
 
 import httpx
 from sqlalchemy import text
-from straker_utils.sql.async_engine import fetch_one
+from straker_utils.sql.async_engine import execute, fetch_one
 
 from ..config import domains
-from ..database import async_engines, engines
+from ..database import async_engines
 from ..models import ASRTask
 
 
@@ -30,28 +30,27 @@ async def create_asr_task(asr_task: ASRTask) -> str:
     task_data["task_uuid"] = task_uuid
 
     # Insert task into database
-    with engines["sitecommons"].begin() as conn:
-        sql = text(
-            """
-            INSERT INTO transcriber_task_consumer_queue
-                (obj_uuid, member_uuid, event_name, app_source, len_ms, service, model, task_data, task_status, entry_id, extra_data)
-            VALUES
-                (:task_uuid, :member_uuid, :event_name, :app_source, :len_ms, :service, :model, :task_data, :task_status, :entry_id, :extra_data)
-            """
-        ).bindparams(
-            task_uuid=task_uuid,
-            member_uuid=asr_task.member_uuid,
-            event_name=asr_task.event_name,
-            app_source=asr_task.app_source,
-            len_ms=asr_task.len_ms,
-            service=asr_task.service,
-            model=asr_task.model,
-            task_data=json.dumps(task_data),
-            task_status=task_status,
-            entry_id=entry_id,
-            extra_data=json.dumps(asr_task.extra_data),
-        )
-        conn.execute(sql)
+    sql = text(
+        """
+        INSERT INTO transcriber_task_consumer_queue
+            (obj_uuid, member_uuid, event_name, app_source, len_ms, service, model, task_data, task_status, entry_id, extra_data)
+        VALUES
+            (:task_uuid, :member_uuid, :event_name, :app_source, :len_ms, :service, :model, :task_data, :task_status, :entry_id, :extra_data)
+        """
+    ).bindparams(
+        task_uuid=task_uuid,
+        member_uuid=asr_task.member_uuid,
+        event_name=asr_task.event_name,
+        app_source=asr_task.app_source,
+        len_ms=asr_task.len_ms,
+        service=asr_task.service,
+        model=asr_task.model,
+        task_data=json.dumps(task_data),
+        task_status=task_status,
+        entry_id=entry_id,
+        extra_data=json.dumps(asr_task.extra_data),
+    )
+    await execute(sql, async_engines["sitecommons"], commit_after=True)
 
     async with httpx.AsyncClient() as http:
         await http.post(
