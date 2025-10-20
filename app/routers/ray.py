@@ -208,7 +208,6 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 message,
             )
         elif isinstance(message, DocMtMessage):
-            print(f"[Debug] DocMtMessage: {event.data}")
             try:
                 event_data = MtErrorResponseSchema.model_validate(event.data)
                 if event_data.error_type == "insufficient_balance":
