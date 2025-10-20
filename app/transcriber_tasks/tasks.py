@@ -7,62 +7,62 @@ from uuid import uuid4
 
 import httpx
 from sqlalchemy import text
-from straker_utils.sql.async_engine import execute, fetch_one
+from straker_utils.sql.async_engine import fetch_one
 
 from ..config import domains
-from ..database import async_engines
+from ..database import async_engines, engines
+from ..models import ASRTask
 
 
-async def create_asr_task(
-    member_uuid: str,
-    event_name: str,
-    callback_name: str,
-    task_data: dict,
-) -> str:
+async def create_asr_task(asr_task: ASRTask) -> str:
     """Create task in sitecommons.transcriber_tasks_consumer_queue table then add to redis
 
     Args:
         member_uuid (str): UUID of the member lc account
         event_name (str): Name of the event to call in wb-task-consumer
-        callback_name (str): Name of the callback callback triggers slack event
-        slack_client_id (str): Slack client ID used on slack events to know who to respond to
         task_data (dict): Task data, matches params of the task you are running in wb-task-consumer
     """
     task_status = "Pending"
     task_uuid = str(uuid4())
     entry_id = ""
-    # create task data object
-    task_data["task_id"] = task_uuid
-    task_data["on_completed"] = {
-        "callback_uri": f"{domains.stream_proxy}/events/{callback_name}",
-        "data": {"client_id": member_uuid},
-    }
+
+    task_data = asr_task.task_data.model_dump(mode="json")
+    task_data["task_uuid"] = task_uuid
 
     # Insert task into database
-    sql = text(
-        """
-        INSERT INTO transcriber_task_consumer_queue
-            (obj_uuid, member_uuid, event_name, task_data, task_status, entry_id)
-        VALUES
-            (:task_uuid, :member_uuid, :event_name, :task_data, :task_status, :entry_id)
-        """
-    ).bindparams(
-        task_uuid=task_uuid,
-        member_uuid=member_uuid,
-        event_name=event_name,
-        task_data=json.dumps(task_data),
-        task_status=task_status,
-        entry_id=entry_id,
-    )
-    await execute(sql, async_engines["sitecommons"], commit_after=True)
+    with engines["sitecommons"].begin() as conn:
+        sql = text(
+            """
+            INSERT INTO transcriber_task_consumer_queue
+                (obj_uuid, member_uuid, event_name, app_source, len_ms, service, model, task_data, task_status, entry_id, extra_data)
+            VALUES
+                (:task_uuid, :member_uuid, :event_name, :app_source, :len_ms, :service, :model, :task_data, :task_status, :entry_id, :extra_data)
+            """
+        ).bindparams(
+            task_uuid=task_uuid,
+            member_uuid=asr_task.member_uuid,
+            event_name=asr_task.event_name,
+            app_source=asr_task.app_source,
+            len_ms=asr_task.len_ms,
+            service=asr_task.service,
+            model=asr_task.model,
+            task_data=json.dumps(task_data),
+            task_status=task_status,
+            entry_id=entry_id,
+            extra_data=json.dumps(asr_task.extra_data),
+        )
+        conn.execute(sql)
 
     async with httpx.AsyncClient() as http:
         await http.post(
-            f"{domains.stream_proxy}/events/{event_name}",
-            json={"data": task_data, "source": "Straker Translate for Slack"},
+            f"{domains.stream_proxy}/events/{asr_task.event_name}",
+            json={
+                "data": task_data,
+                "source": "Straker Translate for Slack",
+            },
         )
 
-    return "Task created!"
+    return task_uuid
 
 
 async def get_asr_task(task_uuid: str, member_uuid: str) -> dict | None:

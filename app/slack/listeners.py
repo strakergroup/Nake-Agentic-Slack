@@ -539,13 +539,18 @@ async def srt_translate_action(
         # get uuid from output_file
         task_result = await get_asr_task(task_uuid, context["ray"].client.id)
         assert task_result is not None
-        if await require_mt_tokens(context, task_result["tokens"]):
+        tokens_consumed = task_result.get("tokens_consumed")
+        if tokens_consumed is not None and await require_mt_tokens(
+            context, tokens_consumed
+        ):
             # get selected language from redis keyed on output_file
             # selected from get_auto_translate_language_options
             selected_language = await redis_conn.get(f"output_file_{task_uuid}")
-            if selected_language:
+            if selected_language is not None:
                 await document_machine_translate(
-                    context, task_result["file_id"], selected_language
+                    context,
+                    cast(str, task_result.get("file_id")),
+                    cast(str, selected_language),
                 )
                 await say(
                     _(

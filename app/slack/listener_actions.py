@@ -21,10 +21,11 @@ from app.api.verify import (
     get_job_pricing,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
-from app.models import TranscriptionTask
+from app.models import ASRTask, TranscriptionTaskData
 from app.mt.service import evaluate_get_glossary_resource
 from app.ray.events.models import MtFileRequestSchema
 from app.slack.utils import escape_slack_emoji
+from app.slack_job import create_slack_job
 from app.transcriber_tasks.tasks import create_asr_task
 from app.translate import _
 
@@ -158,7 +159,9 @@ async def respond_to_message(
                         )
                     file_name = file_info["file"]["name"]
 
-                    token = client.token
+                    actual_bot_token = (
+                        message.get("metadata", {}).get("bot_token") or client.token
+                    )
                     # send video to wb consumer
                     if (
                         await require_ray_client(context, prompt_login=False)
@@ -169,30 +172,31 @@ async def respond_to_message(
                             await log_transcribe_request(
                                 duration_ms, file_name, context["ray"]
                             )
+                            output_stream_name = f"{domains.stream_proxy}/events/transcription:slack:media:results"
+                            service = "azure"
+                            model_name = "whisper-1"
 
-                            # Get the message permalink
-                            permalink_info = await client.chat_getPermalink(
-                                channel=context["channel_id"], message_ts=message["ts"]
-                            )
-                            message_permalink = permalink_info["permalink"]
-
-                            task_data = TranscriptionTask(
+                            task_data = TranscriptionTaskData(
+                                client_id=context["ray"].client.id,
                                 file_name=file_name,
                                 download_url=download_url,
-                                token=token or "",
-                                tokens=tokens,
-                                service="whisper",
-                                language="auto",
-                                model="base",
-                                embed_subtitles=False,
-                                symlink=message_permalink,
+                                app_token=actual_bot_token or "",
+                                service=service,
+                                model=model_name,
+                                out_stream_name=output_stream_name,
+                                tokens_consumed=tokens,
                             )
-                            await create_asr_task(
-                                context["ray"].client.id,
-                                "transcription:media:asr",
-                                "transcription:slack:media:results",
-                                task_data.model_dump(),
+                            asr_task = ASRTask(
+                                member_uuid=context["ray"].client.id,
+                                event_name="transcription:media:asr",
+                                app_source="slack",
+                                len_ms=duration_ms,
+                                service=service,
+                                model=model_name,
+                                extra_data={},
+                                task_data=task_data,
                             )
+                            await create_asr_task(asr_task)
                             msg = TranscriptionMessage(file_name)
                             await context.say(text=msg.text, thread_ts=thread_ts)
                 else:
@@ -530,6 +534,8 @@ async def document_machine_translate(
                 "data_source": "slack",
             }
         )
+        task_uuid = create_slack_job(task_data, status="pending")
+        task_data.task_uuid = task_uuid
         async with httpx.AsyncClient() as http:
             await http.post(
                 f"{domains.stream_proxy}/events/slack:job:machine:translate",

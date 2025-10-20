@@ -17,6 +17,7 @@ engines = DBEnginePool(
         "translators_readonly",
         "sitecommons",
         "machine_translation_readonly",
+        "verify",
     ),
     dbapi="mysqlconnector",
     # echo=True,  # Uncomment to log SQL queries
@@ -35,6 +36,7 @@ async_engines = AsyncDBEnginePool(
         "translators_readonly",
         "sitecommons",
         "machine_translation_readonly",
+        "verify",
     ),
     dbapi="mysqlconnector",
     # echo=True,  # Uncomment to log SQL queries
