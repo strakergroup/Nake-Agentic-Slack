@@ -296,7 +296,11 @@ async def app_uninstalled(context: RayContext):
 @app.event("channel_id_changed")
 @slack_log_decorator
 async def channel_id_changed(event: Dict[str, Any]):
-    await update_channel_id(event.get("old_channel_id"), event.get("new_channel_id"))
+    old_channel_id = event.get("old_channel_id")
+    new_channel_id = event.get("new_channel_id")
+
+    if old_channel_id and new_channel_id:
+        await update_channel_id(old_channel_id, new_channel_id)
 
 
 @app.message_shortcut("new_job", middleware=[ray_connection])
