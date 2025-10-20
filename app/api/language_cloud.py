@@ -2,9 +2,9 @@ import buglog
 import httpx
 from pydantic import BaseModel
 from slack_bolt.context.async_context import AsyncBoltContext
+from straker_auth.languagecloud.jwt import create_languagecloud_group_token
 
 from app.config import config, domains
-from app.mt.translate import create_languagecloud_group_token
 
 
 class DetectLanguageResponse(BaseModel):
