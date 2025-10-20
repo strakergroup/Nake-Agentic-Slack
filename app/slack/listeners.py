@@ -26,7 +26,11 @@ from app.api.verify import (
     submit_evaluation_job,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
-from app.ray.submissions import check_and_record_submission_async
+from app.ray.submissions import (
+    SubmissionStatus,
+    check_and_record_submission_async,
+    updated_submission_status,
+)
 from app.ray.utils import (
     download_from_file_server,
     is_ibm_enterprise,
@@ -424,7 +428,7 @@ async def document_mt_submit_action(
                         )
                     else:
                         await document_machine_translate(
-                            context, input_file_id, selected_language
+                            context, input_file_id, selected_language, _record.id
                         )
                         await say(
                             _(
@@ -547,6 +551,14 @@ async def srt_translate_action(
                     _(
                         "The file is being translated. You will be notified when it is ready."
                     )
+                )
+
+            elif is_dup:
+                duplicate_submission = f"{file_name} ({selected_language})"
+                await say(
+                    text=_(
+                        "Your document(s) *({duplicate_submission})* are being translated. You will be notified when they are ready."
+                    ),
                 )
             else:
                 await say(_("Please select a language to translate to."))
@@ -2255,7 +2267,7 @@ async def handle_document_mt_job(
                         continue
 
                     await document_machine_translate(
-                        context, input_file_id, lang["value"]
+                        context, input_file_id, lang["value"], _record.id
                     )
                     submitted_for_file = True
 
@@ -2281,6 +2293,13 @@ async def handle_document_mt_job(
                 )
 
         except Exception as e:
+            # Remove existing submissions if error occurs so that the user can submit again
+            for input_file in files:
+                for lang in selected_languages:
+                    updated_submission_status(
+                        submission_id=_record.id,
+                        processing_status=SubmissionStatus.FAILED,
+                    )
             notify_exception(e)
             await client.chat_postMessage(
                 channel=context["user_id"],

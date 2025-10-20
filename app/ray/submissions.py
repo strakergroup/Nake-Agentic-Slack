@@ -1,6 +1,7 @@
 import hashlib
 import os
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from typing import Optional, Tuple
 
 from sqlalchemy import select
@@ -8,6 +9,12 @@ from sqlalchemy.orm import Session
 
 from app.database import engines
 from app.models import SlackFileTranslationSubmission
+
+
+class SubmissionStatus(Enum):
+    CREATED = "created"
+    FAILED = "failed"
+    COMPLETED = "completed"
 
 
 def _hash_file_content_sha256_hex(path: str, read_chunk_size: int = 1024 * 1024) -> str:
@@ -61,6 +68,7 @@ def _insert_submission(
     file_size: int,
     target_language: str,
     file_id: str,
+    processing_status: SubmissionStatus,
 ) -> SlackFileTranslationSubmission:
     record = SlackFileTranslationSubmission(
         user_id=user_id,
@@ -71,11 +79,36 @@ def _insert_submission(
         file_size=file_size,
         target_language=target_language,
         file_id=file_id,
+        processing_status=processing_status.value,
     )
     session.add(record)
     session.commit()
     session.refresh(record)
     return record
+
+
+def updated_submission_status(
+    *,
+    submission_id: int,
+    processing_status: SubmissionStatus,
+) -> bool:
+    """Update the status of an existing submission if present. Returns True when updated."""
+
+    with Session(engines["ray_integration"]) as session:
+        stmt = (
+            select(SlackFileTranslationSubmission)
+            .where(SlackFileTranslationSubmission.id == submission_id)
+            .limit(1)
+        )
+        existing = session.scalars(stmt).first()
+
+        if existing is None:
+            return False
+
+        existing.processing_status = processing_status.value
+        session.commit()
+
+        return True
 
 
 async def check_and_record_submission_async(
@@ -105,6 +138,10 @@ async def check_and_record_submission_async(
             .where(SlackFileTranslationSubmission.file_name == file_name)
             .where(SlackFileTranslationSubmission.target_language == target_language)
             .where(SlackFileTranslationSubmission.created_at >= cutoff)
+            .where(
+                SlackFileTranslationSubmission.processing_status
+                != SubmissionStatus.FAILED.value
+            )
             .limit(1)
         ).first()
 
@@ -121,5 +158,6 @@ async def check_and_record_submission_async(
             file_size=file_size,
             target_language=target_language,
             file_id=file_id,
+            processing_status=SubmissionStatus.CREATED,
         )
         return False, created

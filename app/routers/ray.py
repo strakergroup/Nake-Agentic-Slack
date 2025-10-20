@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ValidationError
 from slack_sdk.web.async_client import AsyncWebClient
 
+from app.ray.submissions import SubmissionStatus, updated_submission_status
 from app.ray.utils import (
     delete_from_file_server,
     download_from_file_server_async,
@@ -207,6 +208,7 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                 message,
             )
         elif isinstance(message, DocMtMessage):
+            print(f"[Debug] DocMtMessage: {event.data}")
             try:
                 event_data = MtErrorResponseSchema.model_validate(event.data)
                 if event_data.error_type == "insufficient_balance":

@@ -4,6 +4,7 @@ from typing import Any
 from app.api.verify import get_evaluation_job, get_job_pricing
 from app.auth.connector import SlackUser, get_ray_client
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+from app.ray.submissions import SubmissionStatus, updated_submission_status
 from app.ray.utils import is_ibm_enterprise
 from app.slack.select_options import _get_languages_cached
 
@@ -121,6 +122,10 @@ async def get_ray_event_message(
         return message
     elif event_type == "verify:slack:document:translated":
         event8 = MtFileReponseSchema.model_validate(event_data)
+        updated_submission_status(
+            submission_id=event8.root.submission_id,
+            processing_status=SubmissionStatus.COMPLETED,
+        )
         return DocMtMessage()
     elif event_type == "verify:slack:evaluate:complete":
         # fetch the job report from event_data
