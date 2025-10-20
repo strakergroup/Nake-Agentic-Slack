@@ -1,15 +1,17 @@
 """Utility functions for using the Slack Web API."""
 
-from typing import Any, Iterable
-import os
 import asyncio
 import json
+import os
 import tempfile
-import httpx
 from pathlib import Path
-from slack_sdk.web.async_client import AsyncWebClient
-from slack_sdk.errors import SlackApiError
+from typing import Any, Iterable
+
+import httpx
 from buglog import notify_exception
+from slack_sdk.errors import SlackApiError
+from slack_sdk.web.async_client import AsyncWebClient
+from slack_sdk.web.async_slack_response import AsyncSlackResponse
 
 from ..redis import redis_conn
 from .select_options import map_file_options
@@ -178,7 +180,7 @@ async def upload_file_to_slack_memory_efficient(
     filename: str = None,
     initial_comment: str = None,
     thread_ts: str = None,
-) -> dict:
+) -> AsyncSlackResponse:
     """
     Upload a file to Slack using the memory-efficient files.getUploadURLExternal workflow.
 
@@ -194,7 +196,7 @@ async def upload_file_to_slack_memory_efficient(
         thread_ts (str, optional): Thread timestamp to reply to
 
     Returns:
-        dict: Response from Slack API containing file information
+        AsyncSlackResponse: Response from Slack API containing file information
 
     Raises:
         SlackApiError: If the upload fails

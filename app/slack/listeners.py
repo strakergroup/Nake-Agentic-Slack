@@ -8,7 +8,7 @@ import math
 import os
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from buglog import notify_exception, notify_message
 from pydantic import ValidationError
@@ -26,6 +26,7 @@ from app.api.verify import (
     submit_evaluation_job,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+from app.models import SlackGroupSettingsTranslation
 from app.ray.submissions import check_and_record_submission_async
 from app.ray.utils import (
     download_from_file_server,
@@ -760,10 +761,11 @@ async def ray_command(
                         view=translation_settings_view(
                             [context.channel_id],
                             auto_translate_langs,
-                            (
+                            cast(
+                                SlackGroupSettingsTranslation.DisplayFormatType,
                                 settings[0].get("display_format", "thread")
                                 if settings
-                                else "thread"
+                                else "thread",
                             ),
                         ),
                     )
@@ -859,7 +861,10 @@ async def show_auto_translate_settings(
         view=translation_settings_view(
             [channel_id] if channel_id else None,
             auto_translate_langs,
-            settings[0].get("display_format", "thread") if settings else "thread",
+            cast(
+                SlackGroupSettingsTranslation.DisplayFormatType,
+                settings[0].get("display_format", "thread") if settings else "thread",
+            ),
             team_id,
         ),
     )

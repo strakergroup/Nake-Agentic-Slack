@@ -3623,7 +3623,7 @@ class EvaluateSuccessMessage(SlackMessage):
         tokens: int | None = None,
         actions: bool = True,
     ) -> None:
-        blocks = []
+        blocks: list[dict[str, Any]] = []
         info_text = _(
             'The AI translation quality of your document(s) has been evaluated. Download the AI translation if you\'re satisfied, or click "Send for Human Verification" to request human verification.'
         )

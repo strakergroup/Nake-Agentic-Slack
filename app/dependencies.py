@@ -36,7 +36,7 @@ class RayEventAuth:
         token: Annotated[str, Depends(_oauth2_scheme)],
     ) -> None:
         self.slack_user: SlackUser | None = None
-        self.demo_slack_users = []
+        self.demo_slack_users: list[str] = []
         is_token_valid = validate_queue_proxy_secret(token)
         if not is_token_valid:
             raise HTTPException(401)

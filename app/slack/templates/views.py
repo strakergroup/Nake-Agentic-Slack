@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from typing import Any
+from typing import Any, cast
 
 from slack_bolt.context.async_context import AsyncBoltContext
 
@@ -753,7 +753,7 @@ def cancel_job_modal(client_name: str) -> dict[str, Any]:
 def translation_settings_view(
     initial_channels: list[str] | None = None,
     initial_langs: list[str] | None = None,
-    display_format: str = "thread",
+    display_format: SlackGroupSettingsTranslation.DisplayFormatType = "thread",
     team_id: str = "",
 ) -> dict[str, Any]:
     # TODO: Detect message max length (5000)
@@ -767,7 +767,7 @@ def translation_settings_view(
         filter_auto_translate_language_options(initial_langs) if initial_langs else []
     )
     initial_display_format_option = map_translation_display_format_option(
-        display_format
+        cast(SlackGroupSettingsTranslation.DisplayFormatType, display_format)
     )
     return {
         "type": "modal",

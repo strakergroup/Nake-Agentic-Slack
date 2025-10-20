@@ -212,7 +212,9 @@ async def respond_to_message(
                     context["channel_id"],
                     message["ts"],
                     files,
-                    context.ray.super_group[0].enable_verify_in_slack,
+                    context.ray.super_group[0].enable_verify_in_slack
+                    if context.ray
+                    else False,
                 )
                 await context.say(
                     text=new_job_msg.text,
@@ -1720,32 +1722,14 @@ async def cancel_job_process(
         job_id (str): The ID of the obj_tp_job to get.
         job_uuid (str): The UUID of the api human_job table obj_uuid
     """
-    try:
-        job, response = await RayService.get_service(ray_client).cancel_job(
-            job_id, job_uuid
-        )
-        if job_id:
-            msg = "TJ" + job_id + " - " + job["message"]
-        else:
-            msg = job["message"]
-        await client.chat_postMessage(channel=context["user_id"], text=msg)
-    except Exception as e:
-        notify_exception(e)
-        raise
-    finally:
-        if "response" in locals() and response is not None:
-            try:
-                response_data = response.json()
-            except Exception:
-                response_data = response.content.decode() or None
-            context["log"].add_api_log(
-                status_code=response.status_code,
-                url=str(response.url),
-                payload=None,
-                response=response_data,
-                headers=dict(response.headers.items()),
-                version="v3",
-            )
+    job, response = await RayService.get_service(ray_client).cancel_job(
+        job_id, job_uuid
+    )
+    if job_id:
+        msg = "TJ" + job_id
+    else:
+        msg = "cancelled"
+    await client.chat_postMessage(channel=context["user_id"], text=msg)
 
 
 async def job_tj_cancel(

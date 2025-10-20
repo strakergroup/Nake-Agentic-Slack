@@ -82,8 +82,10 @@ async def submit_evaluation_job(
 
 async def get_evaluation_job(user: SlackUser, job_uuid: str):
     ray_client = await get_ray_client(user.user_id, user.team_id, user.enterprise_id)
+    assert ray_client is not None
+    assert ray_client.id_token is not None
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(  # Added missing await
+        response = await client.get(
             f"{domains.verify_api}/evaluate/{job_uuid}",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )

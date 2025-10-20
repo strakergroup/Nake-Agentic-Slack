@@ -3,20 +3,20 @@ from typing import Any, Iterable
 from urllib.parse import urlencode
 
 import httpx
-from httpx import Response
 from buglog import notify_exception
-from ray_sdk import RayV3, RayResponse, RayAuthError, RayAPIResponseError
+from httpx import Response
+from ray_sdk import RayAPIResponseError, RayAuthError, RayResponse, RayV3
 from ray_sdk.api.v3.models import (
+    GroupOptions,
     Job,
     JobSummary,
     Language,
     Pagination,
     Quote,
-    GroupOptions,
 )
 
-from ..config import config, domains, Environment
 from ..auth.connector import RayClient
+from ..config import Environment, config, domains
 
 
 class RayService:
@@ -210,7 +210,7 @@ class RayService:
         self,
         job_id: str = "",
         job_uuid: str = "",
-    ) -> tuple[Job | None, Response | None]:
+    ) -> tuple[dict[str, Any] | None, Response | None]:
         """Gets the details of a translation job.
 
         Args:

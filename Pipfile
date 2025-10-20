@@ -33,6 +33,8 @@ langcodes = "*"
 ffmpeg-python = "*"
 straker-utils = {file = "../../straker-python-utils/dist/straker_utils-0.3.0.6-py3-none-any.whl"}
 pypdf2 = "*"
+types-python-dateutil = "*"
+types-requests = "*"
 
 [dev-packages]
 pytest = "*"
