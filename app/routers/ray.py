@@ -35,7 +35,7 @@ from ..auth.connector import (
     is_verify_job,
     validate_api_callback_signature,
 )
-from ..dependencies import RayEvent, RayEventAuth
+from ..dependencies import RayEvent, RayEventAuth, get_ray_event_auth
 from ..ray.events.logging import (
     post_channel_translation_notification,
     post_notification,
@@ -114,7 +114,8 @@ def get_background_task_info():
 
 
 async def _handle_mt_success_background(
-    success_data: MtSuccessResponseSchema, auth: RayEventAuth
+    success_data: MtSuccessResponseSchema,
+    auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
 ):
     """Background task to handle MT success file download and upload."""
     try:
@@ -160,7 +161,9 @@ async def _handle_mt_success_background(
 
 
 async def _handle_transcribe_success_background(
-    event_data: dict[str, Any], auth: RayEventAuth, response: dict[str, Any]
+    event_data: dict[str, Any],
+    auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
+    response: dict[str, Any],
 ):
     """Background task to handle transcription success file download and upload."""
     try:
@@ -212,7 +215,9 @@ async def _handle_verify_complete_background(event_data, auth, response):
 
 
 @router.post("/ray/events")
-async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
+async def ray_events(
+    event: RayEvent, auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)]
+):
     """Receives and responds to an event from the RAY platform."""
     client = None
 
