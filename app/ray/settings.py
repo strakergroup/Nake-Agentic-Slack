@@ -526,9 +526,6 @@ async def get_pagination(context: AsyncBoltContext, rows_per_page: int) -> int:
 
 
 async def update_channel_id(old_channel_id, new_channel_id):
-    # Use async engine for database operations
-    from sqlalchemy import text
-
     sql = text(
         """
         UPDATE slack_group_settings_translation

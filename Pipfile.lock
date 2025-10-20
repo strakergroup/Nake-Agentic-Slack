@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "6534cfdedec6cd56bcf2a0fec5a8e823b0b355f1de577736400ed5688a1c7f02"
+            "sha256": "e20fbe3f0fed32aed9b2f2bf8aa2bdb012efa5a9c08a365331244497f4135f41"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -1930,9 +1930,9 @@
             "version": "==0.1.8"
         },
         "straker-utils": {
-            "file": "../../straker-python-utils/dist/straker_utils-0.3.0.6-py3-none-any.whl",
+            "file": "../../straker-python-utils/dist/straker_utils-0.3.0.7-py3-none-any.whl",
             "hashes": [
-                "sha256:3adc8cc4403c51762c354f7423f50b2c532a74bebbf3e11bb0f4506ddbcef501"
+                "sha256:085def06e9dd13570c1fb86a431ad4f9781c7b9ae63f1f28d5985797da9b3a46"
             ]
         },
         "types-python-dateutil": {

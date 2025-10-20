@@ -12,7 +12,7 @@ from app.api.models import MtTranslationExtraData
 from app.api.verify import get_evaluation_job, get_job_pricing
 from app.auth.connector import get_ray_client, get_ray_connection
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
-from app.database import engines
+from app.database import async_engines
 from app.mt.logs import log_google_api_usage
 from app.ray.utils import (
     delete_from_file_server,
@@ -764,15 +764,14 @@ async def ray_events(
                             "message": f"Invalid usage type: {extra_data.usage_type}",
                         },
                     )
-                database_engine = engines["sitemanager"]
                 # Calculate total languages across all services
                 total_languages = sum(
                     len(langs) for langs in extra_data.service_language_mapping.values()
                 )
                 amount = calculate_cost(extra_data.text_length * total_languages)
                 assert auth.slack_user.ray_user_group_id is not None
-                transaction_uuid = spend_credits(
-                    database_engine,
+                transaction_uuid = await spend_credits(
+                    async_engines["sitemanager"],
                     auth.slack_user.ray_client_id,
                     auth.slack_user.ray_user_group_id,
                     amount,
