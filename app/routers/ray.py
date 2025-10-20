@@ -119,7 +119,7 @@ async def _handle_mt_success_background(
 ):
     """Background task to handle MT success file download and upload."""
     try:
-        update_slack_job(
+        await update_slack_job(
             task_uuid=success_data.task_uuid,
             status="slack_uploading",
         )
@@ -147,14 +147,14 @@ async def _handle_mt_success_background(
             initial_comment=token_consumption_message,
         )
 
-        update_slack_job(
+        await update_slack_job(
             task_uuid=success_data.task_uuid,
             status="delivered",
         )
         delete_from_file_server(success_data.file_id)
     except Exception as e:
         notify_exception(e, "Background MT success file handling failed")
-        update_slack_job(
+        await update_slack_job(
             task_uuid=success_data.task_uuid,
             status="failed_delivery",
         )

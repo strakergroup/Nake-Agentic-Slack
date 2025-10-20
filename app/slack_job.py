@@ -7,11 +7,11 @@ from typing import Optional
 
 from sqlalchemy import text
 
-from app.database import engines
+from app.database import async_engines
 from app.ray.events.models import MtFileRequestSchema
 
 
-def create_slack_job(
+async def create_slack_job(
     mt_request: MtFileRequestSchema,
     file_name: Optional[str] = None,
     status: str = "pending",
@@ -28,7 +28,7 @@ def create_slack_job(
         str: The task ID
     """
     task_uuid = str(uuid.uuid4())
-    with engines["verify"].connect() as conn:
+    async with async_engines["verify"].connect() as conn:
         sql = text("""
             INSERT INTO slack_job
             (status, client_uuid, grid_fs_id, file_name, app_source, selected_language,
@@ -38,7 +38,7 @@ def create_slack_job(
              :selected_language, :ai_engine, :task_uuid)
         """)
 
-        conn.execute(
+        await conn.execute(
             sql,
             {
                 "status": status,
@@ -51,11 +51,11 @@ def create_slack_job(
                 "task_uuid": task_uuid,
             },
         )
-        conn.commit()
+        await conn.commit()
     return task_uuid
 
 
-def update_slack_job(
+async def update_slack_job(
     task_uuid: str | None,
     status: str,
 ) -> None:
@@ -71,17 +71,17 @@ def update_slack_job(
     """
     if not task_uuid:
         return
-    with engines["verify"].connect() as conn:
+    async with async_engines["verify"].connect() as conn:
         sql = text("""
             UPDATE slack_job
             SET status = :status
             WHERE task_uuid = :task_uuid
         """)
-        conn.execute(
+        await conn.execute(
             sql,
             {
                 "task_uuid": task_uuid,
                 "status": status,
             },
         )
-        conn.commit()
+        await conn.commit()

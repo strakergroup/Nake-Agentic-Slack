@@ -534,7 +534,7 @@ async def document_machine_translate(
                 "data_source": "slack",
             }
         )
-        task_uuid = create_slack_job(task_data, status="pending")
+        task_uuid = await create_slack_job(task_data, status="pending")
         task_data.task_uuid = task_uuid
         async with httpx.AsyncClient() as http:
             await http.post(
