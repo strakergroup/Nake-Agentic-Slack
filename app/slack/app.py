@@ -1,36 +1,38 @@
 import logging
-from urllib.parse import urlparse, urlencode
+from urllib.parse import urlencode, urlparse
 
+from buglog import notify_exception
 from slack_bolt import BoltResponse
 from slack_bolt.async_app import AsyncApp
+from slack_bolt.oauth.async_callback_options import (
+    AsyncFailureArgs,
+    AsyncSuccessArgs,
+    DefaultAsyncCallbackOptions,
+)
 from slack_bolt.oauth.async_oauth_flow import AsyncOAuthFlow
 from slack_bolt.oauth.async_oauth_settings import AsyncOAuthSettings
-from slack_bolt.oauth.async_callback_options import (
-    DefaultAsyncCallbackOptions,
-    AsyncSuccessArgs,
-    AsyncFailureArgs,
-)
 from slack_bolt.request.async_request import AsyncBoltRequest
-from buglog import notify_exception
+from slack_sdk.oauth.installation_store.sqlalchemy import (
+    AsyncSQLAlchemyInstallationStore,
+)
+from slack_sdk.oauth.state_store.sqlalchemy import AsyncSQLAlchemyOAuthStateStore
 
 from app.ray.utils import is_ibm_enterprise
 
-from .stores import AsyncSQLAlchemyInstallationStore, AsyncSQLAlchemyOAuthStateStore
-from .templates.messages import OnboardingMessage
 from ..auth.connector import save_user_token_from_installation
 from ..config import Environment, config, domains
-from ..database import engines
-
+from ..database import async_engines
+from .templates.messages import OnboardingMessage
 
 installation_store = AsyncSQLAlchemyInstallationStore(
     client_id=config.slack_client_id,
-    engine=engines["ray_integration"],
+    engine=async_engines["ray_integration"],
     bots_table_name="slack_bots",
     installations_table_name="slack_installations",
 )
 state_store = AsyncSQLAlchemyOAuthStateStore(
     expiration_seconds=3600,
-    engine=engines["ray_integration"],
+    engine=async_engines["ray_integration"],
     table_name="slack_oauth_states",
 )
 
