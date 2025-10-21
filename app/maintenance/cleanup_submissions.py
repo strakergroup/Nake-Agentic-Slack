@@ -1,26 +1,24 @@
 from datetime import datetime, timedelta, timezone
 
-from straker_utils.sql.async_engine import execute
+from sqlalchemy import update
+from sqlalchemy.orm import Session
 
-from app.database import async_engines
+from app.database import engines
+from app.models import SlackFileTranslationSubmission
 
 
-async def cleanup_submissions(max_age: timedelta) -> None:
-    """Delete records older than max_age from SlackFileTranslationSubmission.
+def cleanup_submissions(max_age: timedelta) -> int:
+    """Mark records older than max_age as deleted in SlackFileTranslationSubmission.
 
-    Returns the number of rows deleted.
+    Returns the number of rows marked as deleted.
     """
     cutoff = datetime.now(timezone.utc) - max_age
-
-    # Use async engine for database operations
-    from sqlalchemy import text
-
-    sql = text(
-        """
-        DELETE FROM slack_file_translation_submission
-        WHERE created_at < :cutoff
-        """
-    ).bindparams(cutoff=cutoff)
-
-    await execute(sql, async_engines["ray_integration"], commit_after=True)
-    return None
+    with Session(engines["ray_integration"]) as session:
+        result = session.execute(
+            update(SlackFileTranslationSubmission)
+            .where(SlackFileTranslationSubmission.created_at < cutoff)
+            .where(SlackFileTranslationSubmission.is_deleted.is_(False))
+            .values(is_deleted=True, deleted_at=datetime.now(timezone.utc))
+        )
+        session.commit()
+        return result.rowcount or 0

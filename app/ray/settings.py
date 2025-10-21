@@ -3,7 +3,7 @@ from typing import Iterable
 
 import langcodes
 from slack_bolt.context.async_context import AsyncBoltContext
-from sqlalchemy import distinct, func, or_, select, text
+from sqlalchemy import delete, distinct, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from straker_utils.sql.async_engine import execute, fetch_all, fetch_one
 
@@ -695,4 +695,16 @@ async def update_channel_id(old_channel_id, new_channel_id):
             setting.channel_id = new_channel_id
             session.add(setting)
 
+        await session.commit()
+
+
+async def delete_channel_id(channel_id: str | None):
+    if not channel_id:
+        return
+    async with AsyncSession(async_engines["ray_integration"]) as session:
+        await session.execute(
+            delete(SlackGroupSettingsTranslation).where(
+                SlackGroupSettingsTranslation.channel_id == channel_id
+            )
+        )
         await session.commit()

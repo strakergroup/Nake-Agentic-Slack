@@ -496,6 +496,7 @@ async def document_machine_translate(
     context: AsyncBoltContext,
     file_id: str,
     selected_language: str,
+    submission_id: int,
 ):
     """Translate the Document using verify-task-consumer
 
@@ -532,6 +533,7 @@ async def document_machine_translate(
                 "target_language": selected_language,
                 "ai_engine": ai_engine,
                 "data_source": "slack",
+                "submission_id": submission_id,
             }
         )
         task_uuid = await create_slack_job(task_data, status="pending")

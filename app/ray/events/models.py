@@ -141,6 +141,7 @@ class MtErrorTypes(str, Enum):
     INSUFFICIENT_BALANCE = "insufficient_balance"
     SAMPLE_TEXT_NOT_FOUND = "sample_text_not_found"
     CONVERSION_ERROR = "conversion_error"
+    FILE_COMPLEXITY_ERROR = "file_complexity_error"
     OTHER = "other"
 
 
@@ -152,6 +153,7 @@ class MtFileRequestSchema(BaseModel):
     target_language: str
     ai_engine: str
     data_source: str
+    submission_id: int
 
 
 class MtSuccessResponseSchema(BaseModel):
@@ -161,6 +163,7 @@ class MtSuccessResponseSchema(BaseModel):
     client_id: str
     target_language: str
     channel_id: str
+    submission_id: int
 
 
 class Balance(BaseModel):
@@ -174,6 +177,7 @@ class MtErrorResponseSchema(BaseModel):
     channel_id: str
     error_type: MtErrorTypes
     error_data: Dict[str, Any]
+    submission_id: int
 
 
 class MtFileReponseSchema(RootModel):

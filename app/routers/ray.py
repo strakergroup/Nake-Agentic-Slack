@@ -61,6 +61,7 @@ from ..slack.templates.messages import (
     ClientApprovedEventMessage,
     ClientSignupEventAdminMessage,
     ClientSignupEventMessage,
+    DocComplexityErrorMessage,
     DocMtMessage,
     DocParseErrorMessage,
     EvaluateErrorMessage,
@@ -514,14 +515,14 @@ async def ray_events(
                 mt_message: DocMtMessage = DocMtMessage()
                 # Handle MT success/error
                 try:
-                    error_data = MtErrorResponseSchema.model_validate(event.data)
-                    if error_data.error_type == "insufficient_balance":
+                    event_data = MtErrorResponseSchema.model_validate(event.data)
+                    if event_data.error_type == "insufficient_balance":
                         # Send message to user that they need to purchase tokens
                         client_type = await get_client_type(
                             auth.slack_user.ray_client_id,
                             auth.slack_user.ray_user_group_id,
                         )
-                        balance = Balance.model_validate(error_data.error_data)
+                        balance = Balance.model_validate(event_data.error_data)
 
                         if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
                             auth.slack_user.enterprise_id
@@ -533,18 +534,23 @@ async def ray_events(
                             message = RequiresMtTokenAdminMessage(
                                 balance.balance, balance.required
                             )
-                    elif error_data.error_type == "conversion_error":
+                    elif event_data.error_type == "conversion_error":
                         message = DocParseErrorMessage(
-                            error_data.error_data.get("ext", ""),
-                            error_data.error_data.get("file_expected", ""),
+                            event_data.error_data["ext"],
+                            event_data.error_data["file_expected"],
+                        )
+
+                    elif event_data.error_type == "file_complexity_error":
+                        message = DocComplexityErrorMessage(
+                            event_data.error_data["ext"],
                         )
 
                     await post_notification_ephemeral(
                         client,
-                        error_data.channel_id or auth.slack_user.channel_id,
+                        event_data.channel_id or auth.slack_user.channel_id,
                         event,
                         auth.slack_user,
-                        mt_message,
+                        message,
                     )
                 except ValidationError:
                     success_data = MtSuccessResponseSchema.model_validate(event.data)
@@ -820,7 +826,6 @@ async def ray_events(
                     channel_name=channel_name,
                 )
             except Exception as e:
-                raise e
                 raise HTTPException(
                     422,
                     {

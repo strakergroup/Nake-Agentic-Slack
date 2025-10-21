@@ -92,6 +92,7 @@ settings:
       - message.groups
       - message.im
       - message.mpim
+      - channel_deleted
   interactivity:
     is_enabled: true
     request_url: <YOUR_DOMAIN>/slack/events
