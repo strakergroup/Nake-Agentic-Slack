@@ -1,14 +1,20 @@
 import hashlib
 import os
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from typing import Optional, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from straker_utils.sql.async_engine import execute, fetch_one
 
-from app.database import async_engines
+from app.database import engines
 from app.models import SlackFileTranslationSubmission
+
+
+class SubmissionStatus(Enum):
+    CREATED = "created"
+    FAILED = "failed"
+    COMPLETED = "completed"
 
 
 def _hash_file_content_sha256_hex(path: str, read_chunk_size: int = 1024 * 1024) -> str:
@@ -62,6 +68,7 @@ def _insert_submission(
     file_size: int,
     target_language: str,
     file_id: str,
+    processing_status: SubmissionStatus,
 ) -> SlackFileTranslationSubmission:
     record = SlackFileTranslationSubmission(
         user_id=user_id,
@@ -72,11 +79,36 @@ def _insert_submission(
         file_size=file_size,
         target_language=target_language,
         file_id=file_id,
+        processing_status=processing_status.value,
     )
     session.add(record)
     session.commit()
     session.refresh(record)
     return record
+
+
+def updated_submission_status(
+    *,
+    submission_id: int,
+    processing_status: SubmissionStatus,
+) -> bool:
+    """Update the status of an existing submission if present. Returns True when updated."""
+
+    with Session(engines["ray_integration"]) as session:
+        stmt = (
+            select(SlackFileTranslationSubmission)
+            .where(SlackFileTranslationSubmission.id == submission_id)
+            .limit(1)
+        )
+        existing = session.scalars(stmt).first()
+
+        if existing is None:
+            return False
+
+        existing.processing_status = processing_status.value
+        session.commit()
+
+        return True
 
 
 async def check_and_record_submission_async(
@@ -97,102 +129,35 @@ async def check_and_record_submission_async(
     file_size = _get_file_size(path)
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
 
-    # Use async engine for database operations
-    from sqlalchemy import text
+    with Session(engines["ray_integration"]) as session:
+        existing = session.scalars(
+            select(SlackFileTranslationSubmission)
+            .where(SlackFileTranslationSubmission.user_id == user_id)
+            .where(SlackFileTranslationSubmission.team_id == team_id)
+            .where(SlackFileTranslationSubmission.file_hash == file_hash)
+            .where(SlackFileTranslationSubmission.file_name == file_name)
+            .where(SlackFileTranslationSubmission.target_language == target_language)
+            .where(SlackFileTranslationSubmission.created_at >= cutoff)
+            .where(
+                SlackFileTranslationSubmission.processing_status
+                != SubmissionStatus.FAILED.value
+            )
+            .limit(1)
+        ).first()
 
-    sql = text(
-        """
-        SELECT * FROM slack_file_translation_submission
-        WHERE user_id = :user_id
-        AND team_id = :team_id
-        AND file_hash = :file_hash
-        AND file_name = :file_name
-        AND target_language = :target_language
-        AND created_at >= :cutoff
-        LIMIT 1
-        """
-    ).bindparams(
-        user_id=user_id,
-        team_id=team_id,
-        file_hash=file_hash,
-        file_name=file_name,
-        target_language=target_language,
-        cutoff=cutoff,
-    )
+        if existing is not None:
+            return True, existing
 
-    existing = await fetch_one(sql, async_engines["ray_integration"])
-
-    if existing is not None:
-        # Convert dict result to model instance
-        existing_obj = SlackFileTranslationSubmission(
-            id=existing.get("id"),
-            user_id=existing.get("user_id"),
-            team_id=existing.get("team_id"),
-            channel_id=existing.get("channel_id"),
-            file_hash=existing.get("file_hash"),
-            file_name=existing.get("file_name"),
-            file_size=existing.get("file_size"),
-            target_language=existing.get("target_language"),
-            file_id=existing.get("file_id"),
-            created_at=existing.get("created_at"),
+        created = _insert_submission(
+            session,
+            user_id=user_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            file_hash=file_hash,
+            file_name=file_name,
+            file_size=file_size,
+            target_language=target_language,
+            file_id=file_id,
+            processing_status=SubmissionStatus.CREATED,
         )
-        return True, existing_obj
-
-    # Insert new submission using async engine
-    insert_sql = text(
-        """
-        INSERT INTO slack_file_translation_submission
-        (user_id, team_id, channel_id, file_hash, file_name, file_size, target_language, file_id, created_at)
-        VALUES
-        (:user_id, :team_id, :channel_id, :file_hash, :file_name, :file_size, :target_language, :file_id, NOW())
-        """
-    ).bindparams(
-        user_id=user_id,
-        team_id=team_id,
-        channel_id=channel_id,
-        file_hash=file_hash,
-        file_name=file_name,
-        file_size=file_size,
-        target_language=target_language,
-        file_id=file_id,
-    )
-
-    await execute(insert_sql, async_engines["ray_integration"], commit_after=True)
-
-    # Get the created record
-    created_sql = text(
-        """
-        SELECT * FROM slack_file_translation_submission
-        WHERE user_id = :user_id
-        AND team_id = :team_id
-        AND file_hash = :file_hash
-        AND file_name = :file_name
-        AND target_language = :target_language
-        ORDER BY created_at DESC
-        LIMIT 1
-        """
-    ).bindparams(
-        user_id=user_id,
-        team_id=team_id,
-        file_hash=file_hash,
-        file_name=file_name,
-        target_language=target_language,
-    )
-
-    created_result = await fetch_one(created_sql, async_engines["ray_integration"])
-    if not created_result:
-        raise Exception("Failed to create submission record")
-    created_obj = SlackFileTranslationSubmission(
-        id=created_result.get("id"),
-        user_id=created_result.get("user_id"),
-        team_id=created_result.get("team_id"),
-        channel_id=created_result.get("channel_id"),
-        file_hash=created_result.get("file_hash"),
-        file_name=created_result.get("file_name"),
-        file_size=created_result.get("file_size"),
-        target_language=created_result.get("target_language"),
-        file_id=created_result.get("file_id"),
-        created_at=created_result.get("created_at"),
-    )
-
-    return False, created_obj
+        return False, created
