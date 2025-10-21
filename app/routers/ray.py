@@ -40,6 +40,7 @@ from ..slack.templates.messages import (
     ClientApprovedEventMessage,
     ClientSignupEventAdminMessage,
     ClientSignupEventMessage,
+    DocComplexityErrorMessage,
     DocMtMessage,
     DocParseErrorMessage,
     EvaluateSuccessMessage,
@@ -231,6 +232,11 @@ async def ray_events(event: RayEvent, auth: Annotated[RayEventAuth, Depends()]):
                     message = DocParseErrorMessage(
                         event_data.error_data["ext"],
                         event_data.error_data["file_expected"],
+                    )
+
+                elif event_data.error_type == "file_complexity_error":
+                    message = DocComplexityErrorMessage(
+                        event_data.error_data["ext"],
                     )
 
                 await post_notification_ephemeral(

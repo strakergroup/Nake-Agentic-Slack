@@ -3704,6 +3704,28 @@ class DocParseErrorMessage(SlackMessage):
         )
 
 
+class DocComplexityErrorMessage(SlackMessage):
+    """Message to notify about potential issues with processing a complex XLSX file."""
+
+    def __init__(self, ext: str) -> None:
+        message = _(
+            "⚠️ Heads Up on Your Upload ⚠️\n"
+            "Due to the size and complexity, there's a chance the system might not be able to process it correctly or fully support all the content. If the process fails, please try using a smaller version of the file for better results. Let us know if you need assistance!"
+        )
+        super().__init__(
+            _("Verify the translation"),
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": message,
+                    },
+                }
+            ],
+        )
+
+
 class HumanJobQuoteMessage(SlackMessage):
     def __init__(
         self,
