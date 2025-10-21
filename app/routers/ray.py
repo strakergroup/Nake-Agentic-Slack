@@ -52,7 +52,6 @@ from ..ray.events.models import (
     JobStatusChangedEvent,
     JobTranscribedEvent,
     MtErrorResponseSchema,
-    MtFileReponseSchema,
     MtSuccessResponseSchema,
     SlackAccountConnectedEvent,
 )
@@ -62,7 +61,6 @@ from ..slack.templates.messages import (
     ClientSignupEventAdminMessage,
     ClientSignupEventMessage,
     DocComplexityErrorMessage,
-    DocMtMessage,
     DocParseErrorMessage,
     EvaluateErrorMessage,
     EvaluateSuccessMessage,
@@ -510,61 +508,55 @@ async def ray_events(
                 ) from e
 
         elif event.event == "verify:slack:document:translated":
+            # Handle MT success/error
             try:
-                event_data = MtFileReponseSchema.model_validate(event.data)
-                mt_message: DocMtMessage = DocMtMessage()
-                # Handle MT success/error
-                try:
-                    event_data = MtErrorResponseSchema.model_validate(event.data)
-                    if event_data.error_type == "insufficient_balance":
-                        # Send message to user that they need to purchase tokens
-                        client_type = await get_client_type(
-                            auth.slack_user.ray_client_id,
-                            auth.slack_user.ray_user_group_id,
-                        )
-                        balance = Balance.model_validate(event_data.error_data)
+                document_translated_data = MtErrorResponseSchema.model_validate(
+                    event.data
+                )
+                if document_translated_data.error_type == "insufficient_balance":
+                    # Send message to user that they need to purchase tokens
+                    client_type = await get_client_type(
+                        auth.slack_user.ray_client_id,
+                        auth.slack_user.ray_user_group_id,
+                    )
+                    balance = Balance.model_validate(
+                        document_translated_data.error_data
+                    )
 
-                        if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
-                            auth.slack_user.enterprise_id
-                        ):
-                            message = RequiresMtTokenMessage(
-                                balance.balance, balance.required
-                            )
-                        else:
-                            message = RequiresMtTokenAdminMessage(
-                                balance.balance, balance.required
-                            )
-                    elif event_data.error_type == "conversion_error":
-                        message = DocParseErrorMessage(
-                            event_data.error_data["ext"],
-                            event_data.error_data["file_expected"],
+                    if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
+                        auth.slack_user.enterprise_id
+                    ):
+                        message = RequiresMtTokenMessage(
+                            balance.balance, balance.required
                         )
-
-                    elif event_data.error_type == "file_complexity_error":
-                        message = DocComplexityErrorMessage(
-                            event_data.error_data["ext"],
+                    else:
+                        message = RequiresMtTokenAdminMessage(
+                            balance.balance, balance.required
                         )
+                elif document_translated_data.error_type == "conversion_error":
+                    message = DocParseErrorMessage(
+                        document_translated_data.error_data["ext"],
+                        document_translated_data.error_data["file_expected"],
+                    )
 
+                elif document_translated_data.error_type == "file_complexity_error":
+                    message = DocComplexityErrorMessage(
+                        document_translated_data.error_data["ext"],
+                    )
+                if message is not None:
                     await post_notification_ephemeral(
                         client,
-                        event_data.channel_id or auth.slack_user.channel_id,
+                        document_translated_data.channel_id
+                        or auth.slack_user.channel_id,
                         event,
                         auth.slack_user,
                         message,
                     )
-                except ValidationError:
-                    success_data = MtSuccessResponseSchema.model_validate(event.data)
-                    _create_background_task(
-                        _handle_mt_success_background(success_data, auth)
-                    )
-            except ValidationError as e:
-                raise HTTPException(
-                    422,
-                    {
-                        "message": f"The event data is invalid for the event type: {event.event}",
-                        "detail": e.errors(),
-                    },
-                ) from e
+            except ValidationError:
+                success_data = MtSuccessResponseSchema.model_validate(event.data)
+                _create_background_task(
+                    _handle_mt_success_background(success_data, auth)
+                )
 
         elif event.event == "verify:slack:evaluate:complete":
             if event.data.get("error"):

@@ -196,7 +196,7 @@ async def message_event(
 async def channel_deleted_event(
     client: AsyncWebClient, context: RayContext, event: Dict[str, Any]
 ):
-    delete_channel_id(event.get("channel"))
+    await delete_channel_id(event.get("channel"))
 
 
 @app.event("app_mention", middleware=[ray_connection])
@@ -569,6 +569,7 @@ async def srt_translate_action(
                     context,
                     cast(str, task_result.get("file_id")),
                     cast(str, selected_language),
+                    0,  # submission_id - not available in this context
                 )
                 await say(
                     _(
@@ -576,13 +577,6 @@ async def srt_translate_action(
                     )
                 )
 
-            elif is_dup:
-                duplicate_submission = f"{file_name} ({selected_language})"
-                await say(
-                    text=_(
-                        "Your document(s) *({duplicate_submission})* are being translated. You will be notified when they are ready."
-                    ),
-                )
             else:
                 await say(_("Please select a language to translate to."))
 
