@@ -543,15 +543,14 @@ async def update_auto_translate_group_settings(
 
             # Delete existing language settings
             if current_setting_ids:
-                delete_query = select(SlackGroupSettingsTranslationLangs).where(
-                    SlackGroupSettingsTranslationLangs.translation_settings_id.in_(
-                        current_setting_ids
-                    )
+                await session.execute(
+                    text(
+                        """
+                        DELETE FROM slack_group_settings_translation_langs
+                        WHERE translation_settings_id IN :current_setting_ids
+                        """
+                    ).bindparams(current_setting_ids=current_setting_ids)
                 )
-                delete_result = await session.execute(delete_query)
-                existing_langs = delete_result.scalars().all()
-                for lang in existing_langs:
-                    await session.delete(lang)
 
             # Add new language settings
             for language_code in languages:
