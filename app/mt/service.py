@@ -23,7 +23,7 @@ async def evaluate_get_glossary_resource(
     sql = text("""
         SELECT terminology_id
         FROM terminology_third_party_info
-        WHERE group_id = ANY(:groups)
+        WHERE group_id IN :groups
         AND sl = :sl
         AND tl = :tl
         AND terminology_engine = :engine

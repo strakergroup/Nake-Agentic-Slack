@@ -1676,7 +1676,12 @@ async def get_mt_translation(
 
         # Create service language mapping based on target language
         service_language_mapping = create_service_language_mapping([target_lang])
-
+        glossary_resource = await evaluate_get_glossary_resource(
+            context.ray.super_group[0].verify_organization_uuid,
+            source_lang,
+            target_lang,
+            "google",
+        )
         extra_data = MtTranslationExtraData(
             client_id=client_id,
             service_language_mapping=service_language_mapping,
