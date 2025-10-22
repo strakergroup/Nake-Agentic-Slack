@@ -1526,15 +1526,16 @@ async def view_update_auto_translate_settings(
                     all_tokens = await get_all_tokens_for_enterprise(
                         context.enterprise_id
                     )
-                    for token in all_tokens:
-                        client.token = token.bot_token
-                        try:
-                            await client.chat_postMessage(
-                                channel=channel_id, text=msg.text
-                            )
-                            break
-                        except Exception as e:
-                            pass
+                    if all_tokens:
+                        for token in all_tokens:
+                            client.token = token["bot_token"]
+                            try:
+                                await client.chat_postMessage(
+                                    channel=channel_id, text=msg.text
+                                )
+                                break
+                            except Exception as e:
+                                pass
 
         for channel_list in team_channels:
             bot_token = channel_list["bot_token"]

@@ -1617,7 +1617,9 @@ async def get_group_quote_settings(group_uuid: str):
     return result["api_enabled"]
 
 
-async def get_all_tokens_for_enterprise(enterprise_id: str | None):
+async def get_all_tokens_for_enterprise(
+    enterprise_id: str | None,
+) -> list[dict[str, Any]] | None:
     """Get all the tokens for the enterprise"""
     if not enterprise_id:
         return None
@@ -1691,8 +1693,6 @@ async def resolve_channels_to_team(
     old_token = client.token
     if enterprise_id:
         all_tokens = await get_all_tokens_for_enterprise(enterprise_id)
-    else:
-        all_tokens = []
     try:
         channel_info = await client.conversations_info(channel=channel_id)
         team_channel = {
@@ -1704,21 +1704,22 @@ async def resolve_channels_to_team(
         }
     except SlackApiError as e:
         successful = False
-        for token in all_tokens:
-            client.token = token.bot_token
-            try:
-                channel_info = await client.conversations_info(channel=channel_id)
-                team_channel = {
-                    "team_id": token.team_id,
-                    "channel_id": channel_id,
-                    "bot_token": token.bot_token,
-                    "name": channel_info["channel"]["name"],
-                    "is_private": channel_info["channel"]["is_private"],
-                }
-                successful = True
-                break  # Exit the loop if a successful token is found
-            except SlackApiError:
-                continue
+        if all_tokens:
+            for token in all_tokens:
+                client.token = token["bot_token"]
+                try:
+                    channel_info = await client.conversations_info(channel=channel_id)
+                    team_channel = {
+                        "team_id": token["team_id"],
+                        "channel_id": channel_id,
+                        "bot_token": token["bot_token"],
+                        "name": channel_info["channel"]["name"],
+                        "is_private": channel_info["channel"]["is_private"],
+                    }
+                    successful = True
+                    break  # Exit the loop if a successful token is found
+                except SlackApiError:
+                    continue
         if not successful:
             client.token = old_token
             raise e  # Raise the original SlackApiError if no token was successful. This will request that the app be added to the workspace/channel.
@@ -1774,7 +1775,6 @@ async def get_group_mt_engine(
         """
     ).bindparams(group_id=group_id)
     row = await fetch_one(sql, async_engines["sitemanager_readonly"])
-
     if row is not None and row["ai_mt"] is not None and row["ai_mt"] != "":
         mt_engine = row["ai_mt"]
 
