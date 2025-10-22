@@ -4,7 +4,7 @@ from straker_utils.sql.async_engine import fetch_all, fetch_one
 from app.database import async_engines
 
 
-async def evaluate_get_org_groups(organization_uuid: str) -> list[str]:
+async def evaluate_get_org_groups(organization_uuid: str):
     sql = text(
         "SELECT obj_uuid FROM obj_m_group WHERE organization_id = :org_uuid"
     ).bindparams(org_uuid=organization_uuid)

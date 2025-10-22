@@ -67,23 +67,8 @@ def home_auth_blocks(
                 },
             },
         ]
-    # msg: list[dict[str, Any]] = [
-    #     {
-    #         "type": "section",
-    #         "text": {
-    #             "type": "mrkdwn",
-    #             "text": _(
-    #                 "Connect your account to get details about your translation jobs."
-    #             ),
-    #         },
-    #     },
-    #     {
-    #         "type": "actions",
-    #         "elements": [],
-    #     },
-    # ]
     if is_ibm_enterprise(enterprise_id):
-        msg: list[dict[str, Any]] = [
+        blocks: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {
@@ -98,7 +83,7 @@ def home_auth_blocks(
                 "elements": [],
             },
         ]
-        msg[1]["elements"].insert(
+        blocks[1]["elements"].insert(
             0,
             {
                 "type": "button",
@@ -111,7 +96,7 @@ def home_auth_blocks(
             },
         )
     else:
-        msg: list[dict[str, Any]] = [
+        blocks: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {
@@ -127,7 +112,7 @@ def home_auth_blocks(
             },
         ]
         (
-            msg[1]["elements"].insert(
+            blocks[1]["elements"].insert(
                 0,
                 {
                     "type": "button",
@@ -144,7 +129,7 @@ def home_auth_blocks(
             ),
         )
 
-    return msg
+    return blocks
 
 
 def job_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
@@ -366,7 +351,7 @@ def verify_quote_blocks(
     source_files = job["source_files"]
     workflow_uuid = job["workflow_uuid"]
     blocks: list[dict[str, Any]] = []
-    total_cost = 0
+    total_cost = 0.0
     for file in source_files:
         blocks.append(
             {

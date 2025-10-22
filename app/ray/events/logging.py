@@ -1,10 +1,12 @@
 import asyncio
 import json
-from typing import Any
+from typing import Any, Union
 
 from buglog import notify_exception
 from slack_bolt.context.respond.async_respond import AsyncRespond
 from slack_sdk.web.async_client import AsyncWebClient
+from slack_sdk.web.async_slack_response import AsyncSlackResponse
+from slack_sdk.webhook import WebhookResponse
 from sqlalchemy import text
 from straker_utils.sql.async_engine import execute
 
@@ -57,7 +59,7 @@ async def post_notification(
     response_url: str | None = None,
     display_format: str | None = None,
     post_thread: bool = False,
-):
+) -> Union[AsyncSlackResponse, WebhookResponse]:
     """Post a notification message to a Slack user. This is logged to the
     database.
 
@@ -127,7 +129,7 @@ async def post_notification(
         if response_url and not is_edit:
             # Use AsyncRespond for webhook responses
             respond = AsyncRespond(response_url=response_url)
-            response = await respond(
+            response: Union[AsyncSlackResponse, WebhookResponse] = await respond(
                 text=message.text,
                 blocks=message.blocks,
                 thread_ts=thread_ts,

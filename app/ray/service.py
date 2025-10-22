@@ -7,12 +7,9 @@ from buglog import notify_exception
 from httpx import Response
 from ray_sdk import RayAPIResponseError, RayAuthError, RayResponse, RayV3
 from ray_sdk.api.v3.models import (
-    GroupOptions,
     Job,
     JobSummary,
-    Language,
     Pagination,
-    Quote,
 )
 
 from ..auth.connector import RayClient
@@ -57,7 +54,7 @@ class RayService:
         """
         return bool(self.ray_client_id and self.token)
 
-    async def get_languages(self) -> RayResponse[list[Language]]:
+    async def get_languages(self):
         """Gets the list of available languages for translation."""
         return await self._ray.get_languages()
 
@@ -184,7 +181,7 @@ class RayService:
 
         return result
 
-    async def get_quote(self, job_id: str) -> tuple[Quote | None, Response | None]:
+    async def get_quote(self, job_id: str):
         """Gets the quote for the job.
 
         Args:
@@ -201,7 +198,7 @@ class RayService:
         except RayAPIResponseError as e:
             return None, e.response
 
-    async def get_groups(self) -> list[GroupOptions]:
+    async def get_groups(self):
         """Gets the list of groups."""
         response = await self._ray.get_groups()
         return response.data
@@ -272,11 +269,11 @@ class RayService:
 _noauth_service = RayService(None, None, None)
 
 
-async def get_languages() -> RayResponse[list[Language]]:
+async def get_languages():
     return await _noauth_service.get_languages()
 
 
-async def get_job_predictions(job_ids: list[str]) -> list[dict[str, Any]]:
+async def get_job_predictions(job_ids: list[str]):
     """Gets the job on-time predictions from the ml-job-on-time-prediction API.
 
     Args:

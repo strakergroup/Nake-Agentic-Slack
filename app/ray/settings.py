@@ -192,7 +192,7 @@ def filter_invalid_auto_translate_languages(languages: Iterable[str]) -> list[st
     return [lang for lang in languages if is_valid_auto_translate_language(lang)]
 
 
-async def get_auto_translate_user_settings_channels(ray_client: RayClient) -> list[str]:
+async def get_auto_translate_user_settings_channels(ray_client: RayClient):
     """Get the auto-translate settings (channels) for a LanugageCloud user.
 
     Returns:
@@ -212,7 +212,7 @@ async def get_auto_translate_user_settings_channels(ray_client: RayClient) -> li
     return channel_ids
 
 
-async def get_auto_translate_user_settings_langs(ray_client: RayClient) -> list[str]:
+async def get_auto_translate_user_settings_langs(ray_client: RayClient):
     """Get the auto-translate settings (languages) for a LanugageCloud user.
 
     Returns:
@@ -325,7 +325,7 @@ async def get_team_setting(
     # NOTE: The logic for getting group settings is not stable and WILL change in the future.
     # Please don't touch this file yet
     async with AsyncSession(async_engines["ray_integration"]) as session:
-        team_id = team_id or context.team_id
+        team_id = team_id or context.team_id or ""
         query = select(SlackGroupSettings).where(
             SlackGroupSettings.slack_team_id == team_id
         )
@@ -554,9 +554,9 @@ async def update_auto_translate_group_settings(
                     await session.delete(lang)
 
             # Add new language settings
-            for lang in languages:
+            for language_code in languages:
                 new_lang = SlackGroupSettingsTranslationLangs(
-                    translation_settings_id=channel_setting.id, lang=lang
+                    translation_settings_id=channel_setting.id, lang=language_code
                 )
                 session.add(new_lang)
 
@@ -652,7 +652,7 @@ async def get_full_group_translation_settings(
 
 
 # pagination - get number of pages based on rows per page and number of records
-async def get_pagination(context: AsyncBoltContext, rows_per_page: int) -> int:
+async def get_pagination(context: AsyncBoltContext, rows_per_page: int):
     """Get the number of pages based on the number of rows per page and total rows.
 
     Args:

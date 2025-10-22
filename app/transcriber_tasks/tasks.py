@@ -14,7 +14,7 @@ from ..database import async_engines
 from ..models import ASRTask
 
 
-async def create_asr_task(asr_task: ASRTask) -> str:
+async def create_asr_task(asr_task: ASRTask):
     """Create task in sitecommons.transcriber_tasks_consumer_queue table then add to redis
 
     Args:
@@ -64,7 +64,7 @@ async def create_asr_task(asr_task: ASRTask) -> str:
     return task_uuid
 
 
-async def get_asr_task(task_uuid: str, member_uuid: str) -> dict | None:
+async def get_asr_task(task_uuid: str, member_uuid: str):
     """Get task from transcriber_tasks_consumer_queue table
 
     Args:

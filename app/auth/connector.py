@@ -279,7 +279,7 @@ async def save_user_token_from_installation(
     )
 
 
-async def get_slack_org(org_uuid: str) -> SlackUser | None:
+async def get_slack_org(org_uuid: str):
     """Gets the Slack organization connected to a RAY client."""
     sql = text(
         """
@@ -309,7 +309,7 @@ async def get_slack_org(org_uuid: str) -> SlackUser | None:
     )
 
 
-async def get_slack_user(ray_client_id: str) -> SlackUser | None:
+async def get_slack_user(ray_client_id: str):
     """Gets the Slack user connected to a RAY client.
 
     Args:
@@ -349,7 +349,7 @@ async def get_slack_user(ray_client_id: str) -> SlackUser | None:
     return None
 
 
-async def get_demo_link(member_uuid: str) -> list[str]:
+async def get_demo_link(member_uuid: str):
     sql = text(
         """
         SELECT member_uuid
@@ -365,9 +365,9 @@ async def get_demo_link(member_uuid: str) -> list[str]:
             FROM slack_demo_link link
             """
         )
-        result = await fetch_all(sql, async_engines["ray_integration_readonly"])
+        demo_results = await fetch_all(sql, async_engines["ray_integration_readonly"])
         slack_user_ids: list[str] = []
-        for row in result:
+        for row in demo_results:
             if hasattr(row, "get"):
                 slack_user_id = row.get("slack_user_id")
                 if slack_user_id:
@@ -376,7 +376,7 @@ async def get_demo_link(member_uuid: str) -> list[str]:
     return []
 
 
-async def get_client_access_tokens(ray_client_id: str) -> tuple[str]:
+async def get_client_access_tokens(ray_client_id: str):
     """Gets all the active API access tokens of a RAY client."""
     sql = text(
         """
@@ -794,7 +794,7 @@ async def get_ray_connection_demo(
     return RayConnection(super_group, client)
 
 
-async def get_group_admin_slack_users(group_id: str) -> list[SlackUser]:
+async def get_group_admin_slack_users(group_id: str):
     """Gets the Slack users of the admins of a LanguageCloud group."""
     sql = text(
         """
@@ -1490,7 +1490,7 @@ async def crete_slack_logs_sso(user_data: str, member_id: str, message: str):
     await execute(sql, async_engines["ray_integration_log"], commit_after=True)
 
 
-async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceResponse:
+async def get_client_tokens(languagecloud_api_key: str):
     """http languagecloud API to get the client tokens."""
     url = f"{domains.languagecloud_api}/credits/balance"
     headers = {
@@ -1509,7 +1509,7 @@ async def get_client_tokens(languagecloud_api_key: str) -> GetCreditBalanceRespo
         return GetCreditBalanceResponse(0, 0)
 
 
-async def get_group_tokens(org_uuid: str) -> GetCreditBalanceResponse:
+async def get_group_tokens(org_uuid: str):
     """read sitemanager.obj_m_member_credit_transactions to get the group tokens balance."""
 
     sql = text(
@@ -1567,7 +1567,7 @@ def duration_to_tokens(duration_ms: int) -> int:
     return math.ceil(duration_ms / duration_per_token_ms)
 
 
-async def get_client_type(client_id: str, group_id: str | None) -> str | None:
+async def get_client_type(client_id: str, group_id: str | None):
     """Get the client type for a group. Owner Admin or Normal client"""
     if not group_id:
         return None
@@ -1641,7 +1641,7 @@ async def get_all_tokens_for_enterprise(enterprise_id: str | None):
     return result
 
 
-async def get_team_from_token(token: str | None) -> str | None:
+async def get_team_from_token(token: str | None):
     """Get the team ID from the bot token"""
     if not token:
         return None
@@ -1727,7 +1727,7 @@ async def resolve_channels_to_team(
     return team_channel
 
 
-async def is_slack_team_admin(client_uuid: str, enterprise_id: str | None) -> bool:
+async def is_slack_team_admin(client_uuid: str, enterprise_id: str | None):
     if not enterprise_id:
         return False
     if enterprise_id == "E04RDMG8XP1":
@@ -1781,7 +1781,7 @@ async def get_group_mt_engine(
     return mt_engine
 
 
-async def is_verify_job(job_uuid: str) -> bool:
+async def is_verify_job(job_uuid: str):
     """Check if the job is a verify job."""
     sql = text(
         """
@@ -1796,7 +1796,7 @@ async def is_verify_job(job_uuid: str) -> bool:
     return result["jobtype"] == "Verify"
 
 
-async def get_token_for_team(team_id: str) -> str | None:
+async def get_token_for_team(team_id: str):
     """Get the bot token for a team."""
     sql = text(
         """

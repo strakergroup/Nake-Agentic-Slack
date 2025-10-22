@@ -100,7 +100,7 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
     message to the user who installed the app.
     """
 
-    async def _success_handler(self, args: AsyncSuccessArgs) -> BoltResponse:
+    async def _success_handler(self, args: AsyncSuccessArgs):
         user = None
         try:
             user = await save_user_token_from_installation(args.installation)
@@ -127,7 +127,7 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
             )
         return await super()._success_handler(args)
 
-    async def _failure_handler(self, args: AsyncFailureArgs) -> BoltResponse:
+    async def _failure_handler(self, args: AsyncFailureArgs):
         notify_exception(
             args.error,
             msg="Slack App failed to install",
@@ -163,7 +163,7 @@ oauth_settings.callback_options = RayCallbackOptions(
 
 
 class RayOauthFlow(AsyncOAuthFlow):
-    async def build_authorize_url(self, state: str, request: AsyncBoltRequest) -> str:
+    async def build_authorize_url(self, state: str, request: AsyncBoltRequest):
         url = await super().build_authorize_url(state, request)
         # Allow specifying the scopes to install in the query params.
         # E.g. /slack/install?user_scope=chat:write

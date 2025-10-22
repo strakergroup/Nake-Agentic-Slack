@@ -71,6 +71,7 @@ from .templates.messages import (
     LogoutMessage,
     NewJobMessage,
     ReportInsightsMessage,
+    SlackMessage,
     TranscriptionMessage,
     VerifyHelperMessage,
 )
@@ -515,7 +516,7 @@ async def document_machine_translate(
     else:
         user_group_id = context["ray"].client.user_group_id
     # check ai engine from group setting and only fr-ca will support by microsoft
-    ai_engine = get_group_mt_engine(user_group_id, is_gropid)
+    ai_engine = await get_group_mt_engine(user_group_id, is_gropid)
     if selected_language.lower() == "fr-ca":
         ai_engine = "microsoft"
 
@@ -1244,7 +1245,7 @@ async def approve_pending_client(
     )
 
 
-async def get_groups(ray_client: RayClient) -> list[dict[str, Any]]:
+async def get_groups(ray_client: RayClient):
     """Get the groups for a client."""
 
     groups = await RayService.get_service(ray_client).get_groups()
@@ -1855,11 +1856,11 @@ async def submit_verification_job(
                 [lang["uuid"] for lang in job["data"]["target_languages"]],
             )
             #
-            updated_msg = HumanJobQuoteMessage(
+            updated_msg: SlackMessage = HumanJobQuoteMessage(
                 job["data"], costs["data"], actions=False
             )
         else:
-            updated_msg = EvaluateSuccessMessage(
+            updated_msg: SlackMessage = EvaluateSuccessMessage(
                 job["data"],
                 is_ibm_enterprise(
                     context.ray.client.slack_enterprise_id

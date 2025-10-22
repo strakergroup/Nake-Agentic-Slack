@@ -21,4 +21,4 @@ def cleanup_submissions(max_age: timedelta) -> int:
             .values(is_deleted=True, deleted_at=datetime.now(timezone.utc))
         )
         session.commit()
-        return result.rowcount or 0
+        return getattr(result, "rowcount", 0) or 0

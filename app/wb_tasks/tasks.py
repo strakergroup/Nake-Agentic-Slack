@@ -63,7 +63,7 @@ async def create_task(
     return "Task created!"
 
 
-async def get_task(task_uuid: str, member_uuid: str) -> dict | None:
+async def get_task(task_uuid: str, member_uuid: str):
     """Get task from wb_tasks_consumer_queue table
 
     Args:

@@ -17,7 +17,7 @@ from ..redis import redis_conn
 class VerifyAPIError(Exception):
     """Custom exception for Verify API errors"""
 
-    def __init__(self, message: str, status_code: int = None):
+    def __init__(self, message: str, status_code: int | None = None):
         self.message = message
         self.status_code = status_code
         super().__init__(self.message)
@@ -46,7 +46,7 @@ async def submit_evaluation_job(
     ):
         target_languages_data["workflow"] = "ff9d336e-4043-41cd-bd95-0d65a5eeb945"
     else:
-        target_languages_data["workflow"] = workflow_uuid
+        target_languages_data["workflow"] = workflow_uuid or ""
 
     # Create a job using streaming for file uploads
     async with httpx.AsyncClient(timeout=300) as client:

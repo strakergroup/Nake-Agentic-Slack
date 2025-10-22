@@ -176,7 +176,7 @@ async def require_ray_client(
     return False
 
 
-async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
+async def require_mt_tokens(context: AsyncBoltContext, value=1):
     """Check if the user has the required minimum translation credits to perform the operation"""
     ai_tokens = 0
     mt_scale = 0.1

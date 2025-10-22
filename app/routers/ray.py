@@ -1,11 +1,13 @@
 import asyncio
 from dataclasses import replace
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional, Union
 
 from buglog import notify_exception, notify_message
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ValidationError
 from slack_sdk.web.async_client import AsyncWebClient
+from slack_sdk.web.async_slack_response import AsyncSlackResponse
+from slack_sdk.webhook import WebhookResponse
 from straker_utils.credits import calculate_cost, spend_credits
 
 from app.api.models import MtTranslationExtraData
@@ -76,6 +78,7 @@ from ..slack.templates.messages import (
     MachineTranslationMessage,
     RequiresMtTokenAdminMessage,
     RequiresMtTokenMessage,
+    SlackMessage,
     SuccessfulLoginMessage,
     VerifyCompleteMessage,
 )
@@ -162,7 +165,7 @@ async def _handle_mt_success_background(
 async def _handle_transcribe_success_background(
     event_data: dict[str, Any],
     auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
-    response: dict[str, Any],
+    response: Union[AsyncSlackResponse, WebhookResponse],
 ):
     """Background task to handle transcription success file download and upload."""
     try:
@@ -181,11 +184,17 @@ async def _handle_transcribe_success_background(
             )
             return
         output_file = await download_from_file_server_async(file_id)
+        channel_id = (
+            response.data["channel"]
+            if isinstance(response, AsyncSlackResponse)
+            and isinstance(response.data, dict)
+            else ""
+        )
         # Upload file using memory-efficient method
         await upload_file_to_slack_memory_efficient(
             client=client,
             file_path=output_file.get("file"),
-            channel_id=response["channel"],
+            channel_id=channel_id,
             title=file_name,
             filename=output_file.get("file_name"),
         )
@@ -205,7 +214,9 @@ async def _handle_verify_complete_background(event_data, auth, response):
         await upload_file_to_slack_memory_efficient(
             client=client,
             file_path=output_file.get("file"),
-            channel_id=response["channel"],
+            channel_id=response.data["channel"]
+            if isinstance(response.data, dict)
+            else "",
             title=output_file.get("file_name"),
             filename=output_file.get("file_name"),
         )
@@ -354,7 +365,7 @@ async def ray_events(
                     status_event.status in ("IN_PROGRESS", "CANCELLED")
                     and status_event.previous_status == "LEAD"
                 ):
-                    message = None
+                    message: Optional[SlackMessage] = None
                 else:
                     if status_event.status in (
                         "LEAD",
@@ -362,7 +373,7 @@ async def ray_events(
                         "VALIDATION",
                         "REFUNDED",
                     ):
-                        message = JobStatusChangedEventMessage(
+                        message: SlackMessage = JobStatusChangedEventMessage(
                             client_id=status_event.client_id,
                             job_uuid=status_event.uuid,
                             job_id=status_event.id,
@@ -370,7 +381,7 @@ async def ray_events(
                             is_ibm=is_ibm,
                         )
                     elif status_event.status == "COMPLETED":
-                        message = JobCompletedEventMessage(
+                        message: SlackMessage = JobCompletedEventMessage(
                             client_id=status_event.client_id,
                             job_uuid=status_event.uuid,
                             job_id=status_event.id,
@@ -378,7 +389,7 @@ async def ray_events(
                             is_ibm=is_ibm,
                         )
                     elif status_event.status == "CANCELLED":
-                        message = JobCancelledEventMessage(
+                        message: SlackMessage = JobCancelledEventMessage(
                             client_id=status_event.client_id,
                             job_uuid=status_event.uuid,
                             job_id=status_event.id,
@@ -513,6 +524,7 @@ async def ray_events(
                 document_translated_data = MtErrorResponseSchema.model_validate(
                     event.data
                 )
+                document_message: Optional[SlackMessage] = None
                 if document_translated_data.error_type == "insufficient_balance":
                     # Send message to user that they need to purchase tokens
                     client_type = await get_client_type(
@@ -526,31 +538,31 @@ async def ray_events(
                     if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
                         auth.slack_user.enterprise_id
                     ):
-                        message = RequiresMtTokenMessage(
+                        document_message: SlackMessage = RequiresMtTokenMessage(
                             balance.balance, balance.required
                         )
                     else:
-                        message = RequiresMtTokenAdminMessage(
+                        document_message: SlackMessage = RequiresMtTokenAdminMessage(
                             balance.balance, balance.required
                         )
                 elif document_translated_data.error_type == "conversion_error":
-                    message = DocParseErrorMessage(
+                    document_message: SlackMessage = DocParseErrorMessage(
                         document_translated_data.error_data["ext"],
                         document_translated_data.error_data["file_expected"],
                     )
 
                 elif document_translated_data.error_type == "file_complexity_error":
-                    message = DocComplexityErrorMessage(
+                    document_message: SlackMessage = DocComplexityErrorMessage(
                         document_translated_data.error_data["ext"],
                     )
-                if message is not None:
+                if document_message is not None:
                     await post_notification_ephemeral(
                         client,
                         document_translated_data.channel_id
                         or auth.slack_user.channel_id,
                         event,
                         auth.slack_user,
-                        message,
+                        document_message,
                     )
             except ValidationError:
                 success_data = MtSuccessResponseSchema.model_validate(event.data)
@@ -560,7 +572,7 @@ async def ray_events(
 
         elif event.event == "verify:slack:evaluate:complete":
             if event.data.get("error"):
-                message = EvaluateErrorMessage()
+                message: SlackMessage = EvaluateErrorMessage()
             else:
                 try:
                     job = await get_evaluation_job(
@@ -581,9 +593,11 @@ async def ray_events(
                             [file["file_uuid"] for file in job["data"]["source_files"]],
                             [lang["uuid"] for lang in job["data"]["target_languages"]],
                         )
-                        message = HumanJobQuoteMessage(job["data"], costs["data"])
+                        message: SlackMessage = HumanJobQuoteMessage(
+                            job["data"], costs["data"]
+                        )
                     else:
-                        message = EvaluateSuccessMessage(
+                        message: SlackMessage = EvaluateSuccessMessage(
                             job["data"], is_ibm, event.data["tokens"]
                         )
                 except Exception as e:
@@ -901,7 +915,9 @@ async def api_job_callback(
             is_auto_quote = True
             if is_ibm_enterprise(slack_user.enterprise_id):
                 is_auto_quote = False
-                is_auto_quote = get_job_group_quote_settings(job_data["tj_number"][2:])
+                is_auto_quote = await get_job_group_quote_settings(
+                    job_data["tj_number"][2:]
+                )
             if is_auto_quote:
                 message = JobCreationMessage(job_data["tj_number"], True)
         except (KeyError, IndexError):

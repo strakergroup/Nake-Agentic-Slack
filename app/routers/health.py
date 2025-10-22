@@ -46,21 +46,21 @@ async def health_check(response: Response, password: str | None = None):
     return result
 
 
-async def _check_database(errors: dict[str, Any]) -> None:
+async def _check_database(errors: dict[str, Any]):
     try:
         await async_engines.ping_all()
     except Exception as e:
         errors["database"] = str(e)
 
 
-async def _check_redis(errors: dict[str, Any]) -> None:
+async def _check_redis(errors: dict[str, Any]):
     try:
         await redis_conn.ping()
     except Exception as e:
         errors["redis"] = str(e)
 
 
-async def _check_slack_api(errors: dict[str, Any]) -> None:
+async def _check_slack_api(errors: dict[str, Any]):
     try:
         response = await slack_app.client.api_test()
     except Exception as e:

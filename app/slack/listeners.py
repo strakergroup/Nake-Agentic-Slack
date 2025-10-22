@@ -108,6 +108,7 @@ from .templates.messages import (
     NewJobMessage,
     OnboardingMessage,
     QuoteMessage,
+    SlackMessage,
     SrtTranslateMessage,
     SsoConnectionInfoMessage,
     SuccessfulLoginMessage,
@@ -241,7 +242,7 @@ async def home_opened(
             history = await client.conversations_history(channel=channel, limit=1)
             is_ibm = is_ibm_enterprise(enterprise_id=context.enterprise_id)
             if not history.get("messages"):
-                message = OnboardingMessage(
+                message: SlackMessage = OnboardingMessage(
                     context["user_id"],
                     context["team_id"],
                     context.enterprise_id,
@@ -257,7 +258,9 @@ async def home_opened(
                     latest=str(datetime.now().timestamp()),
                 )
                 if not history_last_24_hours.get("messages"):
-                    message = WelcomeBackMessage(context["user_id"], context["ray"])
+                    message: SlackMessage = WelcomeBackMessage(
+                        context["user_id"], context["ray"]
+                    )
                     await say(blocks=message.blocks, text=message.text)
                 else:
                     # There had been some activity in the last 24 hours
@@ -287,7 +290,7 @@ async def home_load(
     page = int(home_info.get("page", 1))
     team_id = home_info.get("team_id", "")
     if team_id:
-        token = get_token_for_team(team_id)
+        token = await get_token_for_team(team_id)
         if token:
             client.token = token
         context["team_id"] = team_id
@@ -643,13 +646,13 @@ async def login_sso_action(
             else:
                 await ack(response_action="clear")
                 if context["ray"].client.sso:
-                    msg = SsoConnectionInfoMessage(
+                    msg: SlackMessage = SsoConnectionInfoMessage(
                         context["ray"],
                         is_ibm=(is_ibm_enterprise(context.enterprise_id)),
                     )
                 # need else block if triggered from old message
                 else:
-                    msg = ConnectionInfoMessage(
+                    msg: SlackMessage = ConnectionInfoMessage(
                         context["ray"],
                         user_id=context["user_id"],
                         team_id=context["team_id"],
@@ -732,7 +735,7 @@ async def ray_command(
     match command_args:
         case ["info" | "account"]:
             # Get connection info and respond with message.
-            msg = ConnectionInfoMessage(
+            msg: SlackMessage = ConnectionInfoMessage(
                 context["ray"],
                 user_id=context["user_id"],
                 team_id=context["team_id"],
@@ -753,7 +756,7 @@ async def ray_command(
             if await require_ray_client(context):
                 assert context["ray"] is not None
                 assert context["ray"].client is not None
-                msg = LogoutMessage(context["ray"].client)
+                msg: SlackMessage = LogoutMessage(context["ray"].client)
                 await respond(text=msg.text, blocks=msg.blocks)
 
         case ["translate"]:
@@ -839,8 +842,8 @@ async def ray_command(
             ):
                 # quote is like new job except it doesn't open the modal.
                 await ack()
-                msg = QuoteMessage()
-                await respond(text=msg.text, blocks=msg.blocks)
+                quote_msg = QuoteMessage()
+                await respond(text=quote_msg.text, blocks=quote_msg.blocks)
 
         case ["help" | ""]:
             # Show help message.
@@ -913,13 +916,16 @@ async def disable_auto_translate_settings(
         team_channel = await resolve_channels_to_team(
             channel_id, client, context.enterprise_id, team_id
         )
-        client.token = team_channel["bot_token"]
+        if isinstance(team_channel["bot_token"], str):
+            client.token = str(team_channel["bot_token"])
+        else:
+            notify_message("Bot token not found in team channel", extra=team_channel)
+            return
         await client.views_publish(
             user_id=context["user_id"],
             view=await home_view(context, body["api_app_id"], context.get("ray")),
         )
 
-        client.token = team_channel["bot_token"]
         if not channel_id:
             notify_message("Channel ID not found in payload", extra=payload)
             return
@@ -1265,11 +1271,13 @@ async def disconnect_account_action(
     assert context["ray"].client is not None
     if action is not None:
         username = action.get("value") if isinstance(action.get("value"), str) else None
-        msg = SuccessfulLogoutMessage(
+        msg: SlackMessage = SuccessfulLogoutMessage(
             context.user_id, context["ray"].client.sso, username
         )
     else:
-        msg = SuccessfulLogoutMessage(context.user_id, context["ray"].client.sso)
+        msg: SlackMessage = SuccessfulLogoutMessage(
+            context.user_id, context["ray"].client.sso
+        )
     await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
 
 
@@ -1330,11 +1338,11 @@ async def handle_new_job(
                         blocks=message.blocks,
                     )
                 else:
-                    message = JobCreationMessage(result["job_id"], False)
+                    job_msg = JobCreationMessage(result["job_id"], False)
                     await client.chat_postMessage(
                         channel=context["user_id"],
-                        text=message.text,
-                        blocks=message.blocks,
+                        text=job_msg.text,
+                        blocks=job_msg.blocks,
                     )
         except Exception as e:
             if isinstance(e, RayAPIResponseError):
@@ -1423,7 +1431,7 @@ async def view_update_auto_translate_settings(
         team_id = view.get("private_metadata", "")
         form_data = view.get("state", {}).get("values") if view else {}
         form = AutoTranslationSettingsForm.parse_slack(form_data)
-        team_channels = []
+        team_channels: list[dict[str, bool | str | None]] = []
         await ack(response_action="clear")
         for channel in form.channels:
             try:
@@ -1475,7 +1483,7 @@ async def view_update_auto_translate_settings(
                 languages=form.languages,
                 display_format=form.display_format,
             )
-        team_token = get_token_for_team(team_id) if team_id else None
+        team_token = await get_token_for_team(team_id) if team_id else None
         if team_token:
             client.token = team_token
         context["team_id"] = team_id
@@ -1506,10 +1514,12 @@ async def view_update_auto_translate_settings(
                     )
                     await client.chat_postMessage(channel=channel_id, text=msg.text)
                 else:
-                    msg = AutoTranslateSettingsDisabledMessage(
+                    disabled_msg = AutoTranslateSettingsDisabledMessage(
                         context["user_id"], channel_id
                     )
-                    await client.chat_postMessage(channel=channel_id, text=msg.text)
+                    await client.chat_postMessage(
+                        channel=channel_id, text=disabled_msg.text
+                    )
             except Exception as e:
                 notify_exception(e)
                 if context.enterprise_id:
@@ -1527,11 +1537,11 @@ async def view_update_auto_translate_settings(
                             pass
 
         for channel_list in team_channels:
-            if channel_list:  # Check if the list is not empty
-                channel = channel_list  # Get the first (and only) item
-                assert isinstance(channel, dict)  # Type assertion for type checker
-                await join_channel(channel["channel_id"], channel["bot_token"])
-                await notify_channel(channel["channel_id"], channel["bot_token"])
+            bot_token = channel_list["bot_token"]
+            channel_id = channel_list["channel_id"]
+            if isinstance(channel_id, str) and isinstance(bot_token, str):
+                await join_channel(channel_id, bot_token)
+                await notify_channel(channel_id, bot_token)
 
     except Exception as e:
         print(e)
