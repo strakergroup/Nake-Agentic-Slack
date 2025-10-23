@@ -449,7 +449,7 @@ async def auto_translate_message(
 
         # Get display_format from settings
         display_format = settings[0]["display_format"] if settings else None
-        glossary_resource = await evaluate_get_glossary_resource(
+        glossary_id = await evaluate_get_glossary_resource(
             org_uuid, context["ray"].client, source_lang, target_langs[0], "google"
         )
         service_language_mapping = create_service_language_mapping(target_langs)
@@ -471,7 +471,7 @@ async def auto_translate_message(
                 is_edit=is_edit,
                 display_format=display_format,
                 message_ts=ts,
-                glossary_resource=glossary_resource,
+                glossary_identifier=glossary_id,
             ),
         )
     except Exception as e:
@@ -1677,7 +1677,7 @@ async def get_mt_translation(
 
         # Create service language mapping based on target language
         service_language_mapping = create_service_language_mapping(target_langs)
-        glossary_resource = await evaluate_get_glossary_resource(
+        glossary_id = await evaluate_get_glossary_resource(
             context.ray.super_group[0].verify_organization_uuid,
             context.ray.client,
             source_lang,
@@ -1698,7 +1698,7 @@ async def get_mt_translation(
             thread_ts=thread_ts,
             is_edit=is_edit,
             slack_user_id=context.user_id,
-            glossary_resource=glossary_resource,
+            glossary_identifier=glossary_id,
         )
 
         await send_mt_translation_request(

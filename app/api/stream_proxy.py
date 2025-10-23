@@ -67,7 +67,7 @@ async def send_mt_translation_request(
             "text": text,
             "service_language_mapping": service_language_mapping,
             "source_language": source_language,
-            "glossary_resource": extra_data.glossary_resource,
+            "glossary_identifier": extra_data.glossary_identifier,
             "output_stream": "slack:direct:mt:result",
             "extra_data": extra_data.model_dump(),
         },

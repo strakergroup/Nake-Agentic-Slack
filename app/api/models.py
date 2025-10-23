@@ -66,4 +66,4 @@ class MtTranslationExtraData(BaseModel):
     slack_user_id: str | None = None
     display_format: str | None = None
     message_ts: str | None = None
-    glossary_resource: str | None = None
+    glossary_identifier: str | None = None
