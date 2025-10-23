@@ -22,7 +22,7 @@ from app.api.verify import (
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.models import ASRTask, TranscriptionTaskData
-from app.mt.service import evaluate_get_glossary_resource
+from app.mt.service import evaluate_get_glossary_resource, resolve_language
 from app.ray.events.models import MtFileRequestSchema
 from app.slack.utils import escape_slack_emoji
 from app.slack_job import create_slack_job
@@ -1665,7 +1665,7 @@ async def get_mt_translation(
         if not channel_id:
             raise AssertionError("No channel to post to")
         target_lang = target_lang.lower()
-
+        target_langs = await resolve_language([target_lang], engine="google")
         assert context.ray
         assert context.ray.super_group
         client_id = (
@@ -1675,7 +1675,7 @@ async def get_mt_translation(
         )
 
         # Create service language mapping based on target language
-        service_language_mapping = create_service_language_mapping([target_lang])
+        service_language_mapping = create_service_language_mapping(target_langs)
         glossary_resource = await evaluate_get_glossary_resource(
             context.ray.super_group[0].verify_organization_uuid,
             source_lang,
@@ -1696,6 +1696,7 @@ async def get_mt_translation(
             thread_ts=thread_ts,
             is_edit=is_edit,
             slack_user_id=context.user_id,
+            glossary_resource=glossary_resource,
         )
 
         await send_mt_translation_request(
