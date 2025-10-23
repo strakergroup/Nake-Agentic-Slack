@@ -3,6 +3,7 @@ from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from straker_utils.sql.async_engine import fetch_all, fetch_one
 
+from app.auth.connector import RayClient
 from app.database import async_engines
 from app.models import Language
 
@@ -66,9 +67,13 @@ async def evaluate_get_org_groups(organization_uuid: str):
 
 
 async def evaluate_get_glossary_resource(
-    org_uuid: str, sl: str | None, tl: str | None, engine: str
+    org_uuid: str, client: RayClient | None, sl: str | None, tl: str | None, engine: str
 ) -> str:
-    groups = await evaluate_get_org_groups(org_uuid)
+    groups = (
+        await evaluate_get_org_groups(org_uuid)
+        if not client
+        else [client.user_group_id]
+    )
 
     if not groups:
         return ""

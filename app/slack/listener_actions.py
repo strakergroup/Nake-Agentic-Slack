@@ -446,10 +446,11 @@ async def auto_translate_message(
     try:
         org_uuid = context["ray"].super_group[0].verify_organization_uuid
         client_id = context["ray"].client.id if context["ray"].client else org_uuid
+
         # Get display_format from settings
         display_format = settings[0]["display_format"] if settings else None
         glossary_resource = await evaluate_get_glossary_resource(
-            org_uuid, source_lang, target_langs[0], "google"
+            org_uuid, context["ray"].client, source_lang, target_langs[0], "google"
         )
         service_language_mapping = create_service_language_mapping(target_langs)
         await send_mt_translation_request(
@@ -1678,6 +1679,7 @@ async def get_mt_translation(
         service_language_mapping = create_service_language_mapping(target_langs)
         glossary_resource = await evaluate_get_glossary_resource(
             context.ray.super_group[0].verify_organization_uuid,
+            context.ray.client,
             source_lang,
             target_lang,
             "google",
