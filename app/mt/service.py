@@ -66,13 +66,21 @@ async def evaluate_get_org_groups(organization_uuid: str):
     return [row["obj_uuid"] for row in result]
 
 
+async def get_client_groups(client_uuid: str):
+    sql = text(
+        "SELECT groupid FROM obj_m_mglink WHERE memberid = :client_uuid and is_active = 1"
+    ).bindparams(client_uuid=client_uuid)
+    result = await fetch_all(sql, async_engines["sitemanager"])
+    return [row["groupid"] for row in result]
+
+
 async def evaluate_get_glossary_resource(
     org_uuid: str, client: RayClient | None, sl: str | None, tl: str | None, engine: str
 ) -> str:
     groups = (
         await evaluate_get_org_groups(org_uuid)
         if not client
-        else [client.user_group_id]
+        else await get_client_groups(client.id)
     )
 
     if not groups:
