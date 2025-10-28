@@ -1669,6 +1669,7 @@ async def get_mt_translation(
         target_langs = await resolve_language([target_lang], engine="google")
         source_langs = await resolve_language([source_lang], engine="google")
         source_lang = source_langs[0]
+        target_lang = target_langs[0]
         assert context.ray
         assert context.ray.super_group
         client_id = (
