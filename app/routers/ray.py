@@ -63,6 +63,7 @@ from ..slack.templates.messages import (
     ClientSignupEventAdminMessage,
     ClientSignupEventMessage,
     DocComplexityErrorMessage,
+    DocMtMessage,
     DocParseErrorMessage,
     EvaluateErrorMessage,
     EvaluateSuccessMessage,
@@ -555,6 +556,8 @@ async def ray_events(
                     document_message: SlackMessage = DocComplexityErrorMessage(
                         document_translated_data.error_data["ext"],
                     )
+                else:
+                    document_message: SlackMessage = DocMtMessage()
                 if document_message is not None:
                     await post_notification_ephemeral(
                         client,
