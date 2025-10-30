@@ -1661,10 +1661,12 @@ async def message_changed_event(
                 message["message"].get("text")
                 and f"<@{context['bot_user_id']}>" not in message["message"]["text"]
             ):
-                # Do not auto-translate if the bot is mentioned (should default to normal response).
-                await auto_translate_message(
-                    client, context, message["message"], is_edit
-                )
+                # compare text of old message and new message
+                old_message = body["event"]["previous_message"]
+                if old_message["text"] != message["message"]["text"]:
+                    await auto_translate_message(
+                        client, context, message["message"], is_edit
+                    )
 
 
 @app.view("evaluate_job", middleware=[ray_connection])
