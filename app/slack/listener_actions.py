@@ -1657,7 +1657,7 @@ async def get_mt_translation(
             raise AssertionError("No channel to post to")
         # Check for 5K character limit
         if len(sentence) > 5000:
-            error_msg = _("The message is over the 5K limit")
+            error_msg = _("The message is over the 5K character limit")
             if context.response_url and context.respond:
                 return await context.respond(text=error_msg)
             else:
