@@ -153,7 +153,7 @@ class MtFileRequestSchema(BaseModel):
     target_language: str
     ai_engine: str
     data_source: str
-    submission_id: int
+    submission_id: int | None = None
 
 
 class MtSuccessResponseSchema(BaseModel):
@@ -163,7 +163,7 @@ class MtSuccessResponseSchema(BaseModel):
     client_id: str
     target_language: str
     channel_id: str
-    submission_id: int
+    submission_id: int | None = None
 
 
 class Balance(BaseModel):
@@ -177,7 +177,7 @@ class MtErrorResponseSchema(BaseModel):
     channel_id: str
     error_type: MtErrorTypes
     error_data: Dict[str, Any]
-    submission_id: int
+    submission_id: int | None = None
 
 
 class MtFileReponseSchema(RootModel):
