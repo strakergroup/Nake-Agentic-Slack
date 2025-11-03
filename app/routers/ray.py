@@ -613,57 +613,12 @@ async def ray_events(
 
             # Send message if we have one
             if message is not None:
-                if isinstance(message, EvaluateSuccessMessage):
-                    await post_notification(
-                        client,
-                        event,
-                        auth.slack_user,
-                        message,
-                    )
-                else:
-                    # Handle DocMtMessage case
-                    try:
-                        error_data = MtErrorResponseSchema.model_validate(event.data)
-                        if error_data.error_type == "insufficient_balance":
-                            # Send message to user that they need to purchase tokens
-                            client_type = await get_client_type(
-                                auth.slack_user.ray_client_id,
-                                auth.slack_user.ray_user_group_id,
-                            )
-                            balance = Balance.model_validate(error_data.error_data)
-
-                            if client_type in [
-                                "Admin",
-                                "Owner",
-                            ] and not is_ibm_enterprise(auth.slack_user.enterprise_id):
-                                message = RequiresMtTokenMessage(
-                                    balance.balance, balance.required
-                                )
-                            else:
-                                message = RequiresMtTokenAdminMessage(
-                                    balance.balance, balance.required
-                                )
-                        elif error_data.error_type == "conversion_error":
-                            message = DocParseErrorMessage(
-                                error_data.error_data.get("ext", ""),
-                                error_data.error_data.get("file_expected", ""),
-                            )
-
-                        await post_notification_ephemeral(
-                            client,
-                            error_data.channel_id or auth.slack_user.channel_id,
-                            event,
-                            auth.slack_user,
-                            message,
-                        )
-                    except ValidationError:
-                        success_data = MtSuccessResponseSchema.model_validate(
-                            event.data
-                        )
-                        _create_background_task(
-                            _handle_mt_success_background(success_data, auth)
-                        )
-
+                await post_notification(
+                    client,
+                    event,
+                    auth.slack_user,
+                    message,
+                )
         elif event.event == "verify:human_verification:completed":
             try:
                 all_langs = await _get_languages_cached()
