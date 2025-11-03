@@ -85,6 +85,32 @@ def get_background_task_info():
     }
 
 
+def _replace_quebecois_with_french_canadian(filename: str) -> str:
+    """Replace 'quebecois' with 'french canadian' in filename if it ends with 'quebecois'.
+
+    Args:
+        filename: The filename to process, can be None.
+
+    Returns:
+        The filename with 'quebecois' replaced by 'french canadian', or None if input was None.
+    """
+    if not filename:
+        return filename
+
+    filename_lower = filename.lower()
+    # Check if filename ends with 'quebecois' (case-insensitive)
+    if filename_lower.endswith("quebecois"):
+        # Find the position where 'quebecois' starts (case-insensitive)
+        idx = filename_lower.rfind("quebecois")
+        if idx != -1:
+            # Replace 'quebecois' with 'french canadian', preserving the rest of the filename
+            return (
+                filename[:idx] + "french canadian" + filename[idx + len("quebecois") :]
+            )
+
+    return filename
+
+
 async def _handle_mt_success_background(
     success_data: MtSuccessResponseSchema, auth: RayEventAuth
 ):
@@ -100,7 +126,7 @@ async def _handle_mt_success_background(
         # Download file from server
         output_file = await download_from_file_server_async(success_data.file_id)
         token_count = success_data.tokens
-        title = output_file.get("file_name")
+        title = _replace_quebecois_with_french_canadian(output_file.get("file_name"))
         token_consumption_message = (
             _("You have used {token_count} AI tokens.")
             if not is_ibm_enterprise(auth.slack_user.enterprise_id)
@@ -141,12 +167,15 @@ async def _handle_transcribe_success_background(
         output_file = await download_from_file_server_async(event_data.get("file_id"))
 
         # Upload file using memory-efficient method
+        file_name = _replace_quebecois_with_french_canadian(
+            output_file.get("file_name")
+        )
         await upload_file_to_slack_memory_efficient(
             client=client,
             file_path=output_file.get("file"),
             channel_id=response["channel"],
-            title=event_data.get("file_name"),
-            filename=output_file.get("file_name"),
+            title=_replace_quebecois_with_french_canadian(event_data.get("file_name")),
+            filename=file_name,
         )
     except Exception as e:
         notify_exception(e, "Background transcription file handling failed")
@@ -159,12 +188,15 @@ async def _handle_verify_complete_background(event_data, auth, response):
         client = AsyncWebClient(token=auth.slack_user.bot_token)
 
         output_file = await download_from_file_server_async(event_data["grid_file_id"])
+        file_name = _replace_quebecois_with_french_canadian(
+            output_file.get("file_name")
+        )
         await upload_file_to_slack_memory_efficient(
             client=client,
             file_path=output_file.get("file"),
             channel_id=response["channel"],
-            title=output_file.get("file_name"),
-            filename=output_file.get("file_name"),
+            title=file_name,
+            filename=file_name,
         )
     except Exception as e:
         notify_exception(e, "Background verify complete file handling failed")
