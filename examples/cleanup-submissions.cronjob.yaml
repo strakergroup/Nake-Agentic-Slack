@@ -29,7 +29,7 @@ spec:
                   from datetime import timedelta
                   from app.maintenance.cleanup_submissions import cleanup_submissions
 
-                  deleted = cleanup_submissions(timedelta(days=1))
+                  deleted = await cleanup_submissions(timedelta(days=1))
                   print(f"Deleted {deleted} submissions older than one day")
               volumeMounts:
                 - name: application-env

@@ -34,7 +34,7 @@ from ...ray.utils import (
     is_ibm_enterprise,
     is_min_langugagecloud_plan,
 )
-from ..utils import format_strings_display
+from ..utils import format_strings_display, unescape_slack_emoji
 from .blocks import (
     evaluate_success_blocks,
     job_link_block,
@@ -259,7 +259,7 @@ class WelcomeBackMessage(SlackMessage):
     account.
     """
 
-    def __init__(self, user_id: str, ray_connection: RayConnection) -> None:
+    def __init__(self, user_id: str, ray_connection: RayConnection | None) -> None:
         waveEmoji = ":wave:"
         is_verify_enabled = (
             ray_connection.super_group[0].enable_verify_in_slack
@@ -737,8 +737,9 @@ class SuccessfulLogoutMessage(SlackMessage):
     """A Slack user's LanguageCloud account was successfully disconnected."""
 
     def __init__(
-        self, user_id: str, is_sso: bool = False, ray_username: str | None = None
+        self, user_id: str | None, is_sso: bool = False, ray_username: str | None = None
     ) -> None:
+        assert user_id is not None
         # TODO: Translation fix this
         user_details = f"<{domains.verify}|{ray_username}>"
         user_link = f"<@{user_id}>"
@@ -3133,10 +3134,9 @@ class JobTargetLangMessage(SlackMessage):
 class AutoTranslationMessage(SlackMessage):
     def __init__(
         self,
-        source_text: str | None,
+        source_text: str,
         source_language: str,
-        translations: list[tuple[str, str]],
-        scores: list[tuple[str, float]] | None = None,
+        translations: dict[str, list[str]],
     ) -> None:
         """Slack message template for an auto-translated message
 
@@ -3144,28 +3144,23 @@ class AutoTranslationMessage(SlackMessage):
             source_text (str | None): The original source text. If empty, do not
                 the source text.
             source_language (str): The source language, e.g. "en", "de".
-            translations (list[tuple[str, str]]): A list of translations.
-                Each element is a 2-tuple with the target language and translated text.
+            translations (dict[str, list[str]]): A dictionary of translations.
+                Keys are language codes and values are lists of strings.
         """
         self.source_text = source_text
         self.source_language = source_language
-        self.scores = scores
         # Filter translations where target language does not equal source language
         self.translations = translations
+        assert self.source_text
         # TODO what happens when no translations?
-        text = source_text or (self.translations[0][1] if self.translations else "")
-        super().__init__(text, self.generate_blocks())
+        super().__init__("", self.generate_blocks())
 
     def generate_blocks(self) -> list[dict[str, Any]]:
         blocks: list[dict[str, Any]] = []
-        if self.source_text:
-            blocks.append(
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": self.source_text},
-                }
-            )
-        for target_lang, translated in self.translations:
+        for target_lang, translated_list in self.translations.items():
+            # Join all strings in the list with spaces
+            translated = " ".join(translated_list)
+            translated = unescape_slack_emoji(translated, self.source_text)
             if (
                 target_lang != self.source_language
                 and langcodes.get(target_lang).language
@@ -3181,7 +3176,8 @@ class AutoTranslationMessage(SlackMessage):
                     }
                 )
         target_langs = [
-            get_auto_translate_language_name(t[0]) for t in self.translations
+            get_auto_translate_language_name(target_lang)
+            for target_lang in self.translations.keys()
         ]
         target_langs_string = format_strings_display(target_langs, and_string="&")
         blocks.append(
@@ -3195,42 +3191,15 @@ class AutoTranslationMessage(SlackMessage):
                 ],
             }
         )
-        if self.scores:
-            source_lang_full = get_auto_translate_language_name(self.source_language)
-            for lang, score in self.scores:
-                target_lang_full = get_auto_translate_language_name(lang)
-                score_text = f":large_green_circle: {source_lang_full} → {target_lang_full} is accurate"
-                if score < 0.5:
-                    score_text = f":large_red_circle: {source_lang_full} → {target_lang_full} is inaccurate"
-                elif score < 0.8:
-                    score_text = f":large_orange_circle: {source_lang_full} → {target_lang_full} might need checking"
-                blocks.append(
-                    {
-                        "type": "context",
-                        "elements": [
-                            {
-                                "type": "plain_text",
-                                "text": score_text,
-                            }
-                        ],
-                    }
-                )
         return blocks
-
-    def add_translation_scores(
-        self, scores: list[tuple[str, float]] | None
-    ) -> "AutoTranslationMessage":
-        """Return a new message with translation scores added."""
-        return AutoTranslationMessage(
-            self.source_text, self.source_language, self.translations, scores
-        )
 
 
 class MachineTranslationMessage(SlackMessage):
     """Message showing the list of translation files."""
 
-    def __init__(self, tl: str, sl: str, mt_text: str) -> None:
+    def __init__(self, tl: str, sl: str, source_text: str, mt_text: str) -> None:
         mt_label = _("Machine translation result:")
+        mt_text = unescape_slack_emoji(mt_text, source_text)
         super().__init__(
             f"{mt_label} {mt_text}",
             [
@@ -3611,13 +3580,33 @@ class DocMtMessage(SlackMessage):
 
     def __init__(self) -> None:
         super().__init__(
-            _("Verify the translation"),
+            _("Document translation failed"),
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
                         "text": _("Error occurred while translating your document"),
+                    },
+                }
+            ],
+        )
+
+
+class EvaluateErrorMessage(SlackMessage):
+    """Message verify consumer event response"""
+
+    def __init__(self) -> None:
+        super().__init__(
+            _("Quality Evaluation failed"),
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            ":alert_triangle: Quality Evaluation failed for this submission. Please review the details and re-run the evaluation once the issues are resolved."
+                        ),
                     },
                 }
             ],
@@ -3634,7 +3623,7 @@ class EvaluateSuccessMessage(SlackMessage):
         tokens: int | None = None,
         actions: bool = True,
     ) -> None:
-        blocks = []
+        blocks: list[dict[str, Any]] = []
         info_text = _(
             'The AI translation quality of your document(s) has been evaluated. Download the AI translation if you\'re satisfied, or click "Send for Human Verification" to request human verification.'
         )

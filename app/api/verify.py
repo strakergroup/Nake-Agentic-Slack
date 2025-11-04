@@ -17,7 +17,7 @@ from ..redis import redis_conn
 class VerifyAPIError(Exception):
     """Custom exception for Verify API errors"""
 
-    def __init__(self, message: str, status_code: int = None):
+    def __init__(self, message: str, status_code: int | None = None):
         self.message = message
         self.status_code = status_code
         super().__init__(self.message)
@@ -46,7 +46,7 @@ async def submit_evaluation_job(
     ):
         target_languages_data["workflow"] = "ff9d336e-4043-41cd-bd95-0d65a5eeb945"
     else:
-        target_languages_data["workflow"] = workflow_uuid
+        target_languages_data["workflow"] = workflow_uuid or ""
 
     # Create a job using streaming for file uploads
     async with httpx.AsyncClient(timeout=300) as client:
@@ -82,8 +82,10 @@ async def submit_evaluation_job(
 
 async def get_evaluation_job(user: SlackUser, job_uuid: str):
     ray_client = await get_ray_client(user.user_id, user.team_id, user.enterprise_id)
+    assert ray_client is not None
+    assert ray_client.id_token is not None
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(  # Added missing await
+        response = await client.get(
             f"{domains.verify_api}/evaluate/{job_uuid}",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )

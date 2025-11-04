@@ -1,18 +1,9 @@
-import httpx
 import langcodes
-from buglog import notify_exception
-from slack_bolt.context.async_context import AsyncBoltContext
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
-from straker_auth.languagecloud import create_languagecloud_group_token
 
-from app.auth.connector import get_group_mt_engine
-from app.mt.schemas import TranslationRequest, TranslationResponse
 from app.ray.settings import get_auto_translate_languages
-from app.slack.middleware import require_mt_tokens
-from app.slack.utils import escape_slack_emoji, unescape_slack_emoji
 
-from ..config import config, domains
 from ..database import engines
 from ..models import Language
 
@@ -97,88 +88,3 @@ def resolve_language(target_langs: list[str], engine: str) -> list[str]:
     if not mapped_lang:
         return ["en"]
     return mapped_lang
-
-
-# TODO: this should check if lang is supported by api. Should return array of google_langs and mircosoft_langs
-def get_mt_engine(target_langs: list[str], mt_id: str, is_gropid: bool) -> str:
-    """Gets engine that should be used based on group setting and language."""
-    microsoft_languages = {
-        "fr-ca": "fr-ca",
-        "french-canada": "fr-ca",
-        "french-canadian": "fr-ca",
-    }
-    if any(lang.lower() in microsoft_languages for lang in target_langs):
-        return "microsoft"
-    ai_engine = get_group_mt_engine(mt_id, is_gropid)
-    return ai_engine
-
-
-# TODO: Add tests
-async def get_ai_translation(
-    context: AsyncBoltContext, text: str, target_langs: list[str], usage_type: str
-) -> tuple[str | None, list[tuple[str, str]]]:
-    """Get google or microsoft machine translation for sentence by correct language pair.
-
-    Args:
-        context (AsyncBoltContext): The context from the listener.
-        ray_client (RayClient): The RAY client details.
-        target_lang (str): The target language use for translation.
-        source_lang (str): The source language use for detect sentence.
-        sentence (str): The sentence post on RAY need to be translated.
-        thread_ts (str | None, optional): The message thread to reply to.
-    """
-    if not context.channel_id and not context.user_id and not context.response_url:
-        raise AssertionError("No channel to post to")
-    required_tokens = len(text) * len(target_langs)
-    if not required_tokens or not await require_mt_tokens(context, required_tokens):
-        return None, []
-    escaped_text = escape_slack_emoji(text)
-    url = f"{domains.languagecloud_api}/mt/translate"
-    token = (
-        context["ray"].client.id_token
-        if context["ray"].client
-        else create_languagecloud_group_token(
-            context["ray"].super_group[0].verify_organization_uuid,
-            aud="languagecloud-api",
-            secret=config.languagecloud_api_key.get_secret_value(),
-        )
-    )
-    headers = {
-        "Authorization": f"Bearer {token}",
-    }
-    channel_id = context.get("channel_id", "")
-    channel_name = None
-    if channel_id:
-        if not channel_id.startswith("C"):
-            channel_name = "direct message"
-        else:
-            try:
-                channel_name = await context.client.conversations_info(
-                    channel=channel_id
-                )
-                channel_name = channel_name.get("channel", {}).get("name", None)
-            except Exception as e:
-                notify_exception(e, "Failed to get channel info")
-    task_data = TranslationRequest(
-        text=escaped_text,
-        target_languages=target_langs,
-        app_name="slack",
-        usage_type=usage_type,
-        email=context.get("user_info", {}).get("profile", {}).get("email", "unknown"),
-        group_uuid=context["ray"].super_group[0].id,
-        channel_name=channel_name,
-    )
-    async with httpx.AsyncClient() as http:
-        response = await http.post(
-            url,
-            headers=headers,
-            json=task_data.model_dump(),
-        )
-        response.raise_for_status()
-        data = TranslationResponse(**response.json())
-    translations = [
-        (tl, unescape_slack_emoji(target_text, text))
-        for tl, target_text in data.translations.items()
-    ]
-    source_lang = data.source_language
-    return (source_lang, translations)

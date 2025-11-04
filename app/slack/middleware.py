@@ -3,33 +3,32 @@
 See https://slack.dev/bolt-python/concepts#listener-middleware.
 """
 
+import logging
 import math
 from typing import Awaitable, Callable
-import logging
 
 from buglog import notify_exception, notify_message
-from slack_bolt.context.async_context import AsyncBoltContext
 from ray_logger.slack import SlackAppLog  # type: ignore
+from slack_bolt.context.async_context import AsyncBoltContext
 
 from app.ray.utils import is_ibm_enterprise, set_user_language
 
-from .app import app
-from .logging import init_slack_app_log
-from .templates.messages import (
-    RequiresMtTokenAdminMessage,
-    RequiresMtTokenMessage,
-    LoginMessage,
-)
 from ..auth.connector import (
     RayConnection,
     get_client_tokens,
-    get_group_tokens,
     get_client_type,
+    get_group_tokens,
     get_ray_connection,
     get_ray_connection_demo,
     log_new_user_info,
 )
-
+from .app import app
+from .logging import init_slack_app_log
+from .templates.messages import (
+    LoginMessage,
+    RequiresMtTokenAdminMessage,
+    RequiresMtTokenMessage,
+)
 
 # -----------------------------------------------------------------------------
 # Global Middleware
@@ -63,6 +62,16 @@ async def ray_connection(
     Also add a `login_prompt` message to the context containing the message to
     be sent to the user asking them to connect their LanguageCloud account.
     """
+    # Validate required context keys
+    if "user_id" not in context:
+        # Skip RAY connection for events without user context
+        context["ray"] = None
+        return await next()
+
+    if "team_id" not in context:
+        context["ray"] = None
+        return await next()
+
     context["ray"] = await get_ray_connection(
         context["user_id"], context["team_id"], context.enterprise_id
     )
@@ -167,7 +176,7 @@ async def require_ray_client(
     return False
 
 
-async def require_mt_tokens(context: AsyncBoltContext, value=1) -> bool:
+async def require_mt_tokens(context: AsyncBoltContext, value=1):
     """Check if the user has the required minimum translation credits to perform the operation"""
     ai_tokens = 0
     mt_scale = 0.1

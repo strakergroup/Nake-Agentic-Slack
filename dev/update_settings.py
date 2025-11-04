@@ -1,8 +1,8 @@
 import os
 import sys
+
 import requests
 from sqlalchemy import text
-from time import sleep
 
 # Add the parent directory to sys.path
 parent_dir = os.path.abspath(

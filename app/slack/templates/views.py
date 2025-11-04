@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from typing import Any
+from typing import Any, cast
 
 from slack_bolt.context.async_context import AsyncBoltContext
 
@@ -55,14 +55,14 @@ async def home_view(
     is_verify_enabled = (
         rayConnection.super_group[0].enable_verify_in_slack if rayConnection else False
     )
-    verify_settings_block = []
+    verify_settings_block: list[dict[str, Any]] = []
     visible_translation_settings: list[
         tuple[SlackGroupSettingsTranslation, list[str], dict[str, str]]
     ] = []
     questionEmoji = ":question:"
     rows_per_page = 5
-    total_pages = get_pagination(context, rows_per_page)
-    translation_settings = get_full_group_translation_settings(
+    total_pages = await get_pagination(context, rows_per_page)
+    translation_settings = await get_full_group_translation_settings(
         context, page, rows_per_page
     )
     if is_straker_admin:
@@ -71,7 +71,7 @@ async def home_view(
                 get_channel_info(
                     setting.channel_id,
                     context.client,
-                    context.team_id,
+                    context.team_id or "",
                 )
                 for setting, _ in translation_settings
             ),
@@ -767,7 +767,7 @@ def translation_settings_view(
         filter_auto_translate_language_options(initial_langs) if initial_langs else []
     )
     initial_display_format_option = map_translation_display_format_option(
-        display_format
+        cast(SlackGroupSettingsTranslation.DisplayFormatType, display_format)
     )
     return {
         "type": "modal",

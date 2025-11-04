@@ -3,21 +3,23 @@
 import math
 from datetime import datetime, timedelta
 from typing import Any
-from ray_sdk.api.v3.models import Quote
-from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
-from app.slack.select_options import get_languages_sync
 
+from ray_sdk.api.v3.models import Quote
+
+from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.ray.events.models import JobQuoteCreatedEvent
+from app.slack.select_options import get_languages_sync
 from app.slack.utils import segment_quality_score
+
 from ...auth.connector import (
-    get_language_cloud_connect_url,
     RayConnection,
+    get_language_cloud_connect_url,
 )
 from ...config import domains
 from ...ray.utils import (
-    get_job_url,
     format_currency,
     format_currency_symbol,
+    get_job_url,
     is_ibm_enterprise,
 )
 from ...translate import _
@@ -65,23 +67,8 @@ def home_auth_blocks(
                 },
             },
         ]
-    # msg: list[dict[str, Any]] = [
-    #     {
-    #         "type": "section",
-    #         "text": {
-    #             "type": "mrkdwn",
-    #             "text": _(
-    #                 "Connect your account to get details about your translation jobs."
-    #             ),
-    #         },
-    #     },
-    #     {
-    #         "type": "actions",
-    #         "elements": [],
-    #     },
-    # ]
     if is_ibm_enterprise(enterprise_id):
-        msg: list[dict[str, Any]] = [
+        blocks: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {
@@ -96,7 +83,7 @@ def home_auth_blocks(
                 "elements": [],
             },
         ]
-        msg[1]["elements"].insert(
+        blocks[1]["elements"].insert(
             0,
             {
                 "type": "button",
@@ -109,7 +96,7 @@ def home_auth_blocks(
             },
         )
     else:
-        msg: list[dict[str, Any]] = [
+        blocks: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {
@@ -124,22 +111,25 @@ def home_auth_blocks(
                 "elements": [],
             },
         ]
-        msg[1]["elements"].insert(
-            0,
-            {
-                "type": "button",
-                "text": {
-                    "type": "plain_text",
-                    "text": _("Connect to Verify"),
+        (
+            blocks[1]["elements"].insert(
+                0,
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": _("Connect to Verify"),
+                    },
+                    "style": "primary",
+                    "url": get_language_cloud_connect_url(
+                        user_id, team_id, enterprise_id, channel_id or user_id
+                    ),
+                    "action_id": "login",
                 },
-                "style": "primary",
-                "url": get_language_cloud_connect_url(
-                    user_id, team_id, enterprise_id, channel_id or user_id
-                ),
-                "action_id": "login",
-            },
-        ),
-    return msg
+            ),
+        )
+
+    return blocks
 
 
 def job_link_block(job_uuid: str, client_id: str) -> dict[str, Any]:
@@ -353,7 +343,6 @@ def job_prediction_block(
         return {}
 
 
-
 def verify_quote_blocks(
     job: dict[str, Any],
     costs: list[dict[str, Any]],
@@ -361,8 +350,8 @@ def verify_quote_blocks(
 ):
     source_files = job["source_files"]
     workflow_uuid = job["workflow_uuid"]
-    blocks = []
-    total_cost = 0
+    blocks: list[dict[str, Any]] = []
+    total_cost = 0.0
     for file in source_files:
         blocks.append(
             {
@@ -385,14 +374,14 @@ def verify_quote_blocks(
             cost = 0.00
             estimated_time = 0
             for item in costs:
-                    if (
-                        item["language_uuid"] == lang["uuid"]
-                        and item["file_uuid"] == file["file_uuid"]
-                    ):
-                        cost = item["service_list"][0]["estimated_cost"]
-                        estimated_time = item["service_list"][0]["time_estimate_days"]
-                        break
-            if target_file.get("human_job_status", ""):
+                if (
+                    item["language_uuid"] == lang["uuid"]
+                    and item["file_uuid"] == file["file_uuid"]
+                ):
+                    cost = item["service_list"][0]["estimated_cost"]
+                    estimated_time = item["service_list"][0]["time_estimate_days"]
+                    break
+            if target_file and target_file.get("human_job_status", ""):
                 if target_file["human_job_status"] == "Submitted":
                     lang_label = f"*{_(lang['name'])}*\n"
                     cost_block = {
@@ -447,7 +436,7 @@ def verify_quote_blocks(
                                                 "type": "mrkdwn",
                                                 "text": f"*{lang['name']}*: USD${cost:.2f}",
                                             },
-                                            "value": f"{file['file_uuid']}:{lang['uuid']}:{estimated_time}",
+                                            "value": f"{file['file_uuid']}:{lang['uuid']}:{str(estimated_time)}",
                                         },
                                     ],
                                     "initial_options": [
@@ -456,7 +445,7 @@ def verify_quote_blocks(
                                                 "type": "mrkdwn",
                                                 "text": f"*{lang['name']}*: USD${cost:.2f}",
                                             },
-                                            "value": f"{file['file_uuid']}:{lang['uuid']}:{estimated_time}",
+                                            "value": f"{file['file_uuid']}:{lang['uuid']}:{str(estimated_time)}",
                                         },
                                     ],
                                     "action_id": "verification_checkbox_action",
@@ -476,15 +465,23 @@ def verify_quote_blocks(
                                 for lang in all_langs
                                 if lang["uuid"] == source_lang_uuid
                             ),
-                            None,
+                            {"name": "Unknown Language"},
                         )
                     summary = job_summary_string(source_lang, lang, file)
 
                     if report:
                         # Filter out unscored/untranslated segments to match cloud-verify-ui behavior
                         counts = report["count"]
-                        scored_categories = ["translation_memory", "best", "good", "acceptable", "bad"]
-                        segment_count = sum(counts.get(category, 0) for category in scored_categories)
+                        scored_categories = [
+                            "translation_memory",
+                            "best",
+                            "good",
+                            "acceptable",
+                            "bad",
+                        ]
+                        segment_count = sum(
+                            counts.get(category, 0) for category in scored_categories
+                        )
 
                         if segment_count == 0:
                             bad = good = best = acceptable = memory_percentage = 0
@@ -492,7 +489,9 @@ def verify_quote_blocks(
                             bad = (counts.get("bad", 0) / segment_count) * 100
                             good = (counts.get("good", 0) / segment_count) * 100
                             best = (counts.get("best", 0) / segment_count) * 100
-                            acceptable = (counts.get("acceptable", 0) / segment_count) * 100
+                            acceptable = (
+                                counts.get("acceptable", 0) / segment_count
+                            ) * 100
                             memory_percentage = (
                                 counts.get("translation_memory", 0) / segment_count
                             ) * 100
@@ -545,9 +544,9 @@ def verify_quote_blocks(
         blocks.append({"type": "divider"})
     # Group costs by file_uuid and multiply time_estimate_days by count for each group
     grouped_times = {}
-    for cost in costs:
-        key = cost["file_uuid"]
-        time_estimate = cost["service_list"][0]["time_estimate_days"]
+    for cost_item in costs:
+        key = cost_item["file_uuid"]
+        time_estimate = cost_item["service_list"][0]["time_estimate_days"]
         if key not in grouped_times:
             grouped_times[key] = {"time_estimate": time_estimate, "count": 1}
         else:
@@ -559,7 +558,6 @@ def verify_quote_blocks(
     total_estimated_days = math.ceil(
         sum(group["time_estimate"] * group["count"] for group in grouped_times.values())
     )
-
 
     # Calculate completion date
     completion_date = datetime.now() + timedelta(days=total_estimated_days)
@@ -592,7 +590,7 @@ def evaluate_success_blocks(
     job: dict[str, Any],
 ):
     source_files = job["source_files"]
-    blocks = []
+    blocks: list[dict[str, Any]] = []
     for file in source_files:
         blocks.append(
             {
@@ -612,7 +610,7 @@ def evaluate_success_blocks(
                 ),
                 None,
             )
-            if target_file.get("human_job_status", ""):
+            if target_file and target_file.get("human_job_status", ""):
                 lang_label = f"*{_(lang['name'])}*\n"
                 cost_block = {
                     "type": "section",
@@ -647,15 +645,23 @@ def evaluate_success_blocks(
                             for lang in all_langs
                             if lang["uuid"] == source_lang_uuid
                         ),
-                        None,
+                        {"name": "Unknown Language"},
                     )
                 summary = job_summary_string(source_lang, lang, file)
 
                 if report:
                     # Filter out unscored/untranslated segments to match cloud-verify-ui behavior
                     counts = report["count"]
-                    scored_categories = ["translation_memory", "best", "good", "acceptable", "bad"]
-                    segment_count = sum(counts.get(category, 0) for category in scored_categories)
+                    scored_categories = [
+                        "translation_memory",
+                        "best",
+                        "good",
+                        "acceptable",
+                        "bad",
+                    ]
+                    segment_count = sum(
+                        counts.get(category, 0) for category in scored_categories
+                    )
 
                     if segment_count == 0:
                         bad = good = best = acceptable = memory_percentage = 0

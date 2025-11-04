@@ -12,26 +12,26 @@ Key functions:
 The global cache is automatically initialized on app startup.
 """
 
-from typing import Any, Iterable
-from itertools import islice
-import json
 import asyncio
+import json
+from itertools import islice
+from typing import Any, Iterable
 
 from buglog import notify_exception
 
 from app.api.verify import get_verify_languages
+from app.translate import _
 
-from ..redis import redis_conn
+from ..models import SlackGroupSettingsTranslation
 from ..ray import get_languages
 from ..ray.settings import get_auto_translate_languages
-from ..models import SlackGroupSettingsTranslation
-from app.translate import _
+from ..redis import redis_conn
 
 # Global variable to store cached languages
 _cached_languages: list[dict[str, str]] = []
 
 
-async def _get_languages_cached() -> list[dict[str, str]]:
+async def _get_languages_cached():
     key = "slack-ray-translator:languages:v1"
     cached = ""
     try:
@@ -58,7 +58,7 @@ async def _get_languages_cached() -> list[dict[str, str]]:
     return languages
 
 
-async def _update_global_cache() -> None:
+async def _update_global_cache():
     """Update the global cache with fresh language data."""
     global _cached_languages
     _cached_languages = await _get_languages_cached()
@@ -82,7 +82,7 @@ def get_languages_sync() -> list[dict[str, str]]:
     return _cached_languages
 
 
-async def initialize_languages_cache() -> None:
+async def initialize_languages_cache():
     """Initialize the global languages cache on app startup."""
     global _cached_languages
     _cached_languages = await _get_languages_cached()
@@ -119,7 +119,7 @@ async def get_language_options(
     ]
 
 
-async def get_file_options_cached(channel_id: str) -> list[dict[str, Any]]:
+async def get_file_options_cached(channel_id: str):
     key = f"slack-ray-translator:files:{channel_id}"
     cached = ""
     files = []

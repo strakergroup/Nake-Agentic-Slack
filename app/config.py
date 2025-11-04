@@ -6,8 +6,8 @@ from pydantic import (
     Field,
     SecretBytes,
     SecretStr,
-    field_validator,
     ValidationInfo,
+    field_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import text
@@ -15,7 +15,6 @@ from straker_utils.domain import StrakerDomains
 from straker_utils.environment import Environment
 
 from .database import engines
-
 
 load_dotenv()
 
@@ -57,10 +56,13 @@ class StrakerConfig(BaseSettings):
             if not v:
                 raise ValueError("GOOGLE_MT_API_KEY must be set in production and uat")
         return v
+
     def validate_microsoft_mt_api_key(cls, v, info: ValidationInfo):
         if info.data["environment"] in [Environment.production, Environment.uat]:
             if not v:
-                raise ValueError("MICROSOFT_MT_API_KEY must be set in production and uat")
+                raise ValueError(
+                    "MICROSOFT_MT_API_KEY must be set in production and uat"
+                )
         return v
 
     @field_validator("buglog_listener_url", mode="before")

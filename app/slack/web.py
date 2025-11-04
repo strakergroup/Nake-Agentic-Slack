@@ -1,15 +1,17 @@
 """Utility functions for using the Slack Web API."""
 
-from typing import Any, Iterable
-import os
 import asyncio
 import json
+import os
 import tempfile
-import httpx
 from pathlib import Path
-from slack_sdk.web.async_client import AsyncWebClient
-from slack_sdk.errors import SlackApiError
+from typing import Any, Iterable
+
+import httpx
 from buglog import notify_exception
+from slack_sdk.errors import SlackApiError
+from slack_sdk.web.async_client import AsyncWebClient
+from slack_sdk.web.async_slack_response import AsyncSlackResponse
 
 from ..redis import redis_conn
 from .select_options import map_file_options
@@ -148,7 +150,7 @@ async def download_file(
     return file_path
 
 
-async def download_files(client: AsyncWebClient, files: Iterable[str]) -> list[str]:
+async def download_files(client: AsyncWebClient, files: Iterable[str]):
     """Download multiple files from slack. This is more efficient than calling
     `download_file()` multiple times.
 
@@ -174,11 +176,11 @@ async def upload_file_to_slack_memory_efficient(
     client: AsyncWebClient,
     file_path: str,
     channel_id: str,
-    title: str = None,
-    filename: str = None,
-    initial_comment: str = None,
-    thread_ts: str = None,
-) -> dict:
+    title: str | None = None,
+    filename: str | None = None,
+    initial_comment: str | None = None,
+    thread_ts: str | None = None,
+) -> AsyncSlackResponse:
     """
     Upload a file to Slack using the memory-efficient files.getUploadURLExternal workflow.
 
@@ -194,7 +196,7 @@ async def upload_file_to_slack_memory_efficient(
         thread_ts (str, optional): Thread timestamp to reply to
 
     Returns:
-        dict: Response from Slack API containing file information
+        AsyncSlackResponse: Response from Slack API containing file information
 
     Raises:
         SlackApiError: If the upload fails
@@ -291,7 +293,7 @@ async def set_mt_ts_edit(
     return reply_ts
 
 
-async def get_mt_ts_cached(send_ts: str) -> str:
+async def get_mt_ts_cached(send_ts: str):
     key = f"slack-ray-translator:mt_ts:{send_ts}"
     cached = ""
     mt_timestamp = ""

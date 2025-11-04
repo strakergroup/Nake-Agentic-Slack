@@ -112,6 +112,7 @@ class GoogleApiLog(Base):
     user_uuid: Mapped[str]
     group_uuid: Mapped[str]
     super_group_uuid: Mapped[str]
+    verify_organization_uuid: Mapped[str | None]
     app_name: Mapped[str | None]
     sl: Mapped[str | None]
     tl: Mapped[str | None]
@@ -120,6 +121,11 @@ class GoogleApiLog(Base):
     response: Mapped[dict | None] = mapped_column(JSON)
     word_count: Mapped[int]
     character_count: Mapped[int]
+    email: Mapped[str | None]
+    usage_type: Mapped[str | None]
+    transaction_uuid: Mapped[str | None]
+    channel_name: Mapped[str | None]
+    gridfs_file_id: Mapped[str | None]
 
 
 class MicrosoftApiLog(Base):
@@ -216,12 +222,21 @@ class SlackFileTranslationSubmission(Base):
     file_hash: Mapped[str] = mapped_column(String(64), index=True)
     file_name: Mapped[str] = mapped_column(String(255))
     file_size: Mapped[int]
-    source_language: Mapped[str] = mapped_column(String(10), default="")
     target_language: Mapped[str] = mapped_column(String(10), default="")
+    source_language: Mapped[str] = mapped_column(String(10), default="")
     file_id: Mapped[str] = mapped_column(String(50))
     channel_id: Mapped[str] = mapped_column(String(50))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), index=True
+    )
+    processing_status: Mapped[str] = mapped_column(
+        Enum("created", "completed", "failed", name="submission_status"),
+        default="created",
+        nullable=False,
+    )
+    is_deleted: Mapped[bool] = mapped_column(default=False, nullable=False)
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime, nullable=True
     )
 
     def __repr__(self) -> str:
