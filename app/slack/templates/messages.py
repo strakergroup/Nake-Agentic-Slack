@@ -3157,6 +3157,41 @@ class AutoTranslationMessage(SlackMessage):
 
     def generate_blocks(self) -> list[dict[str, Any]]:
         blocks: list[dict[str, Any]] = []
+        # Slack's limit for mrkdwn text in section blocks is 3000 characters
+        MAX_BLOCK_TEXT_LENGTH = 3000
+
+        def split_text_into_blocks(text: str) -> list[str]:
+            """Split long text into chunks that fit within Slack's block limit."""
+            if len(text) <= MAX_BLOCK_TEXT_LENGTH:
+                return [text]
+
+            # Split by lines to avoid breaking in the middle of a line
+            lines = text.split("\n")
+            chunks: list[str] = []
+            current_chunk: list[str] = []
+            current_length: int = 0
+
+            for line in lines:
+                line_length = len(line) + 1  # +1 for newline
+
+                # If adding this line would exceed the limit, start a new chunk
+                if (
+                    current_length + line_length > MAX_BLOCK_TEXT_LENGTH
+                    and current_chunk
+                ):
+                    chunks.append("\n".join(current_chunk))
+                    current_chunk = [line]
+                    current_length = line_length
+                else:
+                    current_chunk.append(line)
+                    current_length += line_length
+
+            # Add the last chunk
+            if current_chunk:
+                chunks.append("\n".join(current_chunk))
+
+            return chunks
+
         for target_lang, translated_list in self.translations.items():
             # Join all strings in the list with spaces
             translated = " ".join(translated_list)
@@ -3169,12 +3204,16 @@ class AutoTranslationMessage(SlackMessage):
                 quoted_translated = "\n".join(
                     ["> " + line for line in translated.split("\n")]
                 )
-                blocks.append(
-                    {
-                        "type": "section",
-                        "text": {"type": "mrkdwn", "text": quoted_translated},
-                    }
-                )
+
+                # Split into multiple blocks if text exceeds Slack's limit
+                text_chunks = split_text_into_blocks(quoted_translated)
+                for chunk in text_chunks:
+                    blocks.append(
+                        {
+                            "type": "section",
+                            "text": {"type": "mrkdwn", "text": chunk},
+                        }
+                    )
         target_langs = [
             get_auto_translate_language_name(target_lang)
             for target_lang in self.translations.keys()

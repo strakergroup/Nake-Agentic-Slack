@@ -5,6 +5,7 @@ from typing import Annotated, Any, Optional, Union
 from buglog import notify_exception, notify_message
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ValidationError
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from slack_sdk.webhook import WebhookResponse
@@ -716,17 +717,28 @@ async def ray_events(
                             translations=translations,
                         )
                     )
-                    await post_channel_translation_notification(
-                        client,
-                        event,
-                        auth.slack_user,
-                        auto_translation_message,
-                        channel_id=extra_data.channel_id,
-                        thread_ts=extra_data.thread_ts,
-                        is_edit=extra_data.is_edit,
-                        display_format=extra_data.display_format,
-                        message_ts=extra_data.message_ts,
-                    )
+                    try:
+                        await post_channel_translation_notification(
+                            client,
+                            event,
+                            auth.slack_user,
+                            auto_translation_message,
+                            channel_id=extra_data.channel_id,
+                            thread_ts=extra_data.thread_ts,
+                            is_edit=extra_data.is_edit,
+                            display_format=extra_data.display_format,
+                            message_ts=extra_data.message_ts,
+                        )
+                    except SlackApiError as e:
+                        notify_exception(
+                            e, "Failed to post channel translation notification"
+                        )
+                        raise HTTPException(
+                            422,
+                            {
+                                "message": f"Failed to post channel translation notification: {e.response.get('error', 'unknown error')}",
+                            },
+                        ) from e
                 else:
                     raise HTTPException(
                         422,
