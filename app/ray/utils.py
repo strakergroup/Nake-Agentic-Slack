@@ -202,7 +202,7 @@ def is_min_langugagecloud_plan(
 
 def get_filename_from_header(header):
     """
-    Extract filename from content-disposition header
+    Extract filename from content-disposition header and normalize it.
     """
     value, params = parse_header(header)
     filename = params.get("filename*")
@@ -211,7 +211,8 @@ def get_filename_from_header(header):
         filename = unquote(filename, encoding=encoding)
     else:
         filename = params.get("filename")
-    return filename
+    # Normalize filename if it ends with 'quebecois'
+    return replace_quebecois_with_french_canadian(filename) if filename else filename
 
 
 async def download_from_file_server_async(file_id: str):
@@ -359,6 +360,34 @@ def validate_file_type(filename: str) -> bool:
     other, ext = os.path.splitext(filename)
     ext = ext.lower().lstrip(".")
     return ext in VALID_FILE_TYPES
+
+
+def replace_quebecois_with_french_canadian(filename: str) -> str:
+    """Replace 'quebecois' with 'french canadian' in filename if it ends with 'quebecois'.
+
+    Args:
+        filename: The filename to process.
+
+    Returns:
+        The filename with 'quebecois' replaced by 'french canadian' if it ends with 'quebecois',
+        otherwise the original filename.
+    """
+    if not filename:
+        return filename
+
+    # Split filename into base name and extension
+    name, ext = os.path.splitext(filename)
+    name_lower = name.lower()
+
+    # Check if the base name (without extension) ends with 'quebecois' (case-insensitive)
+    if name_lower.endswith("quebecois"):
+        # Find the position where 'quebecois' starts (case-insensitive)
+        idx = name_lower.rfind("quebecois")
+        if idx != -1:
+            # Replace 'quebecois' with 'french canadian', preserving the rest and extension
+            return name[:idx] + "french canadian" + name[idx + len("quebecois") :] + ext
+
+    return filename
 
 
 def validate_file(file_path: str) -> Tuple[bool, bool, str]:
