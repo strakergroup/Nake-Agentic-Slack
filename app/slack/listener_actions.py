@@ -420,6 +420,19 @@ async def auto_translate_message(
     if message.get("bot_id"):
         # Do not translate bot messages.
         return
+    # Check for 5K character limit
+    if len(text) > 5000:
+        error_msg = _("The message is over the 5K character limit")
+        if context.channel_id:
+            try:
+                await client.chat_postMessage(
+                    channel=context.channel_id,
+                    text=error_msg,
+                    thread_ts=ts,
+                )
+            except Exception as e:
+                notify_exception(e, "Failed to post 5K character limit error message")
+        return
     assert context.channel_id  # TODO enforce this
 
     # TODO make this fetch all settings for channel
@@ -1665,6 +1678,17 @@ async def get_mt_translation(
         channel_id = context.channel_id or context.user_id
         if not channel_id:
             raise AssertionError("No channel to post to")
+        # Check for 5K character limit
+        if len(sentence) > 5000:
+            error_msg = _("The message is over the 5K character limit")
+            if context.response_url and context.respond:
+                return await context.respond(text=error_msg)
+            else:
+                return await client.chat_postMessage(
+                    channel=channel_id,
+                    text=error_msg,
+                    thread_ts=thread_ts,
+                )
         target_lang = target_lang.lower()
         target_langs = await resolve_language([target_lang], engine="google")
         source_langs = await resolve_language([source_lang], engine="google")
