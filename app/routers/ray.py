@@ -17,6 +17,7 @@ from app.auth.connector import get_ray_client, get_ray_connection
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.database import async_engines
 from app.mt.logs import log_google_api_usage
+from app.ray.submissions import SubmissionStatus, updated_submission_status
 from app.ray.utils import (
     delete_from_file_server,
     download_from_file_server_async,
@@ -123,6 +124,12 @@ async def _handle_mt_success_background(
 ):
     """Background task to handle MT success file download and upload."""
     try:
+        # Update submission status if submission_id is present
+        if success_data.submission_id:
+            updated_submission_status(
+                submission_id=success_data.submission_id,
+                processing_status=SubmissionStatus.COMPLETED,
+            )
         await update_slack_job(
             task_uuid=success_data.task_uuid,
             status="slack_uploading",
@@ -530,6 +537,12 @@ async def ray_events(
                 document_translated_data = MtErrorResponseSchema.model_validate(
                     event.data
                 )
+                # Update submission status to FAILED if submission_id is present
+                if document_translated_data.submission_id:
+                    updated_submission_status(
+                        submission_id=document_translated_data.submission_id,
+                        processing_status=SubmissionStatus.FAILED,
+                    )
                 document_message: Optional[SlackMessage] = None
                 if document_translated_data.error_type == "insufficient_balance":
                     # Send message to user that they need to purchase tokens
