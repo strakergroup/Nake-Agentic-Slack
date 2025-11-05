@@ -18,6 +18,7 @@ from slack_bolt.kwargs_injection.async_args import AsyncAck, AsyncRespond, Async
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
+from app.api.language_cloud import detect_language
 from app.api.verify import (
     VerifyAPIError,
     download_verify_file,
@@ -530,11 +531,11 @@ async def handle_translate_shortcut(
     await ack()
     mt_tl = context.get("locale", "en")
     mt_text = body["message"]["text"]
-
+    source_lang = await detect_language(context, mt_text)
     await get_mt_translation(
         client,
         context,
-        source_lang="",
+        source_lang=source_lang.language,
         target_lang=mt_tl,
         sentence=mt_text,
         usage_type="shortcut_translate",
