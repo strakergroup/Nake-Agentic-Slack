@@ -537,6 +537,12 @@ async def ray_events(
                 document_translated_data = MtErrorResponseSchema.model_validate(
                     event.data
                 )
+                # Update submission status to FAILED if submission_id is present
+                if document_translated_data.submission_id:
+                    updated_submission_status(
+                        submission_id=document_translated_data.submission_id,
+                        processing_status=SubmissionStatus.FAILED,
+                    )
                 document_message: Optional[SlackMessage] = None
                 if document_translated_data.error_type == "insufficient_balance":
                     # Send message to user that they need to purchase tokens

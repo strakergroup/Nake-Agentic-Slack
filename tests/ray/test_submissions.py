@@ -299,3 +299,60 @@ async def test_updated_submission_status(cleanup_submissions):
     with Session(engines["ray_integration"]) as session:
         session.delete(updated)
         session.commit()
+
+
+@pytest.mark.asyncio
+async def test_submission_status_updated_to_failed_on_error(cleanup_submissions):
+    """Test that submission status is updated to FAILED when an error occurs."""
+    # Create a test submission directly in the database
+    user_id = "test_user_7"
+    team_id = "test_team_7"
+    channel_id = "test_channel_7"
+
+    with Session(engines["ray_integration"]) as session:
+        submission = SlackFileTranslationSubmission(
+            user_id=user_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            file_hash="test_hash",
+            file_name="test.txt",
+            file_size=100,
+            target_language="en",
+            file_id="test_file_id",
+            processing_status=SubmissionStatus.CREATED.value,
+        )
+        session.add(submission)
+        session.commit()
+        session.refresh(submission)
+        submission_id = submission.id
+
+    # Verify initial status is CREATED
+    with Session(engines["ray_integration"]) as session:
+        initial = session.scalars(
+            select(SlackFileTranslationSubmission).where(
+                SlackFileTranslationSubmission.id == submission_id
+            )
+        ).first()
+        assert initial.processing_status == SubmissionStatus.CREATED.value
+
+    # Simulate error - update status to FAILED
+    result = updated_submission_status(
+        submission_id=submission_id,
+        processing_status=SubmissionStatus.FAILED,
+    )
+
+    assert result is True
+
+    # Verify the status was updated to FAILED
+    with Session(engines["ray_integration"]) as session:
+        updated = session.scalars(
+            select(SlackFileTranslationSubmission).where(
+                SlackFileTranslationSubmission.id == submission_id
+            )
+        ).first()
+        assert updated.processing_status == SubmissionStatus.FAILED.value
+
+    # Clean up
+    with Session(engines["ray_integration"]) as session:
+        session.delete(updated)
+        session.commit()
