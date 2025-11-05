@@ -235,10 +235,13 @@ async def ray_events(
 
     if auth.slack_user:
         client = AsyncWebClient(token=auth.slack_user.bot_token)
-        user_info = await client.users_info(
-            user=auth.slack_user.user_id, include_locale=True
-        )
-        set_user_language(user_info)
+        try:
+            user_info = await client.users_info(
+                user=auth.slack_user.user_id, include_locale=True
+            )
+            set_user_language(user_info)
+        except Exception as e:
+            pass
 
         # Handle different event types directly
         is_ibm = (
