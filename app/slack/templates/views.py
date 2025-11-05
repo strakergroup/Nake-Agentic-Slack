@@ -818,7 +818,7 @@ def translation_settings_view(
                     "type": "multi_static_select",
                     "placeholder": {
                         "type": "plain_text",
-                        "text": _("Choose languages"),
+                        "text": _("Select languages"),
                     },
                     "options": language_options,
                     **(
