@@ -3625,7 +3625,9 @@ class DocMtMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _("Error occurred while translating your document"),
+                        "text": _(
+                            "Oops! The system is having technical issues right now. Our team is on it and working to get everything back up and running. Please check back shortly. Thanks for your patience!"
+                        ),
                     },
                 }
             ],
