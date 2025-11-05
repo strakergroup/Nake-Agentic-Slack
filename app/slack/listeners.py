@@ -579,7 +579,6 @@ async def srt_translate_action(
                         "The file is being translated. You will be notified when it is ready."
                     )
                 )
-
             else:
                 await say(_("Please select a language to translate to."))
 
