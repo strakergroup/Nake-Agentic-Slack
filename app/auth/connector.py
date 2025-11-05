@@ -1851,31 +1851,13 @@ async def add_to_verify_team(user_uuid: str, enterprise_id: str | None):
             """
         ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
         await execute(sql, async_engines["sitemanager"], commit_after=True)
-        # Check if user role exists before inserting
+        # add to user_roles
         sql = text(
             """
-            SELECT user_id
-            FROM user_roles
-            WHERE user_id = :user_id
-            AND team_id = :team_id
-        """
-        ).bindparams(user_id=user_uuid, team_id=team_uuid)
-        result = await fetch_one(sql, async_engines["sitemanager"])
-        if not result:
-            # delete from user_roles if exists in different team
-            sql = text(
-                """
-                    DELETE from user_roles where user_id = :user_id
-                """
-            ).bindparams(user_id=user_uuid)
-            await execute(sql, async_engines["sitemanager"], commit_after=True)
-            # add to user_roles
-            sql = text(
-                """
-                INSERT INTO user_roles
-                    (user_id, team_id, role_id)
-                VALUES
-                    (:user_id, :team_id, '83d64046-770b-43f5-abbf-e96ca0b3db9a')
-                """
-            ).bindparams(user_id=user_uuid, team_id=team_uuid)
-            await execute(sql, async_engines["sitemanager"], commit_after=True)
+            INSERT INTO user_roles
+                (user_id, team_id, role_id)
+            VALUES
+                (:user_uuid, :team_uuid, '83d64046-770b-43f5-abbf-e96ca0b3db9a')
+            """
+        ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
+        await execute(sql, async_engines["sitemanager"], commit_after=True)
