@@ -481,7 +481,6 @@ async def auto_translate_message(
                 is_edit=is_edit,
                 display_format=display_format,
                 message_ts=ts,
-                glossary_identifier=glossary_id,
             ),
         )
     except Exception as e:
