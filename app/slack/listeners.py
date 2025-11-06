@@ -552,36 +552,48 @@ async def srt_translate_action(
     say: AsyncSay,
     client: AsyncWebClient,
 ):
-    await ack()
-    if await require_ray_client(context):
-        assert context["ray"] is not None
-        assert context["ray"].client is not None
-        assert action is not None
-        task_uuid = action["value"]
-        # get uuid from output_file
-        task_result = await get_asr_task(task_uuid, context["ray"].client.id)
-        assert task_result is not None
-        tokens_consumed = task_result.get("tokens_consumed")
-        if tokens_consumed is not None and await require_mt_tokens(
-            context, tokens_consumed
-        ):
-            # get selected language from redis keyed on output_file
-            # selected from get_auto_translate_language_options
-            selected_language = await redis_conn.get(f"output_file_{task_uuid}")
-            if selected_language is not None:
-                await document_machine_translate(
-                    context,
-                    cast(str, task_result.get("file_id")),
-                    cast(str, selected_language),
-                    0,  # submission_id - not available in this context
-                )
-                await say(
-                    _(
-                        "The file is being translated. You will be notified when it is ready."
+    try:
+        await ack()
+        if await require_ray_client(context):
+            assert context["ray"] is not None
+            assert context["ray"].client is not None
+            assert action is not None
+            task_uuid = action["value"]
+            # get uuid from output_file
+            task_result = await get_asr_task(task_uuid, context["ray"].client.id)
+            assert task_result is not None
+            # Get tokens from task_result (API returns "tokens", not "tokens_consumed")
+            tokens_consumed = task_result.get("tokens_consumed") or task_result.get(
+                "tokens"
+            )
+            if tokens_consumed is not None and await require_mt_tokens(
+                context, tokens_consumed
+            ):
+                # get selected language from redis keyed on output_file
+                # selected from get_auto_translate_language_options
+                selected_language = await redis_conn.get(f"output_file_{task_uuid}")
+                if selected_language is not None:
+                    await document_machine_translate(
+                        context,
+                        cast(str, task_result.get("file_id")),
+                        cast(str, selected_language),
+                        0,  # submission_id - not available in this context
                     )
-                )
-            else:
-                await say(_("Please select a language to translate to."))
+                    await say(
+                        _(
+                            "The file is being translated. You will be notified when it is ready."
+                        )
+                    )
+                else:
+                    await say(_("Please select a language to translate to."))
+    except Exception as exc:
+        notify_exception(exc, "Error in srt_translate_action")
+        # Respond to user with error, if possible
+        await say(
+            _(
+                "An error occurred while processing your translation request. Please try again or contact support."
+            )
+        )
 
 
 @app.block_action("login_sso", middleware=[ray_connection])
