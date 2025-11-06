@@ -93,7 +93,7 @@ def create_service_language_mapping(target_langs: list[str]) -> dict[str, list[s
     service_language_mapping: dict[str, list[str]] = {}
 
     for target_lang in target_langs:
-        if target_lang in ["fr-ca", "french-canada", "french-canadian"]:
+        if target_lang.lower() in ["fr-ca", "french-canada", "french-canadian"]:
             if "microsoft" not in service_language_mapping:
                 service_language_mapping["microsoft"] = []
             service_language_mapping["microsoft"].append(target_lang)
@@ -453,9 +453,6 @@ async def auto_translate_message(
         return
     source_lang = detected_source_lang_response.language
 
-    # Create service language mapping based on target languages
-    service_language_mapping = create_service_language_mapping(target_langs)
-
     try:
         org_uuid = context["ray"].super_group[0].verify_organization_uuid
         client_id = context["ray"].client.id if context["ray"].client else org_uuid
@@ -484,7 +481,6 @@ async def auto_translate_message(
                 is_edit=is_edit,
                 display_format=display_format,
                 message_ts=ts,
-                glossary_identifier=glossary_id,
             ),
         )
     except Exception as e:
