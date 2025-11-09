@@ -197,7 +197,8 @@ async def post_channel_translation_notification(
 
     # Use message_ts for thread creation if available, otherwise fall back to thread_ts
     thread_timestamp = message_ts or thread_ts
-
+    print(f"thread_timestamp: {thread_timestamp}")
+    print(f"display_format: {thread_ts}")
     # Determine thread behavior based on display_format
     use_thread = False
     if display_format == "thread" or thread_ts:
