@@ -52,8 +52,9 @@ async def resolve_language_code(lang: str | None) -> Language | None:
                 # Language.parent_lang.ilike(like_lang),
             )
         )
-        result = await session.execute(query)
-        language = result.scalars().first()
+        async with AsyncSession(async_engines["translators_readonly"]) as session:
+            result = await session.execute(query)
+            language = result.scalars().first()
 
     return language
 

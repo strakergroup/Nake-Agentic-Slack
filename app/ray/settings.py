@@ -530,8 +530,9 @@ async def update_auto_translate_group_settings(
 
         async with AsyncSession(async_engines["ray_integration"]) as session:
             # Update display format
+            # Merge the detached object from the previous session into this session
+            channel_setting = await session.merge(channel_setting)
             channel_setting.display_format = display_format
-            session.add(channel_setting)
 
             # Get current settings for this channel
             query = select(SlackGroupSettingsTranslation).where(
