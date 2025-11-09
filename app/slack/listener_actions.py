@@ -480,7 +480,7 @@ async def auto_translate_message(
                 usage_type="channel_translation",
                 source_text=text,
                 response_url=context.response_url,
-                thread_ts=context.thread_ts,
+                thread_ts=thread_ts,
                 is_edit=is_edit,
                 display_format=display_format,
                 message_ts=ts,
