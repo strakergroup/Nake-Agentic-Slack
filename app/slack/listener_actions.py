@@ -1753,7 +1753,6 @@ async def get_mt_translation(
             thread_ts=thread_ts,
             is_edit=is_edit,
             slack_user_id=context.user_id,
-            glossary_identifier=None,  # Deprecated: use glossary_id from service_language_mapping
         )
 
         await send_mt_translation_request(
