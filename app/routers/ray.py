@@ -685,9 +685,11 @@ async def ray_events(
                     # For direct translation, we need to get the first target language
                     # and combine all translations into a single string
                     first_target_lang = None
-                    for langs in extra_data.service_language_mapping.values():
-                        if langs:
-                            first_target_lang = langs[0]
+                    for (
+                        lang_glossary_map
+                    ) in extra_data.service_language_mapping.values():
+                        if lang_glossary_map:
+                            first_target_lang = next(iter(lang_glossary_map.keys()))
                             break
 
                     # Combine all translations into a single string
@@ -765,7 +767,8 @@ async def ray_events(
                     )
                 # Calculate total languages across all services
                 total_languages = sum(
-                    len(langs) for langs in extra_data.service_language_mapping.values()
+                    len(lang_glossary_map)
+                    for lang_glossary_map in extra_data.service_language_mapping.values()
                 )
                 amount = calculate_cost(extra_data.text_length * total_languages)
                 assert auth.slack_user.ray_user_group_id is not None
