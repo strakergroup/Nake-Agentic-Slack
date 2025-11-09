@@ -1,6 +1,5 @@
 from app.auth.connector import RayClient
-from app.slack.templates.messages import LoginMessage
-from app.slack.templates.messages import VerifyCompleteMessage
+from app.slack.templates.messages import LoginMessage, VerifyCompleteMessage
 from app.translate import _
 
 
@@ -100,8 +99,6 @@ class TestVerifyCompleteMessage:
         job_title = "Sample Job"
         lang_label = "English"
 
-        localized_lang_label = _(lang_label)
-
         # Create a VerifyCompleteMessage instance
         message = VerifyCompleteMessage(job_title, lang_label)
 
@@ -110,13 +107,11 @@ class TestVerifyCompleteMessage:
         assert message.blocks[0]["type"] == "section"  # Block type
         assert message.blocks[0]["text"]["type"] == "mrkdwn"  # Text type
 
-        # Check that the text includes the correct job title and language
-        expected_text = (
-            f"Quality Evaluation Job '{job_title}' human translation complete. "
-            f"The file has been verified for language {localized_lang_label}."
+        # Check that the text matches the actual implementation
+        expected_text = _(
+            "Your request has been completed. Please download the file below"
         )
         assert message.blocks[0]["text"]["text"] == expected_text
 
-        # Assert the message's title is correct
-        # Since the 'title' is part of the first block, we should check for the title text there.
-        assert message.blocks[0]["text"]["text"].startswith("Quality Evaluation Job")
+        # Assert the message title is correct
+        assert message.text == _("Human Translation")

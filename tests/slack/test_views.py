@@ -1,17 +1,21 @@
 import pytest
+
 from app.slack.templates.views import verify_job_modal
 
 
 def test_verify_job_modal_cost_update_individual_checkboxes():
     # Define the job, languages, and costs
+    file_uuid = "file-123"
     job = {
         "uuid": "job-123",
+        "workflow_uuid": "workflow-123",
         "target_languages": [
             {"uuid": "lang-123", "name": "French"},
             {"uuid": "lang-456", "name": "Spanish"},
         ],
         "source_files": [
             {
+                "file_uuid": file_uuid,
                 "filename": "example.txt",
                 "report": {
                     "language_uuid": "source-uuid",
@@ -45,15 +49,17 @@ def test_verify_job_modal_cost_update_individual_checkboxes():
         ],
     }
 
-    all_langs = [
-        {"uuid": "source-uuid", "name": "English"},
-        {"uuid": "lang-123", "name": "French"},
-        {"uuid": "lang-456", "name": "Spanish"},
-    ]
-
     costs = [
-        {"language_uuid": "lang-123", "service_list": [{"estimated_cost": 15.75}]},
-        {"language_uuid": "lang-456", "service_list": [{"estimated_cost": 20.50}]},
+        {
+            "file_uuid": file_uuid,
+            "language_uuid": "lang-123",
+            "service_list": [{"estimated_cost": 15.75, "time_estimate_days": 2}],
+        },
+        {
+            "file_uuid": file_uuid,
+            "language_uuid": "lang-456",
+            "service_list": [{"estimated_cost": 20.50, "time_estimate_days": 3}],
+        },
     ]
 
     # First, select French (lang-123) only
@@ -61,7 +67,8 @@ def test_verify_job_modal_cost_update_individual_checkboxes():
     selected_costs = [
         cost for cost in costs if cost["language_uuid"] in selected_languages
     ]
-    modal = verify_job_modal(job, all_langs, selected_costs)
+    timestamp = "1234567890.123456"
+    modal = verify_job_modal(job, selected_costs, timestamp)
 
     # Verify modal structure
     assert modal.get("type") == "modal"
@@ -90,7 +97,7 @@ def test_verify_job_modal_cost_update_individual_checkboxes():
 
     # Validate the total cost text dynamically
     assert (
-        f"*Total Cost:* USD${expected_total_cost:.2f}"
+        f"*Total Cost*: USD ${expected_total_cost:.2f}"
         in total_cost_block["text"]["text"]
     )
 
@@ -99,7 +106,7 @@ def test_verify_job_modal_cost_update_individual_checkboxes():
     selected_costs = [
         cost for cost in costs if cost["language_uuid"] in selected_languages
     ]
-    modal = verify_job_modal(job, all_langs, selected_costs)
+    modal = verify_job_modal(job, selected_costs, timestamp)
 
     # Calculate expected total cost for both French and Spanish
     expected_total_cost = sum(
@@ -124,6 +131,6 @@ def test_verify_job_modal_cost_update_individual_checkboxes():
 
     # Validate the updated total cost text dynamically
     assert (
-        f"*Total Cost:* USD${expected_total_cost:.2f}"
+        f"*Total Cost*: USD ${expected_total_cost:.2f}"
         in total_cost_block["text"]["text"]
     )

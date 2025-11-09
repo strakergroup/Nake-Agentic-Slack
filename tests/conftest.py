@@ -1,13 +1,13 @@
-from typing import Any
-from random import randrange
-from uuid import uuid4
 import asyncio
+from random import randrange
+from typing import Any
+from uuid import uuid4
+
 import pytest
 from slack_bolt.context.async_context import AsyncBoltContext
 
-from app.redis import redis_conn
 from app.auth.connector import RayClient
-
+from app.redis import redis_conn
 
 # -----------------------------------------------------------------------------
 # Helper functions
@@ -150,7 +150,18 @@ def ts() -> str:
 @pytest.fixture
 def ray_client(user_id, team_id, enterprise_id) -> RayClient:
     return RayClient(
-        str(uuid4()), "test.user", str(uuid4()), user_id, team_id, enterprise_id
+        id=str(uuid4()),
+        username="test.user",
+        user_group_id=str(uuid4()),
+        access_token=str(uuid4()),
+        slack_user_id=user_id,
+        slack_team_id=team_id,
+        slack_enterprise_id=enterprise_id,
+        slack_access_token=None,
+        settings_id=None,
+        id_token=None,
+        planname=None,
+        sso=False,
     )
 
 

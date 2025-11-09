@@ -1,5 +1,22 @@
+import logging
 import re
+import traceback
+from typing import Any, Callable
+
+from slack_sdk.models.blocks import (
+    ActionsBlock,
+    ButtonElement,
+    HeaderBlock,
+    MarkdownTextObject,
+    PlainTextObject,
+    SectionBlock,
+)
+from slack_sdk.web.async_client import AsyncWebClient
+
+from app.config import Environment, config, domains
 from app.translate import _
+
+logger = logging.getLogger(__name__)
 
 
 def is_channel_im(channel_id: str | None) -> bool:
@@ -183,3 +200,146 @@ def segment_quality_score(score: float, taus_version: str = "1.0.0") -> str:
         elif score >= 0.85:
             return _("Overall Translation Quality: Acceptable")
         return _("Overall Translation Quality: Bad")
+
+
+def _wrap_notify_exception(
+    original_notify_exception: Callable[..., bool],
+) -> Callable[..., bool]:
+    """Wrap buglog.notify_exception to also send to Slack.
+
+    This creates a wrapper function that:
+    1. Calls the original buglog.notify_exception (sends to BugLogHQ)
+    2. Also sends to Slack dev alert channel in the background
+
+    Returns a function with the same signature as buglog.notify_exception.
+    """
+
+    def wrapped_notify_exception(
+        exc: BaseException | None = None,
+        msg: str | None = None,
+        extra: dict[str, Any] | None = None,
+        severity: str = "ERROR",
+    ) -> bool:
+        """Wrapper that sends to both BugLogHQ and Slack."""
+        # Call original to send to BugLogHQ
+        result = original_notify_exception(exc, msg, extra, severity)
+
+        # Also send to Slack (async, fire-and-forget) if we have an exception
+        if exc is not None:
+            try:
+                import asyncio
+
+                # Try to get the current event loop
+                try:
+                    loop = asyncio.get_running_loop()
+                    # If we're in an async context, schedule the task
+                    loop.create_task(_send_to_slack_background(exc))
+                except RuntimeError:
+                    # No running loop, create one for this task
+                    # Use a thread to avoid blocking
+                    import threading
+
+                    def run_async():
+                        asyncio.run(_send_to_slack_background(exc))
+
+                    thread = threading.Thread(target=run_async, daemon=True)
+                    thread.start()
+            except Exception:
+                # Don't let Slack failures break BugLogHQ notifications
+                logger.debug("Failed to schedule Slack notification", exc_info=True)
+
+        return result
+
+    return wrapped_notify_exception
+
+
+async def _send_to_slack_background(exc: BaseException) -> None:
+    """Background function to send exception to Slack without context."""
+    try:
+        token = config.slack_dev_alert_bot_token.get_secret_value()
+        channel_id = config.slack_dev_alert_channel_id
+
+        if not channel_id or not token:
+            return
+
+        # Format exception information
+        error_type = type(exc).__name__
+        error_message = str(exc)
+        error_traceback = "".join(
+            traceback.format_exception(type(exc), exc, exc.__traceback__)
+        )
+
+        # Truncate traceback if too long
+        max_traceback_length = 3000
+        if len(error_traceback) > max_traceback_length:
+            error_traceback = (
+                error_traceback[:max_traceback_length] + "\n... (truncated)"
+            )
+
+        # Build message
+        env_prefix = (
+            f"{config.environment.title()}"
+            if config.environment != Environment.production
+            else ""
+        )
+
+        # Create BugLogHQ link
+        buglog_url = f"{domains.buglog}/bugLog/"
+
+        # Fallback text for notifications
+        fallback_text = f"🚨 Exception: {error_type} - {error_message}"
+
+        # Build Block Kit blocks
+        blocks = [
+            HeaderBlock(
+                text=PlainTextObject(
+                    text="🚨 Exception (from BugLogHQ)",
+                    emoji=True,
+                )
+            ),
+            SectionBlock(
+                fields=[
+                    MarkdownTextObject(
+                        text=f"*Environment:*\n{env_prefix or 'Production'}"
+                    ),
+                    MarkdownTextObject(text=f"*Error Type:*\n`{error_type}`"),
+                ]
+            ),
+            SectionBlock(
+                text=MarkdownTextObject(text=f"*Error Message:*\n{error_message}")
+            ),
+            SectionBlock(
+                text=MarkdownTextObject(
+                    text=f"*Traceback:*\n```\n{error_traceback}\n```"
+                )
+            ),
+            ActionsBlock(
+                elements=[
+                    ButtonElement(
+                        text=PlainTextObject(text="View in BugLogHQ", emoji=True),
+                        url=buglog_url,
+                        action_id="view_buglog",
+                        style="primary",
+                    )
+                ]
+            ),
+        ]
+
+        # Create Slack client and send message
+        slack_client = AsyncWebClient(token=token)
+        await slack_client.chat_postMessage(
+            channel=channel_id,
+            text=fallback_text,
+            blocks=blocks,
+        )
+
+        logger.info(
+            f"Successfully sent exception notification to Slack channel {channel_id}"
+        )
+
+    except Exception as slack_error:
+        # Don't let Slack notification failures break the app
+        logger.error(
+            f"Failed to send exception to Slack: {slack_error}. "
+            f"Original exception: {type(exc).__name__}: {exc}"
+        )

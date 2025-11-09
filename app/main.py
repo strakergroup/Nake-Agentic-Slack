@@ -1,20 +1,33 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from elasticapm.contrib.starlette import make_apm_client, ElasticAPM
+
 import buglog
+from elasticapm.contrib.starlette import ElasticAPM, make_apm_client
+from fastapi import FastAPI
+
+# IMPORTANT: Patch notify_exception BEFORE any other imports that use buglog.notify_exception
+# This ensures all modules get the wrapped version
+from app.slack.utils import _wrap_notify_exception
 
 from .config import Environment, config, domains
-from .routers import slack, ray, health
-from .slack.select_options import (
-    initialize_languages_cache,
-)
-
 
 # Configure BugLog
 buglog.init(
     listener=config.buglog_listener_url,
     app_name="Slack RAY Translator",
     hostname=domains.slack_ray_translator,
+)
+
+# Patch buglog.notify_exception to also send to Slack
+# This wraps the function so every call to notify_exception also sends to Slack
+_original_notify_exception = buglog.notify_exception
+buglog.notify_exception = _wrap_notify_exception(_original_notify_exception)
+
+# Import other modules AFTER patching notify_exception
+# This ensures all modules that import notify_exception get the wrapped version
+# noqa: E402 - imports must be after patch to ensure all modules use wrapped notify_exception
+from .routers import health, ray, slack  # noqa: E402
+from .slack.select_options import (  # noqa: E402
+    initialize_languages_cache,
 )
 
 # Log application version
