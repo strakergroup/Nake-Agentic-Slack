@@ -55,6 +55,7 @@ class MtTranslationExtraData(BaseModel):
     service_language_mapping: dict[str, List[str]]
     source_language: str
     organization_uuid: str
+    team_id: str
     channel_id: str
     text_length: int
     usage_type: str
