@@ -279,7 +279,7 @@ async def save_user_token_from_installation(
     )
 
 
-async def get_slack_org(org_uuid: str):
+async def get_slack_org(org_uuid: str, team_id: str | None = None):
     """Gets the Slack organization connected to a RAY client."""
     sql = text(
         """
@@ -291,14 +291,15 @@ async def get_slack_org(org_uuid: str):
     result = await fetch_one(sql, async_engines["ray_integration"])
     if not result:
         return None
+    team_id = team_id or result["slack_team_id"]
     bot_token = await get_bot_token_async(
-        team_id=result["slack_team_id"], enterprise_id=result["slack_enterprise_id"]
+        team_id=team_id, enterprise_id=result["slack_enterprise_id"]
     )
     if not bot_token:
         return None
     return SlackUser(
         user_id=result["verify_organization_uuid"],
-        team_id=result["slack_team_id"],
+        team_id=team_id,
         enterprise_id=result["slack_enterprise_id"],
         channel_id="",
         is_subscribed=False,
@@ -309,7 +310,7 @@ async def get_slack_org(org_uuid: str):
     )
 
 
-async def get_slack_user(ray_client_id: str):
+async def get_slack_user(ray_client_id: str, team_id: str | None = None):
     """Gets the Slack user connected to a RAY client.
 
     Args:
@@ -331,13 +332,14 @@ async def get_slack_user(ray_client_id: str):
     ).bindparams(member_uuid=ray_client_id)
     result = await fetch_one(sql, async_engines["ray_integration"])
     if result:
+        team_id = team_id or result["slack_team_id"]
         bot_token = await get_bot_token_async(
-            team_id=result["slack_team_id"], enterprise_id=result["slack_enterprise_id"]
+            team_id=team_id, enterprise_id=result["slack_enterprise_id"]
         )
         if bot_token:
             return SlackUser(
                 user_id=result["slack_user_id"],
-                team_id=result["slack_team_id"],
+                team_id=team_id,
                 enterprise_id=result["slack_enterprise_id"],
                 channel_id=result["slack_channel_id"],
                 is_subscribed=bool(result["is_subscribed"]),
