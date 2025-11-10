@@ -789,6 +789,8 @@ async def ray_events(
                 if extra_data.channel_id:
                     if not extra_data.channel_id.startswith("C"):
                         channel_name = "direct message"
+                    elif extra_data.usage_type == "shortcut_translate":
+                        channel_name = "shortcut translation"
                     else:
                         try:
                             channel_info = await client.conversations_info(
