@@ -1,5 +1,5 @@
-import buglog
 import httpx
+from buglog import notify_exception
 from pydantic import BaseModel
 from slack_bolt.context.async_context import AsyncBoltContext
 from straker_auth.languagecloud.jwt import create_languagecloud_group_token
@@ -35,10 +35,10 @@ async def detect_language(
         response.raise_for_status()
         return DetectLanguageResponse(**response.json())
     except httpx.HTTPStatusError as e:
-        buglog.notify_exception(msg="Error detecting language", exc=e)
+        notify_exception(msg="Error detecting language", exc=e)
         raise
     except Exception as e:
-        buglog.notify_exception(
+        notify_exception(
             msg="An unexpected error occurred during language detection", exc=e
         )
         raise

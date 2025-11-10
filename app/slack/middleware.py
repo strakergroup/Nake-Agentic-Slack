@@ -7,7 +7,7 @@ import logging
 import math
 from typing import Awaitable, Callable
 
-import buglog
+from buglog import notify_exception, notify_message
 from ray_logger.slack import SlackAppLog  # type: ignore
 from slack_bolt.context.async_context import AsyncBoltContext
 
@@ -92,7 +92,7 @@ async def ray_connection(
             context["user_info"] = user_info["user"]
     except Exception as e:
         context["is_bot"] = False
-        buglog.notify_exception(e)
+        notify_exception(e)
     context["login_prompt"] = LoginMessage(
         user_id=context["user_id"],
         team_id=context["team_id"],
@@ -117,7 +117,7 @@ async def ray_connection(
                 await log_new_user_info(user_info["user"])
             except Exception as e:
                 print(e)
-                buglog.notify_exception(e)
+                notify_exception(e)
 
     await next()
 
@@ -153,7 +153,7 @@ async def require_ray_client(
     if prompt_login and context.client:
         if not isinstance(login_message := context.get("login_prompt"), LoginMessage):
             logging.warning('"login_prompt" is not in the context')
-            buglog.notify_message(
+            notify_message(
                 'Slack: "login_prompt" is not in the context', severity="WARNING"
             )
             return False

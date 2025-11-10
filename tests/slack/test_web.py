@@ -277,7 +277,7 @@ class TestDownloadFiles:
 
     @pytest.mark.asyncio
     @patch("app.slack.web.download_file")
-    @patch("app.slack.web.buglog.notify_exception")
+    @patch("app.slack.web.notify_exception")
     async def test_download_files_with_exceptions(
         self, mock_notify, mock_download_file
     ):
@@ -410,7 +410,7 @@ class TestSetMtTsEdit:
 
     @pytest.mark.asyncio
     @patch("app.slack.web.redis_conn")
-    @patch("app.slack.web.buglog.notify_exception")
+    @patch("app.slack.web.notify_exception")
     async def test_set_mt_ts_edit_redis_error(self, mock_notify, mock_redis):
         """Test handling redis errors."""
         mock_redis.set = AsyncMock(side_effect=Exception("Redis error"))
@@ -447,7 +447,7 @@ class TestGetMtTsCached:
 
     @pytest.mark.asyncio
     @patch("app.slack.web.redis_conn")
-    @patch("app.slack.web.buglog.notify_exception")
+    @patch("app.slack.web.notify_exception")
     async def test_get_mt_ts_cached_redis_error(self, mock_notify, mock_redis):
         """Test handling redis errors."""
         mock_redis.get = AsyncMock(side_effect=Exception("Redis error"))

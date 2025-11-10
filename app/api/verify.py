@@ -3,8 +3,8 @@ import os
 import tempfile
 from typing import List
 
-import buglog
 import httpx
+from buglog import notify_exception
 from straker_utils.environment import Environment
 
 from app.auth.connector import RayClient, SlackUser, get_ray_client
@@ -222,14 +222,14 @@ async def get_verify_languages():
     try:
         cached = await redis_conn.get(key)
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
     if cached:
         try:
             languages = json.loads(cached)
             assert isinstance(languages, list)
             return languages
         except Exception as e:
-            buglog.notify_exception(e)
+            notify_exception(e)
 
     url = f"{domains.verify_api}/languages"
     async with httpx.AsyncClient(timeout=30) as client:
@@ -257,7 +257,7 @@ async def get_verify_languages():
     try:
         await redis_conn.set(key, json.dumps(languages), ex=3600)
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
     return languages
 
 

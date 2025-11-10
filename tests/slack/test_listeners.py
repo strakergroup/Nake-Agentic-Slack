@@ -1835,7 +1835,7 @@ class TestHandleNewJob:
             "app.slack.listeners.submit_job", new_callable=AsyncMock
         ) as mock_submit:
             mock_submit.side_effect = api_error
-            with patch("app.slack.listeners.buglog.notify_exception") as mock_notify:
+            with patch("app.slack.listeners.notify_exception") as mock_notify:
                 await handle_new_job(
                     context_dict, mock_ack, view=view, client=mock_client
                 )
@@ -1901,7 +1901,7 @@ class TestHandleNewJob:
             "app.slack.listeners.submit_job", new_callable=AsyncMock
         ) as mock_submit:
             mock_submit.side_effect = Exception("General error")
-            with patch("app.slack.listeners.buglog.notify_exception") as mock_notify:
+            with patch("app.slack.listeners.notify_exception") as mock_notify:
                 await handle_new_job(
                     context_dict, mock_ack, view=view, client=mock_client
                 )
@@ -2065,7 +2065,7 @@ class TestLoginSsoAction:
             mock_client, "users_info", new_callable=AsyncMock
         ) as mock_users_info:
             mock_users_info.side_effect = slack_error
-            with patch("app.slack.listeners.buglog.notify_exception") as mock_notify:
+            with patch("app.slack.listeners.notify_exception") as mock_notify:
                 await login_sso_action(
                     context_dict,
                     mock_ack,
@@ -2100,7 +2100,7 @@ class TestLoginSsoAction:
             mock_client, "users_info", new_callable=AsyncMock
         ) as mock_users_info:
             mock_users_info.side_effect = Exception("General error")
-            with patch("app.slack.listeners.buglog.notify_exception") as mock_notify:
+            with patch("app.slack.listeners.notify_exception") as mock_notify:
                 await login_sso_action(
                     context_dict,
                     mock_ack,
@@ -2388,9 +2388,7 @@ class TestEvaluateJobSubmit:
                     new_callable=AsyncMock,
                 ) as mock_submit:
                     mock_submit.side_effect = Exception("General error")
-                    with patch(
-                        "app.slack.listeners.buglog.notify_exception"
-                    ) as mock_notify:
+                    with patch("app.slack.listeners.notify_exception") as mock_notify:
                         await evaluate_job_submit(
                             context_dict, view=view, client=mock_client, ack=mock_ack
                         )
@@ -2558,7 +2556,7 @@ class TestHandleDocumentMtJob:
                         ) as mock_doc_mt:
                             mock_doc_mt.side_effect = Exception("Submit error")
                             with patch(
-                                "app.slack.listeners.buglog.notify_exception"
+                                "app.slack.listeners.notify_exception"
                             ) as mock_notify:
                                 await handle_document_mt_job(
                                     context_dict,
@@ -3426,7 +3424,7 @@ class TestAutoTranslateMessage:
                         ) as mock_send_mt:
                             mock_send_mt.side_effect = Exception("Translation error")
                             with patch(
-                                "app.slack.listener_actions.buglog.notify_exception"
+                                "app.slack.listener_actions.notify_exception"
                             ) as mock_notify:
                                 await auto_translate_message(
                                     mock_client, context, message

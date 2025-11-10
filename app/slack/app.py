@@ -1,7 +1,7 @@
 import logging
 from urllib.parse import urlencode, urlparse
 
-import buglog
+from buglog import notify_exception
 from slack_bolt import BoltResponse
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.oauth.async_callback_options import (
@@ -105,7 +105,7 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
         try:
             user = await save_user_token_from_installation(args.installation)
         except Exception as e:
-            buglog.notify_exception(
+            notify_exception(
                 e, "Slack app: Failed to save user token from installation"
             )
 
@@ -128,7 +128,7 @@ class RayCallbackOptions(DefaultAsyncCallbackOptions):
         return await super()._success_handler(args)
 
     async def _failure_handler(self, args: AsyncFailureArgs):
-        buglog.notify_exception(
+        notify_exception(
             args.error,
             msg="Slack App failed to install",
             extra={

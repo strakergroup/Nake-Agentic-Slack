@@ -10,7 +10,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, cast
 
-import buglog
+from buglog import notify_exception, notify_message
 from pydantic import ValidationError
 from ray_sdk import RayAPIResponseError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
@@ -267,7 +267,7 @@ async def home_opened(
                     # There had been some activity in the last 24 hours
                     pass
     except SlackApiError as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
     # Publish view to home tab.
     await client.views_publish(
         user_id=context["user_id"],
@@ -687,13 +687,13 @@ async def login_sso_action(
                 f"from this URL: {domains.slack_ray_translator}/slack/install"
             )
         else:
-            buglog.notify_exception(sae)
+            notify_exception(sae)
             await ack()
             await respond(
                 text="There was an error retrieving user information. Please try again."
             )
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         await ack()
         await respond(
             text="There was an error connecting your account, please try again."
@@ -931,9 +931,7 @@ async def disable_auto_translate_settings(
         if isinstance(team_channel["bot_token"], str):
             client.token = str(team_channel["bot_token"])
         else:
-            buglog.notify_message(
-                "Bot token not found in team channel", extra=team_channel
-            )
+            notify_message("Bot token not found in team channel", extra=team_channel)
             return
         await client.views_publish(
             user_id=context["user_id"],
@@ -941,7 +939,7 @@ async def disable_auto_translate_settings(
         )
 
         if not channel_id:
-            buglog.notify_message("Channel ID not found in payload", extra=payload)
+            notify_message("Channel ID not found in payload", extra=payload)
             return
         await ack()
         if team_id:
@@ -953,7 +951,7 @@ async def disable_auto_translate_settings(
             except SlackApiError:
                 pass  # Cannot join private channel, or cannot find channel.
             except Exception as e:
-                buglog.notify_exception(e)
+                notify_exception(e)
 
         async def notify_channel(channel_id: str):
             try:
@@ -964,7 +962,7 @@ async def disable_auto_translate_settings(
             except SlackApiError:
                 pass  # Must be in channel to post. TODO check other events, e.g. app_mention
             except Exception as e:
-                buglog.notify_exception(e)
+                notify_exception(e)
 
         await asyncio.gather(
             *[join_channel(channel_id)],
@@ -975,7 +973,7 @@ async def disable_auto_translate_settings(
             return_exceptions=True,
         )
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
 
 
 @app.block_action("show_job_details", middleware=[ray_connection])
@@ -1220,7 +1218,7 @@ async def approve_pending_client_action(
             client_id = pending_client_details["id"]
             client_username = pending_client_details["username"]
         except Exception as e:
-            buglog.notify_exception(e)
+            notify_exception(e)
         else:
             approved_groups = await approve_pending_client(
                 context["ray"].client,
@@ -1262,7 +1260,7 @@ async def login_account_action(
         #         text="Login required on language cloud website. Please try again."
         #     )
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         await respond(
             text="There was an error connecting your account, please try again."
         )
@@ -1361,13 +1359,11 @@ async def handle_new_job(
         except Exception as e:
             if isinstance(e, RayAPIResponseError):
                 try:
-                    buglog.notify_exception(e, extra={"response": e.response.json()})
+                    notify_exception(e, extra={"response": e.response.json()})
                 except Exception:
-                    buglog.notify_exception(
-                        e, extra={"response": e.response.content.decode()}
-                    )
+                    notify_exception(e, extra={"response": e.response.content.decode()})
             else:
-                buglog.notify_exception(e)
+                notify_exception(e)
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text="There was an error submitting your translation request, please try again.",  # noqa: B950
@@ -1516,7 +1512,7 @@ async def view_update_auto_translate_settings(
             except SlackApiError:
                 pass  # Cannot join private channel, or cannot find channel.
             except Exception as e:
-                buglog.notify_exception(e)
+                notify_exception(e)
 
         async def notify_channel(channel_id: str, bot_token: str):
             try:
@@ -1537,7 +1533,7 @@ async def view_update_auto_translate_settings(
                         channel=channel_id, text=disabled_msg.text
                     )
             except Exception as e:
-                buglog.notify_exception(e)
+                notify_exception(e)
                 if context.enterprise_id:
                     all_tokens = await get_all_tokens_for_enterprise(
                         context.enterprise_id
@@ -1562,7 +1558,7 @@ async def view_update_auto_translate_settings(
 
     except Exception as e:
         print(e)
-        buglog.notify_exception(e)
+        notify_exception(e)
 
 
 @app.action("language_mt_options", middleware=[ray_connection])
@@ -1871,7 +1867,7 @@ async def evaluate_job_submit(
                 ),
             )
         except Exception as e:
-            buglog.notify_exception(e)
+            notify_exception(e)
             await client.chat_postMessage(
                 channel=channel_id,
                 text=_(
@@ -1992,7 +1988,7 @@ async def verify_job_modal_open_action(
             else:
                 raise
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         try:
             # Update the view with an error message
             error_view = {
@@ -2058,7 +2054,7 @@ async def quote_accept_all_action(
         )
         return
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         await client.chat_postMessage(
             channel=context["channel_id"],
             text=_("There was an error processing your request. Please try again."),
@@ -2297,13 +2293,13 @@ async def handle_checkbox_action(ack, body, client, action):
                 },
             )
         except Exception as e:
-            buglog.notify_exception(e)
+            notify_exception(e)
         finally:
             # Always release the lock when done
             await redis_conn.delete(lock_key)
 
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         raise e
 
 
@@ -2433,7 +2429,7 @@ async def handle_document_mt_job(
                         submission_id=_record.id,
                         processing_status=SubmissionStatus.FAILED,
                     )
-            buglog.notify_exception(e)
+            notify_exception(e)
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=_(

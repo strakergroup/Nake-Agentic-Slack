@@ -12,8 +12,8 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 from uuid import uuid4
 
-import buglog
 import httpx
+from buglog import notify_exception
 from ray_logger.slack import SlackAppLog
 from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.errors import SlackApiError
@@ -868,7 +868,7 @@ async def connect_ray_account(
             await http.post(url)
         return "success"
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         return "failed"
 
 
@@ -1507,7 +1507,7 @@ async def get_client_tokens(languagecloud_api_key: str):
                 ai_token=data["ai_token"], mt_token=data["mt_token"]
             )
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         return GetCreditBalanceResponse(0, 0)
 
 

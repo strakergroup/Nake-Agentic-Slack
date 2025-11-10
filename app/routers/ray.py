@@ -2,7 +2,7 @@ import asyncio
 from dataclasses import replace
 from typing import Annotated, Any, Optional, Union
 
-import buglog
+from buglog import notify_exception, notify_message
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ValidationError
 from slack_sdk.errors import SlackApiError
@@ -164,7 +164,7 @@ async def _handle_mt_success_background(
         )
         delete_from_file_server(success_data.file_id)
     except Exception as e:
-        buglog.notify_exception(e, "Background MT success file handling failed")
+        notify_exception(e, "Background MT success file handling failed")
         await update_slack_job(
             task_uuid=success_data.task_uuid,
             status="failed_delivery",
@@ -187,7 +187,7 @@ async def _handle_transcribe_success_background(
         file_id = event_data.get("file_id")
         file_name = event_data.get("file_name")
         if not file_id or not file_name:
-            buglog.notify_exception(
+            notify_exception(
                 Exception("Missing file_id or file_name in event_data"),
                 "Transcription background task failed",
             )
@@ -208,7 +208,7 @@ async def _handle_transcribe_success_background(
             filename=output_file.get("file_name"),
         )
     except Exception as e:
-        buglog.notify_exception(e, "Background transcription file handling failed")
+        notify_exception(e, "Background transcription file handling failed")
 
 
 async def _handle_verify_complete_background(event_data, auth, response):
@@ -230,7 +230,7 @@ async def _handle_verify_complete_background(event_data, auth, response):
             filename=output_file.get("file_name"),
         )
     except Exception as e:
-        buglog.notify_exception(e, "Background verify complete file handling failed")
+        notify_exception(e, "Background verify complete file handling failed")
 
 
 @router.post("/ray/events")
@@ -308,7 +308,7 @@ async def ray_events(
                                     client, event, new_slack_user, signup_message
                                 )
                             except Exception as e:
-                                buglog.notify_exception(
+                                notify_exception(
                                     e,
                                     "Failed to send notification to send demo message",
                                 )
@@ -346,7 +346,7 @@ async def ray_events(
                                     client, event, new_slack_user, approved_message
                                 )
                             except Exception as e:
-                                buglog.notify_exception(
+                                notify_exception(
                                     e,
                                     "Failed to send notification to send demo message",
                                 )
@@ -674,7 +674,7 @@ async def ray_events(
                 translations = event.data.get("translations", {})
 
                 # Log the response for debugging
-                buglog.notify_message(
+                notify_message(
                     f"MT Result - Service mapping: {extra_data.service_language_mapping}, Translations: {translations}"
                 )
 
@@ -747,7 +747,7 @@ async def ray_events(
                             message_ts=extra_data.message_ts,
                         )
                     except SlackApiError as e:
-                        buglog.notify_exception(
+                        notify_exception(
                             e, "Failed to post channel translation notification"
                         )
                         raise HTTPException(
@@ -882,9 +882,7 @@ async def api_job_callback(
     slack_user = await get_slack_user(client_id)
     demo_slack_users = await get_demo_link(client_id)
     if slack_user is None:
-        buglog.notify_message(
-            "Slack user not found in callback endpoint", severity="WARNING"
-        )
+        notify_message("Slack user not found in callback endpoint", severity="WARNING")
         raise HTTPException(401)
     client = AsyncWebClient(token=slack_user.bot_token)
     user_info = await client.users_info(user=slack_user.user_id, include_locale=True)
@@ -897,9 +895,7 @@ async def api_job_callback(
         for token in access_tokens
     )
     if not is_header_valid:
-        buglog.notify_message(
-            "Callback X-Straker-Signature is invalid", severity="WARNING"
-        )
+        notify_message("Callback X-Straker-Signature is invalid", severity="WARNING")
         raise HTTPException(401)
 
     # Handle job creation and job completed callbacks.

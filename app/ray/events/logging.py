@@ -2,7 +2,7 @@ import asyncio
 import json
 from typing import Any, Union
 
-import buglog
+from buglog import notify_exception
 from slack_bolt.context.respond.async_respond import AsyncRespond
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
@@ -45,7 +45,7 @@ async def log_notification(
         )
         await execute(sql, async_engines["ray_integration_log"], commit_after=True)
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
 
 
 async def post_notification(

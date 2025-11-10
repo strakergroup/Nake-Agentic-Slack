@@ -8,8 +8,7 @@ from httpx import ASGITransport, AsyncClient
 
 # Import the app after patching buglog
 with patch("app.main.buglog.init"):
-    with patch("app.main._wrap_notify_exception"):
-        from app.main import app
+    from app.main import app
 
 
 @pytest_asyncio.fixture

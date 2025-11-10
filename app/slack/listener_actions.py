@@ -7,8 +7,8 @@ import asyncio
 import re
 from typing import Any
 
-import buglog
 import httpx
+from buglog import notify_exception, notify_message
 from ray_sdk import RayResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.web.async_client import AsyncWebClient
@@ -431,9 +431,7 @@ async def auto_translate_message(
                     thread_ts=ts,
                 )
             except Exception as e:
-                buglog.notify_exception(
-                    e, "Failed to post 5K character limit error message"
-                )
+                notify_exception(e, "Failed to post 5K character limit error message")
         return
     assert context.channel_id  # TODO enforce this
 
@@ -489,7 +487,7 @@ async def auto_translate_message(
             ),
         )
     except Exception as e:
-        buglog.notify_exception(e, "Slack channel MT failed")
+        notify_exception(e, "Slack channel MT failed")
         return
     # if not source_lang:
     #     return
@@ -563,7 +561,7 @@ async def document_machine_translate(
                 },
             )
     except Exception as e:
-        buglog.notify_exception(e, "Failed to translate SRT file")
+        notify_exception(e, "Failed to translate SRT file")
 
 
 async def update_machine_translation_score(
@@ -630,9 +628,9 @@ async def update_machine_translation_score(
             blocks=new_msg.blocks,
         )
     except httpx.HTTPStatusError as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
 
 
 async def post_job_status(
@@ -947,13 +945,13 @@ async def post_job_summary(
                     else:
                         predictions["late"] += 1
             except Exception as e:
-                buglog.notify_exception(e)
+                notify_exception(e)
     else:
-        buglog.notify_exception(responses[0])
+        notify_exception(responses[0])
     if isinstance(responses[1], RayResponse):
         completed_count = responses[1].data.summary.get("completed", 0)
     else:
-        buglog.notify_exception(responses[1])
+        notify_exception(responses[1])
     try:
         msg = JobSummaryMessage(
             in_progress=in_progress_count,
@@ -1121,10 +1119,10 @@ async def post_job_list(
                     client_ref=client_ref, page=page, page_size=page_size
                 )
             case _:
-                buglog.notify_message(f"post_job_list: Invalid preset ({preset})")
+                notify_message(f"post_job_list: Invalid preset ({preset})")
                 return
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         raise
     try:
         job_ids_in_progress = [
@@ -1159,7 +1157,7 @@ async def post_job_list(
                 blocks=msg.blocks,
             )
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         raise
     finally:
         try:
@@ -1209,7 +1207,7 @@ async def post_insights(
                     thread_ts=thread_ts,
                 )
         except Exception as e:
-            buglog.notify_exception(e, "Failed to get insights from Insights API")
+            notify_exception(e, "Failed to get insights from Insights API")
             # TODO send error message
 
     waiting_msg = ":stopwatch: Please wait as we gather your information..."
@@ -1577,7 +1575,7 @@ async def post_report_insights(
                 thread_ts=thread_ts,
             )
     except Exception as e:
-        buglog.notify_exception(e, "Failed to get insights from Insights API")
+        notify_exception(e, "Failed to get insights from Insights API")
 
 
 async def ai_translate_help(
@@ -1611,7 +1609,7 @@ async def ai_translate_help(
                 thread_ts=thread_ts,
             )
     except Exception as e:
-        buglog.notify_exception(e, "Failed to get AI Translate help message")
+        notify_exception(e, "Failed to get AI Translate help message")
 
 
 async def verify_help(
@@ -1649,7 +1647,7 @@ async def verify_help(
                 thread_ts=thread_ts,
             )
     except Exception as e:
-        buglog.notify_exception(e, "Failed to get Verify help message")
+        notify_exception(e, "Failed to get Verify help message")
 
 
 async def get_mt_translation(
@@ -1739,7 +1737,7 @@ async def get_mt_translation(
         )
 
     except Exception as e:
-        buglog.notify_exception(e, "Failed to get machine translation")
+        notify_exception(e, "Failed to get machine translation")
         error_msg = InvalidMTResultMessage().text
         if context.response_url and context.respond:
             return await context.respond(text=error_msg)
@@ -1836,7 +1834,7 @@ async def job_tj_cancel(
                 text=msg,
             )
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         raise
     finally:
         if "response" in locals() and response is not None:
@@ -1938,7 +1936,7 @@ async def submit_verification_job(
                 text=msg,
             )
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         raise
     finally:
         await redis_conn.delete(f"verify_job_submission_{job_uuid}")

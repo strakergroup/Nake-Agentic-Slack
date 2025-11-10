@@ -7,7 +7,7 @@ import sys
 import time
 from typing import Any, Callable, Coroutine
 
-import buglog
+from buglog import notify_exception
 from ray_logger.slack import SlackAppLog, SlackMySQLLogger
 from slack_bolt.request.payload_utils import (
     is_block_actions,
@@ -112,7 +112,7 @@ async def log_slack(log: SlackAppLog):
     try:
         slack_app_logger.log(log)
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
 
 
 def slack_log_decorator(
