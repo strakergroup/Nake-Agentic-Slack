@@ -7,8 +7,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Iterable
 
+import buglog
 import httpx
-from buglog import notify_exception
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
@@ -43,7 +43,7 @@ async def files_list_simple(
     try:
         await redis_conn.set(key, json.dumps(files), ex=3600)
     except Exception as e:
-        notify_exception(e)
+        buglog.notify_exception(e)
     return files
 
 
@@ -167,7 +167,7 @@ async def download_files(client: AsyncWebClient, files: Iterable[str]):
         file_paths = await asyncio.gather(*tasks, return_exceptions=True)
     # Log exceptions.
     for exc in [result for result in file_paths if isinstance(result, Exception)]:
-        notify_exception(exc)
+        buglog.notify_exception(exc)
     # Return successful file download paths.
     return [result for result in file_paths if isinstance(result, str)]
 
@@ -226,7 +226,7 @@ async def upload_file_to_slack_memory_efficient(
         file_id = upload_response["file_id"]
 
     except SlackApiError as e:
-        notify_exception(e, f"Failed to get upload URL for {filename}")
+        buglog.notify_exception(e, f"Failed to get upload URL for {filename}")
         raise
 
     # Step 2: Upload file to the provided URL using streaming
@@ -249,7 +249,7 @@ async def upload_file_to_slack_memory_efficient(
                     )
 
     except Exception as e:
-        notify_exception(e, f"Failed to upload file {filename} to Slack")
+        buglog.notify_exception(e, f"Failed to upload file {filename} to Slack")
         raise
 
     # Step 3: Complete the upload
@@ -267,7 +267,7 @@ async def upload_file_to_slack_memory_efficient(
         return complete_response
 
     except SlackApiError as e:
-        notify_exception(e, f"Failed to complete upload for {filename}")
+        buglog.notify_exception(e, f"Failed to complete upload for {filename}")
         raise
 
 
@@ -289,7 +289,7 @@ async def set_mt_ts_edit(
     try:
         await redis_conn.set(key, reply_ts, ex=3600)
     except Exception as e:
-        notify_exception(e)
+        buglog.notify_exception(e)
     return reply_ts
 
 
@@ -300,7 +300,7 @@ async def get_mt_ts_cached(send_ts: str):
     try:
         cached = await redis_conn.get(key)
     except Exception as e:
-        notify_exception(e)
+        buglog.notify_exception(e)
     if cached:
         return cached
     return mt_timestamp

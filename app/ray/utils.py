@@ -7,11 +7,11 @@ from cgi import parse_header
 from typing import Callable, Literal, Tuple
 from urllib.parse import unquote, urlencode
 
+import buglog
 import ffmpeg
 import httpx
 import requests
 from babel.numbers import format_currency as babel_format_currency
-from buglog import notify_exception
 
 from app.auth.connector import is_ibm_super_group
 from app.translate import Translator, _, translator_var
@@ -436,5 +436,5 @@ def get_media_duration(download_url: str, token: str) -> int:
         duration = float(probe["format"]["duration"])
         return int(duration * 1000)
     except ffmpeg.Error as e:
-        notify_exception(e.stderr, "Failed to get media duration")
+        buglog.notify_exception(e.stderr, "Failed to get media duration")
         return 0

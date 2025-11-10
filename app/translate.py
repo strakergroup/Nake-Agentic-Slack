@@ -3,7 +3,7 @@ import inspect
 import logging
 import re
 
-from buglog import notify_exception
+import buglog
 from sqlalchemy import text
 
 from .database import engines
@@ -102,5 +102,5 @@ def _(input: str, max_length: int = 0) -> str:
         input, success = translator.translate(input, max_length)
         return input.format(**all_vars)
     except Exception as e:
-        notify_exception(e)
+        buglog.notify_exception(e)
         return input

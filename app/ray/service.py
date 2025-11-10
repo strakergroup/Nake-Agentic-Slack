@@ -2,8 +2,8 @@ import asyncio
 from typing import Any, Iterable
 from urllib.parse import urlencode
 
+import buglog
 import httpx
-from buglog import notify_exception
 from httpx import Response
 from ray_sdk import RayAPIResponseError, RayAuthError, RayResponse, RayV3
 from ray_sdk.api.v3.models import (
@@ -80,7 +80,7 @@ class RayService:
         except RayAPIResponseError as e:
             return None, e.response
         except Exception as e:
-            notify_exception(e)
+            buglog.notify_exception(e)
             return None, None
 
     async def get_job_summary(
@@ -301,6 +301,6 @@ async def get_job_predictions(job_ids: list[str]):
             if predictions:
                 return predictions
     except Exception as e:
-        notify_exception(e)
+        buglog.notify_exception(e)
         return job_predictions
     return job_predictions

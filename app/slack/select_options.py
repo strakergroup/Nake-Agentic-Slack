@@ -17,7 +17,7 @@ import json
 from itertools import islice
 from typing import Any, Iterable
 
-from buglog import notify_exception
+import buglog
 
 from app.api.verify import get_verify_languages
 from app.translate import _
@@ -37,14 +37,14 @@ async def _get_languages_cached():
     try:
         cached = await redis_conn.get(key)
     except Exception as e:
-        notify_exception(e)
+        buglog.notify_exception(e)
     if cached:
         try:
             languages = json.loads(cached)
             assert isinstance(languages, list)
             return languages
         except Exception as e:
-            notify_exception(e)
+            buglog.notify_exception(e)
 
     languages = (await get_languages()).data
     languages = [
@@ -54,7 +54,7 @@ async def _get_languages_cached():
     try:
         await redis_conn.set(key, json.dumps(languages), ex=3600)
     except Exception as e:
-        notify_exception(e)
+        buglog.notify_exception(e)
     return languages
 
 
@@ -78,7 +78,7 @@ def get_languages_sync() -> list[dict[str, str]]:
             # The cache will remain empty for this call
             pass
         except Exception as e:
-            notify_exception(e)
+            buglog.notify_exception(e)
     return _cached_languages
 
 
@@ -126,14 +126,14 @@ async def get_file_options_cached(channel_id: str):
     try:
         cached = await redis_conn.get(key)
     except Exception as e:
-        notify_exception(e)
+        buglog.notify_exception(e)
     if cached:
         try:
             files = json.loads(cached)
             assert isinstance(files, list)
             return files
         except Exception as e:
-            notify_exception(e)
+            buglog.notify_exception(e)
 
     return files
 
