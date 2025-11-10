@@ -224,8 +224,8 @@ def _wrap_notify_exception(
         # Call original to send to BugLogHQ
         result = original_notify_exception(exc, msg, extra, severity)
 
-        # Also send to Slack (async, fire-and-forget) if we have an exception
-        if exc is not None:
+        # Also send to Slack (async, fire-and-forget) if we have an exception or message
+        if exc is not None or msg is not None:
             try:
                 import asyncio
 
@@ -233,48 +233,60 @@ def _wrap_notify_exception(
                 try:
                     loop = asyncio.get_running_loop()
                     # If we're in an async context, schedule the task
-                    loop.create_task(_send_to_slack_background(exc))
+                    task = loop.create_task(
+                        _send_to_slack_background(exc, msg, extra, severity)
+                    )
+                    logger.debug(
+                        f"Scheduled Slack notification task: exc={exc is not None}, msg={bool(msg)}"
+                    )
                 except RuntimeError:
                     # No running loop, create one for this task
                     # Use a thread to avoid blocking
                     import threading
 
                     def run_async():
-                        asyncio.run(_send_to_slack_background(exc))
+                        try:
+                            asyncio.run(
+                                _send_to_slack_background(exc, msg, extra, severity)
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Error in async thread for Slack notification: {e}",
+                                exc_info=True,
+                            )
 
                     thread = threading.Thread(target=run_async, daemon=True)
                     thread.start()
-            except Exception:
+                    logger.debug(
+                        f"Started thread for Slack notification: exc={exc is not None}, msg={bool(msg)}"
+                    )
+            except Exception as e:
                 # Don't let Slack failures break BugLogHQ notifications
-                logger.debug("Failed to schedule Slack notification", exc_info=True)
+                logger.error(
+                    f"Failed to schedule Slack notification: {e}", exc_info=True
+                )
 
         return result
 
     return wrapped_notify_exception
 
 
-async def _send_to_slack_background(exc: BaseException) -> None:
-    """Background function to send exception to Slack without context."""
+async def _send_to_slack_background(
+    exc: BaseException | None = None,
+    msg: str | None = None,
+    extra: dict[str, Any] | None = None,
+    severity: str = "ERROR",
+) -> None:
+    """Background function to send exception/message to Slack without context."""
     try:
         token = config.slack_dev_alert_bot_token.get_secret_value()
         channel_id = config.slack_dev_alert_channel_id
 
         if not channel_id or not token:
-            return
-
-        # Format exception information
-        error_type = type(exc).__name__
-        error_message = str(exc)
-        error_traceback = "".join(
-            traceback.format_exception(type(exc), exc, exc.__traceback__)
-        )
-
-        # Truncate traceback if too long
-        max_traceback_length = 3000
-        if len(error_traceback) > max_traceback_length:
-            error_traceback = (
-                error_traceback[:max_traceback_length] + "\n... (truncated)"
+            logger.debug(
+                f"Slack notification skipped: channel_id={bool(channel_id)}, token={bool(token)}"
             )
+            return
 
         # Build message
         env_prefix = (
@@ -286,14 +298,39 @@ async def _send_to_slack_background(exc: BaseException) -> None:
         # Create BugLogHQ link
         buglog_url = f"{domains.buglog}/bugLog/"
 
-        # Fallback text for notifications
-        fallback_text = f"🚨 Exception: {error_type} - {error_message}"
+        # Format exception information if present
+        if exc is not None:
+            error_type = type(exc).__name__
+            error_message = str(exc)
+            error_traceback = "".join(
+                traceback.format_exception(type(exc), exc, exc.__traceback__)
+            )
+
+            # Truncate traceback if too long
+            max_traceback_length = 3000
+            if len(error_traceback) > max_traceback_length:
+                error_traceback = (
+                    error_traceback[:max_traceback_length] + "\n... (truncated)"
+                )
+
+            # Fallback text for notifications
+            fallback_text = f"🚨 Exception: {error_type} - {error_message}"
+            if msg:
+                fallback_text = f"🚨 {msg}: {error_type} - {error_message}"
+        else:
+            # No exception, just a message
+            error_type = None
+            error_message = msg or "No message provided"
+            error_traceback = None
+            fallback_text = f"🚨 Message: {error_message}"
 
         # Build Block Kit blocks
         blocks = [
             HeaderBlock(
                 text=PlainTextObject(
-                    text="🚨 Exception (from BugLogHQ)",
+                    text="🚨 Exception (from BugLogHQ)"
+                    if exc
+                    else "🚨 Alert (from BugLogHQ)",
                     emoji=True,
                 )
             ),
@@ -302,17 +339,39 @@ async def _send_to_slack_background(exc: BaseException) -> None:
                     MarkdownTextObject(
                         text=f"*Environment:*\n{env_prefix or 'Production'}"
                     ),
-                    MarkdownTextObject(text=f"*Error Type:*\n`{error_type}`"),
+                    MarkdownTextObject(
+                        text=f"*{'Error Type' if exc else 'Severity'}:*\n`{error_type or severity}`"
+                    ),
                 ]
             ),
             SectionBlock(
-                text=MarkdownTextObject(text=f"*Error Message:*\n{error_message}")
-            ),
-            SectionBlock(
                 text=MarkdownTextObject(
-                    text=f"*Traceback:*\n```\n{error_traceback}\n```"
+                    text=f"*{'Error' if exc else 'Alert'} Message:*\n{error_message}"
                 )
             ),
+        ]
+
+        # Add traceback block only if we have an exception
+        if error_traceback:
+            blocks.append(
+                SectionBlock(
+                    text=MarkdownTextObject(
+                        text=f"*Traceback:*\n```\n{error_traceback}\n```"
+                    )
+                )
+            )
+
+        # Add extra info if present
+        if extra:
+            extra_text = "\n".join([f"*{k}:* {v}" for k, v in extra.items()])
+            blocks.append(
+                SectionBlock(
+                    text=MarkdownTextObject(text=f"*Extra Info:*\n{extra_text}")
+                )
+            )
+
+        # Add BugLogHQ link button
+        blocks.append(
             ActionsBlock(
                 elements=[
                     ButtonElement(
@@ -322,8 +381,8 @@ async def _send_to_slack_background(exc: BaseException) -> None:
                         style="primary",
                     )
                 ]
-            ),
-        ]
+            )
+        )
 
         # Create Slack client and send message
         slack_client = AsyncWebClient(token=token)
@@ -334,12 +393,14 @@ async def _send_to_slack_background(exc: BaseException) -> None:
         )
 
         logger.info(
-            f"Successfully sent exception notification to Slack channel {channel_id}"
+            f"Successfully sent {'exception' if exc else 'alert'} notification to Slack channel {channel_id}"
         )
 
     except Exception as slack_error:
         # Don't let Slack notification failures break the app
+        error_info = f"{type(exc).__name__}: {exc}" if exc else f"Message: {msg}"
         logger.error(
-            f"Failed to send exception to Slack: {slack_error}. "
-            f"Original exception: {type(exc).__name__}: {exc}"
+            f"Failed to send {'exception' if exc else 'alert'} to Slack: {slack_error}. "
+            f"Original: {error_info}",
+            exc_info=True,
         )
