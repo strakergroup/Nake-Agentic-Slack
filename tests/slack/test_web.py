@@ -1,8 +1,5 @@
-import os
-import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
 from slack_sdk.errors import SlackApiError
 

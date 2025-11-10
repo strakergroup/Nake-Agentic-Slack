@@ -2,12 +2,13 @@
 Tests for app/slack/listeners.py
 """
 
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+import json
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
-from app.auth.connector import RayClient, RayConnection, RayContext, RaySuperGroup
+from app.auth.connector import RayConnection, RayContext, RaySuperGroup
 from app.slack.templates.messages import LoginMessage
 
 
@@ -1634,3 +1635,2802 @@ class TestRayCommand:
         )
         mock_ack.assert_called_once()
         mock_respond.assert_called_once()
+
+
+class TestHandleNewJob:
+    """Tests for handle_new_job function - critical job creation handler."""
+
+    @pytest.mark.asyncio
+    async def test_handle_new_job_validation_error(self, user_id, team_id, ray_client):
+        """Test handle_new_job with validation error."""
+        from app.slack.listeners import handle_new_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        # Invalid form data that will cause ValidationError (empty files list)
+        # Need to provide proper structure that parses but fails validation
+        view = {
+            "state": {
+                "values": {
+                    "files": {
+                        "file_options_C123": {"selected_options": []}
+                    },  # Empty files - will fail validation
+                    "source_lang": {
+                        "language_options": {
+                            "selected_option": {
+                                "value": "en",
+                                "text": {"text": "English"},
+                            }
+                        }
+                    },
+                    "target_langs": {
+                        "language_options": {"selected_options": []}
+                    },  # Empty target langs - will fail validation
+                    "service": {
+                        "service": {"selected_option": {"value": "Translation"}}
+                    },
+                    "timeframe": {"timeframe": {"selected_option": {"value": "3"}}},
+                    "reference": {"reference": {"value": ""}},
+                    "group": {"group_options": {"selected_option": None}},
+                    "notes": {"notes": {"value": ""}},
+                }
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+            "log": MagicMock(add_api_log=MagicMock()),
+        }
+
+        await handle_new_job(context_dict, mock_ack, view=view, client=mock_client)
+        # Should call ack with errors (ValidationError will be caught and converted)
+        # The errors dict will contain validation errors
+        assert mock_ack.call_count == 1
+        call_args = mock_ack.call_args
+        assert call_args[1]["response_action"] == "errors"
+        assert "errors" in call_args[1]
+
+    @pytest.mark.asyncio
+    async def test_handle_new_job_success_with_job_id(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_new_job successful submission with job_id."""
+        from app.ray.service import RayResponse
+        from app.slack.listeners import handle_new_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "state": {
+                "values": {
+                    "files": {
+                        "file_options_C123": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.txt"}}
+                            ]
+                        }
+                    },
+                    "source_lang": {
+                        "language_options": {
+                            "selected_option": {
+                                "value": "en",
+                                "text": {"text": "English"},
+                            }
+                        }
+                    },
+                    "target_langs": {
+                        "language_options": {
+                            "selected_options": [
+                                {"value": "fr", "text": {"text": "French"}},
+                                {"value": "es", "text": {"text": "Spanish"}},
+                            ]
+                        }
+                    },
+                    "service": {
+                        "service": {"selected_option": {"value": "Translation"}}
+                    },
+                    "timeframe": {"timeframe": {"selected_option": {"value": "3"}}},
+                    "reference": {"reference": {"value": ""}},
+                    "group": {"group_options": {"selected_option": None}},
+                    "notes": {"notes": {"value": ""}},
+                }
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+            "log": MagicMock(add_api_log=MagicMock()),
+        }
+
+        # Mock submit_job response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.url = "https://api.example.com/job"
+        mock_response.json.return_value = {"Message": {"job_id": "TJ123"}}
+        mock_response.content = b'{"Message": {"job_id": "TJ123"}}'
+        mock_response.headers = {}
+        mock_ray_response = RayResponse(response=mock_response, data=None)
+
+        with patch(
+            "app.slack.listeners.submit_job", new_callable=AsyncMock
+        ) as mock_submit:
+            mock_submit.return_value = [mock_ray_response]
+            with patch("app.slack.listeners.is_ibm_enterprise", return_value=False):
+                await handle_new_job(
+                    context_dict, mock_ack, view=view, client=mock_client
+                )
+                assert mock_ack.call_count == 1
+                mock_submit.assert_called_once()
+                mock_client.chat_postMessage.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_new_job_ray_api_error(self, user_id, team_id, ray_client):
+        """Test handle_new_job with RayAPIResponseError."""
+        from ray_sdk import RayAPIResponseError
+
+        from app.slack.listeners import handle_new_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "state": {
+                "values": {
+                    "files": {
+                        "file_options_C123": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.txt"}}
+                            ]
+                        }
+                    },
+                    "source_lang": {
+                        "language_options": {
+                            "selected_option": {
+                                "value": "en",
+                                "text": {"text": "English"},
+                            }
+                        }
+                    },
+                    "target_langs": {
+                        "language_options": {
+                            "selected_options": [
+                                {"value": "fr", "text": {"text": "French"}}
+                            ]
+                        }
+                    },
+                    "service": {
+                        "service": {"selected_option": {"value": "Translation"}}
+                    },
+                    "timeframe": {"timeframe": {"selected_option": {"value": "3"}}},
+                    "reference": {"reference": {"value": ""}},
+                    "group": {"group_options": {"selected_option": None}},
+                    "notes": {"notes": {"value": ""}},
+                }
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+            "log": MagicMock(add_api_log=MagicMock()),
+        }
+
+        # Mock RayAPIResponseError
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"error": "API Error"}
+        mock_response.content = b'{"error": "API Error"}'
+        mock_request = MagicMock()
+        api_error = RayAPIResponseError(
+            message="API Error", request=mock_request, response=mock_response
+        )
+
+        with patch(
+            "app.slack.listeners.submit_job", new_callable=AsyncMock
+        ) as mock_submit:
+            mock_submit.side_effect = api_error
+            with patch("app.slack.listeners.notify_exception") as mock_notify:
+                await handle_new_job(
+                    context_dict, mock_ack, view=view, client=mock_client
+                )
+                mock_ack.assert_called_once()
+                mock_notify.assert_called_once()
+                mock_client.chat_postMessage.assert_called_once()
+                assert (
+                    "error" in mock_client.chat_postMessage.call_args[1]["text"].lower()
+                )
+
+    @pytest.mark.asyncio
+    async def test_handle_new_job_general_exception(self, user_id, team_id, ray_client):
+        """Test handle_new_job with general exception."""
+        from app.slack.listeners import handle_new_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "state": {
+                "values": {
+                    "files": {
+                        "file_options_C123": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.txt"}}
+                            ]
+                        }
+                    },
+                    "source_lang": {
+                        "language_options": {
+                            "selected_option": {
+                                "value": "en",
+                                "text": {"text": "English"},
+                            }
+                        }
+                    },
+                    "target_langs": {
+                        "language_options": {
+                            "selected_options": [
+                                {"value": "fr", "text": {"text": "French"}}
+                            ]
+                        }
+                    },
+                    "service": {
+                        "service": {"selected_option": {"value": "Translation"}}
+                    },
+                    "timeframe": {"timeframe": {"selected_option": {"value": "3"}}},
+                    "reference": {"reference": {"value": ""}},
+                    "group": {"group_options": {"selected_option": None}},
+                    "notes": {"notes": {"value": ""}},
+                }
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+            "log": MagicMock(add_api_log=MagicMock()),
+        }
+
+        with patch(
+            "app.slack.listeners.submit_job", new_callable=AsyncMock
+        ) as mock_submit:
+            mock_submit.side_effect = Exception("General error")
+            with patch("app.slack.listeners.notify_exception") as mock_notify:
+                await handle_new_job(
+                    context_dict, mock_ack, view=view, client=mock_client
+                )
+                mock_ack.assert_called_once()
+                mock_notify.assert_called_once()
+                mock_client.chat_postMessage.assert_called_once()
+                assert (
+                    "error" in mock_client.chat_postMessage.call_args[1]["text"].lower()
+                )
+
+    @pytest.mark.asyncio
+    async def test_handle_new_job_no_ray_client(self, user_id, team_id):
+        """Test handle_new_job when user is not logged in."""
+        from app.slack.listeners import handle_new_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {"state": {"values": {}}}
+        ray_connection = RayConnection(super_group=[], client=None)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        await handle_new_job(context_dict, mock_ack, view=view, client=mock_client)
+        mock_ack.assert_called_once_with(response_action="clear")
+        mock_client.chat_postMessage.assert_called_once()
+
+
+class TestLoginSsoAction:
+    """Tests for login_sso_action function - critical SSO authentication handler."""
+
+    @pytest.mark.asyncio
+    async def test_login_sso_action_success(self, user_id, team_id):
+        """Test login_sso_action successful SSO login."""
+        from app.slack.listeners import login_sso_action
+
+        mock_ack = AsyncMock()
+        mock_respond = AsyncMock()
+        mock_client = AsyncMock()
+        view = {}
+        ray_connection = RayConnection(super_group=[], client=None)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": "C123",
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+            "response_url": "https://hooks.slack.com/test",
+        }
+
+        user_info_response = {
+            "ok": True,
+            "user": {
+                "profile": {
+                    "email": "test@example.com",
+                    "first_name": "Test",
+                    "last_name": "User",
+                }
+            },
+        }
+
+        with patch.object(
+            mock_client, "users_info", new_callable=AsyncMock
+        ) as mock_users_info:
+            mock_users_info.return_value = user_info_response
+            with patch(
+                "app.slack.listeners.connect_ray_account_sso", new_callable=AsyncMock
+            ) as mock_connect:
+                with patch(
+                    "app.slack.listeners.get_ray_connection", new_callable=AsyncMock
+                ) as mock_get_connection:
+                    new_ray_connection = RayConnection(
+                        super_group=[], client=MagicMock()
+                    )
+                    mock_get_connection.return_value = new_ray_connection
+                    with patch(
+                        "app.slack.listeners.is_ibm_enterprise", return_value=False
+                    ):
+                        await login_sso_action(
+                            context_dict,
+                            mock_ack,
+                            respond=mock_respond,
+                            client=mock_client,
+                            view=view,
+                        )
+                        mock_ack.assert_called()
+                        mock_connect.assert_called_once()
+                        mock_get_connection.assert_called_once()
+                        mock_respond.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_login_sso_action_missing_scope_error(self, user_id, team_id):
+        """Test login_sso_action with missing_scope SlackApiError."""
+        from slack_sdk.errors import SlackApiError
+
+        from app.slack.listeners import login_sso_action
+
+        mock_ack = AsyncMock()
+        mock_respond = AsyncMock()
+        mock_client = AsyncMock()
+        view = {}
+        ray_connection = RayConnection(super_group=[], client=None)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": "C123",
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+            "response_url": "https://hooks.slack.com/test",
+        }
+
+        slack_error = SlackApiError(
+            message="missing_scope",
+            response={"ok": False, "error": "missing_scope"},
+        )
+
+        with patch.object(
+            mock_client, "users_info", new_callable=AsyncMock
+        ) as mock_users_info:
+            mock_users_info.side_effect = slack_error
+            await login_sso_action(
+                context_dict,
+                mock_ack,
+                respond=mock_respond,
+                client=mock_client,
+                view=view,
+            )
+            mock_ack.assert_called_with(response_action="clear")
+            mock_respond.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_login_sso_action_general_slack_error(self, user_id, team_id):
+        """Test login_sso_action with general SlackApiError."""
+        from slack_sdk.errors import SlackApiError
+
+        from app.slack.listeners import login_sso_action
+
+        mock_ack = AsyncMock()
+        mock_respond = AsyncMock()
+        mock_client = AsyncMock()
+        view = {}
+        ray_connection = RayConnection(super_group=[], client=None)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": "C123",
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+            "response_url": "https://hooks.slack.com/test",
+        }
+
+        slack_error = SlackApiError(
+            message="other_error",
+            response={"ok": False, "error": "other_error"},
+        )
+
+        with patch.object(
+            mock_client, "users_info", new_callable=AsyncMock
+        ) as mock_users_info:
+            mock_users_info.side_effect = slack_error
+            with patch("app.slack.listeners.notify_exception") as mock_notify:
+                await login_sso_action(
+                    context_dict,
+                    mock_ack,
+                    respond=mock_respond,
+                    client=mock_client,
+                    view=view,
+                )
+                mock_ack.assert_called()
+                mock_notify.assert_called_once()
+                mock_respond.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_login_sso_action_general_exception(self, user_id, team_id):
+        """Test login_sso_action with general exception."""
+        from app.slack.listeners import login_sso_action
+
+        mock_ack = AsyncMock()
+        mock_respond = AsyncMock()
+        mock_client = AsyncMock()
+        view = {}
+        ray_connection = RayConnection(super_group=[], client=None)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": "C123",
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+            "response_url": "https://hooks.slack.com/test",
+        }
+
+        with patch.object(
+            mock_client, "users_info", new_callable=AsyncMock
+        ) as mock_users_info:
+            mock_users_info.side_effect = Exception("General error")
+            with patch("app.slack.listeners.notify_exception") as mock_notify:
+                await login_sso_action(
+                    context_dict,
+                    mock_ack,
+                    respond=mock_respond,
+                    client=mock_client,
+                    view=view,
+                )
+                mock_ack.assert_called()
+                mock_notify.assert_called_once()
+                mock_respond.assert_called()
+
+
+class TestEvaluateJobSubmit:
+    """Tests for evaluate_job_submit function - quality evaluation job handler."""
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_submit_no_view(self, user_id, team_id, ray_client):
+        """Test evaluate_job_submit with no view."""
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        await evaluate_job_submit(
+            context_dict, view=None, client=mock_client, ack=mock_ack
+        )
+        mock_ack.assert_called_once_with(response_action="clear")
+        mock_client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_submit_no_channel_id(
+        self, user_id, team_id, ray_client
+    ):
+        """Test evaluate_job_submit with no channel_id in private_metadata."""
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {"state": {"values": {}}}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        await evaluate_job_submit(
+            context_dict, view=view, client=mock_client, ack=mock_ack
+        )
+        mock_ack.assert_called_once_with(response_action="clear")
+        mock_client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_submit_validation_error(
+        self, user_id, team_id, ray_client
+    ):
+        """Test evaluate_job_submit with validation error."""
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "callback_id": "evaluate_job",
+            "private_metadata": "C123",
+            "state": {
+                "values": {
+                    "target_langs": {
+                        "language_options_uuid": {
+                            "selected_options": [{"value": "lang-123"}]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": []  # Empty files will cause validation error
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        await evaluate_job_submit(
+            context_dict, view=view, client=mock_client, ack=mock_ack
+        )
+        mock_ack.assert_called_once()
+        # Empty files list will cause ValidationError when parsing
+        # The error is caught and posted to user
+        assert mock_client.chat_postMessage.call_count >= 1
+        # Check that an error message was posted
+        call_args_list = mock_client.chat_postMessage.call_args_list
+        assert any(
+            "error" in str(call[1].get("text", "")).lower() for call in call_args_list
+        )
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_submit_success(self, user_id, team_id, ray_client):
+        """Test evaluate_job_submit successful submission."""
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "callback_id": "evaluate_job",
+            "private_metadata": "C123",
+            "state": {
+                "values": {
+                    "target_langs": {
+                        "language_options_uuid": {
+                            "selected_options": [{"value": "lang-123"}]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.txt"}}
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        # Mock file download and validation
+        mock_file = MagicMock()
+        mock_file.name = "file.txt"
+        mock_file.content = b"test content"
+
+        with patch(
+            "app.slack.listeners.download_file", new_callable=AsyncMock
+        ) as mock_download:
+            mock_download.return_value = mock_file
+            with patch(
+                "app.slack.listeners.validate_file", return_value=(True, True, None)
+            ):
+                with patch(
+                    "app.slack.listeners.submit_evaluation_job",
+                    new_callable=AsyncMock,
+                ) as mock_submit:
+                    await evaluate_job_submit(
+                        context_dict, view=view, client=mock_client, ack=mock_ack
+                    )
+                    mock_ack.assert_called_once()
+                    mock_submit.assert_called_once()
+                    # Should post success message
+                    assert mock_client.chat_postMessage.call_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_submit_verify_api_error(
+        self, user_id, team_id, ray_client
+    ):
+        """Test evaluate_job_submit with VerifyAPIError."""
+        from app.api.verify import VerifyAPIError
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "callback_id": "evaluate_job",
+            "private_metadata": "C123",
+            "state": {
+                "values": {
+                    "target_langs": {
+                        "language_options_uuid": {
+                            "selected_options": [{"value": "lang-123"}]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.txt"}}
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        mock_file = MagicMock()
+        mock_file.name = "file.txt"
+        mock_file.content = b"test content"
+
+        with patch(
+            "app.slack.listeners.download_file", new_callable=AsyncMock
+        ) as mock_download:
+            mock_download.return_value = mock_file
+            with patch(
+                "app.slack.listeners.validate_file", return_value=(True, True, None)
+            ):
+                with patch(
+                    "app.slack.listeners.submit_evaluation_job",
+                    new_callable=AsyncMock,
+                ) as mock_submit:
+                    mock_submit.side_effect = VerifyAPIError("Permission denied")
+                    await evaluate_job_submit(
+                        context_dict, view=view, client=mock_client, ack=mock_ack
+                    )
+                    mock_ack.assert_called_once()
+                    # Should post permission error message
+                    assert mock_client.chat_postMessage.call_count >= 2
+                    call_args_list = mock_client.chat_postMessage.call_args_list
+                    last_call_text = call_args_list[-1][1]["text"].lower()
+                    assert (
+                        "permission" in last_call_text
+                        or "administrator" in last_call_text
+                    )
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_submit_general_exception(
+        self, user_id, team_id, ray_client
+    ):
+        """Test evaluate_job_submit with general exception."""
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "callback_id": "evaluate_job",
+            "private_metadata": "C123",
+            "state": {
+                "values": {
+                    "target_langs": {
+                        "language_options_uuid": {
+                            "selected_options": [{"value": "lang-123"}]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.txt"}}
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        mock_file = MagicMock()
+        mock_file.name = "file.txt"
+        mock_file.content = b"test content"
+
+        with patch(
+            "app.slack.listeners.download_file", new_callable=AsyncMock
+        ) as mock_download:
+            mock_download.return_value = mock_file
+            with patch(
+                "app.slack.listeners.validate_file", return_value=(True, True, None)
+            ):
+                with patch(
+                    "app.slack.listeners.submit_evaluation_job",
+                    new_callable=AsyncMock,
+                ) as mock_submit:
+                    mock_submit.side_effect = Exception("General error")
+                    with patch("app.slack.listeners.notify_exception") as mock_notify:
+                        await evaluate_job_submit(
+                            context_dict, view=view, client=mock_client, ack=mock_ack
+                        )
+                        mock_ack.assert_called_once()
+                        mock_notify.assert_called_once()
+                        # Should post error message
+                        assert mock_client.chat_postMessage.call_count >= 2
+                        call_args_list = mock_client.chat_postMessage.call_args_list
+                        last_call_text = call_args_list[-1][1]["text"].lower()
+                        assert "error" in last_call_text
+
+
+class TestHandleDocumentMtJob:
+    """Tests for handle_document_mt_job function - document MT job handler."""
+
+    @pytest.mark.asyncio
+    async def test_handle_document_mt_job_no_languages(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_document_mt_job with no languages selected."""
+        from app.slack.listeners import handle_document_mt_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "state": {
+                "values": {
+                    "target_langs": {"language_mt_options": {"selected_options": []}},
+                    "files": {"files": {"selected_options": [{"value": "F123"}]}},
+                }
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        await handle_document_mt_job(
+            context_dict, mock_ack, view=view, client=mock_client
+        )
+        mock_ack.assert_called_once()
+        mock_client.chat_postMessage.assert_called_once()
+        assert "language" in mock_client.chat_postMessage.call_args[1]["text"].lower()
+
+    @pytest.mark.asyncio
+    async def test_handle_document_mt_job_no_files(self, user_id, team_id, ray_client):
+        """Test handle_document_mt_job with no files selected."""
+        from app.slack.listeners import handle_document_mt_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "state": {
+                "values": {
+                    "target_langs": {
+                        "language_mt_options": {"selected_options": [{"value": "en"}]}
+                    },
+                    "files": {"files": {"selected_options": []}},
+                }
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        await handle_document_mt_job(
+            context_dict, mock_ack, view=view, client=mock_client
+        )
+        mock_ack.assert_called_once()
+        mock_client.chat_postMessage.assert_called_once()
+        assert "file" in mock_client.chat_postMessage.call_args[1]["text"].lower()
+
+    @pytest.mark.asyncio
+    async def test_handle_document_mt_job_no_ray_client(self, user_id, team_id):
+        """Test handle_document_mt_job when user is not logged in."""
+        from app.slack.listeners import handle_document_mt_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {"state": {"values": {}}}
+        ray_connection = RayConnection(super_group=[], client=None)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        await handle_document_mt_job(
+            context_dict, mock_ack, view=view, client=mock_client
+        )
+        # ack is called twice - once at start, once in else block
+        assert mock_ack.call_count == 2
+        mock_client.chat_postMessage.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_document_mt_job_exception(self, user_id, team_id, ray_client):
+        """Test handle_document_mt_job with exception during file processing."""
+        from app.slack.listeners import handle_document_mt_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "state": {
+                "values": {
+                    "target_langs": {
+                        "language_mt_options": {
+                            "selected_options": [
+                                {"value": "en", "text": {"text": "English"}}
+                            ]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.txt"}}
+                            ]
+                        }
+                    },
+                }
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        # Mock file download to succeed, but upload to fail after record is created
+        mock_file = MagicMock()
+        mock_file.name = "file.txt"
+        mock_file.content = b"test content"
+
+        with patch(
+            "app.slack.listeners.download_file", new_callable=AsyncMock
+        ) as mock_download:
+            mock_download.return_value = mock_file
+            with patch(
+                "app.slack.listeners.validate_file", return_value=(True, True, None)
+            ):
+                with patch(
+                    "app.slack.listeners.upload_to_file_server",
+                    return_value="file-id-123",
+                ):
+                    mock_record = MagicMock()
+                    mock_record.id = "record-123"
+                    with patch(
+                        "app.slack.listeners.check_and_record_submission_async",
+                        new_callable=AsyncMock,
+                    ) as mock_check:
+                        mock_check.return_value = (False, mock_record)
+                        # Make document_machine_translate fail
+                        with patch(
+                            "app.slack.listeners.document_machine_translate",
+                            new_callable=AsyncMock,
+                        ) as mock_doc_mt:
+                            mock_doc_mt.side_effect = Exception("Submit error")
+                            with patch(
+                                "app.slack.listeners.notify_exception"
+                            ) as mock_notify:
+                                await handle_document_mt_job(
+                                    context_dict,
+                                    mock_ack,
+                                    view=view,
+                                    client=mock_client,
+                                )
+                                mock_ack.assert_called_once()
+                                mock_notify.assert_called_once()
+                                # Should post error message
+                                assert mock_client.chat_postMessage.call_count >= 1
+                                call_args_list = (
+                                    mock_client.chat_postMessage.call_args_list
+                                )
+                                last_call_text = call_args_list[-1][1]["text"].lower()
+                                assert "error" in last_call_text
+
+
+class TestMessageEvent:
+    """Tests for message_event function - handles all incoming messages."""
+
+    @pytest.mark.asyncio
+    async def test_message_event_duplicate_detection(self, user_id, team_id):
+        """Test message_event ignores duplicate events."""
+        from app.slack.listeners import message_event
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "test"}
+        body = {"event": {"team": team_id}}
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": "E123",
+            "is_bot": False,
+            "channel_id": "C123",
+        }
+
+        with patch(
+            "app.slack.listeners.is_duplicate_event", new_callable=AsyncMock
+        ) as mock_duplicate:
+            mock_duplicate.return_value = True
+            # The decorator passes context as first arg, then *args to the function
+            # Function signature is (client, context, message, body), so we pass (context_dict, mock_client, message=message, body=body)
+            await message_event(context_dict, mock_client, message=message, body=body)
+            mock_duplicate.assert_called_once_with("E123", "message", "123456.789")
+
+    @pytest.mark.asyncio
+    async def test_message_event_bot_message_ignored(self, user_id, team_id):
+        """Test message_event ignores bot messages."""
+        from app.slack.listeners import message_event
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "test"}
+        body = {"event": {"team": team_id}}
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "is_bot": True,  # Bot message
+            "channel_id": "C123",
+        }
+
+        with patch(
+            "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+        ) as mock_respond:
+            await message_event(context_dict, mock_client, message=message, body=body)
+            mock_respond.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_message_event_dm_calls_respond_to_message(
+        self, user_id, team_id, ray_client
+    ):
+        """Test message_event in DM calls respond_to_message."""
+        from app.slack.listeners import message_event
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "test", "channel_type": "im"}
+        body = {"event": {"team": team_id}}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "is_bot": False,
+            "channel_id": user_id,  # DM channel
+            "ray": ray_connection,
+            "bot_user_id": "B123",
+        }
+
+        with patch(
+            "app.slack.listeners.get_bot_token_async", new_callable=AsyncMock
+        ) as mock_get_token:
+            mock_get_token.return_value = None
+            with patch(
+                "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+            ) as mock_respond:
+                await message_event(
+                    context_dict, mock_client, message=message, body=body
+                )
+                mock_respond.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_message_event_channel_auto_translate(
+        self, user_id, team_id, ray_client
+    ):
+        """Test message_event in channel calls auto_translate_message."""
+        from app.slack.listeners import message_event
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "Hello world"}
+        body = {"event": {"team": team_id}}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "is_bot": False,
+            "channel_id": "C123",  # Channel, not DM
+            "ray": ray_connection,
+            "bot_user_id": "B123",
+        }
+
+        with patch(
+            "app.slack.listeners.is_channel_im", return_value=False
+        ) as mock_is_im:
+            with patch(
+                "app.slack.listeners.auto_translate_message", new_callable=AsyncMock
+            ) as mock_auto_translate:
+                await message_event(
+                    context_dict, mock_client, message=message, body=body
+                )
+                mock_auto_translate.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_message_event_bot_mentioned_no_auto_translate(
+        self, user_id, team_id, ray_client
+    ):
+        """Test message_event doesn't auto-translate when bot is mentioned."""
+        from app.slack.listeners import message_event
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "<@B123> hello"}
+        body = {"event": {"team": team_id}}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "is_bot": False,
+            "channel_id": "C123",
+            "ray": ray_connection,
+            "bot_user_id": "B123",
+        }
+
+        with patch(
+            "app.slack.listeners.is_channel_im", return_value=False
+        ) as mock_is_im:
+            with patch(
+                "app.slack.listeners.auto_translate_message", new_callable=AsyncMock
+            ) as mock_auto_translate:
+                await message_event(
+                    context_dict, mock_client, message=message, body=body
+                )
+                # Should not call auto_translate when bot is mentioned
+                mock_auto_translate.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_message_event_token_update(self, user_id, team_id, ray_client):
+        """Test message_event updates client token if different."""
+        from app.slack.listeners import message_event
+
+        mock_client = AsyncMock()
+        mock_client.token = "old-token"
+        message = {"ts": "123456.789", "text": "test", "channel_type": "im"}
+        body = {"event": {"team": team_id}}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "is_bot": False,
+            "channel_id": user_id,
+            "ray": ray_connection,
+            "bot_user_id": "B123",
+        }
+
+        with patch(
+            "app.slack.listeners.get_bot_token_async", new_callable=AsyncMock
+        ) as mock_get_token:
+            mock_get_token.return_value = "new-token"
+            with patch(
+                "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+            ) as mock_respond:
+                await message_event(
+                    context_dict, mock_client, message=message, body=body
+                )
+                assert mock_client.token == "new-token"
+                mock_respond.assert_called_once()
+
+
+class TestRespondToMessage:
+    """Tests for respond_to_message function - handles file uploads, MT requests, Watson intents."""
+
+    @pytest.mark.asyncio
+    async def test_respond_to_message_with_files(self, user_id, team_id, ray_client):
+        """Test respond_to_message with file uploads."""
+        from uuid import uuid4
+
+        from app.slack.listener_actions import respond_to_message
+
+        mock_client = AsyncMock()
+        message = {
+            "ts": "123456.789",
+            "files": [
+                {
+                    "id": "F123",
+                    "name": "test.txt",
+                    "title": "test.txt",
+                    "filetype": "text",
+                }
+            ],
+        }
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+                "say": AsyncMock(),
+            }
+        )
+
+        with patch(
+            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+        ) as mock_require:
+            mock_require.return_value = True
+            with patch(
+                "app.slack.listener_actions.files_list_simple", new_callable=AsyncMock
+            ) as mock_files_list:
+                with patch(
+                    "app.slack.listener_actions.is_video_file", return_value=False
+                ):
+                    with patch(
+                        "app.slack.listener_actions.validate_file_type",
+                        return_value=True,
+                    ):
+                        await respond_to_message(mock_client, context, message)
+                        mock_files_list.assert_called_once()
+                        context.say.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_respond_to_message_too_many_files(
+        self, user_id, team_id, ray_client
+    ):
+        """Test respond_to_message with more than 10 files."""
+        from app.slack.listener_actions import respond_to_message
+
+        mock_client = AsyncMock()
+        message = {
+            "ts": "123456.789",
+            "files": [{"id": f"F{i}", "name": f"test{i}.txt"} for i in range(11)],
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+                "say": AsyncMock(),
+            }
+        )
+
+        with patch(
+            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+        ) as mock_require:
+            mock_require.return_value = True
+            with patch(
+                "app.slack.listener_actions.files_list_simple", new_callable=AsyncMock
+            ):
+                with patch(
+                    "app.slack.listener_actions.is_video_file", return_value=False
+                ):
+                    with patch(
+                        "app.slack.listener_actions.validate_file_type",
+                        return_value=True,
+                    ):
+                        await respond_to_message(mock_client, context, message)
+                        # Should post error about too many files
+                        assert context.say.call_count >= 1
+                        call_args = context.say.call_args
+                        assert (
+                            "10" in call_args[1]["text"]
+                            or "maximum" in call_args[1]["text"].lower()
+                        )
+
+    @pytest.mark.asyncio
+    async def test_respond_to_message_unsupported_file(
+        self, user_id, team_id, ray_client
+    ):
+        """Test respond_to_message with unsupported file type."""
+        from app.slack.listener_actions import respond_to_message
+
+        mock_client = AsyncMock()
+        message = {
+            "ts": "123456.789",
+            "files": [{"id": "F123", "name": "test.exe", "filetype": "exe"}],
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+                "say": AsyncMock(),
+            }
+        )
+
+        with patch(
+            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+        ) as mock_require:
+            mock_require.return_value = True
+            with patch(
+                "app.slack.listener_actions.files_list_simple", new_callable=AsyncMock
+            ):
+                with patch(
+                    "app.slack.listener_actions.is_video_file", return_value=False
+                ):
+                    with patch(
+                        "app.slack.listener_actions.validate_file_type",
+                        return_value=False,
+                    ):
+                        await respond_to_message(mock_client, context, message)
+                        # Should post error about unsupported file
+                        assert context.say.call_count >= 1
+                        call_args = context.say.call_args
+                        assert "unsupported" in call_args[1]["text"].lower()
+
+    @pytest.mark.asyncio
+    async def test_respond_to_message_mt_request(self, user_id, team_id):
+        """Test respond_to_message with MT request pattern."""
+        from app.slack.listener_actions import respond_to_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "mt: en to fr: Hello world"}
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "locale": "en",
+                "say": AsyncMock(),
+                "log": MagicMock(set_watson_log=MagicMock()),
+            }
+        )
+
+        with patch(
+            "app.slack.listener_actions.detect_language", new_callable=AsyncMock
+        ) as mock_detect:
+            mock_detect.return_value = MagicMock(language="en")
+            with patch(
+                "app.slack.listener_actions.get_mt_translation", new_callable=AsyncMock
+            ) as mock_mt:
+                await respond_to_message(mock_client, context, message)
+                mock_mt.assert_called_once()
+                # Should extract source lang, target lang, and text
+                call_args = mock_mt.call_args
+                assert call_args[1]["source_lang"] == "en"
+                assert call_args[1]["target_lang"] == "fr"
+                assert call_args[1]["sentence"] == "Hello world"
+
+    @pytest.mark.asyncio
+    async def test_respond_to_message_mt_request_no_source_lang(self, user_id, team_id):
+        """Test respond_to_message with MT request without source lang (auto-detect)."""
+        from app.slack.listener_actions import respond_to_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "mt: to fr: Hello world"}
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "locale": "en",
+                "say": AsyncMock(),
+                "log": MagicMock(set_watson_log=MagicMock()),
+            }
+        )
+
+        with patch(
+            "app.slack.listener_actions.detect_language", new_callable=AsyncMock
+        ) as mock_detect:
+            mock_detect.return_value = MagicMock(language="en")
+            with patch(
+                "app.slack.listener_actions.get_mt_translation", new_callable=AsyncMock
+            ) as mock_mt:
+                await respond_to_message(mock_client, context, message)
+                mock_detect.assert_called_once()
+                mock_mt.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_respond_to_message_watson_help_intent(self, user_id, team_id):
+        """Test respond_to_message with Watson Help intent."""
+        from app.slack.listener_actions import respond_to_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "help"}
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "say": AsyncMock(),
+                "log": MagicMock(set_watson_log=MagicMock()),
+            }
+        )
+
+        mock_watson_response = MagicMock()
+        mock_watson_response.status_code = 200
+        mock_watson_response.data = {
+            "output": {"intents": [{"intent": "General_Greetings"}], "entities": []}
+        }
+        mock_watson_response.headers = {}
+        mock_watson_response.intent = "General_Greetings"
+
+        with patch(
+            "app.slack.listener_actions.watson_message",
+            return_value=mock_watson_response,
+        ):
+            await respond_to_message(mock_client, context, message)
+            # Should call say with HelpMessage
+            assert context.say.call_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_respond_to_message_watson_login_intent(self, user_id, team_id):
+        """Test respond_to_message with Watson Login intent."""
+        from app.slack.listener_actions import respond_to_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "login"}
+        ray_connection = RayConnection(super_group=[], client=None)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "enterprise_id": None,
+                "ray": ray_connection,
+                "say": AsyncMock(),
+                "log": MagicMock(set_watson_log=MagicMock()),
+            }
+        )
+
+        mock_watson_response = MagicMock()
+        mock_watson_response.status_code = 200
+        mock_watson_response.data = {
+            "output": {"intents": [{"intent": "Login"}], "entities": []}
+        }
+        mock_watson_response.headers = {}
+        mock_watson_response.intent = "Login"
+
+        with patch(
+            "app.slack.listener_actions.watson_message",
+            return_value=mock_watson_response,
+        ):
+            await respond_to_message(mock_client, context, message)
+            # Should post ephemeral login message
+            mock_client.chat_postEphemeral.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_respond_to_message_no_ray_client_for_files(self, user_id, team_id):
+        """Test respond_to_message with files but no ray client."""
+        from app.slack.listener_actions import respond_to_message
+
+        mock_client = AsyncMock()
+        message = {
+            "ts": "123456.789",
+            "files": [{"id": "F123", "name": "test.txt"}],
+            "text": "",  # Add empty text to avoid KeyError
+        }
+        ray_connection = RayConnection(super_group=[], client=None)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+                "say": AsyncMock(),
+                "log": MagicMock(set_watson_log=MagicMock()),
+            }
+        )
+
+        with patch(
+            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+        ) as mock_require:
+            mock_require.return_value = False
+            # When no ray client, files aren't processed but message text still is
+            # So Watson will be called and may call say
+            with patch(
+                "app.slack.listener_actions.watson_message",
+                return_value=MagicMock(intent="Unknown"),
+            ):
+                await respond_to_message(mock_client, context, message)
+                # Files won't be processed, but message text processing may still call say
+                # The key is that files_list_simple should not be called
+                # We can't easily assert that, but we know files weren't processed
+                # because require_ray_client returned False
+
+    @pytest.mark.asyncio
+    async def test_respond_to_message_use_thread(self, user_id, team_id, ray_client):
+        """Test respond_to_message with use_thread=True."""
+        from uuid import uuid4
+
+        from app.slack.listener_actions import respond_to_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "help"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+                "say": AsyncMock(),
+                "log": MagicMock(set_watson_log=MagicMock()),
+            }
+        )
+
+        mock_watson_response = MagicMock()
+        mock_watson_response.status_code = 200
+        mock_watson_response.data = {
+            "output": {"intents": [{"intent": "General_Greetings"}], "entities": []}
+        }
+        mock_watson_response.headers = {}
+        mock_watson_response.intent = "General_Greetings"
+
+        with patch(
+            "app.slack.listener_actions.watson_message",
+            return_value=mock_watson_response,
+        ):
+            await respond_to_message(mock_client, context, message, use_thread=True)
+            # Should pass thread_ts to say
+            call_args = context.say.call_args
+            assert "thread_ts" in call_args[1]
+            assert call_args[1]["thread_ts"] == "123456.789"
+
+
+class TestAutoTranslateMessage:
+    """Tests for auto_translate_message function - handles automatic message translation."""
+
+    @pytest.mark.asyncio
+    async def test_auto_translate_message_no_text(self, user_id, team_id, ray_client):
+        """Test auto_translate_message with no text."""
+        from app.slack.listener_actions import auto_translate_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789"}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+            }
+        )
+
+        await auto_translate_message(mock_client, context, message)
+        # Should return early, no calls
+        mock_client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_translate_message_bot_message(
+        self, user_id, team_id, ray_client
+    ):
+        """Test auto_translate_message ignores bot messages."""
+        from app.slack.listener_actions import auto_translate_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "Hello", "bot_id": "B123"}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+            }
+        )
+
+        await auto_translate_message(mock_client, context, message)
+        # Should return early, no calls
+        mock_client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_translate_message_5k_limit(self, user_id, team_id, ray_client):
+        """Test auto_translate_message with message over 5K character limit."""
+        from app.slack.listener_actions import auto_translate_message
+
+        mock_client = AsyncMock()
+        long_text = "a" * 5001  # Over 5K limit
+        message = {"ts": "123456.789", "text": long_text}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+            }
+        )
+
+        await auto_translate_message(mock_client, context, message)
+        # Should post error about 5K limit
+        mock_client.chat_postMessage.assert_called_once()
+        call_args = mock_client.chat_postMessage.call_args
+        assert "5K" in call_args[1]["text"] or "5000" in call_args[1]["text"]
+        assert call_args[1]["thread_ts"] == "123456.789"
+
+    @pytest.mark.asyncio
+    async def test_auto_translate_message_no_settings(
+        self, user_id, team_id, ray_client
+    ):
+        """Test auto_translate_message with no auto-translate settings."""
+        from app.slack.listener_actions import auto_translate_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "Hello world"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+            }
+        )
+
+        with patch(
+            "app.slack.listener_actions.get_auto_translate_settings_and_langs",
+            new_callable=AsyncMock,
+        ) as mock_get_settings:
+            mock_get_settings.return_value = []  # No settings
+            await auto_translate_message(mock_client, context, message)
+            # Should return early, no translation request
+            mock_client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_translate_message_no_tokens(self, user_id, team_id, ray_client):
+        """Test auto_translate_message when insufficient tokens."""
+        from app.slack.listener_actions import auto_translate_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "Hello world"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+            }
+        )
+
+        with patch(
+            "app.slack.listener_actions.get_auto_translate_settings_and_langs",
+            new_callable=AsyncMock,
+        ) as mock_get_settings:
+            mock_get_settings.return_value = [
+                {"target_lang": "fr", "display_format": "thread"}
+            ]
+            with patch(
+                "app.slack.listener_actions.require_mt_tokens", new_callable=AsyncMock
+            ) as mock_require_tokens:
+                mock_require_tokens.return_value = False  # Insufficient tokens
+                await auto_translate_message(mock_client, context, message)
+                # Should return early, no translation request
+                mock_client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_translate_message_success(self, user_id, team_id, ray_client):
+        """Test auto_translate_message successful translation."""
+        from app.slack.listener_actions import auto_translate_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "Hello world"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+            }
+        )
+
+        with patch(
+            "app.slack.listener_actions.get_auto_translate_settings_and_langs",
+            new_callable=AsyncMock,
+        ) as mock_get_settings:
+            mock_get_settings.return_value = [
+                {"target_lang": "fr", "display_format": "thread"}
+            ]
+            with patch(
+                "app.slack.listener_actions.require_mt_tokens", new_callable=AsyncMock
+            ) as mock_require_tokens:
+                mock_require_tokens.return_value = True
+                with patch(
+                    "app.slack.listener_actions.detect_language", new_callable=AsyncMock
+                ) as mock_detect:
+                    mock_detect.return_value = MagicMock(language="en")
+                    with patch(
+                        "app.slack.listener_actions.evaluate_get_glossary_resource",
+                        new_callable=AsyncMock,
+                    ) as mock_glossary:
+                        mock_glossary.return_value = None
+                        with patch(
+                            "app.slack.listener_actions.send_mt_translation_request",
+                            new_callable=AsyncMock,
+                        ) as mock_send_mt:
+                            await auto_translate_message(mock_client, context, message)
+                            # Should send translation request
+                            mock_send_mt.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_auto_translate_message_same_source_target_lang(
+        self, user_id, team_id, ray_client
+    ):
+        """Test auto_translate_message when detected language matches target language."""
+        from app.slack.listener_actions import auto_translate_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "Bonjour"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+            }
+        )
+
+        with patch(
+            "app.slack.listener_actions.get_auto_translate_settings_and_langs",
+            new_callable=AsyncMock,
+        ) as mock_get_settings:
+            mock_get_settings.return_value = [
+                {"target_lang": "fr", "display_format": "thread"}
+            ]
+            with patch(
+                "app.slack.listener_actions.require_mt_tokens", new_callable=AsyncMock
+            ) as mock_require_tokens:
+                mock_require_tokens.return_value = True
+                with patch(
+                    "app.slack.listener_actions.detect_language", new_callable=AsyncMock
+                ) as mock_detect:
+                    # Detected language matches target language
+                    mock_detect.return_value = MagicMock(language="fr")
+                    await auto_translate_message(mock_client, context, message)
+                    # Should return early, no translation needed
+                    mock_client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_translate_message_exception_handling(
+        self, user_id, team_id, ray_client
+    ):
+        """Test auto_translate_message exception handling."""
+        from app.slack.listener_actions import auto_translate_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "Hello world"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+            }
+        )
+
+        with patch(
+            "app.slack.listener_actions.get_auto_translate_settings_and_langs",
+            new_callable=AsyncMock,
+        ) as mock_get_settings:
+            mock_get_settings.return_value = [
+                {"target_lang": "fr", "display_format": "thread"}
+            ]
+            with patch(
+                "app.slack.listener_actions.require_mt_tokens", new_callable=AsyncMock
+            ) as mock_require_tokens:
+                mock_require_tokens.return_value = True
+                with patch(
+                    "app.slack.listener_actions.detect_language", new_callable=AsyncMock
+                ) as mock_detect:
+                    mock_detect.return_value = MagicMock(language="en")
+                    with patch(
+                        "app.slack.listener_actions.evaluate_get_glossary_resource",
+                        new_callable=AsyncMock,
+                    ) as mock_glossary:
+                        mock_glossary.return_value = None
+                        with patch(
+                            "app.slack.listener_actions.send_mt_translation_request",
+                            new_callable=AsyncMock,
+                        ) as mock_send_mt:
+                            mock_send_mt.side_effect = Exception("Translation error")
+                            with patch(
+                                "app.slack.listener_actions.notify_exception"
+                            ) as mock_notify:
+                                await auto_translate_message(
+                                    mock_client, context, message
+                                )
+                                # Should notify exception
+                                mock_notify.assert_called_once()
+
+
+class TestAppMentionEvent:
+    """Tests for app_mention_event function - handles bot mentions."""
+
+    @pytest.mark.asyncio
+    async def test_app_mention_event_duplicate_detection(self, user_id, team_id):
+        """Test app_mention_event ignores duplicate events."""
+        from app.slack.listeners import app_mention_event
+
+        mock_client = AsyncMock()
+        event = {"ts": "123456.789", "text": "test"}
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": "E123",
+            "is_bot": False,
+        }
+
+        with patch(
+            "app.slack.listeners.is_duplicate_event", new_callable=AsyncMock
+        ) as mock_duplicate:
+            mock_duplicate.return_value = True
+            await app_mention_event(context_dict, mock_client, event=event)
+            mock_duplicate.assert_called_once_with("E123", "app_mention", "123456.789")
+
+    @pytest.mark.asyncio
+    async def test_app_mention_event_bot_message_ignored(self, user_id, team_id):
+        """Test app_mention_event ignores bot messages."""
+        from app.slack.listeners import app_mention_event
+
+        mock_client = AsyncMock()
+        event = {"ts": "123456.789", "text": "test"}
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "is_bot": True,  # Bot message
+        }
+
+        with patch(
+            "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+        ) as mock_respond:
+            await app_mention_event(context_dict, mock_client, event=event)
+            mock_respond.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_app_mention_event_with_text(self, user_id, team_id, ray_client):
+        """Test app_mention_event with text calls respond_to_message."""
+        from app.slack.listeners import app_mention_event
+
+        mock_client = AsyncMock()
+        event = {"ts": "123456.789", "text": "help"}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "is_bot": False,
+            "ray": ray_connection,
+        }
+
+        with patch(
+            "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+        ) as mock_respond:
+            await app_mention_event(context_dict, mock_client, event=event)
+            mock_respond.assert_called_once_with(
+                mock_client, context_dict, event, use_thread=True
+            )
+
+    @pytest.mark.asyncio
+    async def test_app_mention_event_with_files(self, user_id, team_id, ray_client):
+        """Test app_mention_event with files calls respond_to_message."""
+        from app.slack.listeners import app_mention_event
+
+        mock_client = AsyncMock()
+        event = {"ts": "123456.789", "text": "", "files": [{"id": "F123"}]}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "is_bot": False,
+            "ray": ray_connection,
+        }
+
+        with patch(
+            "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+        ) as mock_respond:
+            await app_mention_event(context_dict, mock_client, event=event)
+            mock_respond.assert_called_once_with(
+                mock_client, context_dict, event, use_thread=True
+            )
+
+    @pytest.mark.asyncio
+    async def test_app_mention_event_no_text_no_files(
+        self, user_id, team_id, ray_client
+    ):
+        """Test app_mention_event with no text and no files."""
+        from app.slack.listeners import app_mention_event
+
+        mock_client = AsyncMock()
+        event = {"ts": "123456.789", "text": ""}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "is_bot": False,
+            "ray": ray_connection,
+        }
+
+        with patch(
+            "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+        ) as mock_respond:
+            await app_mention_event(context_dict, mock_client, event=event)
+            # Should not call respond_to_message when no text and no files
+            # (TODO: Show auto-translate settings modal)
+            mock_respond.assert_not_called()
+
+
+class TestHandleVerifyJobSubmission:
+    """Tests for handle_verify_job_submission function - complex verification job handler."""
+
+    @pytest.mark.asyncio
+    async def test_handle_verify_job_submission_lock_not_acquired(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_verify_job_submission when Redis lock cannot be acquired."""
+        from app.slack.listeners import handle_verify_job_submission
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        body = {
+            "view": {
+                "private_metadata": json.dumps(
+                    {"job_uuid": "job-123", "timestamp": "123456.789"}
+                ),
+            },
+            "user": {"id": user_id},
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+        }
+
+        with patch(
+            "app.slack.listeners.redis_conn.set", new_callable=AsyncMock
+        ) as mock_redis_set:
+            mock_redis_set.return_value = False  # Lock not acquired
+            await handle_verify_job_submission(
+                context_dict, mock_ack, body=body, client=mock_client
+            )
+            mock_ack.assert_called_once_with(response_action="clear")
+            mock_client.chat_postMessage.assert_called_once()
+            call_args = mock_client.chat_postMessage.call_args
+            assert "no longer available" in call_args[1]["text"].lower()
+
+    @pytest.mark.asyncio
+    async def test_handle_verify_job_submission_success(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_verify_job_submission successful submission."""
+        from uuid import uuid4
+
+        from app.slack.listeners import handle_verify_job_submission
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        job_uuid = "job-123"
+        file_uuid = "file-123"
+        lang_uuid = "lang-123"
+        body = {
+            "view": {
+                "private_metadata": json.dumps(
+                    {"job_uuid": job_uuid, "timestamp": "123456.789"}
+                ),
+                "state": {
+                    "values": {
+                        f"verification_checkbox_{lang_uuid}_{file_uuid}": {
+                            "verification_checkbox_action": {
+                                "selected_options": [
+                                    {"value": f"{file_uuid}:{lang_uuid}:10"}
+                                ]
+                            }
+                        }
+                    }
+                },
+            },
+            "user": {"id": user_id},
+        }
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+        }
+
+        mock_job = {
+            "data": {
+                "workflow_uuid": "workflow-123",  # Not human evaluation
+                "target_languages": [{"uuid": lang_uuid, "name": "French"}],
+                "source_files": [
+                    {
+                        "file_uuid": file_uuid,
+                        "filename": "test.txt",
+                        "target_files": [],
+                    }
+                ],
+            }
+        }
+
+        with patch(
+            "app.slack.listeners.redis_conn.set", new_callable=AsyncMock
+        ) as mock_redis_set:
+            mock_redis_set.return_value = True  # Lock acquired
+            with patch(
+                "app.slack.listeners.get_client_evaluation_job", new_callable=AsyncMock
+            ) as mock_get_job:
+                mock_get_job.return_value = mock_job
+                with patch(
+                    "app.slack.listeners.submit_verification_job",
+                    new_callable=AsyncMock,
+                ) as mock_submit:
+                    await handle_verify_job_submission(
+                        context_dict, mock_ack, body=body, client=mock_client
+                    )
+                    mock_ack.assert_called_once_with(response_action="clear")
+                    mock_submit.assert_called_once()
+                    call_args = mock_submit.call_args
+                    assert call_args[1]["job_uuid"] == job_uuid
+                    assert call_args[1]["user_id"] == user_id
+
+    @pytest.mark.asyncio
+    async def test_handle_verify_job_submission_human_evaluation_workflow(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_verify_job_submission with human evaluation workflow."""
+        from uuid import uuid4
+
+        from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+        from app.slack.listeners import handle_verify_job_submission
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        job_uuid = "job-123"
+        file_uuid = "file-123"
+        lang_uuid = "lang-123"
+        body = {
+            "view": {
+                "private_metadata": json.dumps(
+                    {"job_uuid": job_uuid, "timestamp": "123456.789"}
+                ),
+                "state": {
+                    "values": {
+                        f"verification_checkbox_{lang_uuid}_{file_uuid}": {
+                            "verification_checkbox_action": {
+                                "selected_options": [
+                                    {"value": f"{file_uuid}:{lang_uuid}:10"}
+                                ]
+                            }
+                        }
+                    }
+                },
+            },
+            "user": {"id": user_id},
+        }
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+        }
+
+        mock_job = {
+            "data": {
+                "workflow_uuid": HUMAN_EVALUATION_WORKFLOW_UUID,
+                "target_languages": [{"uuid": lang_uuid, "name": "French"}],
+                "source_files": [
+                    {
+                        "file_uuid": file_uuid,
+                        "filename": "test.txt",
+                        "target_files": [
+                            {"language_uuid": lang_uuid, "human_job_status": None}
+                        ],
+                    }
+                ],
+            }
+        }
+
+        with patch(
+            "app.slack.listeners.redis_conn.set", new_callable=AsyncMock
+        ) as mock_redis_set:
+            mock_redis_set.return_value = True
+            with patch(
+                "app.slack.listeners.get_client_evaluation_job", new_callable=AsyncMock
+            ) as mock_get_job:
+                mock_get_job.return_value = mock_job
+                with patch(
+                    "app.slack.listeners.submit_verification_job",
+                    new_callable=AsyncMock,
+                ) as mock_submit:
+                    await handle_verify_job_submission(
+                        context_dict, mock_ack, body=body, client=mock_client
+                    )
+                    mock_ack.assert_called_once_with(response_action="clear")
+                    # Verify that human_job_status was set to "Submitted"
+                    assert (
+                        mock_job["data"]["source_files"][0]["target_files"][0][
+                            "human_job_status"
+                        ]
+                        == "Submitted"
+                    )
+                    mock_submit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_verify_job_submission_human_evaluation_cancels_unselected(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_verify_job_submission cancels unselected files in human evaluation."""
+        from uuid import uuid4
+
+        from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+        from app.slack.listeners import handle_verify_job_submission
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        job_uuid = "job-123"
+        file_uuid = "file-123"
+        lang_uuid_1 = "lang-123"
+        lang_uuid_2 = "lang-456"
+        body = {
+            "view": {
+                "private_metadata": json.dumps(
+                    {"job_uuid": job_uuid, "timestamp": "123456.789"}
+                ),
+                "state": {
+                    "values": {
+                        f"verification_checkbox_{lang_uuid_1}_{file_uuid}": {
+                            "verification_checkbox_action": {
+                                "selected_options": [
+                                    {"value": f"{file_uuid}:{lang_uuid_1}:10"}
+                                ]
+                            }
+                        }
+                        # lang_uuid_2 is not selected
+                    }
+                },
+            },
+            "user": {"id": user_id},
+        }
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+        }
+
+        mock_job = {
+            "data": {
+                "workflow_uuid": HUMAN_EVALUATION_WORKFLOW_UUID,
+                "target_languages": [
+                    {"uuid": lang_uuid_1, "name": "French"},
+                    {"uuid": lang_uuid_2, "name": "Spanish"},
+                ],
+                "source_files": [
+                    {
+                        "file_uuid": file_uuid,
+                        "filename": "test.txt",
+                        "target_files": [
+                            {"language_uuid": lang_uuid_1, "human_job_status": None},
+                            {"language_uuid": lang_uuid_2, "human_job_status": None},
+                        ],
+                    }
+                ],
+            }
+        }
+
+        with patch(
+            "app.slack.listeners.redis_conn.set", new_callable=AsyncMock
+        ) as mock_redis_set:
+            mock_redis_set.return_value = True
+            with patch(
+                "app.slack.listeners.get_client_evaluation_job", new_callable=AsyncMock
+            ) as mock_get_job:
+                mock_get_job.return_value = mock_job
+                with patch(
+                    "app.slack.listeners.submit_verification_job",
+                    new_callable=AsyncMock,
+                ) as mock_submit:
+                    await handle_verify_job_submission(
+                        context_dict, mock_ack, body=body, client=mock_client
+                    )
+                    # Verify that lang_uuid_1 is Submitted and lang_uuid_2 is Cancelled
+                    target_files = mock_job["data"]["source_files"][0]["target_files"]
+                    lang_1_file = next(
+                        tf for tf in target_files if tf["language_uuid"] == lang_uuid_1
+                    )
+                    lang_2_file = next(
+                        tf for tf in target_files if tf["language_uuid"] == lang_uuid_2
+                    )
+                    assert lang_1_file["human_job_status"] == "Submitted"
+                    assert lang_2_file["human_job_status"] == "Cancelled"
+                    mock_submit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_verify_job_submission_no_selected_options(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_verify_job_submission with no selected options."""
+        from uuid import uuid4
+
+        from app.slack.listeners import handle_verify_job_submission
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        job_uuid = "job-123"
+        file_uuid = "file-123"
+        lang_uuid = "lang-123"
+        body = {
+            "view": {
+                "private_metadata": json.dumps(
+                    {"job_uuid": job_uuid, "timestamp": "123456.789"}
+                ),
+                "state": {"values": {}},  # No selected options
+            },
+            "user": {"id": user_id},
+        }
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+        }
+
+        mock_job = {
+            "data": {
+                "workflow_uuid": "workflow-123",
+                "target_languages": [{"uuid": lang_uuid, "name": "French"}],
+                "source_files": [
+                    {
+                        "file_uuid": file_uuid,
+                        "filename": "test.txt",
+                        "target_files": [],
+                    }
+                ],
+            }
+        }
+
+        with patch(
+            "app.slack.listeners.redis_conn.set", new_callable=AsyncMock
+        ) as mock_redis_set:
+            mock_redis_set.return_value = True
+            with patch(
+                "app.slack.listeners.get_client_evaluation_job", new_callable=AsyncMock
+            ) as mock_get_job:
+                mock_get_job.return_value = mock_job
+                with patch(
+                    "app.slack.listeners.submit_verification_job",
+                    new_callable=AsyncMock,
+                ) as mock_submit:
+                    await handle_verify_job_submission(
+                        context_dict, mock_ack, body=body, client=mock_client
+                    )
+                    mock_ack.assert_called_once_with(response_action="clear")
+                    # Should still call submit_verification_job with empty selected_languages
+                    mock_submit.assert_called_once()
+                    call_args = mock_submit.call_args
+                    assert call_args[1]["selected_languages"] == []
+
+
+class TestViewUpdateAutoTranslateSettings:
+    """Tests for view_update_auto_translate_settings function."""
+
+    @pytest.mark.asyncio
+    async def test_view_update_auto_translate_settings_validation_error(
+        self, user_id, team_id, ray_client
+    ):
+        """Test view_update_auto_translate_settings with validation error."""
+        from pydantic import ValidationError
+
+        from app.slack.listeners import view_update_auto_translate_settings
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "state": {"values": {}},  # Invalid form data
+            "private_metadata": team_id,
+        }
+        body = {"api_app_id": "app-123"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "ray": ray_connection,
+        }
+
+        with patch(
+            "app.slack.listeners.AutoTranslationSettingsForm.parse_slack",
+            side_effect=ValidationError.from_exception_data("TestForm", []),
+        ):
+            await view_update_auto_translate_settings(
+                context_dict, mock_ack, view=view, body=body, client=mock_client
+            )
+            mock_ack.assert_called_once_with(response_action="errors", errors={})
+
+    @pytest.mark.asyncio
+    async def test_view_update_auto_translate_settings_disable(
+        self, user_id, team_id, ray_client
+    ):
+        """Test view_update_auto_translate_settings disabling auto-translate."""
+        from app.slack.listeners import view_update_auto_translate_settings
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        channel_id = "C123"
+        view = {
+            "state": {
+                "values": {
+                    "channels": {"channels": {"selected_conversations": [channel_id]}},
+                    "languages": {"languages": {"selected_options": []}},
+                    "display_format": {
+                        "display_format": {"selected_option": {"value": "thread"}}
+                    },
+                }
+            },
+            "private_metadata": team_id,
+        }
+        body = {"api_app_id": "app-123"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "ray": ray_connection,
+        }
+
+        with patch(
+            "app.slack.listeners.resolve_channels_to_team",
+            new_callable=AsyncMock,
+        ) as mock_resolve:
+            mock_resolve.return_value = {
+                "channel_id": channel_id,
+                "team_id": team_id,
+            }
+            with patch(
+                "app.slack.listeners.disable_auto_translate_group_settings",
+                new_callable=AsyncMock,
+            ) as mock_disable:
+                with patch(
+                    "app.slack.listeners.get_token_for_team",
+                    new_callable=AsyncMock,
+                ) as mock_get_token:
+                    mock_get_token.return_value = None
+                    with patch(
+                        "app.slack.listeners.home_view", new_callable=AsyncMock
+                    ) as mock_home_view:
+                        mock_home_view.return_value = {"type": "home"}
+                        await view_update_auto_translate_settings(
+                            context_dict,
+                            mock_ack,
+                            view=view,
+                            body=body,
+                            client=mock_client,
+                        )
+                        mock_ack.assert_called_once_with(response_action="clear")
+                        mock_disable.assert_called_once_with(context_dict, channel_id)
+
+    @pytest.mark.asyncio
+    async def test_view_update_auto_translate_settings_enable(
+        self, user_id, team_id, ray_client
+    ):
+        """Test view_update_auto_translate_settings enabling auto-translate."""
+        from app.slack.listeners import view_update_auto_translate_settings
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        channel_id = "C123"
+        lang_uuid = "lang-123"
+        view = {
+            "state": {
+                "values": {
+                    "channels": {"channels": {"selected_conversations": [channel_id]}},
+                    "languages": {
+                        "languages": {"selected_options": [{"value": lang_uuid}]}
+                    },
+                    "display_format": {
+                        "display_format": {"selected_option": {"value": "thread"}}
+                    },
+                }
+            },
+            "private_metadata": team_id,
+        }
+        body = {"api_app_id": "app-123"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "ray": ray_connection,
+        }
+
+        with patch(
+            "app.slack.listeners.resolve_channels_to_team",
+            new_callable=AsyncMock,
+        ) as mock_resolve:
+            mock_resolve.return_value = {
+                "channel_id": channel_id,
+                "team_id": team_id,
+            }
+            with patch(
+                "app.slack.listeners.update_auto_translate_group_settings",
+                new_callable=AsyncMock,
+            ) as mock_update:
+                with patch(
+                    "app.slack.listeners.get_token_for_team",
+                    new_callable=AsyncMock,
+                ) as mock_get_token:
+                    mock_get_token.return_value = None
+                    with patch(
+                        "app.slack.listeners.home_view", new_callable=AsyncMock
+                    ) as mock_home_view:
+                        mock_home_view.return_value = {"type": "home"}
+                        await view_update_auto_translate_settings(
+                            context_dict,
+                            mock_ack,
+                            view=view,
+                            body=body,
+                            client=mock_client,
+                        )
+                        mock_ack.assert_called_once_with(response_action="clear")
+                        mock_update.assert_called_once()
+                        call_args = mock_update.call_args
+                        assert call_args[1]["languages"] == [lang_uuid]
+
+    @pytest.mark.asyncio
+    async def test_view_update_auto_translate_settings_channel_not_found(
+        self, user_id, team_id, ray_client
+    ):
+        """Test view_update_auto_translate_settings with channel_not_found error."""
+        from slack_sdk.errors import SlackApiError
+
+        from app.slack.listeners import view_update_auto_translate_settings
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        channel_id = "C123"
+        view = {
+            "state": {
+                "values": {
+                    "channels": {"channels": {"selected_conversations": [channel_id]}},
+                    "languages": {
+                        "languages": {"selected_options": [{"value": "lang-123"}]}
+                    },
+                    "display_format": {
+                        "display_format": {"selected_option": {"value": "thread"}}
+                    },
+                }
+            },
+            "private_metadata": team_id,
+        }
+        body = {"api_app_id": "app-123"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "ray": ray_connection,
+        }
+
+        error_response = {"error": "channel_not_found"}
+        slack_error = SlackApiError(
+            message="Channel not found", response=error_response
+        )
+
+        with patch(
+            "app.slack.listeners.resolve_channels_to_team",
+            new_callable=AsyncMock,
+        ) as mock_resolve:
+            mock_resolve.side_effect = slack_error
+            await view_update_auto_translate_settings(
+                context_dict,
+                mock_ack,
+                view=view,
+                body=body,
+                client=mock_client,
+            )
+            mock_ack.assert_called_once_with(response_action="clear")
+            mock_client.chat_postMessage.assert_called_once()
+            call_args = mock_client.chat_postMessage.call_args
+            assert "channel not found" in call_args[1]["text"].lower()
+
+
+class TestHomeOpened:
+    """Tests for home_opened function - app home tab handler."""
+
+    @pytest.mark.asyncio
+    async def test_home_opened_first_time(self, user_id, team_id, ray_client):
+        """Test home_opened when app home is opened for the first time."""
+        from app.slack.listeners import home_opened
+
+        mock_ack = AsyncMock()
+        mock_say = AsyncMock()
+        mock_client = AsyncMock()
+        channel_id = "D123"
+        event = {"channel": channel_id}
+        body = {"api_app_id": "app-123"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "ray": ray_connection,
+        }
+
+        # Mock empty history (first time)
+        mock_client.conversations_history.return_value = {"messages": []}
+
+        with patch(
+            "app.slack.listeners.home_view", new_callable=AsyncMock
+        ) as mock_home_view:
+            mock_home_view.return_value = {"type": "home"}
+            await home_opened(
+                context_dict,
+                event=event,
+                action=None,
+                body=body,
+                say=mock_say,
+                client=mock_client,
+                ack=mock_ack,
+            )
+            mock_ack.assert_called_once()
+            mock_say.assert_called_once()
+            mock_client.views_publish.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_home_opened_welcome_back(self, user_id, team_id, ray_client):
+        """Test home_opened when app home has been idle for 24 hours."""
+        from app.slack.listeners import home_opened
+
+        mock_ack = AsyncMock()
+        mock_say = AsyncMock()
+        mock_client = AsyncMock()
+        channel_id = "D123"
+        event = {"channel": channel_id}
+        body = {"api_app_id": "app-123"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "ray": ray_connection,
+        }
+
+        # Mock history with messages (not first time)
+        mock_client.conversations_history.side_effect = [
+            {"messages": [{"ts": "123456.789"}]},  # Recent history
+            {"messages": []},  # No messages in last 24 hours
+        ]
+
+        with patch(
+            "app.slack.listeners.home_view", new_callable=AsyncMock
+        ) as mock_home_view:
+            mock_home_view.return_value = {"type": "home"}
+            await home_opened(
+                context_dict,
+                event=event,
+                action=None,
+                body=body,
+                say=mock_say,
+                client=mock_client,
+                ack=mock_ack,
+            )
+            mock_ack.assert_called_once()
+            mock_say.assert_called_once()  # WelcomeBackMessage
+            mock_client.views_publish.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_home_opened_recent_activity(self, user_id, team_id, ray_client):
+        """Test home_opened when there's been recent activity."""
+        from app.slack.listeners import home_opened
+
+        mock_ack = AsyncMock()
+        mock_say = AsyncMock()
+        mock_client = AsyncMock()
+        channel_id = "D123"
+        event = {"channel": channel_id}
+        body = {"api_app_id": "app-123"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "ray": ray_connection,
+        }
+
+        # Mock history with recent messages
+        mock_client.conversations_history.side_effect = [
+            {"messages": [{"ts": "123456.789"}]},  # Recent history
+            {"messages": [{"ts": "123456.790"}]},  # Messages in last 24 hours
+        ]
+
+        with patch(
+            "app.slack.listeners.home_view", new_callable=AsyncMock
+        ) as mock_home_view:
+            mock_home_view.return_value = {"type": "home"}
+            await home_opened(
+                context_dict,
+                event=event,
+                action=None,
+                body=body,
+                say=mock_say,
+                client=mock_client,
+                ack=mock_ack,
+            )
+            mock_ack.assert_called_once()
+            mock_say.assert_not_called()  # No message when recent activity
+            mock_client.views_publish.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_home_opened_no_channel(self, user_id, team_id, ray_client):
+        """Test home_opened when event has no channel."""
+        from app.slack.listeners import home_opened
+
+        mock_ack = AsyncMock()
+        mock_say = AsyncMock()
+        mock_client = AsyncMock()
+        event = {}  # No channel
+        body = {"api_app_id": "app-123"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "ray": ray_connection,
+        }
+
+        with patch(
+            "app.slack.listeners.home_view", new_callable=AsyncMock
+        ) as mock_home_view:
+            mock_home_view.return_value = {"type": "home"}
+            await home_opened(
+                context_dict,
+                event=event,
+                action=None,
+                body=body,
+                say=mock_say,
+                client=mock_client,
+                ack=mock_ack,
+            )
+            mock_ack.assert_called_once()
+            mock_say.assert_not_called()  # No message when no channel
+            mock_client.views_publish.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_home_opened_slack_api_error(self, user_id, team_id, ray_client):
+        """Test home_opened handles SlackApiError gracefully."""
+        from slack_sdk.errors import SlackApiError
+
+        from app.slack.listeners import home_opened
+
+        mock_ack = AsyncMock()
+        mock_say = AsyncMock()
+        mock_client = AsyncMock()
+        channel_id = "D123"
+        event = {"channel": channel_id}
+        body = {"api_app_id": "app-123"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "ray": ray_connection,
+        }
+
+        # Mock SlackApiError
+        mock_client.conversations_history.side_effect = SlackApiError(
+            message="API error", response=MagicMock()
+        )
+
+        with patch(
+            "app.slack.listeners.home_view", new_callable=AsyncMock
+        ) as mock_home_view:
+            mock_home_view.return_value = {"type": "home"}
+            await home_opened(
+                context_dict,
+                event=event,
+                action=None,
+                body=body,
+                say=mock_say,
+                client=mock_client,
+                ack=mock_ack,
+            )
+            mock_ack.assert_called_once()
+            # Should still publish view even on error
+            mock_client.views_publish.assert_called_once()

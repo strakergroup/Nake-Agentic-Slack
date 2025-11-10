@@ -1,7 +1,3 @@
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
 from app.slack.templates.views import (
     calculate_total_cost,
     cancel_job_modal,
