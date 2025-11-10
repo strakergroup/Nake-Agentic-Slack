@@ -2,13 +2,14 @@ import asyncio
 import json
 from typing import Any, Union
 
-from buglog import notify_exception
 from slack_bolt.context.respond.async_respond import AsyncRespond
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from slack_sdk.webhook import WebhookResponse
 from sqlalchemy import text
 from straker_utils.sql.async_engine import execute
+
+from app.slack.buglog_notifier import notify_exception
 
 from ...auth.connector import SlackUser
 from ...database import async_engines

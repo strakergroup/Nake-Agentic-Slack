@@ -8,10 +8,11 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import httpx
-from buglog import notify_exception
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
+
+from app.slack.buglog_notifier import notify_exception
 
 from ..redis import redis_conn
 from .select_options import map_file_options

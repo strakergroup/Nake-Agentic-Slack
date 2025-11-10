@@ -3,7 +3,6 @@ from typing import Any, Iterable
 from urllib.parse import urlencode
 
 import httpx
-from buglog import notify_exception
 from httpx import Response
 from ray_sdk import RayAPIResponseError, RayAuthError, RayResponse, RayV3
 from ray_sdk.api.v3.models import (
@@ -11,6 +10,8 @@ from ray_sdk.api.v3.models import (
     JobSummary,
     Pagination,
 )
+
+from app.slack.buglog_notifier import notify_exception
 
 from ..auth.connector import RayClient
 from ..config import Environment, config, domains

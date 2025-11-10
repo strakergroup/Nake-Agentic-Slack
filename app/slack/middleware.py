@@ -7,11 +7,11 @@ import logging
 import math
 from typing import Awaitable, Callable
 
-from buglog import notify_exception, notify_message
 from ray_logger.slack import SlackAppLog  # type: ignore
 from slack_bolt.context.async_context import AsyncBoltContext
 
 from app.ray.utils import is_ibm_enterprise, set_user_language
+from app.slack.buglog_notifier import notify_exception, notify_message
 
 from ..auth.connector import (
     RayConnection,

@@ -8,7 +8,6 @@ import re
 from typing import Any
 
 import httpx
-from buglog import notify_exception, notify_message
 from ray_sdk import RayResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.web.async_client import AsyncWebClient
@@ -24,6 +23,7 @@ from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.models import ASRTask, TranscriptionTaskData
 from app.mt.service import evaluate_get_glossary_resource, resolve_language
 from app.ray.events.models import MtFileRequestSchema
+from app.slack.buglog_notifier import notify_exception, notify_message
 from app.slack.utils import escape_slack_emoji
 from app.slack_job import create_slack_job
 from app.transcriber_tasks.tasks import create_asr_task

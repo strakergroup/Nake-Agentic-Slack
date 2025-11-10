@@ -11,9 +11,9 @@ import ffmpeg
 import httpx
 import requests
 from babel.numbers import format_currency as babel_format_currency
-from buglog import notify_exception
 
 from app.auth.connector import is_ibm_super_group
+from app.slack.buglog_notifier import notify_exception
 from app.translate import Translator, _, translator_var
 
 from ..config import domains

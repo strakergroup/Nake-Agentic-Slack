@@ -7,7 +7,6 @@ import sys
 import time
 from typing import Any, Callable, Coroutine
 
-from buglog import notify_exception
 from ray_logger.slack import SlackAppLog, SlackMySQLLogger
 from slack_bolt.request.payload_utils import (
     is_block_actions,
@@ -21,6 +20,7 @@ from slack_bolt.request.payload_utils import (
 )
 
 from app.auth.connector import RayContext
+from app.slack.buglog_notifier import notify_exception
 
 from ..database import engines
 

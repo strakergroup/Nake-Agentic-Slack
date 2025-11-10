@@ -1,12 +1,12 @@
 from contextlib import asynccontextmanager
 
 import buglog
-from buglog import notify_exception
 from elasticapm.contrib.starlette import ElasticAPM, make_apm_client
 from fastapi import FastAPI
 
 from .config import Environment, config, domains
 from .routers import health, ray, slack
+from .slack.buglog_notifier import notify_exception
 from .slack.select_options import (
     initialize_languages_cache,
 )
