@@ -463,12 +463,15 @@ async def auto_translate_message(
             org_uuid, context["ray"].client, source_lang, target_langs[0], "google"
         )
         service_language_mapping = create_service_language_mapping(target_langs)
+        assert context.team_id is not None
         await send_mt_translation_request(
             [escape_slack_emoji(text)],
             service_language_mapping,
             source_lang,
             MtTranslationExtraData(
                 client_id=client_id,
+                team_id=context.team_id,
+                slack_user_id=context.user_id,
                 service_language_mapping=service_language_mapping,
                 source_language=detected_source_lang_response.language,
                 organization_uuid=org_uuid,
@@ -477,7 +480,7 @@ async def auto_translate_message(
                 usage_type="channel_translation",
                 source_text=text,
                 response_url=context.response_url,
-                thread_ts=context.thread_ts,
+                thread_ts=thread_ts,
                 is_edit=is_edit,
                 display_format=display_format,
                 message_ts=ts,
@@ -1707,12 +1710,14 @@ async def get_mt_translation(
             target_lang,
             "google",
         )
+        assert context.team_id is not None
         extra_data = MtTranslationExtraData(
             client_id=client_id,
             service_language_mapping=service_language_mapping,
             source_language=source_lang,
             organization_uuid=context.ray.super_group[0].verify_organization_uuid,
             channel_id=channel_id,
+            team_id=context.team_id,
             text_length=len(sentence),
             usage_type=usage_type,
             source_text=sentence,

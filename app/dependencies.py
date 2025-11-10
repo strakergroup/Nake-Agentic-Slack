@@ -49,11 +49,13 @@ class RayEventAuth:
         if "extra_data" in event.data:
             if "client_id" in event.data["extra_data"]:
                 self.slack_user = await get_slack_user(
-                    event.data["extra_data"]["client_id"]
+                    event.data["extra_data"]["client_id"],
+                    event.data["extra_data"]["team_id"],
                 )
                 if not self.slack_user:
                     self.slack_user = await get_slack_org(
-                        event.data["extra_data"]["client_id"]
+                        event.data["extra_data"]["client_id"],
+                        event.data["extra_data"]["team_id"],
                     )
                     if self.slack_user:
                         self.slack_user.user_id = event.data["extra_data"][

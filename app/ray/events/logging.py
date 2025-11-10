@@ -200,7 +200,7 @@ async def post_channel_translation_notification(
 
     # Determine thread behavior based on display_format
     use_thread = False
-    if display_format == "thread":
+    if display_format == "thread" or thread_ts:
         use_thread = True
     elif display_format == "message":
         use_thread = False  # Messages are posted as standalone messages, not in threads
