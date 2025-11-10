@@ -251,21 +251,21 @@ async def respond_to_message(
     )
 
     if message_match:
-        # if await require_ray_client(context):
-        mt_sl = message_match.group(1) or ""
-        if not mt_sl:
-            mt_sl = await detect_language(context, message["text"])
-            mt_sl = mt_sl.language
-        mt_tl = message_match.group(2) or context.get("locale") or "en"
-        mt_text = message_match.group(3)
-        await get_mt_translation(
-            client,
-            context,
-            source_lang=mt_sl,
-            target_lang=mt_tl,
-            sentence=mt_text,
-            thread_ts=thread_ts,
-        )
+        if await require_ray_client(context):
+            mt_sl = message_match.group(1) or ""
+            if not mt_sl:
+                mt_sl = await detect_language(context, message["text"])
+                mt_sl = mt_sl.language
+            mt_tl = message_match.group(2) or context.get("locale") or "en"
+            mt_text = message_match.group(3)
+            await get_mt_translation(
+                client,
+                context,
+                source_lang=mt_sl,
+                target_lang=mt_tl,
+                sentence=mt_text,
+                thread_ts=thread_ts,
+            )
         return
     if message["text"] == "debug":
         # retrieve workspace name based on bot token
