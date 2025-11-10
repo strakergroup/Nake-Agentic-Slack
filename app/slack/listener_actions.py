@@ -1738,14 +1738,14 @@ async def get_mt_translation(
 
     except Exception as e:
         notify_exception(e, "Failed to get machine translation")
-        error_msg = InvalidMTResultMessage()
+        error_msg_obj = InvalidMTResultMessage()
         if context.response_url and context.respond:
-            return await context.respond(text=error_msg.text)
+            return await context.respond(text=error_msg_obj.text)
         else:
             if channel_id:
                 return await client.chat_postMessage(
                     channel=channel_id,
-                    text=error_msg.text,
+                    text=error_msg_obj.text,
                     thread_ts=thread_ts,
                 )
 

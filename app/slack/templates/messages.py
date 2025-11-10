@@ -3153,7 +3153,7 @@ class AutoTranslationMessage(SlackMessage):
         self.translations = translations
         assert self.source_text
         # TODO what happens when no translations?
-        super().__init__("", self.generate_blocks())
+        super().__init__("translation result", self.generate_blocks())
 
     def generate_blocks(self) -> list[dict[str, Any]]:
         blocks: list[dict[str, Any]] = []

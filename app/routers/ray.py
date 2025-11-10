@@ -239,7 +239,7 @@ async def ray_events(
 ):
     """Receives and responds to an event from the RAY platform."""
     client = None
-
+    user_info = None
     if auth.slack_user:
         client = AsyncWebClient(token=auth.slack_user.bot_token)
         try:
@@ -804,7 +804,9 @@ async def ray_events(
                             )
                         except Exception as e:
                             notify_exception(e, "Failed to get channel info")
-
+                user_email = (
+                    user_info["user"]["profile"]["email"] if user_info else None
+                )
                 await log_google_api_usage(
                     user_uuid=auth.slack_user.ray_client_id,
                     group_uuid=auth.slack_user.ray_user_group_id,
@@ -817,6 +819,7 @@ async def ray_events(
                     usage_type=extra_data.usage_type,
                     text_length=extra_data.text_length,
                     channel_name=channel_name,
+                    email=user_email,
                 )
             except Exception as e:
                 raise HTTPException(
