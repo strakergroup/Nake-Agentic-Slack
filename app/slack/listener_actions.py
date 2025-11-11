@@ -96,7 +96,7 @@ def create_service_language_mapping(target_langs: list[str]) -> dict[str, list[s
         if target_lang.lower() in ["fr-ca", "french-canada", "french-canadian"]:
             if "microsoft" not in service_language_mapping:
                 service_language_mapping["microsoft"] = []
-            service_language_mapping["microsoft"].append(target_lang)
+            service_language_mapping["microsoft"].append("fr-ca")
         else:
             if "google" not in service_language_mapping:
                 service_language_mapping["google"] = []
