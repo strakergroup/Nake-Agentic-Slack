@@ -11,8 +11,6 @@ from typing import Any
 from buglog import notify_exception as buglog_notify_exception
 from buglog import notify_message as buglog_notify_message
 from slack_sdk.models.blocks import (
-    ActionsBlock,
-    ButtonElement,
     HeaderBlock,
     MarkdownTextObject,
     PlainTextObject,
@@ -38,7 +36,7 @@ async def _send_to_slack(
         severity: Severity level (ERROR, INFO, FATAL)
     """
     # Import config here to avoid circular imports
-    from app.config import Environment, config, domains
+    from app.config import Environment, config
 
     try:
         token = config.slack_dev_alert_bot_token.get_secret_value()
@@ -56,9 +54,6 @@ async def _send_to_slack(
             if config.environment != Environment.production
             else ""
         )
-
-        # Create BugLogHQ link
-        buglog_url = f"{domains.buglog}/bugLog/"
 
         # Format exception information if present
         if exc is not None:
@@ -131,20 +126,6 @@ async def _send_to_slack(
                     text=MarkdownTextObject(text=f"*Extra Info:*\n{extra_text}")
                 )
             )
-
-        # Add BugLogHQ link button
-        blocks.append(
-            ActionsBlock(
-                elements=[
-                    ButtonElement(
-                        text=PlainTextObject(text="View in BugLogHQ", emoji=True),
-                        url=buglog_url,
-                        action_id="view_buglog",
-                        style="primary",
-                    )
-                ]
-            )
-        )
 
         # Create Slack client and send message
         slack_client = AsyncWebClient(token=token)
