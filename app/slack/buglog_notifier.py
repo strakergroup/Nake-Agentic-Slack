@@ -219,8 +219,10 @@ def notify_exception(
     # Send to BugLogHQ first
     result = buglog_notify_exception(exc, msg, extra, severity)
 
-    # Also send to Slack (async, fire-and-forget)
-    if exc is not None or msg is not None:
+    # Also send to Slack (async, fire-and-forget) - only for ERROR, FATAL, or WARNING
+    if severity.upper() in ("ERROR", "FATAL", "WARNING") and (
+        exc is not None or msg is not None
+    ):
         _schedule_slack_notification(exc, msg, extra, severity)
 
     return result
@@ -247,8 +249,8 @@ def notify_message(
     # Send to BugLogHQ first
     result = buglog_notify_message(msg, extra, severity)
 
-    # Also send to Slack (async, fire-and-forget)
-    if msg:
+    # Also send to Slack (async, fire-and-forget) - only for ERROR, FATAL, or WARNING
+    if severity.upper() in ("ERROR", "FATAL", "WARNING") and msg:
         _schedule_slack_notification(None, msg, extra, severity)
 
     return result

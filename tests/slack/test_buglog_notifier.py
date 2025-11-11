@@ -270,13 +270,13 @@ class TestNotifyMessage:
     @patch("app.slack.buglog_notifier.buglog_notify_message")
     @patch("app.slack.buglog_notifier._schedule_slack_notification")
     def test_notify_message_schedules_slack(self, mock_schedule, mock_buglog_notify):
-        """Test that notify_message schedules Slack notification."""
+        """Test that notify_message schedules Slack notification for ERROR severity."""
         mock_buglog_notify.return_value = True
 
-        notify_message("Test message", {"key": "value"}, "INFO")
+        notify_message("Test message", {"key": "value"}, "ERROR")
 
         mock_schedule.assert_called_once_with(
-            None, "Test message", {"key": "value"}, "INFO"
+            None, "Test message", {"key": "value"}, "ERROR"
         )
 
     @patch("app.slack.buglog_notifier.buglog_notify_message")
@@ -294,10 +294,114 @@ class TestNotifyMessage:
     @patch("app.slack.buglog_notifier.buglog_notify_message")
     @patch("app.slack.buglog_notifier._schedule_slack_notification")
     def test_notify_message_default_severity(self, mock_schedule, mock_buglog_notify):
-        """Test notify_message uses INFO as default severity."""
+        """Test notify_message uses INFO as default severity and skips Slack."""
         mock_buglog_notify.return_value = True
 
         notify_message("Test message")
 
         mock_buglog_notify.assert_called_once_with("Test message", None, "INFO")
-        mock_schedule.assert_called_once_with(None, "Test message", None, "INFO")
+        # Should NOT schedule Slack notification for INFO severity
+        mock_schedule.assert_not_called()
+
+    @patch("app.slack.buglog_notifier.buglog_notify_message")
+    @patch("app.slack.buglog_notifier._schedule_slack_notification")
+    def test_notify_message_info_severity_skips_slack(
+        self, mock_schedule, mock_buglog_notify
+    ):
+        """Test that INFO severity messages don't send to Slack."""
+        mock_buglog_notify.return_value = True
+
+        notify_message("Test message", severity="INFO")
+
+        mock_buglog_notify.assert_called_once()
+        # Should NOT schedule Slack notification for INFO severity
+        mock_schedule.assert_not_called()
+
+    @patch("app.slack.buglog_notifier.buglog_notify_message")
+    @patch("app.slack.buglog_notifier._schedule_slack_notification")
+    def test_notify_message_error_severity_sends_to_slack(
+        self, mock_schedule, mock_buglog_notify
+    ):
+        """Test that ERROR severity messages DO send to Slack."""
+        mock_buglog_notify.return_value = True
+
+        notify_message("Test error message", severity="ERROR")
+
+        mock_buglog_notify.assert_called_once()
+        # Should schedule Slack notification for ERROR severity
+        mock_schedule.assert_called_once_with(None, "Test error message", None, "ERROR")
+
+    @patch("app.slack.buglog_notifier.buglog_notify_message")
+    @patch("app.slack.buglog_notifier._schedule_slack_notification")
+    def test_notify_message_warning_severity_sends_to_slack(
+        self, mock_schedule, mock_buglog_notify
+    ):
+        """Test that WARNING severity messages DO send to Slack."""
+        mock_buglog_notify.return_value = True
+
+        notify_message("Test warning message", severity="WARNING")
+
+        mock_buglog_notify.assert_called_once()
+        # Should schedule Slack notification for WARNING severity
+        mock_schedule.assert_called_once_with(
+            None, "Test warning message", None, "WARNING"
+        )
+
+    @patch("app.slack.buglog_notifier.buglog_notify_message")
+    @patch("app.slack.buglog_notifier._schedule_slack_notification")
+    def test_notify_message_fatal_severity_sends_to_slack(
+        self, mock_schedule, mock_buglog_notify
+    ):
+        """Test that FATAL severity messages DO send to Slack."""
+        mock_buglog_notify.return_value = True
+
+        notify_message("Test fatal message", severity="FATAL")
+
+        mock_buglog_notify.assert_called_once()
+        # Should schedule Slack notification for FATAL severity
+        mock_schedule.assert_called_once_with(None, "Test fatal message", None, "FATAL")
+
+    @patch("app.slack.buglog_notifier.buglog_notify_exception")
+    @patch("app.slack.buglog_notifier._schedule_slack_notification")
+    def test_notify_exception_info_severity_skips_slack(
+        self, mock_schedule, mock_buglog_notify
+    ):
+        """Test that INFO severity exceptions don't send to Slack."""
+        mock_buglog_notify.return_value = True
+        exc = ValueError("Test error")
+
+        notify_exception(exc, severity="INFO")
+
+        mock_buglog_notify.assert_called_once()
+        # Should NOT schedule Slack notification for INFO severity
+        mock_schedule.assert_not_called()
+
+    @patch("app.slack.buglog_notifier.buglog_notify_exception")
+    @patch("app.slack.buglog_notifier._schedule_slack_notification")
+    def test_notify_exception_warning_severity_sends_to_slack(
+        self, mock_schedule, mock_buglog_notify
+    ):
+        """Test that WARNING severity exceptions DO send to Slack."""
+        mock_buglog_notify.return_value = True
+        exc = ValueError("Test error")
+
+        notify_exception(exc, severity="WARNING")
+
+        mock_buglog_notify.assert_called_once()
+        # Should schedule Slack notification for WARNING severity
+        mock_schedule.assert_called_once_with(exc, None, None, "WARNING")
+
+    @patch("app.slack.buglog_notifier.buglog_notify_exception")
+    @patch("app.slack.buglog_notifier._schedule_slack_notification")
+    def test_notify_exception_fatal_severity_sends_to_slack(
+        self, mock_schedule, mock_buglog_notify
+    ):
+        """Test that FATAL severity exceptions DO send to Slack."""
+        mock_buglog_notify.return_value = True
+        exc = ValueError("Test error")
+
+        notify_exception(exc, severity="FATAL")
+
+        mock_buglog_notify.assert_called_once()
+        # Should schedule Slack notification for FATAL severity
+        mock_schedule.assert_called_once_with(exc, None, None, "FATAL")
