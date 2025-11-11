@@ -101,7 +101,7 @@ def create_service_language_mapping(
         if target_lang.lower() in ["fr-ca", "french-canada", "french-canadian"]:
             if "microsoft" not in service_language_mapping:
                 service_language_mapping["microsoft"] = {}
-            service_language_mapping["microsoft"][target_lang] = glossary_id
+            service_language_mapping["microsoft"]["fr-ca"] = glossary_id
         else:
             if "google" not in service_language_mapping:
                 service_language_mapping["google"] = {}
@@ -467,11 +467,13 @@ async def auto_translate_message(
         # Get glossary_id for each target language
         glossary_ids: dict[str, str] = {}
         for target_lang in target_langs:
-            engine = (
-                "microsoft"
-                if target_lang.lower() in ["fr-ca", "french-canada", "french-canadian"]
-                else "google"
-            )
+            is_fr_ca = target_lang.lower() in [
+                "fr-ca",
+                "french-canada",
+                "french-canadian",
+            ]
+            target_lang = "fr-ca" if is_fr_ca else target_lang
+            engine = "microsoft" if is_fr_ca else "google"
             glossary_id = await evaluate_get_glossary_resource(
                 org_uuid, context["ray"].client, source_lang, target_lang, engine
             )
