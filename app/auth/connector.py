@@ -1499,7 +1499,7 @@ async def get_client_tokens(languagecloud_api_key: str):
         "Authorization": f"Bearer {languagecloud_api_key}",
     }
     try:
-        async with httpx.AsyncClient() as http:
+        async with httpx.AsyncClient(timeout=30.0) as http:
             response = await http.get(url, headers=headers)
             response.raise_for_status()
             data = response.json()
