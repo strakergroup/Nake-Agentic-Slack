@@ -3646,7 +3646,7 @@ class EvaluateErrorMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            ":alert_triangle: Quality Evaluation failed for this submission. Please review the details and re-run the evaluation once the issues are resolved."
+                            "Oops! The system is having technical issues right now. Our team is on it and working to get everything back up and running. Please check back shortly. Thanks for your patience!"
                         ),
                     },
                 }
