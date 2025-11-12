@@ -13,7 +13,6 @@ from urllib.parse import urlencode
 from uuid import uuid4
 
 import httpx
-from buglog import notify_exception
 from ray_logger.slack import SlackAppLog
 from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.errors import SlackApiError
@@ -868,6 +867,8 @@ async def connect_ray_account(
             await http.post(url)
         return "success"
     except Exception as e:
+        from app.slack.buglog_notifier import notify_exception
+
         notify_exception(e)
         return "failed"
 
@@ -1498,17 +1499,34 @@ async def get_client_tokens(languagecloud_api_key: str):
     headers = {
         "Authorization": f"Bearer {languagecloud_api_key}",
     }
-    try:
-        async with httpx.AsyncClient() as http:
-            response = await http.get(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-            return GetCreditBalanceResponse(
-                ai_token=data["ai_token"], mt_token=data["mt_token"]
-            )
-    except Exception as e:
-        notify_exception(e)
-        return GetCreditBalanceResponse(0, 0)
+    max_retries = 3
+    base_delay = 1.0  # Start with 1 second delay
+
+    for attempt in range(max_retries + 1):
+        try:
+            # Initial timeout is 5 seconds, increase to 30 seconds on retries
+            timeout = 5.0 if attempt == 0 else 30.0
+            async with httpx.AsyncClient(timeout=timeout) as http:
+                response = await http.get(url, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                return GetCreditBalanceResponse(
+                    ai_token=data["ai_token"], mt_token=data["mt_token"]
+                )
+        except httpx.ReadTimeout as e:
+            # Only retry on read timeout errors
+            if attempt < max_retries:
+                # Calculate exponential backoff: base_delay * (2 ^ attempt)
+                delay = base_delay * (2**attempt)
+                await asyncio.sleep(delay)
+                continue
+            # Last attempt failed, log and return default
+            notify_exception(e)
+            return GetCreditBalanceResponse(0, 0)
+        except Exception as e:
+            # For all other exceptions, log and return default immediately
+            notify_exception(e)
+            return GetCreditBalanceResponse(0, 0)
 
 
 async def get_group_tokens(org_uuid: str):

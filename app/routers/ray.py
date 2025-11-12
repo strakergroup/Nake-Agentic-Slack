@@ -2,7 +2,6 @@ import asyncio
 from dataclasses import replace
 from typing import Annotated, Any, Optional, Union
 
-from buglog import notify_exception, notify_message
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ValidationError
 from slack_sdk.errors import SlackApiError
@@ -24,6 +23,7 @@ from app.ray.utils import (
     is_ibm_enterprise,
     set_user_language,
 )
+from app.slack.buglog_notifier import notify_exception, notify_message
 from app.slack.select_options import _get_languages_cached
 from app.slack_job import update_slack_job
 from app.translate import _
@@ -240,6 +240,7 @@ async def ray_events(
     """Receives and responds to an event from the RAY platform."""
     client = None
     user_info = None
+    message: Optional[SlackMessage] = None
     if auth.slack_user:
         client = AsyncWebClient(token=auth.slack_user.bot_token)
         try:
@@ -374,39 +375,33 @@ async def ray_events(
                 )
                 # Do not send notification if quote is accepted or cancelled,
                 # send those notifications instead.
-                if (
-                    status_event.status in ("IN_PROGRESS", "CANCELLED")
-                    and status_event.previous_status == "LEAD"
+                if status_event.status in (
+                    "LEAD",
+                    "IN_PROGRESS",
+                    "VALIDATION",
+                    "REFUNDED",
                 ):
-                    message: Optional[SlackMessage] = None
-                else:
-                    if status_event.status in (
-                        "LEAD",
-                        "IN_PROGRESS",
-                        "VALIDATION",
-                        "REFUNDED",
-                    ):
-                        message: SlackMessage = JobStatusChangedEventMessage(
-                            client_id=status_event.client_id,
-                            job_uuid=status_event.uuid,
-                            job_id=status_event.id,
-                            status=status_event.status,
-                            is_ibm=is_ibm,
-                        )
-                    elif status_event.status == "COMPLETED":
-                        message: SlackMessage = JobCompletedEventMessage(
-                            client_id=status_event.client_id,
-                            job_uuid=status_event.uuid,
-                            job_id=status_event.id,
-                            target_languages=[lang.label for lang in status_event.tl],
-                            is_ibm=is_ibm,
-                        )
-                    elif status_event.status == "CANCELLED":
-                        message: SlackMessage = JobCancelledEventMessage(
-                            client_id=status_event.client_id,
-                            job_uuid=status_event.uuid,
-                            job_id=status_event.id,
-                        )
+                    message: SlackMessage = JobStatusChangedEventMessage(
+                        client_id=status_event.client_id,
+                        job_uuid=status_event.uuid,
+                        job_id=status_event.id,
+                        status=status_event.status,
+                        is_ibm=is_ibm,
+                    )
+                elif status_event.status == "COMPLETED":
+                    message: SlackMessage = JobCompletedEventMessage(
+                        client_id=status_event.client_id,
+                        job_uuid=status_event.uuid,
+                        job_id=status_event.id,
+                        target_languages=[lang.label for lang in status_event.tl],
+                        is_ibm=is_ibm,
+                    )
+                elif status_event.status == "CANCELLED":
+                    message: SlackMessage = JobCancelledEventMessage(
+                        client_id=status_event.client_id,
+                        job_uuid=status_event.uuid,
+                        job_id=status_event.id,
+                    )
 
                 # Send message if we have one and user is subscribed
                 if message is not None and auth.slack_user.is_subscribed:
@@ -685,9 +680,11 @@ async def ray_events(
                     # For direct translation, we need to get the first target language
                     # and combine all translations into a single string
                     first_target_lang = None
-                    for langs in extra_data.service_language_mapping.values():
-                        if langs:
-                            first_target_lang = langs[0]
+                    for (
+                        lang_glossary_map
+                    ) in extra_data.service_language_mapping.values():
+                        if lang_glossary_map:
+                            first_target_lang = next(iter(lang_glossary_map.keys()))
                             break
 
                     # Combine all translations into a single string
@@ -765,7 +762,8 @@ async def ray_events(
                     )
                 # Calculate total languages across all services
                 total_languages = sum(
-                    len(langs) for langs in extra_data.service_language_mapping.values()
+                    len(lang_glossary_map)
+                    for lang_glossary_map in extra_data.service_language_mapping.values()
                 )
                 amount = calculate_cost(extra_data.text_length * total_languages)
                 assert auth.slack_user.ray_user_group_id is not None
@@ -791,6 +789,8 @@ async def ray_events(
                 if extra_data.channel_id:
                     if not extra_data.channel_id.startswith("C"):
                         channel_name = "direct message"
+                    elif extra_data.usage_type == "shortcut_translate":
+                        channel_name = "shortcut translation"
                     else:
                         try:
                             channel_info = await client.conversations_info(

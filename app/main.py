@@ -1,14 +1,15 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from elasticapm.contrib.starlette import make_apm_client, ElasticAPM
+
 import buglog
+from elasticapm.contrib.starlette import ElasticAPM, make_apm_client
+from fastapi import FastAPI
 
 from .config import Environment, config, domains
-from .routers import slack, ray, health
+from .routers import health, ray, slack
+from .slack.buglog_notifier import notify_exception
 from .slack.select_options import (
     initialize_languages_cache,
 )
-
 
 # Configure BugLog
 buglog.init(
@@ -29,7 +30,7 @@ async def lifespan(app: FastAPI):
     try:
         await initialize_languages_cache()
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
 
     yield
 
@@ -50,11 +51,27 @@ app.include_router(health.router, tags=["health"])
 
 
 @app.middleware("http")
+async def csp_middleware(request, call_next):
+    """Middleware to add Content Security Policy header to all responses."""
+    response = await call_next(request)
+    # Basic CSP policy: only allow resources from same origin, block inline scripts/styles
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+    return response
+
+
+@app.middleware("http")
 async def buglog_middleware(request, call_next):
     try:
         return await call_next(request)
     except Exception as e:
-        buglog.notify_exception(e)
+        notify_exception(e)
         raise
 
 

@@ -9,7 +9,8 @@ class TestRayService:
     def test_get_service(self):
         client_id = str(uuid.uuid4())
         api_token = str(uuid.uuid4())
-        ray_service = RayService.get_service(client_id, api_token)
+        id_token = str(uuid.uuid4())  # Add id_token parameter
+        ray_service = RayService.get_service(client_id, api_token, id_token)
         assert ray_service.ray_client_id == client_id
         assert ray_service.token == api_token
         assert ray_service._ray.base_url == domains.stingray

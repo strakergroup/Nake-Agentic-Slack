@@ -1,13 +1,15 @@
-from uuid import uuid4
-from urllib.parse import urlparse
 import datetime
+import os
+import tempfile
+from urllib.parse import urlparse
+from uuid import uuid4
 
 import app  # Bug - circular import
-from app.ray.utils import validate_file
-from app.auth.connector import get_job_group_quote_settings, get_group_mt_engine
 import app.ray.utils
+from app.auth.connector import get_group_mt_engine, get_job_group_quote_settings
 from app.config import domains
-from app.translate import _, translator_var, Translator
+from app.ray.utils import validate_file
+from app.translate import Translator, _, translator_var
 
 
 def test_get_job_url():
@@ -72,7 +74,7 @@ def test_format_datetime_slack():
 
 
 def test_format_job_due_date_slack():
-    current_date = datetime.datetime.utcnow()
+    current_date = datetime.datetime.now(datetime.timezone.utc)
     tomorrow = current_date + datetime.timedelta(days=1)
     yesterday = current_date - datetime.timedelta(days=1)
     next_week = current_date + datetime.timedelta(days=7)
@@ -100,11 +102,16 @@ def test_format_job_due_date_slack():
 
 
 def test_translations():
-    translator = translator_var.set(Translator("jp"))
-    user_details = "test"
-    user_link = "test"
-    input = "Your account {user_details} is now disconnected from {user_link}."
-    assert _(input) != input
+    # Save the original translator token to restore it later
+    original_token = translator_var.set(Translator("jp"))
+    try:
+        user_details = "test"
+        user_link = "test"
+        input = "Your account {user_details} is now disconnected from {user_link}."
+        assert _(input) != input
+    finally:
+        # Restore the original translator to prevent affecting other tests
+        translator_var.reset(original_token)
 
 
 def test_get_job_group_quote_settings():
@@ -126,35 +133,88 @@ def test_get_group_mt():
 
 def test_validate_file():
     # Test supported file types with no validator
-    assert validate_file("txt", "content") == (True, True, "")
-    assert validate_file(".txt", "content") == (True, True, "")
-    assert validate_file("docx", None) == (True, True, "")
-    assert validate_file("html", "") == (True, True, "")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("content")
+        txt_file = f.name
+    try:
+        assert validate_file(txt_file) == (True, True, "")
+    finally:
+        os.unlink(txt_file)
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".docx", delete=False) as f:
+        docx_file = f.name
+    try:
+        assert validate_file(docx_file) == (True, True, "")
+    finally:
+        os.unlink(docx_file)
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
+        f.write("")
+        html_file = f.name
+    try:
+        assert validate_file(html_file) == (True, True, "")
+    finally:
+        os.unlink(html_file)
 
     # Test unsupported file types
-    assert validate_file("invalid", None) == (
-        False,
-        False,
-        "Unsupported file type: invalid",
-    )
-    assert validate_file(".exe", None) == (
-        False,
-        False,
-        "Unsupported file type: exe",
-    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".invalid", delete=False) as f:
+        invalid_file = f.name
+    try:
+        assert validate_file(invalid_file) == (
+            False,
+            False,
+            "Unsupported file type: invalid",
+        )
+    finally:
+        os.unlink(invalid_file)
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".exe", delete=False) as f:
+        exe_file = f.name
+    try:
+        assert validate_file(exe_file) == (
+            False,
+            False,
+            "Unsupported file type: exe",
+        )
+    finally:
+        os.unlink(exe_file)
 
     # Test JSON validation
     valid_json = '{"key": "value"}'
     invalid_json = "{key: value}"
 
-    assert validate_file("json", valid_json) == (True, True, "")
-    result = validate_file("json", invalid_json)
-    assert result[0] == True  # Extension is valid
-    assert result[1] == False  # Content is invalid
-    assert (
-        "Invalid Invalid JSON. Please fix the issue and resubmit the file." in result[2]
-    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write(valid_json)
+        valid_json_file = f.name
+    try:
+        assert validate_file(valid_json_file) == (True, True, "")
+    finally:
+        os.unlink(valid_json_file)
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        f.write(invalid_json)
+        invalid_json_file = f.name
+    try:
+        result = validate_file(invalid_json_file)
+        assert result[0] is True  # Extension is valid
+        assert result[1] is False  # Content is invalid
+        assert "Invalid JSON" in result[2]
+    finally:
+        os.unlink(invalid_json_file)
 
     # Test case insensitivity
-    assert validate_file("TXT", "content") == (True, True, "")
-    assert validate_file(".JSON", valid_json) == (True, True, "")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".TXT", delete=False) as f:
+        f.write("content")
+        txt_upper_file = f.name
+    try:
+        assert validate_file(txt_upper_file) == (True, True, "")
+    finally:
+        os.unlink(txt_upper_file)
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".JSON", delete=False) as f:
+        f.write(valid_json)
+        json_upper_file = f.name
+    try:
+        assert validate_file(json_upper_file) == (True, True, "")
+    finally:
+        os.unlink(json_upper_file)

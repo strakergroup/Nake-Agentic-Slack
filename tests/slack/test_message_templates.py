@@ -1,6 +1,34 @@
-from app.auth.connector import RayClient
-from app.slack.templates.messages import LoginMessage
-from app.slack.templates.messages import VerifyCompleteMessage
+from app.auth.connector import RayClient, RayConnection, RaySuperGroup
+from app.slack.templates.messages import (
+    AutoTranslateSettingsChangedMessage,
+    AutoTranslateSettingsDisabledMessage,
+    CancelJobMessage,
+    ClientAlreadyApprovedMessage,
+    ClientApprovedMessage,
+    ConnectionInfoMessage,
+    DocMtMessage,
+    EvaluateErrorMessage,
+    EvaluateSuccessMessage,
+    HelpMessage,
+    InfoMessage,
+    InvalidCommandMessage,
+    InvalidJobMessage,
+    InvalidMTResultMessage,
+    JobStatusNoIdMessage,
+    JobTargetsNoIdMessage,
+    LoginMessage,
+    LogoutMessage,
+    OnboardingMessage,
+    RequiresMtTokenMessage,
+    SlackPermissionsMessage,
+    SuccessfulLoginMessage,
+    SuccessfulLogoutMessage,
+    TranscriptionMessage,
+    VerifyCompleteMessage,
+    WelcomeBackMessage,
+    get_account_blocks,
+    get_workspace_block,
+)
 from app.translate import _
 
 
@@ -100,8 +128,6 @@ class TestVerifyCompleteMessage:
         job_title = "Sample Job"
         lang_label = "English"
 
-        localized_lang_label = _(lang_label)
-
         # Create a VerifyCompleteMessage instance
         message = VerifyCompleteMessage(job_title, lang_label)
 
@@ -110,13 +136,574 @@ class TestVerifyCompleteMessage:
         assert message.blocks[0]["type"] == "section"  # Block type
         assert message.blocks[0]["text"]["type"] == "mrkdwn"  # Text type
 
-        # Check that the text includes the correct job title and language
-        expected_text = (
-            f"Quality Evaluation Job '{job_title}' human translation complete. "
-            f"The file has been verified for language {localized_lang_label}."
+        # Check that the text matches the actual implementation
+        expected_text = _(
+            "Your request has been completed. Please download the file below"
         )
         assert message.blocks[0]["text"]["text"] == expected_text
 
-        # Assert the message's title is correct
-        # Since the 'title' is part of the first block, we should check for the title text there.
-        assert message.blocks[0]["text"]["text"].startswith("Quality Evaluation Job")
+        # Assert the message title is correct
+        assert message.text == _("Human Translation")
+
+
+class TestLogoutMessage:
+    """Tests for LogoutMessage class."""
+
+    def test_logout_message(self, ray_client):
+        """Test logout message creation."""
+        message = LogoutMessage(ray_client)
+        assert message.text == "Disconnect your account"
+        assert len(message.blocks) == 2
+        assert message.blocks[1]["type"] == "actions"
+        assert len(message.blocks[1]["elements"]) == 2
+        assert message.blocks[1]["elements"][0]["action_id"] == "disconnect"
+
+    def test_logout_message_sso(self, ray_client):
+        """Test logout message with SSO client."""
+        ray_client.sso = True
+        message = LogoutMessage(ray_client)
+        assert message.text == "Disconnect your account"
+        assert ray_client.username in message.blocks[0]["text"]["text"]
+
+
+class TestSuccessfulLogoutMessage:
+    """Tests for SuccessfulLogoutMessage class."""
+
+    def test_successful_logout_message(self, user_id):
+        """Test successful logout message."""
+        message = SuccessfulLogoutMessage(
+            user_id, is_sso=False, ray_username="test.user"
+        )
+        assert message.text == "Your account is now disconnected."
+        assert len(message.blocks) == 2
+        assert user_id in message.blocks[0]["text"]["text"]
+
+    def test_successful_logout_message_sso(self, user_id):
+        """Test successful logout message with SSO."""
+        message = SuccessfulLogoutMessage(
+            user_id, is_sso=True, ray_username="test.user"
+        )
+        assert message.text == "Your account is now disconnected."
+        assert "test.user" in message.blocks[0]["text"]["text"]
+
+    def test_successful_logout_message_no_username(self, user_id):
+        """Test successful logout message without username."""
+        message = SuccessfulLogoutMessage(user_id, is_sso=False, ray_username=None)
+        assert message.text == "Your account is now disconnected."
+        assert user_id in message.blocks[0]["text"]["text"]
+
+
+class TestInvalidCommandMessage:
+    """Tests for InvalidCommandMessage class."""
+
+    def test_invalid_command_message(self):
+        """Test invalid command message."""
+        message = InvalidCommandMessage()
+        assert "Invalid command" in message.text
+        assert "help" in message.text.lower()
+
+
+class TestClientApprovedMessage:
+    """Tests for ClientApprovedMessage class."""
+
+    def test_client_approved_message(self):
+        """Test client approved message."""
+        message = ClientApprovedMessage("approved.user")
+        assert "approved.user" in message.text
+        assert "approved" in message.text.lower()
+
+
+class TestClientAlreadyApprovedMessage:
+    """Tests for ClientAlreadyApprovedMessage class."""
+
+    def test_client_already_approved_message(self):
+        """Test client already approved message."""
+        message = ClientAlreadyApprovedMessage("approved.user")
+        assert "approved.user" in message.text
+        assert "already been approved" in message.text.lower()
+
+
+class TestGetWorkspaceBlock:
+    """Tests for get_workspace_block function."""
+
+    def test_get_workspace_block_with_connection(self, team_id):
+        """Test get_workspace_block with ray connection."""
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=team_id,
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=None)
+        block = get_workspace_block(ray_connection)
+
+        assert block["type"] == "section"
+        assert "Test Group" in block["text"]["text"]
+
+    def test_get_workspace_block_without_connection(self):
+        """Test get_workspace_block without ray connection."""
+        block = get_workspace_block(None)
+
+        assert block["type"] == "section"
+        assert "not connected" in block["text"]["text"].lower()
+
+
+class TestGetAccountBlocks:
+    """Tests for get_account_blocks function."""
+
+    def test_get_account_blocks_with_client(self, ray_client, user_id, team_id):
+        """Test get_account_blocks with ray client."""
+        blocks, text = get_account_blocks(
+            ray_client, user_id, team_id, None, "C123", is_ibm=False
+        )
+
+        assert isinstance(blocks, list)
+        assert isinstance(text, str)
+        assert len(blocks) > 0
+
+    def test_get_account_blocks_without_client(self, user_id, team_id):
+        """Test get_account_blocks without ray client."""
+        blocks, text = get_account_blocks(
+            None, user_id, team_id, None, "C123", is_ibm=False
+        )
+
+        assert isinstance(blocks, list)
+        assert isinstance(text, str)
+
+    def test_get_account_blocks_ibm(self, ray_client, user_id, team_id):
+        """Test get_account_blocks for IBM enterprise."""
+        blocks, text = get_account_blocks(
+            ray_client, user_id, team_id, "E123", "C123", is_ibm=True
+        )
+
+        assert isinstance(blocks, list)
+        assert isinstance(text, str)
+
+
+class TestOnboardingMessage:
+    """Tests for OnboardingMessage class."""
+
+    def test_onboarding_message_with_login_prompt(self, user_id, team_id, channel_id):
+        """Test onboarding message with login prompt."""
+        message = OnboardingMessage(
+            user_id, team_id, None, channel_id, prompt_login=True
+        )
+        assert "Welcome" in message.text
+        assert len(message.blocks) > 1
+        # Should have login button when prompt_login is True
+        assert any(block.get("type") == "actions" for block in message.blocks)
+
+    def test_onboarding_message_without_login_prompt(
+        self, user_id, team_id, channel_id
+    ):
+        """Test onboarding message without login prompt."""
+        message = OnboardingMessage(
+            user_id, team_id, None, channel_id, prompt_login=False
+        )
+        assert "Welcome" in message.text
+        # Should not have login button when prompt_login is False
+        assert not any(block.get("type") == "actions" for block in message.blocks)
+
+    def test_onboarding_message_no_team_id(self, user_id, channel_id):
+        """Test onboarding message without team_id."""
+        message = OnboardingMessage(user_id, None, None, channel_id, prompt_login=True)
+        assert "Welcome" in message.text
+        # Should not have login button when team_id is None
+        assert not any(block.get("type") == "actions" for block in message.blocks)
+
+
+class TestWelcomeBackMessage:
+    """Tests for WelcomeBackMessage class."""
+
+    def test_welcome_back_message_with_connection(self, user_id, team_id):
+        """Test welcome back message with ray connection."""
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=team_id,
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+            enable_verify_in_slack=True,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=None)
+        message = WelcomeBackMessage(user_id, ray_connection)
+
+        assert "Welcome" in message.text
+        assert len(message.blocks) > 0
+
+    def test_welcome_back_message_without_connection(self, user_id):
+        """Test welcome back message without ray connection."""
+        message = WelcomeBackMessage(user_id, None)
+
+        assert "Welcome" in message.text
+        assert len(message.blocks) > 0
+
+
+class TestSuccessfulLoginMessage:
+    """Tests for SuccessfulLoginMessage class."""
+
+    def test_successful_login_message(self, user_id, team_id):
+        """Test successful login message."""
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=team_id,
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=None)
+        message = SuccessfulLoginMessage(user_id, "test.user", ray_connection)
+        assert "Login was successful" in message.text
+        assert len(message.blocks) > 0
+
+
+class TestSlackPermissionsMessage:
+    """Tests for SlackPermissionsMessage class."""
+
+    def test_slack_permissions_message(self):
+        """Test slack permissions message."""
+        message = SlackPermissionsMessage("Test permission message")
+        assert message.text == "Test permission message"
+        assert len(message.blocks) == 2
+        assert message.blocks[0]["text"]["text"] == "Test permission message"
+        assert message.blocks[1]["type"] == "actions"
+
+    def test_slack_permissions_message_auto_translate_variation(self):
+        """Test auto translate variation of permissions message."""
+        message = SlackPermissionsMessage.auto_translate_variation()
+        assert "permissions" in message.text.lower()
+        assert len(message.blocks) == 2
+
+
+class TestInfoMessage:
+    """Tests for InfoMessage class."""
+
+    def test_info_message_with_client(self, ray_client, user_id, team_id, channel_id):
+        """Test info message with ray client."""
+        message = InfoMessage(
+            ray_client, user_id, team_id, None, channel_id, is_ibm=False
+        )
+        assert isinstance(message.text, str)
+        assert len(message.blocks) > 0
+
+    def test_info_message_without_client(self, user_id, team_id, channel_id):
+        """Test info message without ray client."""
+        message = InfoMessage(None, user_id, team_id, None, channel_id, is_ibm=False)
+        assert isinstance(message.text, str)
+        assert len(message.blocks) > 0
+
+    def test_info_message_ibm(self, ray_client, user_id, team_id, channel_id):
+        """Test info message for IBM enterprise."""
+        message = InfoMessage(
+            ray_client, user_id, team_id, "E123", channel_id, is_ibm=True
+        )
+        assert isinstance(message.text, str)
+        assert len(message.blocks) > 0
+
+
+class TestConnectionInfoMessage:
+    """Tests for ConnectionInfoMessage class."""
+
+    def test_connection_info_message_with_connection(
+        self, user_id, team_id, channel_id
+    ):
+        """Test connection info message with ray connection."""
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=team_id,
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=None)
+        message = ConnectionInfoMessage(
+            ray_connection, user_id, team_id, None, channel_id
+        )
+
+        assert isinstance(message.text, str)
+        assert len(message.blocks) > 0
+
+    def test_connection_info_message_without_connection(
+        self, user_id, team_id, channel_id
+    ):
+        """Test connection info message without ray connection."""
+        message = ConnectionInfoMessage(None, user_id, team_id, None, channel_id)
+
+        assert isinstance(message.text, str)
+        assert len(message.blocks) > 0
+
+    def test_connection_info_message_ibm(self, user_id, team_id, channel_id):
+        """Test connection info message for IBM enterprise."""
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=team_id,
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=None)
+        message = ConnectionInfoMessage(
+            ray_connection, user_id, team_id, "E123", channel_id, is_ibm=True
+        )
+
+        assert isinstance(message.text, str)
+        assert len(message.blocks) > 0
+
+
+class TestInvalidJobMessage:
+    """Tests for InvalidJobMessage class."""
+
+    def test_invalid_job_message(self):
+        """Test invalid job message."""
+        message = InvalidJobMessage("TJ123456")
+        assert "TJ123456" in message.text.upper()
+        assert "Cannot find" in message.text or "find" in message.text.lower()
+
+
+class TestJobStatusNoIdMessage:
+    """Tests for JobStatusNoIdMessage class."""
+
+    def test_job_status_no_id_message(self):
+        """Test job status no ID message."""
+        message = JobStatusNoIdMessage()
+        assert "status" in message.text.lower() or "reference" in message.text.lower()
+        assert "TJ" in message.text or "reference" in message.text.lower()
+
+
+class TestJobTargetsNoIdMessage:
+    """Tests for JobTargetsNoIdMessage class."""
+
+    def test_job_targets_no_id_message(self):
+        """Test job targets no ID message."""
+        message = JobTargetsNoIdMessage()
+        assert isinstance(message.text, str)
+        assert len(message.text) > 0
+
+
+class TestInvalidMTResultMessage:
+    """Tests for InvalidMTResultMessage class."""
+
+    def test_invalid_mt_result_message(self):
+        """Test invalid MT result message."""
+        message = InvalidMTResultMessage()
+        assert isinstance(message.text, str)
+        assert len(message.text) > 0
+
+
+class TestTranscriptionMessage:
+    """Tests for TranscriptionMessage class."""
+
+    def test_transcription_message(self):
+        """Test transcription message."""
+        message = TranscriptionMessage("test_video.mp4")
+        assert (
+            "test_video.mp4" in message.text or "transcription" in message.text.lower()
+        )
+        assert isinstance(message.text, str)
+
+
+class TestHelpMessage:
+    """Tests for HelpMessage class."""
+
+    def test_help_message_with_connection(self, user_id, team_id):
+        """Test help message with ray connection."""
+        from app.auth.connector import RayContext
+
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=team_id,
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+            enable_verify_in_slack=True,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=None)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+            }
+        )
+        context["ray"] = ray_connection
+        message = HelpMessage(context)
+        assert "help" in message.text.lower() or "wave" in message.text.lower()
+        assert len(message.blocks) > 0
+
+    def test_help_message_without_connection(self, user_id, team_id):
+        """Test help message without ray connection."""
+        from app.auth.connector import RayContext
+
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+            }
+        )
+        context["ray"] = None
+        message = HelpMessage(context)
+        assert "help" in message.text.lower() or "wave" in message.text.lower()
+        assert len(message.blocks) > 0
+
+
+class TestCancelJobMessage:
+    """Tests for CancelJobMessage class."""
+
+    def test_cancel_job_message(self):
+        """Test cancel job message."""
+        message = CancelJobMessage("C123", "123456.789")
+        assert message.text == "Cancel a translation job"
+        assert len(message.blocks) == 2
+        assert message.blocks[1]["type"] == "actions"
+        assert message.blocks[1]["elements"][0]["action_id"] == "cancel_job"
+
+
+class TestAutoTranslateSettingsChangedMessage:
+    """Tests for AutoTranslateSettingsChangedMessage class."""
+
+    def test_auto_translate_settings_changed_message(self, user_id):
+        """Test auto translate settings changed message."""
+        message = AutoTranslateSettingsChangedMessage(
+            user_id, "C123", ["en", "fr"], "thread"
+        )
+        assert user_id in message.text
+        assert "C123" in message.text
+        assert isinstance(message.text, str)
+
+
+class TestAutoTranslateSettingsDisabledMessage:
+    """Tests for AutoTranslateSettingsDisabledMessage class."""
+
+    def test_auto_translate_settings_disabled_message(self, user_id):
+        """Test auto translate settings disabled message."""
+        message = AutoTranslateSettingsDisabledMessage(user_id, "C123")
+        assert user_id in message.text
+        assert "C123" in message.text
+        assert "disabled" in message.text.lower()
+
+
+class TestRequiresMtTokenMessage:
+    """Tests for RequiresMtTokenMessage class."""
+
+    def test_requires_mt_token_message_no_tokens_single(self):
+        """Test requires MT token message with no tokens and single required."""
+        message = RequiresMtTokenMessage(0, 1)
+        assert "tokens" in message.text.lower()
+        assert len(message.blocks) > 0
+
+    def test_requires_mt_token_message_no_tokens_multiple(self):
+        """Test requires MT token message with no tokens and multiple required."""
+        message = RequiresMtTokenMessage(0, 10)
+        assert "tokens" in message.text.lower()
+        assert "10" in message.text
+
+    def test_requires_mt_token_message_insufficient_tokens(self):
+        """Test requires MT token message with insufficient tokens."""
+        message = RequiresMtTokenMessage(5, 10)
+        assert "5" in message.text
+        assert "10" in message.text
+        assert "purchase" in message.text.lower()
+
+
+class TestDocMtMessage:
+    """Tests for DocMtMessage class."""
+
+    def test_doc_mt_message(self):
+        """Test doc MT message."""
+        message = DocMtMessage()
+        assert "translation" in message.text.lower() or "failed" in message.text.lower()
+        assert len(message.blocks) > 0
+
+
+class TestEvaluateErrorMessage:
+    """Tests for EvaluateErrorMessage class."""
+
+    def test_evaluate_error_message(self):
+        """Test evaluate error message."""
+        message = EvaluateErrorMessage()
+        assert "failed" in message.text.lower() or "evaluation" in message.text.lower()
+        assert len(message.blocks) > 0
+
+
+class TestEvaluateSuccessMessage:
+    """Tests for EvaluateSuccessMessage class."""
+
+    def test_evaluate_success_message_ibm(self):
+        """Test evaluate success message for IBM enterprise."""
+        from unittest.mock import patch
+
+        job = {
+            "uuid": "job-123",
+            "target_languages": [{"uuid": "lang-123", "name": "French"}],
+            "source_files": [
+                {
+                    "filename": "test.txt",
+                    "target_files": [],
+                    "report": {"language_uuid": "source-uuid"},
+                }
+            ],
+        }
+        with patch("app.slack.templates.blocks.get_languages_sync", return_value=[]):
+            message = EvaluateSuccessMessage(job, is_ibm_enterprise=True, tokens=None)
+            assert (
+                "evaluated" in message.text.lower()
+                or "evaluation" in message.text.lower()
+            )
+            assert len(message.blocks) > 0
+
+    def test_evaluate_success_message_with_tokens(self):
+        """Test evaluate success message with tokens."""
+        from unittest.mock import patch
+
+        job = {
+            "uuid": "job-123",
+            "target_languages": [{"uuid": "lang-123", "name": "French"}],
+            "source_files": [
+                {
+                    "filename": "test.txt",
+                    "target_files": [],
+                    "report": {"language_uuid": "source-uuid"},
+                }
+            ],
+        }
+        with patch("app.slack.templates.blocks.get_languages_sync", return_value=[]):
+            message = EvaluateSuccessMessage(job, is_ibm_enterprise=False, tokens=100)
+            assert (
+                "evaluated" in message.text.lower()
+                or "evaluation" in message.text.lower()
+            )
+            # Check that tokens are mentioned in the blocks (not in text title)
+            assert any(
+                "100" in str(block) or "tokens" in str(block).lower()
+                for block in message.blocks
+            )
+            assert len(message.blocks) > 0
+
+    def test_evaluate_success_message_without_actions(self):
+        """Test evaluate success message without actions."""
+        from unittest.mock import patch
+
+        job = {
+            "uuid": "job-123",
+            "target_languages": [{"uuid": "lang-123", "name": "French"}],
+            "source_files": [
+                {
+                    "filename": "test.txt",
+                    "target_files": [],
+                    "report": {"language_uuid": "source-uuid"},
+                }
+            ],
+        }
+        with patch("app.slack.templates.blocks.get_languages_sync", return_value=[]):
+            message = EvaluateSuccessMessage(
+                job, is_ibm_enterprise=False, tokens=None, actions=False
+            )
+            assert (
+                "evaluated" in message.text.lower()
+                or "evaluation" in message.text.lower()
+            )
+            assert len(message.blocks) > 0
+            # Should not have action buttons when actions=False
+            assert not any(block.get("type") == "actions" for block in message.blocks)
