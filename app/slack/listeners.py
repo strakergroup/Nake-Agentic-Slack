@@ -603,10 +603,12 @@ async def srt_translate_action(
                                 )
                             )
                         else:
+                            # Set count in outer scope so _() function can access it
+                            count = translation_count
                             await say(
                                 _(
                                     "The file is being translated to {count} language(s). You will be notified when they are ready."
-                                ).format(count=translation_count)
+                                )
                             )
                     else:
                         await say(
