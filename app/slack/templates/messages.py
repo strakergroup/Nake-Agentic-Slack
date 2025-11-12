@@ -3259,7 +3259,7 @@ class SrtTranslateMessage(SlackMessage):
                         "type": "multi_static_select",
                         "placeholder": {
                             "type": "plain_text",
-                            "text": _("Choose language(s)"),
+                            "text": _("Select language(s)"),
                         },
                         "options": language_options,
                         "action_id": "language_mt_options",
