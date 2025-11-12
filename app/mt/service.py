@@ -31,30 +31,29 @@ async def resolve_language_code(lang: str | None) -> Language | None:
         result = await session.execute(query)
         language = result.scalars().first()
 
-    if language:
-        return language
-    else:
-        if "-" in lang:
-            if lang == "french-canada":
-                like_lang = "french (canada)"
-            else:
-                like_lang = lang.replace("-", " ")
+        if language:
+            return language
         else:
-            like_lang = f"{lang}%"
+            if "-" in lang:
+                if lang == "french-canada":
+                    like_lang = "french (canada)"
+                else:
+                    like_lang = lang.replace("-", " ")
+            else:
+                like_lang = f"{lang}%"
 
-        query = select(Language).where(
-            or_(
-                Language.bcp_47.ilike(like_lang),
-                Language.google_code.ilike(like_lang),
-                Language.label.ilike(like_lang),
-                Language.code.ilike(like_lang),
-                # Language.site_shortname.ilike(like_lang),
-                # Language.parent_lang.ilike(like_lang),
+            query = select(Language).where(
+                or_(
+                    Language.bcp_47.ilike(like_lang),
+                    Language.google_code.ilike(like_lang),
+                    Language.label.ilike(like_lang),
+                    Language.code.ilike(like_lang),
+                    # Language.site_shortname.ilike(like_lang),
+                    # Language.parent_lang.ilike(like_lang),
+                )
             )
-        )
-        result = await session.execute(query)
-        language = result.scalars().first()
-
+            result = await session.execute(query)
+            language = result.scalars().first()
     return language
 
 
@@ -235,7 +234,8 @@ async def resolve_language(target_langs: list[str], engine: str) -> list[str]:
                         if lang_code:
                             mapped_lang.append(lang_code)
                 else:
-                    mapped_lang.append(db_lang.google_code)
+                    if db_lang.google_code:
+                        mapped_lang.append(db_lang.google_code)
     # If language code is not found
     if not mapped_lang:
         return ["en"]
