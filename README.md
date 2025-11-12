@@ -25,7 +25,7 @@ The [Slack App](https://api.slack.com/) for Straker LanguageCloud. This app allo
 1. Set up environment variables by copying the `.env.example` to `.env` and writing the configuration for your app.
 
    ```bash
-   $ cp .env.example .env
+   cp .env.example .env
    ```
 
    The `.env` file contains sensitive and device-specific information so is not committed to the repository.
@@ -41,13 +41,13 @@ The [Slack App](https://api.slack.com/) for Straker LanguageCloud. This app allo
      Create a Pipenv virtual environment and install the dependencies using
 
      ```bash
-     $ pipenv install --dev
+     pipenv install --dev
      ```
 
      Then start the app using
 
      ```bash
-     $ pipenv run uvicorn app.main:app --reload --port 3000
+     pipenv run uvicorn app.main:app --reload --port 3000
      ```
 
      The `--reload` flag updates the API automatically when there are changes to the code.
@@ -57,12 +57,12 @@ The [Slack App](https://api.slack.com/) for Straker LanguageCloud. This app allo
      You should be able to just run
 
      ```bash
-     $ docker compose up -d
+     docker compose up -d
      ```
 
      Note: Your .env db host will be local-percona
 
-   The app should now be running at `localhost` in the port you specified, e.g. http://localhost:3000.
+   The app should now be running at `localhost` in the port you specified, e.g. <http://localhost:3000>.
 
 4. To allow the Slack API to communicate with your app, the URL must be exposed to the public. You can do this with [boringproxy](https://boringproxy.io/), [ngrok](https://ngrok.com/) or whichever method you choose.
 
@@ -93,16 +93,16 @@ languagecloud-api - On going work to port to using languagecloud-api repo [here]
 This means that some Python modules (dependencies) are not installed. To fix this, install the dependencies by running
 
 ```bash
-$ pipenv install --dev
+pipenv install --dev
 ```
 
 This will create a virtual enviroment and install the dependencies from `Pipfile`.
 
 #### **[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate**
 
-If you are using macOS and installed Python directly from https://www.python.org, you may get an error like this when installing the app to Slack:
+If you are using macOS and installed Python directly from <https://www.python.org>, you may get an error like this when installing the app to Slack:
 
-```
+```bash
 ssl.SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:997)
 ```
 
@@ -113,16 +113,40 @@ To fix this, install the SSL certificates by running the script at `/Application
 All tests have been written using the [PyTest](https://docs.pytest.org/en/latest/) package. Tests are kept in the `tests` folder and can be run with:
 
 ```bash
-$ pipenv run pytest
+pipenv run pytest
 ```
 
-You can use the [coverage](https://coverage.readthedocs.io/) package to measure the code coverage of the tests. Scan the code and generate a report with:
+To run tests for a specific module or directory:
 
 ```bash
-$ pipenv run coverage run --source=app -m pytest
-> ...
-$ pipenv run coverage report -m  # or
-$ pipenv run coverage html       # HTML in htmlcov/
+pipenv run pytest tests/slack/  # Run all Slack app tests
+pipenv run pytest tests/ray/    # Run all Ray tests
+```
+
+#### Test Coverage
+
+You can use [pytest-cov](https://pytest-cov.readthedocs.io/) to measure code coverage. This is the recommended approach as it integrates directly with pytest:
+
+```bash
+# Run tests with coverage for the entire app
+$ pipenv run pytest --cov=app --cov-report=term-missing --cov-report=html
+
+# Run tests with coverage for a specific module (e.g., Slack app)
+$ pipenv run pytest tests/slack/ --cov=app/slack --cov-report=term-missing --cov-report=html
+
+# View the HTML coverage report
+$ open htmlcov/index.html  # macOS
+$ xdg-open htmlcov/index.html  # Linux
+```
+
+The `--cov-report=term-missing` flag shows which lines are missing coverage in the terminal output, and `--cov-report=html` generates an interactive HTML report in the `htmlcov/` directory.
+
+Alternatively, you can use the [coverage](https://coverage.readthedocs.io/) package directly:
+
+```bash
+pipenv run coverage run --source=app -m pytest
+pipenv run coverage report -m  # Terminal report
+pipenv run coverage html       # HTML report in htmlcov/
 ```
 
 ### Linting and Formatting Code
@@ -134,12 +158,12 @@ This package uses [Ruff](https://github.com/astral-sh/ruff) for linting and [Bla
 We use [mypy](http://mypy-lang.org) to perform static type checks on the codebase and can be run from the command line:
 
 ```bash
-$ pipenv run python -m mypy app/**/*.py
+pipenv run python -m mypy app/**/*.py
 ```
 
 ### Slack API fields in env file
 
-These can be found once created in step 5 on the app page at https://api.slack.com/apps/
+These can be found once created in step 5 on the app page at <https://api.slack.com/apps/>
 
 ### Translation
 

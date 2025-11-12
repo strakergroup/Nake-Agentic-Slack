@@ -45,6 +45,7 @@ black = "*"
 mypy = "*"
 openpyxl = "*"
 pre-commit = "*"
+pytest-cov = "*"
 
 [requires]
 python_version = "3.11"

@@ -50,6 +50,10 @@ class StrakerConfig(BaseSettings):
     health_check_password: SecretStr = SecretStr("")
     languagecloud_api_key: SecretStr = SecretStr("")
 
+    # Slack Dev Alert Bot
+    slack_dev_alert_channel_id: str = ""
+    slack_dev_alert_bot_token: SecretStr = SecretStr("")
+
     @field_validator("google_mt_api_key", mode="after")
     def validate_google_mt_api_key(cls, v, info: ValidationInfo):
         if info.data["environment"] in [Environment.production, Environment.uat]:

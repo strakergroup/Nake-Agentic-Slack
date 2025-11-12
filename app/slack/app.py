@@ -1,7 +1,6 @@
 import logging
 from urllib.parse import urlencode, urlparse
 
-from buglog import notify_exception
 from slack_bolt import BoltResponse
 from slack_bolt.async_app import AsyncApp
 from slack_bolt.oauth.async_callback_options import (
@@ -18,6 +17,7 @@ from slack_sdk.oauth.installation_store.sqlalchemy import (
 from slack_sdk.oauth.state_store.sqlalchemy import AsyncSQLAlchemyOAuthStateStore
 
 from app.ray.utils import is_ibm_enterprise
+from app.slack.buglog_notifier import notify_exception
 
 from ..auth.connector import save_user_token_from_installation
 from ..config import Environment, config, domains

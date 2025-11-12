@@ -10,7 +10,6 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, cast
 
-from buglog import notify_exception, notify_message
 from pydantic import ValidationError
 from ray_sdk import RayAPIResponseError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
@@ -39,6 +38,7 @@ from app.ray.utils import (
     upload_to_file_server,
     validate_file,
 )
+from app.slack.buglog_notifier import notify_exception, notify_message
 from app.transcriber_tasks.tasks import get_asr_task
 from app.translate import _
 

@@ -2,7 +2,6 @@ import asyncio
 from dataclasses import replace
 from typing import Annotated, Any, Optional, Union
 
-from buglog import notify_exception, notify_message
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ValidationError
 from slack_sdk.errors import SlackApiError
@@ -24,6 +23,7 @@ from app.ray.utils import (
     is_ibm_enterprise,
     set_user_language,
 )
+from app.slack.buglog_notifier import notify_exception, notify_message
 from app.slack.select_options import _get_languages_cached
 from app.slack_job import update_slack_job
 from app.translate import _
