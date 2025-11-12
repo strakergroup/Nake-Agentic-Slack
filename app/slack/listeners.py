@@ -134,7 +134,7 @@ from .templates.views import (
     verify_job_modal,
     verify_quote_summary_modal,
 )
-from .utils import is_channel_im
+from .utils import format_strings_display, is_channel_im
 from .web import (
     download_file,
     files_list_simple,
@@ -586,7 +586,6 @@ async def srt_translate_action(
 
                     if selected_languages:
                         # Create translation job for each selected language
-                        translation_count = 0
                         for selected_language in selected_languages:
                             await document_machine_translate(
                                 context,
@@ -594,20 +593,24 @@ async def srt_translate_action(
                                 cast(str, selected_language),
                                 0,  # submission_id - not available in this context
                             )
-                            translation_count += 1
 
-                        if translation_count == 1:
+                        if len(selected_languages) == 1:
+                            # Use language code directly
+                            lang_code = selected_languages[0]
                             await say(
                                 _(
-                                    "The file is being translated. You will be notified when it is ready."
+                                    "The file is being translated to {lang_code}. You will be notified when it is ready."
                                 )
                             )
                         else:
-                            # Set count in outer scope so _() function can access it
-                            count = translation_count
+                            # Format language codes nicely
+                            langs_string = format_strings_display(
+                                selected_languages, and_string="and"
+                            )
+                            # Set langs_string in outer scope so _() function can access it
                             await say(
                                 _(
-                                    "The file is being translated to {count} language(s). You will be notified when they are ready."
+                                    "The file is being translated to {langs_string}. You will be notified when they are ready."
                                 )
                             )
                     else:
