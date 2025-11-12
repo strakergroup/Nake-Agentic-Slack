@@ -569,23 +569,51 @@ async def srt_translate_action(
             if tokens_consumed is not None and await require_mt_tokens(
                 context, tokens_consumed
             ):
-                # get selected language from redis keyed on output_file
+                # get selected language(s) from redis keyed on output_file
                 # selected from get_auto_translate_language_options
-                selected_language = await redis_conn.get(f"output_file_{task_uuid}")
-                if selected_language is not None:
-                    await document_machine_translate(
-                        context,
-                        cast(str, task_result.get("file_id")),
-                        cast(str, selected_language),
-                        0,  # submission_id - not available in this context
-                    )
-                    await say(
-                        _(
-                            "The file is being translated. You will be notified when it is ready."
+                selected_languages_raw = await redis_conn.get(
+                    f"output_file_{task_uuid}"
+                )
+                if selected_languages_raw is not None:
+                    # Try to parse as JSON array (multi-select), fallback to string (single select)
+                    try:
+                        selected_languages = json.loads(selected_languages_raw)
+                        if not isinstance(selected_languages, list):
+                            selected_languages = [selected_languages]
+                    except (json.JSONDecodeError, TypeError):
+                        # Backward compatibility: single language stored as string
+                        selected_languages = [selected_languages_raw]
+
+                    if selected_languages:
+                        # Create translation job for each selected language
+                        translation_count = 0
+                        for selected_language in selected_languages:
+                            await document_machine_translate(
+                                context,
+                                cast(str, task_result.get("file_id")),
+                                cast(str, selected_language),
+                                0,  # submission_id - not available in this context
+                            )
+                            translation_count += 1
+
+                        if translation_count == 1:
+                            await say(
+                                _(
+                                    "The file is being translated. You will be notified when it is ready."
+                                )
+                            )
+                        else:
+                            await say(
+                                _(
+                                    "The file is being translated to {count} language(s). You will be notified when they are ready."
+                                ).format(count=translation_count)
+                            )
+                    else:
+                        await say(
+                            _("Please select at least one language to translate to.")
                         )
-                    )
                 else:
-                    await say(_("Please select a language to translate to."))
+                    await say(_("Please select at least one language to translate to."))
     except Exception as exc:
         notify_exception(exc, "Error in srt_translate_action")
         # Respond to user with error, if possible
@@ -1566,11 +1594,20 @@ async def view_update_auto_translate_settings(
 
 @app.action("language_mt_options", middleware=[ray_connection])
 async def language_mt_options_selected(ack: AsyncAck, body: Dict[str, Any]):
-    # redis store the selected options keyed by ouputn file
+    # redis store the selected options keyed by output file
     await ack()
     file_id = body["actions"][0]["block_id"]
-    selected_language = body["actions"][0]["selected_option"]["value"]
-    await redis_conn.set(f"output_file_{file_id}", selected_language)
+    # Handle both single select (selected_option) and multi select (selected_options)
+    if "selected_options" in body["actions"][0]:
+        # Multi-select: store as JSON array
+        selected_languages = [
+            option["value"] for option in body["actions"][0]["selected_options"]
+        ]
+        await redis_conn.set(f"output_file_{file_id}", json.dumps(selected_languages))
+    elif "selected_option" in body["actions"][0]:
+        # Single select: store as string for backward compatibility
+        selected_language = body["actions"][0]["selected_option"]["value"]
+        await redis_conn.set(f"output_file_{file_id}", selected_language)
 
 
 @app.options("language_options", middleware=[ray_connection])

@@ -3242,7 +3242,7 @@ class SrtTranslateMessage(SlackMessage):
     """Message to allow user to select language and submit for machine translation"""
 
     def __init__(self, task_uuid: str) -> None:
-        title = _("Please select the target language for translation")
+        title = _("Please select the target language(s) for translation")
         language_options = get_auto_translate_language_options()
         # create message which contains the output_file of the submit button and contains a input element which is a multi select for language
         super().__init__(
@@ -3253,16 +3253,17 @@ class SrtTranslateMessage(SlackMessage):
                     "block_id": task_uuid,
                     "label": {
                         "type": "plain_text",
-                        "text": _("Select language"),
+                        "text": _("Select languages"),
                     },
                     "element": {
-                        "type": "static_select",
+                        "type": "multi_static_select",
                         "placeholder": {
                             "type": "plain_text",
-                            "text": _("Choose language"),
+                            "text": _("Choose language(s)"),
                         },
                         "options": language_options,
                         "action_id": "language_mt_options",
+                        "max_selected_items": 10,
                     },
                 },
                 {
