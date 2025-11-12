@@ -1,5 +1,9 @@
+import logging
 import re
+
 from app.translate import _
+
+logger = logging.getLogger(__name__)
 
 
 def is_channel_im(channel_id: str | None) -> bool:

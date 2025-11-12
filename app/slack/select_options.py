@@ -17,9 +17,8 @@ import json
 from itertools import islice
 from typing import Any, Iterable
 
-from buglog import notify_exception
-
 from app.api.verify import get_verify_languages
+from app.slack.buglog_notifier import notify_exception
 from app.translate import _
 
 from ..models import SlackGroupSettingsTranslation

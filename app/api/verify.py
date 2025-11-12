@@ -4,12 +4,12 @@ import tempfile
 from typing import List
 
 import httpx
-from buglog import notify_exception
 from straker_utils.environment import Environment
 
 from app.auth.connector import RayClient, SlackUser, get_ray_client
 from app.config import config, domains
 from app.ray.utils import get_filename_from_header
+from app.slack.buglog_notifier import notify_exception
 
 from ..redis import redis_conn
 

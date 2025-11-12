@@ -3,8 +3,9 @@ import inspect
 import logging
 import re
 
-from buglog import notify_exception
 from sqlalchemy import text
+
+from app.slack.buglog_notifier import notify_exception
 
 from .database import engines
 
