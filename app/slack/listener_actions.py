@@ -446,12 +446,24 @@ async def auto_translate_message(
     if not required_tokens or not await require_mt_tokens(context, required_tokens):
         return None
     detected_source_lang_response = await detect_language(context, text)
+    detected_lang = detected_source_lang_response.language.lower()
 
     # Remove the detected source language from the target languages
+    # Also exclude related languages (e.g., exclude fr-ca when detected is fr, and vice versa)
+    def should_exclude_target_lang(target_lang: str) -> bool:
+        target_lang_lower = target_lang.lower()
+        # Exact match
+        if target_lang_lower == detected_lang:
+            return True
+        # Exclude fr-ca when detected is fr
+        if detected_lang == "fr" and target_lang_lower == "fr-ca":
+            return True
+        return False
+
     target_langs = [
         langs["target_lang"]
         for langs in settings
-        if langs["target_lang"] != detected_source_lang_response.language
+        if not should_exclude_target_lang(langs["target_lang"])
     ]
 
     if not target_langs or not settings:
