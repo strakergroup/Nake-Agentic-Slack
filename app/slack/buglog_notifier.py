@@ -20,6 +20,65 @@ from slack_sdk.web.async_client import AsyncWebClient
 
 logger = logging.getLogger(__name__)
 
+# Slack's limit for mrkdwn text in section blocks is 3000 characters
+# Use a smaller limit to account for markdown formatting overhead
+MAX_BLOCK_TEXT_LENGTH = 2800
+
+
+def _truncate_text(text: str, max_length: int = MAX_BLOCK_TEXT_LENGTH) -> str:
+    """Truncate text to fit within Slack's character limit.
+
+    Args:
+        text: Text to truncate
+        max_length: Maximum length (default: 2800 to leave buffer for formatting)
+
+    Returns:
+        Truncated text with ellipsis if needed
+    """
+    if len(text) <= max_length:
+        return text
+    return text[: max_length - 20] + "\n... (truncated)"
+
+
+def _split_text_into_blocks(
+    text: str, max_length: int = MAX_BLOCK_TEXT_LENGTH
+) -> list[str]:
+    """Split long text into chunks that fit within Slack's block limit.
+
+    Args:
+        text: Text to split
+        max_length: Maximum length per chunk
+
+    Returns:
+        List of text chunks
+    """
+    if len(text) <= max_length:
+        return [text]
+
+    # Split by lines to avoid breaking in the middle of a line
+    lines = text.split("\n")
+    chunks: list[str] = []
+    current_chunk: list[str] = []
+    current_length: int = 0
+
+    for line in lines:
+        line_length = len(line) + 1  # +1 for newline
+
+        # If adding this line would exceed the limit, start a new chunk
+        if current_length + line_length > max_length and current_chunk:
+            chunks.append("\n".join(current_chunk))
+            current_chunk = [line]
+            current_length = line_length
+        else:
+            current_chunk.append(line)
+            current_length += line_length
+
+    # Add the last chunk
+    if current_chunk:
+        chunks.append("\n".join(current_chunk))
+
+    return chunks
+
 
 async def _send_to_slack(
     exc: BaseException | None = None,
@@ -63,23 +122,22 @@ async def _send_to_slack(
                 traceback.format_exception(type(exc), exc, exc.__traceback__)
             )
 
-            # Truncate traceback if too long
-            max_traceback_length = 3000
-            if len(error_traceback) > max_traceback_length:
-                error_traceback = (
-                    error_traceback[:max_traceback_length] + "\n... (truncated)"
-                )
+            # Truncate error message if too long
+            error_message = _truncate_text(error_message)
 
-            # Fallback text for notifications
+            # Fallback text for notifications (also truncate)
             fallback_text = f"🚨 Exception: {error_type} - {error_message}"
             if msg:
                 fallback_text = f"🚨 {msg}: {error_type} - {error_message}"
+            fallback_text = _truncate_text(fallback_text, max_length=2000)
         else:
             # No exception, just a message
             error_type = None
             error_message = msg or "No message provided"
+            error_message = _truncate_text(error_message)
             error_traceback = None
             fallback_text = f"🚨 Alert: {error_message}"
+            fallback_text = _truncate_text(fallback_text, max_length=2000)
 
         # Build Block Kit blocks
         blocks = [
@@ -109,18 +167,40 @@ async def _send_to_slack(
         ]
 
         # Add traceback block only if we have an exception
+        # Split traceback into multiple blocks if needed
         if error_traceback:
-            blocks.append(
-                SectionBlock(
-                    text=MarkdownTextObject(
-                        text=f"*Traceback:*\n```\n{error_traceback}\n```"
-                    )
-                )
+            # Account for markdown formatting overhead: "*Traceback:*\n```\n" and "\n```"
+            traceback_prefix = "*Traceback:*\n```\n"
+            traceback_suffix = "\n```"
+            available_length = (
+                MAX_BLOCK_TEXT_LENGTH - len(traceback_prefix) - len(traceback_suffix)
             )
+
+            traceback_chunks = _split_text_into_blocks(
+                error_traceback, max_length=available_length
+            )
+
+            for i, chunk in enumerate(traceback_chunks):
+                if i == 0:
+                    # First chunk with header
+                    blocks.append(
+                        SectionBlock(
+                            text=MarkdownTextObject(
+                                text=f"{traceback_prefix}{chunk}{traceback_suffix}"
+                            )
+                        )
+                    )
+                else:
+                    # Subsequent chunks without header
+                    blocks.append(
+                        SectionBlock(text=MarkdownTextObject(text=f"```\n{chunk}\n```"))
+                    )
 
         # Add extra info if present
         if extra:
             extra_text = "\n".join([f"*{k}:* {v}" for k, v in extra.items()])
+            # Truncate extra text to fit in a single block
+            extra_text = _truncate_text(extra_text)
             blocks.append(
                 SectionBlock(
                     text=MarkdownTextObject(text=f"*Extra Info:*\n{extra_text}")
@@ -163,6 +243,14 @@ def _schedule_slack_notification(
         extra: Extra information to include
         severity: Severity level
     """
+    # Import config here to avoid circular imports
+    from app.config import Environment, config
+
+    # Skip Slack notifications when running locally
+    if config.environment == Environment.local:
+        logger.debug("Slack notification skipped: running in local environment")
+        return
+
     try:
         # Try to get the current event loop
         try:
