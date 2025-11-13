@@ -236,7 +236,8 @@ async def resolve_language(target_langs: list[str], engine: str) -> list[str]:
                         if lang_code:
                             mapped_lang.append(lang_code)
                 else:
-                    mapped_lang.append(db_lang.google_code)
+                    if db_lang.google_code:
+                        mapped_lang.append(db_lang.google_code)
     # If language code is not found
     if not mapped_lang:
         return ["en"]
