@@ -59,6 +59,7 @@ from ..config import domains
 from ..ray.settings import (
     delete_channel_id,
     disable_auto_translate_group_settings,
+    get_auto_translate_language_name,
     get_auto_translate_settings_and_langs,
     update_auto_translate_group_settings,
     update_channel_id,
@@ -595,17 +596,23 @@ async def srt_translate_action(
                             )
 
                         if len(selected_languages) == 1:
-                            # Use language code directly
-                            lang_code = selected_languages[0]
+                            # Use language name instead of code
+                            lang_name = get_auto_translate_language_name(
+                                selected_languages[0]
+                            )
                             await say(
                                 _(
-                                    "The file is being translated to {lang_code}. You will be notified when it is ready."
+                                    "The file is being translated to {lang_name}. You will be notified when it is ready."
                                 )
                             )
                         else:
-                            # Format language codes nicely
+                            # Format language names nicely
+                            lang_names = [
+                                get_auto_translate_language_name(lang)
+                                for lang in selected_languages
+                            ]
                             langs_string = format_strings_display(
-                                selected_languages, and_string="and"
+                                lang_names, and_string="and"
                             )
                             # Set langs_string in outer scope so _() function can access it
                             await say(
