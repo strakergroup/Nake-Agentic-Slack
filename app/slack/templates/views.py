@@ -5,6 +5,14 @@ import json
 from typing import Any, cast
 
 from slack_bolt.context.async_context import AsyncBoltContext
+from slack_sdk.models.blocks import (
+    InputBlock,
+    MarkdownTextObject,
+    Option,
+    PlainTextObject,
+    SectionBlock,
+)
+from slack_sdk.models.blocks.block_elements import StaticMultiSelectElement
 
 from app.translate import _
 
@@ -1057,4 +1065,60 @@ def loading_modal() -> dict[str, Any]:
                 },
             }
         ],
+    }
+
+
+def srt_translate_modal(task_uuid: str) -> dict[str, Any]:
+    """Modal to allow user to select language and submit for machine translation.
+
+    Args:
+        task_uuid: The UUID of the transcription task.
+
+    Returns:
+        dict: The view dict for the SRT translate modal.
+    """
+    language_options_raw = get_auto_translate_language_options()
+
+    # Convert raw options to SDK Option objects
+    language_options = [
+        Option(
+            text=PlainTextObject(text=opt["text"]["text"], emoji=False),
+            value=opt["value"],
+        )
+        for opt in language_options_raw
+    ]
+
+    # Create multi-select element
+    multi_select = StaticMultiSelectElement(
+        placeholder=PlainTextObject(text=_("Select language(s)"), emoji=False),
+        options=language_options,
+        action_id="language_mt_options",
+        max_selected_items=10,
+    )
+
+    # Create input block
+    input_block = InputBlock(
+        block_id="target_langs",
+        label=PlainTextObject(text=_("Select languages"), emoji=False),
+        element=multi_select,
+    )
+
+    # Create section block
+    section_block = SectionBlock(
+        text=MarkdownTextObject(
+            text=_("Please select the target language(s) for translation")
+        )
+    )
+
+    # Convert blocks to dictionaries
+    blocks = [section_block.to_dict(), input_block.to_dict()]
+
+    return {
+        "type": "modal",
+        "callback_id": "srt_translate",
+        "title": PlainTextObject(text=_("Select Languages", 23)[:24]).to_dict(),
+        "submit": PlainTextObject(text=_("Submit")).to_dict(),
+        "close": PlainTextObject(text=_("Close")).to_dict(),
+        "private_metadata": task_uuid,
+        "blocks": blocks,
     }

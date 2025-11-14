@@ -111,7 +111,6 @@ from .templates.messages import (
     OnboardingMessage,
     QuoteMessage,
     SlackMessage,
-    SrtTranslateMessage,
     SsoConnectionInfoMessage,
     SuccessfulLoginMessage,
     SuccessfulLogoutMessage,
@@ -131,17 +130,58 @@ from .templates.views import (
     human_job_modal,
     job_search_modal,
     loading_modal,
+    srt_translate_modal,
     translation_settings_view,
     verify_job_modal,
     verify_quote_summary_modal,
 )
-from .utils import format_strings_display, is_channel_im
+from .utils import (
+    extract_language_codes_from_form,
+    format_strings_display,
+    is_channel_im,
+)
 from .web import (
     download_file,
     files_list_simple,
     get_mt_ts_cached,
     upload_file_to_slack_memory_efficient,
 )
+
+# ---------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------
+
+
+async def _send_translation_success_message(
+    client: AsyncWebClient, channel_id: str, language_codes: list[str]
+) -> None:
+    """Send a success message after submitting translation jobs.
+
+    Args:
+        client: The Slack web client.
+        channel_id: The channel ID to send the message to.
+        language_codes: List of language codes that were selected for translation.
+    """
+    if len(language_codes) == 1:
+        # Use language name instead of code
+        lang_name = get_auto_translate_language_name(language_codes[0])
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "The file is being translated to {lang_name}. You will be notified when it is ready."
+            ),
+        )
+    else:
+        # Format language names nicely
+        lang_names = [get_auto_translate_language_name(lang) for lang in language_codes]
+        langs_string = format_strings_display(lang_names, and_string="and")
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "The file is being translated to {langs_string}. You will be notified when they are ready."
+            ),
+        )
+
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -362,12 +402,10 @@ async def show_srt_translate_form(
     if await require_ray_client(context):
         assert action is not None
         task_uuid = action["value"]
-        # SrtTranslateMessage normal message no modal just message
-        msg = SrtTranslateMessage(task_uuid)
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=msg.text,
-            blocks=msg.blocks,
+        view = srt_translate_modal(task_uuid)
+        await client.views_open(
+            trigger_id=body["trigger_id"],
+            view=view,
         )
 
 
@@ -543,96 +581,68 @@ async def handle_translate_shortcut(
     )
 
 
-@app.action("srt_translate", middleware=[ray_connection])
+@app.view("srt_translate", middleware=[ray_connection])
 @slack_log_decorator
 async def srt_translate_action(
     ack: AsyncAck,
-    action: Optional[Dict[str, Any]],
+    view: Optional[Dict[str, Any]],
     context: RayContext,
-    body: Dict[str, Any],
-    say: AsyncSay,
     client: AsyncWebClient,
 ):
+    """Handle SRT translation modal submission."""
     try:
-        await ack()
+        await ack(response_action="clear")
         if await require_ray_client(context):
             assert context["ray"] is not None
             assert context["ray"].client is not None
-            assert action is not None
-            task_uuid = action["value"]
-            # get uuid from output_file
+            assert view is not None
+
+            # Get task_uuid from private_metadata
+            task_uuid = view.get("private_metadata", "")
+            if not task_uuid:
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=_("An error occurred: task UUID not found."),
+                )
+                return
+
+            # Get selected languages from the form
+            form_data = view.get("state", {}).get("values", {})
+            selected_languages = extract_language_codes_from_form(form_data)
+
+            if not selected_languages:
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=_("Please select at least one language to translate to."),
+                )
+                return
+
+            # Get file_id from task result
             task_result = await get_asr_task(task_uuid, context["ray"].client.id)
             assert task_result is not None
-            # Get tokens from task_result (API returns "tokens", not "tokens_consumed")
-            tokens_consumed = task_result.get("tokens_consumed") or task_result.get(
-                "tokens"
-            )
-            if tokens_consumed is not None and await require_mt_tokens(
-                context, tokens_consumed
-            ):
-                # get selected language(s) from redis keyed on output_file
-                # selected from get_auto_translate_language_options
-                selected_languages_raw = await redis_conn.get(
-                    f"output_file_{task_uuid}"
+            file_id = cast(str, task_result.get("file_id"))
+
+            # Create translation job for each selected language
+            for selected_language in selected_languages:
+                await document_machine_translate(
+                    context,
+                    file_id,
+                    cast(str, selected_language),
+                    0,  # submission_id - not available in this context
                 )
-                if selected_languages_raw is not None:
-                    # Try to parse as JSON array (multi-select), fallback to string (single select)
-                    try:
-                        selected_languages = json.loads(selected_languages_raw)
-                        if not isinstance(selected_languages, list):
-                            selected_languages = [selected_languages]
-                    except (json.JSONDecodeError, TypeError):
-                        # Backward compatibility: single language stored as string
-                        selected_languages = [selected_languages_raw]
 
-                    if selected_languages:
-                        # Create translation job for each selected language
-                        for selected_language in selected_languages:
-                            await document_machine_translate(
-                                context,
-                                cast(str, task_result.get("file_id")),
-                                cast(str, selected_language),
-                                0,  # submission_id - not available in this context
-                            )
-
-                        if len(selected_languages) == 1:
-                            # Use language name instead of code
-                            lang_name = get_auto_translate_language_name(
-                                selected_languages[0]
-                            )
-                            await say(
-                                _(
-                                    "The file is being translated to {lang_name}. You will be notified when it is ready."
-                                )
-                            )
-                        else:
-                            # Format language names nicely
-                            lang_names = [
-                                get_auto_translate_language_name(lang)
-                                for lang in selected_languages
-                            ]
-                            langs_string = format_strings_display(
-                                lang_names, and_string="and"
-                            )
-                            # Set langs_string in outer scope so _() function can access it
-                            await say(
-                                _(
-                                    "The file is being translated to {langs_string}. You will be notified when they are ready."
-                                )
-                            )
-                    else:
-                        await say(
-                            _("Please select at least one language to translate to.")
-                        )
-                else:
-                    await say(_("Please select at least one language to translate to."))
+            # Send success message
+            await _send_translation_success_message(
+                client, context["user_id"], selected_languages
+            )
     except Exception as exc:
         notify_exception(exc, "Error in srt_translate_action")
         # Respond to user with error, if possible
-        await say(
-            _(
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=_(
                 "An error occurred while processing your translation request. Please try again or contact support."
-            )
+            ),
         )
 
 

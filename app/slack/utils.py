@@ -1,5 +1,7 @@
 import logging
 import re
+from typing import Any
+
 
 from app.translate import _
 
@@ -187,3 +189,26 @@ def segment_quality_score(score: float, taus_version: str = "1.0.0") -> str:
         elif score >= 0.85:
             return _("Overall Translation Quality: Acceptable")
         return _("Overall Translation Quality: Bad")
+
+
+def extract_language_codes_from_form(
+    form_data: dict[str, Any],
+    block_id: str = "target_langs",
+    action_id: str = "language_mt_options",
+) -> list[str]:
+    """Extract language codes from Slack modal form data.
+
+    Args:
+        form_data: The form state values from Slack view submission.
+        block_id: The block ID containing the language selector. Defaults to "target_langs".
+        action_id: The action ID of the language selector. Defaults to "language_mt_options".
+
+    Returns:
+        list[str]: List of language codes (e.g., ["en", "fr", "es"]).
+    """
+    selected_languages_data = (
+        form_data.get(block_id, {}).get(action_id, {}).get("selected_options", [])
+    )
+    return [
+        option.get("value") for option in selected_languages_data if option.get("value")
+    ]
