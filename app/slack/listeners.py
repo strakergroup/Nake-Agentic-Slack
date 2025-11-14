@@ -402,7 +402,8 @@ async def show_srt_translate_form(
     if await require_ray_client(context):
         assert action is not None
         task_uuid = action["value"]
-        view = srt_translate_modal(task_uuid)
+        channel_id = context.get("channel_id") or context["user_id"]
+        view = srt_translate_modal(task_uuid, channel_id)
         await client.views_open(
             trigger_id=body["trigger_id"],
             view=view,
@@ -587,6 +588,7 @@ async def srt_translate_action(
     ack: AsyncAck,
     view: Optional[Dict[str, Any]],
     context: RayContext,
+    body: Dict[str, Any],
     client: AsyncWebClient,
 ):
     """Handle SRT translation modal submission."""
@@ -597,14 +599,22 @@ async def srt_translate_action(
             assert context["ray"].client is not None
             assert view is not None
 
-            # Get task_uuid from private_metadata
-            task_uuid = view.get("private_metadata", "")
-            if not task_uuid:
+            # Get task_uuid and channel_id from private_metadata
+            private_metadata = view.get("private_metadata", "")
+            if not private_metadata:
                 await client.chat_postMessage(
                     channel=context["user_id"],
                     text=_("An error occurred: task UUID not found."),
                 )
                 return
+
+            # Parse private_metadata: format is "task_uuid|channel_id" or just "task_uuid" for backwards compatibility
+            metadata_parts = private_metadata.split("|")
+            task_uuid = metadata_parts[0]
+            channel_id = metadata_parts[1] if len(metadata_parts) > 1 else None
+
+            # Set channel_id in context (same pattern as document_mt_job)
+            context["channel_id"] = channel_id or context["user_id"]
 
             # Get selected languages from the form
             form_data = view.get("state", {}).get("values", {})

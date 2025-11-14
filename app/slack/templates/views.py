@@ -1068,11 +1068,12 @@ def loading_modal() -> dict[str, Any]:
     }
 
 
-def srt_translate_modal(task_uuid: str) -> dict[str, Any]:
+def srt_translate_modal(task_uuid: str, channel_id: str) -> dict[str, Any]:
     """Modal to allow user to select language and submit for machine translation.
 
     Args:
         task_uuid: The UUID of the transcription task.
+        channel_id: The channel ID where the translation should be posted.
 
     Returns:
         dict: The view dict for the SRT translate modal.
@@ -1113,12 +1114,15 @@ def srt_translate_modal(task_uuid: str) -> dict[str, Any]:
     # Convert blocks to dictionaries
     blocks = [section_block.to_dict(), input_block.to_dict()]
 
+    # Store both task_uuid and channel_id in private_metadata (same pattern as document_mt_job)
+    private_metadata = f"{task_uuid}|{channel_id}"
+
     return {
         "type": "modal",
         "callback_id": "srt_translate",
         "title": PlainTextObject(text=_("Select Languages", 23)[:24]).to_dict(),
         "submit": PlainTextObject(text=_("Submit")).to_dict(),
         "close": PlainTextObject(text=_("Close")).to_dict(),
-        "private_metadata": task_uuid,
+        "private_metadata": private_metadata,
         "blocks": blocks,
     }
