@@ -1,29 +1,28 @@
-import time
-from typing import Any, Callable, Coroutine
 import asyncio
+import functools
 import inspect
 import logging
-import functools
 import resource
 import sys
+import time
+from typing import Any, Callable, Coroutine
 
-from buglog import notify_exception
+from ray_logger.slack import SlackAppLog, SlackMySQLLogger
 from slack_bolt.request.payload_utils import (
-    is_event,
     is_block_actions,
-    is_slash_command,
-    is_options,
+    is_event,
     is_global_shortcut,
     is_message_shortcut,
-    is_view_submission,
+    is_options,
+    is_slash_command,
     is_view_closed,
+    is_view_submission,
 )
-from ray_logger.slack import SlackMySQLLogger, SlackAppLog
 
 from app.auth.connector import RayContext
+from app.slack.buglog_notifier import notify_exception
 
 from ..database import engines
-
 
 # The singleton logger for logging Slack events and actions.
 slack_app_logger = SlackMySQLLogger(

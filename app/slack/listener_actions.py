@@ -8,7 +8,6 @@ import re
 from typing import Any
 
 import httpx
-from buglog import notify_exception, notify_message
 from ray_sdk import RayResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.web.async_client import AsyncWebClient
@@ -24,6 +23,7 @@ from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.models import ASRTask, TranscriptionTaskData
 from app.mt.service import evaluate_get_glossary_resource, resolve_language
 from app.ray.events.models import MtFileRequestSchema
+from app.slack.buglog_notifier import notify_exception, notify_message
 from app.slack.utils import escape_slack_emoji
 from app.slack_job import create_slack_job
 from app.transcriber_tasks.tasks import create_asr_task
@@ -693,15 +693,15 @@ async def post_job_status(
                         thread_ts=thread_ts,
                     )
         else:
-            invalid_msg = InvalidJobMessage(job_id)
+            invalid_msg = InvalidJobMessage(job_id).text
             if context.response_url and context.respond:
-                return await context.respond(text=invalid_msg.text)
+                return await context.respond(text=invalid_msg)
             else:
                 if not channel_id:
                     raise AssertionError("No channel to post to")
                 return await client.chat_postMessage(
                     channel=channel_id,
-                    text=invalid_msg.text,
+                    text=invalid_msg,
                     thread_ts=thread_ts,
                 )
     finally:
@@ -776,15 +776,15 @@ async def post_job_details(
                         thread_ts=thread_ts,
                     )
             else:
-                invalid_msg = InvalidJobMessage(job_id)
+                invalid_msg = InvalidJobMessage(job_id).text
                 if context.response_url and context.respond:
-                    return await context.respond(text=invalid_msg.text)
+                    return await context.respond(text=invalid_msg)
                 else:
                     if not channel_id:
                         raise AssertionError("No channel to post to")
                     return await client.chat_postMessage(
                         channel=channel_id,
-                        text=invalid_msg.text,
+                        text=invalid_msg,
                         thread_ts=thread_ts,
                     )
         else:
@@ -821,15 +821,15 @@ async def post_job_details(
                                 thread_ts=thread_ts,
                             )
             else:
-                invalid_msg = InvalidJobMessage(job_id)
+                invalid_msg = InvalidJobMessage(job_id).text
                 if context.response_url and context.respond:
-                    return await context.respond(text=invalid_msg.text)
+                    return await context.respond(text=invalid_msg)
                 else:
                     if not channel_id:
                         raise AssertionError("No channel to post to")
                     return await client.chat_postMessage(
                         channel=channel_id,
-                        text=invalid_msg.text,
+                        text=invalid_msg,
                         thread_ts=thread_ts,
                     )
     finally:
@@ -1332,15 +1332,15 @@ async def post_batch_list(
                         thread_ts=thread_ts,
                     )
             else:
-                invalid_msg = InvalidJobMessage(job_id)
+                invalid_msg = InvalidJobMessage(job_id).text
                 if context.response_url and context.respond:
-                    return await context.respond(text=invalid_msg.text)
+                    return await context.respond(text=invalid_msg)
                 else:
                     if not channel_id:
                         raise AssertionError("No channel to post to")
                     return await client.chat_postMessage(
                         channel=channel_id,
-                        text=invalid_msg.text,
+                        text=invalid_msg,
                         thread_ts=thread_ts,
                     )
     finally:
@@ -1417,15 +1417,15 @@ async def post_file_list(
                         thread_ts=thread_ts,
                     )
             else:
-                invlaid_msg = InvalidJobMessage(job_id)
+                invalid_msg = InvalidJobMessage(job_id).text
                 if context.response_url and context.respond:
-                    return await context.respond(text=invlaid_msg.text)
+                    return await context.respond(text=invalid_msg)
                 else:
                     if not channel_id:
                         raise AssertionError("No channel to post to")
                     return await client.chat_postMessage(
                         channel=channel_id,
-                        text=invlaid_msg.text,
+                        text=invalid_msg,
                         thread_ts=thread_ts,
                     )
     finally:
@@ -1513,15 +1513,15 @@ async def post_job_target_lang(
                             blocks=msg.blocks,
                         )
             else:
-                invalid_msg = InvalidJobMessage(job_id)
+                invalid_msg = InvalidJobMessage(job_id).text
                 if context.response_url and context.respond:
-                    return await context.respond(text=invalid_msg.text)
+                    return await context.respond(text=invalid_msg)
                 else:
                     if not channel_id:
                         raise AssertionError("No channel to post to")
                     return await client.chat_postMessage(
                         channel=channel_id,
-                        text=invalid_msg.text,
+                        text=invalid_msg,
                     )
     finally:
         if response is not None:
@@ -1738,14 +1738,14 @@ async def get_mt_translation(
 
     except Exception as e:
         notify_exception(e, "Failed to get machine translation")
-        error_msg_obj = InvalidMTResultMessage()
+        error_msg = InvalidMTResultMessage().text
         if context.response_url and context.respond:
-            return await context.respond(text=error_msg_obj.text)
+            return await context.respond(text=error_msg)
         else:
             if channel_id:
                 return await client.chat_postMessage(
                     channel=channel_id,
-                    text=error_msg_obj.text,
+                    text=error_msg,
                     thread_ts=thread_ts,
                 )
 

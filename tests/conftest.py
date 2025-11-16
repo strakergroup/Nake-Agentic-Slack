@@ -1,13 +1,14 @@
-from typing import Any
-from random import randrange
-from uuid import uuid4
 import asyncio
+from random import randrange
+from typing import Any
+from uuid import uuid4
+
 import pytest
 from slack_bolt.context.async_context import AsyncBoltContext
 
-from app.redis import redis_conn
 from app.auth.connector import RayClient
-
+from app.redis import redis_conn
+from app.slack.select_options import _cached_languages
 
 # -----------------------------------------------------------------------------
 # Helper functions
@@ -107,6 +108,18 @@ def redis():
     return redis_conn
 
 
+@pytest.fixture(autouse=True)
+def reset_global_cache():
+    """Reset the global languages cache before each test to ensure test isolation."""
+    global _cached_languages
+    original_cache = _cached_languages.copy() if _cached_languages else []
+    _cached_languages.clear()
+    yield
+    # Restore original state after test
+    _cached_languages.clear()
+    _cached_languages.extend(original_cache)
+
+
 @pytest.fixture
 def user_id() -> str:
     return mock_user_id()
@@ -150,7 +163,18 @@ def ts() -> str:
 @pytest.fixture
 def ray_client(user_id, team_id, enterprise_id) -> RayClient:
     return RayClient(
-        str(uuid4()), "test.user", str(uuid4()), user_id, team_id, enterprise_id
+        id=str(uuid4()),
+        username="test.user",
+        user_group_id=str(uuid4()),
+        access_token=str(uuid4()),
+        slack_user_id=user_id,
+        slack_team_id=team_id,
+        slack_enterprise_id=enterprise_id,
+        slack_access_token=None,
+        settings_id=None,
+        id_token=str(uuid4()),  # Add id_token for tests that need it
+        planname=None,
+        sso=False,
     )
 
 
