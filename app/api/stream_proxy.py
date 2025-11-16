@@ -12,12 +12,12 @@ from app.config import domains
 
 
 def validate_service_language_mapping(
-    service_language_mapping: dict[str, List[str]],
+    service_language_mapping: dict[str, dict[str, str]],
 ) -> None:
     """Validate that the service language mapping is properly formatted.
 
     Args:
-        service_language_mapping: The mapping to validate
+        service_language_mapping: The mapping to validate (service -> {lang: glossary_id})
 
     Raises:
         ValueError: If the mapping is invalid
@@ -25,23 +25,27 @@ def validate_service_language_mapping(
     if not service_language_mapping:
         raise ValueError("service_language_mapping cannot be empty")
 
-    for service, languages in service_language_mapping.items():
+    for service, lang_glossary_map in service_language_mapping.items():
         if not isinstance(service, str) or not service.strip():
             raise ValueError(f"Service name must be a non-empty string, got: {service}")
-        if not isinstance(languages, list) or not languages:
+        if not isinstance(lang_glossary_map, dict) or not lang_glossary_map:
             raise ValueError(
-                f"Languages must be a non-empty list for service '{service}', got: {languages}"
+                f"Languages must be a non-empty dict for service '{service}', got: {lang_glossary_map}"
             )
-        for lang in languages:
+        for lang, glossary_id in lang_glossary_map.items():
             if not isinstance(lang, str) or not lang.strip():
                 raise ValueError(
                     f"Language must be a non-empty string, got: {lang} in service '{service}'"
+                )
+            if not isinstance(glossary_id, str):
+                raise ValueError(
+                    f"Glossary ID must be a string, got: {glossary_id} for language '{lang}' in service '{service}'"
                 )
 
 
 async def send_mt_translation_request(
     text: List[str],
-    service_language_mapping: dict[str, List[str]],
+    service_language_mapping: dict[str, dict[str, str]],
     source_language: str,
     extra_data: MtTranslationExtraData,
 ) -> None:
@@ -49,7 +53,7 @@ async def send_mt_translation_request(
 
     Args:
         text: List of text strings to translate
-        service_language_mapping: Mapping of services to their supported languages
+        service_language_mapping: Mapping of services to dictionaries of language codes to glossary IDs
         source_language: Source language code
         extra_data: Extra data for the translation request
 
@@ -67,7 +71,6 @@ async def send_mt_translation_request(
             "text": text,
             "service_language_mapping": service_language_mapping,
             "source_language": source_language,
-            "glossary_identifier": extra_data.glossary_identifier,
             "output_stream": "slack:direct:mt:result",
             "extra_data": extra_data.model_dump(),
         },

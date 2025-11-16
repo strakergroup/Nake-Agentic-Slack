@@ -52,8 +52,9 @@ async def resolve_language_code(lang: str | None) -> Language | None:
                 # Language.parent_lang.ilike(like_lang),
             )
         )
-        result = await session.execute(query)
-        language = result.scalars().first()
+        async with AsyncSession(async_engines["translators_readonly"]) as session:
+            result = await session.execute(query)
+            language = result.scalars().first()
 
     return language
 
@@ -235,7 +236,8 @@ async def resolve_language(target_langs: list[str], engine: str) -> list[str]:
                         if lang_code:
                             mapped_lang.append(lang_code)
                 else:
-                    mapped_lang.append(db_lang.google_code)
+                    if db_lang.google_code:
+                        mapped_lang.append(db_lang.google_code)
     # If language code is not found
     if not mapped_lang:
         return ["en"]

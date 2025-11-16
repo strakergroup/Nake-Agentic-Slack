@@ -81,26 +81,31 @@ from .web import download_files, files_list_simple
 VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
 
 
-def create_service_language_mapping(target_langs: list[str]) -> dict[str, list[str]]:
-    """Create service language mapping based on target languages.
+def create_service_language_mapping(
+    target_langs: list[str], glossary_ids: dict[str, str] | None = None
+) -> dict[str, dict[str, str]]:
+    """Create service language mapping based on target languages with glossary IDs.
 
     Args:
         target_langs: List of target languages
+        glossary_ids: Optional dictionary mapping language codes to glossary IDs
 
     Returns:
-        Dictionary mapping services to their supported languages
+        Dictionary mapping services to dictionaries of language codes to glossary IDs
     """
-    service_language_mapping: dict[str, list[str]] = {}
+    service_language_mapping: dict[str, dict[str, str]] = {}
+    glossary_ids = glossary_ids or {}
 
     for target_lang in target_langs:
+        glossary_id = glossary_ids.get(target_lang, "")
         if target_lang.lower() in ["fr-ca", "french-canada", "french-canadian"]:
             if "microsoft" not in service_language_mapping:
-                service_language_mapping["microsoft"] = []
-            service_language_mapping["microsoft"].append(target_lang)
+                service_language_mapping["microsoft"] = {}
+            service_language_mapping["microsoft"]["fr-ca"] = glossary_id
         else:
             if "google" not in service_language_mapping:
-                service_language_mapping["google"] = []
-            service_language_mapping["google"].append(target_lang)
+                service_language_mapping["google"] = {}
+            service_language_mapping["google"][target_lang] = glossary_id
 
     return service_language_mapping
 
@@ -246,21 +251,21 @@ async def respond_to_message(
     )
 
     if message_match:
-        # if await require_ray_client(context):
-        mt_sl = message_match.group(1) or ""
-        if not mt_sl:
-            mt_sl = await detect_language(context, message["text"])
-            mt_sl = mt_sl.language
-        mt_tl = message_match.group(2) or context.get("locale") or "en"
-        mt_text = message_match.group(3)
-        await get_mt_translation(
-            client,
-            context,
-            source_lang=mt_sl,
-            target_lang=mt_tl,
-            sentence=mt_text,
-            thread_ts=thread_ts,
-        )
+        if await require_ray_client(context):
+            mt_sl = message_match.group(1) or ""
+            if not mt_sl:
+                mt_sl = await detect_language(context, message["text"])
+                mt_sl = mt_sl.language
+            mt_tl = message_match.group(2) or context.get("locale") or "en"
+            mt_text = message_match.group(3)
+            await get_mt_translation(
+                client,
+                context,
+                source_lang=mt_sl,
+                target_lang=mt_tl,
+                sentence=mt_text,
+                thread_ts=thread_ts,
+            )
         return
     if message["text"] == "debug":
         # retrieve workspace name based on bot token
@@ -441,12 +446,24 @@ async def auto_translate_message(
     if not required_tokens or not await require_mt_tokens(context, required_tokens):
         return None
     detected_source_lang_response = await detect_language(context, text)
+    detected_lang = detected_source_lang_response.language.lower()
 
     # Remove the detected source language from the target languages
+    # Also exclude related languages (e.g., exclude fr-ca when detected is fr, and vice versa)
+    def should_exclude_target_lang(target_lang: str) -> bool:
+        target_lang_lower = target_lang.lower()
+        # Exact match
+        if target_lang_lower == detected_lang:
+            return True
+        # Exclude fr-ca when detected is fr
+        if detected_lang == "fr" and target_lang_lower == "fr-ca":
+            return True
+        return False
+
     target_langs = [
         langs["target_lang"]
         for langs in settings
-        if langs["target_lang"] != detected_source_lang_response.language
+        if not should_exclude_target_lang(langs["target_lang"])
     ]
 
     if not target_langs or not settings:
@@ -459,10 +476,23 @@ async def auto_translate_message(
 
         # Get display_format from settings
         display_format = settings[0]["display_format"] if settings else None
-        glossary_id = await evaluate_get_glossary_resource(
-            org_uuid, context["ray"].client, source_lang, target_langs[0], "google"
+        # Get glossary_id for each target language
+        glossary_ids: dict[str, str] = {}
+        for target_lang in target_langs:
+            is_fr_ca = target_lang.lower() in [
+                "fr-ca",
+                "french-canada",
+                "french-canadian",
+            ]
+            target_lang = "fr-ca" if is_fr_ca else target_lang
+            engine = "microsoft" if is_fr_ca else "google"
+            glossary_id = await evaluate_get_glossary_resource(
+                org_uuid, context["ray"].client, source_lang, target_lang, engine
+            )
+            glossary_ids[target_lang] = glossary_id
+        service_language_mapping = create_service_language_mapping(
+            target_langs, glossary_ids
         )
-        service_language_mapping = create_service_language_mapping(target_langs)
         assert context.team_id is not None
         await send_mt_translation_request(
             [escape_slack_emoji(text)],
@@ -1701,14 +1731,25 @@ async def get_mt_translation(
             else context.ray.super_group[0].verify_organization_uuid
         )
 
+        # Get glossary_id for each target language
+        glossary_ids: dict[str, str] = {}
+        for target_lang in target_langs:
+            engine = (
+                "microsoft"
+                if target_lang.lower() in ["fr-ca", "french-canada", "french-canadian"]
+                else "google"
+            )
+            glossary_id = await evaluate_get_glossary_resource(
+                context.ray.super_group[0].verify_organization_uuid,
+                context.ray.client,
+                source_lang,
+                target_lang,
+                engine,
+            )
+            glossary_ids[target_lang] = glossary_id
         # Create service language mapping based on target language
-        service_language_mapping = create_service_language_mapping(target_langs)
-        glossary_id = await evaluate_get_glossary_resource(
-            context.ray.super_group[0].verify_organization_uuid,
-            context.ray.client,
-            source_lang,
-            target_lang,
-            "google",
+        service_language_mapping = create_service_language_mapping(
+            target_langs, glossary_ids
         )
         assert context.team_id is not None
         extra_data = MtTranslationExtraData(
@@ -1726,7 +1767,6 @@ async def get_mt_translation(
             thread_ts=thread_ts,
             is_edit=is_edit,
             slack_user_id=context.user_id,
-            glossary_identifier=glossary_id,
         )
 
         await send_mt_translation_request(

@@ -51,6 +51,22 @@ app.include_router(health.router, tags=["health"])
 
 
 @app.middleware("http")
+async def csp_middleware(request, call_next):
+    """Middleware to add Content Security Policy header to all responses."""
+    response = await call_next(request)
+    # Basic CSP policy: only allow resources from same origin, block inline scripts/styles
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+    return response
+
+
+@app.middleware("http")
 async def buglog_middleware(request, call_next):
     try:
         return await call_next(request)

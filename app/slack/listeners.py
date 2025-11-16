@@ -672,7 +672,10 @@ async def login_sso_action(
                         channel_id=context["channel_id"],
                         is_ibm=is_ibm_enterprise(context.enterprise_id),
                     )
-                await respond(text=msg.text, blocks=msg.blocks)
+                # check if respond is available
+                if context.response_url:
+                    await respond(text=msg.text, blocks=msg.blocks)
+
         else:
             await ack(response_action="clear")
             await respond(
