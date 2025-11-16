@@ -61,6 +61,7 @@ class MtTranslationExtraData(BaseModel):
     channel_id: str
     text_length: int
     usage_type: str
+    group_id: str
     source_text: str | None = None
     # Response method fields
     response_url: str | None = None
