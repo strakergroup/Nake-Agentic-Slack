@@ -593,7 +593,41 @@ async def ray_events(
 
         elif event.event == "verify:slack:evaluate:complete":
             if event.data.get("error"):
-                message: SlackMessage = EvaluateErrorMessage()
+                try:
+                    error_data = MtErrorResponseSchema.model_validate(event.data)
+                    if error_data.error_type == "insufficient_balance":
+                        # Send message to user that they need to purchase tokens
+                        client_type = await get_client_type(
+                            auth.slack_user.ray_client_id,
+                            auth.slack_user.ray_user_group_id,
+                        )
+                        balance = Balance.model_validate(error_data.error_data)
+
+                        if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
+                            auth.slack_user.enterprise_id
+                        ):
+                            message: SlackMessage = RequiresMtTokenMessage(
+                                balance.balance, balance.required
+                            )
+                        else:
+                            message: SlackMessage = RequiresMtTokenAdminMessage(
+                                balance.balance, balance.required
+                            )
+                    elif error_data.error_type == "conversion_error":
+                        message: SlackMessage = DocParseErrorMessage(
+                            error_data.error_data.get("ext", ""),
+                            error_data.error_data.get("file_expected", ""),
+                        )
+                    elif error_data.error_type == "file_complexity_error":
+                        message: SlackMessage = DocComplexityErrorMessage(
+                            error_data.error_data.get("ext", ""),
+                        )
+                    else:
+                        # For "other" or any other error type, use generic error message
+                        message: SlackMessage = EvaluateErrorMessage()
+                except ValidationError:
+                    # If validation fails, fall back to generic error message
+                    message: SlackMessage = EvaluateErrorMessage()
             else:
                 try:
                     job = await get_evaluation_job(
