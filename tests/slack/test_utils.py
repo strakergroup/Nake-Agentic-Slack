@@ -10,8 +10,9 @@ from app.slack.utils import (
     strip_slack_formatting,
     unescape_slack_emoji,
     unformat_links,
-
 )
+
+
 class TestIsChannelIm:
     """Tests for is_channel_im function."""
 
@@ -298,10 +299,6 @@ class TestSegmentQualityScore:
         assert "Bad" in segment_quality_score(0.84, "1.0.0")
 
 
-
-from app.slack.utils import split_text_into_blocks
-
-
 class TestSplitTextIntoBlocks:
     """Tests for split_text_into_blocks function."""
 
@@ -327,14 +324,14 @@ class TestSplitTextIntoBlocks:
         assert "".join(result) == text
 
     def test_text_exceeds_limit_multiple_lines(self):
-        """Test that text exceeding limit across multiple lines is split by lines."""
+        """Test that text exceeding limit across multiple lines is split."""
         text = "\n".join([f"Line {i}" for i in range(100)])
         result = split_text_into_blocks(text, max_length=50)
         assert len(result) > 1
         # Verify all chunks are within limit
         assert all(len(chunk) <= 50 for chunk in result)
-        # Verify original text can be reconstructed
-        assert "\n".join(result) == text
+        # Verify original text can be reconstructed (character-based splitting preserves all content)
+        assert "".join(result) == text
 
     def test_first_chunk_limit(self):
         """Test that first_chunk_limit is respected for the first chunk."""
@@ -345,6 +342,8 @@ class TestSplitTextIntoBlocks:
         assert len(result[0]) <= 1000
         # Subsequent chunks should respect max_length
         assert all(len(chunk) <= 1500 for chunk in result[1:])
+        # Verify all content is preserved
+        assert "".join(result) == text
 
     def test_first_chunk_limit_none(self):
         """Test that when first_chunk_limit is None, max_length is used for all chunks."""
@@ -353,6 +352,8 @@ class TestSplitTextIntoBlocks:
         assert len(result) >= 2
         # All chunks should respect max_length
         assert all(len(chunk) <= 1500 for chunk in result)
+        # Verify all content is preserved
+        assert "".join(result) == text
 
     def test_single_line_exceeds_limit(self):
         """Test that a single line exceeding limit is split mid-line."""
@@ -403,19 +404,19 @@ class TestSplitTextIntoBlocks:
         assert len(result) >= 2
         assert len(result[0]) <= 500
         assert all(len(chunk) <= 1000 for chunk in result[1:])
+        # Verify all content is preserved
+        assert "".join(result) == text
 
     def test_preserves_line_boundaries(self):
-        """Test that line boundaries are preserved when possible."""
+        """Test that text is split correctly (character-based splitting)."""
         lines = ["Line 1", "Line 2", "Line 3", "Line 4"]
         text = "\n".join(lines)
         # Set limit so that 2 lines fit but not 3
         result = split_text_into_blocks(text, max_length=15)
-        # Verify that chunks don't break in the middle of lines
-        # Chunks contain complete lines joined with "\n", so they end with complete lines
-        reconstructed = "\n".join(result)
-        assert reconstructed == text
         # Verify all chunks are within limit
         assert all(len(chunk) <= 15 for chunk in result)
+        # Verify all content is preserved (character-based splitting preserves all characters)
+        assert "".join(result) == text
 
     def test_very_long_single_line_with_first_chunk_limit(self):
         """Test a very long single line with first_chunk_limit."""
@@ -438,15 +439,18 @@ class TestSplitTextIntoBlocks:
         assert len(result) > 1
         assert len(result[0]) <= 100
         assert all(len(chunk) <= 200 for chunk in result[1:])
+        # Verify all content is preserved
+        assert "".join(result) == text
 
     def test_newline_handling(self):
         """Test that newlines are properly handled and counted."""
         text = "Line1\nLine2\nLine3"
         result = split_text_into_blocks(text, max_length=10)
-        # Should split, but preserve newlines
-        reconstructed = "\n".join(result)
-        # Verify newlines are preserved in the chunks
-        assert "\n" in reconstructed or len(result) == 1
+        # Should split, preserving all characters including newlines
+        # Verify all content is preserved (newlines are preserved as characters)
+        assert "".join(result) == text
+        # Verify chunks are within limit
+        assert all(len(chunk) <= 10 for chunk in result)
 
     def test_default_max_length(self):
         """Test that default max_length of 3000 is used."""
@@ -469,11 +473,5 @@ class TestSplitTextIntoBlocks:
         result = split_text_into_blocks(text, max_length=150)
         assert len(result) > 1
         assert all(len(chunk) <= 150 for chunk in result)
-        # Verify all content is preserved
-        # Note: when lines exceed limit and are split mid-line, newlines may be lost
-        all_content = "".join(result)
-        assert "Short" in all_content
-        assert "a" * 100 in all_content
-        assert "Medium length line" in all_content
-        assert "b" * 200 in all_content
-        assert "Another short line" in all_content
+        # Verify all content is preserved (character-based splitting preserves all characters)
+        assert "".join(result) == text
