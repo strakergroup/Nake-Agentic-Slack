@@ -9,7 +9,11 @@ from app.api.verify import VerifyAPIError, create_human_job
 
 @pytest.mark.asyncio
 async def test_create_human_job_sends_multiple_file_and_languages_fields():
-    """Test that create_human_job sends multiple file_and_languages as separate form fields."""
+    """Test that create_human_job sends file_and_languages correctly.
+
+    httpx automatically converts dict data with list values to multipart form data,
+    so file_and_languages list gets converted to separate form fields.
+    """
     # Setup - import RayClient here to avoid circular dependency
     from app.auth.connector import RayClient
 
@@ -53,18 +57,23 @@ async def test_create_human_job_sends_multiple_file_and_languages_fields():
             mock_client.post.assert_called_once()
             call_args = mock_client.post.call_args
 
-            # Check URL
+            # Check URL (first positional argument)
             assert (
                 call_args[0][0]
                 == "https://verify-api.test.com/automation/service/create-human-job"
             )
 
             # Check headers
-            assert call_args[1]["headers"] == {"Authorization": "Bearer test-token"}
+            kwargs = call_args[1] if len(call_args) > 1 else call_args.kwargs
+            assert kwargs["headers"] == {"Authorization": "Bearer test-token"}
 
-            # Check files parameter - should be a list of tuples
-            files_data = call_args[1]["files"]
-            assert isinstance(files_data, list)
+            # httpx converts dict data with list values to multipart form data (files)
+            # So we check the files parameter instead
+            assert (
+                "files" in kwargs
+            ), f"files parameter should be passed to httpx.post. Got kwargs: {list(kwargs.keys())}"
+            files_data = kwargs["files"]
+            assert isinstance(files_data, list), "files should be a list of tuples"
             assert len(files_data) == 6  # 3 regular fields + 3 file_and_languages
 
             # Verify all fields are present

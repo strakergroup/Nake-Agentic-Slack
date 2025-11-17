@@ -185,9 +185,7 @@ async def create_human_job(
         job_uuid: UUID of the job
         file_and_languages: List of strings with the format "file_uuid:language_uuid"
     """
-    import logging
 
-    logger = logging.getLogger(__name__)
     url = f"{domains.verify_api}/automation/service/create-human-job"
     headers = {"Authorization": f"Bearer {ray_client.id_token}"}
     # TODO: allow submission
@@ -203,24 +201,6 @@ async def create_human_job(
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
         response = await client.post(url, headers=headers, data=data)
-
-        # Only log if request fails
-        if response.status_code == 400:
-            try:
-                error_detail = response.json()
-                logger.error(
-                    f"create_human_job 400 error: job_uuid={job_uuid}, "
-                    f"file_and_languages count={len(file_and_languages)}, "
-                    f"file_and_languages={file_and_languages}, "
-                    f"error_detail={error_detail}, request_data={data}"
-                )
-            except Exception:
-                logger.error(
-                    f"create_human_job 400 error: job_uuid={job_uuid}, "
-                    f"file_and_languages count={len(file_and_languages)}, "
-                    f"file_and_languages={file_and_languages}, "
-                    f"response_text={response.text}, request_data={data}"
-                )
 
         # Check for unauthorized error
         if response.status_code == 401:
