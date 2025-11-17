@@ -185,29 +185,42 @@ async def create_human_job(
         job_uuid: UUID of the job
         file_and_languages: List of strings with the format "file_uuid:language_uuid"
     """
+    import logging
+
+    logger = logging.getLogger(__name__)
     url = f"{domains.verify_api}/automation/service/create-human-job"
     headers = {"Authorization": f"Bearer {ray_client.id_token}"}
     # TODO: allow submission
     service_uuid = "37f2e44b-ba3c-42b1-83c7-d3023298292f"
     # TODO: What is this?
     purchase_order_number = "123456"
-    # Build multipart form data as list of tuples to send multiple file_and_languages fields
-    # FastAPI expects multiple form fields with the same name, not a single list value
-    # Using 'files' parameter (even empty) forces multipart/form-data encoding
-    # Regular form fields can be sent as tuples with string values
-    files_data = [
-        ("job_uuid", job_uuid),
-        ("service_uuid", service_uuid),
-        ("purchase_order_number", purchase_order_number),
-    ]
-    # Add each file_and_language as a separate form field
-    for file_and_lang in file_and_languages:
-        files_data.append(("file_and_languages", file_and_lang))
+    data = {
+        "job_uuid": job_uuid,
+        "service_uuid": service_uuid,
+        "file_and_languages": file_and_languages,
+        "purchase_order_number": purchase_order_number,
+    }
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
-        # Using files parameter sends multipart/form-data
-        # httpx accepts list of tuples for both files and data when files is used
-        response = await client.post(url, headers=headers, files=files_data)
+        response = await client.post(url, headers=headers, data=data)
+
+        # Only log if request fails
+        if response.status_code == 400:
+            try:
+                error_detail = response.json()
+                logger.error(
+                    f"create_human_job 400 error: job_uuid={job_uuid}, "
+                    f"file_and_languages count={len(file_and_languages)}, "
+                    f"file_and_languages={file_and_languages}, "
+                    f"error_detail={error_detail}, request_data={data}"
+                )
+            except Exception:
+                logger.error(
+                    f"create_human_job 400 error: job_uuid={job_uuid}, "
+                    f"file_and_languages count={len(file_and_languages)}, "
+                    f"file_and_languages={file_and_languages}, "
+                    f"response_text={response.text}, request_data={data}"
+                )
 
         # Check for unauthorized error
         if response.status_code == 401:
