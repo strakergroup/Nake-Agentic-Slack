@@ -3165,31 +3165,9 @@ class AutoTranslationMessage(SlackMessage):
             if len(text) <= MAX_BLOCK_TEXT_LENGTH:
                 return [text]
 
-            # Split by lines to avoid breaking in the middle of a line
-            lines = text.split("\n")
             chunks: list[str] = []
-            current_chunk: list[str] = []
-            current_length: int = 0
-
-            for line in lines:
-                line_length = len(line) + 1  # +1 for newline
-
-                # If adding this line would exceed the limit, start a new chunk
-                if (
-                    current_length + line_length > MAX_BLOCK_TEXT_LENGTH
-                    and current_chunk
-                ):
-                    chunks.append("\n".join(current_chunk))
-                    current_chunk = [line]
-                    current_length = line_length
-                else:
-                    current_chunk.append(line)
-                    current_length += line_length
-
-            # Add the last chunk
-            if current_chunk:
-                chunks.append("\n".join(current_chunk))
-
+            for i in range(0, len(text), MAX_BLOCK_TEXT_LENGTH):
+                chunks.append(text[i : i + MAX_BLOCK_TEXT_LENGTH])
             return chunks
 
         for target_lang, translated_list in self.translations.items():
