@@ -1928,7 +1928,15 @@ async def verify_job_modal_open_action(
     job_uuid = action["value"]
     # Get the message timestamp from the body
     message_ts = body.get("message", {}).get("ts")
-
+    redis_key = f"verify_job_submission_{job_uuid}"
+    if await redis_conn.get(redis_key):
+        await client.chat_postMessage(
+            channel=context["channel_id"],
+            text=_(
+                "A request is already in progress. Please try again in a few seconds."
+            ),
+        )
+        return
     # Open loading modal immediately
     loading_view = loading_modal()
     response = await client.views_open(trigger_id=body["trigger_id"], view=loading_view)
