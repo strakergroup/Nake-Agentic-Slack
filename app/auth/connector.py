@@ -22,6 +22,8 @@ from sqlalchemy import bindparam, text
 from straker_auth.languagecloud import create_languagecloud_id_token
 from straker_utils.sql.async_engine import execute, fetch_all, fetch_one
 
+from app.slack.buglog_notifier import notify_exception
+
 from ..config import Environment, config, domains
 from ..database import async_engines, engines
 from ..slack.buglog_notifier import notify_exception

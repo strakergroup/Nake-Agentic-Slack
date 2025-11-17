@@ -17,6 +17,8 @@ from app.slack.buglog_notifier import notify_exception
 from ..redis import redis_conn
 from .select_options import map_file_options
 
+upload_timeout = httpx.Timeout(connect=10.0, read=30.0, write=60.0, pool=10.0)
+
 
 async def files_list_simple(
     client: AsyncWebClient, channel_id: str, count: int = 100
@@ -126,6 +128,7 @@ async def download_file(
                 download_url,
                 headers={"Authorization": f"Bearer {client.token}"},
                 follow_redirects=True,
+                timeout=upload_timeout,
             ) as response:
                 response.raise_for_status()
 
@@ -242,6 +245,7 @@ async def upload_file_to_slack_memory_efficient(
                     upload_url,
                     files=files,
                     data=data,
+                    timeout=upload_timeout,
                 )
 
                 if response.status_code != 200:
