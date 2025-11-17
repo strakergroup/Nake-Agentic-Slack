@@ -224,7 +224,10 @@ async def resolve_language(target_langs: list[str], engine: str) -> list[str]:
     mapped_lang = []
     for lang in target_langs:
         if engine != "microsoft" and lang.lower() in langs_dict:
-            mapped_lang.append(lang)
+            if lang.lower() in ["fr-ca", "french-canada", "french-canadian"]:
+                mapped_lang.append("fr-ca")
+            else:
+                mapped_lang.append(lang.lower())
         else:
             db_lang = await resolve_language_code(lang)
             if db_lang:
