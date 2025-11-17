@@ -191,15 +191,23 @@ async def create_human_job(
     service_uuid = "37f2e44b-ba3c-42b1-83c7-d3023298292f"
     # TODO: What is this?
     purchase_order_number = "123456"
-    data = {
-        "job_uuid": job_uuid,
-        "service_uuid": service_uuid,
-        "file_and_languages": file_and_languages,
-        "purchase_order_number": purchase_order_number,
-    }
+    # Build multipart form data as list of tuples to send multiple file_and_languages fields
+    # FastAPI expects multiple form fields with the same name, not a single list value
+    # Using 'files' parameter (even empty) forces multipart/form-data encoding
+    # Regular form fields can be sent as tuples with string values
+    files_data = [
+        ("job_uuid", job_uuid),
+        ("service_uuid", service_uuid),
+        ("purchase_order_number", purchase_order_number),
+    ]
+    # Add each file_and_language as a separate form field
+    for file_and_lang in file_and_languages:
+        files_data.append(("file_and_languages", file_and_lang))
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
-        response = await client.post(url, headers=headers, data=data)
+        # Using files parameter sends multipart/form-data
+        # httpx accepts list of tuples for both files and data when files is used
+        response = await client.post(url, headers=headers, files=files_data)
 
         # Check for unauthorized error
         if response.status_code == 401:

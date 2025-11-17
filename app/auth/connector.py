@@ -24,6 +24,7 @@ from straker_utils.sql.async_engine import execute, fetch_all, fetch_one
 
 from ..config import Environment, config, domains
 from ..database import async_engines, engines
+from ..slack.buglog_notifier import notify_exception
 from .algorithms import encrypt_aes, hash_hmac_sha1
 
 
@@ -867,8 +868,6 @@ async def connect_ray_account(
             await http.post(url)
         return "success"
     except Exception as e:
-        from app.slack.buglog_notifier import notify_exception
-
         notify_exception(e)
         return "failed"
 
