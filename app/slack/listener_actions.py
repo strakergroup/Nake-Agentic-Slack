@@ -1977,6 +1977,5 @@ async def submit_verification_job(
             )
     except Exception as e:
         notify_exception(e)
-        raise
     finally:
         await redis_conn.delete(f"verify_job_submission_{job_uuid}")
