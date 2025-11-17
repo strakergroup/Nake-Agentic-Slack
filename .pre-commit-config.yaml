@@ -5,16 +5,16 @@ repos:
       - id: ruff
         args: [--select, I, --fix]   # optional: auto-fix issues
       - id: ruff-format
-  # - repo: https://github.com/pre-commit/mirrors-mypy
-  #   rev: v1.10.0
-  #   hooks:
-  #     - id: mypy
-  #       files: ^app/.*\.py$
-  #       additional_dependencies:
-  #         - sqlalchemy==2.*
-  #         - types-requests
-  #         - types-redis
-  #         - types-python-dateutil
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        files: ^app/.*\.py$
+        additional_dependencies:
+          - sqlalchemy==2.*
+          - types-requests
+          - types-redis
+          - types-python-dateutil
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
