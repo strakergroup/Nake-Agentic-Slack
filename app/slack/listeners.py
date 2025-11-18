@@ -59,6 +59,7 @@ from ..config import domains
 from ..ray.settings import (
     delete_channel_id,
     disable_auto_translate_group_settings,
+    get_auto_translate_language_name,
     get_auto_translate_settings_and_langs,
     update_auto_translate_group_settings,
     update_channel_id,
@@ -110,7 +111,6 @@ from .templates.messages import (
     OnboardingMessage,
     QuoteMessage,
     SlackMessage,
-    SrtTranslateMessage,
     SsoConnectionInfoMessage,
     SuccessfulLoginMessage,
     SuccessfulLogoutMessage,
@@ -130,17 +130,58 @@ from .templates.views import (
     human_job_modal,
     job_search_modal,
     loading_modal,
+    srt_translate_modal,
     translation_settings_view,
     verify_job_modal,
     verify_quote_summary_modal,
 )
-from .utils import is_channel_im
+from .utils import (
+    extract_language_codes_from_form,
+    format_strings_display,
+    is_channel_im,
+)
 from .web import (
     download_file,
     files_list_simple,
     get_mt_ts_cached,
     upload_file_to_slack_memory_efficient,
 )
+
+# ---------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------
+
+
+async def _send_translation_success_message(
+    client: AsyncWebClient, channel_id: str, language_codes: list[str]
+) -> None:
+    """Send a success message after submitting translation jobs.
+
+    Args:
+        client: The Slack web client.
+        channel_id: The channel ID to send the message to.
+        language_codes: List of language codes that were selected for translation.
+    """
+    if len(language_codes) == 1:
+        # Use language name instead of code
+        lang_name = get_auto_translate_language_name(language_codes[0])
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "The file is being translated to {lang_name}. You will be notified when it is ready."
+            ),
+        )
+    else:
+        # Format language names nicely
+        lang_names = [get_auto_translate_language_name(lang) for lang in language_codes]
+        langs_string = format_strings_display(lang_names, and_string="and")
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "The file is being translated to {langs_string}. You will be notified when they are ready."
+            ),
+        )
+
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -361,12 +402,11 @@ async def show_srt_translate_form(
     if await require_ray_client(context):
         assert action is not None
         task_uuid = action["value"]
-        # SrtTranslateMessage normal message no modal just message
-        msg = SrtTranslateMessage(task_uuid)
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=msg.text,
-            blocks=msg.blocks,
+        channel_id = context.get("channel_id") or context["user_id"]
+        view = srt_translate_modal(task_uuid, channel_id)
+        await client.views_open(
+            trigger_id=body["trigger_id"],
+            view=view,
         )
 
 
@@ -542,57 +582,77 @@ async def handle_translate_shortcut(
     )
 
 
-@app.action("srt_translate", middleware=[ray_connection])
+@app.view("srt_translate", middleware=[ray_connection])
 @slack_log_decorator
 async def srt_translate_action(
     ack: AsyncAck,
-    action: Optional[Dict[str, Any]],
+    view: Optional[Dict[str, Any]],
     context: RayContext,
     body: Dict[str, Any],
-    say: AsyncSay,
     client: AsyncWebClient,
 ):
+    """Handle SRT translation modal submission."""
     try:
-        await ack()
+        await ack(response_action="clear")
         if await require_ray_client(context):
             assert context["ray"] is not None
             assert context["ray"].client is not None
-            assert action is not None
-            task_uuid = action["value"]
-            # get uuid from output_file
+            assert view is not None
+
+            # Get task_uuid and channel_id from private_metadata
+            private_metadata = view.get("private_metadata", "")
+            if not private_metadata:
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=_("An error occurred: task UUID not found."),
+                )
+                return
+
+            # Parse private_metadata: format is "task_uuid|channel_id" or just "task_uuid" for backwards compatibility
+            metadata_parts = private_metadata.split("|")
+            task_uuid = metadata_parts[0]
+            channel_id = metadata_parts[1] if len(metadata_parts) > 1 else None
+
+            # Set channel_id in context (same pattern as document_mt_job)
+            context["channel_id"] = channel_id or context["user_id"]
+
+            # Get selected languages from the form
+            form_data = view.get("state", {}).get("values", {})
+            selected_languages = extract_language_codes_from_form(form_data)
+
+            if not selected_languages:
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=_("Please select at least one language to translate to."),
+                )
+                return
+
+            # Get file_id from task result
             task_result = await get_asr_task(task_uuid, context["ray"].client.id)
             assert task_result is not None
-            # Get tokens from task_result (API returns "tokens", not "tokens_consumed")
-            tokens_consumed = task_result.get("tokens_consumed") or task_result.get(
-                "tokens"
+            file_id = cast(str, task_result.get("file_id"))
+
+            # Create translation job for each selected language
+            for selected_language in selected_languages:
+                await document_machine_translate(
+                    context,
+                    file_id,
+                    cast(str, selected_language),
+                    0,  # submission_id - not available in this context
+                )
+
+            # Send success message
+            await _send_translation_success_message(
+                client, context["user_id"], selected_languages
             )
-            if tokens_consumed is not None and await require_mt_tokens(
-                context, tokens_consumed
-            ):
-                # get selected language from redis keyed on output_file
-                # selected from get_auto_translate_language_options
-                selected_language = await redis_conn.get(f"output_file_{task_uuid}")
-                if selected_language is not None:
-                    await document_machine_translate(
-                        context,
-                        cast(str, task_result.get("file_id")),
-                        cast(str, selected_language),
-                        0,  # submission_id - not available in this context
-                    )
-                    await say(
-                        _(
-                            "The file is being translated. You will be notified when it is ready."
-                        )
-                    )
-                else:
-                    await say(_("Please select a language to translate to."))
     except Exception as exc:
         notify_exception(exc, "Error in srt_translate_action")
         # Respond to user with error, if possible
-        await say(
-            _(
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=_(
                 "An error occurred while processing your translation request. Please try again or contact support."
-            )
+            ),
         )
 
 
@@ -1566,11 +1626,20 @@ async def view_update_auto_translate_settings(
 
 @app.action("language_mt_options", middleware=[ray_connection])
 async def language_mt_options_selected(ack: AsyncAck, body: Dict[str, Any]):
-    # redis store the selected options keyed by ouputn file
+    # redis store the selected options keyed by output file
     await ack()
     file_id = body["actions"][0]["block_id"]
-    selected_language = body["actions"][0]["selected_option"]["value"]
-    await redis_conn.set(f"output_file_{file_id}", selected_language)
+    # Handle both single select (selected_option) and multi select (selected_options)
+    if "selected_options" in body["actions"][0]:
+        # Multi-select: store as JSON array
+        selected_languages = [
+            option["value"] for option in body["actions"][0]["selected_options"]
+        ]
+        await redis_conn.set(f"output_file_{file_id}", json.dumps(selected_languages))
+    elif "selected_option" in body["actions"][0]:
+        # Single select: store as string for backward compatibility
+        selected_language = body["actions"][0]["selected_option"]["value"]
+        await redis_conn.set(f"output_file_{file_id}", selected_language)
 
 
 @app.options("language_options", middleware=[ray_connection])
