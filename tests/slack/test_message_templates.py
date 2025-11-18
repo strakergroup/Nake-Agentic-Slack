@@ -1,5 +1,6 @@
 from app.auth.connector import RayClient, RayConnection, RaySuperGroup
 from app.slack.templates.messages import (
+    AutoTranslationMessage,
     AutoTranslateSettingsChangedMessage,
     AutoTranslateSettingsDisabledMessage,
     CancelJobMessage,
@@ -18,9 +19,11 @@ from app.slack.templates.messages import (
     JobTargetsNoIdMessage,
     LoginMessage,
     LogoutMessage,
+    MachineTranslationMessage,
     OnboardingMessage,
     RequiresMtTokenMessage,
     SlackPermissionsMessage,
+    SrtTranslateMessage,
     SuccessfulLoginMessage,
     SuccessfulLogoutMessage,
     TranscriptionMessage,
@@ -707,3 +710,148 @@ class TestEvaluateSuccessMessage:
             assert len(message.blocks) > 0
             # Should not have action buttons when actions=False
             assert not any(block.get("type") == "actions" for block in message.blocks)
+
+
+class TestMachineTranslationMessage:
+    def test_short_text_no_splitting(self):
+        """Test that short translations don't get split into multiple blocks."""
+        source_text = "Hello world"
+        mt_text = "Hola mundo"
+        message = MachineTranslationMessage("es", "en", source_text, mt_text)
+
+        # Should have 2 blocks: label block + translation block
+        assert len(message.blocks) == 2
+        assert message.blocks[0]["type"] == "section"
+        assert "*Machine translation result:*" in message.blocks[0]["text"]["text"]
+        assert message.blocks[1]["type"] == "section"
+        assert "*Hola mundo (en-es)*" in message.blocks[1]["text"]["text"]
+
+    def test_long_text_splitting(self):
+        """Test that long translations get split into multiple blocks."""
+        # Create text that exceeds 3000 characters - use lines to ensure proper splitting
+        long_text = "A" * 1500 + "\n" + "B" * 1500 + "\n" + "C" * 1000
+        source_text = "Source text"
+        message = MachineTranslationMessage("es", "en", source_text, long_text)
+
+        # Should have at least 3 blocks: label block + multiple translation blocks
+        assert len(message.blocks) >= 3
+        assert message.blocks[0]["type"] == "section"
+        assert "*Machine translation result:*" in message.blocks[0]["text"]["text"]
+
+        # First translation block should have language label
+        assert message.blocks[1]["type"] == "section"
+        assert "(en-es)" in message.blocks[1]["text"]["text"]
+
+        # Verify no block exceeds 3000 characters
+        for block in message.blocks[1:]:
+            text_length = len(block["text"]["text"])
+            assert text_length <= 3000, f"Block text length {text_length} exceeds 3000"
+
+        # Verify all text is present (accounting for markdown formatting)
+        combined_text = "".join(
+            block["text"]["text"].replace("*", "").replace("(en-es)", "")
+            for block in message.blocks[1:]
+        )
+        # Check that key parts of the original text are present
+        assert "A" * 1500 in combined_text or "A" * 1000 in combined_text
+
+    def test_language_label_on_first_chunk_only(self):
+        """Test that language label appears only on the first chunk when splitting."""
+        # Create text that will definitely be split
+        long_text = "Line 1\n" * 500  # Multiple lines to ensure splitting
+        source_text = "Source text"
+        message = MachineTranslationMessage("es", "en", source_text, long_text)
+
+        # First translation block should have language label
+        first_translation_block = message.blocks[1]
+        assert "(en-es)" in first_translation_block["text"]["text"]
+
+        # Subsequent blocks should not have language label
+        for block in message.blocks[2:]:
+            assert "(en-es)" not in block["text"]["text"]
+
+
+class TestAutoTranslationMessage:
+    def test_short_translation_no_splitting(self):
+        """Test that short translations don't get split."""
+        source_text = "Hello world"
+        translations = {"es": ["Hola mundo"]}
+        message = AutoTranslationMessage(source_text, "en", translations)
+
+        # Should have translation blocks + context block
+        assert len(message.blocks) >= 2
+        # Find the translation block (not the context block)
+        translation_blocks = [
+            b
+            for b in message.blocks
+            if b.get("type") == "section" and ">" in b["text"]["text"]
+        ]
+        assert len(translation_blocks) == 1
+        assert "Hola mundo" in translation_blocks[0]["text"]["text"]
+
+    def test_long_translation_splitting(self):
+        """Test that long translations get split into multiple blocks."""
+        # Create text that exceeds 3000 characters - use lines to ensure proper splitting
+        long_translation = "A" * 1500 + "\n" + "B" * 1500 + "\n" + "C" * 1000
+        source_text = "Source text"
+        translations = {"es": [long_translation]}
+        message = AutoTranslationMessage(source_text, "en", translations)
+
+        # Should have multiple translation blocks + context block
+        translation_blocks = [
+            b
+            for b in message.blocks
+            if b.get("type") == "section" and ">" in b["text"]["text"]
+        ]
+        assert len(translation_blocks) >= 2
+
+        # Verify no block exceeds 3000 characters
+        for block in translation_blocks:
+            text_length = len(block["text"]["text"])
+            assert text_length <= 3000, f"Block text length {text_length} exceeds 3000"
+
+    def test_multiple_languages(self):
+        """Test that multiple language translations are handled correctly."""
+        source_text = "Hello"
+        translations = {
+            "es": ["Hola"],
+            "fr": ["Bonjour"],
+            "de": ["Hallo"],
+        }
+        message = AutoTranslationMessage(source_text, "en", translations)
+
+        # Should have blocks for each translation + context block
+        translation_blocks = [
+            b
+            for b in message.blocks
+            if b.get("type") == "section" and ">" in b["text"]["text"]
+        ]
+        assert len(translation_blocks) >= 3
+
+        # Verify context block mentions all languages
+        context_block = [b for b in message.blocks if b.get("type") == "context"][0]
+        assert "Translated to" in context_block["elements"][0]["text"]
+
+
+class TestSrtTranslateMessage:
+    def test_message_structure(self):
+        """Test that SrtTranslateMessage creates correct block structure."""
+        task_uuid = "test-uuid-123"
+        message = SrtTranslateMessage(task_uuid)
+
+        # Should have input block and actions block
+        assert len(message.blocks) == 2
+
+        # First block should be input block
+        assert message.blocks[0]["type"] == "input"
+        assert message.blocks[0]["block_id"] == task_uuid
+        assert message.blocks[0]["element"]["type"] == "static_select"
+        assert message.blocks[0]["element"]["action_id"] == "language_mt_options"
+
+        # Second block should be actions block with submit button
+        assert message.blocks[1]["type"] == "actions"
+        assert len(message.blocks[1]["elements"]) == 1
+        assert message.blocks[1]["elements"][0]["type"] == "button"
+        assert message.blocks[1]["elements"][0]["action_id"] == "srt_translate"
+        assert message.blocks[1]["elements"][0]["value"] == task_uuid
+        assert message.blocks[1]["elements"][0]["style"] == "primary"

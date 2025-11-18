@@ -44,7 +44,7 @@ from ...ray.utils import (
     is_ibm_enterprise,
     is_min_langugagecloud_plan,
 )
-from ..utils import format_strings_display, unescape_slack_emoji
+from ..utils import format_strings_display, split_text_into_blocks, unescape_slack_emoji
 from .blocks import (
     evaluate_success_blocks,
     job_link_block,
@@ -3170,16 +3170,6 @@ class AutoTranslationMessage(SlackMessage):
         # Slack's limit for mrkdwn text in section blocks is 3000 characters
         MAX_BLOCK_TEXT_LENGTH = 3000
 
-        def split_text_into_blocks(text: str) -> list[str]:
-            """Split long text into chunks that fit within Slack's block limit."""
-            if len(text) <= MAX_BLOCK_TEXT_LENGTH:
-                return [text]
-
-            chunks: list[str] = []
-            for i in range(0, len(text), MAX_BLOCK_TEXT_LENGTH):
-                chunks.append(text[i : i + MAX_BLOCK_TEXT_LENGTH])
-            return chunks
-
         for target_lang, translated_list in self.translations.items():
             # Join all strings in the list with spaces
             translated = " ".join(translated_list)
@@ -3194,7 +3184,9 @@ class AutoTranslationMessage(SlackMessage):
                 )
 
                 # Split into multiple blocks if text exceeds Slack's limit
-                text_chunks = split_text_into_blocks(quoted_translated)
+                text_chunks = split_text_into_blocks(
+                    quoted_translated, max_length=MAX_BLOCK_TEXT_LENGTH
+                )
                 for chunk in text_chunks:
                     blocks.append(
                         {
@@ -3227,25 +3219,50 @@ class MachineTranslationMessage(SlackMessage):
     def __init__(self, tl: str, sl: str, source_text: str, mt_text: str) -> None:
         mt_label = _("Machine translation result:")
         mt_text = unescape_slack_emoji(mt_text, source_text)
-        super().__init__(
-            f"{mt_label} {mt_text}",
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*{mt_label}*",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*{mt_text} ({sl}-{tl}) ",
-                    },
-                },
-            ],
-        )
+
+        # Slack's limit for mrkdwn text in section blocks is 3000 characters
+        MAX_BLOCK_TEXT_LENGTH = 3000
+
+        # Build blocks using Slack SDK
+        blocks: list[SectionBlock] = [
+            SectionBlock(text=MarkdownTextObject(text=f"*{mt_label}*"))
+        ]
+
+        # Split translation text if it exceeds the limit
+        # Include language label in the first chunk
+        language_label = f" ({sl}-{tl})"
+        full_text = f"*{mt_text}{language_label}*"
+
+        # Check if we need to split
+        if len(full_text) <= MAX_BLOCK_TEXT_LENGTH:
+            # Single block - no splitting needed
+            blocks.append(SectionBlock(text=MarkdownTextObject(text=full_text)))
+        else:
+            # Need to split - put language label on first chunk only
+            # Account for markdown formatting and label length
+            label_length = len(f"*{language_label}*")
+            available_length = MAX_BLOCK_TEXT_LENGTH - label_length
+
+            # Split the mt_text itself, accounting for label on first chunk
+            text_chunks = split_text_into_blocks(
+                mt_text, MAX_BLOCK_TEXT_LENGTH, first_chunk_limit=available_length
+            )
+
+            for i, chunk in enumerate(text_chunks):
+                if i == 0:
+                    # First chunk includes the language label
+                    blocks.append(
+                        SectionBlock(
+                            text=MarkdownTextObject(text=f"*{chunk}{language_label}*")
+                        )
+                    )
+                else:
+                    # Subsequent chunks are just continuation
+                    blocks.append(SectionBlock(text=MarkdownTextObject(text=chunk)))
+
+        # Convert blocks to dictionaries for SlackMessage
+        blocks_dict = [block.to_dict() for block in blocks]
+        super().__init__(f"{mt_label} {mt_text}", blocks_dict)
 
 
 class SrtTranslateMessage(SlackMessage):
