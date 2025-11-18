@@ -6,9 +6,11 @@ from uuid import uuid4
 import pytest
 from slack_bolt.context.async_context import AsyncBoltContext
 
-from app.auth.connector import RayClient
 from app.redis import redis_conn
 from app.slack.select_options import _cached_languages
+
+# Lazy import to avoid circular dependency
+# RayClient is imported inside the fixture where it's needed
 
 # -----------------------------------------------------------------------------
 # Helper functions
@@ -161,7 +163,10 @@ def ts() -> str:
 
 
 @pytest.fixture
-def ray_client(user_id, team_id, enterprise_id) -> RayClient:
+def ray_client(user_id, team_id, enterprise_id):
+    # Import here to avoid circular dependency
+    from app.auth.connector import RayClient
+
     return RayClient(
         id=str(uuid4()),
         username="test.user",

@@ -160,6 +160,40 @@ def replace_xtag(match):
     return f"<x i={i}/>"
 
 
+def split_text_into_blocks(
+    text: str, max_length: int = 3000, first_chunk_limit: int | None = None
+) -> list[str]:
+    """Split long text into chunks that fit within Slack's block limit.
+
+    Args:
+        text (str): The text to split.
+        max_length (int): Maximum characters per chunk. Defaults to 3000 (Slack's limit for mrkdwn text in section blocks).
+        first_chunk_limit (int | None): Optional limit for the first chunk (useful when first chunk has a label).
+            If None, uses max_length for all chunks.
+
+    Returns:
+        list[str]: List of text chunks, each within the specified limit.
+    """
+    first_limit = first_chunk_limit or max_length
+    if len(text) <= first_limit:
+        return [text]
+
+    chunks: list[str] = []
+    remaining = text
+    is_first = True
+
+    while remaining:
+        chunk_limit = first_limit if is_first else max_length
+        if len(remaining) <= chunk_limit:
+            chunks.append(remaining)
+            break
+        chunks.append(remaining[:chunk_limit])
+        remaining = remaining[chunk_limit:]
+        is_first = False
+
+    return chunks
+
+
 def segment_quality_score(score: float, taus_version: str = "1.0.0") -> str:
     """
     Determine the quality score based on the TAUS QE version.

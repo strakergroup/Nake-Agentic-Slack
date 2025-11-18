@@ -99,11 +99,16 @@ async def _send_to_slack(
 
     try:
         token = config.slack_dev_alert_bot_token.get_secret_value()
-        channel_id = config.slack_dev_alert_channel_id
+        # Select channel based on environment
+        if config.environment == Environment.production:
+            channel_id = config.slack_dev_alert_channel_id_production
+        else:
+            channel_id = config.slack_dev_alert_channel_id_non_production
 
         if not channel_id or not token:
             logger.debug(
-                f"Slack notification skipped: channel_id={bool(channel_id)}, token={bool(token)}"
+                f"Slack notification skipped: channel_id={bool(channel_id)}, token={bool(token)}, "
+                f"environment={config.environment.value}"
             )
             return
 
