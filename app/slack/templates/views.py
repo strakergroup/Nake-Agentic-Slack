@@ -1091,7 +1091,7 @@ def srt_translate_modal(task_uuid: str, channel_id: str) -> dict[str, Any]:
 
     # Create multi-select element
     multi_select = StaticMultiSelectElement(
-        placeholder=PlainTextObject(text=_("Select language(s)"), emoji=False),
+        placeholder=PlainTextObject(text=_("Select language"), emoji=False),
         options=language_options,
         action_id="language_mt_options",
         max_selected_items=10,
