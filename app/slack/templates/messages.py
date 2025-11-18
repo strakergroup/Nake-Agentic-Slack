@@ -5,6 +5,16 @@ from typing import Any, Dict, List
 
 import langcodes
 from ray_sdk.api.v3.models import Job, Pagination, Quote
+from slack_sdk.models.blocks import (
+    ActionsBlock,
+    InputBlock,
+    Option,
+    PlainTextObject,
+)
+from slack_sdk.models.blocks.block_elements import (
+    ButtonElement,
+    StaticMultiSelectElement,
+)
 
 from app.slack.select_options import (
     get_auto_translate_language_options,
@@ -3242,47 +3252,47 @@ class SrtTranslateMessage(SlackMessage):
     """Message to allow user to select language and submit for machine translation"""
 
     def __init__(self, task_uuid: str) -> None:
-        title = _("Please select the target language for translation")
-        language_options = get_auto_translate_language_options()
-        # create message which contains the output_file of the submit button and contains a input element which is a multi select for language
-        super().__init__(
-            title,
-            [
-                {
-                    "type": "input",
-                    "block_id": task_uuid,
-                    "label": {
-                        "type": "plain_text",
-                        "text": _("Select language"),
-                    },
-                    "element": {
-                        "type": "static_select",
-                        "placeholder": {
-                            "type": "plain_text",
-                            "text": _("Choose language"),
-                        },
-                        "options": language_options,
-                        "action_id": "language_mt_options",
-                    },
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Submit"),
-                                "emoji": False,
-                            },
-                            "action_id": "srt_translate",
-                            "style": "primary",
-                            "value": task_uuid,
-                        },
-                    ],
-                },
-            ],
+        title = _("Please select the target language(s) for translation")
+        language_options_raw = get_auto_translate_language_options()
+        # Convert raw options to SDK Option objects
+        language_options = [
+            Option(
+                text=PlainTextObject(text=opt["text"]["text"], emoji=False),
+                value=opt["value"],
+            )
+            for opt in language_options_raw
+        ]
+
+        # Create multi-select element
+        multi_select = StaticMultiSelectElement(
+            placeholder=PlainTextObject(text=_("Select language(s)")),
+            options=language_options,
+            action_id="language_mt_options",
+            max_selected_items=10,
         )
+
+        # Create input block
+        input_block = InputBlock(
+            block_id=task_uuid,
+            label=PlainTextObject(text=_("Select languages")),
+            element=multi_select,
+        )
+
+        # Create submit button
+        submit_button = ButtonElement(
+            text=PlainTextObject(text=_("Submit"), emoji=False),
+            action_id="srt_translate",
+            style="primary",
+            value=task_uuid,
+        )
+
+        # Create actions block
+        actions_block = ActionsBlock(elements=[submit_button])
+
+        # Convert blocks to dictionaries for SlackMessage
+        blocks = [input_block.to_dict(), actions_block.to_dict()]
+
+        super().__init__(title, blocks)
 
 
 class DocumentMTJobMessage(SlackMessage):

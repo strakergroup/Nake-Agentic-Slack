@@ -1,4 +1,5 @@
 from app.slack.templates.views import (
+    srt_translate_modal,
     calculate_total_cost,
     cancel_job_modal,
     document_mt_job_modal,
@@ -11,6 +12,7 @@ from app.slack.templates.views import (
     verify_job_modal,
     verify_quote_summary_modal,
 )
+from app.translate import _
 
 
 def test_verify_job_modal_cost_update_individual_checkboxes():
@@ -101,9 +103,9 @@ def test_verify_job_modal_cost_update_individual_checkboxes():
         None,
     )
 
-    assert (
-        total_cost_block is not None
-    ), "total_cost_block is missing from modal['blocks']"
+    assert total_cost_block is not None, (
+        "total_cost_block is missing from modal['blocks']"
+    )
 
     # Validate the total cost text dynamically
     assert (
@@ -135,9 +137,9 @@ def test_verify_job_modal_cost_update_individual_checkboxes():
         None,
     )
 
-    assert (
-        total_cost_block is not None
-    ), "total_cost_block is missing from modal['blocks']"
+    assert total_cost_block is not None, (
+        "total_cost_block is missing from modal['blocks']"
+    )
 
     # Validate the updated total cost text dynamically
     assert (
@@ -406,3 +408,93 @@ class TestLoadingModal:
         assert "Processing" in modal["title"]["text"]
         assert len(modal["blocks"]) == 1
         assert "hourglass" in modal["blocks"][0]["text"]["text"]
+
+
+class TestSrtTranslateModal:
+    def test_srt_translate_modal_structure(self):
+        """Test that srt_translate_modal returns a properly structured modal."""
+        task_uuid = "test-task-uuid-123"
+        modal = srt_translate_modal(task_uuid)
+
+        # Verify modal structure
+        assert modal.get("type") == "modal"
+        assert modal.get("callback_id") == "srt_translate"
+        assert "blocks" in modal
+        assert "private_metadata" in modal
+        assert modal["private_metadata"] == task_uuid
+
+        # Verify title
+        assert "title" in modal
+        assert modal["title"]["type"] == "plain_text"
+        assert len(modal["title"]["text"]) <= 24  # Slack title limit
+
+        # Verify submit and close buttons
+        assert "submit" in modal
+        assert modal["submit"]["type"] == "plain_text"
+        assert "close" in modal
+        assert modal["close"]["type"] == "plain_text"
+
+    def test_srt_translate_modal_blocks(self):
+        """Test that the modal contains the correct blocks."""
+        task_uuid = "test-task-uuid-456"
+        modal = srt_translate_modal(task_uuid)
+
+        blocks = modal["blocks"]
+        assert len(blocks) == 2  # Section block + input block
+
+        # Verify section block
+        section_block = blocks[0]
+        assert section_block["type"] == "section"
+        assert "text" in section_block
+        assert section_block["text"]["type"] == "mrkdwn"
+        # Check for translated text
+        expected_section_text = _(
+            "Please select the target language(s) for translation"
+        )
+        assert expected_section_text in section_block["text"]["text"]
+
+        # Verify input block
+        input_block = blocks[1]
+        assert input_block["type"] == "input"
+        assert input_block["block_id"] == "target_langs"
+        assert "label" in input_block
+        assert input_block["label"]["type"] == "plain_text"
+        # Check for translated text
+        expected_label_text = _("Select languages")
+        assert input_block["label"]["text"] == expected_label_text
+
+        # Verify multi-select element
+        element = input_block["element"]
+        assert element["type"] == "multi_static_select"
+        assert element["action_id"] == "language_mt_options"
+        assert element["max_selected_items"] == 10
+        assert "placeholder" in element
+        assert element["placeholder"]["type"] == "plain_text"
+        # Check for translated text
+        expected_placeholder_text = _("Select language(s)")
+        assert element["placeholder"]["text"] == expected_placeholder_text
+
+        # Verify language options are present
+        assert "options" in element
+        assert isinstance(element["options"], list)
+        assert len(element["options"]) > 0
+
+        # Verify option structure
+        for option in element["options"]:
+            assert "text" in option
+            assert option["text"]["type"] == "plain_text"
+            assert "text" in option["text"]
+            assert "value" in option
+            assert isinstance(option["value"], str)
+
+    def test_srt_translate_modal_different_task_uuids(self):
+        """Test that different task UUIDs are correctly stored in private_metadata."""
+        uuid1 = "task-123"
+        uuid2 = "task-456"
+
+        modal1 = srt_translate_modal(uuid1)
+        modal2 = srt_translate_modal(uuid2)
+
+        assert modal1["private_metadata"] == uuid1
+        assert modal2["private_metadata"] == uuid2
+        assert modal1["private_metadata"] != modal2["private_metadata"]
