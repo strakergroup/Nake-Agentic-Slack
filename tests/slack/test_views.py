@@ -1,11 +1,11 @@
 from app.slack.templates.views import (
-    srt_translate_modal,
     calculate_total_cost,
     cancel_job_modal,
     document_mt_job_modal,
     human_job_modal,
     job_search_modal,
     loading_modal,
+    srt_translate_modal,
     sso_form_modal,
     translation_settings_view,
     translation_settings_view_error,
@@ -103,9 +103,9 @@ def test_verify_job_modal_cost_update_individual_checkboxes():
         None,
     )
 
-    assert total_cost_block is not None, (
-        "total_cost_block is missing from modal['blocks']"
-    )
+    assert (
+        total_cost_block is not None
+    ), "total_cost_block is missing from modal['blocks']"
 
     # Validate the total cost text dynamically
     assert (
@@ -137,9 +137,9 @@ def test_verify_job_modal_cost_update_individual_checkboxes():
         None,
     )
 
-    assert total_cost_block is not None, (
-        "total_cost_block is missing from modal['blocks']"
-    )
+    assert (
+        total_cost_block is not None
+    ), "total_cost_block is missing from modal['blocks']"
 
     # Validate the updated total cost text dynamically
     assert (
@@ -471,7 +471,7 @@ class TestSrtTranslateModal:
         assert "placeholder" in element
         assert element["placeholder"]["type"] == "plain_text"
         # Check for translated text
-        expected_placeholder_text = _("Select language(s)")
+        expected_placeholder_text = _("Select language")
         assert element["placeholder"]["text"] == expected_placeholder_text
 
         # Verify language options are present
