@@ -20,20 +20,49 @@ class TestSendToSlack:
 
     @pytest_asyncio.fixture
     async def mock_config(self):
-        """Mock config with valid Slack credentials."""
+        """Mock config with valid Slack credentials (defaults to non-production)."""
         with patch("app.config.config") as mock_config:
             mock_config.slack_dev_alert_bot_token.get_secret_value.return_value = (
                 "xoxb-test-token"
             )
-            mock_config.slack_dev_alert_channel_id = "C123456"
-            mock_config.environment.value = "uat"
+            mock_config.slack_dev_alert_channel_id_production = (
+                "C123456"  # Production channel
+            )
+            mock_config.slack_dev_alert_channel_id_non_production = (
+                "C789012"  # Non-production channel
+            )
+            # Mock environment as non-production (UAT) by default
+            from straker_utils.environment import Environment
+
+            mock_config.environment = Environment.uat
+            yield mock_config
+
+    @pytest_asyncio.fixture
+    async def mock_config_production(self):
+        """Mock config with valid Slack credentials for production."""
+        with patch("app.config.config") as mock_config:
+            mock_config.slack_dev_alert_bot_token.get_secret_value.return_value = (
+                "xoxb-test-token"
+            )
+            mock_config.slack_dev_alert_channel_id_production = (
+                "C123456"  # Production channel
+            )
+            mock_config.slack_dev_alert_channel_id_non_production = (
+                "C789012"  # Non-production channel
+            )
+            # Mock environment as production
+            from straker_utils.environment import Environment
+
+            mock_config.environment = Environment.production
             yield mock_config
 
     @pytest_asyncio.fixture
     async def mock_environment(self):
         """Mock Environment enum."""
         with patch("app.config.Environment") as mock_env:
-            mock_env.production = "production"
+            from straker_utils.environment import Environment
+
+            mock_env.production = Environment.production
             yield mock_env
 
     @pytest_asyncio.fixture
@@ -55,7 +84,8 @@ class TestSendToSlack:
 
         mock_slack_client.chat_postMessage.assert_called_once()
         call_args = mock_slack_client.chat_postMessage.call_args
-        assert call_args.kwargs["channel"] == "C123456"
+        # Non-production environment should use non-production channel
+        assert call_args.kwargs["channel"] == "C789012"
         assert "Test message: ValueError - Test error" in call_args.kwargs["text"]
         assert len(call_args.kwargs["blocks"]) > 0
 
@@ -68,7 +98,8 @@ class TestSendToSlack:
 
         mock_slack_client.chat_postMessage.assert_called_once()
         call_args = mock_slack_client.chat_postMessage.call_args
-        assert call_args.kwargs["channel"] == "C123456"
+        # Non-production environment should use non-production channel
+        assert call_args.kwargs["channel"] == "C789012"
         assert "Alert: Test alert message" in call_args.kwargs["text"]
 
     @pytest.mark.asyncio
@@ -91,7 +122,8 @@ class TestSendToSlack:
         self, mock_config, mock_environment, mock_slack_client
     ):
         """Test that missing channel_id skips Slack notification."""
-        mock_config.slack_dev_alert_channel_id = ""
+        # For non-production, clear the non-production channel
+        mock_config.slack_dev_alert_channel_id_non_production = ""
         await _send_to_slack(exc=ValueError("Error"))
 
         mock_slack_client.chat_postMessage.assert_not_called()
@@ -136,6 +168,44 @@ class TestSendToSlack:
         # Check that traceback block exists - check all blocks for the text
         blocks_str = str(blocks)
         assert "Traceback" in blocks_str
+
+    @pytest.mark.asyncio
+    async def test_send_to_slack_production_uses_production_channel(
+        self, mock_config_production, mock_environment, mock_slack_client
+    ):
+        """Test that production environment uses production channel."""
+        exc = ValueError("Test error")
+        await _send_to_slack(exc=exc, msg="Test message", severity="ERROR")
+
+        mock_slack_client.chat_postMessage.assert_called_once()
+        call_args = mock_slack_client.chat_postMessage.call_args
+        # Production environment should use production channel
+        assert call_args.kwargs["channel"] == "C123456"
+        assert "Test message: ValueError - Test error" in call_args.kwargs["text"]
+
+    @pytest.mark.asyncio
+    async def test_send_to_slack_non_production_uses_non_production_channel(
+        self, mock_config, mock_environment, mock_slack_client
+    ):
+        """Test that non-production environment uses non-production channel."""
+        exc = ValueError("Test error")
+        await _send_to_slack(exc=exc, msg="Test message", severity="ERROR")
+
+        mock_slack_client.chat_postMessage.assert_called_once()
+        call_args = mock_slack_client.chat_postMessage.call_args
+        # Non-production environment should use non-production channel
+        assert call_args.kwargs["channel"] == "C789012"
+        assert "Test message: ValueError - Test error" in call_args.kwargs["text"]
+
+    @pytest.mark.asyncio
+    async def test_send_to_slack_production_missing_channel_id(
+        self, mock_config_production, mock_environment, mock_slack_client
+    ):
+        """Test that missing production channel_id skips Slack notification."""
+        mock_config_production.slack_dev_alert_channel_id_production = ""
+        await _send_to_slack(exc=ValueError("Error"))
+
+        mock_slack_client.chat_postMessage.assert_not_called()
 
 
 class TestScheduleSlackNotification:

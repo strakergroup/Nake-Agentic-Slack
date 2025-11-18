@@ -51,7 +51,10 @@ class StrakerConfig(BaseSettings):
     languagecloud_api_key: SecretStr = SecretStr("")
 
     # Slack Dev Alert Bot
-    slack_dev_alert_channel_id: str = ""
+    slack_dev_alert_channel_id_production: str = ""  # Production channel
+    slack_dev_alert_channel_id_non_production: str = (
+        ""  # Non-production channel (UAT, local, etc.)
+    )
     slack_dev_alert_bot_token: SecretStr = SecretStr("")
 
     @field_validator("google_mt_api_key", mode="after")
