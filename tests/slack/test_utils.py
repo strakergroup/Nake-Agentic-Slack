@@ -6,6 +6,7 @@ from app.slack.utils import (
     is_channel_im,
     replace_xtag,
     segment_quality_score,
+    split_text_into_blocks,
     strip_slack_formatting,
     unescape_slack_emoji,
     unformat_links,
@@ -296,3 +297,181 @@ class TestSegmentQualityScore:
         assert "Good" in segment_quality_score(0.90, "1.0.0")
         assert "Acceptable" in segment_quality_score(0.85, "1.0.0")
         assert "Bad" in segment_quality_score(0.84, "1.0.0")
+
+
+class TestSplitTextIntoBlocks:
+    """Tests for split_text_into_blocks function."""
+
+    def test_text_within_limit(self):
+        """Test that text within the limit returns a single chunk."""
+        text = "This is a short text."
+        result = split_text_into_blocks(text, max_length=100)
+        assert result == [text]
+        assert len(result) == 1
+
+    def test_empty_string(self):
+        """Test that empty string returns a single empty chunk."""
+        result = split_text_into_blocks("")
+        assert result == [""]
+        assert len(result) == 1
+
+    def test_text_exceeds_limit_single_line(self):
+        """Test that text exceeding limit on a single line is split."""
+        text = "a" * 5000
+        result = split_text_into_blocks(text, max_length=1000)
+        assert len(result) == 5
+        assert all(len(chunk) <= 1000 for chunk in result)
+        assert "".join(result) == text
+
+    def test_text_exceeds_limit_multiple_lines(self):
+        """Test that text exceeding limit across multiple lines is split."""
+        text = "\n".join([f"Line {i}" for i in range(100)])
+        result = split_text_into_blocks(text, max_length=50)
+        assert len(result) > 1
+        # Verify all chunks are within limit
+        assert all(len(chunk) <= 50 for chunk in result)
+        # Verify original text can be reconstructed (character-based splitting preserves all content)
+        assert "".join(result) == text
+
+    def test_first_chunk_limit(self):
+        """Test that first_chunk_limit is respected for the first chunk."""
+        text = "a" * 2000 + "\n" + "b" * 2000
+        result = split_text_into_blocks(text, max_length=1500, first_chunk_limit=1000)
+        assert len(result) >= 2
+        # First chunk should respect first_chunk_limit
+        assert len(result[0]) <= 1000
+        # Subsequent chunks should respect max_length
+        assert all(len(chunk) <= 1500 for chunk in result[1:])
+        # Verify all content is preserved
+        assert "".join(result) == text
+
+    def test_first_chunk_limit_none(self):
+        """Test that when first_chunk_limit is None, max_length is used for all chunks."""
+        text = "a" * 2000 + "\n" + "b" * 2000
+        result = split_text_into_blocks(text, max_length=1500, first_chunk_limit=None)
+        assert len(result) >= 2
+        # All chunks should respect max_length
+        assert all(len(chunk) <= 1500 for chunk in result)
+        # Verify all content is preserved
+        assert "".join(result) == text
+
+    def test_single_line_exceeds_limit(self):
+        """Test that a single line exceeding limit is split mid-line."""
+        long_line = "a" * 5000
+        text = f"Short line\n{long_line}\nAnother short line"
+        result = split_text_into_blocks(text, max_length=1000)
+        # Should have multiple chunks because of the long line
+        assert len(result) > 1
+        assert all(len(chunk) <= 1000 for chunk in result)
+        # Verify all content is preserved (all characters present)
+        # Note: newlines around split lines are not preserved, but content is
+        all_content = "".join(result)
+        assert "Short line" in all_content
+        assert long_line in all_content
+        assert "Another short line" in all_content
+        assert len(all_content.replace("\n", "")) == len(text.replace("\n", ""))
+
+    def test_exact_limit(self):
+        """Test text that is exactly at the limit."""
+        text = "a" * 3000
+        result = split_text_into_blocks(text, max_length=3000)
+        assert result == [text]
+        assert len(result) == 1
+
+    def test_exact_limit_plus_one(self):
+        """Test text that is one character over the limit."""
+        text = "a" * 3001
+        result = split_text_into_blocks(text, max_length=3000)
+        assert len(result) == 2
+        assert len(result[0]) == 3000
+        assert len(result[1]) == 1
+        assert "".join(result) == text
+
+    def test_first_chunk_limit_exact(self):
+        """Test that first chunk respects first_chunk_limit exactly."""
+        text = "a" * 2000
+        result = split_text_into_blocks(text, max_length=3000, first_chunk_limit=1000)
+        assert len(result) == 2
+        assert len(result[0]) == 1000
+        assert len(result[1]) == 1000
+        assert "".join(result) == text
+
+    def test_first_chunk_limit_with_multiple_chunks(self):
+        """Test first_chunk_limit when multiple chunks are needed."""
+        # Create text that needs 3 chunks: first with limit 500, rest with limit 1000
+        text = "a" * 400 + "\n" + "b" * 800 + "\n" + "c" * 800
+        result = split_text_into_blocks(text, max_length=1000, first_chunk_limit=500)
+        assert len(result) >= 2
+        assert len(result[0]) <= 500
+        assert all(len(chunk) <= 1000 for chunk in result[1:])
+        # Verify all content is preserved
+        assert "".join(result) == text
+
+    def test_preserves_line_boundaries(self):
+        """Test that text is split correctly (character-based splitting)."""
+        lines = ["Line 1", "Line 2", "Line 3", "Line 4"]
+        text = "\n".join(lines)
+        # Set limit so that 2 lines fit but not 3
+        result = split_text_into_blocks(text, max_length=15)
+        # Verify all chunks are within limit
+        assert all(len(chunk) <= 15 for chunk in result)
+        # Verify all content is preserved (character-based splitting preserves all characters)
+        assert "".join(result) == text
+
+    def test_very_long_single_line_with_first_chunk_limit(self):
+        """Test a very long single line with first_chunk_limit."""
+        long_line = "a" * 10000
+        result = split_text_into_blocks(
+            long_line, max_length=2000, first_chunk_limit=1000
+        )
+        assert len(result) >= 5  # At least 5 chunks (10000 / 2000)
+        assert len(result[0]) == 1000  # First chunk respects first_chunk_limit
+        assert all(len(chunk) <= 2000 for chunk in result[1:])
+        assert "".join(result) == long_line
+
+    def test_multiline_text_with_first_chunk_limit(self):
+        """Test multiline text where first chunk has a different limit."""
+        # Create text where first chunk needs smaller limit
+        lines = ["Header: Very long line that exceeds first chunk limit" + "x" * 500]
+        lines.extend([f"Line {i}: Content" for i in range(20)])
+        text = "\n".join(lines)
+        result = split_text_into_blocks(text, max_length=200, first_chunk_limit=100)
+        assert len(result) > 1
+        assert len(result[0]) <= 100
+        assert all(len(chunk) <= 200 for chunk in result[1:])
+        # Verify all content is preserved
+        assert "".join(result) == text
+
+    def test_newline_handling(self):
+        """Test that newlines are properly handled and counted."""
+        text = "Line1\nLine2\nLine3"
+        result = split_text_into_blocks(text, max_length=10)
+        # Should split, preserving all characters including newlines
+        # Verify all content is preserved (newlines are preserved as characters)
+        assert "".join(result) == text
+        # Verify chunks are within limit
+        assert all(len(chunk) <= 10 for chunk in result)
+
+    def test_default_max_length(self):
+        """Test that default max_length of 3000 is used."""
+        text = "a" * 6000
+        result = split_text_into_blocks(text)
+        assert len(result) >= 2
+        assert all(len(chunk) <= 3000 for chunk in result)
+
+    def test_mixed_line_lengths(self):
+        """Test text with mixed line lengths."""
+        text = "\n".join(
+            [
+                "Short",
+                "a" * 100,
+                "Medium length line",
+                "b" * 200,
+                "Another short line",
+            ]
+        )
+        result = split_text_into_blocks(text, max_length=150)
+        assert len(result) > 1
+        assert all(len(chunk) <= 150 for chunk in result)
+        # Verify all content is preserved (character-based splitting preserves all characters)
+        assert "".join(result) == text

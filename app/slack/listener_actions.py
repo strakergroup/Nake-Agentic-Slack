@@ -253,11 +253,13 @@ async def respond_to_message(
     if message_match:
         if await require_ray_client(context):
             mt_sl = message_match.group(1) or ""
-            if not mt_sl:
-                mt_sl = await detect_language(context, message["text"])
-                mt_sl = mt_sl.language
             mt_tl = message_match.group(2) or context.get("locale") or "en"
             mt_text = message_match.group(3)
+            if not mt_sl:
+                # Truncate text to 5000 chars for detect_language API limit
+                text_for_detection = mt_text[:5000] if len(mt_text) > 5000 else mt_text
+                mt_sl = await detect_language(context, text_for_detection)
+                mt_sl = mt_sl.language
             await get_mt_translation(
                 client,
                 context,
