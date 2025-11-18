@@ -551,6 +551,7 @@ async def document_machine_translate(
     """
 
     is_gropid = False
+    # Set channel_id if not present (same pattern as document_mt_job)
     if "channel_id" not in context:
         context["channel_id"] = context["user_id"]
     if context["ray"].client is None:
