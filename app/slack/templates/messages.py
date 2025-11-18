@@ -8,8 +8,10 @@ from ray_sdk.api.v3.models import Job, Pagination, Quote
 from slack_sdk.models.blocks import (
     ActionsBlock,
     InputBlock,
+    MarkdownTextObject,
     Option,
     PlainTextObject,
+    SectionBlock,
 )
 from slack_sdk.models.blocks.block_elements import (
     ButtonElement,
