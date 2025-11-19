@@ -4434,3 +4434,203 @@ class TestHomeOpened:
             mock_ack.assert_called_once()
             # Should still publish view even on error
             mock_client.views_publish.assert_called_once()
+
+
+class TestHandleTranslateShortcut:
+    """Tests for handle_translate_shortcut function."""
+
+    @pytest.mark.asyncio
+    async def test_handle_translate_shortcut_normal_text(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_translate_shortcut with text under 5000 characters."""
+        from app.slack.listeners import handle_translate_shortcut
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        body = {
+            "message": {
+                "text": "Hello world, this is a test message.",
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "locale": "fr",
+                "ray": ray_connection,
+            }
+        )
+
+        with patch(
+            "app.slack.listeners.detect_language", new_callable=AsyncMock
+        ) as mock_detect:
+            mock_detect.return_value = MagicMock(language="en")
+            with patch(
+                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+            ) as mock_mt:
+                # The decorator passes context as first arg, then *args to the function
+                # Function signature is (ack, body, client, context), so we pass (context_dict, mock_ack, body=body, client=mock_client)
+                await handle_translate_shortcut(
+                    context_dict, mock_ack, body=body, client=mock_client
+                )
+                mock_ack.assert_called_once()
+                mock_detect.assert_called_once()
+                # Should pass full text to detect_language when under 5000 chars
+                assert (
+                    mock_detect.call_args[0][1]
+                    == "Hello world, this is a test message."
+                )
+                mock_mt.assert_called_once()
+                call_args = mock_mt.call_args
+                assert call_args[1]["source_lang"] == "en"
+                assert call_args[1]["target_lang"] == "fr"
+                assert (
+                    call_args[1]["sentence"] == "Hello world, this is a test message."
+                )
+                assert call_args[1]["usage_type"] == "shortcut_translate"
+
+    @pytest.mark.asyncio
+    async def test_handle_translate_shortcut_text_exceeds_5000_chars(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_translate_shortcut truncates text to 5000 chars for detection."""
+        from app.slack.listeners import handle_translate_shortcut
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        # Create text that exceeds 5000 characters
+        long_text = "A" * 6000
+        body = {
+            "message": {
+                "text": long_text,
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "locale": "es",
+                "ray": ray_connection,
+            }
+        )
+
+        with patch(
+            "app.slack.listeners.detect_language", new_callable=AsyncMock
+        ) as mock_detect:
+            mock_detect.return_value = MagicMock(language="en")
+            with patch(
+                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+            ) as mock_mt:
+                # The decorator passes context as first arg, then *args to the function
+                # Function signature is (ack, body, client, context), so we pass (context_dict, mock_ack, body=body, client=mock_client)
+                await handle_translate_shortcut(
+                    context_dict, mock_ack, body=body, client=mock_client
+                )
+                mock_ack.assert_called_once()
+                mock_detect.assert_called_once()
+                # Should pass only first 5000 chars to detect_language
+                detected_text = mock_detect.call_args[0][1]
+                assert len(detected_text) == 5000
+                assert detected_text == "A" * 5000
+                mock_mt.assert_called_once()
+                call_args = mock_mt.call_args
+                # Full text should still be passed to get_mt_translation
+                assert call_args[1]["sentence"] == long_text
+                assert len(call_args[1]["sentence"]) == 6000
+                assert call_args[1]["source_lang"] == "en"
+                assert call_args[1]["target_lang"] == "es"
+
+    @pytest.mark.asyncio
+    async def test_handle_translate_shortcut_exactly_5000_chars(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_translate_shortcut with exactly 5000 characters."""
+        from app.slack.listeners import handle_translate_shortcut
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        # Create text with exactly 5000 characters
+        exact_text = "B" * 5000
+        body = {
+            "message": {
+                "text": exact_text,
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "locale": "de",
+                "ray": ray_connection,
+            }
+        )
+
+        with patch(
+            "app.slack.listeners.detect_language", new_callable=AsyncMock
+        ) as mock_detect:
+            mock_detect.return_value = MagicMock(language="en")
+            with patch(
+                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+            ) as mock_mt:
+                # The decorator passes context as first arg, then *args to the function
+                # Function signature is (ack, body, client, context), so we pass (context_dict, mock_ack, body=body, client=mock_client)
+                await handle_translate_shortcut(
+                    context_dict, mock_ack, body=body, client=mock_client
+                )
+                mock_ack.assert_called_once()
+                mock_detect.assert_called_once()
+                # Should pass full text (exactly 5000 chars) to detect_language
+                detected_text = mock_detect.call_args[0][1]
+                assert len(detected_text) == 5000
+                assert detected_text == exact_text
+                mock_mt.assert_called_once()
+                call_args = mock_mt.call_args
+                assert call_args[1]["sentence"] == exact_text
+                assert call_args[1]["source_lang"] == "en"
+                assert call_args[1]["target_lang"] == "de"
+
+    @pytest.mark.asyncio
+    async def test_handle_translate_shortcut_default_locale(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_translate_shortcut uses default locale 'en' when not set."""
+        from app.slack.listeners import handle_translate_shortcut
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        body = {
+            "message": {
+                "text": "Test message",
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "ray": ray_connection,
+                # No locale set
+            }
+        )
+
+        with patch(
+            "app.slack.listeners.detect_language", new_callable=AsyncMock
+        ) as mock_detect:
+            mock_detect.return_value = MagicMock(language="fr")
+            with patch(
+                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+            ) as mock_mt:
+                # The decorator passes context as first arg, then *args to the function
+                # Function signature is (ack, body, client, context), so we pass (context_dict, mock_ack, body=body, client=mock_client)
+                await handle_translate_shortcut(
+                    context_dict, mock_ack, body=body, client=mock_client
+                )
+                mock_ack.assert_called_once()
+                mock_mt.assert_called_once()
+                call_args = mock_mt.call_args
+                # Should default to "en" when locale not set
+                assert call_args[1]["target_lang"] == "en"
