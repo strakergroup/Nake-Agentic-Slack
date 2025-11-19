@@ -3265,7 +3265,7 @@ class SrtTranslateMessage(SlackMessage):
 
         # Create multi-select element
         multi_select = StaticMultiSelectElement(
-            placeholder=PlainTextObject(text=_("Select language")),
+            placeholder=PlainTextObject(text=_("Select languages")),
             options=language_options,
             action_id="language_mt_options",
             max_selected_items=10,
