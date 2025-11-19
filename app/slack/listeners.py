@@ -571,7 +571,9 @@ async def handle_translate_shortcut(
     await ack()
     mt_tl = context.get("locale", "en")
     mt_text = body["message"]["text"]
-    source_lang = await detect_language(context, mt_text)
+    # Truncate text to 5000 chars for detect_language API limit
+    text_for_detection = mt_text[:5000] if len(mt_text) > 5000 else mt_text
+    source_lang = await detect_language(context, text_for_detection)
     await get_mt_translation(
         client,
         context,
