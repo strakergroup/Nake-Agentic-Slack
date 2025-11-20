@@ -97,9 +97,9 @@ def init_slack_app_log(body: dict[str, Any], context: dict[str, Any]) -> SlackAp
         pass  # The action_type and action_value will remain as None
 
     # Truncate action_value to prevent database errors if it exceeds column size limit
-    # The database column has a size limit, so we truncate to 200 characters to be safe
-    if action_value is not None and len(action_value) > 200:
-        action_value = action_value[:200]
+    # The database column has a size limit, so we truncate to 50 characters to be safe
+    if action_value is not None and len(action_value) > 50:
+        action_value = action_value[:50]
 
     return SlackAppLog.from_slack(
         action_type,
