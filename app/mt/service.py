@@ -75,6 +75,24 @@ async def get_client_groups(client_uuid: str):
     return [row["groupid"] for row in result]
 
 
+async def get_group_id(verify_organization_uuid: str) -> str | None:
+    """Get group ID (obj_uuid) from obj_m_group by organization_id.
+
+    Args:
+        verify_organization_uuid: The verify organization UUID (organization_id)
+
+    Returns:
+        The group ID (obj_uuid) if found, None otherwise
+    """
+    sql = text(
+        "SELECT obj_uuid FROM obj_m_group WHERE organization_id = :id"
+    ).bindparams(id=verify_organization_uuid)
+    result = await fetch_one(sql, async_engines["sitemanager"])
+    if not result:
+        return None
+    return result["obj_uuid"]
+
+
 async def evaluate_get_glossary_resource(
     org_uuid: str, client: RayClient | None, sl: str | None, tl: str | None, engine: str
 ) -> str:
