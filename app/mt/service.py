@@ -85,7 +85,7 @@ async def get_group_id(verify_organization_uuid: str) -> str | None:
         The group ID (obj_uuid) if found, None otherwise
     """
     sql = text(
-        "SELECT obj_uuid FROM obj_m_group WHERE organization_id = :id and active = 1"
+        "SELECT obj_uuid FROM obj_m_group WHERE organization_id = :id"
     ).bindparams(id=verify_organization_uuid)
     result = await fetch_one(sql, async_engines["sitemanager"])
     if not result:
