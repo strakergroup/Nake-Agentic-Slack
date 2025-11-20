@@ -35,7 +35,23 @@ async def detect_language(
         response.raise_for_status()
         return DetectLanguageResponse(**response.json())
     except httpx.HTTPStatusError as e:
-        notify_exception(msg="Error detecting language", exc=e)
+        # Extract detailed error message from API response if available
+        error_detail = None
+        try:
+            if e.response is not None:
+                error_data = e.response.json()
+                error_detail = error_data.get("detail", str(e))
+        except Exception:
+            error_detail = str(e)
+
+        notify_exception(
+            msg=f"Error detecting language: {error_detail}",
+            exc=e,
+            extra={
+                "status_code": e.response.status_code if e.response else None,
+                "text_length": len(text),
+            },
+        )
         raise
     except Exception as e:
         notify_exception(
