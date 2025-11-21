@@ -3233,7 +3233,7 @@ class MachineTranslationMessage(SlackMessage):
         # Split translation text if it exceeds the limit
         # Include language label in the first chunk
         language_label = f" ({sl}-{tl})"
-        full_text = f"{mt_text}{language_label}"
+        full_text = f"*{mt_text}{language_label}"
 
         # Check if we need to split
         if len(full_text) <= MAX_BLOCK_TEXT_LENGTH:
@@ -3255,7 +3255,7 @@ class MachineTranslationMessage(SlackMessage):
                     # First chunk includes the language label
                     blocks.append(
                         SectionBlock(
-                            text=MarkdownTextObject(text=f"{chunk}{language_label}")
+                            text=MarkdownTextObject(text=f"*{chunk}{language_label}")
                         )
                     )
                 else:
