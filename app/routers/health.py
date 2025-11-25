@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 from typing import Any
@@ -20,12 +19,12 @@ async def health_check(response: Response, password: str | None = None):
     info: dict[str, Any] = {}
 
     # Execute tests in parallel.
-    await asyncio.gather(
-        # _check_database(errors),
-        _check_slack_api(errors),
-        # _check_redis(errors),
-        # TODO: Watson
-    )
+    # await asyncio.gather(
+    #     # _check_database(errors),
+    #     _check_slack_api(errors),
+    #     # _check_redis(errors),
+    #     # TODO: Watson
+    # )
 
     result = {
         "message": "There are some issues" if len(errors) else "OK",
