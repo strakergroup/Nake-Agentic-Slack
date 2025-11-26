@@ -2434,12 +2434,14 @@ async def handle_document_mt_job(
             context["channel_id"] = channel_id or context["user_id"]
             files_uploaded = []
             duplicate_submissions = []
+            downloaded_files = []  # Track downloaded files for cleanup
             # Process each file
             for file in files:
                 # Download file content
                 input_file = await download_file(
                     client=client, file_id=file["value"], http=None
                 )
+                downloaded_files.append(input_file)  # Track for cleanup
                 # validate file
                 is_valid_file_type, is_valid_content, error_message = validate_file(
                     input_file
@@ -2504,23 +2506,47 @@ async def handle_document_mt_job(
                 )
 
         except Exception as e:
-            try:
-                # Remove existing submissions if error occurs so that the user can submit again
+            # Remove existing submissions if error occurs so that the user can submit again
+            # Note: files and selected_languages may not be defined if error occurs early
+            if "files" in locals() and "selected_languages" in locals():
                 for input_file in files:
                     for lang in selected_languages:
-                        updated_submission_status(
-                            submission_id=_record.id,
-                            processing_status=SubmissionStatus.FAILED,
+                        # Only update if _record exists
+                        if "_record" in locals():
+                            updated_submission_status(
+                                submission_id=_record.id,
+                                processing_status=SubmissionStatus.FAILED,
+                            )
+            notify_exception(e)
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    "There was an error submitting your translation request, please try again."
+                ),
+            )
+        finally:
+            # Clean up downloaded temporary files
+            if "downloaded_files" in locals():
+                for downloaded_file in downloaded_files:
+                    try:
+                        if os.path.exists(downloaded_file):
+                            os.unlink(downloaded_file)
+                            # Also try to remove the parent directory if empty
+                            parent_dir = os.path.dirname(downloaded_file)
+                            try:
+                                if os.path.exists(parent_dir) and not os.listdir(
+                                    parent_dir
+                                ):
+                                    os.rmdir(parent_dir)
+                            except OSError:
+                                # Directory not empty or other error, ignore
+                                pass
+                    except Exception as cleanup_error:
+                        # Log but don't fail on cleanup errors
+                        notify_exception(
+                            cleanup_error,
+                            f"Failed to cleanup temp file: {downloaded_file}",
                         )
-                notify_exception(e)
-                await client.chat_postMessage(
-                    channel=context["user_id"],
-                    text=_(
-                        "There was an error submitting your translation request, please try again."
-                    ),
-                )
-            except Exception as e:
-                notify_exception(e)
     else:
         await ack(response_action="clear")
         await client.chat_postMessage(
