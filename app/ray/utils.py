@@ -17,7 +17,6 @@ from app.slack.buglog_notifier import notify_exception
 from app.translate import Translator, _, translator_var
 
 from ..config import domains
-from .file_validators import validate_json, validate_pdf
 
 
 def get_job_url(job_uuid: str, client_id: str | None = None) -> str:
@@ -338,8 +337,8 @@ VALID_FILE_TYPES: dict[str, Callable[[str], Tuple[bool, str]] | None] = {
     "docx": None,
     "html": None,
     "idml": None,
-    "json": validate_json,
-    "pdf": validate_pdf,
+    "json": None,
+    "pdf": None,
     "pptx": None,
     "properties": None,
     "srt": None,

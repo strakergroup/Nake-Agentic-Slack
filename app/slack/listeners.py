@@ -2504,20 +2504,23 @@ async def handle_document_mt_job(
                 )
 
         except Exception as e:
-            # Remove existing submissions if error occurs so that the user can submit again
-            for input_file in files:
-                for lang in selected_languages:
-                    updated_submission_status(
-                        submission_id=_record.id,
-                        processing_status=SubmissionStatus.FAILED,
-                    )
-            notify_exception(e)
-            await client.chat_postMessage(
-                channel=context["user_id"],
-                text=_(
-                    "There was an error submitting your translation request, please try again."
-                ),
-            )
+            try:
+                # Remove existing submissions if error occurs so that the user can submit again
+                for input_file in files:
+                    for lang in selected_languages:
+                        updated_submission_status(
+                            submission_id=_record.id,
+                            processing_status=SubmissionStatus.FAILED,
+                        )
+                notify_exception(e)
+                await client.chat_postMessage(
+                    channel=context["user_id"],
+                    text=_(
+                        "There was an error submitting your translation request, please try again."
+                    ),
+                )
+            except Exception as e:
+                notify_exception(e)
     else:
         await ack(response_action="clear")
         await client.chat_postMessage(
