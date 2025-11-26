@@ -362,6 +362,13 @@ async def channel_id_changed(event: Dict[str, Any]):
         await update_channel_id(old_channel_id, new_channel_id)
 
 
+@app.event(re.compile(r".+"))
+@slack_log_decorator
+async def catch_all_event_callbacks(body: Dict[str, Any]):
+    """Ack any unexpected event types so Slack receives HTTP 200 responses."""
+    return
+
+
 @app.message_shortcut("new_job", middleware=[ray_connection])
 @slack_log_decorator
 async def new_job_shortcut(
