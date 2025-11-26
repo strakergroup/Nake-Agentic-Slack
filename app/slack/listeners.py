@@ -2556,5 +2556,12 @@ async def handle_document_mt_job(
         )
 
 
+@app.event(re.compile(r".+"))
+@slack_log_decorator
+async def catch_all_event_callbacks(body: Dict[str, Any]):
+    """Ack any unexpected event types so Slack receives HTTP 200 responses."""
+    return
+
+
 # FastAPI will use this to handle Slack API requests.
 slack_handler = AsyncSlackRequestHandler(app)
