@@ -1,4 +1,5 @@
 import asyncio
+import os
 from dataclasses import replace
 from typing import Annotated, Any, Optional, Union
 
@@ -141,6 +142,7 @@ async def _handle_mt_success_background(
 
         # Download file from server
         output_file = await download_from_file_server_async(success_data.file_id)
+        file_path = output_file.get("file")
         token_count = success_data.tokens
         title = output_file.get("file_name")
         token_consumption_message = (
@@ -148,21 +150,26 @@ async def _handle_mt_success_background(
             if not is_ibm_enterprise(auth.slack_user.enterprise_id)
             else ""
         )
-        # Upload file using memory-efficient method
-        await upload_file_to_slack_memory_efficient(
-            client=client,
-            file_path=output_file.get("file"),
-            channel_id=success_data.channel_id,
-            title=title,
-            filename=title,
-            initial_comment=token_consumption_message,
-        )
+        try:
+            # Upload file using memory-efficient method
+            await upload_file_to_slack_memory_efficient(
+                client=client,
+                file_path=file_path,
+                channel_id=success_data.channel_id,
+                title=title,
+                filename=title,
+                initial_comment=token_consumption_message,
+            )
 
-        await update_slack_job(
-            task_uuid=success_data.task_uuid,
-            status="delivered",
-        )
-        delete_from_file_server(success_data.file_id)
+            await update_slack_job(
+                task_uuid=success_data.task_uuid,
+                status="delivered",
+            )
+            delete_from_file_server(success_data.file_id)
+        finally:
+            # Clean up temporary file
+            if file_path and os.path.exists(file_path):
+                os.unlink(file_path)
     except Exception as e:
         notify_exception(e, "Background MT success file handling failed")
         await update_slack_job(
@@ -193,20 +200,26 @@ async def _handle_transcribe_success_background(
             )
             return
         output_file = await download_from_file_server_async(file_id)
+        file_path = output_file.get("file")
         channel_id = (
             response.data["channel"]
             if isinstance(response, AsyncSlackResponse)
             and isinstance(response.data, dict)
             else ""
         )
-        # Upload file using memory-efficient method
-        await upload_file_to_slack_memory_efficient(
-            client=client,
-            file_path=output_file.get("file"),
-            channel_id=channel_id,
-            title=file_name,
-            filename=output_file.get("file_name"),
-        )
+        try:
+            # Upload file using memory-efficient method
+            await upload_file_to_slack_memory_efficient(
+                client=client,
+                file_path=file_path,
+                channel_id=channel_id,
+                title=file_name,
+                filename=output_file.get("file_name"),
+            )
+        finally:
+            # Clean up temporary file
+            if file_path and os.path.exists(file_path):
+                os.unlink(file_path)
     except Exception as e:
         notify_exception(e, "Background transcription file handling failed")
 
@@ -220,15 +233,21 @@ async def _handle_verify_complete_background(event_data, auth, response):
         client = AsyncWebClient(token=auth.slack_user.bot_token)
 
         output_file = await download_from_file_server_async(event_data["grid_file_id"])
-        await upload_file_to_slack_memory_efficient(
-            client=client,
-            file_path=output_file.get("file"),
-            channel_id=response.data["channel"]
-            if isinstance(response.data, dict)
-            else "",
-            title=output_file.get("file_name"),
-            filename=output_file.get("file_name"),
-        )
+        file_path = output_file.get("file")
+        try:
+            await upload_file_to_slack_memory_efficient(
+                client=client,
+                file_path=file_path,
+                channel_id=response.data["channel"]
+                if isinstance(response.data, dict)
+                else "",
+                title=output_file.get("file_name"),
+                filename=output_file.get("file_name"),
+            )
+        finally:
+            # Clean up temporary file
+            if file_path and os.path.exists(file_path):
+                os.unlink(file_path)
     except Exception as e:
         notify_exception(e, "Background verify complete file handling failed")
 
