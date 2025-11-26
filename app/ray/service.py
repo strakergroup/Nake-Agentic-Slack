@@ -23,6 +23,8 @@ class RayService:
     """
 
     # Cache of RayServices. The key is a tuple of ray_client_id and token.
+    # Limit cache size to prevent memory issues (LRU eviction when limit is reached)
+    _max_cache_size = 100
     services: dict[tuple[str, str, str], "RayService"] = {}
 
     def __init__(
@@ -259,6 +261,11 @@ class RayService:
             )
         key = (ray_client_id, token, id_token)
         if key not in cls.services:
+            # Evict oldest entries if cache is full (simple FIFO eviction)
+            if len(cls.services) >= cls._max_cache_size:
+                # Remove the first (oldest) entry
+                oldest_key = next(iter(cls.services))
+                del cls.services[oldest_key]
             cls.services[key] = cls(
                 ray_client_id=ray_client_id, token=token, id_token=id_token
             )
