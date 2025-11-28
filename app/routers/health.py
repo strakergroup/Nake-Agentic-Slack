@@ -1,11 +1,13 @@
 import json
 import logging
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Response, status
 
 from ..config import config
-from ..database import async_engines
+from ..constants import APP_VERSION
+from ..database import async_engines, engines
 from ..redis import redis_conn
 from ..slack import app as slack_app
 
@@ -45,6 +47,21 @@ async def health_check(response: Response, password: str | None = None):
     return result
 
 
+@router.get("/version")
+async def version_info():
+    """Endpoint to return application version and current date/time."""
+    return {
+        "app_version": APP_VERSION,
+        "datetime": datetime.now().isoformat(),
+    }
+
+
+@router.get("/connection-pool-stats")
+async def connection_pool_stats():
+    """Endpoint to return connection pool statistics for all database engines."""
+    return _get_connection_pool_stats()
+
+
 async def _check_database(errors: dict[str, Any]):
     try:
         await async_engines.ping_all()
@@ -69,3 +86,50 @@ async def _check_slack_api(errors: dict[str, Any]):
         errors["slack_api"] = (
             f"api.test returned the status code: {response.status_code}"
         )
+
+
+def _get_connection_pool_stats() -> dict[str, Any]:
+    """Get connection pool statistics for all database engines."""
+    stats: dict[str, Any] = {
+        "synchronous": {},
+        "asynchronous": {},
+    }
+
+    # Synchronous engines
+    try:
+        for db_name, engine in engines._engines.items():
+            try:
+                pool = engine.pool
+                stats["synchronous"][db_name] = {
+                    "size": pool.size(),  # Current pool size
+                    "checked_in": pool.checked_in(),  # Connections returned to pool
+                    "checked_out": pool.checked_out(),  # Connections currently in use
+                    "overflow": pool.overflow(),  # Overflow connections
+                    "invalidated": pool.invalidated(),  # Invalidated connections
+                }
+            except Exception as e:
+                stats["synchronous"][db_name] = {"error": str(e)}
+    except Exception as e:
+        stats["synchronous"] = {"error": str(e)}
+
+    # Asynchronous engines
+    try:
+        if hasattr(async_engines, "_engines"):
+            for db_name, engine in async_engines._engines.items():
+                try:
+                    pool = engine.pool
+                    stats["asynchronous"][db_name] = {
+                        "size": pool.size(),
+                        "checked_in": pool.checked_in(),
+                        "checked_out": pool.checked_out(),
+                        "overflow": pool.overflow(),
+                        "invalidated": pool.invalidated(),
+                    }
+                except Exception as e:
+                    stats["asynchronous"][db_name] = {"error": str(e)}
+        else:
+            stats["asynchronous"] = {"error": "AsyncDBEnginePool._engines not found"}
+    except Exception as e:
+        stats["asynchronous"] = {"error": str(e)}
+
+    return stats
