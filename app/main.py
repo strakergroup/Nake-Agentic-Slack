@@ -5,6 +5,7 @@ from elasticapm.contrib.starlette import ElasticAPM, make_apm_client
 from fastapi import FastAPI
 
 from .config import Environment, config, domains
+from .constants import APP_VERSION
 from .routers import health, ray, slack
 from .slack.buglog_notifier import notify_exception
 from .slack.select_options import (
@@ -19,8 +20,7 @@ buglog.init(
 )
 
 # Log application version
-APP_VERSION = "1.0.0"  # Replace with your actual version
-print("Starting Slack RAY Translator - Version: {APP_VERSION}")
+print(f"Starting Slack RAY Translator - Version: {APP_VERSION}")
 
 
 @asynccontextmanager
