@@ -574,13 +574,17 @@ async def handle_translate_shortcut(
 
     # Check if the message has any text content to translate
     if not mt_text:
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=_(
-                "The selected message doesn't contain any text to translate. "
-                "Please select a message with text content."
-            ),
+        error_msg = _(
+            "The selected message doesn't contain any text to translate. "
+            "Please select a message with text content."
         )
+        if context.response_url and context.respond:
+            await context.respond(text=error_msg)
+        else:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=error_msg,
+            )
         return
 
     # Truncate text to 5000 chars for detect_language API limit
