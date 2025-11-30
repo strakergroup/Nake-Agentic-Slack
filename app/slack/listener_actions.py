@@ -20,7 +20,10 @@ from app.api.verify import (
     get_job_pricing,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
-from app.models import ASRTask, TranscriptionTaskData
+from app.models import (  # noqa: F401 - kept for potential future use
+    ASRTask,
+    TranscriptionTaskData,
+)
 from app.mt.service import (
     evaluate_get_glossary_resource,
     get_group_id,
@@ -30,16 +33,20 @@ from app.ray.events.models import MtFileRequestSchema
 from app.slack.buglog_notifier import notify_exception, notify_message
 from app.slack.utils import escape_slack_emoji
 from app.slack_job import create_slack_job
-from app.transcriber_tasks.tasks import create_asr_task
+from app.transcriber_tasks.tasks import (
+    create_asr_task,  # noqa: F401 - kept for potential future use
+)
 from app.translate import _
 
 from ..auth.connector import (
     RayClient,
     RayContext,
     approve_pending_groups,
-    duration_to_tokens,
+    duration_to_tokens,  # noqa: F401 - kept for potential future use
+    get_client_tokens,
     get_group_mt_engine,
-    log_transcribe_request,
+    get_group_tokens,
+    log_transcribe_request,  # noqa: F401 - kept for potential future use
 )
 from ..config import Environment, config, domains
 from ..ray.service import RayService, get_job_predictions
@@ -76,8 +83,9 @@ from .templates.messages import (
     NewJobMessage,
     ReportInsightsMessage,
     SlackMessage,
-    TranscriptionMessage,
+    TranscriptionMessage,  # noqa: F401 - kept for potential future use
     VerifyHelperMessage,
+    VideoOptionsMessage,
 )
 from .templates.models import NewJobForm
 from .web import download_files, files_list_simple
@@ -169,46 +177,44 @@ async def respond_to_message(
                         )
                     file_name = file_info["file"]["name"]
 
-                    actual_bot_token = (
-                        message.get("metadata", {}).get("bot_token") or client.token
-                    )
-                    # send video to wb consumer
-                    if (
-                        await require_ray_client(context, prompt_login=False)
-                        and duration_ms
-                    ):
-                        tokens = duration_to_tokens(duration_ms)
-                        if await require_mt_tokens(context, tokens):
-                            await log_transcribe_request(
-                                duration_ms, file_name, context["ray"]
-                            )
-                            output_stream_name = f"{domains.stream_proxy}/events/transcription:slack:media:results"
-                            service = "azure"
-                            model_name = "whisper-1"
+                    # Show video options message instead of auto-transcribing
+                    # Users can choose: Transcription, Translation, or Full Package
+                    if await require_ray_client(context, prompt_login=False):
+                        # Default to 1 minute if duration couldn't be detected
+                        if not duration_ms:
+                            duration_ms = 60000
 
-                            task_data = TranscriptionTaskData(
-                                client_id=context["ray"].client.id,
-                                file_name=file_name,
-                                download_url=download_url,
-                                app_token=actual_bot_token or "",
-                                service=service,
-                                model=model_name,
-                                out_stream_name=output_stream_name,
-                                tokens_consumed=tokens,
-                            )
-                            asr_task = ASRTask(
-                                member_uuid=context["ray"].client.id,
-                                event_name="transcription:media:asr",
-                                app_source="slack",
-                                len_ms=duration_ms,
-                                service=service,
-                                model=model_name,
-                                extra_data={},
-                                task_data=task_data,
-                            )
-                            await create_asr_task(asr_task)
-                            msg = TranscriptionMessage(file_name)
-                            await context.say(text=msg.text, thread_ts=thread_ts)
+                        # Get IBM status and token balance
+                        is_ibm = is_ibm_enterprise(context.enterprise_id)
+                        tokens = None
+                        if not is_ibm:
+                            if context["ray"].client is not None:
+                                user_tokens = await get_client_tokens(
+                                    context["ray"].client.id_token
+                                )
+                                tokens = user_tokens.ai_token
+                            elif context["ray"].super_group is not None:
+                                group_tokens = await get_group_tokens(
+                                    context["ray"]
+                                    .super_group[0]
+                                    .verify_organization_uuid
+                                )
+                                tokens = group_tokens.ai_token
+
+                        video_msg = VideoOptionsMessage(
+                            channel_id=context["channel_id"],
+                            file_id=file["id"],
+                            file_name=file_name,
+                            duration_ms=duration_ms,
+                            thread_ts=thread_ts,
+                            is_ibm_enterprise=is_ibm,
+                            tokens=tokens,
+                        )
+                        await context.say(
+                            text=video_msg.text,
+                            blocks=video_msg.blocks,
+                            thread_ts=thread_ts,
+                        )
                 else:
                     if not validate_file_type(file["name"]):
                         unsupported_files.append(file)

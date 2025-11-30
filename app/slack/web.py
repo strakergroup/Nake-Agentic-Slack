@@ -175,6 +175,54 @@ async def download_files(client: AsyncWebClient, files: Iterable[str]):
     return [result for result in file_paths if isinstance(result, str)]
 
 
+def _get_mimetype_for_file(filename: str) -> str:
+    """Get appropriate mimetype for a file based on extension.
+
+    Args:
+        filename: The filename to determine mimetype for
+
+    Returns:
+        The mimetype string (defaults to application/octet-stream)
+    """
+    ext = os.path.splitext(filename)[1].lower()
+    mimetype_map = {
+        ".srt": "text/plain",
+        ".vtt": "text/plain",
+        ".txt": "text/plain",
+        ".json": "application/json",
+        ".xml": "application/xml",
+        ".xlf": "application/xml",
+        ".xliff": "application/xml",
+        ".csv": "text/csv",
+        ".html": "text/html",
+        ".htm": "text/html",
+    }
+    return mimetype_map.get(ext, "application/octet-stream")
+
+
+def _get_slack_friendly_filename(filename: str) -> str:
+    """Convert filename to a Slack-friendly version.
+
+    Slack doesn't recognize .srt or .vtt files as text, so we rename
+    them to .txt while keeping the original name informative.
+
+    Args:
+        filename: The original filename
+
+    Returns:
+        A filename that Slack will recognize as text
+    """
+    name, ext = os.path.splitext(filename)
+    ext_lower = ext.lower()
+
+    # Extensions that Slack shows as "Binary" but are actually text
+    if ext_lower in (".srt", ".vtt"):
+        # Keep original extension in name for clarity: "video.srt" -> "video.srt.txt"
+        return f"{filename}.txt"
+
+    return filename
+
+
 async def upload_file_to_slack_memory_efficient(
     client: AsyncWebClient,
     file_path: str,
@@ -183,6 +231,7 @@ async def upload_file_to_slack_memory_efficient(
     filename: str | None = None,
     initial_comment: str | None = None,
     thread_ts: str | None = None,
+    content_type: str | None = None,
 ) -> AsyncSlackResponse:
     """
     Upload a file to Slack using the memory-efficient files.getUploadURLExternal workflow.
@@ -197,6 +246,7 @@ async def upload_file_to_slack_memory_efficient(
         filename (str, optional): Filename for the file
         initial_comment (str, optional): Initial comment with the file
         thread_ts (str, optional): Thread timestamp to reply to
+        content_type (str, optional): MIME type for the file. Auto-detected if not provided.
 
     Returns:
         AsyncSlackResponse: Response from Slack API containing file information
@@ -215,10 +265,16 @@ async def upload_file_to_slack_memory_efficient(
     if not filename:
         filename = os.path.basename(file_path)
 
+    # Convert filename to Slack-friendly version (e.g., .srt -> .srt.txt)
+    slack_filename = _get_slack_friendly_filename(filename)
+
+    # Determine mimetype - use provided or auto-detect from extension
+    mimetype = content_type or _get_mimetype_for_file(filename)
+
     # Step 1: Get upload URL from Slack
     try:
         upload_response = await client.files_getUploadURLExternal(
-            filename=filename,
+            filename=slack_filename,
             length=file_size,
         )
 
@@ -229,7 +285,7 @@ async def upload_file_to_slack_memory_efficient(
         file_id = upload_response["file_id"]
 
     except SlackApiError as e:
-        notify_exception(e, f"Failed to get upload URL for {filename}")
+        notify_exception(e, f"Failed to get upload URL for {slack_filename}")
         raise
 
     # Step 2: Upload file to the provided URL using streaming
@@ -237,8 +293,8 @@ async def upload_file_to_slack_memory_efficient(
         async with httpx.AsyncClient() as http_client:
             with open(file_path, "rb") as file_obj:
                 # Use multipart form data for streaming upload
-                files = {"file": (filename, file_obj, "application/octet-stream")}
-                data = {"filename": filename}
+                files = {"file": (slack_filename, file_obj, mimetype)}
+                data = {"filename": slack_filename}
 
                 response = await http_client.post(
                     upload_url,
@@ -253,13 +309,13 @@ async def upload_file_to_slack_memory_efficient(
                     )
 
     except Exception as e:
-        notify_exception(e, f"Failed to upload file {filename} to Slack")
+        notify_exception(e, f"Failed to upload file {slack_filename} to Slack")
         raise
 
     # Step 3: Complete the upload
     try:
         complete_response = await client.files_completeUploadExternal(
-            files=[{"id": file_id, "title": title or filename}],
+            files=[{"id": file_id, "title": title or slack_filename}],
             channel_id=channel_id,
             initial_comment=initial_comment,
             thread_ts=thread_ts,
@@ -271,7 +327,7 @@ async def upload_file_to_slack_memory_efficient(
         return complete_response
 
     except SlackApiError as e:
-        notify_exception(e, f"Failed to complete upload for {filename}")
+        notify_exception(e, f"Failed to complete upload for {slack_filename}")
         raise
 
 

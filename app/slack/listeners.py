@@ -2576,6 +2576,259 @@ async def handle_document_mt_job(
         )
 
 
+@app.action("video_transcribe_only", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_video_transcribe_only(
+    ack: AsyncAck,
+    context: RayContext,
+    action: Optional[Dict[str, Any]],
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+):
+    """Handle transcribe-only button - starts transcription directly without modal."""
+    await ack()
+    if not await require_ray_client(context):
+        return
+
+    try:
+        assert action is not None
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
+
+        action_data = json.loads(action.get("value", "{}"))
+        channel_id = (
+            action_data.get("channel_id")
+            or context.get("channel_id")
+            or context["user_id"]
+        )
+
+        # Download file from Slack to get URL
+        file_info = await client.files_info(file=action_data["file_id"])
+        file_data: dict[str, Any] = file_info.get("file", {})
+        download_url = file_data.get("url_private_download") or file_data.get(
+            "url_private"
+        )
+
+        if not download_url:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    "Could not get download URL for the file. Please try uploading again."
+                ),
+            )
+            return
+
+        # Calculate tokens from duration
+        from ..auth.connector import duration_to_tokens
+
+        duration_ms = action_data.get("duration_ms", 0)
+        tokens = duration_to_tokens(duration_ms)
+
+        # Create ASR task for transcriber
+        from ..models import ASRTask, TranscriptionTaskData
+        from ..transcriber_tasks.tasks import create_asr_task
+
+        task_data = TranscriptionTaskData(
+            client_id=context["ray"].client.id,
+            file_name=action_data["file_name"],
+            download_url=download_url,
+            app_token=client.token or "",
+            out_stream_name=f"{domains.stream_proxy}/events/transcription:slack:media:results",
+            service="azure",
+            model="whisper-1",
+            embed_subtitles=False,
+            tokens_consumed=tokens,
+            sandbox=False,
+        )
+
+        asr_task = ASRTask(
+            member_uuid=context["ray"].client.id,
+            event_name="transcription:media:asr",
+            app_source="slack",
+            len_ms=duration_ms,
+            service="azure",
+            model="whisper-1",
+            extra_data={
+                "slack_user_id": context["user_id"],
+                "slack_team_id": context["team_id"],
+                "slack_enterprise_id": context.enterprise_id,
+                "slack_channel_id": channel_id,
+                "slack_thread_ts": action_data.get("thread_ts"),
+            },
+            task_data=task_data,
+        )
+
+        await create_asr_task(asr_task)
+
+        # Notify user
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                f":memo: Your video *{action_data['file_name']}* is being transcribed. You'll be notified when it's ready."
+            ),
+            thread_ts=action_data.get("thread_ts"),
+        )
+
+    except Exception as e:
+        notify_exception(e)
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=_("There was an error processing your video. Please try again."),
+        )
+
+
+@app.action("video_transcribe_translate", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_video_transcribe_translate(
+    ack: AsyncAck,
+    context: RayContext,
+    action: Optional[Dict[str, Any]],
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+):
+    """Show the transcribe & translate modal for language selection."""
+    await ack()
+    if await require_ray_client(context):
+        assert action is not None
+        from .templates.views import video_transcribe_translate_modal
+
+        action_data = json.loads(action.get("value", "{}"))
+        view = video_transcribe_translate_modal(
+            channel_id=action_data.get("channel_id", context.get("channel_id", "")),
+            file_id=action_data["file_id"],
+            file_name=action_data["file_name"],
+            duration_ms=action_data.get("duration_ms", 0),
+            thread_ts=action_data.get("thread_ts"),
+        )
+        await client.views_open(trigger_id=body["trigger_id"], view=view)
+
+
+@app.view("video_transcribe_translate_submit", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_video_transcribe_translate_submit(
+    ack: AsyncAck,
+    view: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+):
+    """Handle transcribe & translate form submission."""
+    await ack(response_action="clear")
+
+    if not await require_ray_client(context, prompt_login=True):
+        return
+
+    try:
+        assert view is not None
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
+
+        # Parse form data
+        metadata = json.loads(view["private_metadata"])
+        form_values = view["state"]["values"]
+
+        # Get target languages
+        lang_selection = form_values.get("target_languages", {}).get(
+            "language_mt_options", {}
+        )
+        selected_options = lang_selection.get("selected_options", [])
+
+        if not selected_options:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_("Please select at least one target language for translation."),
+            )
+            return
+
+        # Build target languages list (use language code for translation)
+        target_language_codes = [opt["value"] for opt in selected_options]
+        target_language_names = [opt["text"]["text"] for opt in selected_options]
+
+        channel_id = (
+            metadata.get("channel_id")
+            or context.get("channel_id")
+            or context["user_id"]
+        )
+
+        # Download file from Slack to get URL
+        file_info = await client.files_info(file=metadata["file_id"])
+        file_data: dict[str, Any] = file_info.get("file", {})
+        download_url = file_data.get("url_private_download") or file_data.get(
+            "url_private"
+        )
+
+        if not download_url:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    "Could not get download URL for the file. Please try uploading again."
+                ),
+            )
+            return
+
+        # Calculate tokens from duration
+        from ..auth.connector import duration_to_tokens
+
+        duration_ms = metadata.get("duration_ms", 0)
+        tokens = duration_to_tokens(duration_ms)
+
+        # Create ASR task for transcriber with translation info in extra_data
+        from ..models import ASRTask, TranscriptionTaskData
+        from ..transcriber_tasks.tasks import create_asr_task
+
+        task_data = TranscriptionTaskData(
+            client_id=context["ray"].client.id,
+            file_name=metadata["file_name"],
+            download_url=download_url,
+            app_token=client.token or "",
+            out_stream_name=f"{domains.stream_proxy}/events/transcription:slack:media:results",
+            service="azure",
+            model="whisper-1",
+            embed_subtitles=False,
+            tokens_consumed=tokens,
+            sandbox=False,
+        )
+
+        asr_task = ASRTask(
+            member_uuid=context["ray"].client.id,
+            event_name="transcription:media:asr",
+            app_source="slack",
+            len_ms=duration_ms,
+            service="azure",
+            model="whisper-1",
+            extra_data={
+                "slack_user_id": context["user_id"],
+                "slack_team_id": context["team_id"],
+                "slack_enterprise_id": context.enterprise_id,
+                "slack_channel_id": channel_id,
+                "slack_thread_ts": metadata.get("thread_ts"),
+                # Include translation info for post-transcription processing
+                "pipeline_type": "transcription_translation",
+                "target_languages": target_language_codes,
+                "target_language_names": target_language_names,
+            },
+            task_data=task_data,
+        )
+
+        await create_asr_task(asr_task)
+
+        # Notify user
+        lang_names = ", ".join(target_language_names)
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                f":earth_americas: Your video *{metadata['file_name']}* is being transcribed and translated to {lang_names}. You'll be notified when it's ready."
+            ),
+            thread_ts=metadata.get("thread_ts"),
+        )
+
+    except Exception as e:
+        notify_exception(e)
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=_("There was an error processing your video. Please try again."),
+        )
+
+
 @app.event(re.compile(r".+"))
 @slack_log_decorator
 async def catch_all_event_callbacks(body: Dict[str, Any]):

@@ -7,6 +7,9 @@ import langcodes
 from ray_sdk.api.v3.models import Job, Pagination, Quote
 from slack_sdk.models.blocks import (
     ActionsBlock,
+    Block,
+    ContextBlock,
+    DividerBlock,
     InputBlock,
     MarkdownTextObject,
     Option,
@@ -3362,38 +3365,72 @@ class DocumentMTJobMessage(SlackMessage):
 
 
 class JobTranscribedEventMessage(SlackMessage):
-    def __init__(self, task_uuid: str, source_file_name: str) -> None:
-        title = _(
-            "We have *transcribed* your file *{source_file_name}* and SRT can be downloaded below."
+    """Message shown when transcription is complete.
+
+    Shows success message with option to translate the SRT file.
+    """
+
+    def __init__(
+        self,
+        task_uuid: str,
+        source_file_name: str,
+        is_ibm_enterprise: bool = False,
+        tokens_used: int | None = None,
+    ) -> None:
+        # Build blocks using SDK
+        blocks: list[Block] = []
+
+        # Success header
+        blocks.append(
+            SectionBlock(
+                text=MarkdownTextObject(
+                    text=_(
+                        ":white_check_mark: Your video *{source_file_name}* has been transcribed!\n"
+                        "The SRT file will be uploaded below."
+                    )
+                )
+            )
         )
-        # create message which contains the output_file
+
+        # Show token usage for non-IBM users
+        if not is_ibm_enterprise and tokens_used is not None:
+            blocks.append(
+                ContextBlock(
+                    elements=[
+                        MarkdownTextObject(
+                            text=_(
+                                "You have used *{tokens_used:,}* AI tokens for this transcription."
+                            )
+                        )
+                    ]
+                )
+            )
+
+        blocks.append(DividerBlock())
+
+        # Translate option section
+        translate_button = ButtonElement(
+            text=PlainTextObject(text=_("Translate SRT"), emoji=True),
+            action_id="show_srt_translate_form",
+            value=task_uuid,
+            style="primary",
+        )
+        blocks.append(
+            SectionBlock(
+                text=MarkdownTextObject(
+                    text=_(
+                        "*Want to translate?*\nTranslate your SRT file into additional languages."
+                    )
+                ),
+                accessory=translate_button,
+            )
+        )
+
         super().__init__(
-            title,
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": title.format(source_file_name=source_file_name),
-                    },
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("AI Translation"),
-                                "emoji": False,
-                            },
-                            "action_id": "show_srt_translate_form",
-                            "style": "primary",
-                            "value": task_uuid,
-                        },
-                    ],
-                },
-            ],
+            _(
+                "Your video {source_file_name} has been transcribed. SRT file available below."
+            ),
+            [block.to_dict() for block in blocks],
         )
 
 
@@ -3403,6 +3440,108 @@ class TranscriptionMessage(TextMessage):
             _(
                 ":stopwatch: Please wait a moment and we will transcribe your file *{file_name}*"
             )
+        )
+
+
+class VideoOptionsMessage(SlackMessage):
+    """Message shown when a video is detected, offering processing options.
+
+    Shows 3 action buttons per the Figma design:
+    1. Transcribe Audio - Transcription only in source language
+    2. Transcribe & AI Translate - Transcription with translation
+    3. Embed Subtitles - Full package with embedded subtitles
+    """
+
+    def __init__(
+        self,
+        channel_id: str,
+        file_id: str,
+        file_name: str,
+        duration_ms: int,
+        thread_ts: str | None = None,
+        is_ibm_enterprise: bool = False,
+        tokens: int | None = None,
+    ) -> None:
+        # Format duration for display
+        duration_seconds = duration_ms // 1000
+        duration_minutes = duration_seconds // 60
+        remaining_seconds = duration_seconds % 60
+        duration_display = f"{duration_minutes}:{remaining_seconds:02d}"
+
+        action_value = json.dumps(
+            {
+                "channel_id": channel_id,
+                "file_id": file_id,
+                "file_name": file_name,
+                "duration_ms": duration_ms,
+                "thread_ts": thread_ts,
+            }
+        )
+
+        # Build blocks using SDK where possible
+        blocks: list[Block] = []
+
+        # Header section
+        header_block = SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    ":movie_camera: *Video detected:* `{file_name}`\n"
+                    ":clock1: Duration: {duration_display}"
+                )
+            )
+        )
+        blocks.append(header_block)
+
+        # Show token balance for non-IBM users
+        if not is_ibm_enterprise and tokens is not None:
+            token_context = ContextBlock(
+                elements=[
+                    MarkdownTextObject(
+                        text=f":coin: Your organization has a balance of *{tokens:,}* AI tokens for use."
+                    )
+                ]
+            )
+            blocks.append(token_context)
+
+        blocks.append(DividerBlock())
+
+        # Transcribe Audio option
+        transcribe_button = ButtonElement(
+            text=PlainTextObject(text=_("Transcribe"), emoji=True),
+            action_id="video_transcribe_only",
+            value=action_value,
+            style="primary",
+        )
+        transcribe_section = SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "*Transcribe Audio*\nTranscribe spoken media content to text in the source language."
+                )
+            ),
+            accessory=transcribe_button,
+        )
+        blocks.append(transcribe_section)
+
+        # Transcribe & AI Translate option
+        translate_button = ButtonElement(
+            text=PlainTextObject(text=_("Transcribe & Translate"), emoji=True),
+            action_id="video_transcribe_translate",
+            value=action_value,
+            style="primary",
+        )
+        translate_section = SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "*Transcribe & AI Translate*\nTranscribe and instantly translate into target language(s)."
+                )
+            ),
+            accessory=translate_button,
+        )
+        blocks.append(translate_section)
+
+        super().__init__(
+            _("Video detected: {file_name}. Select a processing option."),
+            [block.to_dict() for block in blocks],
         )
 
 

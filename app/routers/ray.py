@@ -511,24 +511,76 @@ async def ray_events(
         elif event.event == "transcription:slack:media:results":
             try:
                 transcribed_event = JobTranscribedEvent.model_validate(event.data)
-                transcribed_message: JobTranscribedEventMessage = (
-                    JobTranscribedEventMessage(
-                        transcribed_event.task_uuid, transcribed_event.source_file_name
-                    )
+
+                # Check if this is part of a transcribe+translate pipeline
+                from ..transcriber_tasks.tasks import get_asr_task_extra_data
+
+                extra_data = await get_asr_task_extra_data(transcribed_event.task_uuid)
+                pipeline_type = extra_data.get("pipeline_type") if extra_data else None
+                target_languages = (
+                    extra_data.get("target_languages") if extra_data else None
                 )
+
                 # Handle transcription success/error
                 if not event.data.get("error"):
-                    response = await post_notification(
-                        client,
-                        event,
-                        auth.slack_user,
-                        transcribed_message,
-                    )
-                    _create_background_task(
-                        _handle_transcribe_success_background(
-                            event.data, auth, response
+                    if (
+                        pipeline_type == "transcription_translation"
+                        and target_languages
+                        and extra_data
+                    ):
+                        # Transcribe + Translate flow: trigger translation via stream-proxy
+                        from ..api.stream_proxy import send_srt_translation_request
+
+                        channel_id = extra_data.get(
+                            "slack_channel_id", auth.slack_user.channel_id
                         )
-                    )
+
+                        # Trigger translation for each target language
+                        for target_lang in target_languages:
+                            await send_srt_translation_request(
+                                file_id=transcribed_event.file_id,
+                                client_id=transcribed_event.client_id,
+                                user_group_id=auth.slack_user.ray_user_group_id,
+                                channel_id=channel_id,
+                                target_language=target_lang,
+                            )
+
+                        # Notify user that translation has started
+                        target_names = extra_data.get(
+                            "target_language_names", target_languages
+                        )
+                        lang_names = ", ".join(target_names)
+                        await client.chat_postMessage(
+                            channel=channel_id,
+                            text=_(
+                                f":white_check_mark: Transcription complete for *{transcribed_event.source_file_name}*!\n"
+                                f":earth_americas: Now translating to {lang_names}. You'll be notified when it's ready."
+                            ),
+                            thread_ts=extra_data.get("slack_thread_ts"),
+                        )
+                    else:
+                        # Transcription-only flow: show completion message
+                        transcribed_message: JobTranscribedEventMessage = (
+                            JobTranscribedEventMessage(
+                                task_uuid=transcribed_event.task_uuid,
+                                source_file_name=transcribed_event.source_file_name,
+                                is_ibm_enterprise=is_ibm,
+                                tokens_used=transcribed_event.tokens
+                                if transcribed_event.tokens
+                                else None,
+                            )
+                        )
+                        response = await post_notification(
+                            client,
+                            event,
+                            auth.slack_user,
+                            transcribed_message,
+                        )
+                        _create_background_task(
+                            _handle_transcribe_success_background(
+                                event.data, auth, response
+                            )
+                        )
                 else:
                     await client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
@@ -889,6 +941,7 @@ async def ray_events(
                         "message": f"Error processing MT result event: {str(e)}",
                     },
                 ) from e
+
         else:
             raise HTTPException(
                 400, f"The event type is invalid: {event.event}"

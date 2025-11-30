@@ -6,13 +6,18 @@ from typing import Any, cast
 from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.errors import SlackApiError
 from slack_sdk.models.blocks import (
+    Block,
+    ContextBlock,
+    DividerBlock,
     InputBlock,
     MarkdownTextObject,
     Option,
     PlainTextObject,
     SectionBlock,
 )
-from slack_sdk.models.blocks.block_elements import StaticMultiSelectElement
+from slack_sdk.models.blocks.block_elements import (
+    StaticMultiSelectElement,
+)
 
 from app.translate import _
 
@@ -1137,4 +1142,117 @@ def srt_translate_modal(task_uuid: str, channel_id: str) -> dict[str, Any]:
         "close": PlainTextObject(text=_("Close")).to_dict(),
         "private_metadata": private_metadata,
         "blocks": blocks,
+    }
+
+
+def video_transcribe_translate_modal(
+    channel_id: str,
+    file_id: str,
+    file_name: str,
+    duration_ms: int,
+    thread_ts: str | None = None,
+) -> dict[str, Any]:
+    """Modal for video transcription with translation - requires language selection.
+
+    Args:
+        channel_id: The Slack channel ID.
+        file_id: The Slack file ID.
+        file_name: Name of the video file.
+        duration_ms: Duration of the video in milliseconds.
+        thread_ts: Optional thread timestamp.
+
+    Returns:
+        dict: The view dict for the transcribe & translate modal.
+    """
+    # Format duration for display
+    duration_seconds = duration_ms // 1000
+    duration_minutes = duration_seconds // 60
+    remaining_seconds = duration_seconds % 60
+    duration_display = f"{duration_minutes}:{remaining_seconds:02d}"
+
+    # Build blocks using SDK
+    blocks: list[Block] = []
+
+    # Header section
+    blocks.append(
+        SectionBlock(
+            text=MarkdownTextObject(
+                text=f":movie_camera: *{file_name}*\n:clock1: Duration: {duration_display}"
+            )
+        )
+    )
+
+    blocks.append(DividerBlock())
+
+    # Description section
+    blocks.append(
+        SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "*Transcribe & AI Translate*\n"
+                    "Transcribe the spoken content and translate into your selected languages."
+                )
+            )
+        )
+    )
+
+    # Get language options with proper ISO codes
+    language_options_raw = get_auto_translate_language_options()
+    language_options = [
+        Option(
+            text=PlainTextObject(text=opt["text"]["text"], emoji=False),
+            value=opt["value"],
+        )
+        for opt in language_options_raw
+    ]
+
+    # Target languages selection
+    blocks.append(
+        InputBlock(
+            block_id="target_languages",
+            label=PlainTextObject(text=_("Target Languages")),
+            element=StaticMultiSelectElement(
+                action_id="language_mt_options",
+                placeholder=PlainTextObject(text=_("Select target languages")),
+                options=language_options,
+                max_selected_items=10,
+            ),
+            hint=PlainTextObject(
+                text=_(
+                    "Select up to 10 languages. You will receive SRT files in each language."
+                )
+            ),
+        )
+    )
+
+    # Context/hint block
+    blocks.append(
+        ContextBlock(
+            elements=[
+                MarkdownTextObject(
+                    text=_(
+                        ":bulb: You will receive separate SRT subtitle files for each selected language."
+                    )
+                )
+            ]
+        )
+    )
+
+    return {
+        "type": "modal",
+        "callback_id": "video_transcribe_translate_submit",
+        "private_metadata": json.dumps(
+            {
+                "channel_id": channel_id,
+                "file_id": file_id,
+                "file_name": file_name,
+                "duration_ms": duration_ms,
+                "thread_ts": thread_ts,
+                "pipeline_type": "transcription_translation",
+            }
+        ),
+        "title": {"type": "plain_text", "text": _("Transcribe & Translate")[:24]},
+        "submit": {"type": "plain_text", "text": _("Start Processing")},
+        "close": {"type": "plain_text", "text": _("Cancel")},
+        "blocks": [block.to_dict() for block in blocks],
     }

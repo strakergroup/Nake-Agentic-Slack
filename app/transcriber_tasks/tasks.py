@@ -83,3 +83,27 @@ async def get_asr_task(task_uuid: str, member_uuid: str):
     result = await fetch_one(sql, async_engines["sitecommons"])
 
     return json.loads(result["task_result"]) if result else None
+
+
+async def get_asr_task_extra_data(task_uuid: str) -> dict | None:
+    """Get task extra_data from transcriber_tasks_consumer_queue table.
+
+    Used to retrieve pipeline info like target languages for translation.
+
+    Args:
+        task_uuid (str): UUID of the task to get
+
+    Returns:
+        dict: Task extra_data or None if not found
+    """
+    sql = text(
+        """
+        SELECT extra_data FROM transcriber_task_consumer_queue
+        WHERE obj_uuid = :task_uuid
+        """
+    ).bindparams(task_uuid=task_uuid)
+    result = await fetch_one(sql, async_engines["sitecommons"])
+
+    if result and result["extra_data"]:
+        return json.loads(result["extra_data"])
+    return None
