@@ -2664,7 +2664,7 @@ async def handle_video_transcribe_only(
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
-                f":memo: Your video *{action_data['file_name']}* is being transcribed. You'll be notified when it's ready."
+                ":stopwatch: Please wait a moment and we will transcribe your file."
             ),
             thread_ts=action_data.get("thread_ts"),
         )
@@ -2812,11 +2812,10 @@ async def handle_video_transcribe_translate_submit(
         await create_asr_task(asr_task)
 
         # Notify user
-        lang_names = ", ".join(target_language_names)
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
-                f":earth_americas: Your video *{metadata['file_name']}* is being transcribed and translated to {lang_names}. You'll be notified when it's ready."
+                ":stopwatch: Please wait a moment and we will transcribe & AI translate your file."
             ),
             thread_ts=metadata.get("thread_ts"),
         )

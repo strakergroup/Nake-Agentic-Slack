@@ -3365,14 +3365,10 @@ class DocumentMTJobMessage(SlackMessage):
 
 
 class JobTranscribedEventMessage(SlackMessage):
-    """Message shown when transcription is complete.
-
-    Shows success message with option to translate the SRT file.
-    """
+    """Message shown when transcription is complete."""
 
     def __init__(
         self,
-        task_uuid: str,
         source_file_name: str,
         is_ibm_enterprise: bool = False,
         tokens_used: int | None = None,
@@ -3385,8 +3381,7 @@ class JobTranscribedEventMessage(SlackMessage):
             SectionBlock(
                 text=MarkdownTextObject(
                     text=_(
-                        ":white_check_mark: Your video *{source_file_name}* has been transcribed!\n"
-                        "The SRT file will be uploaded below."
+                        "We have transcribed your file and SRT can be downloaded below."
                     )
                 )
             )
@@ -3405,26 +3400,6 @@ class JobTranscribedEventMessage(SlackMessage):
                     ]
                 )
             )
-
-        blocks.append(DividerBlock())
-
-        # Translate option section
-        translate_button = ButtonElement(
-            text=PlainTextObject(text=_("Translate SRT"), emoji=True),
-            action_id="show_srt_translate_form",
-            value=task_uuid,
-            style="primary",
-        )
-        blocks.append(
-            SectionBlock(
-                text=MarkdownTextObject(
-                    text=_(
-                        "*Want to translate?*\nTranslate your SRT file into additional languages."
-                    )
-                ),
-                accessory=translate_button,
-            )
-        )
 
         super().__init__(
             _(
@@ -3515,7 +3490,7 @@ class VideoOptionsMessage(SlackMessage):
         transcribe_section = SectionBlock(
             text=MarkdownTextObject(
                 text=_(
-                    "*Transcribe Audio*\nTranscribe spoken media content to text in the source language."
+                    "*Transcribe Audio* - Transcribe spoken media content to text in the source language."
                 )
             ),
             accessory=transcribe_button,
@@ -3532,7 +3507,7 @@ class VideoOptionsMessage(SlackMessage):
         translate_section = SectionBlock(
             text=MarkdownTextObject(
                 text=_(
-                    "*Transcribe & AI Translate*\nTranscribe and instantly translate into target language(s)."
+                    "*Transcribe & AI Translate* - Transcribe media content and instantly translate the text into your chosen target language(s) using AI Translation."
                 )
             ),
             accessory=translate_button,

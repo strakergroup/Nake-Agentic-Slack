@@ -7,8 +7,6 @@ from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.errors import SlackApiError
 from slack_sdk.models.blocks import (
     Block,
-    ContextBlock,
-    DividerBlock,
     InputBlock,
     MarkdownTextObject,
     Option,
@@ -1164,35 +1162,44 @@ def video_transcribe_translate_modal(
     Returns:
         dict: The view dict for the transcribe & translate modal.
     """
-    # Format duration for display
-    duration_seconds = duration_ms // 1000
-    duration_minutes = duration_seconds // 60
-    remaining_seconds = duration_seconds % 60
-    duration_display = f"{duration_minutes}:{remaining_seconds:02d}"
-
     # Build blocks using SDK
     blocks: list[Block] = []
-
-    # Header section
-    blocks.append(
-        SectionBlock(
-            text=MarkdownTextObject(
-                text=f":movie_camera: *{file_name}*\n:clock1: Duration: {duration_display}"
-            )
-        )
-    )
-
-    blocks.append(DividerBlock())
 
     # Description section
     blocks.append(
         SectionBlock(
             text=MarkdownTextObject(
                 text=_(
-                    "*Transcribe & AI Translate*\n"
-                    "Transcribe the spoken content and translate into your selected languages."
+                    "To transcribe your file and get an AI Translation, select your "
+                    "file and choose the desired target language(s)."
                 )
             )
+        )
+    )
+
+    # File display section - show selected file
+    blocks.append(
+        InputBlock(
+            block_id="selected_file",
+            label=PlainTextObject(text=_("Select your files to translate")),
+            element=StaticMultiSelectElement(
+                action_id="file_display",
+                placeholder=PlainTextObject(text=file_name),
+                options=[
+                    Option(
+                        text=PlainTextObject(text=file_name, emoji=False),
+                        value=file_id,
+                    )
+                ],
+                initial_options=[
+                    Option(
+                        text=PlainTextObject(text=file_name, emoji=False),
+                        value=file_id,
+                    )
+                ],
+                max_selected_items=1,
+            ),
+            optional=True,
         )
     )
 
@@ -1210,31 +1217,13 @@ def video_transcribe_translate_modal(
     blocks.append(
         InputBlock(
             block_id="target_languages",
-            label=PlainTextObject(text=_("Target Languages")),
+            label=PlainTextObject(text=_("Translate to")),
             element=StaticMultiSelectElement(
                 action_id="language_mt_options",
                 placeholder=PlainTextObject(text=_("Select target languages")),
                 options=language_options,
                 max_selected_items=10,
             ),
-            hint=PlainTextObject(
-                text=_(
-                    "Select up to 10 languages. You will receive SRT files in each language."
-                )
-            ),
-        )
-    )
-
-    # Context/hint block
-    blocks.append(
-        ContextBlock(
-            elements=[
-                MarkdownTextObject(
-                    text=_(
-                        ":bulb: You will receive separate SRT subtitle files for each selected language."
-                    )
-                )
-            ]
         )
     )
 
@@ -1251,8 +1240,8 @@ def video_transcribe_translate_modal(
                 "pipeline_type": "transcription_translation",
             }
         ),
-        "title": {"type": "plain_text", "text": _("Transcribe & Translate")[:24]},
-        "submit": {"type": "plain_text", "text": _("Start Processing")},
+        "title": {"type": "plain_text", "text": _("Transcribe+AI Translate")[:24]},
+        "submit": {"type": "plain_text", "text": _("Submit")},
         "close": {"type": "plain_text", "text": _("Cancel")},
         "blocks": [block.to_dict() for block in blocks],
     }

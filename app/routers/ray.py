@@ -144,13 +144,8 @@ async def _handle_mt_success_background(
         # Download file from server
         output_file = await download_from_file_server_async(success_data.file_id)
         file_path = output_file.get("file")
-        token_count = success_data.tokens
         title = output_file.get("file_name")
-        token_consumption_message = (
-            _("You have used {token_count} AI tokens.")
-            if not is_ibm_enterprise(auth.slack_user.enterprise_id)
-            else ""
-        )
+        initial_comment = _("Your file is AI translated and can be downloaded below.")
         try:
             # Upload file using memory-efficient method
             await upload_file_to_slack_memory_efficient(
@@ -159,7 +154,7 @@ async def _handle_mt_success_background(
                 channel_id=success_data.channel_id,
                 title=title,
                 filename=title,
-                initial_comment=token_consumption_message,
+                initial_comment=initial_comment,
             )
 
             await update_slack_job(
@@ -182,7 +177,8 @@ async def _handle_mt_success_background(
 async def _handle_transcribe_success_background(
     event_data: dict[str, Any],
     auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
-    response: Union[AsyncSlackResponse, WebhookResponse],
+    response: Union[AsyncSlackResponse, WebhookResponse, None],
+    override_channel_id: str | None = None,
 ):
     """Background task to handle transcription success file download and upload."""
     try:
@@ -202,9 +198,10 @@ async def _handle_transcribe_success_background(
             return
         output_file = await download_from_file_server_async(file_id)
         file_path = output_file.get("file")
-        channel_id = (
+        channel_id = override_channel_id or (
             response.data["channel"]
-            if isinstance(response, AsyncSlackResponse)
+            if response
+            and isinstance(response, AsyncSlackResponse)
             and isinstance(response.data, dict)
             else ""
         )
@@ -545,24 +542,29 @@ async def ray_events(
                                 target_language=target_lang,
                             )
 
-                        # Notify user that translation has started
-                        target_names = extra_data.get(
-                            "target_language_names", target_languages
-                        )
-                        lang_names = ", ".join(target_names)
+                        # Show transcription complete message (matches Figma design)
+                        token_text = ""
+                        if not is_ibm and transcribed_event.tokens:
+                            token_text = f"\nYou have used *{transcribed_event.tokens:,}* AI tokens."
+
                         await client.chat_postMessage(
                             channel=channel_id,
                             text=_(
-                                f":white_check_mark: Transcription complete for *{transcribed_event.source_file_name}*!\n"
-                                f":earth_americas: Now translating to {lang_names}. You'll be notified when it's ready."
+                                f"We have transcribed your file and SRT can be downloaded below.{token_text}"
                             ),
                             thread_ts=extra_data.get("slack_thread_ts"),
+                        )
+
+                        # Upload the source SRT file
+                        _create_background_task(
+                            _handle_transcribe_success_background(
+                                event.data, auth, None, channel_id
+                            )
                         )
                     else:
                         # Transcription-only flow: show completion message
                         transcribed_message: JobTranscribedEventMessage = (
                             JobTranscribedEventMessage(
-                                task_uuid=transcribed_event.task_uuid,
                                 source_file_name=transcribed_event.source_file_name,
                                 is_ibm_enterprise=is_ibm,
                                 tokens_used=transcribed_event.tokens
