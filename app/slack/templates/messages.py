@@ -3461,8 +3461,6 @@ class VideoOptionsMessage(SlackMessage):
             )
             blocks.append(token_context)
 
-        blocks.append(DividerBlock())
-
         # Transcribe Audio option
         transcribe_button = ButtonElement(
             text=PlainTextObject(text=_("Transcribe"), emoji=True),
