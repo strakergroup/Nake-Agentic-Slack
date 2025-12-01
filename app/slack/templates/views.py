@@ -1170,8 +1170,8 @@ def video_transcribe_translate_modal(
         SectionBlock(
             text=MarkdownTextObject(
                 text=_(
-                    "To transcribe your file and get an AI Translation, select your "
-                    "file and choose the desired target language(s)."
+                    "To transcribe your file(s) and get an AI Translation, select your "
+                    "file(s) and choose the desired target language(s)."
                 )
             )
         )

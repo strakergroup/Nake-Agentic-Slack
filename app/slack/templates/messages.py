@@ -3437,12 +3437,6 @@ class VideoOptionsMessage(SlackMessage):
         is_ibm_enterprise: bool = False,
         tokens: int | None = None,
     ) -> None:
-        # Format duration for display
-        duration_seconds = duration_ms // 1000
-        duration_minutes = duration_seconds // 60
-        remaining_seconds = duration_seconds % 60
-        duration_display = f"{duration_minutes}:{remaining_seconds:02d}"
-
         action_value = json.dumps(
             {
                 "channel_id": channel_id,
@@ -3455,17 +3449,6 @@ class VideoOptionsMessage(SlackMessage):
 
         # Build blocks using SDK where possible
         blocks: list[Block] = []
-
-        # Header section
-        header_block = SectionBlock(
-            text=MarkdownTextObject(
-                text=_(
-                    ":movie_camera: *Video detected:* `{file_name}`\n"
-                    ":clock1: Duration: {duration_display}"
-                )
-            )
-        )
-        blocks.append(header_block)
 
         # Show token balance for non-IBM users
         if not is_ibm_enterprise and tokens is not None:
@@ -3499,7 +3482,7 @@ class VideoOptionsMessage(SlackMessage):
 
         # Transcribe & AI Translate option
         translate_button = ButtonElement(
-            text=PlainTextObject(text=_("Transcribe & Translate"), emoji=True),
+            text=PlainTextObject(text=_("Transcribe & AI Translate"), emoji=True),
             action_id="video_transcribe_translate",
             value=action_value,
             style="primary",
