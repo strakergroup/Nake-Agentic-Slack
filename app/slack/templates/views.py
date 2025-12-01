@@ -1220,7 +1220,7 @@ def video_transcribe_translate_modal(
             label=PlainTextObject(text=_("Translate to")),
             element=StaticMultiSelectElement(
                 action_id="language_mt_options",
-                placeholder=PlainTextObject(text=_("Select target languages")),
+                placeholder=PlainTextObject(text=_("Select languages")),
                 options=language_options,
                 max_selected_items=10,
             ),
