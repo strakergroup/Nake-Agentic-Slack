@@ -13,6 +13,7 @@ import requests
 from babel.numbers import format_currency as babel_format_currency
 
 from app.auth.connector import is_ibm_super_group
+from app.ray.file_validators import validate_json
 from app.slack.buglog_notifier import notify_exception
 from app.translate import Translator, _, translator_var
 
@@ -337,7 +338,7 @@ VALID_FILE_TYPES: dict[str, Callable[[str], Tuple[bool, str]] | None] = {
     "docx": None,
     "html": None,
     "idml": None,
-    "json": None,
+    "json": validate_json,
     "pdf": None,
     "pptx": None,
     "properties": None,

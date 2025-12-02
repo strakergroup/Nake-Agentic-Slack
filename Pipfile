@@ -35,6 +35,7 @@ straker-utils = {version = "==0.3.0.7", index = "straker"}
 pypdf2 = "*"
 types-python-dateutil = "*"
 types-requests = "*"
+ijson = "*"
 
 [dev-packages]
 pytest = "*"
