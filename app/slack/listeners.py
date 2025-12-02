@@ -33,7 +33,7 @@ from app.ray.submissions import (
     updated_submission_status,
 )
 from app.ray.utils import (
-    download_from_file_server,
+    download_from_file_server_async,
     is_ibm_enterprise,
     upload_to_file_server,
     validate_file,
@@ -465,7 +465,7 @@ async def document_mt_submit_action(
                     input_file = await download_file(
                         client=client, file_id=slack_file_id, http=None
                     )
-                    input_file_id = upload_to_file_server(input_file)
+                    input_file_id = await upload_to_file_server(input_file)
                     # Dedupe check and record in DB
                     is_dup, _record = await check_and_record_submission_async(
                         path=input_file,
@@ -512,7 +512,7 @@ async def download_transcribed_file(
         task_result = await get_asr_task(task_uuid, context["ray"].client.id)
         assert task_result is not None
         file_id = task_result["file_id"]
-        file = download_from_file_server(file_id)
+        file = await download_from_file_server_async(file_id)
 
         try:
             # Upload file to Slack using memory-efficient method
@@ -2462,7 +2462,7 @@ async def handle_document_mt_job(
                         text=msg,
                     )
                     continue
-                input_file_id = upload_to_file_server(input_file)
+                input_file_id = await upload_to_file_server(input_file)
                 submitted_for_file = False
                 # Submit machine translation job for each selected language
                 for lang in selected_languages:

@@ -166,7 +166,7 @@ async def _handle_mt_success_background(
                 task_uuid=success_data.task_uuid,
                 status="delivered",
             )
-            delete_from_file_server(success_data.file_id)
+            await delete_from_file_server(success_data.file_id)
         finally:
             # Clean up temporary file
             if file_path and os.path.exists(file_path):
