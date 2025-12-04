@@ -1922,6 +1922,8 @@ async def evaluate_job_submit(
                 await client.chat_postMessage(channel=channel_id, text=error_message)
                 continue
             input_files.append(input_file)
+        if not input_files:
+            return
         try:
             assert context["ray"] is not None
             assert context["ray"].client is not None
