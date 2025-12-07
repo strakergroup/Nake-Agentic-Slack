@@ -145,7 +145,9 @@ async def _handle_mt_success_background(
         output_file = await download_from_file_server_async(success_data.file_id)
         file_path = output_file.get("file")
         title = output_file.get("file_name")
-        initial_comment = _("Your file is AI translated and can be downloaded below.")
+        initial_comment = _(
+            f"Your file is AI translated to *{success_data.target_language}* and can be downloaded below."
+        )
         try:
             # Upload file using memory-efficient method
             await upload_file_to_slack_memory_efficient(
