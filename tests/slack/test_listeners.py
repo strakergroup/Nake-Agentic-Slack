@@ -4634,3 +4634,124 @@ class TestHandleTranslateShortcut:
                 call_args = mock_mt.call_args
                 # Should default to "en" when locale not set
                 assert call_args[1]["target_lang"] == "en"
+
+    @pytest.mark.asyncio
+    async def test_handle_translate_shortcut_empty_text(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_translate_shortcut returns early with message when text is empty."""
+        from app.slack.listeners import handle_translate_shortcut
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        body = {
+            "message": {
+                "text": "",
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "locale": "fr",
+                "ray": ray_connection,
+            }
+        )
+
+        with patch(
+            "app.slack.listeners.detect_language", new_callable=AsyncMock
+        ) as mock_detect:
+            with patch(
+                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+            ) as mock_mt:
+                await handle_translate_shortcut(
+                    context_dict, mock_ack, body=body, client=mock_client
+                )
+                mock_ack.assert_called_once()
+                # Should NOT call detect_language or get_mt_translation
+                mock_detect.assert_not_called()
+                mock_mt.assert_not_called()
+                # Should send a message to the user
+                mock_client.chat_postMessage.assert_called_once()
+                call_args = mock_client.chat_postMessage.call_args
+                assert call_args[1]["channel"] == user_id
+                assert "doesn't contain any text" in call_args[1]["text"]
+
+    @pytest.mark.asyncio
+    async def test_handle_translate_shortcut_missing_text_key(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_translate_shortcut handles missing text key gracefully."""
+        from app.slack.listeners import handle_translate_shortcut
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        body = {
+            "message": {}  # No "text" key
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "locale": "fr",
+                "ray": ray_connection,
+            }
+        )
+
+        with patch(
+            "app.slack.listeners.detect_language", new_callable=AsyncMock
+        ) as mock_detect:
+            with patch(
+                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+            ) as mock_mt:
+                await handle_translate_shortcut(
+                    context_dict, mock_ack, body=body, client=mock_client
+                )
+                mock_ack.assert_called_once()
+                # Should NOT call detect_language or get_mt_translation
+                mock_detect.assert_not_called()
+                mock_mt.assert_not_called()
+                # Should send a message to the user
+                mock_client.chat_postMessage.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_translate_shortcut_whitespace_only_text(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_translate_shortcut treats whitespace-only text as empty."""
+        from app.slack.listeners import handle_translate_shortcut
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        body = {
+            "message": {
+                "text": "   \n\t  ",  # Only whitespace
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "locale": "fr",
+                "ray": ray_connection,
+            }
+        )
+
+        with patch(
+            "app.slack.listeners.detect_language", new_callable=AsyncMock
+        ) as mock_detect:
+            with patch(
+                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+            ) as mock_mt:
+                await handle_translate_shortcut(
+                    context_dict, mock_ack, body=body, client=mock_client
+                )
+                mock_ack.assert_called_once()
+                # Should NOT call detect_language or get_mt_translation
+                mock_detect.assert_not_called()
+                mock_mt.assert_not_called()
+                # Should send a message to the user
+                mock_client.chat_postMessage.assert_called_once()
