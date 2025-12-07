@@ -107,3 +107,25 @@ async def get_asr_task_extra_data(task_uuid: str) -> dict | None:
     if result and result["extra_data"]:
         return json.loads(result["extra_data"])
     return None
+
+
+async def get_asr_task_duration(task_uuid: str) -> int | None:
+    """Get task duration (len_ms) from transcriber_tasks_consumer_queue table.
+
+    Args:
+        task_uuid (str): UUID of the task to get
+
+    Returns:
+        int: Duration in milliseconds or None if not found
+    """
+    sql = text(
+        """
+        SELECT len_ms FROM transcriber_task_consumer_queue
+        WHERE obj_uuid = :task_uuid
+        """
+    ).bindparams(task_uuid=task_uuid)
+    result = await fetch_one(sql, async_engines["sitecommons"])
+
+    if result and result["len_ms"]:
+        return result["len_ms"]
+    return None

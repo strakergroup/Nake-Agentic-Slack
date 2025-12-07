@@ -2749,6 +2749,37 @@ async def handle_video_transcribe_translate_submit(
             or context["user_id"]
         )
 
+        # Check for duplicate submissions per target language
+        from ..ray.submissions import check_and_record_transcription_submission_async
+
+        duplicate_languages = []
+        valid_languages = []
+        for lang_code, lang_name in zip(
+            target_language_codes, target_language_names, strict=True
+        ):
+            is_dup, _record = await check_and_record_transcription_submission_async(
+                slack_file_id=metadata["file_id"],
+                file_name=metadata["file_name"],
+                user_id=context["user_id"],
+                team_id=context["team_id"],
+                channel_id=channel_id,
+                target_language=lang_code,
+            )
+            if is_dup:
+                duplicate_languages.append(lang_name)
+            else:
+                valid_languages.append({"code": lang_code, "name": lang_name})
+
+        # If all languages are duplicates, notify and return
+        if not valid_languages:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    f"Please allow the system to complete the ongoing transcription & translation(s) for *({', '.join(duplicate_languages)})* to prevent duplicate submissions."
+                ),
+            )
+            return
+
         # Download file from Slack to get URL
         file_info = await client.files_info(file=metadata["file_id"])
         file_data: dict[str, Any] = file_info.get("file", {})
@@ -2774,6 +2805,10 @@ async def handle_video_transcribe_translate_submit(
         # Create ASR task for transcriber with translation info in extra_data
         from ..models import ASRTask, TranscriptionTaskData
         from ..transcriber_tasks.tasks import create_asr_task
+
+        # Only include valid (non-duplicate) languages
+        valid_language_codes = [lang["code"] for lang in valid_languages]
+        valid_language_names = [lang["name"] for lang in valid_languages]
 
         task_data = TranscriptionTaskData(
             client_id=context["ray"].client.id,
@@ -2803,8 +2838,8 @@ async def handle_video_transcribe_translate_submit(
                 "slack_thread_ts": metadata.get("thread_ts"),
                 # Include translation info for post-transcription processing
                 "pipeline_type": "transcription_translation",
-                "target_languages": target_language_codes,
-                "target_language_names": target_language_names,
+                "target_languages": valid_language_codes,
+                "target_language_names": valid_language_names,
             },
             task_data=task_data,
         )
@@ -2819,6 +2854,15 @@ async def handle_video_transcribe_translate_submit(
             ),
             thread_ts=metadata.get("thread_ts"),
         )
+
+        # Notify about duplicate languages if some were skipped
+        if duplicate_languages:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    f"Please allow the system to complete the ongoing translation(s) for *({', '.join(duplicate_languages)})* to prevent duplicate submissions."
+                ),
+            )
 
     except Exception as e:
         notify_exception(e)

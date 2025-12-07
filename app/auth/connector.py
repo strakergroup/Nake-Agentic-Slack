@@ -1588,6 +1588,64 @@ def duration_to_tokens(duration_ms: int) -> int:
     return math.ceil(duration_ms / duration_per_token_ms)
 
 
+async def log_transcribe_by_client_id(
+    client_id: str,
+    duration_ms: int,
+    file_name: str,
+) -> int:
+    """
+    Log transcription request and spend tokens using client_id.
+    This is used when we don't have a full RayConnection but need to charge for transcription.
+
+    Args:
+        client_id: The LanguageCloud client UUID
+        duration_ms: Duration of the media in milliseconds
+        file_name: Name of the transcribed file
+
+    Returns:
+        int: Number of tokens consumed
+    """
+    tokens = duration_to_tokens(duration_ms)
+    if not tokens:
+        raise Exception("Duration is 0")
+
+    # Fetch user info to create id_token
+    sql = text(
+        """
+        SELECT m.obj_uuid, m.given_name, m.family_name, m.email_primary, m.active
+        FROM obj_m_member m
+        WHERE m.obj_uuid = :client_id
+        """
+    ).bindparams(client_id=client_id)
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    if not result:
+        raise Exception(f"Client {client_id} not found")
+
+    id_token = create_languagecloud_id_token(
+        uuid=client_id,
+        given_name=result["given_name"] or "",
+        family_name=result["family_name"] or "",
+        email=result["email_primary"] or "",
+        is_active=bool(result["active"]),
+        aud="languagecloud-api",
+        secret=config.languagecloud_api_key.get_secret_value(),
+    )
+
+    url = f"{domains.languagecloud_api}/mt/transcribe"
+    headers = {
+        "Authorization": f"Bearer {id_token}",
+    }
+    data = {
+        "duration_ms": duration_ms,
+        "app_name": "slack",
+        "file_name": file_name,
+    }
+    async with httpx.AsyncClient() as http:
+        response = await http.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        return tokens
+
+
 async def get_client_type(client_id: str, group_id: str | None):
     """Get the client type for a group. Owner Admin or Normal client"""
     if not group_id:

@@ -1177,7 +1177,7 @@ def video_transcribe_translate_modal(
         )
     )
 
-    # File display section - show selected file
+    # File display section - show selected file (required field)
     blocks.append(
         InputBlock(
             block_id="selected_file",
@@ -1199,7 +1199,7 @@ def video_transcribe_translate_modal(
                 ],
                 max_selected_items=1,
             ),
-            optional=True,
+            optional=False,
         )
     )
 

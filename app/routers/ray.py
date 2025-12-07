@@ -510,7 +510,10 @@ async def ray_events(
                 transcribed_event = JobTranscribedEvent.model_validate(event.data)
 
                 # Check if this is part of a transcribe+translate pipeline
-                from ..transcriber_tasks.tasks import get_asr_task_extra_data
+                from ..transcriber_tasks.tasks import (
+                    get_asr_task_duration,
+                    get_asr_task_extra_data,
+                )
 
                 extra_data = await get_asr_task_extra_data(transcribed_event.task_uuid)
                 pipeline_type = extra_data.get("pipeline_type") if extra_data else None
@@ -520,6 +523,22 @@ async def ray_events(
 
                 # Handle transcription success/error
                 if not event.data.get("error"):
+                    # Log transcription usage (charge tokens for transcription)
+                    try:
+                        from ..auth.connector import log_transcribe_by_client_id
+
+                        duration_ms = await get_asr_task_duration(
+                            transcribed_event.task_uuid
+                        )
+                        if duration_ms:
+                            await log_transcribe_by_client_id(
+                                client_id=transcribed_event.client_id,
+                                duration_ms=duration_ms,
+                                file_name=transcribed_event.source_file_name,
+                            )
+                    except Exception as e:
+                        notify_exception(e, "Failed to log transcription usage")
+
                     if (
                         pipeline_type == "transcription_translation"
                         and target_languages

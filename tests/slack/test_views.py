@@ -11,6 +11,7 @@ from app.slack.templates.views import (
     translation_settings_view_error,
     verify_job_modal,
     verify_quote_summary_modal,
+    video_transcribe_translate_modal,
 )
 from app.translate import _
 
@@ -498,3 +499,118 @@ class TestSrtTranslateModal:
         assert modal1["private_metadata"] == uuid1
         assert modal2["private_metadata"] == uuid2
         assert modal1["private_metadata"] != modal2["private_metadata"]
+
+
+class TestVideoTranscribeTranslateModal:
+    """Tests for video_transcribe_translate_modal function."""
+
+    def test_modal_structure(self):
+        """Test that video_transcribe_translate_modal returns proper structure."""
+        channel_id = "C123456"
+        file_id = "F123456"
+        file_name = "test_video.mp4"
+        duration_ms = 60000
+
+        modal = video_transcribe_translate_modal(
+            channel_id=channel_id,
+            file_id=file_id,
+            file_name=file_name,
+            duration_ms=duration_ms,
+        )
+
+        assert modal.get("type") == "modal"
+        assert modal.get("callback_id") == "video_transcribe_translate_submit"
+        assert "title" in modal
+        assert "submit" in modal
+        assert "close" in modal
+        assert "blocks" in modal
+        assert "private_metadata" in modal
+
+    def test_file_field_is_required(self):
+        """Test that the file selection field is required (not optional)."""
+        channel_id = "C123456"
+        file_id = "F123456"
+        file_name = "test_video.mp4"
+        duration_ms = 60000
+
+        modal = video_transcribe_translate_modal(
+            channel_id=channel_id,
+            file_id=file_id,
+            file_name=file_name,
+            duration_ms=duration_ms,
+        )
+
+        # Find the selected_file block
+        blocks = modal.get("blocks", [])
+        file_block = None
+        for block in blocks:
+            if hasattr(block, "block_id") and block.block_id == "selected_file":
+                file_block = block
+                break
+            elif isinstance(block, dict) and block.get("block_id") == "selected_file":
+                file_block = block
+                break
+
+        assert file_block is not None, "File selection block not found"
+
+        # Check that optional is False (field is required)
+        if hasattr(file_block, "optional"):
+            assert file_block.optional is False, "File field should be required"
+        elif isinstance(file_block, dict):
+            assert (
+                file_block.get("optional", True) is False
+            ), "File field should be required"
+
+    def test_private_metadata_contains_file_info(self):
+        """Test that private_metadata contains file information."""
+        import json
+
+        channel_id = "C123456"
+        file_id = "F123456"
+        file_name = "test_video.mp4"
+        duration_ms = 60000
+        thread_ts = "1234567890.123456"
+
+        modal = video_transcribe_translate_modal(
+            channel_id=channel_id,
+            file_id=file_id,
+            file_name=file_name,
+            duration_ms=duration_ms,
+            thread_ts=thread_ts,
+        )
+
+        metadata = json.loads(modal.get("private_metadata", "{}"))
+        assert metadata.get("channel_id") == channel_id
+        assert metadata.get("file_id") == file_id
+        assert metadata.get("file_name") == file_name
+        assert metadata.get("duration_ms") == duration_ms
+        assert metadata.get("thread_ts") == thread_ts
+        assert metadata.get("pipeline_type") == "transcription_translation"
+
+    def test_target_languages_block_exists(self):
+        """Test that target languages selection block exists."""
+        channel_id = "C123456"
+        file_id = "F123456"
+        file_name = "test_video.mp4"
+        duration_ms = 60000
+
+        modal = video_transcribe_translate_modal(
+            channel_id=channel_id,
+            file_id=file_id,
+            file_name=file_name,
+            duration_ms=duration_ms,
+        )
+
+        blocks = modal.get("blocks", [])
+        target_lang_block = None
+        for block in blocks:
+            if hasattr(block, "block_id") and block.block_id == "target_languages":
+                target_lang_block = block
+                break
+            elif (
+                isinstance(block, dict) and block.get("block_id") == "target_languages"
+            ):
+                target_lang_block = block
+                break
+
+        assert target_lang_block is not None, "Target languages block not found"
