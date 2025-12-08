@@ -217,8 +217,9 @@ def _get_slack_friendly_filename(filename: str) -> str:
 
     # Extensions that Slack shows as "Binary" but are actually text
     if ext_lower in (".srt", ".vtt"):
-        # Keep original extension in name for clarity: "video.srt" -> "video.srt.txt"
-        return f"{filename}.txt"
+        # Replace extension with .txt: "video.srt" -> "video.txt"
+        # This works correctly with language-suffixed names: "file_English_Afrikaans.srt" -> "file_English_Afrikaans.txt"
+        return f"{name}.txt"
 
     return filename
 
