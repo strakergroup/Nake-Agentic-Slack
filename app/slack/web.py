@@ -200,73 +200,6 @@ def _get_mimetype_for_file(filename: str) -> str:
     return mimetype_map.get(ext, "application/octet-stream")
 
 
-def _ensure_utf8_encoding(file_path: str) -> tuple[str, bool]:
-    """Ensure a text file is UTF-8 encoded for Slack preview compatibility.
-
-    Slack can preview text files (including .srt/.vtt converted to .txt), but only
-    if they are UTF-8 encoded. This function reads the file, detects/converts encoding,
-    and returns a UTF-8 version.
-
-    Args:
-        file_path: Path to the file to convert
-
-    Returns:
-        Tuple of (file_path, temp_file_created):
-        - file_path: Path to UTF-8 encoded file (original if already UTF-8, or temp file if converted)
-        - temp_file_created: True if a temp file was created and needs cleanup
-    """
-    # Try reading as UTF-8 first
-    try:
-        with open(file_path, "rb") as f:
-            raw_content = f.read()
-
-        # Check for UTF-8 BOM
-        if raw_content.startswith(b"\xef\xbb\xbf"):
-            # Has BOM, need to remove it
-            content = raw_content[3:].decode("utf-8")
-            temp_file = tempfile.NamedTemporaryFile(
-                mode="wb", delete=False, suffix=".txt"
-            )
-            temp_file.write(content.encode("utf-8"))
-            temp_file.close()
-            return temp_file.name, True
-
-        # Try to decode as UTF-8
-        raw_content.decode("utf-8")
-        # If successful and no BOM, return original file path
-        return file_path, False
-
-    except UnicodeDecodeError:
-        # Not UTF-8, try common encodings
-        encodings = [
-            "utf-16",
-            "utf-16-le",
-            "utf-16-be",
-            "latin-1",
-            "cp1252",
-            "iso-8859-1",
-        ]
-        for encoding in encodings:
-            try:
-                with open(file_path, "r", encoding=encoding) as f:
-                    content = f.read()
-                # Remove BOM if present
-                if content.startswith("\ufeff"):
-                    content = content[1:]
-                # Write as UTF-8 without BOM
-                temp_file = tempfile.NamedTemporaryFile(
-                    mode="wb", delete=False, suffix=".txt"
-                )
-                temp_file.write(content.encode("utf-8"))
-                temp_file.close()
-                return temp_file.name, True
-            except (UnicodeDecodeError, UnicodeError):
-                continue
-
-        # If all else fails, return original (will be uploaded as-is)
-        return file_path, False
-
-
 async def upload_file_to_slack_memory_efficient(
     client: AsyncWebClient,
     file_path: str,
@@ -302,19 +235,12 @@ async def upload_file_to_slack_memory_efficient(
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
 
+    # Get file size for the upload URL request
+    file_size = os.path.getsize(file_path)
+
     # Use provided filename or extract from path
     if not filename:
         filename = os.path.basename(file_path)
-
-    # For text files, ensure UTF-8 encoding so Slack can preview them
-    upload_file_path = file_path
-    temp_file_created = False
-    ext = os.path.splitext(filename)[1].lower()
-    if ext in (".srt", ".vtt", ".txt"):
-        upload_file_path, temp_file_created = _ensure_utf8_encoding(file_path)
-
-    # Get file size for the upload URL request (use converted file if applicable)
-    file_size = os.path.getsize(upload_file_path)
 
     # Determine mimetype - use provided or auto-detect from extension
     mimetype = content_type or _get_mimetype_for_file(filename)
@@ -339,7 +265,7 @@ async def upload_file_to_slack_memory_efficient(
     # Step 2: Upload file to the provided URL using streaming
     try:
         async with httpx.AsyncClient() as http_client:
-            with open(upload_file_path, "rb") as file_obj:
+            with open(file_path, "rb") as file_obj:
                 # Use multipart form data for streaming upload
                 files = {"file": (filename, file_obj, mimetype)}
                 data = {"filename": filename}
@@ -359,17 +285,6 @@ async def upload_file_to_slack_memory_efficient(
     except Exception as e:
         notify_exception(e, f"Failed to upload file {filename} to Slack")
         raise
-    finally:
-        # Clean up temporary UTF-8 converted file if one was created
-        if (
-            temp_file_created
-            and upload_file_path != file_path
-            and os.path.exists(upload_file_path)
-        ):
-            try:
-                os.unlink(upload_file_path)
-            except Exception:
-                pass  # Best effort cleanup
 
     # Step 3: Complete the upload
     try:
