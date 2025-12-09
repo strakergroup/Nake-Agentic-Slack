@@ -76,21 +76,21 @@ async def get_client_groups(client_uuid: str):
 
 
 async def get_group_id(verify_organization_uuid: str) -> str | None:
-    """Get group ID (obj_uuid) from obj_m_group by organization_id.
+    """Get group IDs (obj_uuid) from obj_m_group by organization_id.
 
     Args:
         verify_organization_uuid: The verify organization UUID (organization_id)
 
     Returns:
-        The group ID (obj_uuid) if found, None otherwise
+        All group IDs (obj_uuid) joined by colons if found, None otherwise
     """
     sql = text(
         "SELECT obj_uuid FROM obj_m_group WHERE organization_id = :id"
     ).bindparams(id=verify_organization_uuid)
-    result = await fetch_one(sql, async_engines["sitemanager"])
-    if not result:
+    results = await fetch_all(sql, async_engines["sitemanager"])
+    if not results:
         return None
-    return result["obj_uuid"]
+    return ":".join(row["obj_uuid"] for row in results)
 
 
 async def evaluate_get_glossary_resource(
