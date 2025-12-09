@@ -2602,6 +2602,28 @@ async def handle_video_transcribe_only(
             or context["user_id"]
         )
 
+        # Check for duplicate transcription-only submissions
+        from ..ray.submissions import (
+            check_and_record_transcription_only_submission_async,
+        )
+
+        is_dup, _record = await check_and_record_transcription_only_submission_async(
+            slack_file_id=action_data["file_id"],
+            file_name=action_data["file_name"],
+            user_id=context["user_id"],
+            team_id=context["team_id"],
+            channel_id=channel_id,
+        )
+
+        if is_dup:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    "Please allow the system to complete the ongoing transcription to prevent duplicate submissions."
+                ),
+            )
+            return
+
         # Download file from Slack to get URL
         file_info = await client.files_info(file=action_data["file_id"])
         file_data: dict[str, Any] = file_info.get("file", {})
