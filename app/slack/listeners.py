@@ -2607,7 +2607,10 @@ async def handle_video_transcribe_only(
             check_and_record_transcription_only_submission_async,
         )
 
-        is_dup, _record = await check_and_record_transcription_only_submission_async(
+        (
+            is_dup,
+            submission_record,
+        ) = await check_and_record_transcription_only_submission_async(
             slack_file_id=action_data["file_id"],
             file_name=action_data["file_name"],
             user_id=context["user_id"],
@@ -2663,6 +2666,25 @@ async def handle_video_transcribe_only(
             sandbox=False,
         )
 
+        # Build extra_data with submission_id
+        extra_data_dict = {
+            "slack_user_id": context["user_id"],
+            "slack_team_id": context["team_id"],
+            "slack_enterprise_id": context.enterprise_id,
+            "slack_channel_id": channel_id,
+            "slack_thread_ts": action_data.get("thread_ts"),
+        }
+
+        # Add submission_id - assert it exists
+        assert submission_record is not None, "submission_record should not be None"
+        assert hasattr(
+            submission_record, "id"
+        ), f"submission_record missing id attribute: {submission_record}"
+        assert (
+            submission_record.id is not None
+        ), f"submission_record.id is None: {submission_record}"
+        extra_data_dict["submission_id"] = submission_record.id
+
         asr_task = ASRTask(
             member_uuid=context["ray"].client.id,
             event_name="transcription:media:asr",
@@ -2670,13 +2692,7 @@ async def handle_video_transcribe_only(
             len_ms=duration_ms,
             service="azure",
             model="whisper-1",
-            extra_data={
-                "slack_user_id": context["user_id"],
-                "slack_team_id": context["team_id"],
-                "slack_enterprise_id": context.enterprise_id,
-                "slack_channel_id": channel_id,
-                "slack_thread_ts": action_data.get("thread_ts"),
-            },
+            extra_data=extra_data_dict,
             task_data=task_data,
         )
 
@@ -2776,10 +2792,14 @@ async def handle_video_transcribe_translate_submit(
 
         duplicate_languages = []
         valid_languages = []
+        submission_ids = []  # Store submission IDs for completion updates
         for lang_code, lang_name in zip(
             target_language_codes, target_language_names, strict=True
         ):
-            is_dup, _record = await check_and_record_transcription_submission_async(
+            (
+                is_dup,
+                submission_record,
+            ) = await check_and_record_transcription_submission_async(
                 slack_file_id=metadata["file_id"],
                 file_name=metadata["file_name"],
                 user_id=context["user_id"],
@@ -2791,6 +2811,7 @@ async def handle_video_transcribe_translate_submit(
                 duplicate_languages.append(lang_name)
             else:
                 valid_languages.append({"code": lang_code, "name": lang_name})
+                submission_ids.append(submission_record.id)
 
         # If all languages are duplicates, notify and return
         if not valid_languages:
@@ -2845,6 +2866,26 @@ async def handle_video_transcribe_translate_submit(
             sandbox=False,
         )
 
+        # Build extra_data with submission_ids
+        extra_data_dict = {
+            "slack_user_id": context["user_id"],
+            "slack_team_id": context["team_id"],
+            "slack_enterprise_id": context.enterprise_id,
+            "slack_channel_id": channel_id,
+            "slack_thread_ts": metadata.get("thread_ts"),
+            # Include translation info for post-transcription processing
+            "pipeline_type": "transcription_translation",
+            "target_languages": valid_language_codes,
+            "target_language_names": valid_language_names,
+        }
+
+        # Assert submission_ids are present
+        assert submission_ids is not None, "submission_ids should not be None"
+        assert (
+            len(submission_ids) > 0
+        ), f"submission_ids should not be empty: {submission_ids}"
+        extra_data_dict["submission_ids"] = submission_ids
+
         asr_task = ASRTask(
             member_uuid=context["ray"].client.id,
             event_name="transcription:media:asr",
@@ -2852,17 +2893,7 @@ async def handle_video_transcribe_translate_submit(
             len_ms=duration_ms,
             service="azure",
             model="whisper-1",
-            extra_data={
-                "slack_user_id": context["user_id"],
-                "slack_team_id": context["team_id"],
-                "slack_enterprise_id": context.enterprise_id,
-                "slack_channel_id": channel_id,
-                "slack_thread_ts": metadata.get("thread_ts"),
-                # Include translation info for post-transcription processing
-                "pipeline_type": "transcription_translation",
-                "target_languages": valid_language_codes,
-                "target_language_names": valid_language_names,
-            },
+            extra_data=extra_data_dict,
             task_data=task_data,
         )
 

@@ -525,6 +525,52 @@ async def ray_events(
 
                 # Handle transcription success/error
                 if not event.data.get("error"):
+                    # Update submission status to completed
+                    try:
+                        from ..ray.submissions import (
+                            SubmissionStatus,
+                            updated_submission_status,
+                        )
+
+                        # For transcription-only: single submission_id
+                        submission_id = (
+                            extra_data.get("submission_id") if extra_data else None
+                        )
+                        # For transcription+translation: list of submission_ids
+                        submission_ids = (
+                            extra_data.get("submission_ids") if extra_data else None
+                        )
+
+                        if submission_id is not None:
+                            success = updated_submission_status(
+                                submission_id=int(submission_id),
+                                processing_status=SubmissionStatus.COMPLETED,
+                            )
+                            if not success:
+                                notify_exception(
+                                    Exception(
+                                        f"Failed to update submission {submission_id}"
+                                    ),
+                                    "Submission update returned False",
+                                )
+                        elif submission_ids:
+                            # Update all submission records for each language
+                            for sid in submission_ids:
+                                if sid is not None:
+                                    success = updated_submission_status(
+                                        submission_id=int(sid),
+                                        processing_status=SubmissionStatus.COMPLETED,
+                                    )
+                                    if not success:
+                                        notify_exception(
+                                            Exception(
+                                                f"Failed to update submission {sid}"
+                                            ),
+                                            "Submission update returned False",
+                                        )
+                    except Exception as e:
+                        notify_exception(e, "Failed to update submission status")
+
                     # Log transcription usage (charge tokens for transcription)
                     try:
                         from ..auth.connector import log_transcribe_by_client_id
