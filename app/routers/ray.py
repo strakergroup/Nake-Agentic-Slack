@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from dataclasses import replace
 from typing import Annotated, Any, Optional, Union
@@ -176,6 +177,129 @@ async def _handle_mt_success_background(
         )
 
 
+async def _handle_transcribe_embed_pipeline(
+    client: AsyncWebClient,
+    result_file_id: str | None,
+    result_file_name: str | None,
+    task_info: dict[str, Any],
+    channel_id: str,
+    thread_ts: str | None,
+    token_text: str,
+) -> None:
+    """Handle transcription + translation + embed pipeline result."""
+    if not result_file_id:
+        return
+
+    from ..ray.utils import download_from_file_server_async
+    from ..slack.web import upload_file_to_slack_memory_efficient
+
+    try:
+        output_file = await download_from_file_server_async(result_file_id)
+        file_path = output_file.get("file")
+        if file_path and os.path.exists(file_path):
+            await upload_file_to_slack_memory_efficient(
+                client=client,
+                file_path=file_path,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                title=result_file_name or task_info.get("file_name"),
+            )
+            os.unlink(file_path)
+
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(f"Your video with embedded subtitles is ready!{token_text}"),
+            thread_ts=thread_ts,
+        )
+    except Exception as e:
+        notify_exception(e, "Error handling embedded video")
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "An error occurred while processing your embedded video. Please try again."
+            ),
+            thread_ts=thread_ts,
+        )
+
+
+async def _handle_transcribe_translate_pipeline(
+    client: AsyncWebClient,
+    result_file_id: str | None,
+    result_file_name: str | None,
+    channel_id: str,
+    thread_ts: str | None,
+    token_text: str,
+    auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
+) -> None:
+    """Handle transcription + translation pipeline result."""
+    await client.chat_postMessage(
+        channel=channel_id,
+        text=_(
+            f"We have transcribed your file. Translations will be delivered separately.{token_text}"
+        ),
+        thread_ts=thread_ts,
+    )
+
+    if result_file_id and result_file_name:
+        _create_background_task(
+            _handle_transcribe_success_background(
+                {"file_id": result_file_id, "file_name": result_file_name},
+                auth,
+                None,
+                override_channel_id=channel_id,
+            )
+        )
+
+
+async def _handle_transcribe_only_pipeline(
+    client: AsyncWebClient,
+    result_file_id: str | None,
+    result_file_name: str | None,
+    task_info: dict[str, Any],
+    is_ibm: bool,
+    tokens_consumed: int,
+    channel_id: str,
+    event: RayEvent,
+    auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
+    auth_slack_user: Any,
+) -> None:
+    """Handle transcription-only pipeline result."""
+    task_uuid = task_info.get("task_uuid", "unknown")
+
+    transcribed_message = JobTranscribedEventMessage(
+        source_file_name=task_info.get("file_name") or "",
+        is_ibm_enterprise=is_ibm,
+        tokens_used=tokens_consumed if tokens_consumed else None,
+    )
+    response = await post_notification(
+        client, event, auth_slack_user, transcribed_message
+    )
+
+    # Always upload SRT file if available
+    if result_file_id and result_file_name:
+        # Ensure we have a channel_id - fallback to slack_user channel_id if not in extra_data
+        upload_channel_id: str | None = channel_id or (
+            auth_slack_user.channel_id if auth_slack_user else None
+        )
+
+        if upload_channel_id:
+            _create_background_task(
+                _handle_transcribe_success_background(
+                    {"file_id": result_file_id, "file_name": result_file_name},
+                    auth,
+                    response,
+                    override_channel_id=upload_channel_id,
+                )
+            )
+        else:
+            notify_exception(
+                Exception(
+                    f"Missing channel_id for transcription-only pipeline (task: {task_uuid})"
+                ),
+                "Cannot upload SRT file - missing channel_id",
+            )
+
+
 async def _handle_transcribe_success_background(
     event_data: dict[str, Any],
     auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
@@ -183,32 +307,56 @@ async def _handle_transcribe_success_background(
     override_channel_id: str | None = None,
 ):
     """Background task to handle transcription success file download and upload."""
-    try:
-        # Create a new client instance with the correct token for this user
-        if auth.slack_user is None:
-            return
-        client = AsyncWebClient(token=auth.slack_user.bot_token)
+    if not auth.slack_user:
+        return
 
-        # Download file from server
-        file_id = event_data.get("file_id")
-        file_name = event_data.get("file_name")
-        if not file_id or not file_name:
+    file_id = event_data.get("file_id")
+    file_name = event_data.get("file_name")
+    if not file_id or not file_name:
+        notify_exception(
+            Exception(
+                f"Missing file_id or file_name in event_data. file_id={file_id}, file_name={file_name}"
+            ),
+            "Transcription background task failed",
+        )
+        return
+
+    try:
+        client = AsyncWebClient(token=auth.slack_user.bot_token)
+        output_file = await download_from_file_server_async(file_id)
+        file_path = output_file.get("file")
+
+        if not file_path:
             notify_exception(
-                Exception("Missing file_id or file_name in event_data"),
+                Exception(f"Failed to download file {file_id} from file server"),
                 "Transcription background task failed",
             )
             return
-        output_file = await download_from_file_server_async(file_id)
-        file_path = output_file.get("file")
-        channel_id = override_channel_id or (
-            response.data["channel"]
-            if response
+
+        # Get channel_id from override or response
+        channel_id = override_channel_id
+
+        if (
+            not channel_id
             and isinstance(response, AsyncSlackResponse)
             and isinstance(response.data, dict)
-            else ""
-        )
+        ):
+            channel_id = response.data.get("channel")
+
+        if not channel_id:
+            # Final fallback to slack_user channel_id
+            channel_id = auth.slack_user.channel_id if auth.slack_user else None
+
+        if not channel_id:
+            notify_exception(
+                Exception(
+                    f"Missing channel_id for file upload. file_id={file_id}, override_channel_id={override_channel_id}"
+                ),
+                "Transcription background task failed",
+            )
+            return
+
         try:
-            # Upload file using memory-efficient method
             await upload_file_to_slack_memory_efficient(
                 client=client,
                 file_path=file_path,
@@ -217,8 +365,7 @@ async def _handle_transcribe_success_background(
                 filename=output_file.get("file_name"),
             )
         finally:
-            # Clean up temporary file
-            if file_path and os.path.exists(file_path):
+            if os.path.exists(file_path):
                 os.unlink(file_path)
     except Exception as e:
         notify_exception(e, "Background transcription file handling failed")
@@ -511,152 +658,134 @@ async def ray_events(
             try:
                 transcribed_event = JobTranscribedEvent.model_validate(event.data)
 
-                # Check if this is part of a transcribe+translate pipeline
+                # Get all task info from database
                 from ..transcriber_tasks.tasks import (
                     get_asr_task_duration,
-                    get_asr_task_extra_data,
+                    get_transcription_task,
                 )
 
-                extra_data = await get_asr_task_extra_data(transcribed_event.task_uuid)
-                pipeline_type = extra_data.get("pipeline_type") if extra_data else None
-                target_languages = (
-                    extra_data.get("target_languages") if extra_data else None
-                )
+                task_info = await get_transcription_task(transcribed_event.task_uuid)
+                if not task_info:
+                    notify_exception(
+                        Exception(
+                            f"Task {transcribed_event.task_uuid} not found in database"
+                        ),
+                        "Task lookup failed",
+                    )
+                    return
 
-                # Handle transcription success/error
-                if not event.data.get("error"):
-                    # Update submission status to completed
-                    try:
-                        from ..ray.submissions import (
-                            SubmissionStatus,
-                            updated_submission_status,
-                        )
+                # Extract info from database
+                extra_data = task_info.get("extra_data", {})
+                pipeline_type = task_info.get("pipeline_type", "transcribe")
+                client_id = task_info.get("client_id")
+                result_file_id = task_info.get("result_file_id")
+                result_file_name = task_info.get("result_file_name")
+                tokens_consumed = task_info.get("tokens_consumed", 0)
 
-                        # For transcription-only: single submission_id
-                        submission_id = (
-                            extra_data.get("submission_id") if extra_data else None
-                        )
-                        # For transcription+translation: list of submission_ids
-                        submission_ids = (
-                            extra_data.get("submission_ids") if extra_data else None
-                        )
-
-                        if submission_id is not None:
-                            success = updated_submission_status(
-                                submission_id=int(submission_id),
-                                processing_status=SubmissionStatus.COMPLETED,
-                            )
-                            if not success:
-                                notify_exception(
-                                    Exception(
-                                        f"Failed to update submission {submission_id}"
-                                    ),
-                                    "Submission update returned False",
-                                )
-                        elif submission_ids:
-                            # Update all submission records for each language
-                            for sid in submission_ids:
-                                if sid is not None:
-                                    success = updated_submission_status(
-                                        submission_id=int(sid),
-                                        processing_status=SubmissionStatus.COMPLETED,
-                                    )
-                                    if not success:
-                                        notify_exception(
-                                            Exception(
-                                                f"Failed to update submission {sid}"
-                                            ),
-                                            "Submission update returned False",
-                                        )
-                    except Exception as e:
-                        notify_exception(e, "Failed to update submission status")
-
-                    # Log transcription usage (charge tokens for transcription)
-                    try:
-                        from ..auth.connector import log_transcribe_by_client_id
-
-                        duration_ms = await get_asr_task_duration(
-                            transcribed_event.task_uuid
-                        )
-                        if duration_ms:
-                            await log_transcribe_by_client_id(
-                                client_id=transcribed_event.client_id,
-                                duration_ms=duration_ms,
-                                file_name=transcribed_event.source_file_name,
-                            )
-                    except Exception as e:
-                        notify_exception(e, "Failed to log transcription usage")
-
-                    if (
-                        pipeline_type == "transcription_translation"
-                        and target_languages
-                        and extra_data
-                    ):
-                        # Transcribe + Translate flow: trigger translation via stream-proxy
-                        from ..api.stream_proxy import send_srt_translation_request
-
-                        channel_id = extra_data.get(
-                            "slack_channel_id", auth.slack_user.channel_id
-                        )
-
-                        # Trigger translation for each target language
-                        for target_lang in target_languages:
-                            await send_srt_translation_request(
-                                file_id=transcribed_event.file_id,
-                                client_id=transcribed_event.client_id,
-                                user_group_id=auth.slack_user.ray_user_group_id,
-                                channel_id=channel_id,
-                                target_language=target_lang,
-                            )
-
-                        # Show transcription complete message (matches Figma design)
-                        token_text = ""
-                        if not is_ibm and transcribed_event.tokens:
-                            token_text = f"\nYou have used *{transcribed_event.tokens:,}* AI tokens."
-
-                        await client.chat_postMessage(
-                            channel=channel_id,
-                            text=_(
-                                f"We have transcribed your file and SRT can be downloaded below.{token_text}"
-                            ),
-                            thread_ts=extra_data.get("slack_thread_ts"),
-                        )
-
-                        # Upload the source SRT file
-                        _create_background_task(
-                            _handle_transcribe_success_background(
-                                event.data, auth, None, channel_id
-                            )
-                        )
-                    else:
-                        # Transcription-only flow: show completion message
-                        transcribed_message: JobTranscribedEventMessage = (
-                            JobTranscribedEventMessage(
-                                source_file_name=transcribed_event.source_file_name,
-                                is_ibm_enterprise=is_ibm,
-                                tokens_used=transcribed_event.tokens
-                                if transcribed_event.tokens
-                                else None,
-                            )
-                        )
-                        response = await post_notification(
-                            client,
-                            event,
-                            auth.slack_user,
-                            transcribed_message,
-                        )
-                        _create_background_task(
-                            _handle_transcribe_success_background(
-                                event.data, auth, response
-                            )
-                        )
-                else:
+                # Handle errors
+                if transcribed_event.error or event.data.get("error"):
+                    error_msg = transcribed_event.error or event.data.get(
+                        "error", "Unknown error"
+                    )
                     await client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
-                        text=_(
-                            "This video cannot be sent for transcription as it doesn't have any sound"
-                        ),
+                        text=_(f"Transcription failed: {error_msg}"),
+                    )
+                    return
+
+                # Common success handling
+                # Update submission status
+                try:
+                    from ..ray.submissions import (
+                        SubmissionStatus,
+                        updated_submission_status,
+                    )
+
+                    submission_id = (
+                        extra_data.get("submission_id") if extra_data else None
+                    )
+                    submission_ids = (
+                        extra_data.get("submission_ids") if extra_data else None
+                    )
+
+                    if submission_id is not None:
+                        updated_submission_status(
+                            submission_id=int(submission_id),
+                            processing_status=SubmissionStatus.COMPLETED,
+                        )
+                    elif submission_ids:
+                        for sid in submission_ids:
+                            if sid is not None:
+                                updated_submission_status(
+                                    submission_id=int(sid),
+                                    processing_status=SubmissionStatus.COMPLETED,
+                                )
+                except Exception as e:
+                    notify_exception(e, "Failed to update submission status")
+
+                # Log transcription usage
+                try:
+                    from ..auth.connector import log_transcribe_by_client_id
+
+                    duration_ms = await get_asr_task_duration(
+                        transcribed_event.task_uuid
+                    )
+                    if duration_ms and client_id:
+                        await log_transcribe_by_client_id(
+                            client_id=client_id,
+                            duration_ms=duration_ms,
+                            file_name=task_info.get("file_name") or "",
+                        )
+                except Exception as e:
+                    notify_exception(e, "Failed to log transcription usage")
+
+                # Get channel and thread info
+                channel_id = (
+                    extra_data.get("slack_channel_id")
+                    if extra_data
+                    else auth.slack_user.channel_id
+                )
+                thread_ts = extra_data.get("slack_thread_ts") if extra_data else None
+                token_text = (
+                    f"\nYou have used *{tokens_consumed:,}* AI tokens."
+                    if tokens_consumed
+                    else ""
+                )
+
+                # Handle based on pipeline type
+                if pipeline_type == "transcribe_translate_embed":
+                    await _handle_transcribe_embed_pipeline(
+                        client,
+                        result_file_id,
+                        result_file_name,
+                        task_info,
+                        channel_id,
+                        thread_ts,
+                        token_text,
+                    )
+                elif pipeline_type == "transcribe_translate":
+                    await _handle_transcribe_translate_pipeline(
+                        client,
+                        result_file_id,
+                        result_file_name,
+                        channel_id,
+                        thread_ts,
+                        token_text,
+                        auth,
+                    )
+                else:
+                    await _handle_transcribe_only_pipeline(
+                        client,
+                        result_file_id,
+                        result_file_name,
+                        task_info,
+                        is_ibm,
+                        tokens_consumed,
+                        channel_id,
+                        event,
+                        auth,
+                        auth.slack_user,
                     )
             except ValidationError as e:
                 raise HTTPException(

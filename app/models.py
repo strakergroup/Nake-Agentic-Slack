@@ -246,3 +246,49 @@ class SlackFileTranslationSubmission(Base):
             f"<SlackFileTranslationSubmission(user_id='{self.user_id}', "
             f"file_hash='{self.file_hash}', target_language='{self.target_language}')>"
         )
+
+
+class TranscriptionTask(Base):
+    """Track transcription task status and metadata.
+
+    Table: `sitecommons.transcription_tasks`
+    """
+
+    __tablename__ = "transcription_tasks"
+    __table_args__ = {"schema": "sitecommons"}
+
+    task_uuid: Mapped[str] = mapped_column(String(36), primary_key=True, index=True)
+    client_id: Mapped[str] = mapped_column(String(50), index=True)
+    file_name: Mapped[str] = mapped_column(String(255))
+    download_url: Mapped[str] = mapped_column(String(500))
+    bot_token: Mapped[str] = mapped_column(
+        String(255)
+    )  # Slack bot token for file download
+    pipeline_type: Mapped[str] = mapped_column(String(50), default="transcribe")
+    status: Mapped[str] = mapped_column(
+        Enum("pending", "processing", "completed", "failed", name="task_status"),
+        default="pending",
+        nullable=False,
+        index=True,
+    )
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    result_file_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    result_file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    detected_language: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    tokens_consumed: Mapped[int] = mapped_column(Integer, default=0)
+    extra_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), index=True
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime,
+        server_default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
+        index=True,
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<TranscriptionTask(task_uuid='{self.task_uuid}', "
+            f"status='{self.status}', file_name='{self.file_name}')>"
+        )

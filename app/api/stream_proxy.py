@@ -9,8 +9,6 @@ from uuid import uuid4
 from app.api.http_client import get_shared_client, retry_on_timeout
 from app.api.models import MtTranslationExtraData
 from app.config import domains
-from app.ray.events.models import MtFileRequestSchema
-from app.slack_job import create_slack_job
 
 logger = logging.getLogger(__name__)
 

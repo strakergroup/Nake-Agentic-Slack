@@ -2741,6 +2741,32 @@ async def handle_video_transcribe_translate(
         await client.views_open(trigger_id=body["trigger_id"], view=view)
 
 
+@app.action("video_embed_subtitles", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_video_embed_subtitles(
+    ack: AsyncAck,
+    context: RayContext,
+    action: Optional[Dict[str, Any]],
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+):
+    """Show the embed subtitles modal for language selection."""
+    await ack()
+    if await require_ray_client(context):
+        assert action is not None
+        from .templates.views import video_embed_subtitles_modal
+
+        action_data = json.loads(action.get("value", "{}"))
+        view = video_embed_subtitles_modal(
+            channel_id=action_data.get("channel_id", context.get("channel_id", "")),
+            file_id=action_data["file_id"],
+            file_name=action_data["file_name"],
+            duration_ms=action_data.get("duration_ms", 0),
+            thread_ts=action_data.get("thread_ts"),
+        )
+        await client.views_open(trigger_id=body["trigger_id"], view=view)
+
+
 @app.view("video_transcribe_translate_submit", middleware=[ray_connection])
 @slack_log_decorator
 async def handle_video_transcribe_translate_submit(
@@ -2914,6 +2940,196 @@ async def handle_video_transcribe_translate_submit(
                 channel=context["user_id"],
                 text=_(
                     f"Please allow the system to complete the ongoing translation(s) for *({', '.join(duplicate_languages)})* to prevent duplicate submissions."
+                ),
+            )
+
+    except Exception as e:
+        notify_exception(e)
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=_("There was an error processing your video. Please try again."),
+        )
+
+
+@app.view("video_embed_subtitles_submit", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_video_embed_subtitles_submit(
+    ack: AsyncAck,
+    view: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+):
+    """Handle embed subtitles form submission."""
+    await ack(response_action="clear")
+
+    if not await require_ray_client(context, prompt_login=True):
+        return
+
+    try:
+        assert view is not None
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
+
+        # Parse form data
+        metadata = json.loads(view["private_metadata"])
+        form_values = view["state"]["values"]
+
+        # Get target languages
+        lang_selection = form_values.get("target_languages", {}).get(
+            "language_mt_options", {}
+        )
+        selected_options = lang_selection.get("selected_options", [])
+
+        if not selected_options:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_("Please select at least one target language for translation."),
+            )
+            return
+
+        # Build target languages list (use language code for translation)
+        target_language_codes = [opt["value"] for opt in selected_options]
+        target_language_names = [opt["text"]["text"] for opt in selected_options]
+
+        channel_id = (
+            metadata.get("channel_id")
+            or context.get("channel_id")
+            or context["user_id"]
+        )
+
+        # Check for duplicate submissions per target language
+        from ..ray.submissions import check_and_record_transcription_submission_async
+
+        duplicate_languages = []
+        valid_languages = []
+        submission_ids = []  # Store submission IDs for completion updates
+        for lang_code, lang_name in zip(
+            target_language_codes, target_language_names, strict=True
+        ):
+            (
+                is_dup,
+                submission_record,
+            ) = await check_and_record_transcription_submission_async(
+                slack_file_id=metadata["file_id"],
+                file_name=metadata["file_name"],
+                user_id=context["user_id"],
+                team_id=context["team_id"],
+                channel_id=channel_id,
+                target_language=lang_code,
+            )
+            if is_dup:
+                duplicate_languages.append(lang_name)
+            else:
+                valid_languages.append({"code": lang_code, "name": lang_name})
+                submission_ids.append(submission_record.id)
+
+        # If all languages are duplicates, notify and return
+        if not valid_languages:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    f"Please allow the system to complete the ongoing transcription & embedding(s) for *({', '.join(duplicate_languages)})* to prevent duplicate submissions."
+                ),
+            )
+            return
+
+        # Download file from Slack to get URL
+        file_info = await client.files_info(file=metadata["file_id"])
+        file_data: dict[str, Any] = file_info.get("file", {})
+        download_url = file_data.get("url_private_download") or file_data.get(
+            "url_private"
+        )
+
+        if not download_url:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    "Could not get download URL for the file. Please try uploading again."
+                ),
+            )
+            return
+
+        # Calculate tokens from duration
+        from ..auth.connector import duration_to_tokens
+
+        duration_ms = metadata.get("duration_ms", 0)
+        tokens = duration_to_tokens(duration_ms)
+
+        # Create ASR task for transcriber with translation and embedding info in extra_data
+        from ..models import ASRTask, TranscriptionTaskData
+        from ..transcriber_tasks.tasks import create_asr_task
+
+        # Only include valid (non-duplicate) languages
+        valid_language_codes = [lang["code"] for lang in valid_languages]
+        valid_language_names = [lang["name"] for lang in valid_languages]
+
+        task_data = TranscriptionTaskData(
+            client_id=context["ray"].client.id,
+            file_name=metadata["file_name"],
+            download_url=download_url,
+            app_token=client.token or "",
+            out_stream_name=f"{domains.stream_proxy}/events/transcription:slack:media:results",
+            service="azure",
+            model="whisper-1",
+            embed_subtitles=True,
+            tokens_consumed=tokens,
+            sandbox=False,
+        )
+
+        # Build extra_data with submission_ids and embedding info
+        extra_data_dict = {
+            "slack_user_id": context["user_id"],
+            "slack_team_id": context["team_id"],
+            "slack_enterprise_id": context.enterprise_id,
+            "slack_channel_id": channel_id,
+            "slack_thread_ts": metadata.get("thread_ts"),
+            # Include translation and embedding info for post-transcription processing
+            "pipeline_type": "transcription_translation_embed",
+            "target_languages": valid_language_codes,
+            "target_language_names": valid_language_names,
+            # Store original video info for embedding - transcription-service will download directly from Slack
+            "original_video_file_id": metadata[
+                "file_id"
+            ],  # Slack file ID for reference
+            "original_video_download_url": download_url,  # Slack download URL for direct download
+            "original_video_file_name": metadata["file_name"],
+        }
+
+        # Assert submission_ids are present
+        assert submission_ids is not None, "submission_ids should not be None"
+        assert (
+            len(submission_ids) > 0
+        ), f"submission_ids should not be empty: {submission_ids}"
+        extra_data_dict["submission_ids"] = submission_ids
+
+        asr_task = ASRTask(
+            member_uuid=context["ray"].client.id,
+            event_name="transcription:media:asr",
+            app_source="slack",
+            len_ms=duration_ms,
+            service="azure",
+            model="whisper-1",
+            extra_data=extra_data_dict,
+            task_data=task_data,
+        )
+
+        await create_asr_task(asr_task)
+
+        # Notify user
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                ":stopwatch: Please wait a moment and we will transcribe, translate, and embed subtitles into your file."
+            ),
+            thread_ts=metadata.get("thread_ts"),
+        )
+
+        # Notify about duplicate languages if some were skipped
+        if duplicate_languages:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    f"Please allow the system to complete the ongoing embedding(s) for *({', '.join(duplicate_languages)})* to prevent duplicate submissions."
                 ),
             )
 

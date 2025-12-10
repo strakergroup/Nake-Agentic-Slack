@@ -3277,9 +3277,10 @@ class SrtTranslateMessage(SlackMessage):
         title = _("Please select the target language(s) for translation")
         language_options_raw = get_auto_translate_language_options()
         # Convert raw options to SDK Option objects
+        # Truncate text to 75 chars (Slack limit for option text)
         language_options = [
             Option(
-                text=PlainTextObject(text=opt["text"]["text"], emoji=False),
+                text=PlainTextObject(text=opt["text"]["text"][:75], emoji=False),
                 value=opt["value"],
             )
             for opt in language_options_raw
@@ -3494,6 +3495,23 @@ class VideoOptionsMessage(SlackMessage):
             accessory=translate_button,
         )
         blocks.append(translate_section)
+
+        # Embed Subtitles option
+        embed_button = ButtonElement(
+            text=PlainTextObject(text=_("Embed Subtitles"), emoji=True),
+            action_id="video_embed_subtitles",
+            value=action_value,
+            style="primary",
+        )
+        embed_section = SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "*Embed Subtitles* - Transcribe, translate, and automatically embed the final translated text as subtitles into your media file."
+                )
+            ),
+            accessory=embed_button,
+        )
+        blocks.append(embed_section)
 
         super().__init__(
             _("Video detected: {file_name}. Select a processing option."),
