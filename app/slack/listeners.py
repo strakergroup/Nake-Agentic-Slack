@@ -509,7 +509,7 @@ async def download_transcribed_file(
         assert context["ray"].client is not None
         assert action is not None
         task_uuid = action["value"]
-        task_result = await get_asr_task(task_uuid, context["ray"].client.id)
+        task_result = await get_asr_task(task_uuid)
         assert task_result is not None
         file_id = task_result["file_id"]
         file = await download_from_file_server_async(file_id)
@@ -646,9 +646,10 @@ async def srt_translate_action(
                 return
 
             # Get file_id from task result
-            task_result = await get_asr_task(task_uuid, context["ray"].client.id)
+            task_result = await get_asr_task(task_uuid)
             assert task_result is not None
-            file_id = cast(str, task_result.get("file_id"))
+            file_id = task_result.file_id
+            assert file_id is not None, f"Task {task_uuid} has no file_id"
 
             # Create translation job for each selected language
             for selected_language in selected_languages:
@@ -2677,12 +2678,12 @@ async def handle_video_transcribe_only(
 
         # Add submission_id - assert it exists
         assert submission_record is not None, "submission_record should not be None"
-        assert hasattr(
-            submission_record, "id"
-        ), f"submission_record missing id attribute: {submission_record}"
-        assert (
-            submission_record.id is not None
-        ), f"submission_record.id is None: {submission_record}"
+        assert hasattr(submission_record, "id"), (
+            f"submission_record missing id attribute: {submission_record}"
+        )
+        assert submission_record.id is not None, (
+            f"submission_record.id is None: {submission_record}"
+        )
         extra_data_dict["submission_id"] = submission_record.id
 
         asr_task = ASRTask(
@@ -2900,16 +2901,16 @@ async def handle_video_transcribe_translate_submit(
             "slack_channel_id": channel_id,
             "slack_thread_ts": metadata.get("thread_ts"),
             # Include translation info for post-transcription processing
-            "pipeline_type": "transcription_translation",
+            "pipeline_type": "transcribe_translate",
             "target_languages": valid_language_codes,
             "target_language_names": valid_language_names,
         }
 
         # Assert submission_ids are present
         assert submission_ids is not None, "submission_ids should not be None"
-        assert (
-            len(submission_ids) > 0
-        ), f"submission_ids should not be empty: {submission_ids}"
+        assert len(submission_ids) > 0, (
+            f"submission_ids should not be empty: {submission_ids}"
+        )
         extra_data_dict["submission_ids"] = submission_ids
 
         asr_task = ASRTask(
@@ -3084,7 +3085,7 @@ async def handle_video_embed_subtitles_submit(
             "slack_channel_id": channel_id,
             "slack_thread_ts": metadata.get("thread_ts"),
             # Include translation and embedding info for post-transcription processing
-            "pipeline_type": "transcription_translation_embed",
+            "pipeline_type": "transcribe_translate_embed",
             "target_languages": valid_language_codes,
             "target_language_names": valid_language_names,
             # Store original video info for embedding - transcription-service will download directly from Slack
@@ -3097,9 +3098,9 @@ async def handle_video_embed_subtitles_submit(
 
         # Assert submission_ids are present
         assert submission_ids is not None, "submission_ids should not be None"
-        assert (
-            len(submission_ids) > 0
-        ), f"submission_ids should not be empty: {submission_ids}"
+        assert len(submission_ids) > 0, (
+            f"submission_ids should not be empty: {submission_ids}"
+        )
         extra_data_dict["submission_ids"] = submission_ids
 
         asr_task = ASRTask(

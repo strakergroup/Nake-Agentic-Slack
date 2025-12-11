@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 from dataclasses import replace
-from typing import Annotated, Any, Optional, Union
+from typing import Annotated, Any, Optional, Union, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ValidationError
@@ -17,6 +17,7 @@ from app.api.verify import get_evaluation_job, get_job_pricing
 from app.auth.connector import get_ray_client, get_ray_connection
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.database import async_engines
+from app.models import TranscriptionTaskInfo
 from app.mt.logs import log_google_api_usage
 from app.ray.submissions import SubmissionStatus, updated_submission_status
 from app.ray.utils import (
@@ -181,7 +182,7 @@ async def _handle_transcribe_embed_pipeline(
     client: AsyncWebClient,
     result_file_id: str | None,
     result_file_name: str | None,
-    task_info: dict[str, Any],
+    task_info: TranscriptionTaskInfo,
     channel_id: str,
     thread_ts: str | None,
     token_text: str,
@@ -202,7 +203,7 @@ async def _handle_transcribe_embed_pipeline(
                 file_path=file_path,
                 channel_id=channel_id,
                 thread_ts=thread_ts,
-                title=result_file_name or task_info.get("file_name"),
+                title=result_file_name or task_info.file_name,
             )
             os.unlink(file_path)
 
@@ -255,7 +256,7 @@ async def _handle_transcribe_only_pipeline(
     client: AsyncWebClient,
     result_file_id: str | None,
     result_file_name: str | None,
-    task_info: dict[str, Any],
+    task_info: TranscriptionTaskInfo,
     is_ibm: bool,
     tokens_consumed: int,
     channel_id: str,
@@ -264,10 +265,10 @@ async def _handle_transcribe_only_pipeline(
     auth_slack_user: Any,
 ) -> None:
     """Handle transcription-only pipeline result."""
-    task_uuid = task_info.get("task_uuid", "unknown")
+    task_uuid = task_info.task_uuid or "unknown"
 
     transcribed_message = JobTranscribedEventMessage(
-        source_file_name=task_info.get("file_name") or "",
+        source_file_name=task_info.file_name or "",
         is_ibm_enterprise=is_ibm,
         tokens_used=tokens_consumed if tokens_consumed else None,
     )
@@ -659,10 +660,7 @@ async def ray_events(
                 transcribed_event = JobTranscribedEvent.model_validate(event.data)
 
                 # Get all task info from database
-                from ..transcriber_tasks.tasks import (
-                    get_asr_task_duration,
-                    get_transcription_task,
-                )
+                from ..transcriber_tasks.tasks import get_transcription_task
 
                 task_info = await get_transcription_task(transcribed_event.task_uuid)
                 if not task_info:
@@ -675,12 +673,12 @@ async def ray_events(
                     return
 
                 # Extract info from database
-                extra_data = task_info.get("extra_data", {})
-                pipeline_type = task_info.get("pipeline_type", "transcribe")
-                client_id = task_info.get("client_id")
-                result_file_id = task_info.get("result_file_id")
-                result_file_name = task_info.get("result_file_name")
-                tokens_consumed = task_info.get("tokens_consumed", 0)
+                extra_data = task_info.extra_data or {}
+                pipeline_type = task_info.pipeline_type or "transcribe"
+                client_id = task_info.client_id
+                result_file_id = task_info.result_file_id
+                result_file_name = task_info.result_file_name
+                tokens_consumed = task_info.tokens_consumed or 0
 
                 # Handle errors
                 if transcribed_event.error or event.data.get("error"):
@@ -724,22 +722,6 @@ async def ray_events(
                 except Exception as e:
                     notify_exception(e, "Failed to update submission status")
 
-                # Log transcription usage
-                try:
-                    from ..auth.connector import log_transcribe_by_client_id
-
-                    duration_ms = await get_asr_task_duration(
-                        transcribed_event.task_uuid
-                    )
-                    if duration_ms and client_id:
-                        await log_transcribe_by_client_id(
-                            client_id=client_id,
-                            duration_ms=duration_ms,
-                            file_name=task_info.get("file_name") or "",
-                        )
-                except Exception as e:
-                    notify_exception(e, "Failed to log transcription usage")
-
                 # Get channel and thread info
                 channel_id = (
                     extra_data.get("slack_channel_id")
@@ -760,7 +742,7 @@ async def ray_events(
                         result_file_id,
                         result_file_name,
                         task_info,
-                        channel_id,
+                        str(channel_id),
                         thread_ts,
                         token_text,
                     )
@@ -769,7 +751,7 @@ async def ray_events(
                         client,
                         result_file_id,
                         result_file_name,
-                        channel_id,
+                        str(channel_id),
                         thread_ts,
                         token_text,
                         auth,
@@ -782,7 +764,7 @@ async def ray_events(
                         task_info,
                         is_ibm,
                         tokens_consumed,
-                        channel_id,
+                        str(channel_id),
                         event,
                         auth,
                         auth.slack_user,
@@ -974,26 +956,28 @@ async def ray_events(
 
         elif event.event == "slack:direct:mt:result":
             try:
-                extra_data = MtTranslationExtraData(**event.data["extra_data"])
+                mt_result_extra_data = MtTranslationExtraData.model_validate(
+                    event.data["extra_data"]
+                )
 
                 # Parse translations from the new service-based response format
                 translations = event.data.get("translations", {})
 
                 # Log the response for debugging
                 notify_message(
-                    f"MT Result - Service mapping: {extra_data.service_language_mapping}, Translations: {translations}"
+                    f"MT Result - Service mapping: {mt_result_extra_data.service_language_mapping}, Translations: {translations}"
                 )
 
                 if (
-                    extra_data.usage_type == "direct_machine_translation"
-                    or extra_data.usage_type == "shortcut_translate"
+                    mt_result_extra_data.usage_type == "direct_machine_translation"
+                    or mt_result_extra_data.usage_type == "shortcut_translate"
                 ):
                     # For direct translation, we need to get the first target language
                     # and combine all translations into a single string
                     first_target_lang = None
                     for (
                         lang_glossary_map
-                    ) in extra_data.service_language_mapping.values():
+                    ) in mt_result_extra_data.service_language_mapping.values():
                         if lang_glossary_map:
                             first_target_lang = next(iter(lang_glossary_map.keys()))
                             break
@@ -1011,12 +995,12 @@ async def ray_events(
                             )
                         ]
                     )
-                    assert extra_data.source_text
+                    assert mt_result_extra_data.source_text
                     mt_result_message: MachineTranslationMessage = (
                         MachineTranslationMessage(
                             first_target_lang or "unknown",
-                            extra_data.source_language,
-                            extra_data.source_text,
+                            mt_result_extra_data.source_language,
+                            mt_result_extra_data.source_text,
                             combined_translations,
                         )
                     )
@@ -1026,19 +1010,19 @@ async def ray_events(
                         event,
                         auth.slack_user,
                         mt_result_message,
-                        channel_id=extra_data.channel_id,
-                        thread_ts=extra_data.thread_ts,
-                        is_edit=extra_data.is_edit,
-                        response_url=extra_data.response_url,
+                        channel_id=mt_result_extra_data.channel_id,
+                        thread_ts=mt_result_extra_data.thread_ts,
+                        is_edit=mt_result_extra_data.is_edit,
+                        response_url=mt_result_extra_data.response_url,
                     )
-                elif extra_data.usage_type == "channel_translation":
+                elif mt_result_extra_data.usage_type == "channel_translation":
                     # For channel translation, pass the translations dict directly
                     # The AutoTranslationMessage expects {lang: [text1, text2, ...]} format
-                    assert extra_data.source_text
+                    assert mt_result_extra_data.source_text
                     auto_translation_message: AutoTranslationMessage = (
                         AutoTranslationMessage(
-                            extra_data.source_text,
-                            extra_data.source_language,
+                            mt_result_extra_data.source_text,
+                            mt_result_extra_data.source_language,
                             translations=translations,
                         )
                     )
@@ -1048,11 +1032,11 @@ async def ray_events(
                             event,
                             auth.slack_user,
                             auto_translation_message,
-                            channel_id=extra_data.channel_id,
-                            thread_ts=extra_data.thread_ts,
-                            is_edit=extra_data.is_edit,
-                            display_format=extra_data.display_format,
-                            message_ts=extra_data.message_ts,
+                            channel_id=mt_result_extra_data.channel_id,
+                            thread_ts=mt_result_extra_data.thread_ts,
+                            is_edit=mt_result_extra_data.is_edit,
+                            display_format=mt_result_extra_data.display_format,
+                            message_ts=mt_result_extra_data.message_ts,
                         )
                     except SlackApiError as e:
                         notify_exception(
@@ -1068,15 +1052,17 @@ async def ray_events(
                     raise HTTPException(
                         422,
                         {
-                            "message": f"Invalid usage type: {extra_data.usage_type}",
+                            "message": f"Invalid usage type: {mt_result_extra_data.usage_type}",
                         },
                     )
                 # Calculate total languages across all services
                 total_languages = sum(
                     len(lang_glossary_map)
-                    for lang_glossary_map in extra_data.service_language_mapping.values()
+                    for lang_glossary_map in mt_result_extra_data.service_language_mapping.values()
                 )
-                amount = calculate_cost(extra_data.text_length * total_languages)
+                amount = calculate_cost(
+                    mt_result_extra_data.text_length * total_languages
+                )
                 assert auth.slack_user.ray_user_group_id is not None
                 transaction_uuid = await spend_credits(
                     async_engines["sitemanager"],
@@ -1084,9 +1070,9 @@ async def ray_events(
                     auth.slack_user.ray_user_group_id,
                     amount,
                     "slack",
-                    extra_data.usage_type,
+                    mt_result_extra_data.usage_type,
                     "Machine Translation",
-                    extra_data.organization_uuid,
+                    mt_result_extra_data.organization_uuid,
                 )
 
                 # Log Google API usage
@@ -1097,15 +1083,15 @@ async def ray_events(
                 }
 
                 channel_name = None
-                if extra_data.channel_id:
-                    if not extra_data.channel_id.startswith("C"):
+                if mt_result_extra_data.channel_id:
+                    if not mt_result_extra_data.channel_id.startswith("C"):
                         channel_name = "direct message"
-                    elif extra_data.usage_type == "shortcut_translate":
+                    elif mt_result_extra_data.usage_type == "shortcut_translate":
                         channel_name = "shortcut translation"
                     else:
                         try:
                             channel_info = await client.conversations_info(
-                                channel=extra_data.channel_id
+                                channel=mt_result_extra_data.channel_id
                             )
                             channel = channel_info.get("channel")
                             channel_name = (
@@ -1121,14 +1107,15 @@ async def ray_events(
                 await log_google_api_usage(
                     user_uuid=auth.slack_user.ray_client_id,
                     group_uuid=auth.slack_user.ray_user_group_id,
-                    organization_uuid=extra_data.organization_uuid,
-                    input_text=extra_data.source_text or "[Source text not available]",
-                    source_lang=extra_data.source_language,
+                    organization_uuid=mt_result_extra_data.organization_uuid,
+                    input_text=mt_result_extra_data.source_text
+                    or "[Source text not available]",
+                    source_lang=mt_result_extra_data.source_language,
                     translations=translations_for_log,
                     transaction_uuid=transaction_uuid,
                     app_name="slack",
-                    usage_type=extra_data.usage_type,
-                    text_length=extra_data.text_length,
+                    usage_type=mt_result_extra_data.usage_type,
+                    text_length=mt_result_extra_data.text_length,
                     channel_name=channel_name,
                     email=user_email,
                 )

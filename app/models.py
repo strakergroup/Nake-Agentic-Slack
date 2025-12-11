@@ -210,6 +210,48 @@ class JobTranscribedResult(BaseModel):
     tokens_consumed: int
 
 
+class TranscriptionRequest(BaseModel):
+    """Request model for transcription service - only task_uuid needed."""
+
+    task_uuid: str
+
+
+class TranscriptionTaskInfo(BaseModel):
+    """Model representing transcription task information from database."""
+
+    task_uuid: str
+    client_id: str
+    file_name: str
+    download_url: str
+    bot_token: str
+    pipeline_type: str
+    status: str
+    error_message: str | None
+    result_file_id: str | None
+    result_file_name: str | None
+    detected_language: str | None
+    tokens_consumed: int | None
+    extra_data: dict | None
+    started_at: datetime.datetime | None
+    finished_at: datetime.datetime | None
+    duration_ms: int | None
+    model: str | None
+    service: str | None
+    app_source: str | None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class ASRTaskResult(BaseModel):
+    """Model representing ASR task result data."""
+
+    task_uuid: str
+    file_id: str | None
+    file_name: str | None
+    status: str
+    error: str | None
+
+
 class SlackFileTranslationSubmission(Base):
     """Track file translation submissions to prevent duplicates.
 
@@ -277,6 +319,17 @@ class TranscriptionTask(Base):
     detected_language: Mapped[str | None] = mapped_column(String(10), nullable=True)
     tokens_consumed: Mapped[int] = mapped_column(Integer, default=0)
     extra_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Performance and analytics fields
+    started_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    finished_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    model: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    service: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    app_source: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), index=True
     )
