@@ -185,7 +185,6 @@ async def _handle_transcribe_embed_pipeline(
     task_info: TranscriptionTaskInfo,
     channel_id: str,
     thread_ts: str | None,
-    token_text: str,
 ) -> None:
     """Handle transcription + translation + embed pipeline result."""
     if not result_file_id:
@@ -209,7 +208,7 @@ async def _handle_transcribe_embed_pipeline(
 
         await client.chat_postMessage(
             channel=channel_id,
-            text=_(f"Your video with embedded subtitles is ready!{token_text}"),
+            text=_("Your video with embedded subtitles is ready!"),
             thread_ts=thread_ts,
         )
     except Exception as e:
@@ -229,14 +228,13 @@ async def _handle_transcribe_translate_pipeline(
     result_file_name: str | None,
     channel_id: str,
     thread_ts: str | None,
-    token_text: str,
     auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
 ) -> None:
     """Handle transcription + translation pipeline result."""
     await client.chat_postMessage(
         channel=channel_id,
         text=_(
-            f"We have transcribed your file. Translations will be delivered separately.{token_text}"
+            "We have transcribed your file. Translations will be delivered separately."
         ),
         thread_ts=thread_ts,
     )
@@ -258,7 +256,6 @@ async def _handle_transcribe_only_pipeline(
     result_file_name: str | None,
     task_info: TranscriptionTaskInfo,
     is_ibm: bool,
-    tokens_consumed: int,
     channel_id: str,
     event: RayEvent,
     auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
@@ -270,7 +267,6 @@ async def _handle_transcribe_only_pipeline(
     transcribed_message = JobTranscribedEventMessage(
         source_file_name=task_info.file_name or "",
         is_ibm_enterprise=is_ibm,
-        tokens_used=tokens_consumed if tokens_consumed else None,
     )
     response = await post_notification(
         client, event, auth_slack_user, transcribed_message
@@ -678,7 +674,6 @@ async def ray_events(
                 client_id = task_info.client_id
                 result_file_id = task_info.result_file_id
                 result_file_name = task_info.result_file_name
-                tokens_consumed = task_info.tokens_consumed or 0
 
                 # Handle errors
                 if transcribed_event.error or event.data.get("error"):
@@ -729,11 +724,6 @@ async def ray_events(
                     else auth.slack_user.channel_id
                 )
                 thread_ts = extra_data.get("slack_thread_ts") if extra_data else None
-                token_text = (
-                    f"\nYou have used *{tokens_consumed:,}* AI tokens."
-                    if tokens_consumed
-                    else ""
-                )
 
                 # Handle based on pipeline type
                 if pipeline_type == "transcribe_translate_embed":
@@ -744,7 +734,6 @@ async def ray_events(
                         task_info,
                         str(channel_id),
                         thread_ts,
-                        token_text,
                     )
                 elif pipeline_type == "transcribe_translate":
                     await _handle_transcribe_translate_pipeline(
@@ -753,7 +742,6 @@ async def ray_events(
                         result_file_name,
                         str(channel_id),
                         thread_ts,
-                        token_text,
                         auth,
                     )
                 else:
@@ -763,7 +751,6 @@ async def ray_events(
                         result_file_name,
                         task_info,
                         is_ibm,
-                        tokens_consumed,
                         str(channel_id),
                         event,
                         auth,

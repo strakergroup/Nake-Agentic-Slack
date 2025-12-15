@@ -59,9 +59,7 @@ async def create_asr_task(asr_task: ASRTask):
                 bot_token=bot_token,
                 pipeline_type=pipeline_type,
                 status="pending",
-                tokens_consumed=asr_task.task_data.tokens_consumed,
                 extra_data=extra_data if extra_data else None,
-                duration_ms=asr_task.len_ms,
                 model=asr_task.model,
                 service=asr_task.service,
                 app_source=asr_task.app_source,
@@ -153,11 +151,12 @@ async def get_transcription_task(task_uuid: str) -> TranscriptionTaskInfo | None
                 result_file_id=task.result_file_id,
                 result_file_name=task.result_file_name,
                 detected_language=task.detected_language,
-                tokens_consumed=task.tokens_consumed,
                 extra_data=task.extra_data,
                 started_at=task.started_at,
                 finished_at=task.finished_at,
                 duration_ms=task.duration_ms,
+                num_target_languages=task.num_target_languages,
+                source_text_length=task.source_text_length,
                 model=task.model,
                 service=task.service,
                 app_source=task.app_source,
@@ -175,7 +174,6 @@ async def update_transcription_task_status(
     result_file_id: str | None = None,
     result_file_name: str | None = None,
     detected_language: str | None = None,
-    tokens_consumed: int | None = None,
 ) -> None:
     """Update transcription task status and results.
 
@@ -186,7 +184,6 @@ async def update_transcription_task_status(
         result_file_id: Result file ID if completed
         result_file_name: Result file name if completed
         detected_language: Detected language code
-        tokens_consumed: Tokens consumed
     """
     async with AsyncSession(async_engines["sitecommons"]) as session:
         task = await session.get(TranscriptionTask, task_uuid)
@@ -213,7 +210,5 @@ async def update_transcription_task_status(
                 task.result_file_name = result_file_name
             if detected_language is not None:
                 task.detected_language = detected_language
-            if tokens_consumed is not None:
-                task.tokens_consumed = tokens_consumed
 
             await session.commit()

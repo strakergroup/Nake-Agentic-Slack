@@ -2644,12 +2644,6 @@ async def handle_video_transcribe_only(
             )
             return
 
-        # Calculate tokens from duration
-        from ..auth.connector import duration_to_tokens
-
-        duration_ms = action_data.get("duration_ms", 0)
-        tokens = duration_to_tokens(duration_ms)
-
         # Create ASR task for transcriber
         from ..models import ASRTask, TranscriptionTaskData
         from ..transcriber_tasks.tasks import create_asr_task
@@ -2663,7 +2657,6 @@ async def handle_video_transcribe_only(
             service="azure",
             model="whisper-1",
             embed_subtitles=False,
-            tokens_consumed=tokens,
             sandbox=False,
         )
 
@@ -2690,7 +2683,6 @@ async def handle_video_transcribe_only(
             member_uuid=context["ray"].client.id,
             event_name="transcription:media:asr",
             app_source="slack",
-            len_ms=duration_ms,
             service="azure",
             model="whisper-1",
             extra_data=extra_data_dict,
@@ -2889,7 +2881,6 @@ async def handle_video_transcribe_translate_submit(
             service="azure",
             model="whisper-1",
             embed_subtitles=False,
-            tokens_consumed=tokens,
             sandbox=False,
         )
 
@@ -2917,7 +2908,6 @@ async def handle_video_transcribe_translate_submit(
             member_uuid=context["ray"].client.id,
             event_name="transcription:media:asr",
             app_source="slack",
-            len_ms=duration_ms,
             service="azure",
             model="whisper-1",
             extra_data=extra_data_dict,
@@ -3050,12 +3040,6 @@ async def handle_video_embed_subtitles_submit(
             )
             return
 
-        # Calculate tokens from duration
-        from ..auth.connector import duration_to_tokens
-
-        duration_ms = metadata.get("duration_ms", 0)
-        tokens = duration_to_tokens(duration_ms)
-
         # Create ASR task for transcriber with translation and embedding info in extra_data
         from ..models import ASRTask, TranscriptionTaskData
         from ..transcriber_tasks.tasks import create_asr_task
@@ -3073,7 +3057,6 @@ async def handle_video_embed_subtitles_submit(
             service="azure",
             model="whisper-1",
             embed_subtitles=True,
-            tokens_consumed=tokens,
             sandbox=False,
         )
 
@@ -3107,7 +3090,6 @@ async def handle_video_embed_subtitles_submit(
             member_uuid=context["ray"].client.id,
             event_name="transcription:media:asr",
             app_source="slack",
-            len_ms=duration_ms,
             service="azure",
             model="whisper-1",
             extra_data=extra_data_dict,

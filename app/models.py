@@ -183,7 +183,6 @@ class TranscriptionTaskData(BaseModel):
     service: str
     model: str
     embed_subtitles: bool = False
-    tokens_consumed: int
     sandbox: bool = False
 
 
@@ -193,7 +192,6 @@ class ASRTask(BaseModel):
     member_uuid: str
     event_name: str
     app_source: str
-    len_ms: int
     service: str
     model: str
     extra_data: dict
@@ -207,7 +205,6 @@ class JobTranscribedResult(BaseModel):
     file_name: str
     source_file_name: str
     file_id: str
-    tokens_consumed: int
 
 
 class TranscriptionRequest(BaseModel):
@@ -230,11 +227,13 @@ class TranscriptionTaskInfo(BaseModel):
     result_file_id: str | None
     result_file_name: str | None
     detected_language: str | None
-    tokens_consumed: int | None
     extra_data: dict | None
     started_at: datetime.datetime | None
     finished_at: datetime.datetime | None
+    # Usage metrics for external billing
     duration_ms: int | None
+    source_text_length: int | None
+    num_target_languages: int | None
     model: str | None
     service: str | None
     app_source: str | None
@@ -317,7 +316,6 @@ class TranscriptionTask(Base):
     result_file_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     result_file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     detected_language: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    tokens_consumed: Mapped[int] = mapped_column(Integer, default=0)
     extra_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Performance and analytics fields
     started_at: Mapped[datetime.datetime | None] = mapped_column(
@@ -326,10 +324,13 @@ class TranscriptionTask(Base):
     finished_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime, nullable=True
     )
-    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     model: Mapped[str | None] = mapped_column(String(50), nullable=True)
     service: Mapped[str | None] = mapped_column(String(50), nullable=True)
     app_source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Usage metrics for external billing (platforms calculate their own costs)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_text_length: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    num_target_languages: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), index=True
     )
