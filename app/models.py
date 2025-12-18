@@ -223,10 +223,12 @@ class TranscriptionTaskInfo(BaseModel):
     bot_token: str
     pipeline_type: str
     status: str
+    stage: str | None
     error_message: str | None
     result_file_id: str | None
     result_file_name: str | None
     detected_language: str | None
+    translated_file_ids: dict[str, str] | None
     extra_data: dict | None
     started_at: datetime.datetime | None
     finished_at: datetime.datetime | None
@@ -312,10 +314,27 @@ class TranscriptionTask(Base):
         nullable=False,
         index=True,
     )
+    stage: Mapped[str | None] = mapped_column(
+        Enum(
+            "downloading",
+            "converting",
+            "transcribing",
+            "translating",
+            "embedding",
+            "uploading",
+            name="processing_stage",
+        ),
+        default=None,
+        nullable=True,
+        index=True,
+    )
     error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     result_file_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     result_file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     detected_language: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    translated_file_ids: Mapped[dict[str, str] | None] = mapped_column(
+        JSON, nullable=True, comment="Map of target language -> translated file ID"
+    )
     extra_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Performance and analytics fields
     started_at: Mapped[datetime.datetime | None] = mapped_column(

@@ -2,7 +2,8 @@ import asyncio
 import logging
 import os
 from dataclasses import replace
-from typing import Annotated, Any, Optional, Union, cast
+from pathlib import Path
+from typing import Annotated, Any, Optional, Union
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ValidationError
@@ -10,6 +11,8 @@ from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from slack_sdk.webhook import WebhookResponse
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 from straker_utils.credits import calculate_cost, spend_credits
 
 from app.api.models import MtTranslationExtraData
@@ -17,7 +20,7 @@ from app.api.verify import get_evaluation_job, get_job_pricing
 from app.auth.connector import get_ray_client, get_ray_connection
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.database import async_engines
-from app.models import TranscriptionTaskInfo
+from app.models import TranscriptionTask, TranscriptionTaskInfo
 from app.mt.logs import log_google_api_usage
 from app.ray.submissions import SubmissionStatus, updated_submission_status
 from app.ray.utils import (
@@ -29,6 +32,7 @@ from app.ray.utils import (
 from app.slack.buglog_notifier import notify_exception, notify_message
 from app.slack.select_options import _get_languages_cached
 from app.slack_job import update_slack_job
+from app.transcriber_tasks.tasks import get_transcription_task
 from app.translate import _
 
 from ..auth.connector import (
@@ -96,6 +100,27 @@ router = APIRouter()
 # Track background tasks for potential cleanup
 _background_tasks = set()
 
+logger = logging.getLogger(__name__)
+
+
+async def _get_language_name(lang_code: str) -> str:
+    """Get the full language name from a language code.
+
+    Args:
+        lang_code: 2-letter language code (e.g., "en", "id", "ga")
+
+    Returns:
+        Full language name (e.g., "English", "Indonesian", "Georgian") or the code if not found
+    """
+    try:
+        languages = await _get_languages_cached()
+        for lang in languages:
+            if lang.get("code") == lang_code.lower():
+                return lang.get("name", lang_code)
+        return lang_code  # Fallback to code if not found
+    except Exception:
+        return lang_code  # Fallback to code on error
+
 
 def _create_background_task(coro):
     """Create a background task with proper cleanup and error handling."""
@@ -110,16 +135,6 @@ def _create_background_task(coro):
 
     task.add_done_callback(_cleanup_task)
     return task
-
-
-def get_background_task_info():
-    """Get information about running background tasks."""
-    running_tasks = [task for task in _background_tasks if not task.done()]
-    return {
-        "total_tasks": len(_background_tasks),
-        "running_tasks": len(running_tasks),
-        "completed_tasks": len(_background_tasks) - len(running_tasks),
-    }
 
 
 async def _handle_mt_success_background(
@@ -147,8 +162,10 @@ async def _handle_mt_success_background(
         output_file = await download_from_file_server_async(success_data.file_id)
         file_path = output_file.get("file")
         title = output_file.get("file_name")
+        # Get full language name for display
+        language_name = await _get_language_name(success_data.target_language)
         initial_comment = _(
-            f"Your file is AI translated to *{success_data.target_language}* and can be downloaded below."
+            f"Your file is AI translated to *{language_name}* and can be downloaded below."
         )
         try:
             # Upload file using memory-efficient method
@@ -178,92 +195,82 @@ async def _handle_mt_success_background(
         )
 
 
-async def _handle_transcribe_embed_pipeline(
-    client: AsyncWebClient,
-    result_file_id: str | None,
-    result_file_name: str | None,
-    task_info: TranscriptionTaskInfo,
-    channel_id: str,
-    thread_ts: str | None,
+async def _mark_stage_processed(
+    task_uuid: str, stage: str, extra_data_to_merge: dict | None = None
 ) -> None:
-    """Handle transcription + translation + embed pipeline result."""
-    if not result_file_id:
-        return
+    """Mark a processing stage as processed in the database.
 
-    from ..ray.utils import download_from_file_server_async
-    from ..slack.web import upload_file_to_slack_memory_efficient
-
+    Args:
+        task_uuid: The task UUID
+        stage: The stage to mark as processed
+        extra_data_to_merge: Optional dict to merge into extra_data (preserves other fields)
+    """
     try:
-        output_file = await download_from_file_server_async(result_file_id)
-        file_path = output_file.get("file")
-        if file_path and os.path.exists(file_path):
-            await upload_file_to_slack_memory_efficient(
-                client=client,
-                file_path=file_path,
-                channel_id=channel_id,
-                thread_ts=thread_ts,
-                title=result_file_name or task_info.file_name,
-            )
-            os.unlink(file_path)
-
-        await client.chat_postMessage(
-            channel=channel_id,
-            text=_("Your video with embedded subtitles is ready!"),
-            thread_ts=thread_ts,
-        )
+        async with AsyncSession(async_engines["sitecommons"]) as session:
+            task = await session.get(TranscriptionTask, task_uuid)
+            if task:
+                extra_data = (task.extra_data or {}).copy()
+                # Merge any provided extra_data (preserves fields like _processed_file_id)
+                if extra_data_to_merge:
+                    extra_data.update(extra_data_to_merge)
+                processed_stages = extra_data.get("_processed_stages", [])
+                if stage not in processed_stages:
+                    processed_stages.append(stage)
+                    extra_data["_processed_stages"] = processed_stages
+                    await session.execute(
+                        update(TranscriptionTask)
+                        .where(TranscriptionTask.task_uuid == task_uuid)
+                        .values(extra_data=extra_data)
+                    )
+                    await session.commit()
+                else:
+                    # Still update extra_data even if stage already processed (to preserve merged fields)
+                    if extra_data_to_merge:
+                        await session.execute(
+                            update(TranscriptionTask)
+                            .where(TranscriptionTask.task_uuid == task_uuid)
+                            .values(extra_data=extra_data)
+                        )
+                        await session.commit()
     except Exception as e:
-        notify_exception(e, "Error handling embedded video")
-        await client.chat_postMessage(
-            channel=channel_id,
-            text=_(
-                "An error occurred while processing your embedded video. Please try again."
-            ),
-            thread_ts=thread_ts,
-        )
+        notify_exception(e, f"Failed to mark stage {stage} as processed")
 
 
-async def _handle_transcribe_translate_pipeline(
-    client: AsyncWebClient,
-    result_file_id: str | None,
-    result_file_name: str | None,
-    channel_id: str,
-    thread_ts: str | None,
-    auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
-) -> None:
-    """Handle transcription + translation pipeline result."""
-    await client.chat_postMessage(
-        channel=channel_id,
-        text=_(
-            "We have transcribed your file. Translations will be delivered separately."
-        ),
-        thread_ts=thread_ts,
-    )
+async def _update_submission_status(extra_data: dict) -> None:
+    """Update submission status to completed."""
+    try:
+        submission_id = extra_data.get("submission_id") if extra_data else None
+        submission_ids = extra_data.get("submission_ids") if extra_data else None
 
-    if result_file_id and result_file_name:
-        _create_background_task(
-            _handle_transcribe_success_background(
-                {"file_id": result_file_id, "file_name": result_file_name},
-                auth,
-                None,
-                override_channel_id=channel_id,
+        if submission_id is not None:
+            updated_submission_status(
+                submission_id=int(submission_id),
+                processing_status=SubmissionStatus.COMPLETED,
             )
-        )
+        elif submission_ids:
+            for sid in submission_ids:
+                if sid is not None:
+                    updated_submission_status(
+                        submission_id=int(sid),
+                        processing_status=SubmissionStatus.COMPLETED,
+                    )
+    except Exception as e:
+        notify_exception(e, "Failed to update submission status")
 
 
-async def _handle_transcribe_only_pipeline(
+async def _handle_transcription_complete(
     client: AsyncWebClient,
     result_file_id: str | None,
     result_file_name: str | None,
     task_info: TranscriptionTaskInfo,
     is_ibm: bool,
     channel_id: str,
+    thread_ts: str | None,
     event: RayEvent,
     auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
     auth_slack_user: Any,
 ) -> None:
-    """Handle transcription-only pipeline result."""
-    task_uuid = task_info.task_uuid or "unknown"
-
+    """Handle transcription completion - show message and upload SRT file."""
     transcribed_message = JobTranscribedEventMessage(
         source_file_name=task_info.file_name or "",
         is_ibm_enterprise=is_ibm,
@@ -272,9 +279,7 @@ async def _handle_transcribe_only_pipeline(
         client, event, auth_slack_user, transcribed_message
     )
 
-    # Always upload SRT file if available
     if result_file_id and result_file_name:
-        # Ensure we have a channel_id - fallback to slack_user channel_id if not in extra_data
         upload_channel_id: str | None = channel_id or (
             auth_slack_user.channel_id if auth_slack_user else None
         )
@@ -288,13 +293,116 @@ async def _handle_transcribe_only_pipeline(
                     override_channel_id=upload_channel_id,
                 )
             )
-        else:
-            notify_exception(
-                Exception(
-                    f"Missing channel_id for transcription-only pipeline (task: {task_uuid})"
-                ),
-                "Cannot upload SRT file - missing channel_id",
+
+
+async def _handle_translation_complete(
+    client: AsyncWebClient,
+    channel_id: str,
+    thread_ts: str | None,
+    task_info: Any,
+    auth: Any,
+) -> None:
+    """Handle translation completion - upload translated files."""
+    translated_file_ids = task_info.translated_file_ids or {}
+
+    await client.chat_postMessage(
+        channel=channel_id,
+        text=_("Your file is AI translated and can be downloaded below."),
+        thread_ts=thread_ts,
+    )
+
+    # Upload each translated file
+    # Use original file_name from database (the uploaded file) as base for naming
+    original_file_name = task_info.file_name or "transcription.srt"
+    original_path = Path(original_file_name)
+    original_stem = original_path.stem
+
+    for target_lang, file_id in translated_file_ids.items():
+        try:
+            # Download file from server
+            output_file = await download_from_file_server_async(file_id)
+            file_path = output_file.get("file")
+
+            # Construct filename from original file name, replacing language code if present
+            # Pattern: "filename.en.mp4" -> "filename.ru.srt" or "filename.mp4" -> "filename.ru.srt"
+            if "." in original_stem:
+                # Check if stem ends with a language code pattern (e.g., ".en")
+                parts = original_stem.rsplit(".", 1)
+                if (
+                    len(parts) == 2 and len(parts[1]) == 2
+                ):  # Likely a 2-letter language code
+                    # Replace the language code and change extension to .srt
+                    title = f"{parts[0]}.{target_lang}.srt"
+                else:
+                    # Append language code and change extension to .srt
+                    title = f"{original_stem}.{target_lang}.srt"
+            else:
+                # No dots in stem, just append language code and use .srt extension
+                title = f"{original_stem}.{target_lang}.srt"
+
+            if not file_path:
+                continue
+
+            # Rename the temp file to have the correct filename so Slack displays it properly
+            temp_dir = os.path.dirname(file_path)
+            renamed_file_path = os.path.join(temp_dir, title)
+            if file_path != renamed_file_path:
+                os.rename(file_path, renamed_file_path)
+                file_path = renamed_file_path
+
+            await upload_file_to_slack_memory_efficient(
+                client=client,
+                file_path=file_path,
+                channel_id=channel_id,
+                title=title,
+                filename=title,
+                thread_ts=thread_ts,
             )
+
+            # Clean up temp file
+            if file_path and os.path.exists(file_path):
+                os.unlink(file_path)
+
+        except Exception as e:
+            notify_exception(e, "Error handling translation complete")
+            logger.error(f"Error handling translation complete: {e}")
+
+
+async def _handle_transcribe_embed_pipeline(
+    client: AsyncWebClient,
+    result_file_id: str | None,
+    result_file_name: str | None,
+    task_info: TranscriptionTaskInfo,
+    channel_id: str,
+    thread_ts: str | None,
+) -> None:
+    """Handle transcription + translation + embed pipeline result."""
+    if not result_file_id:
+        return
+
+    try:
+        output_file = await download_from_file_server_async(result_file_id)
+        file_path = output_file.get("file")
+        if file_path and os.path.exists(file_path):
+            await upload_file_to_slack_memory_efficient(
+                client=client,
+                file_path=file_path,
+                initial_comment=_("Your video with embedded subtitles is ready!"),
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+                title=result_file_name or task_info.file_name,
+            )
+            os.unlink(file_path)
+
+    except Exception as e:
+        notify_exception(e, "Error handling embedded video")
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "An error occurred while processing your embedded video. Please try again."
+            ),
+            thread_ts=thread_ts,
+        )
 
 
 async def _handle_transcribe_success_background(
@@ -354,12 +462,19 @@ async def _handle_transcribe_success_background(
             return
 
         try:
+            # Rename the temp file to have the correct filename so Slack displays it properly
+            temp_dir = os.path.dirname(file_path)
+            renamed_file_path = os.path.join(temp_dir, file_name)
+            if file_path != renamed_file_path:
+                os.rename(file_path, renamed_file_path)
+                file_path = renamed_file_path
+
             await upload_file_to_slack_memory_efficient(
                 client=client,
                 file_path=file_path,
                 channel_id=channel_id,
                 title=file_name,
-                filename=output_file.get("file_name"),
+                filename=file_name,
             )
         finally:
             if os.path.exists(file_path):
@@ -651,13 +766,12 @@ async def ray_events(
                     },
                 ) from e
 
-        elif event.event == "transcription:slack:media:results":
+        elif event.event == "transcription:slack:media:transcription:results":
+            # Handle transcription completion events
             try:
                 transcribed_event = JobTranscribedEvent.model_validate(event.data)
 
-                # Get all task info from database
-                from ..transcriber_tasks.tasks import get_transcription_task
-
+                # Get task info from database
                 task_info = await get_transcription_task(transcribed_event.task_uuid)
                 if not task_info:
                     notify_exception(
@@ -667,13 +781,6 @@ async def ray_events(
                         "Task lookup failed",
                     )
                     return
-
-                # Extract info from database
-                extra_data = task_info.extra_data or {}
-                pipeline_type = task_info.pipeline_type or "transcribe"
-                client_id = task_info.client_id
-                result_file_id = task_info.result_file_id
-                result_file_name = task_info.result_file_name
 
                 # Handle errors
                 if transcribed_event.error or event.data.get("error"):
@@ -687,37 +794,8 @@ async def ray_events(
                     )
                     return
 
-                # Common success handling
-                # Update submission status
-                try:
-                    from ..ray.submissions import (
-                        SubmissionStatus,
-                        updated_submission_status,
-                    )
-
-                    submission_id = (
-                        extra_data.get("submission_id") if extra_data else None
-                    )
-                    submission_ids = (
-                        extra_data.get("submission_ids") if extra_data else None
-                    )
-
-                    if submission_id is not None:
-                        updated_submission_status(
-                            submission_id=int(submission_id),
-                            processing_status=SubmissionStatus.COMPLETED,
-                        )
-                    elif submission_ids:
-                        for sid in submission_ids:
-                            if sid is not None:
-                                updated_submission_status(
-                                    submission_id=int(sid),
-                                    processing_status=SubmissionStatus.COMPLETED,
-                                )
-                except Exception as e:
-                    notify_exception(e, "Failed to update submission status")
-
                 # Get channel and thread info
+                extra_data = task_info.extra_data or {}
                 channel_id = (
                     extra_data.get("slack_channel_id")
                     if extra_data
@@ -725,37 +803,153 @@ async def ray_events(
                 )
                 thread_ts = extra_data.get("slack_thread_ts") if extra_data else None
 
-                # Handle based on pipeline type
-                if pipeline_type == "transcribe_translate_embed":
-                    await _handle_transcribe_embed_pipeline(
+                # Track processed stages for reference
+                processed_stages = extra_data.get("_processed_stages", [])
+                if "transcription" not in processed_stages:
+                    await _handle_transcription_complete(
                         client,
-                        result_file_id,
-                        result_file_name,
-                        task_info,
-                        str(channel_id),
-                        thread_ts,
-                    )
-                elif pipeline_type == "transcribe_translate":
-                    await _handle_transcribe_translate_pipeline(
-                        client,
-                        result_file_id,
-                        result_file_name,
-                        str(channel_id),
-                        thread_ts,
-                        auth,
-                    )
-                else:
-                    await _handle_transcribe_only_pipeline(
-                        client,
-                        result_file_id,
-                        result_file_name,
+                        task_info.result_file_id,
+                        task_info.result_file_name,
                         task_info,
                         is_ibm,
                         str(channel_id),
+                        thread_ts,
                         event,
                         auth,
                         auth.slack_user,
                     )
+                    # Mark as processed for reference
+                    await _mark_stage_processed(
+                        transcribed_event.task_uuid, "transcription"
+                    )
+
+            except ValidationError as e:
+                raise HTTPException(
+                    422,
+                    {
+                        "message": f"The event data is invalid for the event type: {event.event}",
+                        "detail": e.errors(),
+                    },
+                ) from e
+
+        elif event.event == "transcription:slack:media:translation:results":
+            # Handle translation completion events
+            try:
+                transcribed_event = JobTranscribedEvent.model_validate(event.data)
+
+                # Get task info from database
+                task_info = await get_transcription_task(transcribed_event.task_uuid)
+                if not task_info:
+                    notify_exception(
+                        Exception(
+                            f"Task {transcribed_event.task_uuid} not found in database"
+                        ),
+                        "Task lookup failed",
+                    )
+                    return
+
+                # Handle errors
+                if transcribed_event.error or event.data.get("error"):
+                    error_msg = transcribed_event.error or event.data.get(
+                        "error", "Unknown error"
+                    )
+                    await client.chat_postEphemeral(
+                        channel=auth.slack_user.channel_id,
+                        user=auth.slack_user.user_id,
+                        text=_(f"Translation failed: {error_msg}"),
+                    )
+                    return
+
+                # Get channel and thread info
+                extra_data = task_info.extra_data or {}
+                channel_id = (
+                    extra_data.get("slack_channel_id")
+                    if extra_data
+                    else auth.slack_user.channel_id
+                )
+                thread_ts = extra_data.get("slack_thread_ts") if extra_data else None
+
+                # Track processed stages for reference
+                processed_stages = extra_data.get("_processed_stages", [])
+                if (
+                    "translation" not in processed_stages
+                    and task_info.translated_file_ids
+                ):
+                    await _handle_translation_complete(
+                        client,
+                        str(channel_id),
+                        thread_ts,
+                        task_info,
+                        auth,
+                    )
+                    # Mark as processed for reference
+                    await _mark_stage_processed(
+                        transcribed_event.task_uuid, "translation"
+                    )
+
+            except ValidationError as e:
+                raise HTTPException(
+                    422,
+                    {
+                        "message": f"The event data is invalid for the event type: {event.event}",
+                        "detail": e.errors(),
+                    },
+                ) from e
+
+        elif event.event == "transcription:slack:media:embedding:results":
+            # Handle embedding completion events
+            try:
+                transcribed_event = JobTranscribedEvent.model_validate(event.data)
+
+                # Get task info from database
+                task_info = await get_transcription_task(transcribed_event.task_uuid)
+                if not task_info:
+                    notify_exception(
+                        Exception(
+                            f"Task {transcribed_event.task_uuid} not found in database"
+                        ),
+                        "Task lookup failed",
+                    )
+                    return
+
+                # Handle errors
+                if transcribed_event.error or event.data.get("error"):
+                    error_msg = transcribed_event.error or event.data.get(
+                        "error", "Unknown error"
+                    )
+                    await client.chat_postEphemeral(
+                        channel=auth.slack_user.channel_id,
+                        user=auth.slack_user.user_id,
+                        text=_(f"Embedding failed: {error_msg}"),
+                    )
+                    return
+
+                # Get channel and thread info
+                extra_data = task_info.extra_data or {}
+                channel_id = (
+                    extra_data.get("slack_channel_id")
+                    if extra_data
+                    else auth.slack_user.channel_id
+                )
+                thread_ts = extra_data.get("slack_thread_ts") if extra_data else None
+
+                # Track processed stages for reference
+                processed_stages = extra_data.get("_processed_stages", [])
+                if "embedding" not in processed_stages:
+                    await _handle_transcribe_embed_pipeline(
+                        client,
+                        task_info.result_file_id,
+                        task_info.result_file_name,
+                        task_info,
+                        str(channel_id),
+                        thread_ts,
+                    )
+                    await _update_submission_status(extra_data)
+                    # Mark as processed for reference
+                    await _mark_stage_processed(
+                        transcribed_event.task_uuid, "embedding"
+                    )
+
             except ValidationError as e:
                 raise HTTPException(
                     422,
