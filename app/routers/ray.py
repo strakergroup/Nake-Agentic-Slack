@@ -103,6 +103,70 @@ _background_tasks = set()
 logger = logging.getLogger(__name__)
 
 
+async def _update_tokens_consumed(
+    task_uuid: str,
+    additional_tokens: int,
+) -> int:
+    """Update tokens_consumed in database and return total.
+
+    Args:
+        task_uuid: Task UUID to update
+        additional_tokens: Tokens to add to current total
+
+    Returns:
+        Total tokens consumed after update
+    """
+    try:
+        # Reload task_info to get current tokens_consumed
+        task_info = await get_transcription_task(task_uuid)
+        if not task_info:
+            return additional_tokens
+
+        total_tokens = task_info.tokens_consumed + additional_tokens
+
+        # Update tokens_consumed in database
+        async with AsyncSession(async_engines["sitecommons"]) as session:
+            await session.execute(
+                update(TranscriptionTask)
+                .where(TranscriptionTask.task_uuid == task_uuid)
+                .values(tokens_consumed=total_tokens)
+            )
+            await session.commit()
+
+        return total_tokens
+    except Exception as e:
+        notify_exception(e, "Failed to update tokens_consumed")
+        logger.error(f"Error updating tokens_consumed: {e}")
+        return additional_tokens
+
+
+async def _show_tokens_message(
+    client: AsyncWebClient,
+    task_uuid: str,
+    channel_id: str,
+    thread_ts: str | None,
+) -> None:
+    """Show token consumption message at the end of pipeline completion.
+
+    Args:
+        client: Slack web client
+        task_uuid: Task UUID to look up tokens
+        channel_id: Channel ID to post message
+        thread_ts: Thread timestamp for threaded messages
+    """
+    try:
+        task_info = await get_transcription_task(task_uuid)
+        if task_info and task_info.tokens_consumed > 0:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=_(f"You have used {task_info.tokens_consumed} AI tokens."),
+                thread_ts=thread_ts,
+            )
+    except Exception as e:
+        notify_exception(e, "Failed to show tokens message")
+        logger.error(f"Error showing tokens message: {e}")
+
+
 async def _get_language_name(lang_code: str) -> str:
     """Get the full language name from a language code.
 
@@ -120,6 +184,203 @@ async def _get_language_name(lang_code: str) -> str:
         return lang_code  # Fallback to code if not found
     except Exception:
         return lang_code  # Fallback to code on error
+
+
+async def _spend_transcription_credits(
+    task_info: TranscriptionTaskInfo,
+    auth: Any,
+) -> int:
+    """Spend credits for transcription stage.
+
+    Args:
+        task_info: Transcription task information
+        auth: Authentication context with slack_user
+
+    Returns:
+        Amount of credits spent (0 if already charged or no credits spent)
+    """
+    try:
+        # Check if credits have already been spent for transcription
+        extra_data = task_info.extra_data or {}
+        charged_stages = extra_data.get("_charged_stages", [])
+        if "transcription" in charged_stages:
+            return 0  # Already charged
+
+        if not auth.slack_user or not auth.slack_user.ray_user_group_id:
+            return 0
+
+        # Charge for transcription based on duration (in seconds)
+        if not task_info.duration_ms:
+            return 0
+
+        duration_seconds = int(task_info.duration_ms / 1000)
+        amount = calculate_cost(duration_seconds)
+
+        if amount > 0:
+            await spend_credits(
+                async_engines["sitemanager"],
+                auth.slack_user.ray_client_id,
+                auth.slack_user.ray_user_group_id,
+                amount,
+                "slack",
+                "transcription",
+                "Media Transcription",
+                None,  # organization_uuid - may need to get from task_info if available
+            )
+
+            # Mark transcription as charged in the database
+            charged_stages.append("transcription")
+            extra_data["_charged_stages"] = charged_stages
+            async with AsyncSession(async_engines["sitecommons"]) as session:
+                await session.execute(
+                    update(TranscriptionTask)
+                    .where(TranscriptionTask.task_uuid == task_info.task_uuid)
+                    .values(extra_data=extra_data)
+                )
+                await session.commit()
+
+            return amount
+
+        return 0
+
+    except Exception as e:
+        notify_exception(e, "Failed to spend credits for transcription stage")
+        logger.error(f"Error spending credits for transcription: {e}")
+        return 0
+
+
+async def _spend_translation_credits(
+    task_info: TranscriptionTaskInfo,
+    auth: Any,
+) -> int:
+    """Spend credits for translation stage.
+
+    Args:
+        task_info: Transcription task information
+        auth: Authentication context with slack_user
+
+    Returns:
+        Amount of credits spent (0 if already charged or no credits spent)
+    """
+    try:
+        # Check if credits have already been spent for translation
+        extra_data = task_info.extra_data or {}
+        charged_stages = extra_data.get("_charged_stages", [])
+        if "translation" in charged_stages:
+            return 0  # Already charged
+
+        if not auth.slack_user or not auth.slack_user.ray_user_group_id:
+            return 0
+
+        # Charge for translation based on source text length * number of target languages
+        if not task_info.source_text_length or not task_info.num_target_languages:
+            return 0
+
+        amount = calculate_cost(
+            task_info.source_text_length * task_info.num_target_languages
+        )
+
+        if amount > 0:
+            await spend_credits(
+                async_engines["sitemanager"],
+                auth.slack_user.ray_client_id,
+                auth.slack_user.ray_user_group_id,
+                amount,
+                "slack",
+                "document_translation",
+                "Machine Translation",
+                None,  # organization_uuid - may need to get from task_info if available
+            )
+
+            # Mark translation as charged in the database
+            charged_stages.append("translation")
+            extra_data["_charged_stages"] = charged_stages
+            async with AsyncSession(async_engines["sitecommons"]) as session:
+                await session.execute(
+                    update(TranscriptionTask)
+                    .where(TranscriptionTask.task_uuid == task_info.task_uuid)
+                    .values(extra_data=extra_data)
+                )
+                await session.commit()
+
+            return amount
+
+        return 0
+
+    except Exception as e:
+        notify_exception(e, "Failed to spend credits for translation stage")
+        logger.error(f"Error spending credits for translation: {e}")
+        return 0
+
+
+async def _spend_embedding_credits(
+    task_info: TranscriptionTaskInfo,
+    auth: Any,
+) -> int:
+    """Spend credits for embedding stage.
+
+    Charges per minute per target language.
+
+    Args:
+        task_info: Transcription task information
+        auth: Authentication context with slack_user
+
+    Returns:
+        Amount of credits spent (0 if already charged or no credits spent)
+    """
+    try:
+        # Check if credits have already been spent for embedding
+        extra_data = task_info.extra_data or {}
+        charged_stages = extra_data.get("_charged_stages", [])
+        if "embedding" in charged_stages:
+            return 0  # Already charged
+
+        if not auth.slack_user or not auth.slack_user.ray_user_group_id:
+            return 0
+
+        # Charge for embedding based on duration (in minutes) * number of target languages
+        if not task_info.duration_ms:
+            return 0
+
+        # Default to 1 target language if not specified (for transcribe_embed pipelines)
+        num_target_languages = task_info.num_target_languages or 1
+
+        # Convert duration from milliseconds to minutes
+        duration_minutes = int(task_info.duration_ms / 60000)
+        # Calculate cost: duration_minutes * num_target_languages
+        amount = calculate_cost(duration_minutes * num_target_languages)
+
+        if amount > 0:
+            await spend_credits(
+                async_engines["sitemanager"],
+                auth.slack_user.ray_client_id,
+                auth.slack_user.ray_user_group_id,
+                amount,
+                "slack",
+                "media_embedding",
+                "Media Embedding",
+                None,  # organization_uuid - may need to get from task_info if available
+            )
+
+            # Mark embedding as charged in the database
+            charged_stages.append("embedding")
+            extra_data["_charged_stages"] = charged_stages
+            async with AsyncSession(async_engines["sitecommons"]) as session:
+                await session.execute(
+                    update(TranscriptionTask)
+                    .where(TranscriptionTask.task_uuid == task_info.task_uuid)
+                    .values(extra_data=extra_data)
+                )
+                await session.commit()
+
+            return amount
+
+        return 0
+
+    except Exception as e:
+        notify_exception(e, "Failed to spend credits for embedding stage")
+        logger.error(f"Error spending credits for embedding: {e}")
+        return 0
 
 
 def _create_background_task(coro):
@@ -287,10 +548,16 @@ async def _handle_transcription_complete(
         if upload_channel_id:
             _create_background_task(
                 _handle_transcribe_success_background(
-                    {"file_id": result_file_id, "file_name": result_file_name},
+                    {
+                        "file_id": result_file_id,
+                        "file_name": result_file_name,
+                        "task_uuid": task_info.task_uuid,
+                        "pipeline_type": task_info.pipeline_type,
+                    },
                     auth,
                     response,
                     override_channel_id=upload_channel_id,
+                    thread_ts=thread_ts,
                 )
             )
 
@@ -367,6 +634,10 @@ async def _handle_translation_complete(
             notify_exception(e, "Error handling translation complete")
             logger.error(f"Error handling translation complete: {e}")
 
+    # Show token message at the end for transcribe_translate pipeline
+    if task_info.pipeline_type == "transcribe_translate":
+        await _show_tokens_message(client, task_info.task_uuid, channel_id, thread_ts)
+
 
 async def _handle_transcribe_embed_pipeline(
     client: AsyncWebClient,
@@ -394,6 +665,12 @@ async def _handle_transcribe_embed_pipeline(
             )
             os.unlink(file_path)
 
+            # Show token message at the end for transcribe_translate_embed pipeline
+            if task_info.pipeline_type == "transcribe_translate_embed":
+                await _show_tokens_message(
+                    client, task_info.task_uuid, channel_id, thread_ts
+                )
+
     except Exception as e:
         notify_exception(e, "Error handling embedded video")
         await client.chat_postMessage(
@@ -410,6 +687,7 @@ async def _handle_transcribe_success_background(
     auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
     response: Union[AsyncSlackResponse, WebhookResponse, None],
     override_channel_id: str | None = None,
+    thread_ts: str | None = None,
 ):
     """Background task to handle transcription success file download and upload."""
     if not auth.slack_user:
@@ -818,6 +1096,15 @@ async def ray_events(
                         auth,
                         auth.slack_user,
                     )
+                    # Spend credits for transcription
+                    transcription_tokens = await _spend_transcription_credits(
+                        task_info, auth
+                    )
+                    # Track total tokens (message will be shown after file upload completes)
+                    if transcription_tokens > 0:
+                        await _update_tokens_consumed(
+                            task_info.task_uuid, transcription_tokens
+                        )
                     # Mark as processed for reference
                     await _mark_stage_processed(
                         transcribed_event.task_uuid, "transcription"
@@ -882,6 +1169,15 @@ async def ray_events(
                         task_info,
                         auth,
                     )
+                    # Spend credits for translation
+                    translation_tokens = await _spend_translation_credits(
+                        task_info, auth
+                    )
+                    # Track total tokens (message will be shown after file upload completes)
+                    if translation_tokens > 0:
+                        await _update_tokens_consumed(
+                            transcribed_event.task_uuid, translation_tokens
+                        )
                     # Mark as processed for reference
                     await _mark_stage_processed(
                         transcribed_event.task_uuid, "translation"
@@ -944,6 +1240,13 @@ async def ray_events(
                         str(channel_id),
                         thread_ts,
                     )
+                    # Spend credits for embedding
+                    embedding_tokens = await _spend_embedding_credits(task_info, auth)
+                    # Track total tokens (message will be shown after file upload completes)
+                    if embedding_tokens > 0:
+                        await _update_tokens_consumed(
+                            transcribed_event.task_uuid, embedding_tokens
+                        )
                     await _update_submission_status(extra_data)
                     # Mark as processed for reference
                     await _mark_stage_processed(

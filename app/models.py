@@ -236,6 +236,7 @@ class TranscriptionTaskInfo(BaseModel):
     duration_ms: int | None
     source_text_length: int | None
     num_target_languages: int | None
+    tokens_consumed: int
     model: str | None
     service: str | None
     app_source: str | None
@@ -350,6 +351,12 @@ class TranscriptionTask(Base):
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source_text_length: Mapped[int | None] = mapped_column(Integer, nullable=True)
     num_target_languages: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_consumed: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default="0",
+        comment="Total AI tokens consumed across all pipeline stages",
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), index=True
     )

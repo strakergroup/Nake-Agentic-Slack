@@ -159,6 +159,7 @@ async def get_transcription_task(task_uuid: str) -> TranscriptionTaskInfo | None
                 duration_ms=task.duration_ms,
                 num_target_languages=task.num_target_languages,
                 source_text_length=task.source_text_length,
+                tokens_consumed=task.tokens_consumed,
                 model=task.model,
                 service=task.service,
                 app_source=task.app_source,
