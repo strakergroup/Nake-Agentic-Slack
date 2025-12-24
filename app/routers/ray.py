@@ -655,7 +655,9 @@ async def _handle_transcribe_embed_pipeline(
         output_file = await download_from_file_server_async(result_file_id)
         file_path = output_file.get("file")
         if file_path and os.path.exists(file_path):
-            await upload_file_to_slack_memory_efficient(
+            # Upload file - this only returns after files_completeUploadExternal succeeds
+            # which means Slack has processed and made the file available
+            upload_response = await upload_file_to_slack_memory_efficient(
                 client=client,
                 file_path=file_path,
                 initial_comment=_("Your video with embedded subtitles is ready!"),
@@ -665,12 +667,16 @@ async def _handle_transcribe_embed_pipeline(
             )
             os.unlink(file_path)
 
-            # Post comment about downloading the media file
-            await client.chat_postMessage(
-                channel=channel_id,
-                text=_("Please download the media file(s) to view the embedded subtitles."),
-                thread_ts=thread_ts,
-            )
+            # Verify upload completed successfully before posting the download message
+            # upload_file_to_slack_memory_efficient only returns if files_completeUploadExternal
+            # returns ok=True, so if we reach here, the file is uploaded and available
+            if upload_response and upload_response.get("ok"):
+                # Post comment about downloading the media file after the file is uploaded
+                await client.chat_postMessage(
+                    channel=channel_id,
+                    text=_("Please download the media file(s) to view the embedded subtitles."),
+                    thread_ts=thread_ts,
+                )
 
             # Show token message at the end for transcribe_translate_embed pipeline
             if task_info.pipeline_type == "transcribe_translate_embed":
