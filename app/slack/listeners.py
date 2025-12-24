@@ -2695,7 +2695,7 @@ async def handle_video_transcribe_only(
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
-                ":stopwatch: Please wait a moment and we will transcribe your file."
+                ":stopwatch: Please wait a moment while we transcribe your file(s)."
             ),
             thread_ts=action_data.get("thread_ts"),
         )
@@ -2920,7 +2920,7 @@ async def handle_video_transcribe_translate_submit(
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
-                ":stopwatch: Please wait a moment and we will transcribe & AI translate your file."
+                ":stopwatch: Please wait a moment while we transcribe & AI translate your file(s)."
             ),
             thread_ts=metadata.get("thread_ts"),
         )
@@ -3102,7 +3102,7 @@ async def handle_video_embed_subtitles_submit(
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
-                ":stopwatch: Please wait a moment and we will transcribe, translate, and embed subtitles into your file."
+                ":stopwatch: Please wait a moment while we transcribe, AI-translate, and embed subtitles into your file(s)."
             ),
             thread_ts=metadata.get("thread_ts"),
         )

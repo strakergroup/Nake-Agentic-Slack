@@ -665,6 +665,13 @@ async def _handle_transcribe_embed_pipeline(
             )
             os.unlink(file_path)
 
+            # Post comment about downloading the media file
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=_("Please download the media file(s) to view the embedded subtitles."),
+                thread_ts=thread_ts,
+            )
+
             # Show token message at the end for transcribe_translate_embed pipeline
             if task_info.pipeline_type == "transcribe_translate_embed":
                 await _show_tokens_message(
