@@ -145,6 +145,7 @@ async def _show_tokens_message(
     task_uuid: str,
     channel_id: str,
     thread_ts: str | None,
+    is_ibm: bool = False,
 ) -> None:
     """Show token consumption message at the end of pipeline completion.
 
@@ -153,7 +154,12 @@ async def _show_tokens_message(
         task_uuid: Task UUID to look up tokens
         channel_id: Channel ID to post message
         thread_ts: Thread timestamp for threaded messages
+        is_ibm: Whether the user is IBM enterprise (skip token message if True)
     """
+    # Don't show token messages for IBM enterprise users
+    if is_ibm:
+        return
+
     try:
         task_info = await get_transcription_task(task_uuid)
         if task_info and task_info.tokens_consumed > 0:
@@ -636,7 +642,14 @@ async def _handle_translation_complete(
 
     # Show token message at the end for transcribe_translate pipeline
     if task_info.pipeline_type == "transcribe_translate":
-        await _show_tokens_message(client, task_info.task_uuid, channel_id, thread_ts)
+        is_ibm = (
+            is_ibm_enterprise(auth.slack_user.enterprise_id)
+            if auth.slack_user
+            else False
+        )
+        await _show_tokens_message(
+            client, task_info.task_uuid, channel_id, thread_ts, is_ibm=is_ibm
+        )
 
 
 async def _handle_transcribe_embed_pipeline(
@@ -646,6 +659,7 @@ async def _handle_transcribe_embed_pipeline(
     task_info: TranscriptionTaskInfo,
     channel_id: str,
     thread_ts: str | None,
+    auth: Any = None,
 ) -> None:
     """Handle transcription + translation + embed pipeline result."""
     if not result_file_id:
@@ -680,8 +694,13 @@ async def _handle_transcribe_embed_pipeline(
 
             # Show token message at the end for transcribe_translate_embed pipeline
             if task_info.pipeline_type == "transcribe_translate_embed":
+                is_ibm = (
+                    is_ibm_enterprise(auth.slack_user.enterprise_id)
+                    if auth and auth.slack_user
+                    else False
+                )
                 await _show_tokens_message(
-                    client, task_info.task_uuid, channel_id, thread_ts
+                    client, task_info.task_uuid, channel_id, thread_ts, is_ibm=is_ibm
                 )
 
     except Exception as e:
@@ -1252,6 +1271,7 @@ async def ray_events(
                         task_info,
                         str(channel_id),
                         thread_ts,
+                        auth,
                     )
                     # Spend credits for embedding
                     embedding_tokens = await _spend_embedding_credits(task_info, auth)
