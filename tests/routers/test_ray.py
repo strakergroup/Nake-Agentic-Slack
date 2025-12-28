@@ -459,7 +459,7 @@ class TestRayEventsEndpoint:
             "error": None,
         }
         event = RayEvent(
-            event="transcription:slack:media:results",
+            event="transcription:slack:media:transcription:results",
             data={"client_id": mock_slack_user.ray_client_id, **transcription_data},
         )
 
@@ -479,16 +479,20 @@ class TestRayEventsEndpoint:
             bot_token="xoxb-test-token",
             pipeline_type="transcribe",
             status="completed",
+            stage=None,
             error_message=None,
             result_file_id=transcription_data["file_id"],
             result_file_name=transcription_data["file_name"],
             detected_language=None,
+            translated_file_ids=None,
             extra_data=None,
             started_at=None,
             finished_at=None,
             duration_ms=None,
             source_text_length=None,
             num_target_languages=None,
+            tokens_consumed=0,
+            credit_transaction_uuid=None,
             model=None,
             service=None,
             app_source=None,
@@ -538,7 +542,7 @@ class TestRayEventsEndpoint:
             "error": "No sound",
         }
         event = RayEvent(
-            event="transcription:slack:media:results",
+            event="transcription:slack:media:transcription:results",
             data={"client_id": mock_slack_user.ray_client_id, **transcription_data},
         )
 
@@ -557,16 +561,20 @@ class TestRayEventsEndpoint:
             bot_token="xoxb-test-token",
             pipeline_type="transcribe",
             status="failed",
+            stage=None,
             error_message=transcription_data["error"],
             result_file_id=None,
             result_file_name=None,
             detected_language=None,
+            translated_file_ids=None,
             extra_data=None,
             started_at=None,
             finished_at=None,
             duration_ms=None,
             source_text_length=None,
             num_target_languages=None,
+            tokens_consumed=0,
+            credit_transaction_uuid=None,
             model=None,
             service=None,
             app_source=None,

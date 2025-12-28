@@ -348,7 +348,7 @@ async def _spend_transcription_credits(
         amount = duration_to_tokens(task_info.duration_ms)
 
         if amount > 0:
-            await spend_credits(
+            transaction_uuid = await spend_credits(
                 async_engines["sitemanager"],
                 auth.slack_user.ray_client_id,
                 auth.slack_user.ray_user_group_id,
@@ -359,14 +359,17 @@ async def _spend_transcription_credits(
                 None,  # organization_uuid - may need to get from task_info if available
             )
 
-            # Mark transcription as charged in the database
+            # Mark transcription as charged and store transaction UUID
             charged_stages.append("transcription")
             extra_data["_charged_stages"] = charged_stages
             async with AsyncSession(async_engines["sitecommons"]) as session:
                 await session.execute(
                     update(TranscriptionTask)
                     .where(TranscriptionTask.task_uuid == task_info.task_uuid)
-                    .values(extra_data=extra_data)
+                    .values(
+                        extra_data=extra_data,
+                        credit_transaction_uuid=transaction_uuid,
+                    )
                 )
                 await session.commit()
 

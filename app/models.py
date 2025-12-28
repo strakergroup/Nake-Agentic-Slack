@@ -237,6 +237,7 @@ class TranscriptionTaskInfo(BaseModel):
     source_text_length: int | None
     num_target_languages: int | None
     tokens_consumed: int
+    credit_transaction_uuid: str | None
     model: str | None
     service: str | None
     app_source: str | None
@@ -356,6 +357,11 @@ class TranscriptionTask(Base):
         nullable=False,
         server_default="0",
         comment="Total AI tokens consumed across all pipeline stages",
+    )
+    credit_transaction_uuid: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Credit transaction UUID for billing",
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp(), index=True
