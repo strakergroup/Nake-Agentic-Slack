@@ -17,7 +17,7 @@ from straker_utils.credits import calculate_cost, spend_credits
 
 from app.api.models import MtTranslationExtraData
 from app.api.verify import get_evaluation_job, get_job_pricing
-from app.auth.connector import get_ray_client, get_ray_connection
+from app.auth.connector import duration_to_tokens, get_ray_client, get_ray_connection
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.database import async_engines
 from app.models import TranscriptionTask, TranscriptionTaskInfo
@@ -148,7 +148,7 @@ async def _post_srt_preview(
     thread_ts: str | None,
 ) -> None:
     """Post a preview of SRT file content before uploading the file.
-    
+
     Args:
         client: Slack web client
         file_path: Path to the SRT file
@@ -164,30 +164,32 @@ async def _post_srt_preview(
         # Slack's limit for mrkdwn text in section blocks is 3000 characters
         # Reserve space for code block wrapper (```\n...\n```) and filename header
         MAX_PREVIEW_LENGTH = 2800
-        
+
         if not os.path.exists(file_path):
             return
-        
+
         # Skip preview for very large files
         file_size = os.path.getsize(file_path)
         if file_size > MAX_FILE_SIZE:
-            logger.debug(f"Skipping preview for large file: {filename} ({file_size} bytes)")
+            logger.debug(
+                f"Skipping preview for large file: {filename} ({file_size} bytes)"
+            )
             return
-        
+
         # Read first N lines with safety limits
-        preview_lines = []
+        preview_lines: list[str] = []
         total_length = 0
-        
+
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             for i, line in enumerate(f):
                 if i >= MAX_LINES:
                     break
-                
+
                 # Truncate individual lines that are too long
                 line_content = line.rstrip()
                 if len(line_content) > MAX_LINE_LENGTH:
                     line_content = line_content[:MAX_LINE_LENGTH] + "..."
-                
+
                 # Check if adding this line would exceed total limit
                 line_with_newline = line_content + "\n"
                 if total_length + len(line_with_newline) > MAX_PREVIEW_LENGTH:
@@ -197,39 +199,45 @@ async def _post_srt_preview(
                     # If first line is too long, truncate it
                     remaining = MAX_PREVIEW_LENGTH - total_length
                     if remaining > 50:  # Only if we have reasonable space
-                        line_content = line_content[:remaining-10] + "..."
+                        line_content = line_content[: remaining - 10] + "..."
                         preview_lines.append(line_content)
                     break
-                
+
                 preview_lines.append(line_content)
                 total_length += len(line_with_newline)
-        
+
         if not preview_lines:
             return
-        
+
         # Build preview content
         preview_content = "\n".join(preview_lines)
-        
+
         # Add ellipsis if we stopped early (file has more content)
         # Check if we read fewer lines than max, or if we hit length limit
         if len(preview_lines) < MAX_LINES or total_length >= MAX_PREVIEW_LENGTH:
             preview_content += "\n..."
-        
+
         # Final safety check - ensure total content doesn't exceed limit
         code_block_wrapper = "```\n\n```"  # Account for wrapper
         header_text = _("Preview of *{filename}*:").format(filename=filename)
-        total_message_length = len(header_text) + len(code_block_wrapper) + len(preview_content)
-        
+        total_message_length = (
+            len(header_text) + len(code_block_wrapper) + len(preview_content)
+        )
+
         if total_message_length > MAX_PREVIEW_LENGTH:
             # Truncate preview content to fit
-            available_space = MAX_PREVIEW_LENGTH - len(header_text) - len(code_block_wrapper) - 20
+            available_space = (
+                MAX_PREVIEW_LENGTH - len(header_text) - len(code_block_wrapper) - 20
+            )
             if available_space > 0:
-                preview_content = preview_content[:available_space] + "\n... (truncated)"
+                preview_content = (
+                    preview_content[:available_space] + "\n... (truncated)"
+                )
             else:
                 # If even header is too long, skip preview
                 logger.warning(f"Preview content too large for {filename}, skipping")
                 return
-        
+
         # Post preview as code block
         await client.chat_postMessage(
             channel=channel_id,
@@ -333,12 +341,11 @@ async def _spend_transcription_credits(
         if not auth.slack_user or not auth.slack_user.ray_user_group_id:
             return 0
 
-        # Charge for transcription based on duration (in seconds)
+        # Charge for transcription based on duration
         if not task_info.duration_ms:
             return 0
 
-        duration_seconds = int(task_info.duration_ms / 1000)
-        amount = calculate_cost(duration_seconds)
+        amount = duration_to_tokens(task_info.duration_ms)
 
         if amount > 0:
             await spend_credits(
@@ -562,7 +569,7 @@ async def _handle_mt_success_background(
                     channel_id=success_data.channel_id,
                     thread_ts=None,  # MT success doesn't use threads
                 )
-            
+
             # Upload file using memory-efficient method
             await upload_file_to_slack_memory_efficient(
                 client=client,
@@ -826,7 +833,9 @@ async def _handle_transcribe_embed_pipeline(
                 # Post comment about downloading the media file after the file is uploaded
                 await client.chat_postMessage(
                     channel=channel_id,
-                    text=_("Please download the media file(s) to view the embedded subtitles."),
+                    text=_(
+                        "Please download the media file(s) to view the embedded subtitles."
+                    ),
                     thread_ts=thread_ts,
                 )
 
