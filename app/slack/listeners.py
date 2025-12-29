@@ -2603,23 +2603,40 @@ async def handle_video_transcribe_only(
             or context["user_id"]
         )
 
+        files = action_data["files"]
+        thread_ts = action_data.get("thread_ts")
+
         # Check for duplicate transcription-only submissions
         from ..ray.submissions import (
             check_and_record_transcription_only_submission_async,
         )
 
-        (
-            is_dup,
-            submission_record,
-        ) = await check_and_record_transcription_only_submission_async(
-            slack_file_id=action_data["file_id"],
-            file_name=action_data["file_name"],
-            user_id=context["user_id"],
-            team_id=context["team_id"],
-            channel_id=channel_id,
-        )
+        # Process each file
+        files_to_process = []
+        duplicate_files = []
+        for file_data in files:
+            (
+                is_dup,
+                submission_record,
+            ) = await check_and_record_transcription_only_submission_async(
+                slack_file_id=file_data["file_id"],
+                file_name=file_data["file_name"],
+                user_id=context["user_id"],
+                team_id=context["team_id"],
+                channel_id=channel_id,
+            )
 
-        if is_dup:
+            if is_dup:
+                duplicate_files.append(file_data["file_name"])
+            else:
+                files_to_process.append(
+                    {
+                        **file_data,
+                        "submission_id": submission_record.id,
+                    }
+                )
+
+        if not files_to_process:
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=_(
@@ -2628,77 +2645,73 @@ async def handle_video_transcribe_only(
             )
             return
 
-        # Download file from Slack to get URL
-        file_info = await client.files_info(file=action_data["file_id"])
-        file_data: dict[str, Any] = file_info.get("file", {})
-        download_url = file_data.get("url_private_download") or file_data.get(
-            "url_private"
-        )
-
-        if not download_url:
-            await client.chat_postMessage(
-                channel=context["user_id"],
-                text=_(
-                    "Could not get download URL for the file. Please try uploading again."
-                ),
-            )
-            return
-
-        # Create ASR task for transcriber
+        # Create ASR task for each file
         from ..models import ASRTask, TranscriptionTaskData
         from ..transcriber_tasks.tasks import create_asr_task
 
-        task_data = TranscriptionTaskData(
-            client_id=context["ray"].client.id,
-            file_name=action_data["file_name"],
-            download_url=download_url,
-            app_token=client.token or "",
-            out_stream_name=f"{domains.stream_proxy}/events/transcription:slack:media:results",
-            service="azure",
-            model="whisper-1",
-            embed_subtitles=False,
-            sandbox=False,
-        )
+        for file_info in files_to_process:
+            # Download file from Slack to get URL
+            slack_file_info = await client.files_info(file=file_info["file_id"])
+            slack_file_data: dict[str, Any] = slack_file_info.get("file", {})
+            download_url = slack_file_data.get(
+                "url_private_download"
+            ) or slack_file_data.get("url_private")
 
-        # Build extra_data with submission_id
-        extra_data_dict = {
-            "slack_user_id": context["user_id"],
-            "slack_team_id": context["team_id"],
-            "slack_enterprise_id": context.enterprise_id,
-            "slack_channel_id": channel_id,
-            "slack_thread_ts": action_data.get("thread_ts"),
-        }
+            if not download_url:
+                continue
 
-        # Add submission_id - assert it exists
-        assert submission_record is not None, "submission_record should not be None"
-        assert hasattr(submission_record, "id"), (
-            f"submission_record missing id attribute: {submission_record}"
-        )
-        assert submission_record.id is not None, (
-            f"submission_record.id is None: {submission_record}"
-        )
-        extra_data_dict["submission_id"] = submission_record.id
+            task_data = TranscriptionTaskData(
+                client_id=context["ray"].client.id,
+                file_name=file_info["file_name"],
+                download_url=download_url,
+                app_token=client.token or "",
+                out_stream_name=f"{domains.stream_proxy}/events/transcription:slack:media:results",
+                service="azure",
+                model="whisper-1",
+                embed_subtitles=False,
+                sandbox=False,
+            )
 
-        asr_task = ASRTask(
-            member_uuid=context["ray"].client.id,
-            event_name="transcription:media:asr",
-            app_source="slack",
-            service="azure",
-            model="whisper-1",
-            extra_data=extra_data_dict,
-            task_data=task_data,
-        )
+            # Build extra_data with submission_id
+            extra_data_dict = {
+                "slack_user_id": context["user_id"],
+                "slack_team_id": context["team_id"],
+                "slack_enterprise_id": context.enterprise_id,
+                "slack_channel_id": channel_id,
+                "slack_thread_ts": thread_ts,
+                "submission_id": file_info["submission_id"],
+            }
 
-        await create_asr_task(asr_task)
+            asr_task = ASRTask(
+                member_uuid=context["ray"].client.id,
+                event_name="transcription:media:asr",
+                app_source="slack",
+                service="azure",
+                model="whisper-1",
+                extra_data=extra_data_dict,
+                task_data=task_data,
+            )
+
+            await create_asr_task(asr_task)
 
         # Notify user
+        file_count = len(files_to_process)
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
-                ":stopwatch: Please wait a moment while we transcribe your file(s)."
-            ),
-            thread_ts=action_data.get("thread_ts"),
+                ":stopwatch: Please wait a moment while we transcribe your {count} file(s)."
+            ).format(count=file_count),
+            thread_ts=thread_ts,
         )
+
+        # Notify about duplicate files if some were skipped
+        if duplicate_files:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    "Skipped duplicate files already being processed: {files}"
+                ).format(files=", ".join(duplicate_files)),
+            )
 
     except Exception as e:
         notify_exception(e)
@@ -2726,9 +2739,7 @@ async def handle_video_transcribe_translate(
         action_data = json.loads(action.get("value", "{}"))
         view = video_transcribe_translate_modal(
             channel_id=action_data.get("channel_id", context.get("channel_id", "")),
-            file_id=action_data["file_id"],
-            file_name=action_data["file_name"],
-            duration_ms=action_data.get("duration_ms", 0),
+            files=action_data["files"],
             thread_ts=action_data.get("thread_ts"),
         )
         await client.views_open(trigger_id=body["trigger_id"], view=view)
@@ -2752,9 +2763,7 @@ async def handle_video_embed_subtitles(
         action_data = json.loads(action.get("value", "{}"))
         view = video_embed_subtitles_modal(
             channel_id=action_data.get("channel_id", context.get("channel_id", "")),
-            file_id=action_data["file_id"],
-            file_name=action_data["file_name"],
-            duration_ms=action_data.get("duration_ms", 0),
+            files=action_data["files"],
             thread_ts=action_data.get("thread_ts"),
         )
         await client.views_open(trigger_id=body["trigger_id"], view=view)
@@ -2806,131 +2815,129 @@ async def handle_video_transcribe_translate_submit(
             or context["user_id"]
         )
 
-        # Check for duplicate submissions per target language
-        from ..ray.submissions import check_and_record_transcription_submission_async
+        files = metadata["files"]
+        thread_ts = metadata.get("thread_ts")
 
-        duplicate_languages = []
-        valid_languages = []
-        submission_ids = []  # Store submission IDs for completion updates
-        for lang_code, lang_name in zip(
-            target_language_codes, target_language_names, strict=True
-        ):
-            (
-                is_dup,
-                submission_record,
-            ) = await check_and_record_transcription_submission_async(
-                slack_file_id=metadata["file_id"],
-                file_name=metadata["file_name"],
-                user_id=context["user_id"],
-                team_id=context["team_id"],
-                channel_id=channel_id,
-                target_language=lang_code,
-            )
-            if is_dup:
-                duplicate_languages.append(lang_name)
-            else:
-                valid_languages.append({"code": lang_code, "name": lang_name})
-                submission_ids.append(submission_record.id)
-
-        # If all languages are duplicates, notify and return
-        if not valid_languages:
-            await client.chat_postMessage(
-                channel=context["user_id"],
-                text=_(
-                    f"Please allow the system to complete the ongoing transcription & translation(s) for *({', '.join(duplicate_languages)})* to prevent duplicate submissions."
-                ),
-            )
-            return
-
-        # Download file from Slack to get URL
-        file_info = await client.files_info(file=metadata["file_id"])
-        file_data: dict[str, Any] = file_info.get("file", {})
-        download_url = file_data.get("url_private_download") or file_data.get(
-            "url_private"
-        )
-
-        if not download_url:
-            await client.chat_postMessage(
-                channel=context["user_id"],
-                text=_(
-                    "Could not get download URL for the file. Please try uploading again."
-                ),
-            )
-            return
-
-        # Calculate tokens from duration
-        from ..auth.connector import duration_to_tokens
-
-        duration_ms = metadata.get("duration_ms", 0)
-        tokens = duration_to_tokens(duration_ms)
-
+        # Check for duplicate submissions per file and target language
         # Create ASR task for transcriber with translation info in extra_data
         from ..models import ASRTask, TranscriptionTaskData
+        from ..ray.submissions import check_and_record_transcription_submission_async
         from ..transcriber_tasks.tasks import create_asr_task
 
-        # Only include valid (non-duplicate) languages
-        valid_language_codes = [lang["code"] for lang in valid_languages]
-        valid_language_names = [lang["name"] for lang in valid_languages]
+        files_processed = 0
+        all_duplicate_languages = []
 
-        task_data = TranscriptionTaskData(
-            client_id=context["ray"].client.id,
-            file_name=metadata["file_name"],
-            download_url=download_url,
-            app_token=client.token or "",
-            out_stream_name=f"{domains.stream_proxy}/events/transcription:slack:media:results",
-            service="azure",
-            model="whisper-1",
-            embed_subtitles=False,
-            sandbox=False,
-        )
+        for file_info in files:
+            duplicate_languages = []
+            valid_languages = []
+            submission_ids = []  # Store submission IDs for completion updates
+            for lang_code, lang_name in zip(
+                target_language_codes, target_language_names, strict=True
+            ):
+                (
+                    is_dup,
+                    submission_record,
+                ) = await check_and_record_transcription_submission_async(
+                    slack_file_id=file_info["file_id"],
+                    file_name=file_info["file_name"],
+                    user_id=context["user_id"],
+                    team_id=context["team_id"],
+                    channel_id=channel_id,
+                    target_language=lang_code,
+                )
+                if is_dup:
+                    duplicate_languages.append(lang_name)
+                else:
+                    valid_languages.append({"code": lang_code, "name": lang_name})
+                    submission_ids.append(submission_record.id)
 
-        # Build extra_data with submission_ids
-        extra_data_dict = {
-            "slack_user_id": context["user_id"],
-            "slack_team_id": context["team_id"],
-            "slack_enterprise_id": context.enterprise_id,
-            "slack_channel_id": channel_id,
-            "slack_thread_ts": metadata.get("thread_ts"),
-            # Include translation info for post-transcription processing
-            "pipeline_type": "transcribe_translate",
-            "target_languages": valid_language_codes,
-            "target_language_names": valid_language_names,
-        }
+            # If all languages are duplicates for this file, skip it
+            if not valid_languages:
+                all_duplicate_languages.extend(duplicate_languages)
+                continue
 
-        # Assert submission_ids are present
-        assert submission_ids is not None, "submission_ids should not be None"
-        assert len(submission_ids) > 0, (
-            f"submission_ids should not be empty: {submission_ids}"
-        )
-        extra_data_dict["submission_ids"] = submission_ids
+            # Download file from Slack to get URL
+            slack_file_info = await client.files_info(file=file_info["file_id"])
+            slack_file_data: dict[str, Any] = slack_file_info.get("file", {})
+            download_url = slack_file_data.get(
+                "url_private_download"
+            ) or slack_file_data.get("url_private")
 
-        asr_task = ASRTask(
-            member_uuid=context["ray"].client.id,
-            event_name="transcription:media:asr",
-            app_source="slack",
-            service="azure",
-            model="whisper-1",
-            extra_data=extra_data_dict,
-            task_data=task_data,
-        )
+            if not download_url:
+                continue
 
-        await create_asr_task(asr_task)
+            # Only include valid (non-duplicate) languages
+            valid_language_codes = [lang["code"] for lang in valid_languages]
+            valid_language_names_list = [lang["name"] for lang in valid_languages]
+
+            task_data = TranscriptionTaskData(
+                client_id=context["ray"].client.id,
+                file_name=file_info["file_name"],
+                download_url=download_url,
+                app_token=client.token or "",
+                out_stream_name=f"{domains.stream_proxy}/events/transcription:slack:media:results",
+                service="azure",
+                model="whisper-1",
+                embed_subtitles=False,
+                sandbox=False,
+            )
+
+            # Build extra_data with submission_ids
+            extra_data_dict = {
+                "slack_user_id": context["user_id"],
+                "slack_team_id": context["team_id"],
+                "slack_enterprise_id": context.enterprise_id,
+                "slack_channel_id": channel_id,
+                "slack_thread_ts": thread_ts,
+                # Include translation info for post-transcription processing
+                "pipeline_type": "transcribe_translate",
+                "target_languages": valid_language_codes,
+                "target_language_names": valid_language_names_list,
+                "submission_ids": submission_ids,
+            }
+
+            asr_task = ASRTask(
+                member_uuid=context["ray"].client.id,
+                event_name="transcription:media:asr",
+                app_source="slack",
+                service="azure",
+                model="whisper-1",
+                extra_data=extra_data_dict,
+                task_data=task_data,
+            )
+
+            await create_asr_task(asr_task)
+            files_processed += 1
+
+            # Track duplicate languages for this file
+            if duplicate_languages:
+                all_duplicate_languages.extend(duplicate_languages)
+
+        if files_processed == 0:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    "Please allow the system to complete the ongoing transcription & translation(s) to prevent duplicate submissions."
+                ),
+            )
+            return
 
         # Notify user
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
-                ":stopwatch: Please wait a moment while we transcribe & AI translate your file(s)."
-            ),
-            thread_ts=metadata.get("thread_ts"),
+                ":stopwatch: Please wait a moment while we transcribe & AI translate your {count} file(s)."
+            ).format(count=files_processed),
+            thread_ts=thread_ts,
         )
 
         # Notify about duplicate languages if some were skipped
-        if duplicate_languages:
+        if all_duplicate_languages:
+            unique_duplicates = list(set(all_duplicate_languages))
             await client.chat_postMessage(
                 channel=context["user_id"],
-                text=_(
-                    f"Please allow the system to complete the ongoing translation(s) for *({', '.join(duplicate_languages)})* to prevent duplicate submissions."
+                text=_("Some translations were skipped as duplicates: {langs}").format(
+                    langs=", ".join(unique_duplicates)
                 ),
             )
 
@@ -2988,131 +2995,133 @@ async def handle_video_embed_subtitles_submit(
             or context["user_id"]
         )
 
-        # Check for duplicate submissions per target language
-        from ..ray.submissions import check_and_record_transcription_submission_async
+        files = metadata["files"]
+        thread_ts = metadata.get("thread_ts")
 
-        duplicate_languages = []
-        valid_languages = []
-        submission_ids = []  # Store submission IDs for completion updates
-        for lang_code, lang_name in zip(
-            target_language_codes, target_language_names, strict=True
-        ):
-            (
-                is_dup,
-                submission_record,
-            ) = await check_and_record_transcription_submission_async(
-                slack_file_id=metadata["file_id"],
-                file_name=metadata["file_name"],
-                user_id=context["user_id"],
-                team_id=context["team_id"],
-                channel_id=channel_id,
-                target_language=lang_code,
-            )
-            if is_dup:
-                duplicate_languages.append(lang_name)
-            else:
-                valid_languages.append({"code": lang_code, "name": lang_name})
-                submission_ids.append(submission_record.id)
-
-        # If all languages are duplicates, notify and return
-        if not valid_languages:
-            await client.chat_postMessage(
-                channel=context["user_id"],
-                text=_(
-                    f"Please allow the system to complete the ongoing transcription & embedding(s) for *({', '.join(duplicate_languages)})* to prevent duplicate submissions."
-                ),
-            )
-            return
-
-        # Download file from Slack to get URL
-        file_info = await client.files_info(file=metadata["file_id"])
-        file_data: dict[str, Any] = file_info.get("file", {})
-        download_url = file_data.get("url_private_download") or file_data.get(
-            "url_private"
-        )
-
-        if not download_url:
-            await client.chat_postMessage(
-                channel=context["user_id"],
-                text=_(
-                    "Could not get download URL for the file. Please try uploading again."
-                ),
-            )
-            return
-
+        # Check for duplicate submissions per file and target language
         # Create ASR task for transcriber with translation and embedding info in extra_data
         from ..models import ASRTask, TranscriptionTaskData
+        from ..ray.submissions import check_and_record_transcription_submission_async
         from ..transcriber_tasks.tasks import create_asr_task
 
-        # Only include valid (non-duplicate) languages
-        valid_language_codes = [lang["code"] for lang in valid_languages]
-        valid_language_names = [lang["name"] for lang in valid_languages]
+        files_processed = 0
+        all_duplicate_languages = []
 
-        task_data = TranscriptionTaskData(
-            client_id=context["ray"].client.id,
-            file_name=metadata["file_name"],
-            download_url=download_url,
-            app_token=client.token or "",
-            out_stream_name=f"{domains.stream_proxy}/events/transcription:slack:media:results",
-            service="azure",
-            model="whisper-1",
-            embed_subtitles=True,
-            sandbox=False,
-        )
+        for file_info in files:
+            duplicate_languages = []
+            valid_languages = []
+            submission_ids = []  # Store submission IDs for completion updates
+            for lang_code, lang_name in zip(
+                target_language_codes, target_language_names, strict=True
+            ):
+                (
+                    is_dup,
+                    submission_record,
+                ) = await check_and_record_transcription_submission_async(
+                    slack_file_id=file_info["file_id"],
+                    file_name=file_info["file_name"],
+                    user_id=context["user_id"],
+                    team_id=context["team_id"],
+                    channel_id=channel_id,
+                    target_language=lang_code,
+                )
+                if is_dup:
+                    duplicate_languages.append(lang_name)
+                else:
+                    valid_languages.append({"code": lang_code, "name": lang_name})
+                    submission_ids.append(submission_record.id)
 
-        # Build extra_data with submission_ids and embedding info
-        extra_data_dict = {
-            "slack_user_id": context["user_id"],
-            "slack_team_id": context["team_id"],
-            "slack_enterprise_id": context.enterprise_id,
-            "slack_channel_id": channel_id,
-            "slack_thread_ts": metadata.get("thread_ts"),
-            # Include translation and embedding info for post-transcription processing
-            "pipeline_type": "transcribe_translate_embed",
-            "target_languages": valid_language_codes,
-            "target_language_names": valid_language_names,
-            # Store original video info for embedding - transcription-service will download directly from Slack
-            "original_video_file_id": metadata[
-                "file_id"
-            ],  # Slack file ID for reference
-            "original_video_download_url": download_url,  # Slack download URL for direct download
-            "original_video_file_name": metadata["file_name"],
-        }
+            # If all languages are duplicates for this file, skip it
+            if not valid_languages:
+                all_duplicate_languages.extend(duplicate_languages)
+                continue
 
-        # Assert submission_ids are present
-        assert submission_ids is not None, "submission_ids should not be None"
-        assert len(submission_ids) > 0, (
-            f"submission_ids should not be empty: {submission_ids}"
-        )
-        extra_data_dict["submission_ids"] = submission_ids
+            # Download file from Slack to get URL
+            slack_file_info = await client.files_info(file=file_info["file_id"])
+            slack_file_data: dict[str, Any] = slack_file_info.get("file", {})
+            download_url = slack_file_data.get(
+                "url_private_download"
+            ) or slack_file_data.get("url_private")
 
-        asr_task = ASRTask(
-            member_uuid=context["ray"].client.id,
-            event_name="transcription:media:asr",
-            app_source="slack",
-            service="azure",
-            model="whisper-1",
-            extra_data=extra_data_dict,
-            task_data=task_data,
-        )
+            if not download_url:
+                continue
 
-        await create_asr_task(asr_task)
+            # Only include valid (non-duplicate) languages
+            valid_language_codes = [lang["code"] for lang in valid_languages]
+            valid_language_names_list = [lang["name"] for lang in valid_languages]
+
+            task_data = TranscriptionTaskData(
+                client_id=context["ray"].client.id,
+                file_name=file_info["file_name"],
+                download_url=download_url,
+                app_token=client.token or "",
+                out_stream_name=f"{domains.stream_proxy}/events/transcription:slack:media:results",
+                service="azure",
+                model="whisper-1",
+                embed_subtitles=True,
+                sandbox=False,
+            )
+
+            # Build extra_data with submission_ids and embedding info
+            extra_data_dict = {
+                "slack_user_id": context["user_id"],
+                "slack_team_id": context["team_id"],
+                "slack_enterprise_id": context.enterprise_id,
+                "slack_channel_id": channel_id,
+                "slack_thread_ts": thread_ts,
+                # Include translation and embedding info for post-transcription processing
+                "pipeline_type": "transcribe_translate_embed",
+                "target_languages": valid_language_codes,
+                "target_language_names": valid_language_names_list,
+                # Store original video info for embedding
+                "original_video_file_id": file_info["file_id"],
+                "original_video_download_url": download_url,
+                "original_video_file_name": file_info["file_name"],
+                "submission_ids": submission_ids,
+            }
+
+            asr_task = ASRTask(
+                member_uuid=context["ray"].client.id,
+                event_name="transcription:media:asr",
+                app_source="slack",
+                service="azure",
+                model="whisper-1",
+                extra_data=extra_data_dict,
+                task_data=task_data,
+            )
+
+            await create_asr_task(asr_task)
+            files_processed += 1
+
+            # Track duplicate languages for this file
+            if duplicate_languages:
+                all_duplicate_languages.extend(duplicate_languages)
+
+        if files_processed == 0:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    "Please allow the system to complete the ongoing transcription & embedding(s) to prevent duplicate submissions."
+                ),
+            )
+            return
 
         # Notify user
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
-                ":stopwatch: Please wait a moment while we transcribe, AI-translate, and embed subtitles into your file(s)."
-            ),
-            thread_ts=metadata.get("thread_ts"),
+                ":stopwatch: Please wait a moment while we transcribe, AI-translate, and embed subtitles into your {count} file(s)."
+            ).format(count=files_processed),
+            thread_ts=thread_ts,
         )
 
         # Notify about duplicate languages if some were skipped
-        if duplicate_languages:
+        if all_duplicate_languages:
+            unique_duplicates = list(set(all_duplicate_languages))
             await client.chat_postMessage(
                 channel=context["user_id"],
-                text=_(
-                    f"Please allow the system to complete the ongoing embedding(s) for *({', '.join(duplicate_languages)})* to prevent duplicate submissions."
+                text=_("Some embeddings were skipped as duplicates: {langs}").format(
+                    langs=", ".join(unique_duplicates)
                 ),
             )
 

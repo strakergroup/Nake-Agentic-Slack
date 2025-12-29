@@ -3420,36 +3420,47 @@ class TranscriptionMessage(TextMessage):
 
 
 class VideoOptionsMessage(SlackMessage):
-    """Message shown when a video is detected, offering processing options.
+    """Message shown when video(s) are detected, offering processing options.
 
     Shows 3 action buttons per the Figma design:
     1. Transcribe Audio - Transcription only in source language
     2. Transcribe & AI Translate - Transcription with translation
     3. Embed Subtitles - Full package with embedded subtitles
+
+    Supports multiple files - all files are processed together.
     """
 
     def __init__(
         self,
         channel_id: str,
-        file_id: str,
-        file_name: str,
-        duration_ms: int,
+        files: list[dict],  # [{file_id, file_name, duration_ms}, ...]
         thread_ts: str | None = None,
         is_ibm_enterprise: bool = False,
         tokens: int | None = None,
     ) -> None:
+        # Store files info in action value
         action_value = json.dumps(
             {
                 "channel_id": channel_id,
-                "file_id": file_id,
-                "file_name": file_name,
-                "duration_ms": duration_ms,
+                "files": files,
                 "thread_ts": thread_ts,
             }
         )
 
         # Build blocks using SDK where possible
         blocks: list[Block] = []
+
+        # Show file list if multiple files
+        if len(files) > 1:
+            file_list = "\n".join([f"• {f['file_name']}" for f in files])
+            files_section = SectionBlock(
+                text=MarkdownTextObject(
+                    text=_("*{count} media files detected:*\n{file_list}").format(
+                        count=len(files), file_list=file_list
+                    )
+                )
+            )
+            blocks.append(files_section)
 
         # Show token balance for non-IBM users
         if not is_ibm_enterprise and tokens is not None:
@@ -3513,8 +3524,18 @@ class VideoOptionsMessage(SlackMessage):
         )
         blocks.append(embed_section)
 
+        # Build text summary
+        if len(files) == 1:
+            text = _("Video detected: {file_name}. Select a processing option.").format(
+                file_name=files[0]["file_name"]
+            )
+        else:
+            text = _("{count} videos detected. Select a processing option.").format(
+                count=len(files)
+            )
+
         super().__init__(
-            _("Video detected: {file_name}. Select a processing option."),
+            text,
             [block.to_dict() for block in blocks],
         )
 

@@ -162,64 +162,59 @@ async def respond_to_message(
             asyncio.create_task(
                 files_list_simple(client, channel_id=context["channel_id"], count=120)
             )
-            # Handle video file
+            # Handle video files - collect all first, then show one message
             files = []
             unsupported_files = []
+            video_files = []
             for file in message["files"]:
                 if is_video_file(file):
                     file_info = await client.files_info(file=file["id"])
-                    download_url = file_info["file"]["url_private_download"]
-                    # duration_ms = file_info["file"].get("duration_ms", 0)
-                    duration_ms = 0
+                    duration_ms = file_info["file"].get("duration_ms", 0)
+                    # Default to 1 minute if duration couldn't be detected
                     if not duration_ms:
-                        duration_ms = await get_media_duration(
-                            download_url, client.token or ""
-                        )
-                    file_name = file_info["file"]["name"]
-
-                    # Show video options message instead of auto-transcribing
-                    # Users can choose: Transcription, Translation, or Full Package
-                    if await require_ray_client(context, prompt_login=False):
-                        # Default to 1 minute if duration couldn't be detected
-                        if not duration_ms:
-                            duration_ms = 60000
-
-                        # Get IBM status and token balance
-                        is_ibm = is_ibm_enterprise(context.enterprise_id)
-                        tokens = None
-                        if not is_ibm:
-                            if context["ray"].client is not None:
-                                user_tokens = await get_client_tokens(
-                                    context["ray"].client.id_token
-                                )
-                                tokens = user_tokens.ai_token
-                            elif context["ray"].super_group is not None:
-                                group_tokens = await get_group_tokens(
-                                    context["ray"]
-                                    .super_group[0]
-                                    .verify_organization_uuid
-                                )
-                                tokens = group_tokens.ai_token
-
-                        video_msg = VideoOptionsMessage(
-                            channel_id=context["channel_id"],
-                            file_id=file["id"],
-                            file_name=file_name,
-                            duration_ms=duration_ms,
-                            thread_ts=thread_ts,
-                            is_ibm_enterprise=is_ibm,
-                            tokens=tokens,
-                        )
-                        await context.say(
-                            text=video_msg.text,
-                            blocks=video_msg.blocks,
-                            thread_ts=thread_ts,
-                        )
+                        duration_ms = 60000
+                    video_files.append(
+                        {
+                            "file_id": file["id"],
+                            "file_name": file_info["file"]["name"],
+                            "duration_ms": duration_ms,
+                        }
+                    )
                 else:
                     if not validate_file_type(file["name"]):
                         unsupported_files.append(file)
                     else:
                         files.append(file)
+
+            # Show video options message for all video files at once
+            if video_files and await require_ray_client(context, prompt_login=False):
+                # Get IBM status and token balance
+                is_ibm = is_ibm_enterprise(context.enterprise_id)
+                tokens = None
+                if not is_ibm:
+                    if context["ray"].client is not None:
+                        user_tokens = await get_client_tokens(
+                            context["ray"].client.id_token
+                        )
+                        tokens = user_tokens.ai_token
+                    elif context["ray"].super_group is not None:
+                        group_tokens = await get_group_tokens(
+                            context["ray"].super_group[0].verify_organization_uuid
+                        )
+                        tokens = group_tokens.ai_token
+
+                video_msg = VideoOptionsMessage(
+                    channel_id=context["channel_id"],
+                    files=video_files,
+                    thread_ts=thread_ts,
+                    is_ibm_enterprise=is_ibm,
+                    tokens=tokens,
+                )
+                await context.say(
+                    text=video_msg.text,
+                    blocks=video_msg.blocks,
+                    thread_ts=thread_ts,
+                )
             if len(files) > 10:
                 await context.say(
                     text=_(

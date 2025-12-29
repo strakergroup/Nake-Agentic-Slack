@@ -1146,18 +1146,14 @@ def srt_translate_modal(task_uuid: str, channel_id: str) -> dict[str, Any]:
 
 def video_transcribe_translate_modal(
     channel_id: str,
-    file_id: str,
-    file_name: str,
-    duration_ms: int,
+    files: list[dict],  # [{file_id, file_name, duration_ms}, ...]
     thread_ts: str | None = None,
 ) -> dict[str, Any]:
     """Modal for video transcription with translation - requires language selection.
 
     Args:
         channel_id: The Slack channel ID.
-        file_id: The Slack file ID.
-        file_name: Name of the video file.
-        duration_ms: Duration of the video in milliseconds.
+        files: List of file dicts with file_id, file_name, duration_ms.
         thread_ts: Optional thread timestamp.
 
     Returns:
@@ -1178,29 +1174,25 @@ def video_transcribe_translate_modal(
         )
     )
 
-    # File display section - show selected file (required field)
-    # Truncate file_name to 75 chars (Slack limit for text attributes)
-    file_name_truncated = file_name[:75]
+    # File display section - show selected files (read-only display)
+    # Build options for all files
+    file_options = [
+        Option(
+            text=PlainTextObject(text=f["file_name"][:75], emoji=False),
+            value=f["file_id"],
+        )
+        for f in files
+    ]
     blocks.append(
         InputBlock(
             block_id="selected_file",
-            label=PlainTextObject(text=_("Select your files to translate")),
+            label=PlainTextObject(text=_("Files to translate")),
             element=StaticMultiSelectElement(
                 action_id="file_display",
-                placeholder=PlainTextObject(text=file_name_truncated),
-                options=[
-                    Option(
-                        text=PlainTextObject(text=file_name_truncated, emoji=False),
-                        value=file_id,
-                    )
-                ],
-                initial_options=[
-                    Option(
-                        text=PlainTextObject(text=file_name_truncated, emoji=False),
-                        value=file_id,
-                    )
-                ],
-                max_selected_items=1,
+                placeholder=PlainTextObject(text=_("Selected files")),
+                options=file_options,
+                initial_options=file_options,
+                max_selected_items=len(files),
             ),
             optional=False,
         )
@@ -1237,9 +1229,7 @@ def video_transcribe_translate_modal(
         "private_metadata": json.dumps(
             {
                 "channel_id": channel_id,
-                "file_id": file_id,
-                "file_name": file_name,
-                "duration_ms": duration_ms,
+                "files": files,
                 "thread_ts": thread_ts,
                 "pipeline_type": "transcription_translation",
             }
@@ -1253,18 +1243,14 @@ def video_transcribe_translate_modal(
 
 def video_embed_subtitles_modal(
     channel_id: str,
-    file_id: str,
-    file_name: str,
-    duration_ms: int,
+    files: list[dict],  # [{file_id, file_name, duration_ms}, ...]
     thread_ts: str | None = None,
 ) -> dict[str, Any]:
     """Modal for video transcription with translation and subtitle embedding - requires language selection.
 
     Args:
         channel_id: The Slack channel ID.
-        file_id: The Slack file ID.
-        file_name: Name of the video file.
-        duration_ms: Duration of the video in milliseconds.
+        files: List of file dicts with file_id, file_name, duration_ms.
         thread_ts: Optional thread timestamp.
 
     Returns:
@@ -1278,36 +1264,32 @@ def video_embed_subtitles_modal(
         SectionBlock(
             text=MarkdownTextObject(
                 text=_(
-                    "To transcribe your file, translate it, and embed subtitles, select your "
-                    "file and choose the desired target language(s)."
+                    "To transcribe your file(s), translate, and embed subtitles, select your "
+                    "file(s) and choose the desired target language(s)."
                 )
             )
         )
     )
 
-    # File display section - show selected file (required field)
-    # Truncate file_name to 75 chars (Slack limit for text attributes)
-    file_name_truncated = file_name[:75]
+    # File display section - show selected files (read-only display)
+    # Build options for all files
+    file_options = [
+        Option(
+            text=PlainTextObject(text=f["file_name"][:75], emoji=False),
+            value=f["file_id"],
+        )
+        for f in files
+    ]
     blocks.append(
         InputBlock(
             block_id="selected_file",
-            label=PlainTextObject(text=_("Select your files to process")),
+            label=PlainTextObject(text=_("Files to process")),
             element=StaticMultiSelectElement(
                 action_id="file_display",
-                placeholder=PlainTextObject(text=file_name_truncated),
-                options=[
-                    Option(
-                        text=PlainTextObject(text=file_name_truncated, emoji=False),
-                        value=file_id,
-                    )
-                ],
-                initial_options=[
-                    Option(
-                        text=PlainTextObject(text=file_name_truncated, emoji=False),
-                        value=file_id,
-                    )
-                ],
-                max_selected_items=1,
+                placeholder=PlainTextObject(text=_("Selected files")),
+                options=file_options,
+                initial_options=file_options,
+                max_selected_items=len(files),
             ),
             optional=False,
         )
@@ -1344,9 +1326,7 @@ def video_embed_subtitles_modal(
         "private_metadata": json.dumps(
             {
                 "channel_id": channel_id,
-                "file_id": file_id,
-                "file_name": file_name,
-                "duration_ms": duration_ms,
+                "files": files,
                 "thread_ts": thread_ts,
                 "pipeline_type": "transcription_translation_embed",
             }
