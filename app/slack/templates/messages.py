@@ -3453,11 +3453,10 @@ class VideoOptionsMessage(SlackMessage):
         # Show file list if multiple files
         if len(files) > 1:
             file_list = "\n".join([f"• {f['file_name']}" for f in files])
+            count = len(files)
             files_section = SectionBlock(
                 text=MarkdownTextObject(
-                    text=_("*{count} media files detected:*\n{file_list}").format(
-                        count=len(files), file_list=file_list
-                    )
+                    text=_("*{count} media files detected:*\n{file_list}")
                 )
             )
             blocks.append(files_section)
@@ -3526,13 +3525,11 @@ class VideoOptionsMessage(SlackMessage):
 
         # Build text summary
         if len(files) == 1:
-            text = _("Video detected: {file_name}. Select a processing option.").format(
-                file_name=files[0]["file_name"]
-            )
+            file_name = files[0]["file_name"]
+            text = _("Video detected: {file_name}. Select a processing option.")
         else:
-            text = _("{count} videos detected. Select a processing option.").format(
-                count=len(files)
-            )
+            count = len(files)
+            text = _("{count} videos detected. Select a processing option.")
 
         super().__init__(
             text,

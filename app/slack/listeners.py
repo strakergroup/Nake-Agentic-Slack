@@ -2696,21 +2696,21 @@ async def handle_video_transcribe_only(
 
         # Notify user
         file_count = len(files_to_process)
+        count = file_count
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
                 ":stopwatch: Please wait a moment while we transcribe your {count} file(s)."
-            ).format(count=file_count),
+            ),
             thread_ts=thread_ts,
         )
 
         # Notify about duplicate files if some were skipped
         if duplicate_files:
+            files = ", ".join(duplicate_files)
             await client.chat_postMessage(
                 channel=context["user_id"],
-                text=_(
-                    "Skipped duplicate files already being processed: {files}"
-                ).format(files=", ".join(duplicate_files)),
+                text=_("Skipped duplicate files already being processed: {files}"),
             )
 
     except Exception as e:
@@ -2923,22 +2923,21 @@ async def handle_video_transcribe_translate_submit(
             return
 
         # Notify user
+        count = files_processed
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
                 ":stopwatch: Please wait a moment while we transcribe & AI translate your {count} file(s)."
-            ).format(count=files_processed),
+            ),
             thread_ts=thread_ts,
         )
 
         # Notify about duplicate languages if some were skipped
         if all_duplicate_languages:
-            unique_duplicates = list(set(all_duplicate_languages))
+            langs = ", ".join(list(set(all_duplicate_languages)))
             await client.chat_postMessage(
                 channel=context["user_id"],
-                text=_("Some translations were skipped as duplicates: {langs}").format(
-                    langs=", ".join(unique_duplicates)
-                ),
+                text=_("Some translations were skipped as duplicates: {langs}"),
             )
 
     except Exception as e:
@@ -3107,22 +3106,21 @@ async def handle_video_embed_subtitles_submit(
             return
 
         # Notify user
+        count = files_processed
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
                 ":stopwatch: Please wait a moment while we transcribe, AI-translate, and embed subtitles into your {count} file(s)."
-            ).format(count=files_processed),
+            ),
             thread_ts=thread_ts,
         )
 
         # Notify about duplicate languages if some were skipped
         if all_duplicate_languages:
-            unique_duplicates = list(set(all_duplicate_languages))
+            langs = ", ".join(list(set(all_duplicate_languages)))
             await client.chat_postMessage(
                 channel=context["user_id"],
-                text=_("Some embeddings were skipped as duplicates: {langs}").format(
-                    langs=", ".join(unique_duplicates)
-                ),
+                text=_("Some embeddings were skipped as duplicates: {langs}"),
             )
 
     except Exception as e:
