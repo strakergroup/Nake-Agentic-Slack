@@ -200,6 +200,24 @@ def _get_mimetype_for_file(filename: str) -> str:
     return mimetype_map.get(ext, "application/octet-stream")
 
 
+def _is_text_file(filename: str) -> bool:
+    """Check if a file is a text file based on extension."""
+    ext = os.path.splitext(filename)[1].lower()
+    text_extensions = {
+        ".srt",
+        ".vtt",
+        ".txt",
+        ".json",
+        ".xml",
+        ".xlf",
+        ".xliff",
+        ".csv",
+        ".html",
+        ".htm",
+    }
+    return ext in text_extensions
+
+
 async def upload_file_to_slack_memory_efficient(
     client: AsyncWebClient,
     file_path: str,
@@ -208,12 +226,12 @@ async def upload_file_to_slack_memory_efficient(
     filename: str | None = None,
     initial_comment: str | None = None,
     thread_ts: str | None = None,
-    content_type: str | None = None,
 ) -> AsyncSlackResponse:
     """
-    Upload a file to Slack using the memory-efficient files.getUploadURLExternal workflow.
+    Upload a file to Slack.
 
-    This method avoids loading the entire file into memory by using Slack's external upload API.
+    For text files, uses the deprecated files.upload with explicit filetype to avoid
+    Slack misidentifying them as binary. For other files, uses the new external upload flow.
 
     Args:
         client (AsyncWebClient): The Slack WebClient instance
@@ -223,7 +241,6 @@ async def upload_file_to_slack_memory_efficient(
         filename (str, optional): Filename for the file
         initial_comment (str, optional): Initial comment with the file
         thread_ts (str, optional): Thread timestamp to reply to
-        content_type (str, optional): MIME type for the file. Auto-detected if not provided.
 
     Returns:
         AsyncSlackResponse: Response from Slack API containing file information
@@ -235,15 +252,39 @@ async def upload_file_to_slack_memory_efficient(
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
 
-    # Get file size for the upload URL request
-    file_size = os.path.getsize(file_path)
-
     # Use provided filename or extract from path
     if not filename:
         filename = os.path.basename(file_path)
 
-    # Determine mimetype - use provided or auto-detect from extension
-    mimetype = content_type or _get_mimetype_for_file(filename)
+    # For text files, use files_upload_v2 with snippet_type="text"
+    # This avoids Slack misidentifying files with non-Latin scripts as binary
+    if _is_text_file(filename):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                file_content = f.read()
+
+            response = await client.files_upload_v2(
+                channel=channel_id,
+                content=file_content,
+                filename=filename,
+                snippet_type="text",  # Tell Slack this is a text snippet
+                title=title or filename,
+                initial_comment=initial_comment,
+                thread_ts=thread_ts,
+            )
+
+            if not response.get("ok"):
+                raise SlackApiError("Failed to upload file", response)
+
+            return response
+
+        except SlackApiError as e:
+            notify_exception(e, f"Failed to upload text file {filename} to Slack")
+            raise
+
+    # For non-text files, use the new external upload flow
+    file_size = os.path.getsize(file_path)
+    mimetype = _get_mimetype_for_file(filename)
 
     # Step 1: Get upload URL from Slack
     try:
@@ -262,25 +303,26 @@ async def upload_file_to_slack_memory_efficient(
         notify_exception(e, f"Failed to get upload URL for {filename}")
         raise
 
-    # Step 2: Upload file to the provided URL using streaming
+    # Step 2: Upload file to the provided URL
     try:
         async with httpx.AsyncClient() as http_client:
             with open(file_path, "rb") as file_obj:
-                # Use multipart form data for streaming upload
-                files = {"file": (filename, file_obj, mimetype)}
-                data = {"filename": filename}
+                file_bytes = file_obj.read()
 
-                response = await http_client.post(
-                    upload_url,
-                    files=files,
-                    data=data,
-                    timeout=FILE_TRANSFER_TIMEOUT,
+            http_response = await http_client.post(
+                upload_url,
+                content=file_bytes,
+                headers={
+                    "Content-Type": mimetype,
+                    "Content-Length": str(len(file_bytes)),
+                },
+                timeout=upload_timeout,
+            )
+
+            if http_response.status_code != 200:
+                raise Exception(
+                    f"Upload failed with status {http_response.status_code}: {http_response.text}"
                 )
-
-                if response.status_code != 200:
-                    raise Exception(
-                        f"Upload failed with status {response.status_code}: {response.text}"
-                    )
 
     except Exception as e:
         notify_exception(e, f"Failed to upload file {filename} to Slack")
