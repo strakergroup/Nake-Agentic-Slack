@@ -1167,8 +1167,7 @@ def video_transcribe_translate_modal(
         SectionBlock(
             text=MarkdownTextObject(
                 text=_(
-                    "To transcribe your file(s) and get an AI Translation, select your "
-                    "file(s) and choose the desired target language(s)."
+                    "To transcribe your file(s) and get an AI Translation, select your file(s) and choose the desired target language(s)."
                 )
             )
         )
@@ -1186,13 +1185,12 @@ def video_transcribe_translate_modal(
     blocks.append(
         InputBlock(
             block_id="selected_file",
-            label=PlainTextObject(text=_("Files to translate")),
+            label=PlainTextObject(text=_("Select your files to translate")),
             element=StaticMultiSelectElement(
                 action_id="file_display",
                 placeholder=PlainTextObject(text=_("Selected files")),
                 options=file_options,
                 initial_options=file_options,
-                max_selected_items=len(files),
             ),
             optional=False,
         )
@@ -1218,7 +1216,6 @@ def video_transcribe_translate_modal(
                 action_id="language_mt_options",
                 placeholder=PlainTextObject(text=_("Select languages")),
                 options=language_options,
-                max_selected_items=10,
             ),
         )
     )
@@ -1264,8 +1261,7 @@ def video_embed_subtitles_modal(
         SectionBlock(
             text=MarkdownTextObject(
                 text=_(
-                    "To transcribe your file(s), translate, and embed subtitles, select your "
-                    "file(s) and choose the desired target language(s)."
+                    "To automatically transcribe, translate, and embed subtitles, please select your file(s) and choose the desired target language(s)."
                 )
             )
         )
@@ -1283,13 +1279,12 @@ def video_embed_subtitles_modal(
     blocks.append(
         InputBlock(
             block_id="selected_file",
-            label=PlainTextObject(text=_("Files to process")),
+            label=PlainTextObject(text=_("Select your files to process")),
             element=StaticMultiSelectElement(
                 action_id="file_display",
                 placeholder=PlainTextObject(text=_("Selected files")),
                 options=file_options,
                 initial_options=file_options,
-                max_selected_items=len(files),
             ),
             optional=False,
         )
@@ -1315,7 +1310,6 @@ def video_embed_subtitles_modal(
                 action_id="language_mt_options",
                 placeholder=PlainTextObject(text=_("Select languages")),
                 options=language_options,
-                max_selected_items=10,
             ),
         )
     )
