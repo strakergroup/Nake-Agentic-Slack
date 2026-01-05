@@ -2815,7 +2815,22 @@ async def handle_video_transcribe_translate_submit(
             or context["user_id"]
         )
 
-        files = metadata["files"]
+        # Get selected files from form (user may have deselected some)
+        file_selection = form_values.get("selected_file", {}).get("file_display", {})
+        selected_file_options = file_selection.get("selected_options", [])
+        selected_file_ids = {opt["value"] for opt in selected_file_options}
+
+        # Filter to only include selected files
+        all_files = metadata["files"]
+        files = [f for f in all_files if f["file_id"] in selected_file_ids]
+
+        if not files:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_("Please select at least one file to process."),
+            )
+            return
+
         thread_ts = metadata.get("thread_ts")
 
         # Check for duplicate submissions per file and target language
@@ -2994,7 +3009,22 @@ async def handle_video_embed_subtitles_submit(
             or context["user_id"]
         )
 
-        files = metadata["files"]
+        # Get selected files from form (user may have deselected some)
+        file_selection = form_values.get("selected_file", {}).get("file_display", {})
+        selected_file_options = file_selection.get("selected_options", [])
+        selected_file_ids = {opt["value"] for opt in selected_file_options}
+
+        # Filter to only include selected files
+        all_files = metadata["files"]
+        files = [f for f in all_files if f["file_id"] in selected_file_ids]
+
+        if not files:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_("Please select at least one file to process."),
+            )
+            return
+
         thread_ts = metadata.get("thread_ts")
 
         # Check for duplicate submissions per file and target language
