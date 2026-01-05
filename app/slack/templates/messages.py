@@ -3450,17 +3450,6 @@ class VideoOptionsMessage(SlackMessage):
         # Build blocks using SDK where possible
         blocks: list[Block] = []
 
-        # Show file list if multiple files
-        if len(files) > 1:
-            file_list = "\n".join([f"• {f['file_name']}" for f in files])
-            count = len(files)
-            files_section = SectionBlock(
-                text=MarkdownTextObject(
-                    text=_("*{count} media files detected:*\n{file_list}")
-                )
-            )
-            blocks.append(files_section)
-
         # Show token balance for non-IBM users
         if not is_ibm_enterprise and tokens is not None:
             token_context = ContextBlock(

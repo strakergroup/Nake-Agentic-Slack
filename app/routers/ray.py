@@ -22,6 +22,7 @@ from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.database import async_engines
 from app.models import TranscriptionTask, TranscriptionTaskInfo
 from app.mt.logs import log_google_api_usage
+from app.ray.settings import get_auto_translate_language_name
 from app.ray.submissions import SubmissionStatus, updated_submission_status
 from app.ray.utils import (
     delete_from_file_server,
@@ -598,22 +599,12 @@ async def _handle_translation_complete(
             output_file = await download_from_file_server_async(file_id)
             file_path = output_file.get("file")
 
-            # Construct filename from original file name, replacing language code if present
-            # Pattern: "filename.en.mp4" -> "filename.ru.srt" or "filename.mp4" -> "filename.ru.srt"
-            if "." in original_stem:
-                # Check if stem ends with a language code pattern (e.g., ".en")
-                parts = original_stem.rsplit(".", 1)
-                if (
-                    len(parts) == 2 and len(parts[1]) == 2
-                ):  # Likely a 2-letter language code
-                    # Replace the language code and change extension to .srt
-                    title = f"{parts[0]}.{target_lang}.srt"
-                else:
-                    # Append language code and change extension to .srt
-                    title = f"{original_stem}.{target_lang}.srt"
-            else:
-                # No dots in stem, just append language code and use .srt extension
-                title = f"{original_stem}.{target_lang}.srt"
+            # Get full language name from code (e.g., "ja" -> "Japanese")
+            lang_name = get_auto_translate_language_name(target_lang)
+
+            # Construct filename using language name
+            # Pattern: "filename.srt" -> "filename_Japanese.srt"
+            title = f"{original_stem}_{lang_name}.srt"
 
             if not file_path:
                 continue
