@@ -113,49 +113,39 @@ def unformat_links(text: str) -> str:
     return text
 
 
-def escape_slack_emoji(text: str):
-    """Escape Slack emoji characters in text.
+def escape_slack_emoji(text: str) -> str:
+    """Escape Slack emoji characters in text by wrapping them in span translate="no" tags.
 
     Args:
         text (str): The text to escape.
 
     Returns:
-        str: The text with Slack emoji characters escaped.
+        str: The text with Slack emoji characters wrapped in no-translate spans.
     """
     # Slack uses :emoji: syntax for emoji. If the text contains :emoji:,
-    # to prevent translation replace with <x i={i}> where i is the source index.
-    emojis = re.findall(r":[^\s]*?:|<[^\s]*>", text)
-    for i, emoji in enumerate(emojis):
-        text = text.replace(emoji, f"<x i={i}/>", 1)
-    return text
+    # wrap with <span translate="no"> to prevent translation.
+    # Also handle Slack special format tags like <@U123>, <#C123>, etc.
+    pattern = r"(:[^\s]*?:|<[^\s]*>)"
+    return re.sub(pattern, r'<span translate="no">\1</span>', text)
 
 
 def unescape_slack_emoji(translated_text: str, source_text: str) -> str:
-    """Unescape Slack emoji characters in text.
+    """Unescape Slack emoji characters in text by removing the span translate="no" tags.
 
     Args:
-        translated_text (str): The text to unescape form google translate.
+        translated_text (str): The text to unescape from translation.
+        source_text (str): The original source text (unused, kept for API compatibility).
 
     Returns:
-        str: The text with Slack emoji characters escaped.
+        str: The text with span tags removed, emoji content preserved.
     """
-    # Slack uses :emoji: syntax for emoji. If the text contains :emoji:,
-    # place back the emojis from the source text. Based on the i index value of the x tag
-    # Find all :emoji: in the source
-    emojis = re.findall(r":[^\s]*?:|<[^\s]*>", source_text)
-    # ensure translated text has spacing removed
+    # Remove <span translate="no"> and </span> tags, keeping the content inside.
+    # Handle potential whitespace variations that may be introduced by translation services.
     translated_text = re.sub(
-        r"<\s*x\s*i\s*=\s*(\d*)\s*/\s*>", replace_xtag, translated_text
+        r'<\s*span\s+translate\s*=\s*["\']?no["\']?\s*>', "", translated_text
     )
-    # Replace <x i={i}> with the original :emoji: from the source text
-    for i, emoji in enumerate(emojis):
-        translated_text = translated_text.replace(f"<x i={i}/>", emoji, 1)
+    translated_text = re.sub(r"<\s*/\s*span\s*>", "", translated_text)
     return translated_text
-
-
-def replace_xtag(match):
-    i = match.group(1)
-    return f"<x i={i}/>"
 
 
 def segment_quality_score(score: float, taus_version: str = "1.0.0") -> str:
