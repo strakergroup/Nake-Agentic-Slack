@@ -1,5 +1,6 @@
 import logging
 import re
+from typing import Any
 
 from app.translate import _
 
@@ -114,38 +115,89 @@ def unformat_links(text: str) -> str:
 
 
 def escape_slack_emoji(text: str) -> str:
-    """Escape Slack emoji characters in text by wrapping them in span translate="no" tags.
+    """Escape Slack emoji and special tags by replacing them with indexed br placeholders.
 
     Args:
         text (str): The text to escape.
 
     Returns:
-        str: The text with Slack emoji characters wrapped in no-translate spans.
+        str: The text with Slack emoji and special tags replaced with <br id="N"/> placeholders.
     """
-    # Slack uses :emoji: syntax for emoji. If the text contains :emoji:,
-    # wrap with <span translate="no"> to prevent translation.
-    # Also handle Slack special format tags like <@U123>, <#C123>, etc.
-    pattern = r"(:[^\s]*?:|<[^\s]*>)"
-    return re.sub(pattern, r'<span translate="no">\1</span>', text)
+    # Slack uses :emoji: syntax for emoji and <@U123>, <#C123>, <https://...> for mentions/links.
+    # Replace each match with an indexed placeholder to prevent translation.
+    pattern = r":[^\s]*?:|<[^\s]*>"
+    matches = re.findall(pattern, text)
+    for i, match in enumerate(matches):
+        text = text.replace(match, f'<br id="{i}"/>', 1)
+    return text
 
 
 def unescape_slack_emoji(translated_text: str, source_text: str) -> str:
-    """Unescape Slack emoji characters in text by removing the span translate="no" tags.
+    """Restore Slack emoji and special tags from indexed br placeholders.
 
     Args:
-        translated_text (str): The text to unescape from translation.
-        source_text (str): The original source text (unused, kept for API compatibility).
+        translated_text (str): The translated text with br placeholders.
+        source_text (str): The original source text to extract original values from.
 
     Returns:
-        str: The text with span tags removed, emoji content preserved.
+        str: The text with br placeholders replaced with original Slack content.
     """
-    # Remove <span translate="no"> and </span> tags, keeping the content inside.
-    # Handle potential whitespace variations that may be introduced by translation services.
+    # Find all original emoji/tags from source text
+    pattern = r":[^\s]*?:|<[^\s]*>"
+    original_matches = re.findall(pattern, source_text)
+
+    # Normalize br tags that may have whitespace variations from translation API
     translated_text = re.sub(
-        r'<\s*span\s+translate\s*=\s*["\']?no["\']?\s*>', "", translated_text
+        r'<\s*br\s+id\s*=\s*["\']?(\d+)["\']?\s*/?\s*>',
+        _normalize_br_tag,
+        translated_text,
     )
-    translated_text = re.sub(r"<\s*/\s*span\s*>", "", translated_text)
+
+    # Replace each placeholder with the original content from source
+    for i, original in enumerate(original_matches):
+        translated_text = translated_text.replace(f'<br id="{i}"/>', original, 1)
+
     return translated_text
+
+
+def _normalize_br_tag(match: re.Match) -> str:
+    """Normalize br tag format for consistent replacement."""
+    idx = match.group(1)
+    return f'<br id="{idx}"/>'
+
+
+def split_text_into_blocks(
+    text: str, max_length: int = 3000, first_chunk_limit: int | None = None
+) -> list[str]:
+    """Split long text into chunks that fit within Slack's block limit.
+
+    Args:
+        text (str): The text to split.
+        max_length (int): Maximum characters per chunk. Defaults to 3000 (Slack's limit for mrkdwn text in section blocks).
+        first_chunk_limit (int | None): Optional limit for the first chunk (useful when first chunk has a label).
+            If None, uses max_length for all chunks.
+
+    Returns:
+        list[str]: List of text chunks, each within the specified limit.
+    """
+    first_limit = first_chunk_limit or max_length
+    if len(text) <= first_limit:
+        return [text]
+
+    chunks: list[str] = []
+    remaining = text
+    is_first = True
+
+    while remaining:
+        chunk_limit = first_limit if is_first else max_length
+        if len(remaining) <= chunk_limit:
+            chunks.append(remaining)
+            break
+        chunks.append(remaining[:chunk_limit])
+        remaining = remaining[chunk_limit:]
+        is_first = False
+
+    return chunks
 
 
 def segment_quality_score(score: float, taus_version: str = "1.0.0") -> str:
@@ -177,3 +229,26 @@ def segment_quality_score(score: float, taus_version: str = "1.0.0") -> str:
         elif score >= 0.85:
             return _("Overall Translation Quality: Acceptable")
         return _("Overall Translation Quality: Bad")
+
+
+def extract_language_codes_from_form(
+    form_data: dict[str, Any],
+    block_id: str = "target_langs",
+    action_id: str = "language_mt_options",
+) -> list[str]:
+    """Extract language codes from Slack modal form data.
+
+    Args:
+        form_data: The form state values from Slack view submission.
+        block_id: The block ID containing the language selector. Defaults to "target_langs".
+        action_id: The action ID of the language selector. Defaults to "language_mt_options".
+
+    Returns:
+        list[str]: List of language codes (e.g., ["en", "fr", "es"]).
+    """
+    selected_languages_data = (
+        form_data.get(block_id, {}).get(action_id, {}).get("selected_options", [])
+    )
+    return [
+        option.get("value") for option in selected_languages_data if option.get("value")
+    ]

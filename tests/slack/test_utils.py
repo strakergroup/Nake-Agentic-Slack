@@ -157,19 +157,18 @@ class TestEscapeSlackEmoji:
         """Test escaping a simple emoji."""
         text = "Hello :wave: world"
         result = escape_slack_emoji(text)
-        assert '<span translate="no">:wave:</span>' in result
-        assert result == 'Hello <span translate="no">:wave:</span> world'
+        assert '<br id="0"/>' in result
+        assert result == 'Hello <br id="0"/> world'
 
     def test_escape_slack_emoji_multiple(self):
         """Test escaping multiple emojis."""
         text = ":smile: Hello :wave: world :heart:"
         result = escape_slack_emoji(text)
-        # Should have 3 span wrappers
-        assert result.count('<span translate="no">') == 3
-        assert result.count("</span>") == 3
-        assert '<span translate="no">:smile:</span>' in result
-        assert '<span translate="no">:wave:</span>' in result
-        assert '<span translate="no">:heart:</span>' in result
+        # Should have 3 indexed placeholders
+        assert '<br id="0"/>' in result
+        assert '<br id="1"/>' in result
+        assert '<br id="2"/>' in result
+        assert result == '<br id="0"/> Hello <br id="1"/> world <br id="2"/>'
 
     def test_escape_slack_emoji_no_emoji(self):
         """Test text without emojis."""
@@ -180,13 +179,14 @@ class TestEscapeSlackEmoji:
         """Test escaping custom emojis."""
         text = "Hello :custom_emoji: world"
         result = escape_slack_emoji(text)
-        assert '<span translate="no">:custom_emoji:</span>' in result
+        assert '<br id="0"/>' in result
 
     def test_escape_slack_emoji_slack_special_tags(self):
         """Test escaping Slack special format tags like user mentions."""
         text = "Hello <@U123456> world"
         result = escape_slack_emoji(text)
-        assert '<span translate="no"><@U123456></span>' in result
+        assert '<br id="0"/>' in result
+        assert result == 'Hello <br id="0"/> world'
 
 
 class TestUnescapeSlackEmoji:
@@ -195,22 +195,20 @@ class TestUnescapeSlackEmoji:
     def test_unescape_slack_emoji_simple(self):
         """Test unescaping a simple emoji."""
         source = "Hello :wave: world"
-        translated = 'Hola <span translate="no">:wave:</span> mundo'
+        translated = 'Hola <br id="0"/> mundo'
         result = unescape_slack_emoji(translated, source)
         assert ":wave:" in result
-        assert "<span" not in result
-        assert "</span>" not in result
+        assert "<br" not in result
         assert result == "Hola :wave: mundo"
 
     def test_unescape_slack_emoji_multiple(self):
         """Test unescaping multiple emojis."""
         source = ":smile: Hello :wave: world"
-        translated = '<span translate="no">:smile:</span> Hola <span translate="no">:wave:</span> mundo'
+        translated = '<br id="0"/> Hola <br id="1"/> mundo'
         result = unescape_slack_emoji(translated, source)
         assert ":smile:" in result
         assert ":wave:" in result
-        assert "<span" not in result
-        assert "</span>" not in result
+        assert "<br" not in result
 
     def test_unescape_slack_emoji_no_placeholders(self):
         """Test text without placeholders."""
@@ -219,34 +217,54 @@ class TestUnescapeSlackEmoji:
         assert unescape_slack_emoji(translated, source) == "Hola mundo"
 
     def test_unescape_slack_emoji_with_spaces(self):
-        """Test unescaping with spaces in span tag."""
+        """Test unescaping with spaces in br tag (API whitespace variations)."""
         source = "Hello :wave: world"
-        translated = "Hola < span translate = 'no' >:wave:</ span > mundo"
+        translated = 'Hola < br id = "0" /> mundo'
         result = unescape_slack_emoji(translated, source)
         assert ":wave:" in result
-        assert "<span" not in result.lower()
-        assert "</span>" not in result.lower()
-
-    def test_unescape_slack_emoji_double_quotes(self):
-        """Test unescaping with double quotes in attribute."""
-        source = "Hello :wave: world"
-        translated = 'Hola <span translate="no">:wave:</span> mundo'
-        result = unescape_slack_emoji(translated, source)
-        assert result == "Hola :wave: mundo"
+        assert "<br" not in result
 
     def test_unescape_slack_emoji_single_quotes(self):
         """Test unescaping with single quotes in attribute."""
         source = "Hello :wave: world"
-        translated = "Hola <span translate='no'>:wave:</span> mundo"
+        translated = "Hola <br id='0'/> mundo"
         result = unescape_slack_emoji(translated, source)
         assert result == "Hola :wave: mundo"
 
     def test_unescape_slack_emoji_no_quotes(self):
         """Test unescaping without quotes in attribute."""
         source = "Hello :wave: world"
-        translated = "Hola <span translate=no>:wave:</span> mundo"
+        translated = "Hola <br id=0/> mundo"
         result = unescape_slack_emoji(translated, source)
         assert result == "Hola :wave: mundo"
+
+    def test_unescape_slack_emoji_user_mention(self):
+        """Test unescaping user mentions from indexed placeholders."""
+        source = "Hello <@U123456> world"
+        translated = 'Hola <br id="0"/> mundo'
+        result = unescape_slack_emoji(translated, source)
+        assert result == "Hola <@U123456> mundo"
+
+    def test_unescape_slack_emoji_channel_mention(self):
+        """Test unescaping channel mentions from indexed placeholders."""
+        source = "Check <#C123456|general> channel"
+        translated = 'Mira <br id="0"/> canal'
+        result = unescape_slack_emoji(translated, source)
+        assert result == "Mira <#C123456|general> canal"
+
+    def test_unescape_slack_emoji_link(self):
+        """Test unescaping links from indexed placeholders."""
+        source = "Visit <https://example.com> now"
+        translated = 'Visita <br id="0"/> ahora'
+        result = unescape_slack_emoji(translated, source)
+        assert result == "Visita <https://example.com> ahora"
+
+    def test_unescape_slack_emoji_mixed_content(self):
+        """Test unescaping mixed emoji and user mentions."""
+        source = ":wave: Hello <@U123456> :smile:"
+        translated = '<br id="0"/> Hola <br id="1"/> <br id="2"/>'
+        result = unescape_slack_emoji(translated, source)
+        assert result == ":wave: Hola <@U123456> :smile:"
 
 
 class TestSegmentQualityScore:
