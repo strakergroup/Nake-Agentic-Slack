@@ -186,8 +186,8 @@ def _get_mimetype_for_file(filename: str) -> str:
     """
     ext = os.path.splitext(filename)[1].lower()
     mimetype_map = {
-        ".srt": "text/plain",
-        ".vtt": "text/plain",
+        ".srt": "application/x-subrip",
+        ".vtt": "text/vtt",
         ".txt": "text/plain",
         ".json": "application/json",
         ".xml": "application/xml",
