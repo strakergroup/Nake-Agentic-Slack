@@ -201,13 +201,11 @@ def _get_mimetype_for_file(filename: str) -> str:
 
 
 def _is_text_file(filename: str) -> bool:
-    """Check if a file is a text file based on extension.
-
-    Note: SRT and VTT are excluded because using snippet_type="text" causes
-    Slack to append .txt when downloading. They use binary upload with proper mimetypes.
-    """
+    """Check if a file is a text file based on extension."""
     ext = os.path.splitext(filename)[1].lower()
     text_extensions = {
+        ".srt",
+        ".vtt",
         ".txt",
         ".json",
         ".xml",
@@ -260,6 +258,7 @@ async def upload_file_to_slack_memory_efficient(
 
     # For text files, use files_upload_v2 with snippet_type="text"
     # This avoids Slack misidentifying files with non-Latin scripts as binary
+    # Note: Slack appends .txt to downloads when using snippet_type, but the preview works correctly
     if _is_text_file(filename):
         try:
             with open(file_path, "r", encoding="utf-8") as f:
@@ -269,7 +268,7 @@ async def upload_file_to_slack_memory_efficient(
                 channel=channel_id,
                 content=file_content,
                 filename=filename,
-                snippet_type="text",  # Tell Slack this is a text snippet
+                snippet_type="text",  # Shows as text preview
                 title=title or filename,
                 initial_comment=initial_comment,
                 thread_ts=thread_ts,
