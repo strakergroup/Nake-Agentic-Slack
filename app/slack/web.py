@@ -201,11 +201,13 @@ def _get_mimetype_for_file(filename: str) -> str:
 
 
 def _is_text_file(filename: str) -> bool:
-    """Check if a file is a text file based on extension."""
+    """Check if a file is a text file based on extension.
+
+    Note: SRT and VTT are excluded because using snippet_type="text" causes
+    Slack to append .txt when downloading. They use binary upload with proper mimetypes.
+    """
     ext = os.path.splitext(filename)[1].lower()
     text_extensions = {
-        ".srt",
-        ".vtt",
         ".txt",
         ".json",
         ".xml",
