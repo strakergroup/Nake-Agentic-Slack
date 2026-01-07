@@ -2758,12 +2758,30 @@ async def handle_video_embed_subtitles(
     await ack()
     if await require_ray_client(context):
         assert action is not None
+        from .listener_actions import is_audio_only_file
         from .templates.views import video_embed_subtitles_modal
 
         action_data = json.loads(action.get("value", "{}"))
+        all_files = action_data["files"]
+
+        # Filter to only include video files (exclude audio-only like MP3, WAV)
+        # Audio files cannot have subtitles embedded
+        video_files = [f for f in all_files if not is_audio_only_file(f)]
+
+        if not video_files:
+            # All files were audio-only, show error message
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    "Subtitle embedding is only available for video files (MP4, MPEG, WEBM). "
+                    "Audio files (MP3, WAV, M4A) cannot have subtitles embedded."
+                ),
+            )
+            return
+
         view = video_embed_subtitles_modal(
             channel_id=action_data.get("channel_id", context.get("channel_id", "")),
-            files=action_data["files"],
+            files=video_files,  # Only video files, not audio
             thread_ts=action_data.get("thread_ts"),
         )
         await client.views_open(trigger_id=body["trigger_id"], view=view)
