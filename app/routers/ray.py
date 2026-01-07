@@ -664,13 +664,16 @@ async def _handle_transcribe_embed_pipeline(
         if file_path and os.path.exists(file_path):
             # Upload file - this only returns after files_completeUploadExternal succeeds
             # which means Slack has processed and made the file available
+            # Use the original filename, not the temp file path
+            output_filename = result_file_name or task_info.file_name
             upload_response = await upload_file_to_slack_memory_efficient(
                 client=client,
                 file_path=file_path,
                 initial_comment=_("Your video with embedded subtitles is ready!"),
                 channel_id=channel_id,
                 thread_ts=thread_ts,
-                title=result_file_name or task_info.file_name,
+                title=output_filename,
+                filename=output_filename,
             )
             os.unlink(file_path)
 
