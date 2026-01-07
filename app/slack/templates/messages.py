@@ -3515,22 +3515,8 @@ class VideoOptionsMessage(SlackMessage):
             )
             blocks.append(embed_section)
 
-        # Build text summary - use "media" for audio, "video" for video
-        if len(files) == 1:
-            file_name = files[0]["file_name"]
-            if show_embed_option:
-                text = _("Video detected: {file_name}. Select a processing option.")
-            else:
-                text = _("Audio detected: {file_name}. Select a processing option.")
-        else:
-            count = len(files)
-            if show_embed_option:
-                text = _("{count} videos detected. Select a processing option.")
-            else:
-                text = _("{count} audio files detected. Select a processing option.")
-
         super().__init__(
-            text,
+            _("Media processing options"),
             [block.to_dict() for block in blocks],
         )
 
