@@ -200,24 +200,6 @@ def _get_mimetype_for_file(filename: str) -> str:
     return mimetype_map.get(ext, "application/octet-stream")
 
 
-def _is_text_file(filename: str) -> bool:
-    """Check if a file is a text file based on extension."""
-    ext = os.path.splitext(filename)[1].lower()
-    text_extensions = {
-        ".srt",
-        ".vtt",
-        ".txt",
-        ".json",
-        ".xml",
-        ".xlf",
-        ".xliff",
-        ".csv",
-        ".html",
-        ".htm",
-    }
-    return ext in text_extensions
-
-
 async def upload_file_to_slack_memory_efficient(
     client: AsyncWebClient,
     file_path: str,
@@ -228,10 +210,10 @@ async def upload_file_to_slack_memory_efficient(
     thread_ts: str | None = None,
 ) -> AsyncSlackResponse:
     """
-    Upload a file to Slack.
+    Upload a file to Slack using the external upload flow.
 
-    For text files, uses the deprecated files.upload with explicit filetype to avoid
-    Slack misidentifying them as binary. For other files, uses the new external upload flow.
+    Uses files_getUploadURLExternal + files_completeUploadExternal which
+    preserves the original filename/extension for downloads.
 
     Args:
         client (AsyncWebClient): The Slack WebClient instance
@@ -256,34 +238,6 @@ async def upload_file_to_slack_memory_efficient(
     if not filename:
         filename = os.path.basename(file_path)
 
-    # For text files, use files_upload_v2 with snippet_type="text"
-    # This avoids Slack misidentifying files with non-Latin scripts as binary
-    # Note: Slack appends .txt to downloads when using snippet_type, but the preview works correctly
-    if _is_text_file(filename):
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                file_content = f.read()
-
-            response = await client.files_upload_v2(
-                channel=channel_id,
-                content=file_content,
-                filename=filename,
-                snippet_type="text",  # Shows as text preview
-                title=title or filename,
-                initial_comment=initial_comment,
-                thread_ts=thread_ts,
-            )
-
-            if not response.get("ok"):
-                raise SlackApiError("Failed to upload file", response)
-
-            return response
-
-        except SlackApiError as e:
-            notify_exception(e, f"Failed to upload text file {filename} to Slack")
-            raise
-
-    # For non-text files, use the new external upload flow
     file_size = os.path.getsize(file_path)
     mimetype = _get_mimetype_for_file(filename)
 
