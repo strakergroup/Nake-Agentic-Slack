@@ -3422,12 +3422,13 @@ class TranscriptionMessage(TextMessage):
 class VideoOptionsMessage(SlackMessage):
     """Message shown when video(s) are detected, offering processing options.
 
-    Shows 3 action buttons per the Figma design:
+    Shows action buttons per the Figma design:
     1. Transcribe Audio - Transcription only in source language
     2. Transcribe & AI Translate - Transcription with translation
-    3. Embed Subtitles - Full package with embedded subtitles
+    3. Embed Subtitles - Full package with embedded subtitles (video files only)
 
     Supports multiple files - all files are processed together.
+    The Embed Subtitles option is hidden for audio-only files (mp3, wav, etc.)
     """
 
     def __init__(
@@ -3437,6 +3438,7 @@ class VideoOptionsMessage(SlackMessage):
         thread_ts: str | None = None,
         is_ibm_enterprise: bool = False,
         tokens: int | None = None,
+        show_embed_option: bool = True,
     ) -> None:
         # Store files info in action value
         action_value = json.dumps(
@@ -3495,30 +3497,37 @@ class VideoOptionsMessage(SlackMessage):
         )
         blocks.append(translate_section)
 
-        # Embed Subtitles option
-        embed_button = ButtonElement(
-            text=PlainTextObject(text=_("Embed Subtitles"), emoji=True),
-            action_id="video_embed_subtitles",
-            value=action_value,
-            style="primary",
-        )
-        embed_section = SectionBlock(
-            text=MarkdownTextObject(
-                text=_(
-                    "*Embed Subtitles* - Transcribe, translate, and automatically embed the final translated text as subtitles into your media file."
-                )
-            ),
-            accessory=embed_button,
-        )
-        blocks.append(embed_section)
+        # Embed Subtitles option - only shown for video files, not audio-only
+        if show_embed_option:
+            embed_button = ButtonElement(
+                text=PlainTextObject(text=_("Embed Subtitles"), emoji=True),
+                action_id="video_embed_subtitles",
+                value=action_value,
+                style="primary",
+            )
+            embed_section = SectionBlock(
+                text=MarkdownTextObject(
+                    text=_(
+                        "*Embed Subtitles* - Transcribe, translate, and automatically embed the final translated text as subtitles into your media file."
+                    )
+                ),
+                accessory=embed_button,
+            )
+            blocks.append(embed_section)
 
-        # Build text summary
+        # Build text summary - use "media" for audio, "video" for video
         if len(files) == 1:
             file_name = files[0]["file_name"]
-            text = _("Video detected: {file_name}. Select a processing option.")
+            if show_embed_option:
+                text = _("Video detected: {file_name}. Select a processing option.")
+            else:
+                text = _("Audio detected: {file_name}. Select a processing option.")
         else:
             count = len(files)
-            text = _("{count} videos detected. Select a processing option.")
+            if show_embed_option:
+                text = _("{count} videos detected. Select a processing option.")
+            else:
+                text = _("{count} audio files detected. Select a processing option.")
 
         super().__init__(
             text,

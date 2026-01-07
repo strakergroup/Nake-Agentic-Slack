@@ -92,6 +92,12 @@ from .web import download_files, files_list_simple
 
 VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
 
+# Audio-only formats (cannot have subtitles embedded)
+AUDIO_ONLY_TYPES = ["mp3", "mpga", "m4a", "wav"]
+
+# Video formats (can have subtitles embedded)
+VIDEO_ONLY_TYPES = ["mp4", "mpeg", "webm"]
+
 
 def create_service_language_mapping(
     target_langs: list[str], glossary_ids: dict[str, str] | None = None
@@ -137,6 +143,34 @@ def is_video_file(file_details: dict[str, Any]) -> bool:
         or extension in VIDEO_FILE_TYPES
         or (".mpga" in filename.lower() and filename.lower().endswith(".mpga"))
     )
+
+
+def is_audio_only_file(file_details: dict[str, Any]) -> bool:
+    """Check if a file is audio-only (cannot have subtitles embedded).
+
+    Handles both Slack event format (name, filetype) and internal format (file_name).
+    """
+    filetype = file_details.get("filetype", "").lower()
+    # Handle both "name" (Slack event) and "file_name" (internal format)
+    filename = file_details.get("name", "") or file_details.get("file_name", "")
+
+    extension = ""
+    if "." in filename:
+        extension = filename.rsplit(".", 1)[-1].lower()
+
+    return filetype in AUDIO_ONLY_TYPES or extension in AUDIO_ONLY_TYPES
+
+
+def has_video_files(files: list[dict[str, Any]]) -> bool:
+    """Check if any files in the list are video files (not audio-only).
+
+    Returns True if at least one file can have subtitles embedded (video file).
+    Returns False if all files are audio-only.
+    """
+    for file in files:
+        if not is_audio_only_file(file):
+            return True
+    return False
 
 
 async def respond_to_message(
@@ -203,12 +237,17 @@ async def respond_to_message(
                         )
                         tokens = group_tokens.ai_token
 
+                # Check if any files are actual video (not audio-only)
+                # to determine if Embed Subtitles option should be shown
+                has_embeddable_video = has_video_files(video_files)
+
                 video_msg = VideoOptionsMessage(
                     channel_id=context["channel_id"],
                     files=video_files,
                     thread_ts=thread_ts,
                     is_ibm_enterprise=is_ibm,
                     tokens=tokens,
+                    show_embed_option=has_embeddable_video,
                 )
                 await context.say(
                     text=video_msg.text,
