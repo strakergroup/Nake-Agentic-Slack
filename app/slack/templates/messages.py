@@ -3763,6 +3763,25 @@ class DocComplexityErrorMessage(SlackMessage):
         )
 
 
+class DocInvalidPdfErrorMessage(SlackMessage):
+    """Message to notify about potential issues with processing a invalid PDF file."""
+
+    def __init__(self, error_message: str) -> None:
+        message = _(error_message)
+        super().__init__(
+            _("Invalid PDF file"),
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": message,
+                    },
+                }
+            ],
+        )
+
+
 class HumanJobQuoteMessage(SlackMessage):
     def __init__(
         self,

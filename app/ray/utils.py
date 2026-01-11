@@ -9,10 +9,10 @@ from urllib.parse import unquote, urlencode
 
 import ffmpeg
 import httpx
-import requests
 from babel.numbers import format_currency as babel_format_currency
 
 from app.auth.connector import is_ibm_super_group
+from app.ray.file_validators import validate_json
 from app.slack.buglog_notifier import notify_exception
 from app.translate import Translator, _, translator_var
 
@@ -246,34 +246,23 @@ async def download_from_file_server_async(file_id: str):
                 raise
 
 
-def download_from_file_server(file_id: str):
-    """Downloads a file from the file server. This is a synchronous wrapper around the async version."""
-
-    # Run the async function in a new event loop if one doesn't exist
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    return loop.run_until_complete(download_from_file_server_async(file_id))
-
-
-def delete_from_file_server(file_id: str):
+async def delete_from_file_server(file_id: str):
     """Deletes a file from the file server."""
     url = f"{domains.file_api}/files/{file_id}"
-    response = requests.delete(url)
-    response.raise_for_status()
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(url)
+        response.raise_for_status()
 
 
-def upload_to_file_server(file_path: str) -> str:
+async def upload_to_file_server(file_path: str) -> str:
     """
     Upload the file to sup-file-api and return the file ID.
     """
     file_id = ""
     with open(file_path, "rb") as f:
         # Make the PUT request
-        response = requests.put(domains.file_api + "/gridfs", files={"file": f})
+        async with httpx.AsyncClient() as client:
+            response = await client.put(domains.file_api + "/gridfs", files={"file": f})
 
     # If the request was successful
     if response.status_code == 200:
@@ -337,7 +326,7 @@ VALID_FILE_TYPES: dict[str, Callable[[str], Tuple[bool, str]] | None] = {
     "docx": None,
     "html": None,
     "idml": None,
-    "json": None,
+    "json": validate_json,
     "pdf": None,
     "pptx": None,
     "properties": None,
@@ -428,10 +417,12 @@ def validate_file(file_path: str) -> Tuple[bool, bool, str]:
     )  # Supported file type but no specific content validation needed
 
 
-def get_media_duration(download_url: str, token: str) -> int:
+async def get_media_duration(download_url: str, token: str) -> int:
     """Fetch the duration of the media file using ffprobe."""
     try:
-        probe = ffmpeg.probe(download_url, headers=f"Authorization: Bearer {token}\n")
+        probe = await asyncio.to_thread(
+            ffmpeg.probe, download_url, headers=f"Authorization: Bearer {token}\n"
+        )
         duration = float(probe["format"]["duration"])
         return int(duration * 1000)
     except ffmpeg.Error as e:

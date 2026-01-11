@@ -164,7 +164,7 @@ async def respond_to_message(
                     # duration_ms = file_info["file"].get("duration_ms", 0)
                     duration_ms = 0
                     if not duration_ms:
-                        duration_ms = get_media_duration(
+                        duration_ms = await get_media_duration(
                             download_url, client.token or ""
                         )
                     file_name = file_info["file"]["name"]
@@ -278,7 +278,7 @@ async def respond_to_message(
         workspace_name = await client.auth_test()
         await context.say(f"Workspace name: {workspace_name['team']}")
         return
-    response = watson_message(message["text"], context.get("user_id"))
+    response = await watson_message(message["text"], context.get("user_id"))
     context["log"].set_watson_log(
         status_code=response.status_code,
         text=message["text"],

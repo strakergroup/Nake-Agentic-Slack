@@ -142,6 +142,7 @@ class MtErrorTypes(str, Enum):
     SAMPLE_TEXT_NOT_FOUND = "sample_text_not_found"
     CONVERSION_ERROR = "conversion_error"
     FILE_COMPLEXITY_ERROR = "file_complexity_error"
+    INVALID_PDF = "invalid_pdf"
     OTHER = "other"
 
 
