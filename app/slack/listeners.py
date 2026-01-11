@@ -1561,11 +1561,13 @@ async def view_update_auto_translate_settings(
                     if isinstance(channel_id, str):
                         await disable_auto_translate_group_settings(context, channel_id)
         else:
-            # Filter team_channels to only include required fields as strings
+            # Filter team_channels to include channel info for storage
             filtered_channels = [
                 {
                     "channel_id": str(channel["channel_id"]),
                     "team_id": str(channel["team_id"]),
+                    "name": channel.get("name"),
+                    "is_private": channel.get("is_private", False),
                 }
                 for channel in team_channels
                 if channel.get("channel_id") and channel.get("team_id")
