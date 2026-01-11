@@ -162,27 +162,57 @@ def quote_message_block(
     # Show "incl. tax" next to the total cost if > the sum of the individual language prices.
     incl_tax = quote.quote.quote != quote.quote.quote_nett
     # Show prices for individual languages (if they exist).
+    # Slack limits section blocks to 10 fields, so we need to split across multiple blocks
     lang_price_blocks: list[dict[str, Any]] = []
     if quote.quote.tl:
-        lang_price_blocks = [
-            {
-                "type": "section",
-                "fields": [],
-            },
-            {"type": "divider"},
-        ]
+        MAX_FIELDS_PER_BLOCK = 10
+        fields_blocks = []
+        current_fields = []
+
         for lang in quote.tl:
             lang_price = (
                 quote.quote.tl[lang.code].price if lang.code in quote.quote.tl else 0.0
             )
             lang_price_formatted = format_currency(lang_price, quote.quote.currency)
             target_lang = _(lang.label)
-            lang_price_blocks[0]["fields"].append(
+            current_fields.append(
                 {
                     "type": "mrkdwn",
                     "text": f"*{target_lang}:*\n{lang_price_formatted}",
                 }
             )
+
+            # Create a new block when we reach the limit
+            if len(current_fields) >= MAX_FIELDS_PER_BLOCK:
+                fields_blocks.append(
+                    {
+                        "type": "section",
+                        "fields": current_fields,
+                    }
+                )
+                current_fields = []
+
+        # Add remaining fields if any
+        if current_fields:
+            fields_blocks.append(
+                {
+                    "type": "section",
+                    "fields": current_fields,
+                }
+            )
+
+        # Build the blocks list with dividers between sections (but not after the last one)
+        lang_price_blocks = []
+        for i, block in enumerate(fields_blocks):
+            lang_price_blocks.append(block)
+            if (
+                i < len(fields_blocks) - 1
+            ):  # Add divider between blocks, but not after the last one
+                lang_price_blocks.append({"type": "divider"})
+
+        # Add a divider after all language price blocks
+        if fields_blocks:
+            lang_price_blocks.append({"type": "divider"})
     actions_block = [
         {
             "type": "button",

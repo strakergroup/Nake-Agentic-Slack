@@ -1882,3 +1882,24 @@ async def add_to_verify_team(user_uuid: str, enterprise_id: str | None):
             """
         ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
         await execute(sql, async_engines["sitemanager"], commit_after=True)
+    # check if user has role if not add role
+    else:
+        sql = text(
+            """
+            SELECT role_id
+            FROM user_roles
+            WHERE user_id = :user_uuid
+            AND team_id = :team_uuid
+            """
+        ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
+        result = await fetch_one(sql, async_engines["sitemanager"])
+        if not result:
+            sql = text(
+                """
+                INSERT INTO user_roles
+                    (user_id, team_id, role_id)
+                VALUES
+                    (:user_uuid, :team_uuid, '83d64046-770b-43f5-abbf-e96ca0b3db9a')
+                """
+            ).bindparams(user_uuid=user_uuid, team_uuid=team_uuid)
+            await execute(sql, async_engines["sitemanager"], commit_after=True)

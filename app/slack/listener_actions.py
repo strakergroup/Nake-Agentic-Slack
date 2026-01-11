@@ -21,7 +21,11 @@ from app.api.verify import (
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.models import ASRTask, TranscriptionTaskData
-from app.mt.service import evaluate_get_glossary_resource, resolve_language
+from app.mt.service import (
+    evaluate_get_glossary_resource,
+    get_group_id,
+    resolve_language,
+)
 from app.ray.events.models import MtFileRequestSchema
 from app.slack.buglog_notifier import notify_exception, notify_message
 from app.slack.utils import escape_slack_emoji
@@ -160,7 +164,7 @@ async def respond_to_message(
                     # duration_ms = file_info["file"].get("duration_ms", 0)
                     duration_ms = 0
                     if not duration_ms:
-                        duration_ms = get_media_duration(
+                        duration_ms = await get_media_duration(
                             download_url, client.token or ""
                         )
                     file_name = file_info["file"]["name"]
@@ -274,7 +278,7 @@ async def respond_to_message(
         workspace_name = await client.auth_test()
         await context.say(f"Workspace name: {workspace_name['team']}")
         return
-    response = watson_message(message["text"], context.get("user_id"))
+    response = await watson_message(message["text"], context.get("user_id"))
     context["log"].set_watson_log(
         status_code=response.status_code,
         text=message["text"],
@@ -475,6 +479,7 @@ async def auto_translate_message(
     try:
         org_uuid = context["ray"].super_group[0].verify_organization_uuid
         client_id = context["ray"].client.id if context["ray"].client else org_uuid
+        group_id = await get_group_id(org_uuid)
 
         # Get display_format from settings
         display_format = settings[0]["display_format"] if settings else None
@@ -510,6 +515,7 @@ async def auto_translate_message(
                 channel_id=context.channel_id,
                 text_length=len(text),
                 usage_type="channel_translation",
+                group_id=group_id or "",
                 source_text=text,
                 response_url=context.response_url,
                 thread_ts=thread_ts,
@@ -1733,7 +1739,9 @@ async def get_mt_translation(
             if context.ray.client
             else context.ray.super_group[0].verify_organization_uuid
         )
-
+        group_id = await get_group_id(
+            context.ray.super_group[0].verify_organization_uuid
+        )
         # Get glossary_id for each target language
         glossary_ids: dict[str, str] = {}
         for target_lang in target_langs:
@@ -1764,6 +1772,7 @@ async def get_mt_translation(
             team_id=context.team_id,
             text_length=len(sentence),
             usage_type=usage_type,
+            group_id=group_id or "",
             source_text=sentence,
             # Response method fields
             response_url=context.get("response_url"),

@@ -66,6 +66,7 @@ from ..slack.templates.messages import (
     ClientSignupEventAdminMessage,
     ClientSignupEventMessage,
     DocComplexityErrorMessage,
+    DocInvalidPdfErrorMessage,
     DocMtMessage,
     DocParseErrorMessage,
     EvaluateErrorMessage,
@@ -165,7 +166,7 @@ async def _handle_mt_success_background(
                 task_uuid=success_data.task_uuid,
                 status="delivered",
             )
-            delete_from_file_server(success_data.file_id)
+            await delete_from_file_server(success_data.file_id)
         finally:
             # Clean up temporary file
             if file_path and os.path.exists(file_path):
@@ -583,10 +584,13 @@ async def ray_events(
                         document_translated_data.error_data["ext"],
                         document_translated_data.error_data["file_expected"],
                     )
-
                 elif document_translated_data.error_type == "file_complexity_error":
                     document_message: SlackMessage = DocComplexityErrorMessage(
                         document_translated_data.error_data["ext"],
+                    )
+                elif document_translated_data.error_type == "invalid_pdf":
+                    document_message: SlackMessage = DocInvalidPdfErrorMessage(
+                        document_translated_data.error_data["message"],
                     )
                 else:
                     document_message: SlackMessage = DocMtMessage()
@@ -635,6 +639,10 @@ async def ray_events(
                     elif error_data.error_type == "file_complexity_error":
                         message: SlackMessage = DocComplexityErrorMessage(
                             error_data.error_data.get("ext", ""),
+                        )
+                    elif error_data.error_type == "invalid_pdf":
+                        message: SlackMessage = DocInvalidPdfErrorMessage(
+                            error_data.error_data.get("message", ""),
                         )
                     else:
                         # For "other" or any other error type, use generic error message
