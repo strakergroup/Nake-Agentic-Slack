@@ -115,55 +115,55 @@ def unformat_links(text: str) -> str:
 
 
 def escape_slack_emoji(text: str) -> str:
-    """Escape Slack emoji and special tags by replacing them with indexed br placeholders.
+    """Escape Slack emoji and special tags by replacing them with indexed img placeholders.
 
     Args:
         text (str): The text to escape.
 
     Returns:
-        str: The text with Slack emoji and special tags replaced with <br id="N"/> placeholders.
+        str: The text with Slack emoji and special tags replaced with <img id="N"/> placeholders.
     """
     # Slack uses :emoji: syntax for emoji and <@U123>, <#C123>, <https://...> for mentions/links.
     # Replace each match with an indexed placeholder to prevent translation.
     pattern = r":[^\s]*?:|<[^\s]*>"
     matches = re.findall(pattern, text)
     for i, match in enumerate(matches):
-        text = text.replace(match, f'<br id="{i}"/>', 1)
+        text = text.replace(match, f"<img id='{i}'/>", 1)
     return text
 
 
 def unescape_slack_emoji(translated_text: str, source_text: str) -> str:
-    """Restore Slack emoji and special tags from indexed br placeholders.
+    """Restore Slack emoji and special tags from indexed img placeholders.
 
     Args:
-        translated_text (str): The translated text with br placeholders.
+        translated_text (str): The translated text with img placeholders.
         source_text (str): The original source text to extract original values from.
 
     Returns:
-        str: The text with br placeholders replaced with original Slack content.
+        str: The text with img placeholders replaced with original Slack content.
     """
     # Find all original emoji/tags from source text
     pattern = r":[^\s]*?:|<[^\s]*>"
     original_matches = re.findall(pattern, source_text)
 
-    # Normalize br tags that may have whitespace variations from translation API
+    # Normalize img tags that may have whitespace variations from translation API
     translated_text = re.sub(
-        r'<\s*br\s+id\s*=\s*["\']?(\d+)["\']?\s*/?\s*>',
-        _normalize_br_tag,
+        r'<\s*img\s+id\s*=\s*["\']?(\d+)["\']?\s*/?\s*>',
+        _normalize_img_tag,
         translated_text,
     )
 
     # Replace each placeholder with the original content from source
     for i, original in enumerate(original_matches):
-        translated_text = translated_text.replace(f'<br id="{i}"/>', original, 1)
+        translated_text = translated_text.replace(f"<img id='{i}'/>", original, 1)
 
     return translated_text
 
 
-def _normalize_br_tag(match: re.Match) -> str:
-    """Normalize br tag format for consistent replacement."""
+def _normalize_img_tag(match: re.Match) -> str:
+    """Normalize img tag format for consistent replacement."""
     idx = match.group(1)
-    return f'<br id="{idx}"/>'
+    return f"<img id='{idx}'/>"
 
 
 def split_text_into_blocks(
