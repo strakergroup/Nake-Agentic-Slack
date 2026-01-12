@@ -1,10 +1,10 @@
 """Slack view templates (modals, home tab)."""
 
-import asyncio
 import json
 from typing import Any, cast
 
 from slack_bolt.context.async_context import AsyncBoltContext
+from slack_sdk.errors import SlackApiError
 from slack_sdk.models.blocks import (
     InputBlock,
     MarkdownTextObject,
@@ -27,6 +27,7 @@ from ...ray.settings import (
     get_auto_translate_language_name,
     get_full_group_translation_settings,
     get_pagination,
+    update_channel_info,
 )
 from ...ray.utils import is_ibm_enterprise
 from ...slack.utils import format_strings_display
@@ -74,24 +75,36 @@ async def home_view(
         context, page, rows_per_page
     )
     if is_straker_admin:
-        channel_info = await asyncio.gather(
-            *(
-                get_channel_info(
-                    setting.channel_id,
-                    context.client,
-                    context.team_id or "",
+        for setting, langs in translation_settings:
+            # Use stored channel info if available
+            if setting.channel_name is not None:
+                visible_translation_settings.append(
+                    (
+                        setting,
+                        langs,
+                        {
+                            "name": setting.channel_name,
+                            "is_private": str(setting.is_private),
+                        },
+                    )
                 )
-                for setting, _ in translation_settings
-            ),
-            return_exceptions=True,
-        )
-        for (setting, langs), info in zip(
-            translation_settings, channel_info, strict=False
-        ):
-            if isinstance(info, BaseException):
-                visible_translation_settings.append((setting, langs, {}))
             else:
-                visible_translation_settings.append((setting, langs, info))
+                # Lazy update: fetch from Slack API and update database
+                try:
+                    info = await get_channel_info(
+                        setting.channel_id,
+                        context.client,
+                        context.team_id or "",
+                    )
+                    # Update the database with channel info
+                    await update_channel_info(
+                        setting.id,
+                        info.get("name"),
+                        bool(info.get("is_private", False)),
+                    )
+                    visible_translation_settings.append((setting, langs, info))
+                except SlackApiError:
+                    visible_translation_settings.append((setting, langs, {}))
     else:
         visible_translation_settings = [
             (setting, langs, {}) for setting, langs in translation_settings

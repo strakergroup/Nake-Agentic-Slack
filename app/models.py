@@ -10,7 +10,7 @@ import datetime
 from typing import Literal, Optional, TypeAlias
 
 from pydantic import BaseModel
-from sqlalchemy import JSON, DateTime, Enum, Integer, String, func
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Integer, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -53,6 +53,8 @@ class SlackGroupSettingsTranslation(Base):
     display_format: Mapped[DisplayFormatType] = mapped_column(
         Enum("thread", "message", "edit"), server_default="thread"
     )
+    channel_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_private: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.current_timestamp()
     )
