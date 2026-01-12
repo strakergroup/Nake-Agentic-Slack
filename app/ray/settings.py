@@ -511,21 +511,22 @@ async def get_auto_translate_settings_and_langs(
 
 async def update_auto_translate_group_settings(
     context: AsyncBoltContext,
-    channels: list[dict[str, str]],
+    channels: list[dict[str, str | bool | None]],
     languages: list[str],
     display_format: SlackGroupSettingsTranslation.DisplayFormatType,
 ) -> None:
     """Update the auto-translate settings for a channel for a LanugageCloud group.
 
     Args:
-        channels (list[str]): The IDs of the channels (conversations) to auto-translate.
+        channels: List of channel dicts with channel_id, team_id, and optionally
+            channel_name and is_private.
         languages (list[str]): The languages to auto-translate to.
         display_format: The display format setting.
     """
     for channel in channels:
         # insert for team
         channel_setting = await get_or_create_setting_for_team(
-            context, channel["channel_id"], channel["team_id"]
+            context, str(channel["channel_id"]), str(channel["team_id"])
         )
 
         async with AsyncSession(async_engines["ray_integration"]) as session:
@@ -533,6 +534,12 @@ async def update_auto_translate_group_settings(
             # Merge the detached object from the previous session into this session
             channel_setting = await session.merge(channel_setting)
             channel_setting.display_format = display_format
+
+            # Update channel_name and is_private if provided
+            if "name" in channel and channel["name"] is not None:
+                channel_setting.channel_name = str(channel["name"])
+            if "is_private" in channel:
+                channel_setting.is_private = bool(channel["is_private"])
 
             # Get current settings for this channel
             query = select(SlackGroupSettingsTranslation).where(
@@ -708,3 +715,28 @@ async def delete_channel_id(channel_id: str | None):
             )
         )
         await session.commit()
+
+
+async def update_channel_info(
+    setting_id: int,
+    channel_name: str | None,
+    is_private: bool,
+) -> None:
+    """Update channel_name and is_private for a translation setting.
+
+    Args:
+        setting_id: The ID of the SlackGroupSettingsTranslation record.
+        channel_name: The channel name to store.
+        is_private: Whether the channel is private.
+    """
+    async with AsyncSession(async_engines["ray_integration"]) as session:
+        query = select(SlackGroupSettingsTranslation).where(
+            SlackGroupSettingsTranslation.id == setting_id
+        )
+        result = await session.execute(query)
+        setting = result.scalars().first()
+
+        if setting:
+            setting.channel_name = channel_name
+            setting.is_private = is_private
+            await session.commit()

@@ -2,7 +2,6 @@ import logging
 import re
 from typing import Any
 
-
 from app.translate import _
 
 logger = logging.getLogger(__name__)
@@ -115,49 +114,90 @@ def unformat_links(text: str) -> str:
     return text
 
 
-def escape_slack_emoji(text: str):
-    """Escape Slack emoji characters in text.
+def escape_slack_emoji(text: str) -> str:
+    """Escape Slack emoji and special tags by replacing them with indexed img placeholders.
 
     Args:
         text (str): The text to escape.
 
     Returns:
-        str: The text with Slack emoji characters escaped.
+        str: The text with Slack emoji and special tags replaced with <img id="N"/> placeholders.
     """
-    # Slack uses :emoji: syntax for emoji. If the text contains :emoji:,
-    # to prevent translation replace with <x i={i}> where i is the source index.
-    emojis = re.findall(r":[^\s]*?:|<[^\s]*>", text)
-    for i, emoji in enumerate(emojis):
-        text = text.replace(emoji, f"<x i={i}/>", 1)
+    # Slack uses :emoji: syntax for emoji and <@U123>, <#C123>, <https://...> for mentions/links.
+    # Replace each match with an indexed placeholder to prevent translation.
+    pattern = r":[^\s]*?:|<[^\s]*>"
+    matches = re.findall(pattern, text)
+    for i, match in enumerate(matches):
+        text = text.replace(match, f"<img id='{i}'/>", 1)
     return text
 
 
 def unescape_slack_emoji(translated_text: str, source_text: str) -> str:
-    """Unescape Slack emoji characters in text.
+    """Restore Slack emoji and special tags from indexed img placeholders.
 
     Args:
-        translated_text (str): The text to unescape form google translate.
+        translated_text (str): The translated text with img placeholders.
+        source_text (str): The original source text to extract original values from.
 
     Returns:
-        str: The text with Slack emoji characters escaped.
+        str: The text with img placeholders replaced with original Slack content.
     """
-    # Slack uses :emoji: syntax for emoji. If the text contains :emoji:,
-    # place back the emojis from the source text. Based on the i index value of the x tag
-    # Find all :emoji: in the source
-    emojis = re.findall(r":[^\s]*?:|<[^\s]*>", source_text)
-    # ensure translated text has spacing removed
+    # Find all original emoji/tags from source text
+    pattern = r":[^\s]*?:|<[^\s]*>"
+    original_matches = re.findall(pattern, source_text)
+
+    # Normalize img tags that may have whitespace variations from translation API
     translated_text = re.sub(
-        r"<\s*x\s*i\s*=\s*(\d*)\s*/\s*>", replace_xtag, translated_text
+        r'<\s*img\s+id\s*=\s*["\']?(\d+)["\']?\s*/?\s*>',
+        _normalize_img_tag,
+        translated_text,
     )
-    # Replace <x i={i}> with the original :emoji: from the source text
-    for i, emoji in enumerate(emojis):
-        translated_text = translated_text.replace(f"<x i={i}/>", emoji, 1)
+
+    # Replace each placeholder with the original content from source
+    for i, original in enumerate(original_matches):
+        translated_text = translated_text.replace(f"<img id='{i}'/>", original, 1)
+
     return translated_text
 
 
-def replace_xtag(match):
-    i = match.group(1)
-    return f"<x i={i}/>"
+def _normalize_img_tag(match: re.Match) -> str:
+    """Normalize img tag format for consistent replacement."""
+    idx = match.group(1)
+    return f"<img id='{idx}'/>"
+
+
+def split_text_into_blocks(
+    text: str, max_length: int = 3000, first_chunk_limit: int | None = None
+) -> list[str]:
+    """Split long text into chunks that fit within Slack's block limit.
+
+    Args:
+        text (str): The text to split.
+        max_length (int): Maximum characters per chunk. Defaults to 3000 (Slack's limit for mrkdwn text in section blocks).
+        first_chunk_limit (int | None): Optional limit for the first chunk (useful when first chunk has a label).
+            If None, uses max_length for all chunks.
+
+    Returns:
+        list[str]: List of text chunks, each within the specified limit.
+    """
+    first_limit = first_chunk_limit or max_length
+    if len(text) <= first_limit:
+        return [text]
+
+    chunks: list[str] = []
+    remaining = text
+    is_first = True
+
+    while remaining:
+        chunk_limit = first_limit if is_first else max_length
+        if len(remaining) <= chunk_limit:
+            chunks.append(remaining)
+            break
+        chunks.append(remaining[:chunk_limit])
+        remaining = remaining[chunk_limit:]
+        is_first = False
+
+    return chunks
 
 
 def split_text_into_blocks(
