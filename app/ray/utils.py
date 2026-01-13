@@ -12,6 +12,7 @@ import httpx
 from babel.numbers import format_currency as babel_format_currency
 
 from app.auth.connector import is_ibm_super_group
+from app.constants import FILE_TRANSFER_TIMEOUT
 from app.ray.file_validators import validate_json
 from app.slack.buglog_notifier import notify_exception
 from app.translate import Translator, _, translator_var
@@ -218,7 +219,7 @@ async def download_from_file_server_async(file_id: str):
     """Downloads a file from the file server using async streaming to avoid loading entire file into memory."""
     url = f"{domains.file_api}/files/{file_id}"
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=FILE_TRANSFER_TIMEOUT) as client:
         async with client.stream("GET", url) as response:
             response.raise_for_status()
 
@@ -249,7 +250,7 @@ async def download_from_file_server_async(file_id: str):
 async def delete_from_file_server(file_id: str):
     """Deletes a file from the file server."""
     url = f"{domains.file_api}/files/{file_id}"
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=FILE_TRANSFER_TIMEOUT) as client:
         response = await client.delete(url)
         response.raise_for_status()
 
@@ -261,7 +262,7 @@ async def upload_to_file_server(file_path: str) -> str:
     file_id = ""
     with open(file_path, "rb") as f:
         # Make the PUT request
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=FILE_TRANSFER_TIMEOUT) as client:
             response = await client.put(domains.file_api + "/gridfs", files={"file": f})
 
     # If the request was successful
