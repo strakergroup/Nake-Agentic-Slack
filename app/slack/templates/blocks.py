@@ -36,6 +36,7 @@ def home_auth_blocks(
     details or asks the user to connect their LanguageCloud account.
     """
     if isinstance(ray_connection, RayConnection) and ray_connection.client:
+        is_ibm = is_ibm_enterprise(enterprise_id)
         super_group_names = [group.name for group in ray_connection.super_group]
         super_group_names_str = ", ".join(super_group_names)
         user_id_str = f"<@{user_id}>"
@@ -67,7 +68,7 @@ def home_auth_blocks(
                 },
             },
         ]
-    if is_ibm_enterprise(enterprise_id):
+    if is_ibm:
         blocks: list[dict[str, Any]] = [
             {
                 "type": "section",

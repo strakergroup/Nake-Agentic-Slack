@@ -116,6 +116,7 @@ def unformat_links(text: str) -> str:
 
 def escape_slack_emoji(text: str) -> str:
     """Escape Slack emoji and special tags by replacing them with indexed img placeholders.
+    Preserves surrounding whitespace in the escaped output.
 
     Args:
         text (str): The text to escape.
@@ -124,27 +125,34 @@ def escape_slack_emoji(text: str) -> str:
         str: The text with Slack emoji and special tags replaced with <img id="N"/> placeholders.
     """
     # Slack uses :emoji: syntax for emoji and <@U123>, <#C123>, <https://...> for mentions/links.
-    # Replace each match with an indexed placeholder to prevent translation.
-    pattern = r":[^\s]*?:|<[^\s]*>"
-    matches = re.findall(pattern, text)
-    for i, match in enumerate(matches):
-        text = text.replace(match, f"<img id='{i}'/>", 1)
-    return text
+    # Capture optional surrounding whitespace to preserve spacing in escaped output.
+    pattern = r"( ?)(:[^\s]*?:|<[^\s]*>)( ?)"
+
+    counter = [0]
+
+    def replacer(m: re.Match) -> str:
+        pre, _, post = m.groups()
+        idx = counter[0]
+        counter[0] += 1
+        return f"{pre}<img id='{idx}'/>{post}"
+
+    return re.sub(pattern, replacer, text)
 
 
 def unescape_slack_emoji(translated_text: str, source_text: str) -> str:
     """Restore Slack emoji and special tags from indexed img placeholders.
+    Restores original spacing from source text regardless of how translation modified it.
 
     Args:
         translated_text (str): The translated text with img placeholders.
         source_text (str): The original source text to extract original values from.
 
     Returns:
-        str: The text with img placeholders replaced with original Slack content.
+        str: The text with img placeholders replaced with original Slack content and spacing.
     """
-    # Find all original emoji/tags from source text
-    pattern = r":[^\s]*?:|<[^\s]*>"
-    original_matches = re.findall(pattern, source_text)
+    # Find all original emoji/tags from source text with their surrounding spacing
+    spacing_pattern = r"( ?)(:[^\s]*?:|<[^\s]*>)( ?)"
+    original_matches_with_spacing = re.findall(spacing_pattern, source_text)
 
     # Normalize img tags that may have whitespace variations from translation API
     translated_text = re.sub(
@@ -153,9 +161,31 @@ def unescape_slack_emoji(translated_text: str, source_text: str) -> str:
         translated_text,
     )
 
-    # Replace each placeholder with the original content from source
-    for i, original in enumerate(original_matches):
-        translated_text = translated_text.replace(f"<img id='{i}'/>", original, 1)
+    # Replace each placeholder with original content including original spacing
+    for i, (orig_pre, core, orig_post) in enumerate(original_matches_with_spacing):
+        placeholder = f"<img id='{i}'/>"
+        idx = translated_text.find(placeholder)
+        if idx == -1:
+            continue
+
+        # Determine what spacing exists around the placeholder in translated text
+        has_trans_pre = idx > 0 and translated_text[idx - 1] == " "
+        end_idx = idx + len(placeholder)
+        has_trans_post = (
+            end_idx < len(translated_text) and translated_text[end_idx] == " "
+        )
+
+        # Calculate replacement boundaries to include any existing surrounding spaces
+        replace_start = idx - (1 if has_trans_pre else 0)
+        replace_end = end_idx + (1 if has_trans_post else 0)
+
+        # Replace with original emoji and its original spacing
+        replacement = orig_pre + core + orig_post
+        translated_text = (
+            translated_text[:replace_start]
+            + replacement
+            + translated_text[replace_end:]
+        )
 
     return translated_text
 
@@ -164,40 +194,6 @@ def _normalize_img_tag(match: re.Match) -> str:
     """Normalize img tag format for consistent replacement."""
     idx = match.group(1)
     return f"<img id='{idx}'/>"
-
-
-def split_text_into_blocks(
-    text: str, max_length: int = 3000, first_chunk_limit: int | None = None
-) -> list[str]:
-    """Split long text into chunks that fit within Slack's block limit.
-
-    Args:
-        text (str): The text to split.
-        max_length (int): Maximum characters per chunk. Defaults to 3000 (Slack's limit for mrkdwn text in section blocks).
-        first_chunk_limit (int | None): Optional limit for the first chunk (useful when first chunk has a label).
-            If None, uses max_length for all chunks.
-
-    Returns:
-        list[str]: List of text chunks, each within the specified limit.
-    """
-    first_limit = first_chunk_limit or max_length
-    if len(text) <= first_limit:
-        return [text]
-
-    chunks: list[str] = []
-    remaining = text
-    is_first = True
-
-    while remaining:
-        chunk_limit = first_limit if is_first else max_length
-        if len(remaining) <= chunk_limit:
-            chunks.append(remaining)
-            break
-        chunks.append(remaining[:chunk_limit])
-        remaining = remaining[chunk_limit:]
-        is_first = False
-
-    return chunks
 
 
 def split_text_into_blocks(
