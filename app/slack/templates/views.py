@@ -66,7 +66,7 @@ async def home_view(
     )
     verify_settings_block: list[dict[str, Any]] = []
     visible_translation_settings: list[
-        tuple[SlackGroupSettingsTranslation, list[str], dict[str, str]]
+        tuple[SlackGroupSettingsTranslation, list[str], dict[str, str | bool]]
     ] = []
     questionEmoji = ":question:"
     rows_per_page = 5
@@ -84,7 +84,7 @@ async def home_view(
                         langs,
                         {
                             "name": setting.channel_name,
-                            "is_private": str(setting.is_private),
+                            "is_private": setting.is_private,
                         },
                     )
                 )
@@ -209,10 +209,9 @@ async def home_view(
                 )
                 error_msg = _("channel not found or bot not in channel")
                 channel_name = f"({visible_info.get('name') if visible_info.get('name') else error_msg})"
-                should_display_channel_info = (
-                    (is_straker_admin and visible_info.get("is_private"))
-                    or (not visible_info.get("name"))
-                    and is_straker_admin
+                is_private = visible_info.get("is_private", False)
+                should_display_channel_info = (is_straker_admin and is_private) or (
+                    not visible_info.get("name") and is_straker_admin
                 )
                 translation_settings_blocks.extend(
                     [
