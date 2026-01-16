@@ -1584,8 +1584,30 @@ def duration_to_tokens(duration_ms: int) -> int:
     token_value = 0.02  # $0.002
     duration_per_token_min = token_value / cost_per_min  # min
     duration_per_token_ms = duration_per_token_min * 60 * 1000
-    # 60 ms per token
+    # 600 ms per token
     return math.ceil(duration_ms / duration_per_token_ms)
+
+
+def duration_to_subtitling_tokens(duration_ms: int) -> int:
+    """
+    Convert duration to tokens for subtitling feature.
+
+    Cost model:
+    - cost_per_min = $0.60 (60 cents per minute)
+    - token_value = $0.02 (2 cents per token)
+    - tokens_per_min = cost_per_min / token_value = 0.60 / 0.02 = 30 tokens per minute
+
+    Args:
+        duration_ms: Duration in milliseconds
+
+    Returns:
+        Number of tokens (ceiled)
+    """
+    token_value = 0.02  # $0.02
+    cost_per_min = 0.60  # $0.60
+    tokens_per_min = cost_per_min / token_value  # 30 tokens per minute
+    duration_minutes = duration_ms / 60000  # Convert ms to minutes
+    return math.ceil(duration_minutes * tokens_per_min)
 
 
 async def log_transcribe_by_client_id(

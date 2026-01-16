@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+- [Added]: Implemented token calculation for subtitling feature in Slack - $0.60 per minute equals 30 tokens per minute (Justin Cole, 2026-01-20)
+# Changelog
+
 All notable changes to the Slack Ray Translator application.
 
 ## Changes

@@ -17,7 +17,12 @@ from straker_utils.credits import calculate_cost, spend_credits
 
 from app.api.models import MtTranslationExtraData
 from app.api.verify import get_evaluation_job, get_job_pricing
-from app.auth.connector import duration_to_tokens, get_ray_client, get_ray_connection
+from app.auth.connector import (
+    duration_to_subtitling_tokens,
+    duration_to_tokens,
+    get_ray_client,
+    get_ray_connection,
+)
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.database import async_engines
 from app.models import TranscriptionTask, TranscriptionTaskInfo
@@ -328,14 +333,18 @@ async def _spend_embedding_credits(
 ) -> int:
     """Spend credits for embedding stage.
 
-    Charges per minute per target language.
+    Charges tokens based on duration and number of target languages.
+    Subtitling cost: $0.60 per minute = 30 tokens per minute (at $0.02 per token).
+
+    For embedding pipelines, this also ensures transcription and translation
+    are charged first if they haven't been charged yet.
 
     Args:
         task_info: Transcription task information
         auth: Authentication context with slack_user
 
     Returns:
-        Amount of credits spent (0 if already charged or no credits spent)
+        Amount of tokens spent (0 if already charged or no credits spent)
     """
     try:
         # Check if credits have already been spent for embedding
@@ -347,17 +356,47 @@ async def _spend_embedding_credits(
         if not auth.slack_user or not auth.slack_user.ray_user_group_id:
             return 0
 
-        # Charge for embedding based on duration (in minutes) * number of target languages
+        # Charge for embedding based on duration and number of target languages
         if not task_info.duration_ms:
             return 0
 
+        # Store duration_ms before reloads to preserve type
+        duration_ms = task_info.duration_ms
+
+        # For embedding pipelines, ensure transcription and translation are charged first
+        # 1. Charge transcription if not already charged
+        if "transcription" not in charged_stages:
+            await _spend_transcription_credits(task_info, auth)
+            # Reload task_info to get updated charged_stages
+            reloaded_task_info = await get_transcription_task(task_info.task_uuid)
+            if not reloaded_task_info:
+                return 0
+            task_info = reloaded_task_info
+            extra_data = task_info.extra_data or {}
+            charged_stages = extra_data.get("_charged_stages", [])
+
+        # 2. Charge translation if not already charged and translation data exists
+        if (
+            "translation" not in charged_stages
+            and task_info.source_text_length
+            and task_info.num_target_languages
+        ):
+            await _spend_translation_credits(task_info, auth)
+            # Reload task_info to get updated charged_stages
+            reloaded_task_info = await get_transcription_task(task_info.task_uuid)
+            if not reloaded_task_info:
+                return 0
+            task_info = reloaded_task_info
+            extra_data = task_info.extra_data or {}
+            charged_stages = extra_data.get("_charged_stages", [])
+
+        # 3. Now charge for embedding
         # Default to 1 target language if not specified (for transcribe_embed pipelines)
         num_target_languages = task_info.num_target_languages or 1
 
-        # Convert duration from milliseconds to minutes
-        duration_minutes = int(task_info.duration_ms / 60000)
-        # Calculate cost: duration_minutes * num_target_languages
-        amount = calculate_cost(duration_minutes * num_target_languages)
+        # Calculate tokens: subtitling tokens per duration * number of target languages
+        tokens_per_language = duration_to_subtitling_tokens(duration_ms)
+        amount = tokens_per_language * num_target_languages
 
         if amount > 0:
             await spend_credits(
