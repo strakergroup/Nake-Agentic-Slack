@@ -271,7 +271,7 @@ async def upload_file_to_slack_memory_efficient(
                     "Content-Type": mimetype,
                     "Content-Length": str(len(file_bytes)),
                 },
-                timeout=upload_timeout,
+                timeout=FILE_TRANSFER_TIMEOUT,
             )
 
             if http_response.status_code != 200:
