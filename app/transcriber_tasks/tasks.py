@@ -3,11 +3,13 @@ Insert into database and add to redis
 """
 
 import datetime
+import logging
 from uuid import uuid4
 
 import httpx
-from sqlalchemy import func, update
+from sqlalchemy import func, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from straker_utils.sql.async_engine import fetch_one
 
 from ..config import domains
 from ..database import async_engines
@@ -18,6 +20,55 @@ from ..models import (
     TranscriptionTask,
     TranscriptionTaskInfo,
 )
+
+logger = logging.getLogger(__name__)
+
+
+async def get_client_organization_uuid(client_id: str) -> str | None:
+    """Get organization UUID for a client from the database.
+
+    Args:
+        client_id: Client UUID
+
+    Returns:
+        Organization UUID or None if not found
+    """
+    try:
+        # First get the group_id from the member
+        sql = text(
+            """
+            SELECT groupid
+            FROM sitemanager.obj_m_member
+            WHERE obj_uuid = :client_id
+            LIMIT 1
+            """
+        ).bindparams(client_id=client_id)
+        result = await fetch_one(sql, async_engines["sitemanager"])
+
+        if not result or not result.get("groupid"):
+            logger.debug(f"Could not get group_id for client {client_id}")
+            return None
+
+        group_id = result.get("groupid")
+
+        # Then get organization_id from the group
+        sql = text(
+            """
+            SELECT organization_id
+            FROM sitemanager.obj_m_group
+            WHERE obj_uuid = :group_id
+            LIMIT 1
+            """
+        ).bindparams(group_id=group_id)
+        result = await fetch_one(sql, async_engines["sitemanager"])
+
+        if not result:
+            return None
+
+        return result.get("organization_id")
+    except Exception as e:
+        logger.debug(f"Could not fetch organization_id for client {client_id}: {e}")
+        return None
 
 
 async def create_asr_task(asr_task: ASRTask):

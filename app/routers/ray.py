@@ -228,6 +228,11 @@ async def _spend_transcription_credits(
         amount = duration_to_tokens(task_info.duration_ms)
 
         if amount > 0:
+            # Get organization_id dynamically from client_id
+            from ..transcriber_tasks.tasks import get_client_organization_uuid
+
+            organization_id = await get_client_organization_uuid(task_info.client_id)
+
             transaction_uuid = await spend_credits(
                 async_engines["sitemanager"],
                 auth.slack_user.ray_client_id,
@@ -236,7 +241,7 @@ async def _spend_transcription_credits(
                 "slack",
                 "transcription",
                 "Media Transcription",
-                None,  # organization_uuid - may need to get from task_info if available
+                organization_id,
             )
 
             # Mark transcription as charged and store transaction UUID
@@ -269,6 +274,8 @@ async def _spend_translation_credits(
 ) -> int:
     """Spend credits for translation stage.
 
+    Charges once per target language based on source text length.
+
     Args:
         task_info: Transcription task information
         auth: Authentication context with slack_user
@@ -286,26 +293,34 @@ async def _spend_translation_credits(
         if not auth.slack_user or not auth.slack_user.ray_user_group_id:
             return 0
 
-        # Charge for translation based on source text length * number of target languages
+        # Charge for translation based on source text length per target language
         if not task_info.source_text_length or not task_info.num_target_languages:
             return 0
 
-        amount = calculate_cost(
-            task_info.source_text_length * task_info.num_target_languages
-        )
+        # Get organization_id dynamically from client_id
+        from ..transcriber_tasks.tasks import get_client_organization_uuid
 
-        if amount > 0:
-            await spend_credits(
-                async_engines["sitemanager"],
-                auth.slack_user.ray_client_id,
-                auth.slack_user.ray_user_group_id,
-                amount,
-                "slack",
-                "document_translation",
-                "Machine Translation",
-                None,  # organization_uuid - may need to get from task_info if available
-            )
+        organization_id = await get_client_organization_uuid(task_info.client_id)
 
+        # Charge once per target language
+        amount_per_language = calculate_cost(task_info.source_text_length)
+        total_amount = 0
+
+        for _ in range(task_info.num_target_languages):
+            if amount_per_language > 0:
+                await spend_credits(
+                    async_engines["sitemanager"],
+                    auth.slack_user.ray_client_id,
+                    auth.slack_user.ray_user_group_id,
+                    amount_per_language,
+                    "slack",
+                    "document_translation",
+                    "Machine Translation",
+                    organization_id,
+                )
+                total_amount += amount_per_language
+
+        if total_amount > 0:
             # Mark translation as charged in the database
             charged_stages.append("translation")
             extra_data["_charged_stages"] = charged_stages
@@ -317,7 +332,7 @@ async def _spend_translation_credits(
                 )
                 await session.commit()
 
-            return amount
+            return total_amount
 
         return 0
 
@@ -347,6 +362,11 @@ async def _spend_embedding_credits(
         Amount of tokens spent (0 if already charged or no credits spent)
     """
     try:
+        # Reload task_info to get latest charged_stages (in case translation event already charged)
+        reloaded_task_info = await get_transcription_task(task_info.task_uuid)
+        if reloaded_task_info:
+            task_info = reloaded_task_info
+
         # Check if credits have already been spent for embedding
         extra_data = task_info.extra_data or {}
         charged_stages = extra_data.get("_charged_stages", [])
@@ -399,6 +419,11 @@ async def _spend_embedding_credits(
         amount = tokens_per_language * num_target_languages
 
         if amount > 0:
+            # Get organization_id dynamically from client_id
+            from ..transcriber_tasks.tasks import get_client_organization_uuid
+
+            organization_id = await get_client_organization_uuid(task_info.client_id)
+
             await spend_credits(
                 async_engines["sitemanager"],
                 auth.slack_user.ray_client_id,
@@ -407,7 +432,7 @@ async def _spend_embedding_credits(
                 "slack",
                 "media_embedding",
                 "Media Embedding",
-                None,  # organization_uuid - may need to get from task_info if available
+                organization_id,
             )
 
             # Mark embedding as charged in the database
