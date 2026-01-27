@@ -272,73 +272,56 @@ async def _spend_translation_credits(
     task_info: TranscriptionTaskInfo,
     auth: Any,
 ) -> int:
-    """Spend credits for translation stage.
+    """Mark translation stage as charged.
 
-    Charges once per target language based on source text length.
+    Note: Actual credit spending and API usage logging is now handled by
+    cloud-verify-consumer during SRT translation (spend_mt_token call in
+    srt_translate.py). This function only marks the stage as "charged" in
+    extra_data to prevent duplicate processing.
 
     Args:
         task_info: Transcription task information
         auth: Authentication context with slack_user
 
     Returns:
-        Amount of credits spent (0 if already charged or no credits spent)
+        0 (credits are spent in consumer, not here)
     """
     try:
-        # Check if credits have already been spent for translation
+        # Check if translation has already been marked as charged
         extra_data = task_info.extra_data or {}
         charged_stages = extra_data.get("_charged_stages", [])
         if "translation" in charged_stages:
-            return 0  # Already charged
+            return 0  # Already marked
 
         if not auth.slack_user or not auth.slack_user.ray_user_group_id:
             return 0
 
-        # Charge for translation based on source text length per target language
+        # Check if translation data exists
         if not task_info.source_text_length or not task_info.num_target_languages:
             return 0
 
-        # Get organization_id dynamically from client_id
-        from ..transcriber_tasks.tasks import get_client_organization_uuid
+        # Mark translation as charged in the database
+        # Note: Actual credit spending happens in cloud-verify-consumer via
+        # spend_mt_token, which also logs to google_api_log for billing reports
+        charged_stages.append("translation")
+        extra_data["_charged_stages"] = charged_stages
+        async with AsyncSession(async_engines["sitecommons"]) as session:
+            await session.execute(
+                update(TranscriptionTask)
+                .where(TranscriptionTask.task_uuid == task_info.task_uuid)
+                .values(extra_data=extra_data)
+            )
+            await session.commit()
 
-        organization_id = await get_client_organization_uuid(task_info.client_id)
-
-        # Charge once per target language
-        amount_per_language = calculate_cost(task_info.source_text_length)
-        total_amount = 0
-
-        for _ in range(task_info.num_target_languages):
-            if amount_per_language > 0:
-                await spend_credits(
-                    async_engines["sitemanager"],
-                    auth.slack_user.ray_client_id,
-                    auth.slack_user.ray_user_group_id,
-                    amount_per_language,
-                    "slack",
-                    "document_translation",
-                    "Machine Translation",
-                    organization_id,
-                )
-                total_amount += amount_per_language
-
-        if total_amount > 0:
-            # Mark translation as charged in the database
-            charged_stages.append("translation")
-            extra_data["_charged_stages"] = charged_stages
-            async with AsyncSession(async_engines["sitecommons"]) as session:
-                await session.execute(
-                    update(TranscriptionTask)
-                    .where(TranscriptionTask.task_uuid == task_info.task_uuid)
-                    .values(extra_data=extra_data)
-                )
-                await session.commit()
-
-            return total_amount
-
+        logger.info(
+            f"Marked translation as charged for task {task_info.task_uuid} "
+            f"(credits spent by cloud-verify-consumer)"
+        )
         return 0
 
     except Exception as e:
-        notify_exception(e, "Failed to spend credits for translation stage")
-        logger.error(f"Error spending credits for translation: {e}")
+        notify_exception(e, "Failed to mark translation stage as charged")
+        logger.error(f"Error marking translation as charged: {e}")
         return 0
 
 
