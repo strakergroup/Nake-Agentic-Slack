@@ -3,8 +3,15 @@ from pydantic import BaseModel
 from slack_bolt.context.async_context import AsyncBoltContext
 from straker_auth.languagecloud.jwt import create_languagecloud_group_token
 
+from app.api.http_client import INTERNAL_SERVICE_TIMEOUT, retry_on_timeout
 from app.config import config, domains
-from app.slack.buglog_notifier import notify_exception
+
+
+def _get_notify_exception():
+    """Lazily import notify_exception to avoid circular imports."""
+    from app.slack.buglog_notifier import notify_exception
+
+    return notify_exception
 
 
 class DetectLanguageResponse(BaseModel):
@@ -26,14 +33,21 @@ async def detect_language(
     )
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"{domains.languagecloud_api}/mt/detect",
-                json={"text": text},
-                headers={"Authorization": f"Bearer {token}"},
-            )
-        response.raise_for_status()
-        return DetectLanguageResponse(**response.json())
+
+        async def _detect_request():
+            async with httpx.AsyncClient(timeout=INTERNAL_SERVICE_TIMEOUT) as client:
+                response = await client.post(
+                    f"{domains.languagecloud_api}/mt/detect",
+                    json={"text": text},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                response.raise_for_status()
+                return DetectLanguageResponse(**response.json())
+
+        return await retry_on_timeout(
+            _detect_request,
+            notify_on_final_failure=False,  # We handle notification below
+        )
     except httpx.HTTPStatusError as e:
         # Extract detailed error message from API response if available
         error_detail = None
@@ -44,6 +58,7 @@ async def detect_language(
         except Exception:
             error_detail = str(e)
 
+        notify_exception = _get_notify_exception()
         notify_exception(
             msg=f"Error detecting language: {error_detail}",
             exc=e,
@@ -54,6 +69,7 @@ async def detect_language(
         )
         raise
     except Exception as e:
+        notify_exception = _get_notify_exception()
         notify_exception(
             msg="An unexpected error occurred during language detection", exc=e
         )

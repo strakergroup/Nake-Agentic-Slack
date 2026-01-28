@@ -2,13 +2,15 @@
 Functions to publish events to the stream proxy.
 """
 
+import logging
 from typing import List
 from uuid import uuid4
 
-import httpx
-
+from app.api.http_client import get_shared_client, retry_on_timeout
 from app.api.models import MtTranslationExtraData
 from app.config import domains
+
+logger = logging.getLogger(__name__)
 
 
 def validate_service_language_mapping(
@@ -77,8 +79,13 @@ async def send_mt_translation_request(
         "source": "Straker Translate for Slack",
     }
 
-    async with httpx.AsyncClient() as http:
-        await http.post(
+    async def _post_request():
+        client = await get_shared_client()
+        response = await client.post(
             f"{domains.stream_proxy}/events/mt-service:mt:translate:multi",
             json=request_data,
         )
+        response.raise_for_status()
+        return response
+
+    await retry_on_timeout(_post_request)
