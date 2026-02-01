@@ -1584,8 +1584,88 @@ def duration_to_tokens(duration_ms: int) -> int:
     token_value = 0.02  # $0.002
     duration_per_token_min = token_value / cost_per_min  # min
     duration_per_token_ms = duration_per_token_min * 60 * 1000
-    # 60 ms per token
+    # 600 ms per token
     return math.ceil(duration_ms / duration_per_token_ms)
+
+
+def duration_to_subtitling_tokens(duration_ms: int) -> int:
+    """
+    Convert duration to tokens for subtitling feature.
+
+    Cost model:
+    - cost_per_min = $0.60 (60 cents per minute)
+    - token_value = $0.02 (2 cents per token)
+    - tokens_per_min = cost_per_min / token_value = 0.60 / 0.02 = 30 tokens per minute
+
+    Args:
+        duration_ms: Duration in milliseconds
+
+    Returns:
+        Number of tokens (ceiled)
+    """
+    token_value = 0.02  # $0.02
+    cost_per_min = 0.60  # $0.60
+    tokens_per_min = cost_per_min / token_value  # 30 tokens per minute
+    duration_minutes = duration_ms / 60000  # Convert ms to minutes
+    return math.ceil(duration_minutes * tokens_per_min)
+
+
+async def log_transcribe_by_client_id(
+    client_id: str,
+    duration_ms: int,
+    file_name: str,
+) -> int:
+    """
+    Log transcription request and spend tokens using client_id.
+    This is used when we don't have a full RayConnection but need to charge for transcription.
+
+    Args:
+        client_id: The LanguageCloud client UUID
+        duration_ms: Duration of the media in milliseconds
+        file_name: Name of the transcribed file
+
+    Returns:
+        int: Number of tokens consumed
+    """
+    tokens = duration_to_tokens(duration_ms)
+    if not tokens:
+        raise Exception("Duration is 0")
+
+    # Fetch user info to create id_token
+    sql = text(
+        """
+        SELECT m.obj_uuid, m.given_name, m.family_name, m.email_primary, m.active
+        FROM obj_m_member m
+        WHERE m.obj_uuid = :client_id
+        """
+    ).bindparams(client_id=client_id)
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    if not result:
+        raise Exception(f"Client {client_id} not found")
+
+    id_token = create_languagecloud_id_token(
+        uuid=client_id,
+        given_name=result["given_name"] or "",
+        family_name=result["family_name"] or "",
+        email=result["email_primary"] or "",
+        is_active=bool(result["active"]),
+        aud="languagecloud-api",
+        secret=config.languagecloud_api_key.get_secret_value(),
+    )
+
+    url = f"{domains.languagecloud_api}/mt/transcribe"
+    headers = {
+        "Authorization": f"Bearer {id_token}",
+    }
+    data = {
+        "duration_ms": duration_ms,
+        "app_name": "slack",
+        "file_name": file_name,
+    }
+    async with httpx.AsyncClient() as http:
+        response = await http.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        return tokens
 
 
 async def get_client_type(client_id: str, group_id: str | None):

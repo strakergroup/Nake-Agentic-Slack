@@ -117,23 +117,30 @@ class JobTranscribedPath(BaseModel):
 
 
 class JobTranscribedEvent(BaseModel):
-    client_id: str
+    """Transcription result event from transcription-service.
+
+    Maps to TranscriptionResult format from transcription-service.
+    Includes task_uuid, client_id (for auth), and error.
+    All other info is looked up from database.
+    """
+
     task_uuid: str
-    file_id: str
-    file_name: str
-    source_file_name: str
-    tokens: int
+    client_id: str
     error: str | None = None
 
     @model_validator(mode="before")
     def extract_output_file(cls, values):
+        """Handle both old and new result formats for backward compatibility."""
+        # New format (TranscriptionResult from transcription-service) - includes task_uuid, client_id, error
+        if "task_uuid" in values:
+            return values
+
+        # Old format (legacy support)
         result = values.get("result")
         if result:
             values["task_uuid"] = result.get("task_uuid")
-            values["file_name"] = result.get("file_name")
-            values["source_file_name"] = result.get("source_file_name")
-            values["file_id"] = result.get("file_id")
-            values["tokens"] = result.get("tokens")
+            values["client_id"] = result.get("client_id", "")
+            values["error"] = result.get("error")
         return values
 
 
@@ -155,6 +162,9 @@ class MtFileRequestSchema(BaseModel):
     ai_engine: str
     data_source: str
     submission_id: int | None = None
+    embed_subtitles: bool = False
+    original_video_file_id: str | None = None
+    original_video_file_name: str | None = None
 
 
 class MtSuccessResponseSchema(BaseModel):

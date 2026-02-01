@@ -1,3 +1,4 @@
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -390,6 +391,40 @@ class TestUploadFileToSlackMemoryEfficient:
             await upload_file_to_slack_memory_efficient(
                 mock_client, str(test_file), "C123"
             )
+
+    @pytest.mark.asyncio
+    async def test_upload_non_text_file_no_conversion(self, tmp_path):
+        """Test that non-text files are not converted."""
+        # Create a binary file
+        test_file = tmp_path / "test.pdf"
+        test_file.write_bytes(b"%PDF-1.4\nbinary content\x00\x01\x02")
+
+        mock_client = AsyncMock()
+        mock_client.files_getUploadURLExternal = AsyncMock(
+            return_value={
+                "ok": True,
+                "upload_url": "https://upload.slack.com/upload",
+                "file_id": "F123",
+            }
+        )
+        mock_client.files_completeUploadExternal = AsyncMock(return_value={"ok": True})
+
+        mock_http_response = MagicMock()
+        mock_http_response.status_code = 200
+
+        mock_http_client = AsyncMock()
+        mock_http_client.post = AsyncMock(return_value=mock_http_response)
+        mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
+        mock_http_client.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("app.slack.web.httpx.AsyncClient", return_value=mock_http_client):
+            await upload_file_to_slack_memory_efficient(
+                mock_client, str(test_file), "C123"
+            )
+
+            # Verify original filename was used (no conversion)
+            call_args = mock_client.files_getUploadURLExternal.call_args
+            assert call_args[1]["filename"] == "test.pdf"
 
 
 class TestSetMtTsEdit:

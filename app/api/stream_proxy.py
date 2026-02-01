@@ -89,3 +89,60 @@ async def send_mt_translation_request(
         return response
 
     await retry_on_timeout(_post_request)
+
+
+async def send_srt_translation_request(
+    file_id: str,
+    client_id: str,
+    user_group_id: str | None,
+    channel_id: str,
+    target_language: str,
+    ai_engine: str = "google",
+) -> None:
+    """Send SRT file translation request to the stream proxy.
+
+    This is used by the transcribe+translate pipeline to auto-trigger
+    translation after transcription completes.
+
+    Args:
+        file_id: The GridFS file ID of the SRT file
+        client_id: The client/member UUID
+        user_group_id: The user group UUID (for AI engine lookup)
+        channel_id: The Slack channel ID for notifications
+        target_language: The target language code to translate to
+        ai_engine: The AI engine to use (default: google)
+    """
+    from app.auth.connector import get_group_mt_engine
+
+    # Get the AI engine from group settings if we have user_group_id
+    if user_group_id:
+        try:
+            ai_engine = await get_group_mt_engine(user_group_id, is_group=False)
+        except Exception:
+            ai_engine = "google"  # Fallback
+
+    # French Canadian should use Microsoft
+    if target_language.lower() == "fr-ca":
+        ai_engine = "microsoft"
+
+    task_data = MtFileRequestSchema(
+        file_id=file_id,
+        client_id=client_id,
+        channel_id=channel_id,
+        target_language=target_language,
+        ai_engine=ai_engine,
+        data_source="slack",
+        submission_id=0,
+    )
+
+    task_uuid = await create_slack_job(task_data, status="pending")
+    task_data.task_uuid = task_uuid
+
+    async with httpx.AsyncClient() as http:
+        await http.post(
+            f"{domains.stream_proxy}/events/slack:job:machine:translate",
+            json={
+                "data": task_data.model_dump(),
+                "source": "Straker Translate for Slack",
+            },
+        )

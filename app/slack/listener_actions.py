@@ -20,7 +20,10 @@ from app.api.verify import (
     get_job_pricing,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
-from app.models import ASRTask, TranscriptionTaskData
+from app.models import (  # noqa: F401 - kept for potential future use
+    ASRTask,
+    TranscriptionTaskData,
+)
 from app.mt.service import (
     evaluate_get_glossary_resource,
     get_group_id,
@@ -30,16 +33,20 @@ from app.ray.events.models import MtFileRequestSchema
 from app.slack.buglog_notifier import notify_exception, notify_message
 from app.slack.utils import escape_slack_emoji
 from app.slack_job import create_slack_job
-from app.transcriber_tasks.tasks import create_asr_task
+from app.transcriber_tasks.tasks import (
+    create_asr_task,  # noqa: F401 - kept for potential future use
+)
 from app.translate import _
 
 from ..auth.connector import (
     RayClient,
     RayContext,
     approve_pending_groups,
-    duration_to_tokens,
+    duration_to_tokens,  # noqa: F401 - kept for potential future use
+    get_client_tokens,
     get_group_mt_engine,
-    log_transcribe_request,
+    get_group_tokens,
+    log_transcribe_request,  # noqa: F401 - kept for potential future use
 )
 from ..config import Environment, config, domains
 from ..ray.service import RayService, get_job_predictions
@@ -76,13 +83,20 @@ from .templates.messages import (
     NewJobMessage,
     ReportInsightsMessage,
     SlackMessage,
-    TranscriptionMessage,
+    TranscriptionMessage,  # noqa: F401 - kept for potential future use
     VerifyHelperMessage,
+    VideoOptionsMessage,
 )
 from .templates.models import NewJobForm
 from .web import download_files, files_list_simple
 
 VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
+
+# Audio-only formats (cannot have subtitles embedded)
+AUDIO_ONLY_TYPES = ["mp3", "mpga", "m4a", "wav"]
+
+# Video formats (can have subtitles embedded)
+VIDEO_ONLY_TYPES = ["mp4", "mpeg", "webm"]
 
 
 def create_service_language_mapping(
@@ -131,6 +145,34 @@ def is_video_file(file_details: dict[str, Any]) -> bool:
     )
 
 
+def is_audio_only_file(file_details: dict[str, Any]) -> bool:
+    """Check if a file is audio-only (cannot have subtitles embedded).
+
+    Handles both Slack event format (name, filetype) and internal format (file_name).
+    """
+    filetype = file_details.get("filetype", "").lower()
+    # Handle both "name" (Slack event) and "file_name" (internal format)
+    filename = file_details.get("name", "") or file_details.get("file_name", "")
+
+    extension = ""
+    if "." in filename:
+        extension = filename.rsplit(".", 1)[-1].lower()
+
+    return filetype in AUDIO_ONLY_TYPES or extension in AUDIO_ONLY_TYPES
+
+
+def has_video_files(files: list[dict[str, Any]]) -> bool:
+    """Check if any files in the list are video files (not audio-only).
+
+    Returns True if at least one file can have subtitles embedded (video file).
+    Returns False if all files are audio-only.
+    """
+    for file in files:
+        if not is_audio_only_file(file):
+            return True
+    return False
+
+
 async def respond_to_message(
     client: AsyncWebClient,
     context: RayContext,
@@ -154,66 +196,64 @@ async def respond_to_message(
             asyncio.create_task(
                 files_list_simple(client, channel_id=context["channel_id"], count=120)
             )
-            # Handle video file
+            # Handle video files - collect all first, then show one message
             files = []
             unsupported_files = []
+            video_files = []
             for file in message["files"]:
                 if is_video_file(file):
                     file_info = await client.files_info(file=file["id"])
-                    download_url = file_info["file"]["url_private_download"]
-                    # duration_ms = file_info["file"].get("duration_ms", 0)
-                    duration_ms = 0
+                    duration_ms = file_info["file"].get("duration_ms", 0)
+                    # Default to 1 minute if duration couldn't be detected
                     if not duration_ms:
-                        duration_ms = await get_media_duration(
-                            download_url, client.token or ""
-                        )
-                    file_name = file_info["file"]["name"]
-
-                    actual_bot_token = (
-                        message.get("metadata", {}).get("bot_token") or client.token
+                        duration_ms = 60000
+                    video_files.append(
+                        {
+                            "file_id": file["id"],
+                            "file_name": file_info["file"]["name"],
+                            "duration_ms": duration_ms,
+                        }
                     )
-                    # send video to wb consumer
-                    if (
-                        await require_ray_client(context, prompt_login=False)
-                        and duration_ms
-                    ):
-                        tokens = duration_to_tokens(duration_ms)
-                        if await require_mt_tokens(context, tokens):
-                            await log_transcribe_request(
-                                duration_ms, file_name, context["ray"]
-                            )
-                            output_stream_name = f"{domains.stream_proxy}/events/transcription:slack:media:results"
-                            service = "azure"
-                            model_name = "whisper-1"
-
-                            task_data = TranscriptionTaskData(
-                                client_id=context["ray"].client.id,
-                                file_name=file_name,
-                                download_url=download_url,
-                                app_token=actual_bot_token or "",
-                                service=service,
-                                model=model_name,
-                                out_stream_name=output_stream_name,
-                                tokens_consumed=tokens,
-                            )
-                            asr_task = ASRTask(
-                                member_uuid=context["ray"].client.id,
-                                event_name="transcription:media:asr",
-                                app_source="slack",
-                                len_ms=duration_ms,
-                                service=service,
-                                model=model_name,
-                                extra_data={},
-                                task_data=task_data,
-                            )
-                            await create_asr_task(asr_task)
-                            msg = TranscriptionMessage(file_name)
-                            await context.say(text=msg.text, thread_ts=thread_ts)
                 else:
                     if not validate_file_type(file["name"]):
                         unsupported_files.append(file)
                     else:
                         files.append(file)
+
+            # Show video options message for all video files at once
+            if video_files and await require_ray_client(context, prompt_login=False):
+                # Get IBM status and token balance
+                is_ibm = is_ibm_enterprise(context.enterprise_id)
+                tokens = None
+                if not is_ibm:
+                    if context["ray"].client is not None:
+                        user_tokens = await get_client_tokens(
+                            context["ray"].client.id_token
+                        )
+                        tokens = user_tokens.ai_token
+                    elif context["ray"].super_group is not None:
+                        group_tokens = await get_group_tokens(
+                            context["ray"].super_group[0].verify_organization_uuid
+                        )
+                        tokens = group_tokens.ai_token
+
+                # Check if any files are actual video (not audio-only)
+                # to determine if Embed Subtitles option should be shown
+                has_embeddable_video = has_video_files(video_files)
+
+                video_msg = VideoOptionsMessage(
+                    channel_id=context["channel_id"],
+                    files=video_files,
+                    thread_ts=thread_ts,
+                    is_ibm_enterprise=is_ibm,
+                    tokens=tokens,
+                    show_embed_option=has_embeddable_video,
+                )
+                await context.say(
+                    text=video_msg.text,
+                    blocks=video_msg.blocks,
+                    thread_ts=thread_ts,
+                )
             if len(files) > 10:
                 await context.say(
                     text=_(

@@ -6,13 +6,16 @@ from typing import Any, cast
 from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.errors import SlackApiError
 from slack_sdk.models.blocks import (
+    Block,
     InputBlock,
     MarkdownTextObject,
     Option,
     PlainTextObject,
     SectionBlock,
 )
-from slack_sdk.models.blocks.block_elements import StaticMultiSelectElement
+from slack_sdk.models.blocks.block_elements import (
+    StaticMultiSelectElement,
+)
 
 from app.translate import _
 
@@ -1093,9 +1096,10 @@ def srt_translate_modal(task_uuid: str, channel_id: str) -> dict[str, Any]:
     language_options_raw = get_auto_translate_language_options()
 
     # Convert raw options to SDK Option objects
+    # Truncate text to 75 chars (Slack limit for option text)
     language_options = [
         Option(
-            text=PlainTextObject(text=opt["text"]["text"], emoji=False),
+            text=PlainTextObject(text=opt["text"]["text"][:75], emoji=False),
             value=opt["value"],
         )
         for opt in language_options_raw
@@ -1137,4 +1141,192 @@ def srt_translate_modal(task_uuid: str, channel_id: str) -> dict[str, Any]:
         "close": PlainTextObject(text=_("Close")).to_dict(),
         "private_metadata": private_metadata,
         "blocks": blocks,
+    }
+
+
+def video_transcribe_translate_modal(
+    channel_id: str,
+    files: list[dict],  # [{file_id, file_name, duration_ms}, ...]
+    thread_ts: str | None = None,
+) -> dict[str, Any]:
+    """Modal for video transcription with translation - requires language selection.
+
+    Args:
+        channel_id: The Slack channel ID.
+        files: List of file dicts with file_id, file_name, duration_ms.
+        thread_ts: Optional thread timestamp.
+
+    Returns:
+        dict: The view dict for the transcribe & translate modal.
+    """
+    # Build blocks using SDK
+    blocks: list[Block] = []
+
+    # Description section
+    blocks.append(
+        SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "To transcribe your file(s) and get an AI Translation, select your file(s) and choose the desired target language(s)."
+                )
+            )
+        )
+    )
+
+    # File display section - show selected files (read-only display)
+    # Build options for all files
+    file_options = [
+        Option(
+            text=PlainTextObject(text=f["file_name"][:75], emoji=False),
+            value=f["file_id"],
+        )
+        for f in files
+    ]
+    blocks.append(
+        InputBlock(
+            block_id="selected_file",
+            label=PlainTextObject(text=_("Select your files to translate")),
+            element=StaticMultiSelectElement(
+                action_id="file_display",
+                placeholder=PlainTextObject(text=_("Selected files")),
+                options=file_options,
+                initial_options=file_options,
+            ),
+            optional=False,
+        )
+    )
+
+    # Get language options with proper ISO codes
+    language_options_raw = get_auto_translate_language_options()
+    # Truncate text to 75 chars (Slack limit for option text)
+    language_options = [
+        Option(
+            text=PlainTextObject(text=opt["text"]["text"][:75], emoji=False),
+            value=opt["value"],
+        )
+        for opt in language_options_raw
+    ]
+
+    # Target languages selection
+    blocks.append(
+        InputBlock(
+            block_id="target_languages",
+            label=PlainTextObject(text=_("Translate to")),
+            element=StaticMultiSelectElement(
+                action_id="language_mt_options",
+                placeholder=PlainTextObject(text=_("Select languages")),
+                options=language_options,
+            ),
+        )
+    )
+
+    return {
+        "type": "modal",
+        "callback_id": "video_transcribe_translate_submit",
+        "private_metadata": json.dumps(
+            {
+                "channel_id": channel_id,
+                "files": files,
+                "thread_ts": thread_ts,
+                "pipeline_type": "transcription_translation",
+            }
+        ),
+        "title": {"type": "plain_text", "text": _("Transcribe+AI Translate")[:24]},
+        "submit": {"type": "plain_text", "text": _("Submit")},
+        "close": {"type": "plain_text", "text": _("Cancel")},
+        "blocks": [block.to_dict() for block in blocks],
+    }
+
+
+def video_embed_subtitles_modal(
+    channel_id: str,
+    files: list[dict],  # [{file_id, file_name, duration_ms}, ...]
+    thread_ts: str | None = None,
+) -> dict[str, Any]:
+    """Modal for video transcription with translation and subtitle embedding - requires language selection.
+
+    Args:
+        channel_id: The Slack channel ID.
+        files: List of file dicts with file_id, file_name, duration_ms.
+        thread_ts: Optional thread timestamp.
+
+    Returns:
+        dict: The view dict for the embed subtitles modal.
+    """
+    # Build blocks using SDK
+    blocks: list[Block] = []
+
+    # Description section
+    blocks.append(
+        SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "To automatically transcribe, translate, and embed subtitles, please select your file(s) and choose the desired target language(s)."
+                )
+            )
+        )
+    )
+
+    # File display section - show selected files (read-only display)
+    # Build options for all files
+    file_options = [
+        Option(
+            text=PlainTextObject(text=f["file_name"][:75], emoji=False),
+            value=f["file_id"],
+        )
+        for f in files
+    ]
+    blocks.append(
+        InputBlock(
+            block_id="selected_file",
+            label=PlainTextObject(text=_("Select your files to process")),
+            element=StaticMultiSelectElement(
+                action_id="file_display",
+                placeholder=PlainTextObject(text=_("Selected files")),
+                options=file_options,
+                initial_options=file_options,
+            ),
+            optional=False,
+        )
+    )
+
+    # Get language options with proper ISO codes
+    language_options_raw = get_auto_translate_language_options()
+    # Truncate text to 75 chars (Slack limit for option text)
+    language_options = [
+        Option(
+            text=PlainTextObject(text=opt["text"]["text"][:75], emoji=False),
+            value=opt["value"],
+        )
+        for opt in language_options_raw
+    ]
+
+    # Target languages selection
+    blocks.append(
+        InputBlock(
+            block_id="target_languages",
+            label=PlainTextObject(text=_("Translate to")),
+            element=StaticMultiSelectElement(
+                action_id="language_mt_options",
+                placeholder=PlainTextObject(text=_("Select languages")),
+                options=language_options,
+            ),
+        )
+    )
+
+    return {
+        "type": "modal",
+        "callback_id": "video_embed_subtitles_submit",
+        "private_metadata": json.dumps(
+            {
+                "channel_id": channel_id,
+                "files": files,
+                "thread_ts": thread_ts,
+                "pipeline_type": "transcription_translation_embed",
+            }
+        ),
+        "title": {"type": "plain_text", "text": _("Embed Subtitles")[:24]},
+        "submit": {"type": "plain_text", "text": _("Submit")},
+        "close": {"type": "plain_text", "text": _("Cancel")},
+        "blocks": [block.to_dict() for block in blocks],
     }

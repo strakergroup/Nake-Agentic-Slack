@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.auth.connector import RayConnection, RaySuperGroup, SlackUser
 from app.dependencies import RayEvent, RayEventAuth
+from app.models import TranscriptionTaskInfo
 from app.ray.events.models import (
     ClientGroup,
 )
@@ -458,7 +459,7 @@ class TestRayEventsEndpoint:
             "error": None,
         }
         event = RayEvent(
-            event="transcription:slack:media:results",
+            event="transcription:slack:media:transcription:results",
             data={"client_id": mock_slack_user.ray_client_id, **transcription_data},
         )
 
@@ -469,6 +470,36 @@ class TestRayEventsEndpoint:
         mock_response = MagicMock()
         mock_response.data = {"channel": "C123"}
 
+        # Create mock task info
+        mock_task_info = TranscriptionTaskInfo(
+            task_uuid=transcription_data["task_uuid"],
+            client_id=mock_slack_user.ray_client_id,
+            file_name="video.mp4",
+            download_url="https://example.com/video.mp4",
+            bot_token="xoxb-test-token",
+            pipeline_type="transcribe",
+            status="completed",
+            stage=None,
+            error_message=None,
+            result_file_id=transcription_data["file_id"],
+            result_file_name=transcription_data["file_name"],
+            detected_language=None,
+            translated_file_ids=None,
+            extra_data=None,
+            started_at=None,
+            finished_at=None,
+            duration_ms=None,
+            source_text_length=None,
+            num_target_languages=None,
+            tokens_consumed=0,
+            credit_transaction_uuid=None,
+            model=None,
+            service=None,
+            app_source=None,
+            created_at=datetime.datetime.now(),
+            updated_at=datetime.datetime.now(),
+        )
+
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
             with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
@@ -476,21 +507,25 @@ class TestRayEventsEndpoint:
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
                     ):
                         with patch(
-                            "app.routers.ray.post_notification",
-                            new_callable=AsyncMock,
-                            return_value=mock_response,
-                        ) as mock_post:
+                            "app.transcriber_tasks.tasks.get_transcription_task",
+                            return_value=mock_task_info,
+                        ):
                             with patch(
-                                "app.routers.ray._create_background_task"
-                            ) as mock_bg_task:
-                                auth = RayEventAuth()
-                                await auth.initialize(event, "valid-token")
+                                "app.routers.ray.post_notification",
+                                new_callable=AsyncMock,
+                                return_value=mock_response,
+                            ) as mock_post:
+                                with patch(
+                                    "app.routers.ray._create_background_task"
+                                ) as mock_bg_task:
+                                    auth = RayEventAuth()
+                                    await auth.initialize(event, "valid-token")
 
-                                await ray_events(event, auth)
+                                    await ray_events(event, auth)
 
-                                # Verify notification was sent and background task created
-                                mock_post.assert_called_once()
-                                mock_bg_task.assert_called_once()
+                                    # Verify notification was sent and background task created
+                                    mock_post.assert_called_once()
+                                    mock_bg_task.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_transcription_error(
@@ -507,7 +542,7 @@ class TestRayEventsEndpoint:
             "error": "No sound",
         }
         event = RayEvent(
-            event="transcription:slack:media:results",
+            event="transcription:slack:media:transcription:results",
             data={"client_id": mock_slack_user.ray_client_id, **transcription_data},
         )
 
@@ -517,19 +552,53 @@ class TestRayEventsEndpoint:
         }
         mock_client.chat_postEphemeral = AsyncMock()
 
+        # Create mock task info with error
+        mock_task_info = TranscriptionTaskInfo(
+            task_uuid=transcription_data["task_uuid"],
+            client_id=mock_slack_user.ray_client_id,
+            file_name="video.mp4",
+            download_url="https://example.com/video.mp4",
+            bot_token="xoxb-test-token",
+            pipeline_type="transcribe",
+            status="failed",
+            stage=None,
+            error_message=transcription_data["error"],
+            result_file_id=None,
+            result_file_name=None,
+            detected_language=None,
+            translated_file_ids=None,
+            extra_data=None,
+            started_at=None,
+            finished_at=None,
+            duration_ms=None,
+            source_text_length=None,
+            num_target_languages=None,
+            tokens_consumed=0,
+            credit_transaction_uuid=None,
+            model=None,
+            service=None,
+            app_source=None,
+            created_at=datetime.datetime.now(),
+            updated_at=datetime.datetime.now(),
+        )
+
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
             with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
                     ):
-                        auth = RayEventAuth()
-                        await auth.initialize(event, "valid-token")
+                        with patch(
+                            "app.transcriber_tasks.tasks.get_transcription_task",
+                            return_value=mock_task_info,
+                        ):
+                            auth = RayEventAuth()
+                            await auth.initialize(event, "valid-token")
 
-                        await ray_events(event, auth)
+                            await ray_events(event, auth)
 
-                        # Verify error message was sent
-                        mock_client.chat_postEphemeral.assert_called_once()
+                            # Verify error message was sent
+                            mock_client.chat_postEphemeral.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_document_translated_error(

@@ -175,6 +175,31 @@ async def download_files(client: AsyncWebClient, files: Iterable[str]):
     return [result for result in file_paths if isinstance(result, str)]
 
 
+def _get_mimetype_for_file(filename: str) -> str:
+    """Get appropriate mimetype for a file based on extension.
+
+    Args:
+        filename: The filename to determine mimetype for
+
+    Returns:
+        The mimetype string (defaults to application/octet-stream)
+    """
+    ext = os.path.splitext(filename)[1].lower()
+    mimetype_map = {
+        ".srt": "application/x-subrip",
+        ".vtt": "text/vtt",
+        ".txt": "text/plain",
+        ".json": "application/json",
+        ".xml": "application/xml",
+        ".xlf": "application/xml",
+        ".xliff": "application/xml",
+        ".csv": "text/csv",
+        ".html": "text/html",
+        ".htm": "text/html",
+    }
+    return mimetype_map.get(ext, "application/octet-stream")
+
+
 async def upload_file_to_slack_memory_efficient(
     client: AsyncWebClient,
     file_path: str,
@@ -185,9 +210,10 @@ async def upload_file_to_slack_memory_efficient(
     thread_ts: str | None = None,
 ) -> AsyncSlackResponse:
     """
-    Upload a file to Slack using the memory-efficient files.getUploadURLExternal workflow.
+    Upload a file to Slack using the external upload flow.
 
-    This method avoids loading the entire file into memory by using Slack's external upload API.
+    Uses files_getUploadURLExternal + files_completeUploadExternal which
+    preserves the original filename/extension for downloads.
 
     Args:
         client (AsyncWebClient): The Slack WebClient instance
@@ -208,12 +234,12 @@ async def upload_file_to_slack_memory_efficient(
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
 
-    # Get file size for the upload URL request
-    file_size = os.path.getsize(file_path)
-
     # Use provided filename or extract from path
     if not filename:
         filename = os.path.basename(file_path)
+
+    file_size = os.path.getsize(file_path)
+    mimetype = _get_mimetype_for_file(filename)
 
     # Step 1: Get upload URL from Slack
     try:
