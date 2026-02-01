@@ -4,6 +4,7 @@ import buglog
 from elasticapm.contrib.starlette import ElasticAPM, make_apm_client
 from fastapi import FastAPI
 
+from .api.http_client import close_shared_client
 from .config import Environment, config, domains
 from .constants import APP_VERSION
 from .routers import health, ray, slack
@@ -34,7 +35,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown (if needed)
+    # Shutdown
+    await close_shared_client()
 
 
 # Configure FastAPI
