@@ -12,6 +12,8 @@ from app.models import SlackFileTranslationSubmission
 from app.ray.submissions import (
     SubmissionStatus,
     check_and_record_submission_async,
+    check_and_record_transcription_only_submission_async,
+    check_and_record_transcription_submission_async,
     updated_submission_status,
 )
 
@@ -356,3 +358,311 @@ async def test_submission_status_updated_to_failed_on_error(cleanup_submissions)
     with Session(engines["ray_integration"]) as session:
         session.delete(updated)
         session.commit()
+
+
+# =============================================================================
+# Tests for check_and_record_transcription_submission_async
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_transcription_submission_new(cleanup_submissions):
+    """Test that a new transcription submission is recorded correctly."""
+    slack_file_id = "F_test_transcription_1"
+    user_id = "test_user_trans_1"
+    team_id = "test_team_trans_1"
+    channel_id = "test_channel_trans_1"
+    file_name = "video.mp4"
+    target_language = "en"
+
+    is_dup, record = await check_and_record_transcription_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        target_language=target_language,
+    )
+
+    assert is_dup is False
+    assert record is not None
+    assert record.user_id == user_id
+    assert record.team_id == team_id
+    assert record.channel_id == channel_id
+    assert record.file_name == file_name
+    assert record.file_hash == slack_file_id  # Uses slack_file_id as hash
+    assert record.file_id == slack_file_id
+    assert record.target_language == target_language
+    assert record.processing_status == SubmissionStatus.CREATED.value
+
+
+@pytest.mark.asyncio
+async def test_transcription_submission_duplicate_same_language(cleanup_submissions):
+    """Test that submitting same transcription with same language is duplicate."""
+    slack_file_id = "F_test_transcription_2"
+    user_id = "test_user_trans_2"
+    team_id = "test_team_trans_2"
+    channel_id = "test_channel_trans_2"
+    file_name = "video.mp4"
+    target_language = "en"
+
+    # First submission
+    is_dup_1, record_1 = await check_and_record_transcription_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        target_language=target_language,
+    )
+
+    assert is_dup_1 is False
+    assert record_1 is not None
+
+    # Second submission with same file and language
+    is_dup_2, record_2 = await check_and_record_transcription_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        target_language=target_language,
+    )
+
+    assert is_dup_2 is True
+    assert record_2.id == record_1.id  # Should return existing record
+
+
+@pytest.mark.asyncio
+async def test_transcription_submission_different_languages(cleanup_submissions):
+    """Test that same transcription with different languages are not duplicates."""
+    slack_file_id = "F_test_transcription_3"
+    user_id = "test_user_trans_3"
+    team_id = "test_team_trans_3"
+    channel_id = "test_channel_trans_3"
+    file_name = "video.mp4"
+    target_language_1 = "en"
+    target_language_2 = "es"
+    target_language_3 = "fr"
+
+    # First submission - English
+    is_dup_1, record_1 = await check_and_record_transcription_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        target_language=target_language_1,
+    )
+
+    assert is_dup_1 is False
+
+    # Second submission - Spanish (different language)
+    is_dup_2, record_2 = await check_and_record_transcription_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        target_language=target_language_2,
+    )
+
+    assert is_dup_2 is False
+    assert record_2.id != record_1.id
+
+    # Third submission - French (different language)
+    is_dup_3, record_3 = await check_and_record_transcription_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        target_language=target_language_3,
+    )
+
+    assert is_dup_3 is False
+    assert record_3.id != record_1.id
+    assert record_3.id != record_2.id
+
+
+@pytest.mark.asyncio
+async def test_transcription_submission_failed_not_duplicate(cleanup_submissions):
+    """Test that failed transcription submissions are not considered duplicates."""
+    slack_file_id = "F_test_transcription_4"
+    user_id = "test_user_trans_4"
+    team_id = "test_team_trans_4"
+    channel_id = "test_channel_trans_4"
+    file_name = "video.mp4"
+    target_language = "en"
+
+    # First submission
+    is_dup_1, record_1 = await check_and_record_transcription_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        target_language=target_language,
+    )
+
+    assert is_dup_1 is False
+
+    # Mark the first submission as FAILED
+    updated_submission_status(
+        submission_id=record_1.id,
+        processing_status=SubmissionStatus.FAILED,
+    )
+
+    # Second submission - should NOT be duplicate because first one is FAILED
+    is_dup_2, record_2 = await check_and_record_transcription_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        target_language=target_language,
+    )
+
+    assert is_dup_2 is False
+    assert record_2.id != record_1.id
+
+
+@pytest.mark.asyncio
+async def test_transcription_only_submission_new(cleanup_submissions):
+    """Test that a new transcription-only submission is recorded correctly."""
+    slack_file_id = "F_test_transcription_only_1"
+    user_id = "test_user_trans_only_1"
+    team_id = "test_team_trans_only_1"
+    channel_id = "test_channel_trans_only_1"
+    file_name = "video.mp4"
+
+    is_dup, record = await check_and_record_transcription_only_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+    )
+
+    assert is_dup is False
+    assert record is not None
+    assert record.user_id == user_id
+    assert record.team_id == team_id
+    assert record.channel_id == channel_id
+    assert record.file_name == file_name
+    assert record.file_hash == slack_file_id  # Uses slack_file_id as hash
+    assert record.file_id == slack_file_id
+    assert record.target_language == ""  # Empty string for transcription-only
+    assert record.processing_status == SubmissionStatus.CREATED.value
+
+
+@pytest.mark.asyncio
+async def test_transcription_only_submission_duplicate(cleanup_submissions):
+    """Test that submitting same transcription-only twice is duplicate."""
+    slack_file_id = "F_test_transcription_only_2"
+    user_id = "test_user_trans_only_2"
+    team_id = "test_team_trans_only_2"
+    channel_id = "test_channel_trans_only_2"
+    file_name = "video.mp4"
+
+    # First submission
+    is_dup_1, record_1 = await check_and_record_transcription_only_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+    )
+
+    assert is_dup_1 is False
+    assert record_1 is not None
+
+    # Second submission with same file
+    is_dup_2, record_2 = await check_and_record_transcription_only_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+    )
+
+    assert is_dup_2 is True
+    assert record_2.id == record_1.id  # Should return existing record
+
+
+@pytest.mark.asyncio
+async def test_transcription_only_submission_failed_not_duplicate(cleanup_submissions):
+    """Test that failed transcription-only submissions are not considered duplicates."""
+    slack_file_id = "F_test_transcription_only_3"
+    user_id = "test_user_trans_only_3"
+    team_id = "test_team_trans_only_3"
+    channel_id = "test_channel_trans_only_3"
+    file_name = "video.mp4"
+
+    # First submission
+    is_dup_1, record_1 = await check_and_record_transcription_only_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+    )
+
+    assert is_dup_1 is False
+
+    # Mark the first submission as FAILED
+    updated_submission_status(
+        submission_id=record_1.id,
+        processing_status=SubmissionStatus.FAILED,
+    )
+
+    # Second submission - should NOT be duplicate because first one is FAILED
+    is_dup_2, record_2 = await check_and_record_transcription_only_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+    )
+
+    assert is_dup_2 is False
+    assert record_2.id != record_1.id
+
+
+@pytest.mark.asyncio
+async def test_transcription_only_vs_transcription_with_translation(
+    cleanup_submissions,
+):
+    """Test that transcription-only and transcription+translation are not duplicates."""
+    slack_file_id = "F_test_transcription_only_4"
+    user_id = "test_user_trans_only_4"
+    team_id = "test_team_trans_only_4"
+    channel_id = "test_channel_trans_only_4"
+    file_name = "video.mp4"
+    target_language = "en"
+
+    # First submission - transcription-only
+    is_dup_1, record_1 = await check_and_record_transcription_only_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+    )
+
+    assert is_dup_1 is False
+    assert record_1.target_language == ""
+
+    # Second submission - transcription with translation (different target_language)
+    is_dup_2, record_2 = await check_and_record_transcription_submission_async(
+        slack_file_id=slack_file_id,
+        file_name=file_name,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        target_language=target_language,
+    )
+
+    assert is_dup_2 is False
+    assert record_2.id != record_1.id
+    assert record_2.target_language == target_language

@@ -183,7 +183,6 @@ class TranscriptionTaskData(BaseModel):
     service: str
     model: str
     embed_subtitles: bool = False
-    tokens_consumed: int
     sandbox: bool = False
 
 
@@ -193,7 +192,6 @@ class ASRTask(BaseModel):
     member_uuid: str
     event_name: str
     app_source: str
-    len_ms: int
     service: str
     model: str
     extra_data: dict
@@ -207,7 +205,54 @@ class JobTranscribedResult(BaseModel):
     file_name: str
     source_file_name: str
     file_id: str
+
+
+class TranscriptionRequest(BaseModel):
+    """Request model for transcription service - only task_uuid needed."""
+
+    task_uuid: str
+
+
+class TranscriptionTaskInfo(BaseModel):
+    """Model representing transcription task information from database."""
+
+    task_uuid: str
+    client_id: str
+    file_name: str
+    download_url: str
+    bot_token: str
+    pipeline_type: str
+    status: str
+    stage: str | None
+    error_message: str | None
+    result_file_id: str | None
+    result_file_name: str | None
+    detected_language: str | None
+    translated_file_ids: dict[str, str] | None
+    extra_data: dict | None
+    started_at: datetime.datetime | None
+    finished_at: datetime.datetime | None
+    # Usage metrics for external billing
+    duration_ms: int | None
+    source_text_length: int | None
+    num_target_languages: int | None
     tokens_consumed: int
+    credit_transaction_uuid: str | None
+    model: str | None
+    service: str | None
+    app_source: str | None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class ASRTaskResult(BaseModel):
+    """Model representing ASR task result data."""
+
+    task_uuid: str
+    file_id: str | None
+    file_name: str | None
+    status: str
+    error: str | None
 
 
 class SlackFileTranslationSubmission(Base):
@@ -245,4 +290,91 @@ class SlackFileTranslationSubmission(Base):
         return (
             f"<SlackFileTranslationSubmission(user_id='{self.user_id}', "
             f"file_hash='{self.file_hash}', target_language='{self.target_language}')>"
+        )
+
+
+class TranscriptionTask(Base):
+    """Track transcription task status and metadata.
+
+    Table: `sitecommons.transcription_tasks`
+    """
+
+    __tablename__ = "transcription_tasks"
+    __table_args__ = {"schema": "sitecommons"}
+
+    task_uuid: Mapped[str] = mapped_column(String(36), primary_key=True, index=True)
+    client_id: Mapped[str] = mapped_column(String(50), index=True)
+    file_name: Mapped[str] = mapped_column(String(255))
+    download_url: Mapped[str] = mapped_column(String(500))
+    bot_token: Mapped[str] = mapped_column(
+        String(255)
+    )  # Slack bot token for file download
+    pipeline_type: Mapped[str] = mapped_column(String(50), default="transcribe")
+    status: Mapped[str] = mapped_column(
+        Enum("pending", "processing", "completed", "failed", name="task_status"),
+        default="pending",
+        nullable=False,
+        index=True,
+    )
+    stage: Mapped[str | None] = mapped_column(
+        Enum(
+            "downloading",
+            "converting",
+            "transcribing",
+            "translating",
+            "embedding",
+            "uploading",
+            name="processing_stage",
+        ),
+        default=None,
+        nullable=True,
+        index=True,
+    )
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    result_file_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    result_file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    detected_language: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    translated_file_ids: Mapped[dict[str, str] | None] = mapped_column(
+        JSON, nullable=True, comment="Map of target language -> translated file ID"
+    )
+    extra_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Performance and analytics fields
+    started_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    finished_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    model: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    service: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    app_source: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Usage metrics for external billing (platforms calculate their own costs)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_text_length: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    num_target_languages: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_consumed: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default="0",
+        comment="Total AI tokens consumed across all pipeline stages",
+    )
+    credit_transaction_uuid: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="Credit transaction UUID for billing",
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, server_default=func.current_timestamp(), index=True
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime,
+        server_default=func.current_timestamp(),
+        onupdate=func.current_timestamp(),
+        index=True,
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<TranscriptionTask(task_uuid='{self.task_uuid}', "
+            f"status='{self.status}', file_name='{self.file_name}')>"
         )

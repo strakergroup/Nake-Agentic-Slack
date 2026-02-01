@@ -161,3 +161,111 @@ async def check_and_record_submission_async(
             processing_status=SubmissionStatus.CREATED,
         )
         return False, created
+
+
+async def check_and_record_transcription_submission_async(
+    *,
+    slack_file_id: str,
+    file_name: str,
+    user_id: str,
+    team_id: str,
+    channel_id: str,
+    target_language: str,
+) -> Tuple[bool, SlackFileTranslationSubmission]:
+    """
+    Check for duplicate transcription+translation submissions using Slack file_id.
+    Returns (is_duplicate, record). If duplicate, record is the existing one.
+    Only checks for duplicates within the last 24 hours.
+
+    This is used for transcribe+translate flow where we don't have the file
+    content yet (only the Slack file_id).
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    with Session(engines["ray_integration"]) as session:
+        # Use slack_file_id as the file_hash for transcription submissions
+        existing = session.scalars(
+            select(SlackFileTranslationSubmission)
+            .where(SlackFileTranslationSubmission.user_id == user_id)
+            .where(SlackFileTranslationSubmission.team_id == team_id)
+            .where(SlackFileTranslationSubmission.file_hash == slack_file_id)
+            .where(SlackFileTranslationSubmission.file_name == file_name)
+            .where(SlackFileTranslationSubmission.target_language == target_language)
+            .where(SlackFileTranslationSubmission.created_at >= cutoff)
+            .where(
+                SlackFileTranslationSubmission.processing_status
+                != SubmissionStatus.FAILED.value
+            )
+            .limit(1)
+        ).first()
+
+        if existing is not None:
+            return True, existing
+
+        created = _insert_submission(
+            session,
+            user_id=user_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            file_hash=slack_file_id,  # Use Slack file_id as hash
+            file_name=file_name,
+            file_size=0,  # Unknown at submission time
+            target_language=target_language,
+            file_id=slack_file_id,
+            processing_status=SubmissionStatus.CREATED,
+        )
+        return False, created
+
+
+async def check_and_record_transcription_only_submission_async(
+    *,
+    slack_file_id: str,
+    file_name: str,
+    user_id: str,
+    team_id: str,
+    channel_id: str,
+) -> Tuple[bool, SlackFileTranslationSubmission]:
+    """
+    Check for duplicate transcription-only submissions using Slack file_id.
+    Returns (is_duplicate, record). If duplicate, record is the existing one.
+    Only checks for duplicates within the last 24 hours.
+
+    This is used for transcription-only flow (no translation) where we don't have
+    the file content yet (only the Slack file_id). Uses empty string for target_language.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    with Session(engines["ray_integration"]) as session:
+        # Use slack_file_id as the file_hash for transcription submissions
+        # Use empty string for target_language to indicate transcription-only
+        existing = session.scalars(
+            select(SlackFileTranslationSubmission)
+            .where(SlackFileTranslationSubmission.user_id == user_id)
+            .where(SlackFileTranslationSubmission.team_id == team_id)
+            .where(SlackFileTranslationSubmission.file_hash == slack_file_id)
+            .where(SlackFileTranslationSubmission.file_name == file_name)
+            .where(SlackFileTranslationSubmission.target_language == "")
+            .where(SlackFileTranslationSubmission.created_at >= cutoff)
+            .where(
+                SlackFileTranslationSubmission.processing_status
+                != SubmissionStatus.FAILED.value
+            )
+            .limit(1)
+        ).first()
+
+        if existing is not None:
+            return True, existing
+
+        created = _insert_submission(
+            session,
+            user_id=user_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            file_hash=slack_file_id,  # Use Slack file_id as hash
+            file_name=file_name,
+            file_size=0,  # Unknown at submission time
+            target_language="",  # Empty string indicates transcription-only
+            file_id=slack_file_id,
+            processing_status=SubmissionStatus.CREATED,
+        )
+        return False, created
