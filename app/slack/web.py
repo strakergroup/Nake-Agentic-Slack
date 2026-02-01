@@ -258,21 +258,21 @@ async def upload_file_to_slack_memory_efficient(
         notify_exception(e, f"Failed to get upload URL for {filename}")
         raise
 
-    # Step 2: Upload file to the provided URL
+    # Step 2: Upload file to the provided URL using streaming to avoid OOM for large files
     try:
         async with httpx.AsyncClient() as http_client:
+            # Stream file directly instead of loading into memory
+            # This prevents OOM errors for large video files (e.g., 800MB+)
             with open(file_path, "rb") as file_obj:
-                file_bytes = file_obj.read()
-
-            http_response = await http_client.post(
-                upload_url,
-                content=file_bytes,
-                headers={
-                    "Content-Type": mimetype,
-                    "Content-Length": str(len(file_bytes)),
-                },
-                timeout=FILE_TRANSFER_TIMEOUT,
-            )
+                http_response = await http_client.post(
+                    upload_url,
+                    content=file_obj,  # httpx streams file-like objects automatically
+                    headers={
+                        "Content-Type": mimetype,
+                        "Content-Length": str(file_size),  # Use pre-calculated size
+                    },
+                    timeout=FILE_TRANSFER_TIMEOUT,
+                )
 
             if http_response.status_code != 200:
                 raise Exception(
