@@ -260,19 +260,27 @@ async def upload_file_to_slack_memory_efficient(
 
     # Step 2: Upload file to the provided URL using streaming to avoid OOM for large files
     try:
+        # Create an async generator to stream file chunks
+        # This prevents OOM errors for large video files (e.g., 800MB+)
+        async def stream_file_chunks():
+            chunk_size = 64 * 1024  # 64KB chunks
+            with open(file_path, "rb") as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+
         async with httpx.AsyncClient() as http_client:
-            # Stream file directly instead of loading into memory
-            # This prevents OOM errors for large video files (e.g., 800MB+)
-            with open(file_path, "rb") as file_obj:
-                http_response = await http_client.post(
-                    upload_url,
-                    content=file_obj,  # httpx streams file-like objects automatically
-                    headers={
-                        "Content-Type": mimetype,
-                        "Content-Length": str(file_size),  # Use pre-calculated size
-                    },
-                    timeout=FILE_TRANSFER_TIMEOUT,
-                )
+            http_response = await http_client.post(
+                upload_url,
+                content=stream_file_chunks(),
+                headers={
+                    "Content-Type": mimetype,
+                    "Content-Length": str(file_size),  # Use pre-calculated size
+                },
+                timeout=FILE_TRANSFER_TIMEOUT,
+            )
 
             if http_response.status_code != 200:
                 raise Exception(
