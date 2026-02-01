@@ -1161,6 +1161,10 @@ async def ray_events(
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
                 if "transcription" not in processed_stages:
+                    # Mark as processed FIRST to prevent race condition
+                    await _mark_stage_processed(
+                        transcribed_event.task_uuid, "transcription"
+                    )
                     await _handle_transcription_complete(
                         client,
                         task_info.result_file_id,
@@ -1182,10 +1186,6 @@ async def ray_events(
                         await _update_tokens_consumed(
                             task_info.task_uuid, transcription_tokens
                         )
-                    # Mark as processed for reference
-                    await _mark_stage_processed(
-                        transcribed_event.task_uuid, "transcription"
-                    )
 
             except ValidationError as e:
                 raise HTTPException(
@@ -1239,6 +1239,11 @@ async def ray_events(
                     "translation" not in processed_stages
                     and task_info.translated_file_ids
                 ):
+                    # Mark as processed FIRST to prevent race condition when multiple
+                    # translation events arrive simultaneously (one per target language)
+                    await _mark_stage_processed(
+                        transcribed_event.task_uuid, "translation"
+                    )
                     await _handle_translation_complete(
                         client,
                         str(channel_id),
@@ -1255,10 +1260,6 @@ async def ray_events(
                         await _update_tokens_consumed(
                             transcribed_event.task_uuid, translation_tokens
                         )
-                    # Mark as processed for reference
-                    await _mark_stage_processed(
-                        transcribed_event.task_uuid, "translation"
-                    )
 
             except ValidationError as e:
                 raise HTTPException(
@@ -1309,6 +1310,10 @@ async def ray_events(
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
                 if "embedding" not in processed_stages:
+                    # Mark as processed FIRST to prevent race condition
+                    await _mark_stage_processed(
+                        transcribed_event.task_uuid, "embedding"
+                    )
                     await _handle_transcribe_embed_pipeline(
                         client,
                         task_info.result_file_id,
@@ -1326,10 +1331,6 @@ async def ray_events(
                             transcribed_event.task_uuid, embedding_tokens
                         )
                     await _update_submission_status(extra_data)
-                    # Mark as processed for reference
-                    await _mark_stage_processed(
-                        transcribed_event.task_uuid, "embedding"
-                    )
 
             except ValidationError as e:
                 raise HTTPException(
