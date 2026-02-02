@@ -4,10 +4,9 @@ import tempfile
 from typing import List
 
 import httpx
-from straker_utils.environment import Environment
 
 from app.auth.connector import RayClient, SlackUser, get_ray_client
-from app.config import config, domains
+from app.config import domains
 from app.ray.utils import get_filename_from_header
 from app.slack.buglog_notifier import notify_exception
 
@@ -39,14 +38,7 @@ async def submit_evaluation_job(
     }
     if job_notes:
         target_languages_data["client_notes"] = job_notes
-    if not workflow_uuid and (
-        config.environment != Environment.production
-        or domains.slack_ray_translator
-        == "https://stage-slack-deltaray.strakertranslations.com"
-    ):
-        target_languages_data["workflow"] = "ff9d336e-4043-41cd-bd95-0d65a5eeb945"
-    else:
-        target_languages_data["workflow"] = workflow_uuid or ""
+    target_languages_data["workflow"] = workflow_uuid or ""
 
     # Create a job using streaming for file uploads
     async with httpx.AsyncClient(timeout=300) as client:
@@ -86,7 +78,7 @@ async def get_evaluation_job(user: SlackUser, job_uuid: str):
     assert ray_client.id_token is not None
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(
-            f"{domains.verify_api}/evaluate/{job_uuid}",
+            f"{domains.verify_api}/evaluate/{job_uuid}/files",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )
 
@@ -108,7 +100,7 @@ async def get_evaluation_job(user: SlackUser, job_uuid: str):
 async def get_client_evaluation_job(ray_client: RayClient, job_uuid: str):
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(  # Added missing await
-            f"{domains.verify_api}/evaluate/{job_uuid}",
+            f"{domains.verify_api}/evaluate/{job_uuid}/files",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )
 

@@ -511,7 +511,8 @@ async def download_transcribed_file(
         task_uuid = action["value"]
         task_result = await get_asr_task(task_uuid)
         assert task_result is not None
-        file_id = task_result["file_id"]
+        file_id = task_result.file_id
+        assert file_id is not None, "ASR task has no file_id"
         file = await download_from_file_server_async(file_id)
 
         try:
