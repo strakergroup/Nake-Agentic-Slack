@@ -2684,7 +2684,7 @@ async def handle_video_transcribe_only(
 
             asr_task = ASRTask(
                 member_uuid=context["ray"].client.id,
-                event_name="transcription:media:asr",
+                event_name="sup-subtitle-ai:media:asr",
                 app_source="slack",
                 service="azure",
                 model="whisper-1",
@@ -2931,7 +2931,7 @@ async def handle_video_transcribe_translate_submit(
 
             asr_task = ASRTask(
                 member_uuid=context["ray"].client.id,
-                event_name="transcription:media:asr",
+                event_name="sup-subtitle-ai:media:asr",
                 app_source="slack",
                 service="azure",
                 model="whisper-1",
@@ -3129,7 +3129,7 @@ async def handle_video_embed_subtitles_submit(
 
             asr_task = ASRTask(
                 member_uuid=context["ray"].client.id,
-                event_name="transcription:media:asr",
+                event_name="sup-subtitle-ai:media:asr",
                 app_source="slack",
                 service="azure",
                 model="whisper-1",
