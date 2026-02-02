@@ -100,7 +100,7 @@ async def get_evaluation_job(user: SlackUser, job_uuid: str):
 async def get_client_evaluation_job(ray_client: RayClient, job_uuid: str):
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(  # Added missing await
-            f"{domains.verify_api}/evaluate/{job_uuid}",
+            f"{domains.verify_api}/evaluate/{job_uuid}/files",
             headers={"Authorization": f"Bearer {ray_client.id_token}"},
         )
 
