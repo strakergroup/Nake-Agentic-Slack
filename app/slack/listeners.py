@@ -511,7 +511,8 @@ async def download_transcribed_file(
         task_uuid = action["value"]
         task_result = await get_asr_task(task_uuid)
         assert task_result is not None
-        file_id = task_result["file_id"]
+        file_id = task_result.file_id
+        assert file_id is not None, "ASR task has no file_id"
         file = await download_from_file_server_async(file_id)
 
         try:
@@ -2684,7 +2685,7 @@ async def handle_video_transcribe_only(
 
             asr_task = ASRTask(
                 member_uuid=context["ray"].client.id,
-                event_name="transcription:media:asr",
+                event_name="sup-subtitle-ai:media:asr",
                 app_source="slack",
                 service="azure",
                 model="whisper-1",
@@ -2931,7 +2932,7 @@ async def handle_video_transcribe_translate_submit(
 
             asr_task = ASRTask(
                 member_uuid=context["ray"].client.id,
-                event_name="transcription:media:asr",
+                event_name="sup-subtitle-ai:media:asr",
                 app_source="slack",
                 service="azure",
                 model="whisper-1",
@@ -3129,7 +3130,7 @@ async def handle_video_embed_subtitles_submit(
 
             asr_task = ASRTask(
                 member_uuid=context["ray"].client.id,
-                event_name="transcription:media:asr",
+                event_name="sup-subtitle-ai:media:asr",
                 app_source="slack",
                 service="azure",
                 model="whisper-1",

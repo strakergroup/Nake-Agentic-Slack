@@ -628,10 +628,22 @@ async def _handle_translation_complete(
     """Handle translation completion - upload translated files."""
     translated_file_ids = task_info.translated_file_ids or {}
 
+    print(
+        f"[DEBUG-TRANSLATION] _handle_translation_complete START - "
+        f"task_uuid={task_info.task_uuid}, "
+        f"channel_id={channel_id}, "
+        f"thread_ts={thread_ts}, "
+        f"translated_file_ids={translated_file_ids}, "
+        f"num_files={len(translated_file_ids)}"
+    )
+
     await client.chat_postMessage(
         channel=channel_id,
         text=_("Your file is AI translated and can be downloaded below."),
         thread_ts=thread_ts,
+    )
+    print(
+        f"[DEBUG-TRANSLATION] Posted 'AI translated' message - task_uuid={task_info.task_uuid}"
     )
 
     # Upload each translated file
@@ -642,6 +654,12 @@ async def _handle_translation_complete(
 
     for target_lang, file_id in translated_file_ids.items():
         try:
+            print(
+                f"[DEBUG-TRANSLATION] Uploading file - "
+                f"task_uuid={task_info.task_uuid}, "
+                f"target_lang={target_lang}, "
+                f"file_id={file_id}"
+            )
             # Download file from server
             output_file = await download_from_file_server_async(file_id)
             file_path = output_file.get("file")
@@ -654,6 +672,9 @@ async def _handle_translation_complete(
             title = f"{original_stem}_{lang_name}.srt"
 
             if not file_path:
+                print(
+                    f"[DEBUG-TRANSLATION] No file_path for file_id={file_id}, skipping"
+                )
                 continue
 
             # Rename the temp file to have the correct filename so Slack displays it properly
@@ -671,6 +692,11 @@ async def _handle_translation_complete(
                 filename=title,
                 thread_ts=thread_ts,
             )
+            print(
+                f"[DEBUG-TRANSLATION] Uploaded file to Slack - "
+                f"task_uuid={task_info.task_uuid}, "
+                f"title={title}"
+            )
 
             # Clean up temp file
             if file_path and os.path.exists(file_path):
@@ -679,6 +705,11 @@ async def _handle_translation_complete(
         except Exception as e:
             notify_exception(e, "Error handling translation complete")
             logger.error(f"Error handling translation complete: {e}")
+
+    print(
+        f"[DEBUG-TRANSLATION] _handle_translation_complete END - "
+        f"task_uuid={task_info.task_uuid}"
+    )
 
     # Show token message at the end for transcribe_translate pipeline
     if task_info.pipeline_type == "transcribe_translate":
@@ -1161,6 +1192,10 @@ async def ray_events(
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
                 if "transcription" not in processed_stages:
+                    # Mark as processed FIRST to prevent race condition
+                    await _mark_stage_processed(
+                        transcribed_event.task_uuid, "transcription"
+                    )
                     await _handle_transcription_complete(
                         client,
                         task_info.result_file_id,
@@ -1182,10 +1217,6 @@ async def ray_events(
                         await _update_tokens_consumed(
                             task_info.task_uuid, transcription_tokens
                         )
-                    # Mark as processed for reference
-                    await _mark_stage_processed(
-                        transcribed_event.task_uuid, "transcription"
-                    )
 
             except ValidationError as e:
                 raise HTTPException(
@@ -1200,10 +1231,19 @@ async def ray_events(
             # Handle translation completion events
             try:
                 transcribed_event = JobTranscribedEvent.model_validate(event.data)
+                print(
+                    f"[DEBUG-TRANSLATION] Received translation event - "
+                    f"task_uuid={transcribed_event.task_uuid}, "
+                    f"client_id={transcribed_event.client_id}, "
+                    f"error={transcribed_event.error}"
+                )
 
                 # Get task info from database
                 task_info = await get_transcription_task(transcribed_event.task_uuid)
                 if not task_info:
+                    print(
+                        f"[DEBUG-TRANSLATION] Task not found - task_uuid={transcribed_event.task_uuid}"
+                    )
                     notify_exception(
                         Exception(
                             f"Task {transcribed_event.task_uuid} not found in database"
@@ -1211,6 +1251,13 @@ async def ray_events(
                         "Task lookup failed",
                     )
                     return
+
+                print(
+                    f"[DEBUG-TRANSLATION] Task info - "
+                    f"task_uuid={transcribed_event.task_uuid}, "
+                    f"pipeline_type={task_info.pipeline_type}, "
+                    f"translated_file_ids={task_info.translated_file_ids}"
+                )
 
                 # Handle errors
                 if transcribed_event.error or event.data.get("error"):
@@ -1235,16 +1282,39 @@ async def ray_events(
 
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
+                print(
+                    f"[DEBUG-TRANSLATION] Stage check - "
+                    f"task_uuid={transcribed_event.task_uuid}, "
+                    f"processed_stages={processed_stages}, "
+                    f"has_translated_file_ids={bool(task_info.translated_file_ids)}"
+                )
+
                 if (
                     "translation" not in processed_stages
                     and task_info.translated_file_ids
                 ):
+                    print(
+                        f"[DEBUG-TRANSLATION] PROCEEDING with translation handler - "
+                        f"task_uuid={transcribed_event.task_uuid}"
+                    )
+                    # Mark as processed FIRST to prevent race condition
+                    await _mark_stage_processed(
+                        transcribed_event.task_uuid, "translation"
+                    )
+                    print(
+                        f"[DEBUG-TRANSLATION] Marked stage as processed - "
+                        f"task_uuid={transcribed_event.task_uuid}"
+                    )
                     await _handle_translation_complete(
                         client,
                         str(channel_id),
                         thread_ts,
                         task_info,
                         auth,
+                    )
+                    print(
+                        f"[DEBUG-TRANSLATION] Completed _handle_translation_complete - "
+                        f"task_uuid={transcribed_event.task_uuid}"
                     )
                     # Spend credits for translation
                     translation_tokens = await _spend_translation_credits(
@@ -1255,9 +1325,11 @@ async def ray_events(
                         await _update_tokens_consumed(
                             transcribed_event.task_uuid, translation_tokens
                         )
-                    # Mark as processed for reference
-                    await _mark_stage_processed(
-                        transcribed_event.task_uuid, "translation"
+                else:
+                    print(
+                        f"[DEBUG-TRANSLATION] SKIPPING translation handler - "
+                        f"task_uuid={transcribed_event.task_uuid}, "
+                        f"reason={'already_processed' if 'translation' in processed_stages else 'no_translated_files'}"
                     )
 
             except ValidationError as e:
@@ -1309,6 +1381,10 @@ async def ray_events(
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
                 if "embedding" not in processed_stages:
+                    # Mark as processed FIRST to prevent race condition
+                    await _mark_stage_processed(
+                        transcribed_event.task_uuid, "embedding"
+                    )
                     await _handle_transcribe_embed_pipeline(
                         client,
                         task_info.result_file_id,
@@ -1326,10 +1402,6 @@ async def ray_events(
                             transcribed_event.task_uuid, embedding_tokens
                         )
                     await _update_submission_status(extra_data)
-                    # Mark as processed for reference
-                    await _mark_stage_processed(
-                        transcribed_event.task_uuid, "embedding"
-                    )
 
             except ValidationError as e:
                 raise HTTPException(

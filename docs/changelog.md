@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- Fixed: Type errors in app/api/stream_proxy.py (added imports for MtFileRequestSchema, create_slack_job, httpx) and app/slack/listeners.py (use ASRTaskResult attribute .file_id instead of indexing; assert file_id is not None) (Wade Norman, 2026-02-02)
 - Added: New `app/api/http_client.py` module providing shared HTTP client utilities with consistent timeout configuration (`INTERNAL_SERVICE_TIMEOUT`), retry logic with exponential backoff for transient failures (`retry_on_timeout`), and connection pooling via `get_shared_client()` for improved performance on internal service calls (Wade Norman, 2026-01-29)
 - Fixed: Added timeout and retry logic to `app/api/stream_proxy.py` to prevent `httpx.ReadTimeout` errors when calling stream proxy service; now uses shared HTTP client with connection pooling (Wade Norman, 2026-01-29)
 - Fixed: Added retry logic to `app/api/language_cloud.py` `detect_language()` function and increased timeout from 10s to 30s to handle `httpx.ConnectTimeout` errors on language detection calls (Wade Norman, 2026-01-29)
