@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- Fixed: Error message in `evaluate_job_submit` now correctly displays "human translation request" when HUMAN_EVALUATION_WORKFLOW_UUID is used, instead of always showing "quality evaluation request" (Wade Norman, 2026-02-05)
 - Changed: Moved Human Translation Help block outside is_verify_enabled so it always appears in Slack home/help; Quality Evaluation Help remains conditional on is_verify_enabled (Wade Norman, 2026-02-05)
 - Fixed: Type errors in app/api/stream_proxy.py (added imports for MtFileRequestSchema, create_slack_job, httpx) and app/slack/listeners.py (use ASRTaskResult attribute .file_id instead of indexing; assert file_id is not None) (Wade Norman, 2026-02-02)
 - Added: New `app/api/http_client.py` module providing shared HTTP client utilities with consistent timeout configuration (`INTERNAL_SERVICE_TIMEOUT`), retry logic with exponential backoff for transient failures (`retry_on_timeout`), and connection pooling via `get_shared_client()` for improved performance on internal service calls (Wade Norman, 2026-01-29)
