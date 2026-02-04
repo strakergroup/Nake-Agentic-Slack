@@ -716,7 +716,6 @@ async def _handle_transcribe_embed_pipeline(
             upload_response = await upload_file_to_slack_memory_efficient(
                 client=client,
                 file_path=file_path,
-                initial_comment=_("Your video with embedded subtitles is ready!"),
                 channel_id=channel_id,
                 thread_ts=thread_ts,
                 title=output_filename,
