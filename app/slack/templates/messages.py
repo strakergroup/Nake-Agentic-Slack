@@ -9,7 +9,6 @@ from slack_sdk.models.blocks import (
     ActionsBlock,
     Block,
     ContextBlock,
-    DividerBlock,
     InputBlock,
     MarkdownTextObject,
     Option,
@@ -1789,34 +1788,34 @@ class NewJobMessage(SlackMessage):
                     },
                 },
             )
-            message_blocks.append(
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            "*Human Translation* - Translating content from one language to another while preserving meaning and context."
-                        ),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _("Human Translation"),
-                        },
-                        "action_id": "evaluate_job",
-                        "style": "primary",
-                        "value": json.dumps(
-                            {
-                                "files": files_dict,
-                                "channel_id": channel_id,
-                                "job_type": "human",
-                            }
-                        ),
-                    },
+        message_blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        "*Human Translation* - Translating content from one language to another while preserving meaning and context."
+                    ),
                 },
-            )
+                "accessory": {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": _("Human Translation"),
+                    },
+                    "action_id": "evaluate_job",
+                    "style": "primary",
+                    "value": json.dumps(
+                        {
+                            "files": files_dict,
+                            "channel_id": channel_id,
+                            "job_type": "human",
+                        }
+                    ),
+                },
+            },
+        )
 
         super().__init__(
             "Submit a new job",
