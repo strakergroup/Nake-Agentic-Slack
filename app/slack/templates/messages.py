@@ -363,29 +363,29 @@ class WelcomeBackMessage(SlackMessage):
                                 "action_id": "link_verify_help",
                             },
                         },
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    ":bust_in_silhouette: Translating content from one language to another while preserving meaning and context"
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": _("Human Translation Help"),
-                                },
-                                "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
-                                "action_id": "link_human_help",
-                            },
-                        },
                     ]
                     if is_verify_enabled
                     else []
                 ),
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            ":bust_in_silhouette: Translating content from one language to another while preserving meaning and context"
+                        ),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Human Translation Help"),
+                        },
+                        "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
+                        "action_id": "link_human_help",
+                    },
+                },
                 {
                     "type": "section",
                     "text": {
@@ -580,29 +580,29 @@ class SuccessfulLoginMessage(SlackMessage):
                                 "action_id": "link_verify_help",
                             },
                         },
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    ":bust_in_silhouette: Translating content from one language to another while preserving meaning and context"
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": _("Human Translation Help"),
-                                },
-                                "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
-                                "action_id": "link_human_help",
-                            },
-                        },
                     ]
                     if is_verify_enabled
                     else []
                 ),
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            ":bust_in_silhouette: Translating content from one language to another while preserving meaning and context"
+                        ),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Human Translation Help"),
+                        },
+                        "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
+                        "action_id": "link_human_help",
+                    },
+                },
                 {
                     "type": "section",
                     "text": {
@@ -2088,29 +2088,29 @@ class HelpMessage(SlackMessage):
                                 "action_id": "link_verify_help",
                             },
                         },
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    ":bust_in_silhouette: Translating content from one language to another while preserving meaning and context"
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": _("Human Translation Help"),
-                                },
-                                "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
-                                "action_id": "link_human_help",
-                            },
-                        },
                     ]
                     if is_verify_enabled
                     else []
                 ),
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            ":bust_in_silhouette: Translating content from one language to another while preserving meaning and context"
+                        ),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Human Translation Help"),
+                        },
+                        "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
+                        "action_id": "link_human_help",
+                    },
+                },
                 {
                     "type": "section",
                     "text": {
