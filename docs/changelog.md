@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- Fixed: Bug in `handle_verify_job_submission` where deselecting a language for one file would still mark it as "Submitted" if another file had that language selected; now correctly checks file_uuid matches before marking target files (Wade Norman, 2026-02-05)
 - Fixed: Error message in `evaluate_job_submit` now correctly displays "human translation request" when HUMAN_EVALUATION_WORKFLOW_UUID is used, instead of always showing "quality evaluation request" (Wade Norman, 2026-02-05)
 - Changed: Moved Human Translation Help block outside is_verify_enabled so it always appears in Slack home/help; Quality Evaluation Help remains conditional on is_verify_enabled (Wade Norman, 2026-02-05)
 - Fixed: Type errors in app/api/stream_proxy.py (added imports for MtFileRequestSchema, create_slack_job, httpx) and app/slack/listeners.py (use ASRTaskResult attribute .file_id instead of indexing; assert file_id is not None) (Wade Norman, 2026-02-02)
