@@ -2245,11 +2245,14 @@ async def handle_verify_job_submission(
                 )
                 if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
                     for target_lang_option in selected_languages:
-                        lang_uuid = target_lang_option.rsplit(":", 1)[1]
-                        for target_file in source_file["target_files"]:
-                            if target_file["language_uuid"] == lang_uuid:
-                                target_file["human_job_status"] = "Submitted"
-                                break
+                        parts = target_lang_option.rsplit(":", 1)
+                        file_uuid, lang_uuid = parts[0], parts[1]
+                        # Only mark if this selection is for the current source file
+                        if file_uuid == source_file["file_uuid"]:
+                            for target_file in source_file["target_files"]:
+                                if target_file["language_uuid"] == lang_uuid:
+                                    target_file["human_job_status"] = "Submitted"
+                                    break
 
     if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
         for source_file in job["data"]["source_files"]:
