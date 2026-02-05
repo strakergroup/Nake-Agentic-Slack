@@ -1964,17 +1964,11 @@ async def evaluate_job_submit(
             )
         except Exception as e:
             notify_exception(e)
-            if form.workflow_options:
-                error_msg = _(
-                    "There was an error submitting your human translation request, please try again."
-                )
-            else:
-                error_msg = _(
-                    "There was an error submitting your quality evaluation request, please try again."
-                )
             await client.chat_postMessage(
                 channel=channel_id,
-                text=error_msg,
+                text=_(
+                    "There was an error submitting your quality evaluation request, please try again."
+                ),
             )
 
 
