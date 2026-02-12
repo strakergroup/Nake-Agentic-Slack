@@ -225,7 +225,7 @@ async def get_verify_languages():
             notify_exception(e)
 
     url = f"{domains.verify_api}/languages"
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=300) as client:
         response = await client.get(url)
 
         # Check for unauthorized error
