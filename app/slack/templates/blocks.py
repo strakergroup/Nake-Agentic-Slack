@@ -9,7 +9,7 @@ from ray_sdk.api.v3.models import Quote
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.ray.events.models import JobQuoteCreatedEvent
 from app.slack.select_options import get_languages_sync
-from app.slack.utils import segment_quality_score
+from app.slack.utils import calculate_evaluation_percentages, segment_quality_score
 
 from ...auth.connector import (
     RayConnection,
@@ -501,41 +501,17 @@ def verify_quote_blocks(
                     summary = job_summary_string(source_lang, lang, file)
 
                     if report:
-                        # Filter out unscored/untranslated segments to match cloud-verify-ui behavior
-                        counts = report["count"]
-                        scored_categories = [
-                            "translation_memory",
-                            "best",
-                            "good",
-                            "acceptable",
-                            "bad",
-                        ]
-                        segment_count = sum(
-                            counts.get(category, 0) for category in scored_categories
-                        )
-
-                        if segment_count == 0:
-                            bad = good = best = acceptable = memory_percentage = 0
-                        else:
-                            bad = (counts.get("bad", 0) / segment_count) * 100
-                            good = (counts.get("good", 0) / segment_count) * 100
-                            best = (counts.get("best", 0) / segment_count) * 100
-                            acceptable = (
-                                counts.get("acceptable", 0) / segment_count
-                            ) * 100
-                            memory_percentage = (
-                                counts.get("translation_memory", 0) / segment_count
-                            ) * 100
-                        report_message = f":large_blue_square: {_('Translation Memory')}: {round(memory_percentage)}%\n"
+                        pct = calculate_evaluation_percentages(report["count"])
+                        report_message = f":large_blue_square: {_('Translation Memory')}: {pct['translation_memory']}%\n"
                         report_message += (
-                            f":large_green_square: {_('Best')}: {round(best)}%\n"
+                            f":large_green_square: {_('Best')}: {pct['best']}%\n"
                         )
                         report_message += (
-                            f":large_yellow_square: {_('Good')}: {round(good)}%\n"
+                            f":large_yellow_square: {_('Good')}: {pct['good']}%\n"
                         )
-                        report_message += f":large_orange_square: {_('Acceptable')}: {round(acceptable)}%\n"
+                        report_message += f":large_orange_square: {_('Acceptable')}: {pct['acceptable']}%\n"
                         report_message += (
-                            f":large_red_square: {_('Bad')}: {round(bad)}%"
+                            f":large_red_square: {_('Bad')}: {pct['bad']}%"
                         )
                         blocks.append(
                             {
@@ -681,38 +657,16 @@ def evaluate_success_blocks(
                 summary = job_summary_string(source_lang, lang, file)
 
                 if report:
-                    # Filter out unscored/untranslated segments to match cloud-verify-ui behavior
-                    counts = report["count"]
-                    scored_categories = [
-                        "translation_memory",
-                        "best",
-                        "good",
-                        "acceptable",
-                        "bad",
-                    ]
-                    segment_count = sum(
-                        counts.get(category, 0) for category in scored_categories
-                    )
-
-                    if segment_count == 0:
-                        bad = good = best = acceptable = memory_percentage = 0
-                    else:
-                        bad = (counts.get("bad", 0) / segment_count) * 100
-                        good = (counts.get("good", 0) / segment_count) * 100
-                        best = (counts.get("best", 0) / segment_count) * 100
-                        acceptable = (counts.get("acceptable", 0) / segment_count) * 100
-                        memory_percentage = (
-                            counts.get("translation_memory", 0) / segment_count
-                        ) * 100
-                    report_message = f":large_blue_square: {_('Translation Memory')}: {round(memory_percentage)}%\n"
+                    pct = calculate_evaluation_percentages(report["count"])
+                    report_message = f":large_blue_square: {_('Translation Memory')}: {pct['translation_memory']}%\n"
                     report_message += (
-                        f":large_green_square: {_('Best')}: {round(best)}%\n"
+                        f":large_green_square: {_('Best')}: {pct['best']}%\n"
                     )
                     report_message += (
-                        f":large_yellow_square: {_('Good')}: {round(good)}%\n"
+                        f":large_yellow_square: {_('Good')}: {pct['good']}%\n"
                     )
-                    report_message += f":large_orange_square: {_('Acceptable')}: {round(acceptable)}%\n"
-                    report_message += f":large_red_square: {_('Bad')}: {round(bad)}%"
+                    report_message += f":large_orange_square: {_('Acceptable')}: {pct['acceptable']}%\n"
+                    report_message += f":large_red_square: {_('Bad')}: {pct['bad']}%"
                     blocks.append(
                         {
                             "type": "section",
