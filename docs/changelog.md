@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- Changed: `submit_verification_job` now sets the initial Slack confirmation text based on whether any target languages are selected, while leaving the remaining submission flow unchanged (Wade Norman, 2026-02-12)
 - Fixed: Bug in `handle_verify_job_submission` where deselecting a language for one file would still mark it as "Submitted" if another file had that language selected; now correctly checks file_uuid matches before marking target files (Wade Norman, 2026-02-05)
 - Fixed: Error message in `evaluate_job_submit` now correctly displays "human translation request" when HUMAN_EVALUATION_WORKFLOW_UUID is used, instead of always showing "quality evaluation request" (Wade Norman, 2026-02-05)
 - Changed: Moved Human Translation Help block outside is_verify_enabled so it always appears in Slack home/help; Quality Evaluation Help remains conditional on is_verify_enabled (Wade Norman, 2026-02-05)

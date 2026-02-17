@@ -53,7 +53,7 @@ from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
     get_auto_translate_settings_and_langs,
 )
-from ..ray.utils import get_media_duration, is_ibm_enterprise, validate_file_type
+from ..ray.utils import is_ibm_enterprise, validate_file_type
 from ..redis import redis_conn
 from ..watson import watson_message
 from .middleware import require_mt_tokens, require_ray_client
@@ -1964,9 +1964,13 @@ async def submit_verification_job(
         timestamp (str | None): Optional timestamp of the message to update.
         channel_id (str | None): Optional channel ID where the message is posted.
     """
-    # Send initial confirmation
-    msg = _(
-        "Thank you for sending your document(s) for human translation! We will notify you as soon as the translation is complete."
+    # Send initial message based on whether languages were selected.
+    msg = (
+        _(
+            "Thank you for sending your document(s) for human translation! We will notify you as soon as the translation is complete."
+        )
+        if selected_languages
+        else _("Your request has been cancelled.")
     )
     response = await client.chat_postMessage(
         channel=user_id,
@@ -2020,12 +2024,6 @@ async def submit_verification_job(
                 context.ray.client,
                 job_uuid,
                 selected_languages,
-            )
-        else:
-            msg = _("Your request has been cancelled.")
-            await client.chat_postMessage(
-                channel=user_id,
-                text=msg,
             )
     except Exception as e:
         notify_exception(e)
