@@ -1,4 +1,5 @@
 import logging
+import math
 import re
 from typing import Any
 
@@ -228,6 +229,49 @@ def split_text_into_blocks(
         is_first = False
 
     return chunks
+
+
+SCORED_CATEGORIES = [
+    "translation_memory",
+    "best",
+    "good",
+    "acceptable",
+    "bad",
+]
+
+
+def calculate_evaluation_percentages(
+    counts: dict[str, int],
+) -> dict[str, int]:
+    """Calculate quality evaluation percentages that always sum to 100%.
+
+    Uses the Largest Remainder Method (Hamilton's method) to distribute
+    rounding residuals fairly across categories, ensuring the total is
+    exactly 100%.
+
+    Args:
+        counts: A dict mapping category names to segment counts
+            (e.g. {"best": 2, "good": 5, "bad": 1, ...}).
+
+    Returns:
+        A dict mapping each scored category to its integer percentage.
+        All values sum to exactly 100 (or all 0 if segment_count is 0).
+    """
+    segment_count = sum(counts.get(cat, 0) for cat in SCORED_CATEGORIES)
+
+    if segment_count == 0:
+        return {cat: 0 for cat in SCORED_CATEGORIES}
+
+    raw = {cat: (counts.get(cat, 0) / segment_count) * 100 for cat in SCORED_CATEGORIES}
+    floored = {cat: math.floor(val) for cat, val in raw.items()}
+    remainders = {cat: raw[cat] - floored[cat] for cat in SCORED_CATEGORIES}
+
+    missing = 100 - sum(floored.values())
+
+    for cat in sorted(remainders, key=lambda c: remainders[c], reverse=True)[:missing]:
+        floored[cat] += 1
+
+    return floored
 
 
 def segment_quality_score(score: float, taus_version: str = "1.0.0") -> str:

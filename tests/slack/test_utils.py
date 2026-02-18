@@ -1,4 +1,5 @@
 from app.slack.utils import (
+    calculate_evaluation_percentages,
     escape_slack_emoji,
     format_strings_display,
     is_channel_im,
@@ -338,6 +339,113 @@ class TestSegmentQualityScore:
         assert "Good" in segment_quality_score(0.90, "1.0.0")
         assert "Acceptable" in segment_quality_score(0.85, "1.0.0")
         assert "Bad" in segment_quality_score(0.84, "1.0.0")
+
+
+class TestCalculateEvaluationPercentages:
+    """Tests for calculate_evaluation_percentages function."""
+
+    def test_percentages_sum_to_100(self):
+        """Percentages must always sum to exactly 100."""
+        counts = {
+            "translation_memory": 208,
+            "best": 0,
+            "good": 3,
+            "acceptable": 2,
+            "bad": 1,
+            "no_score": 26,
+            "un_translated": 26,
+        }
+        result = calculate_evaluation_percentages(counts)
+        assert sum(result.values()) == 100
+
+    def test_all_zero_when_no_segments(self):
+        """All percentages should be 0 when segment count is 0."""
+        counts = {"no_score": 10, "un_translated": 5}
+        result = calculate_evaluation_percentages(counts)
+        assert all(v == 0 for v in result.values())
+        assert sum(result.values()) == 0
+
+    def test_empty_counts(self):
+        """An empty counts dict should produce all zeros."""
+        result = calculate_evaluation_percentages({})
+        assert all(v == 0 for v in result.values())
+
+    def test_single_category(self):
+        """A single category with all segments should be 100%."""
+        counts = {"best": 50}
+        result = calculate_evaluation_percentages(counts)
+        assert result["best"] == 100
+        assert sum(result.values()) == 100
+
+    def test_even_distribution(self):
+        """Five categories with equal counts should each be 20%."""
+        counts = {
+            "translation_memory": 10,
+            "best": 10,
+            "good": 10,
+            "acceptable": 10,
+            "bad": 10,
+        }
+        result = calculate_evaluation_percentages(counts)
+        assert all(v == 20 for v in result.values())
+        assert sum(result.values()) == 100
+
+    def test_rounding_residuals_distributed_fairly(self):
+        """Verify the Largest Remainder Method distributes residuals correctly."""
+        counts = {
+            "translation_memory": 1,
+            "best": 1,
+            "good": 1,
+            "acceptable": 0,
+            "bad": 0,
+        }
+        result = calculate_evaluation_percentages(counts)
+        assert sum(result.values()) == 100
+        assert result["translation_memory"] == 34
+        assert result["best"] == 33
+        assert result["good"] == 33
+
+    def test_real_world_data_sums_to_100(self):
+        """Test with the real-world IBM job data that originally exposed the bug."""
+        counts = {
+            "bad": 1,
+            "best": 0,
+            "good": 3,
+            "no_score": 26,
+            "acceptable": 2,
+            "un_translated": 26,
+            "translation_memory": 208,
+        }
+        result = calculate_evaluation_percentages(counts)
+        assert sum(result.values()) == 100
+        assert result["translation_memory"] == 97
+        assert result["bad"] == 1
+
+    def test_ignores_non_scored_categories(self):
+        """no_score and un_translated must not affect percentages."""
+        counts = {
+            "translation_memory": 10,
+            "best": 0,
+            "good": 0,
+            "acceptable": 0,
+            "bad": 0,
+            "no_score": 999,
+            "un_translated": 999,
+        }
+        result = calculate_evaluation_percentages(counts)
+        assert result["translation_memory"] == 100
+        assert sum(result.values()) == 100
+
+    def test_two_category_split(self):
+        """Two categories that split unevenly still sum to 100."""
+        counts = {
+            "best": 1,
+            "good": 2,
+        }
+        result = calculate_evaluation_percentages(counts)
+        assert sum(result.values()) == 100
+        assert result["good"] == 67
+        assert result["best"] == 33
 
 
 class TestSplitTextIntoBlocks:
