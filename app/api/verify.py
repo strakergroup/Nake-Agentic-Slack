@@ -29,12 +29,16 @@ async def submit_evaluation_job(
     reference: str,
     workflow_uuid: str | None = None,
     job_notes: str = "",
+    workflow_version: float = 3.0,
+    docconverter_version: str = "m48",
 ):
     # Prepare the data for the request
     target_languages_data = {
         "target_languages": target_languages_uuid,
         "title": reference,
         "source": "slack",
+        "workflow_version": workflow_version,
+        "docconverter_version": docconverter_version,
     }
     if job_notes:
         target_languages_data["client_notes"] = job_notes
