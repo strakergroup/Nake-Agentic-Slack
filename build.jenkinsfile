@@ -26,7 +26,7 @@ spec:
         container('container-builder') {
           sh(script: """
 echo "${DOCKER_PASSWORD}" | buildah login -u strakertranslations --password-stdin docker.io
-GIT_SSH_COMMAND="ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no" git clone --branch ${BRANCH} --single-branch git@bitbucket.org:$REPO /root/container-build/${APPLICATION}/
+GIT_SSH_COMMAND="ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no" git clone --branch ${BRANCH} --single-branch git@github.com:$REPO /root/container-build/${APPLICATION}/
           """)
         }
       }
