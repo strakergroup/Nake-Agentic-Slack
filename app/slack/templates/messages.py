@@ -350,7 +350,7 @@ class WelcomeBackMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI Translate your content and receive translation quality scores, then opt for human verification if needed."
+                                    ":sports_medal: AI translate your content and receive translation quality scores, then opt for human verification if needed."
                                 ),
                             },
                             "accessory": {
@@ -567,7 +567,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI Translate your content and receive translation quality scores, then opt for human verification if needed."
+                                    ":sports_medal: AI translate your content and receive translation quality scores, then opt for human verification if needed."
                                 ),
                             },
                             "accessory": {
@@ -1742,7 +1742,7 @@ class NewJobMessage(SlackMessage):
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "*AI Translation* - AI translate content from one language into multiple languages\n\n"
+                        "*AI Translation* - AI translate content from one language into multiple languages.\n\n"
                     ),
                 },
                 "accessory": {
@@ -1768,7 +1768,7 @@ class NewJobMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "*Quality Evaluation* - AI Translate your content and receive translation quality scores, then opt for human verification if needed."
+                            "*Quality Evaluation* - AI translate your content and receive translation quality scores, then opt for human verification if needed."
                         ),
                     },
                     "accessory": {
@@ -1795,7 +1795,7 @@ class NewJobMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "*Human Translation* - Translating content from one language to another while preserving meaning and context."
+                            "*Human Translation* - Translate content from one language to another by professional translators."
                         ),
                     },
                     "accessory": {
@@ -2075,7 +2075,7 @@ class HelpMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI Translate your content and receive translation quality scores, then opt for human verification if needed."
+                                    ":sports_medal: AI translate your content and receive translation quality scores, then opt for human verification if needed."
                                 ),
                             },
                             "accessory": {

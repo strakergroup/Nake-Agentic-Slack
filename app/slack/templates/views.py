@@ -553,7 +553,7 @@ def human_job_modal(
         title = _("Quality Evaluation", 23)[:24]
         submit_text = _("Submit", 23)[:24]
         description = _(
-            "AI Translate your content and receive translation quality scores, then opt for human verification if needed."
+            "AI translate your content and receive translation quality scores, then opt for human verification if needed."
         )
         callback_id = "evaluate_job"
         close_text = _("Close")

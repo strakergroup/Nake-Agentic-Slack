@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- Changed: Updated Slack message templates for translation service descriptions — HT explanation changed from "Translating content..." to "Translate content from one language to another by professional translators" (RAY-78647); QE description lowercased "AI Translate" to "AI translate" for consistency (RAY-78648); added missing full stop to AI Translation description (RAY-78646) (Wade Norman, 2026-02-20)
 - Fixed: Quality evaluation percentages now always sum to 100% — replaced independent rounding with Largest Remainder Method; extracted shared helper `calculate_evaluation_percentages` into `app/slack/utils.py` (Wade Norman, 2026-02-17)
 - Fixed: Resolved merge conflicts in `app/api/verify.py` to accept stashed changes adding `workflow_version` and `docconverter_version` parameters to `submit_evaluation_job` (Wade Norman, 2026-02-18)
 - Changed: `submit_verification_job` now sets the initial Slack confirmation text based on whether any target languages are selected, while leaving the remaining submission flow unchanged (Wade Norman, 2026-02-12)
