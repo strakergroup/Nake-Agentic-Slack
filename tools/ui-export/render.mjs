@@ -70,8 +70,53 @@ for (const c of Object.keys(grouped)) {
   if (!sortedCategories.includes(c)) sortedCategories.push(c);
 }
 
+// Work around slack-blocks-to-jsx emoji tokenizer bug (github.com/themashcodee/
+// slack-blocks-to-jsx): the SlackEmojiTokenizer's findEndDelimiter greedily
+// matches any pair of colons without checking whether the content between them
+// is a valid emoji name.  Combined with the library's *bold* → **bold**
+// conversion, patterns like "*Bold:*\n:emoji:" produce bogus tokens.
+//
+// Fix: convert Slack emoji shortcodes to Unicode *before* the library sees them
+// using node-emoji (already a transitive dependency).
+const emoji = require("node-emoji");
+
+const SLACK_EMOJI_FALLBACKS = {
+  large_blue_circle: "\u{1F535}",
+  large_green_circle: "\u{1F7E2}",
+  large_orange_circle: "\u{1F7E0}",
+  large_red_circle: "\u{1F534}",
+  large_yellow_circle: "\u{1F7E1}",
+  large_blue_square: "\u{1F7E6}",
+  large_green_square: "\u{1F7E9}",
+  large_orange_square: "\u{1F7E7}",
+  large_red_square: "\u{1F7E5}",
+  large_yellow_square: "\u{1F7E8}",
+  sports_medal: "\u{1F3C5}",
+  coin: "\u{1FA99}",
+};
+
+function sanitiseMrkdwn(text) {
+  if (typeof text !== "string") return text;
+  let result = emoji.emojify(text);
+  result = result.replace(/:([a-z0-9_+-]+):/g, (match, name) => {
+    return SLACK_EMOJI_FALLBACKS[name] || match;
+  });
+  return result;
+}
+
+function sanitiseBlocks(blocks) {
+  if (!Array.isArray(blocks)) return blocks;
+  return JSON.parse(
+    JSON.stringify(blocks, (key, value) => {
+      if (key === "text" && typeof value === "string") return sanitiseMrkdwn(value);
+      return value;
+    })
+  );
+}
+
 // Render each template's blocks to HTML via React SSR
 function renderBlocks(blocks, name) {
+  blocks = sanitiseBlocks(blocks);
   if (!blocks || blocks.length === 0) return "<em>No blocks</em>";
   try {
     const el = createElement(Message, {

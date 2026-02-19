@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: UI Export renderer — worked around slack-blocks-to-jsx emoji tokenizer bug that caused broken `::` spans and raw `**` bold markers when mrkdwn combined `*bold:*\n:emoji:` patterns; pre-converts Slack emoji shortcodes to Unicode via node-emoji with fallback map for Slack-specific names (Wade Norman, 2026-02-20)
 - [Added]: Slack UI Export tool (`tools/ui-export/`) — two-step pipeline that instantiates all 110 Slack Block Kit templates (89 messages, 21 views) with mock data via Python, then renders them to a single self-contained HTML catalog using React SSR with `slack-blocks-to-jsx`; includes Makefile, navigation sidebar, category grouping, and modal chrome styling (Wade Norman, 2026-02-20)
 - [Changed]: Refactored VerifyLoop Slack submission to create one task per uploaded file instead of combining all files into a single task. Each file now gets its own Slack thread with independent progress tracking and results. Pasted text (no files) still creates a single task. Added 3 new tests covering multi-file submission, text-only fallback, and extraction-failure skip behaviour. (Justin Cole, 2026-02-18)
 - Fixed: Resolved merge conflicts in `app/api/verify.py` and `docs/changelog.md`; `submit_evaluation_job` now includes `docconverter_version` parameter and payload (Wade Norman, 2026-02-18)
