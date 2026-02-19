@@ -9,7 +9,6 @@ from slack_sdk.models.blocks import (
     ActionsBlock,
     Block,
     ContextBlock,
-    DividerBlock,
     InputBlock,
     MarkdownTextObject,
     Option,
@@ -369,7 +368,7 @@ class WelcomeBackMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":bust_in_silhouette: Translating content from one language to another while preserving meaning and context"
+                                    ":bust_in_silhouette: Translate content from one language to another by professional translators."
                                 ),
                             },
                             "accessory": {
@@ -586,7 +585,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":bust_in_silhouette: Translating content from one language to another while preserving meaning and context"
+                                    ":bust_in_silhouette: Translate content from one language to another by professional translators."
                                 ),
                             },
                             "accessory": {
@@ -2094,7 +2093,7 @@ class HelpMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":bust_in_silhouette: Translating content from one language to another while preserving meaning and context"
+                                    ":bust_in_silhouette: Translate content from one language to another by professional translators."
                                 ),
                             },
                             "accessory": {
