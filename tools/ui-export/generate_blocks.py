@@ -855,10 +855,22 @@ def build_all_messages() -> list[dict[str, Any]]:
             InfoMessage(ray_client, USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, False),
         )
         add(
+            "InfoMessage (IBM)",
+            "Auth",
+            InfoMessage(ray_client, USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, True),
+        )
+        add(
             "ConnectionInfoMessage",
             "Auth",
             ConnectionInfoMessage(
                 ray_connection, USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID
+            ),
+        )
+        add(
+            "ConnectionInfoMessage (IBM)",
+            "Auth",
+            ConnectionInfoMessage(
+                ray_connection, USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, is_ibm=True
             ),
         )
         add(
@@ -867,7 +879,17 @@ def build_all_messages() -> list[dict[str, Any]]:
 
         # ---- Job Status ----
         add("JobStatusMessage", "Jobs", JobStatusMessage(job, CLIENT_UUID, False))
+        add(
+            "JobStatusMessage (IBM)",
+            "Jobs",
+            JobStatusMessage(job, CLIENT_UUID, True),
+        )
         add("JobDetailsMessage", "Jobs", JobDetailsMessage(job, CLIENT_UUID, False))
+        add(
+            "JobDetailsMessage (IBM)",
+            "Jobs",
+            JobDetailsMessage(job, CLIENT_UUID, True),
+        )
         add(
             "JobDetailsMessage (with prediction)",
             "Jobs",
@@ -875,6 +897,16 @@ def build_all_messages() -> list[dict[str, Any]]:
                 job,
                 CLIENT_UUID,
                 False,
+                job_prediction=":large_green_circle: This job is predicted to be on time",
+            ),
+        )
+        add(
+            "JobDetailsMessage (IBM, with prediction)",
+            "Jobs",
+            JobDetailsMessage(
+                job,
+                CLIENT_UUID,
+                True,
                 job_prediction=":large_green_circle: This job is predicted to be on time",
             ),
         )
@@ -994,18 +1026,34 @@ def build_all_messages() -> list[dict[str, Any]]:
         # ---- Quotes ----
         add("QuoteMessage", "Quotes", QuoteMessage())
         add("JobQuotedMessage", "Quotes", JobQuotedMessage(quote, False))
+        add("JobQuotedMessage (IBM)", "Quotes", JobQuotedMessage(quote, True))
 
         event = make_job_quote_created_event()
         add("JobQuotedEventMessage", "Quotes", JobQuotedEventMessage(event, False))
+        add(
+            "JobQuotedEventMessage (IBM)",
+            "Quotes",
+            JobQuotedEventMessage(event, True),
+        )
         add(
             "JobQuoteAcceptedEventMessage",
             "Quotes",
             JobQuoteAcceptedEventMessage(make_job_quote_accepted_event(), False),
         )
         add(
+            "JobQuoteAcceptedEventMessage (IBM)",
+            "Quotes",
+            JobQuoteAcceptedEventMessage(make_job_quote_accepted_event(), True),
+        )
+        add(
             "JobQuoteCancelledEventMessage",
             "Quotes",
             JobQuoteCancelledEventMessage(CLIENT_UUID, JOB_UUID, "TJ123456", False),
+        )
+        add(
+            "JobQuoteCancelledEventMessage (IBM)",
+            "Quotes",
+            JobQuoteCancelledEventMessage(CLIENT_UUID, JOB_UUID, "TJ123456", True),
         )
 
         eval_job = make_evaluate_job()
@@ -1043,6 +1091,13 @@ def build_all_messages() -> list[dict[str, Any]]:
             ),
         )
         add(
+            "JobStatusChangedEventMessage (IBM)",
+            "Events",
+            JobStatusChangedEventMessage(
+                CLIENT_UUID, JOB_UUID, "TJ123456", "COMPLETED", True
+            ),
+        )
+        add(
             "JobCompletedEventMessage",
             "Events",
             JobCompletedEventMessage(
@@ -1051,6 +1106,17 @@ def build_all_messages() -> list[dict[str, Any]]:
                 "TJ123456",
                 ["French", "Spanish", "German"],
                 False,
+            ),
+        )
+        add(
+            "JobCompletedEventMessage (IBM)",
+            "Events",
+            JobCompletedEventMessage(
+                CLIENT_UUID,
+                JOB_UUID,
+                "TJ123456",
+                ["French", "Spanish", "German"],
+                True,
             ),
         )
         add(
@@ -1126,6 +1192,13 @@ def build_all_messages() -> list[dict[str, Any]]:
             VideoOptionsMessage(CHANNEL_ID, video_files, tokens=5000),
         )
         add(
+            "VideoOptionsMessage (IBM)",
+            "Video",
+            VideoOptionsMessage(
+                CHANNEL_ID, video_files, is_ibm_enterprise=True, tokens=5000
+            ),
+        )
+        add(
             "JobTranscribedEventMessage",
             "Video",
             JobTranscribedEventMessage("meeting-recording.mp4"),
@@ -1134,6 +1207,13 @@ def build_all_messages() -> list[dict[str, Any]]:
             "JobTranscribedEventMessage (tokens)",
             "Video",
             JobTranscribedEventMessage("meeting-recording.mp4", tokens_used=1250),
+        )
+        add(
+            "JobTranscribedEventMessage (IBM, tokens)",
+            "Video",
+            JobTranscribedEventMessage(
+                "meeting-recording.mp4", is_ibm_enterprise=True, tokens_used=1250
+            ),
         )
         add(
             "TranscriptionMessage",
@@ -1146,6 +1226,11 @@ def build_all_messages() -> list[dict[str, Any]]:
             "EvaluateSuccessMessage",
             "Quality",
             EvaluateSuccessMessage(eval_job, False, tokens=500),
+        )
+        add(
+            "EvaluateSuccessMessage (IBM)",
+            "Quality",
+            EvaluateSuccessMessage(eval_job, True, tokens=500),
         )
         add(
             "EvaluateSuccessMessage (no actions)",
@@ -1225,7 +1310,212 @@ def build_all_messages() -> list[dict[str, Any]]:
             "RequiresMtTokenAdminMessage", "Tokens", RequiresMtTokenAdminMessage(0, 500)
         )
 
+    # ---- IBM-specific LoginMessage variants ----
+    # LoginMessage calls is_ibm_enterprise() internally; separate patch context
+    # to avoid exceeding Python's static nesting limit.
+    MSG = "app.slack.templates.messages"
+    BLK = "app.slack.templates.blocks"
+    with (
+        patch(
+            f"{MSG}.get_language_cloud_connect_url", return_value="#mock-connect-url"
+        ),
+        patch(f"{MSG}.is_ibm_enterprise", return_value=True),
+        patch(f"{MSG}.config", _config_mock),
+        patch(f"{MSG}.domains", _domains_mock),
+        patch(f"{BLK}.is_ibm_enterprise", return_value=True),
+    ):
+        from app.slack.templates.messages import LoginMessage
+
+        def add(name: str, category: str, obj: Any):
+            data = safe_extract(obj)
+            if data:
+                entries.append({"name": name, "category": category, **data})
+
+        add(
+            "LoginMessage (IBM, default)",
+            "Auth",
+            LoginMessage(USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID),
+        )
+        add(
+            "LoginMessage (IBM, get_job)",
+            "Auth",
+            LoginMessage(
+                USER_ID,
+                TEAM_ID,
+                ENTERPRISE_ID,
+                CHANNEL_ID,
+                variation=LoginMessage.GET_JOB,
+            ),
+        )
+        add(
+            "LoginMessage (IBM, new_job)",
+            "Auth",
+            LoginMessage(
+                USER_ID,
+                TEAM_ID,
+                ENTERPRISE_ID,
+                CHANNEL_ID,
+                variation=LoginMessage.NEW_JOB,
+            ),
+        )
+
     return entries
+
+
+_HOME_MESSAGE_URL = f"slack://app?team={TEAM_ID}&id=A_MOCK_APP_ID&tab=messages"
+
+
+def _build_home_blocks(
+    auth_blocks: list[dict[str, Any]],
+    connected: bool,
+    is_ibm: bool,
+) -> list[dict[str, Any]]:
+    """Build home view blocks matching the real home_view function."""
+    translation_settings_blocks: list[dict[str, Any]] = [
+        {"type": "divider"},
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "Translate Channels"},
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences.",
+            },
+        },
+    ]
+    if connected:
+        translation_settings_blocks.append(
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": ":speech_balloon: Translation settings",
+                        },
+                        "action_id": "settings_auto_translate",
+                    },
+                ],
+            }
+        )
+
+    footer_elements = [
+        {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "emoji": True,
+                "text": ":question: Help Centre",
+            },
+            "action_id": "link_2",
+            "url": "https://help.straker.ai/en/docs/workplace-apps#straker-translate-app-for-slack",
+        },
+    ]
+    if not is_ibm:
+        footer_elements.append(
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "emoji": True,
+                    "text": "Visit Straker Verify",
+                },
+                "action_id": "link_1",
+                "url": _domains_mock.verify,
+            },
+        )
+
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": ":wave: Welcome to Straker Translate!",
+            },
+        },
+        *auth_blocks,
+        {"type": "divider"},
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "Get Started"},
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "Here are some things to get you started. Also make sure you check out our Help Centre and use our built in chatbot within our app to guide you through the translation process.",
+            },
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": ":sunny: Daily Summary",
+                    },
+                    "action_id": "daily_summary",
+                    "url": _HOME_MESSAGE_URL,
+                },
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": ":bar_chart: Insights",
+                    },
+                    "action_id": "report_insights",
+                    "url": _HOME_MESSAGE_URL,
+                },
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": ":question: AI Translate Help",
+                    },
+                    "action_id": "ai_translate_help",
+                    "url": _HOME_MESSAGE_URL,
+                },
+            ],
+        },
+        *translation_settings_blocks,
+        {"type": "divider"},
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "Give us your feedback"},
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "Straker Community is a place for Straker users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest Verify and Enterprise features, provide updates, and engage with customers like you!",
+            },
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Learn More",
+                        "emoji": False,
+                    },
+                    "action_id": "link_0",
+                    "url": "https://help.straker.ai/en/docs/straker-translate-functions",
+                },
+            ],
+        },
+        {"type": "divider"},
+        {"type": "actions", "elements": footer_elements},
+    ]
 
 
 def build_all_views() -> list[dict[str, Any]]:
@@ -1339,9 +1629,19 @@ def build_all_views() -> list[dict[str, Any]]:
             human_job_modal(CHANNEL_ID, FILE_INFO, False, "human"),
         )
         add(
+            "human_job_modal (human, IBM)",
+            "Modals",
+            human_job_modal(CHANNEL_ID, FILE_INFO, True, "human"),
+        )
+        add(
             "human_job_modal (evaluate)",
             "Modals",
             human_job_modal(CHANNEL_ID, FILE_INFO, False, "evaluate"),
+        )
+        add(
+            "human_job_modal (evaluate, IBM)",
+            "Modals",
+            human_job_modal(CHANNEL_ID, FILE_INFO, True, "evaluate"),
         )
         add("sso_form_modal", "Modals", sso_form_modal())
         add("cancel_job_modal", "Modals", cancel_job_modal("jane.doe@acme.com"))
@@ -1419,164 +1719,78 @@ def build_all_views() -> list[dict[str, Any]]:
             video_embed_subtitles_modal(CHANNEL_ID, video_files),
         )
 
-        # home_view is async - build it manually since it has heavy deps
+        # home_view non-IBM variants (connected and not connected)
         from app.slack.templates.blocks import home_auth_blocks
 
         ray_connection = make_ray_connection()
-        home_blocks = [
+        auth_blocks_connected = home_auth_blocks(
+            USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, ray_connection
+        )
+        add(
+            "home_view (connected)",
+            "Home",
             {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": ":wave: Welcome to Straker Translate!",
-                },
+                "type": "home",
+                "blocks": _build_home_blocks(auth_blocks_connected, True, False),
             },
-            *home_auth_blocks(
-                USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, ray_connection
-            ),
-            {"type": "divider"},
-            {"type": "header", "text": {"type": "plain_text", "text": "Get Started"}},
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "Here are some things to get you started. Also make sure you check out our Help Centre.",
-                },
-            },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": ":sunny: Daily Summary",
-                        },
-                        "action_id": "daily_summary",
-                    },
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": ":bar_chart: Insights",
-                        },
-                        "action_id": "report_insights",
-                    },
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": ":question: AI Translate Help",
-                        },
-                        "action_id": "ai_translate_help",
-                    },
-                ],
-            },
-            {"type": "divider"},
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": "Translate Channels"},
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations.",
-                },
-            },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": ":speech_balloon: Translation settings",
-                        },
-                        "action_id": "settings_auto_translate",
-                    },
-                ],
-            },
-            {"type": "divider"},
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": "Give us your feedback"},
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "Straker Community is a place for Straker users to provide feedback, and help each other get the most out of our platform.",
-                },
-            },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "Learn More"},
-                        "action_id": "link_0",
-                        "url": "https://help.straker.ai/en/docs/straker-translate-functions",
-                    },
-                ],
-            },
-            {"type": "divider"},
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": ":question: Help Centre",
-                        },
-                        "action_id": "link_2",
-                        "url": "https://help.straker.ai/en/docs/workplace-apps#straker-translate-app-for-slack",
-                    },
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": "Visit Straker Verify",
-                        },
-                        "action_id": "link_1",
-                        "url": "https://verify.example.com",
-                    },
-                ],
-            },
-        ]
-        add("home_view (connected)", "Home", {"type": "home", "blocks": home_blocks})
+        )
 
-        # Home view without connection
-        home_blocks_no_auth = [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": ":wave: Welcome to Straker Translate!",
-                },
-            },
-            *home_auth_blocks(USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, None),
-            {"type": "divider"},
-            {"type": "header", "text": {"type": "plain_text", "text": "Get Started"}},
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "Here are some things to get you started.",
-                },
-            },
-        ]
+        auth_blocks_not_connected = home_auth_blocks(
+            USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, None
+        )
         add(
             "home_view (not connected)",
             "Home",
-            {"type": "home", "blocks": home_blocks_no_auth},
+            {
+                "type": "home",
+                "blocks": _build_home_blocks(auth_blocks_not_connected, False, False),
+            },
+        )
+
+    # IBM home view variants — separate patch context to avoid nesting limit
+    BLK = "app.slack.templates.blocks"
+    with (
+        patch(
+            f"{BLK}.get_language_cloud_connect_url", return_value="#mock-connect-url"
+        ),
+        patch(f"{BLK}.is_ibm_enterprise", return_value=True),
+        patch(f"{BLK}.domains", _domains_mock),
+    ):
+        from app.slack.templates.blocks import home_auth_blocks
+
+        ray_connection = make_ray_connection()
+        ibm_auth_connected = home_auth_blocks(
+            USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, ray_connection
+        )
+        entries.append(
+            {
+                "name": "home_view (IBM, connected)",
+                "category": "Home",
+                **safe_extract(
+                    {
+                        "type": "home",
+                        "blocks": _build_home_blocks(ibm_auth_connected, True, True),
+                    }
+                ),
+            }
+        )
+
+        ibm_auth_not_connected = home_auth_blocks(
+            USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, None
+        )
+        entries.append(
+            {
+                "name": "home_view (IBM, not connected)",
+                "category": "Home",
+                **safe_extract(
+                    {
+                        "type": "home",
+                        "blocks": _build_home_blocks(
+                            ibm_auth_not_connected, False, True
+                        ),
+                    }
+                ),
+            }
         )
 
     return entries
