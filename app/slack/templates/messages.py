@@ -368,7 +368,7 @@ class WelcomeBackMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":bust_in_silhouette: Translate content from one language to another by professional translators."
+                                    ":bust_in_silhouette: Have content translated from one language to another by professional translators."
                                 ),
                             },
                             "accessory": {
@@ -391,7 +391,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            ":mag: Search allows you to search for specific Translation Jobs (TJs)."
+                            ":mag: Search allows you to find specific Translation Jobs (TJs)."
                         ),
                     },
                     "accessory": {
@@ -585,7 +585,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":bust_in_silhouette: Translate content from one language to another by professional translators."
+                                    ":bust_in_silhouette: Have content translated from one language to another by professional translators."
                                 ),
                             },
                             "accessory": {
@@ -608,7 +608,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            ":mag: Search allows you to search for specific Translation Jobs (TJs). "
+                            ":mag: Search allows you to find specific Translation Jobs (TJs). "
                         ),
                     },
                     "accessory": {
@@ -1794,7 +1794,7 @@ class NewJobMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "*Human Translation* - Translate content from one language to another by professional translators."
+                            "*Human Translation* - Have content translated from one language to another by professional translators."
                         ),
                     },
                     "accessory": {
@@ -2093,7 +2093,7 @@ class HelpMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":bust_in_silhouette: Translate content from one language to another by professional translators."
+                                    ":bust_in_silhouette: Have content translated from one language to another by professional translators."
                                 ),
                             },
                             "accessory": {
@@ -2116,7 +2116,7 @@ class HelpMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            ":mag: Search allows you to search for specific Translation Jobs (TJs). "
+                            ":mag: Search allows you to find specific Translation Jobs (TJs). "
                         ),
                     },
                     "accessory": {
@@ -2471,14 +2471,14 @@ class ClientSignupEventMessage(SlackMessage):
     def __init__(self, event: ClientSignupEvent) -> None:
         self.event = event
         super().__init__(
-            "Thank you for signing :tada:",
+            "Thank you for signing up :tada:",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "Thank you for signing {event.username} :tada:",
+                            "Thank you for signing up, {event.username} :tada:",
                         ),
                     },
                 },

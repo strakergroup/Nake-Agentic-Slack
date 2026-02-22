@@ -1428,7 +1428,7 @@ def build_all_views() -> list[dict[str, Any]]:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": ":wave: Welcome to the Straker Translate!",
+                    "text": ":wave: Welcome to Straker Translate!",
                 },
             },
             *home_auth_blocks(
@@ -1510,7 +1510,7 @@ def build_all_views() -> list[dict[str, Any]]:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform.",
+                    "text": "Straker Community is a place for Straker users to provide feedback, and help each other get the most out of our platform.",
                 },
             },
             {
@@ -1559,7 +1559,7 @@ def build_all_views() -> list[dict[str, Any]]:
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": ":wave: Welcome to the Straker Translate!",
+                    "text": ":wave: Welcome to Straker Translate!",
                 },
             },
             *home_auth_blocks(USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, None),
