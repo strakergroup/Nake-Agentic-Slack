@@ -7,10 +7,15 @@
 #   make render     # Node.js step only (creates output/ui-catalog.html)
 #   make clean      # Remove generated output
 
+SHELL := /bin/bash
+
 REPO_ROOT := $(shell git rev-parse --show-toplevel)
 PYTHON    := $(REPO_ROOT)/.venv/bin/python
-NODE_BIN  := $(shell command -v node 2>/dev/null || echo /usr/local/n/versions/node/18.12.1/bin/node)
-NPM_BIN   := $(shell command -v npm 2>/dev/null || echo /usr/local/n/versions/node/18.12.1/bin/npm)
+
+# nvm lazy-loads in interactive shells, so we source it explicitly for Make.
+NVM_INIT  := export NVM_DIR="$$HOME/.nvm" && [ -s "$$NVM_DIR/nvm.sh" ] && . "$$NVM_DIR/nvm.sh"
+NODE_BIN  := $(NVM_INIT) && node
+NPM_BIN   := $(NVM_INIT) && npm
 
 .PHONY: all generate render open clean install
 
