@@ -12,6 +12,7 @@ from ray_sdk import RayResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.web.async_client import AsyncWebClient
 
+from app.api.http_client import retry_on_timeout
 from app.api.language_cloud import detect_language
 from app.api.models import MtTranslationExtraData
 from app.api.stream_proxy import send_mt_translation_request
@@ -1264,14 +1265,21 @@ async def post_insights(
     channel_id = channel_id or context.channel_id or context.user_id
 
     async def send_insights_message():
-        insights_response = httpx.post(
-            f"{domains.insights_api}/nlp",
-            json={"clientId": ray_client.id, "prompt": prompt},
-            timeout=30,
-        )
-        insights_response = insights_response.json()
-        insights_msg = InsightsMessage(insights_response["result"].strip())
         try:
+
+            async def _insights_request():
+                async with httpx.AsyncClient(timeout=30) as http:
+                    response = await http.post(
+                        f"{domains.insights_api}/nlp",
+                        json={"clientId": ray_client.id, "prompt": prompt},
+                    )
+                    response.raise_for_status()
+                    return response.json()
+
+            insights_response = await retry_on_timeout(
+                _insights_request, notify_on_final_failure=False
+            )
+            insights_msg = InsightsMessage(insights_response["result"].strip())
             if context.response_url and context.respond:
                 await context.respond(
                     text=insights_msg.text, blocks=insights_msg.blocks
@@ -1287,7 +1295,6 @@ async def post_insights(
                 )
         except Exception as e:
             notify_exception(e, "Failed to get insights from Insights API")
-            # TODO send error message
 
     waiting_msg = ":stopwatch: Please wait as we gather your information..."
     if context.response_url and context.respond:

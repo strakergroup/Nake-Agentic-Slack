@@ -36,11 +36,18 @@ async def slack(request: Request):
     duration = end_time - start_time
     mem_delta = mem_end - mem_start
     if duration > 5 or mem_delta > 50:
-        data = await request.json()
-        event = data.get("event", {})
-        ts = event.get("event_ts", "")
-        event_type = event.get("type", "")
-        channel_type = event.get("channel_type", "")
+        ts = ""
+        event_type = ""
+        channel_type = ""
+        try:
+            data = await request.json()
+            event = data.get("event", {}) if isinstance(data, dict) else {}
+            ts = event.get("event_ts", "")
+            event_type = event.get("type", "")
+            channel_type = event.get("channel_type", "")
+        except Exception:
+            # Performance diagnostics should never break a successful Slack response.
+            pass
         if ts:
             print(
                 f"Warning: Slack request performance issue {ts} took {duration:.2f} seconds {event_type} {channel_type} | Memory +{mem_delta:.2f} MB (total {mem_end:.2f} MB)"
