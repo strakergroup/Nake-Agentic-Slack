@@ -9,7 +9,6 @@ from slack_sdk.models.blocks import (
     ActionsBlock,
     Block,
     ContextBlock,
-    DividerBlock,
     InputBlock,
     MarkdownTextObject,
     Option,
@@ -350,7 +349,7 @@ class WelcomeBackMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI Translate your content and receive translation quality scores, then opt for human verification if needed."
+                                    ":sports_medal: AI translate your content and receive translation quality scores, then opt for human verification if needed."
                                 ),
                             },
                             "accessory": {
@@ -369,7 +368,7 @@ class WelcomeBackMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":bust_in_silhouette: Translating content from one language to another while preserving meaning and context"
+                                    ":bust_in_silhouette: Have content translated from one language to another by professional translators."
                                 ),
                             },
                             "accessory": {
@@ -392,7 +391,7 @@ class WelcomeBackMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            ":mag: Search allows you to search for specific Translation Jobs (TJs)."
+                            ":mag: Search allows you to find specific Translation Jobs (TJs)."
                         ),
                     },
                     "accessory": {
@@ -567,7 +566,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI Translate your content and receive translation quality scores, then opt for human verification if needed."
+                                    ":sports_medal: AI translate your content and receive translation quality scores, then opt for human verification if needed."
                                 ),
                             },
                             "accessory": {
@@ -586,7 +585,7 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":bust_in_silhouette: Translating content from one language to another while preserving meaning and context"
+                                    ":bust_in_silhouette: Have content translated from one language to another by professional translators."
                                 ),
                             },
                             "accessory": {
@@ -609,7 +608,7 @@ class SuccessfulLoginMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            ":mag: Search allows you to search for specific Translation Jobs (TJs). "
+                            ":mag: Search allows you to find specific Translation Jobs (TJs). "
                         ),
                     },
                     "accessory": {
@@ -1742,7 +1741,7 @@ class NewJobMessage(SlackMessage):
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "*AI Translation* - AI translate content from one language into multiple languages\n\n"
+                        "*AI Translation* - AI translate content from one language into multiple languages.\n\n"
                     ),
                 },
                 "accessory": {
@@ -1768,7 +1767,7 @@ class NewJobMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "*Quality Evaluation* - AI Translate your content and receive translation quality scores, then opt for human verification if needed."
+                            "*Quality Evaluation* - AI translate your content and receive translation quality scores, then opt for human verification if needed."
                         ),
                     },
                     "accessory": {
@@ -1795,7 +1794,7 @@ class NewJobMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "*Human Translation* - Translating content from one language to another while preserving meaning and context."
+                            "*Human Translation* - Have content translated from one language to another by professional translators."
                         ),
                     },
                     "accessory": {
@@ -2075,7 +2074,7 @@ class HelpMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":sports_medal: AI Translate your content and receive translation quality scores, then opt for human verification if needed."
+                                    ":sports_medal: AI translate your content and receive translation quality scores, then opt for human verification if needed."
                                 ),
                             },
                             "accessory": {
@@ -2094,7 +2093,7 @@ class HelpMessage(SlackMessage):
                             "text": {
                                 "type": "mrkdwn",
                                 "text": _(
-                                    ":bust_in_silhouette: Translating content from one language to another while preserving meaning and context"
+                                    ":bust_in_silhouette: Have content translated from one language to another by professional translators."
                                 ),
                             },
                             "accessory": {
@@ -2117,7 +2116,7 @@ class HelpMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            ":mag: Search allows you to search for specific Translation Jobs (TJs). "
+                            ":mag: Search allows you to find specific Translation Jobs (TJs). "
                         ),
                     },
                     "accessory": {
@@ -2472,14 +2471,14 @@ class ClientSignupEventMessage(SlackMessage):
     def __init__(self, event: ClientSignupEvent) -> None:
         self.event = event
         super().__init__(
-            "Thank you for signing :tada:",
+            "Thank you for signing up :tada:",
             [
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "Thank you for signing {event.username} :tada:",
+                            "Thank you for signing up, {event.username} :tada:",
                         ),
                     },
                 },

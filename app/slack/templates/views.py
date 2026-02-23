@@ -347,7 +347,7 @@ async def home_view(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": _(":wave: Welcome to the Straker Translate!"),
+                    "text": _(":wave: Welcome to Straker Translate!"),
                 },
             },
             *home_auth_blocks(
@@ -434,7 +434,7 @@ async def home_view(
                 "text": {
                     "type": "mrkdwn",
                     "text": _(
-                        "Straker Community is a place for people who use Straker's users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest Verify and Enterprise features, provide updates, and engage with customers like you!"
+                        "Straker Community is a place for Straker users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest Verify and Enterprise features, provide updates, and engage with customers like you!"
                     ),
                 },
             },
@@ -553,7 +553,7 @@ def human_job_modal(
         title = _("Quality Evaluation", 23)[:24]
         submit_text = _("Submit", 23)[:24]
         description = _(
-            "AI Translate your content and receive translation quality scores, then opt for human verification if needed."
+            "AI translate your content and receive translation quality scores, then opt for human verification if needed."
         )
         callback_id = "evaluate_job"
         close_text = _("Close")
