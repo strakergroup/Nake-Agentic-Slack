@@ -1,0 +1,13 @@
+{
+  "name": "slack-ui-export",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "slack-blocks-to-jsx": "^0.8.6"
+  }
+}
