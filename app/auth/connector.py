@@ -1381,7 +1381,6 @@ async def create_slack_deltaray_link_sso(user_data: str, member_id: str):
         FROM slack_deltaray_link
         WHERE slack_user_id = :slack_user_id
         AND slack_team_id = :slack_team_id
-        AND is_active = 0
         """
     ).bindparams(
         slack_user_id=json_data.get("user_id"),
@@ -1394,7 +1393,6 @@ async def create_slack_deltaray_link_sso(user_data: str, member_id: str):
             FROM slack_deltaray_link
             WHERE slack_user_id = :slack_user_id
             AND (slack_enterprise_id = :slack_enterprise_id OR slack_team_id = :slack_team_id)
-            AND is_active = 0
             """
         ).bindparams(
             slack_user_id=json_data.get("user_id"),
