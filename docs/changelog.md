@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Document MT PDF size enforcement now checks the effective Verify session trial state before applying the limit, and `get_ray_client` no longer runs the unused subscription plan query (Wade Norman, 2026-03-06)
+- [Fixed]: Added a configurable PDF size limit check to document MT submissions so oversized PDFs are rejected with a user-facing error before upload processing continues (Wade Norman, 2026-03-06)
 - [Fixed]: Addressed high-priority reliability/performance issues by making Insights API calls non-blocking in async Slack handlers, hardening slow-request diagnostics to avoid JSON parsing failures on non-JSON payloads, and making Redis duplicate-event detection atomic with `SET NX EX` to prevent race-condition double-processing (Wade Norman, 2026-02-24)
 - [Fixed]: Grammar corrections across Slack message templates — added missing "up" in signup confirmation (RAY-78661); rephrased HT description to "Have content translated…" (RAY-78662); replaced redundant "search…to search" with "search…to find" and fixed "people who use Straker's users" to "Straker users" (RAY-78663); added missing preposition "to" in Verify section (RAY-78664); removed incorrect definite article "the" before product name in welcome message (RAY-78665) (Wade Norman, 2026-02-23)
 - [Fixed]: UI Export renderer — worked around slack-blocks-to-jsx emoji tokenizer bug that caused broken `::` spans and raw `**` bold markers when mrkdwn combined `*bold:*\n:emoji:` patterns; pre-converts Slack emoji shortcodes to Unicode via node-emoji with fallback map for Slack-specific names (Wade Norman, 2026-02-20)

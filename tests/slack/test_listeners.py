@@ -3,6 +3,7 @@ Tests for app/slack/listeners.py
 """
 
 import json
+import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -2492,6 +2493,125 @@ class TestHandleDocumentMtJob:
         mock_client.chat_postMessage.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_handle_document_mt_job_applies_pdf_limit_for_trial(
+        self, user_id, team_id, ray_client
+    ):
+        """Test document MT uses the PDF limit only for trial sessions."""
+        from app.config import config
+        from app.slack.listeners import handle_document_mt_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "state": {
+                "values": {
+                    "target_langs": {
+                        "language_mt_options": {
+                            "selected_options": [
+                                {"value": "en", "text": {"text": "English"}}
+                            ]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.pdf"}}
+                            ]
+                        }
+                    },
+                }
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        with patch(
+            "app.slack.listeners.get_verify_trial_status", new_callable=AsyncMock
+        ) as mock_trial_status:
+            mock_trial_status.return_value = (True, 7)
+            with patch(
+                "app.slack.listeners.download_file", new_callable=AsyncMock
+            ) as mock_download:
+                mock_download.return_value = "/tmp/file.pdf"
+                with patch(
+                    "app.slack.listeners.validate_file", return_value=(False, False, "")
+                ) as mock_validate:
+                    await handle_document_mt_job(
+                        context_dict, mock_ack, view=view, client=mock_client
+                    )
+
+        mock_validate.assert_called_once_with(
+            "/tmp/file.pdf",
+            max_pdf_size_bytes=config.document_mt_pdf_max_size_bytes,
+        )
+        assert ray_client.is_trial is True
+        assert ray_client.trial_remaining == 7
+
+    @pytest.mark.asyncio
+    async def test_handle_document_mt_job_skips_pdf_limit_for_non_trial(
+        self, user_id, team_id, ray_client
+    ):
+        """Test document MT skips the PDF limit outside trial sessions."""
+        from app.slack.listeners import handle_document_mt_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "state": {
+                "values": {
+                    "target_langs": {
+                        "language_mt_options": {
+                            "selected_options": [
+                                {"value": "en", "text": {"text": "English"}}
+                            ]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.pdf"}}
+                            ]
+                        }
+                    },
+                }
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        with patch(
+            "app.slack.listeners.get_verify_trial_status", new_callable=AsyncMock
+        ) as mock_trial_status:
+            mock_trial_status.return_value = (False, 0)
+            with patch(
+                "app.slack.listeners.download_file", new_callable=AsyncMock
+            ) as mock_download:
+                mock_download.return_value = "/tmp/file.pdf"
+                with patch(
+                    "app.slack.listeners.validate_file", return_value=(False, False, "")
+                ) as mock_validate:
+                    await handle_document_mt_job(
+                        context_dict, mock_ack, view=view, client=mock_client
+                    )
+
+        mock_validate.assert_called_once_with(
+            "/tmp/file.pdf",
+            max_pdf_size_bytes=None,
+        )
+        assert ray_client.is_trial is False
+        assert ray_client.trial_remaining == 0
+
+    @pytest.mark.asyncio
     async def test_handle_document_mt_job_exception(self, user_id, team_id, ray_client):
         """Test handle_document_mt_job with exception during file processing."""
         from app.slack.listeners import handle_document_mt_job
@@ -2526,15 +2646,14 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        # Mock file download to succeed, but upload to fail after record is created
-        mock_file = MagicMock()
-        mock_file.name = "file.txt"
-        mock_file.content = b"test content"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("test content")
+            input_file = f.name
 
         with patch(
             "app.slack.listeners.download_file", new_callable=AsyncMock
         ) as mock_download:
-            mock_download.return_value = mock_file
+            mock_download.return_value = input_file
             with patch(
                 "app.slack.listeners.validate_file", return_value=(True, True, None)
             ):

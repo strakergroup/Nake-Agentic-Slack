@@ -156,6 +156,29 @@ def test_validate_file():
     finally:
         os.unlink(html_file)
 
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".pdf", delete=False) as f:
+        f.write(b"%PDF-1.4\n" + b"0" * (512 * 1024))
+        small_pdf_file = f.name
+    try:
+        assert validate_file(small_pdf_file, max_pdf_size_bytes=1024 * 1024) == (
+            True,
+            True,
+            "",
+        )
+    finally:
+        os.unlink(small_pdf_file)
+
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".pdf", delete=False) as f:
+        f.write(b"%PDF-1.4\n" + b"0" * (2 * 1024 * 1024))
+        large_pdf_file = f.name
+    try:
+        result = validate_file(large_pdf_file, max_pdf_size_bytes=1024 * 1024)
+        assert result[0] is True
+        assert result[1] is False
+        assert "exceeds the current PDF limit of 1MB" in result[2]
+    finally:
+        os.unlink(large_pdf_file)
+
     # Test unsupported file types
     with tempfile.NamedTemporaryFile(mode="w", suffix=".invalid", delete=False) as f:
         invalid_file = f.name

@@ -52,10 +52,11 @@ from ..auth.connector import (
     get_group_quote_settings,
     get_ray_connection,
     get_token_for_team,
+    get_verify_trial_status,
     is_slack_team_admin,
     resolve_channels_to_team,
 )
-from ..config import domains
+from ..config import config, domains
 from ..ray.settings import (
     delete_channel_id,
     disable_auto_translate_group_settings,
@@ -2463,6 +2464,16 @@ async def handle_document_mt_job(
                 else None
             )
             context["channel_id"] = channel_id or context["user_id"]
+            ray_client = context["ray"].client
+            assert ray_client is not None
+            if ray_client.is_trial is None:
+                (
+                    ray_client.is_trial,
+                    ray_client.trial_remaining,
+                ) = await get_verify_trial_status(ray_client.id_token)
+            max_pdf_size_bytes = (
+                config.document_mt_pdf_max_size_bytes if ray_client.is_trial else None
+            )
             files_uploaded = []
             duplicate_submissions = []
             downloaded_files = []  # Track downloaded files for cleanup
@@ -2475,7 +2486,8 @@ async def handle_document_mt_job(
                 downloaded_files.append(input_file)  # Track for cleanup
                 # validate file
                 is_valid_file_type, is_valid_content, error_message = validate_file(
-                    input_file
+                    input_file,
+                    max_pdf_size_bytes=max_pdf_size_bytes,
                 )
                 file_name = file["text"]["text"]
                 if not is_valid_file_type:

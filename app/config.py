@@ -41,6 +41,7 @@ class StrakerConfig(BaseSettings):
     microsoft_mt_api_key: SecretStr = SecretStr("")
     microsoft_mt_website: str = ""
     microsoft_mt_url: str = ""
+    document_mt_pdf_max_size_mb: int = Field(default=25, ge=1)
     # taus_api_key: SecretStr = Field(min_length=1)
     elastic_apm_server_url: str | None = None
     # Derived settings.
@@ -75,6 +76,10 @@ class StrakerConfig(BaseSettings):
     @field_validator("buglog_listener_url", mode="before")
     def default_buglog_listener_url(cls, v):
         return f"{domains.buglog}/bugLog/listeners/bugLogListenerREST.cfm"
+
+    @property
+    def document_mt_pdf_max_size_bytes(self) -> int:
+        return self.document_mt_pdf_max_size_mb * 1024 * 1024
 
     @field_validator("slack_deltaray_key", mode="before")
     def default_slack_deltaray_key(cls, v, info: ValidationInfo):
