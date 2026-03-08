@@ -183,6 +183,23 @@ async def _send_translation_success_message(
         )
 
 
+def _resolve_media_thread_ts(
+    action_data: Dict[str, Any] | None, body: Dict[str, Any] | None
+) -> str | None:
+    """Resolve the best thread timestamp for media workflows."""
+    action_data = action_data or {}
+    body = body or {}
+    container = body.get("container", {}) or {}
+    message = body.get("message", {}) or {}
+    return (
+        action_data.get("thread_ts")
+        or container.get("thread_ts")
+        or message.get("thread_ts")
+        or container.get("message_ts")
+        or message.get("ts")
+    )
+
+
 # ---------------------------------------------------------
 # Set up Slack listeners here.
 # ---------------------------------------------------------
@@ -2614,7 +2631,7 @@ async def handle_video_transcribe_only(
         )
 
         files = action_data["files"]
-        thread_ts = action_data.get("thread_ts")
+        thread_ts = _resolve_media_thread_ts(action_data, body)
 
         # Check for duplicate transcription-only submissions
         from ..ray.submissions import (
@@ -2747,10 +2764,11 @@ async def handle_video_transcribe_translate(
         from .templates.views import video_transcribe_translate_modal
 
         action_data = json.loads(action.get("value", "{}"))
+        thread_ts = _resolve_media_thread_ts(action_data, body)
         view = video_transcribe_translate_modal(
             channel_id=action_data.get("channel_id", context.get("channel_id", "")),
             files=action_data["files"],
-            thread_ts=action_data.get("thread_ts"),
+            thread_ts=thread_ts,
         )
         await client.views_open(trigger_id=body["trigger_id"], view=view)
 
@@ -2772,6 +2790,7 @@ async def handle_video_embed_subtitles(
         from .templates.views import video_embed_subtitles_modal
 
         action_data = json.loads(action.get("value", "{}"))
+        thread_ts = _resolve_media_thread_ts(action_data, body)
         all_files = action_data["files"]
 
         # Filter to only include video files (exclude audio-only like MP3, WAV)
@@ -2792,7 +2811,7 @@ async def handle_video_embed_subtitles(
         view = video_embed_subtitles_modal(
             channel_id=action_data.get("channel_id", context.get("channel_id", "")),
             files=video_files,  # Only video files, not audio
-            thread_ts=action_data.get("thread_ts"),
+            thread_ts=thread_ts,
         )
         await client.views_open(trigger_id=body["trigger_id"], view=view)
 

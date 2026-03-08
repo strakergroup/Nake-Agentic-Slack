@@ -593,8 +593,14 @@ async def _handle_transcription_complete(
         is_ibm_enterprise=is_ibm,
     )
     response = await post_notification(
-        client, event, auth_slack_user, transcribed_message
+        client,
+        event,
+        auth_slack_user,
+        transcribed_message,
+        channel_id=channel_id,
+        thread_ts=thread_ts,
     )
+    effective_thread_ts = thread_ts or response.get("ts")
 
     if result_file_id and result_file_name:
         upload_channel_id: str | None = channel_id or (
@@ -613,7 +619,7 @@ async def _handle_transcription_complete(
                     auth,
                     response,
                     override_channel_id=upload_channel_id,
-                    thread_ts=thread_ts,
+                    thread_ts=effective_thread_ts,
                 )
             )
 
@@ -628,11 +634,12 @@ async def _handle_translation_complete(
     """Handle translation completion - upload translated files."""
     translated_file_ids = task_info.translated_file_ids or {}
 
-    await client.chat_postMessage(
+    status_response = await client.chat_postMessage(
         channel=channel_id,
         text=_("Your file is AI translated and can be downloaded below."),
         thread_ts=thread_ts,
     )
+    effective_thread_ts = thread_ts or status_response.get("ts")
 
     # Upload each translated file
     # Use original file_name from database (the uploaded file) as base for naming
@@ -669,7 +676,7 @@ async def _handle_translation_complete(
                 channel_id=channel_id,
                 title=title,
                 filename=title,
-                thread_ts=thread_ts,
+                thread_ts=effective_thread_ts,
             )
 
             # Clean up temp file
@@ -688,7 +695,11 @@ async def _handle_translation_complete(
             else False
         )
         await _show_tokens_message(
-            client, task_info.task_uuid, channel_id, thread_ts, is_ibm=is_ibm
+            client,
+            task_info.task_uuid,
+            channel_id,
+            effective_thread_ts,
+            is_ibm=is_ibm,
         )
 
 
@@ -705,7 +716,15 @@ async def _handle_transcribe_embed_pipeline(
     if not result_file_id:
         return
 
+    effective_thread_ts = thread_ts
     try:
+        if not effective_thread_ts:
+            anchor_response = await client.chat_postMessage(
+                channel=channel_id,
+                text=_("Your embedded media file is ready. Uploading now..."),
+            )
+            effective_thread_ts = anchor_response.get("ts")
+
         output_file = await download_from_file_server_async(result_file_id)
         file_path = output_file.get("file")
         if file_path and os.path.exists(file_path):
@@ -717,7 +736,7 @@ async def _handle_transcribe_embed_pipeline(
                 client=client,
                 file_path=file_path,
                 channel_id=channel_id,
-                thread_ts=thread_ts,
+                thread_ts=effective_thread_ts,
                 title=output_filename,
                 filename=output_filename,
             )
@@ -733,7 +752,7 @@ async def _handle_transcribe_embed_pipeline(
                     text=_(
                         "Please download the media file(s) to view the embedded subtitles."
                     ),
-                    thread_ts=thread_ts,
+                    thread_ts=effective_thread_ts,
                 )
 
             # Show token message at the end for transcribe_translate_embed pipeline
@@ -744,7 +763,11 @@ async def _handle_transcribe_embed_pipeline(
                     else False
                 )
                 await _show_tokens_message(
-                    client, task_info.task_uuid, channel_id, thread_ts, is_ibm=is_ibm
+                    client,
+                    task_info.task_uuid,
+                    channel_id,
+                    effective_thread_ts,
+                    is_ibm=is_ibm,
                 )
 
     except Exception as e:
@@ -754,7 +777,7 @@ async def _handle_transcribe_embed_pipeline(
             text=_(
                 "An error occurred while processing your embedded video. Please try again."
             ),
-            thread_ts=thread_ts,
+            thread_ts=effective_thread_ts,
         )
 
 
@@ -829,6 +852,7 @@ async def _handle_transcribe_success_background(
                 channel_id=channel_id,
                 title=file_name,
                 filename=file_name,
+                thread_ts=thread_ts,
             )
         finally:
             if os.path.exists(file_path):
@@ -1138,6 +1162,12 @@ async def ray_events(
 
                 # Handle errors
                 if transcribed_event.error or event.data.get("error"):
+                    extra_data = task_info.extra_data or {}
+                    thread_ts = (
+                        (extra_data.get("slack_thread_ts") if extra_data else None)
+                        or event.data.get("thread_ts")
+                        or event.data.get("message_ts")
+                    )
                     error_msg = transcribed_event.error or event.data.get(
                         "error", "Unknown error"
                     )
@@ -1145,6 +1175,7 @@ async def ray_events(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
                         text=_(f"Transcription failed: {error_msg}"),
+                        thread_ts=thread_ts,
                     )
                     return
 
@@ -1155,7 +1186,11 @@ async def ray_events(
                     if extra_data
                     else auth.slack_user.channel_id
                 )
-                thread_ts = extra_data.get("slack_thread_ts") if extra_data else None
+                thread_ts = (
+                    (extra_data.get("slack_thread_ts") if extra_data else None)
+                    or event.data.get("thread_ts")
+                    or event.data.get("message_ts")
+                )
 
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
@@ -1213,6 +1248,12 @@ async def ray_events(
 
                 # Handle errors
                 if transcribed_event.error or event.data.get("error"):
+                    extra_data = task_info.extra_data or {}
+                    thread_ts = (
+                        (extra_data.get("slack_thread_ts") if extra_data else None)
+                        or event.data.get("thread_ts")
+                        or event.data.get("message_ts")
+                    )
                     error_msg = transcribed_event.error or event.data.get(
                         "error", "Unknown error"
                     )
@@ -1220,6 +1261,7 @@ async def ray_events(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
                         text=_(f"Translation failed: {error_msg}"),
+                        thread_ts=thread_ts,
                     )
                     return
 
@@ -1230,7 +1272,11 @@ async def ray_events(
                     if extra_data
                     else auth.slack_user.channel_id
                 )
-                thread_ts = extra_data.get("slack_thread_ts") if extra_data else None
+                thread_ts = (
+                    (extra_data.get("slack_thread_ts") if extra_data else None)
+                    or event.data.get("thread_ts")
+                    or event.data.get("message_ts")
+                )
 
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
@@ -1286,6 +1332,12 @@ async def ray_events(
 
                 # Handle errors
                 if transcribed_event.error or event.data.get("error"):
+                    extra_data = task_info.extra_data or {}
+                    thread_ts = (
+                        (extra_data.get("slack_thread_ts") if extra_data else None)
+                        or event.data.get("thread_ts")
+                        or event.data.get("message_ts")
+                    )
                     error_msg = transcribed_event.error or event.data.get(
                         "error", "Unknown error"
                     )
@@ -1293,6 +1345,7 @@ async def ray_events(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
                         text=_(f"Embedding failed: {error_msg}"),
+                        thread_ts=thread_ts,
                     )
                     return
 
@@ -1303,7 +1356,11 @@ async def ray_events(
                     if extra_data
                     else auth.slack_user.channel_id
                 )
-                thread_ts = extra_data.get("slack_thread_ts") if extra_data else None
+                thread_ts = (
+                    (extra_data.get("slack_thread_ts") if extra_data else None)
+                    or event.data.get("thread_ts")
+                    or event.data.get("message_ts")
+                )
 
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
