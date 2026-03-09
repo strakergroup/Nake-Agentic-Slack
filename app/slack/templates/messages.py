@@ -3317,6 +3317,31 @@ class SrtTranslateMessage(SlackMessage):
         super().__init__(title, blocks)
 
 
+class MediaEmbedOptionMessage(SlackMessage):
+    """Message offering the embed flow for the original video in a thread."""
+
+    def __init__(self, action_value: str) -> None:
+        embed_button = ButtonElement(
+            text=PlainTextObject(text=_("Embed Subtitles"), emoji=True),
+            action_id="video_embed_subtitles",
+            value=action_value,
+            style="primary",
+        )
+        embed_section = SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "*Embed Subtitles* - Embed the uploaded subtitle file into the original video from this thread."
+                )
+            ),
+            accessory=embed_button,
+        )
+
+        super().__init__(
+            _("Media embed option"),
+            [embed_section.to_dict()],
+        )
+
+
 class DocumentMTJobMessage(SlackMessage):
     """Message to allow user to select language and submit for machine translation"""
 

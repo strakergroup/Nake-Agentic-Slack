@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: Tightened Slack notification/reply typing so mypy accepts threaded response timestamp handling in ray callbacks and listener actions (Wade Norman, 2026-03-09)
+- [Fixed]: Direct thread subtitle embedding now uploads the posted Slack SRT to the internal file server before creating the embed task, so the subtitle consumer receives a valid file-server ID instead of a Slack file ID (Wade Norman, 2026-03-09)
+- [Fixed]: Direct thread subtitle embedding now uses a dedicated bounded dedupe key for video+SRT pairs, avoiding `target_language` column overflows in `slack_file_translation_submissions` (Wade Norman, 2026-03-09)
+- [Changed]: Thread SRT embed actions now submit the uploaded SRT directly against the original video instead of opening the embed modal, using the subtitle consumer’s new embed-only task path (Wade Norman, 2026-03-09)
+- [Fixed]: Threaded DM SRT uploads now check for a parent `VideoOptionsMessage` before the generic DM file flow, so media embed threads do not fall back to the normal new-job message (Wade Norman, 2026-03-09)
+- [Fixed]: SRT uploads posted inside threads that already contain a `VideoOptionsMessage` now reply with a media embed CTA that reuses the original video embed payload from that thread (Wade Norman, 2026-03-09)
 - [Fixed]: Media callback handlers now auto-create a thread when none exists by reusing the first callback message timestamp as thread anchor (and creating an anchor message for embed flow), so follow-up uploads/replies remain threaded (Wade Norman, 2026-03-08)
 - [Fixed]: Added `ray_events` thread timestamp fallbacks from callback payload (`thread_ts`/`message_ts`) when persisted `slack_thread_ts` is missing, to keep media callback replies threaded for existing in-flight tasks (Wade Norman, 2026-03-08)
 - [Fixed]: Added robust thread timestamp resolution for Slack media action handlers (button payload, container, and message fallbacks) so media transcription/translation/embed task callbacks consistently reply in the originating thread (Wade Norman, 2026-03-08)

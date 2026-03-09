@@ -217,6 +217,60 @@ async def check_and_record_transcription_submission_async(
         return False, created
 
 
+async def check_and_record_direct_embed_submission_async(
+    *,
+    video_file_id: str,
+    subtitle_file_id: str,
+    file_name: str,
+    user_id: str,
+    team_id: str,
+    channel_id: str,
+) -> Tuple[bool, SlackFileTranslationSubmission]:
+    """
+    Check for duplicate direct embed submissions using video + subtitle Slack file IDs.
+
+    Uses a stable SHA-256 hash in file_hash to keep within database column limits while
+    still uniquely identifying the video/subtitle pair.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    dedupe_hash = hashlib.sha256(
+        f"{video_file_id}:{subtitle_file_id}".encode("utf-8")
+    ).hexdigest()
+
+    with Session(engines["ray_integration"]) as session:
+        existing = session.scalars(
+            select(SlackFileTranslationSubmission)
+            .where(SlackFileTranslationSubmission.user_id == user_id)
+            .where(SlackFileTranslationSubmission.team_id == team_id)
+            .where(SlackFileTranslationSubmission.file_hash == dedupe_hash)
+            .where(SlackFileTranslationSubmission.file_name == file_name)
+            .where(SlackFileTranslationSubmission.target_language == "embed")
+            .where(SlackFileTranslationSubmission.created_at >= cutoff)
+            .where(
+                SlackFileTranslationSubmission.processing_status
+                != SubmissionStatus.FAILED.value
+            )
+            .limit(1)
+        ).first()
+
+        if existing is not None:
+            return True, existing
+
+        created = _insert_submission(
+            session,
+            user_id=user_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            file_hash=dedupe_hash,
+            file_name=file_name,
+            file_size=0,
+            target_language="embed",
+            file_id=video_file_id,
+            processing_status=SubmissionStatus.CREATED,
+        )
+        return False, created
+
+
 async def check_and_record_transcription_only_submission_async(
     *,
     slack_file_id: str,

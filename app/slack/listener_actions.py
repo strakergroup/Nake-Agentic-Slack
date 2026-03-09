@@ -4,8 +4,9 @@ Slack Bolt listener functions.
 """
 
 import asyncio
+import json
 import re
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from ray_sdk import RayResponse
@@ -81,6 +82,7 @@ from .templates.messages import (
     JobTargetsNoIdMessage,
     LoginMessage,
     LogoutMessage,
+    MediaEmbedOptionMessage,
     NewJobMessage,
     ReportInsightsMessage,
     SlackMessage,
@@ -171,6 +173,99 @@ def has_video_files(files: list[dict[str, Any]]) -> bool:
     for file in files:
         if not is_audio_only_file(file):
             return True
+    return False
+
+
+def is_srt_file(file_details: dict[str, Any]) -> bool:
+    """Check whether a Slack file payload represents an SRT subtitle file."""
+    filetype = file_details.get("filetype", "").lower()
+    mimetype = file_details.get("mimetype", "").lower()
+    filename = (file_details.get("name", "") or file_details.get("title", "")).lower()
+    return (
+        filetype == "srt"
+        or mimetype == "application/x-subrip"
+        or filename.endswith(".srt")
+    )
+
+
+def get_video_embed_action_value(message: dict[str, Any]) -> str | None:
+    """Extract the embed button payload from a Slack message block tree."""
+    for block in message.get("blocks", []):
+        accessory = block.get("accessory", {})
+        if accessory.get("type") == "button" and (
+            accessory.get("action_id") == "video_embed_subtitles"
+        ):
+            return accessory.get("value")
+
+        for element in block.get("elements", []):
+            if element.get("type") == "button" and (
+                element.get("action_id") == "video_embed_subtitles"
+            ):
+                return element.get("value")
+
+    return None
+
+
+def build_thread_media_embed_action_value(
+    original_action_value: str, message: dict[str, Any]
+) -> str:
+    """Attach the uploaded SRT file to the original embed payload."""
+    subtitle_file = next(
+        (file for file in message.get("files", []) if is_srt_file(file)),
+        None,
+    )
+    if subtitle_file is None:
+        return original_action_value
+
+    try:
+        action_data = json.loads(original_action_value)
+    except json.JSONDecodeError:
+        return original_action_value
+
+    action_data["subtitle_file"] = {
+        "file_id": subtitle_file["id"],
+        "file_name": subtitle_file.get("name")
+        or subtitle_file.get("title")
+        or "subtitles.srt",
+        "language_code": "und",
+    }
+    action_data["thread_ts"] = message.get("thread_ts") or action_data.get("thread_ts")
+    return json.dumps(action_data)
+
+
+async def maybe_show_thread_media_embed_option(
+    client: AsyncWebClient,
+    context: RayContext,
+    message: dict[str, Any],
+) -> bool:
+    """Reply with the original video embed option when an SRT lands in that thread."""
+    thread_ts = message.get("thread_ts")
+    if not thread_ts or not any(is_srt_file(file) for file in message.get("files", [])):
+        return False
+
+    channel_id = context.get("channel_id")
+    if not channel_id or not await require_ray_client(context):
+        return False
+
+    replies = await client.conversations_replies(
+        channel=channel_id, ts=thread_ts, limit=20
+    )
+    thread_messages = cast(list[dict[str, Any]], replies.get("messages", []))
+    for thread_message in thread_messages:
+        action_value = get_video_embed_action_value(thread_message)
+        if not action_value:
+            continue
+
+        embed_msg = MediaEmbedOptionMessage(
+            build_thread_media_embed_action_value(action_value, message)
+        )
+        await context.say(
+            text=embed_msg.text,
+            blocks=embed_msg.blocks,
+            thread_ts=thread_ts,
+        )
+        return True
+
     return False
 
 

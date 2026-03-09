@@ -2691,6 +2691,166 @@ class TestMessageEvent:
                 mock_auto_translate.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_message_event_srt_thread_shows_media_embed_option(
+        self, user_id, team_id, ray_client
+    ):
+        """Test SRT uploads in video-option threads trigger the embed reply."""
+        from app.slack.listeners import message_event
+
+        mock_client = AsyncMock()
+        message = {
+            "ts": "123456.789",
+            "thread_ts": "123450.000",
+            "files": [{"id": "F123", "name": "captions.srt", "filetype": "srt"}],
+        }
+        body = {"event": {"team": team_id}}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "is_bot": False,
+            "channel_id": "C123",
+            "ray": ray_connection,
+            "bot_user_id": "B123",
+        }
+
+        with (
+            patch("app.slack.listeners.is_channel_im", return_value=False),
+            patch(
+                "app.slack.listeners.maybe_show_thread_media_embed_option",
+                new_callable=AsyncMock,
+            ) as mock_maybe_embed,
+        ):
+            mock_maybe_embed.return_value = True
+            await message_event(context_dict, mock_client, message=message, body=body)
+            mock_maybe_embed.assert_called_once_with(mock_client, context_dict, message)
+
+    @pytest.mark.asyncio
+    async def test_message_event_srt_thread_in_dm_shows_media_embed_option(
+        self, user_id, team_id, ray_client
+    ):
+        """Test threaded DM SRT uploads prefer the embed flow over generic DM handling."""
+        from app.slack.listeners import message_event
+
+        mock_client = AsyncMock()
+        message = {
+            "ts": "123456.789",
+            "thread_ts": "123450.000",
+            "channel_type": "im",
+            "files": [{"id": "F123", "name": "captions.srt", "filetype": "srt"}],
+        }
+        body = {"event": {"team": team_id}}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "is_bot": False,
+            "channel_id": user_id,
+            "ray": ray_connection,
+            "bot_user_id": "B123",
+        }
+
+        with (
+            patch(
+                "app.slack.listeners.maybe_show_thread_media_embed_option",
+                new_callable=AsyncMock,
+            ) as mock_maybe_embed,
+            patch(
+                "app.slack.listeners.respond_to_message",
+                new_callable=AsyncMock,
+            ) as mock_respond,
+        ):
+            mock_maybe_embed.return_value = True
+            await message_event(context_dict, mock_client, message=message, body=body)
+            mock_maybe_embed.assert_called_once_with(mock_client, context_dict, message)
+            mock_respond.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handle_video_embed_subtitles_submits_existing_srt_embed(
+        self, user_id, team_id, ray_client
+    ):
+        """Test thread SRT embed action bypasses the modal and submits directly."""
+        from app.slack.listeners import handle_video_embed_subtitles
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        mock_client.token = "xoxb-test-token"
+        mock_client.files_info.return_value = {
+            "file": {"url_private_download": "https://example.com/video.mp4"}
+        }
+        action = {
+            "value": json.dumps(
+                {
+                    "channel_id": "C123",
+                    "thread_ts": "123456.789",
+                    "files": [
+                        {
+                            "file_id": "V123",
+                            "file_name": "video.mp4",
+                            "duration_ms": 60000,
+                        }
+                    ],
+                    "subtitle_file": {
+                        "file_id": "S123",
+                        "file_name": "captions.srt",
+                        "language_code": "und",
+                    },
+                }
+            )
+        }
+        body = {"trigger_id": "trigger-123"}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "channel_id": "C123",
+            "ray": ray_connection,
+        }
+
+        with (
+            patch(
+                "app.ray.submissions.check_and_record_direct_embed_submission_async",
+                new_callable=AsyncMock,
+            ) as mock_check_record,
+            patch(
+                "app.slack.listeners.download_file", new_callable=AsyncMock
+            ) as mock_download_file,
+            patch(
+                "app.slack.listeners.upload_to_file_server", new_callable=AsyncMock
+            ) as mock_upload_to_file_server,
+            patch(
+                "app.transcriber_tasks.tasks.create_asr_task", new_callable=AsyncMock
+            ) as mock_create_task,
+        ):
+            mock_check_record.return_value = (False, MagicMock(id=99))
+            mock_download_file.return_value = "/tmp/captions.srt"
+            mock_upload_to_file_server.return_value = "gridfs-srt-123"
+            await handle_video_embed_subtitles(
+                context_dict,
+                mock_ack,
+                action=action,
+                body=body,
+                client=mock_client,
+            )
+
+            mock_ack.assert_called_once()
+            mock_client.views_open.assert_not_called()
+            mock_download_file.assert_called_once_with(
+                client=mock_client, file_id="S123", http=None
+            )
+            mock_upload_to_file_server.assert_called_once_with("/tmp/captions.srt")
+            mock_create_task.assert_called_once()
+            asr_task = mock_create_task.call_args.args[0]
+            assert asr_task.extra_data["pipeline_type"] == "embed"
+            assert asr_task.extra_data["srt_file_ids"] == ["gridfs-srt-123"]
+            assert asr_task.extra_data["language_codes"] == ["und"]
+            assert asr_task.extra_data["original_video_file_id"] == "V123"
+            assert asr_task.extra_data["slack_thread_ts"] == "123456.789"
+
+    @pytest.mark.asyncio
     async def test_message_event_bot_mentioned_no_auto_translate(
         self, user_id, team_id, ray_client
     ):

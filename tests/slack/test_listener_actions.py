@@ -1,3 +1,4 @@
+import json
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -6,9 +7,12 @@ from app.slack.listener_actions import (
     VIDEO_FILE_TYPES,
     ai_translate_help,
     approve_pending_client,
+    build_thread_media_embed_action_value,
     create_service_language_mapping,
     get_groups,
+    get_video_embed_action_value,
     is_video_file,
+    maybe_show_thread_media_embed_option,
     post_batch_list,
     post_file_list,
     post_job_status,
@@ -151,6 +155,96 @@ class TestIsVideoFile:
             assert (
                 is_video_file(file_details) is True
             ), f"Failed for extension: {video_type}"
+
+
+class TestThreadMediaEmbedOption:
+    def test_build_thread_media_embed_action_value(self):
+        """Test thread embed payload includes the uploaded SRT metadata."""
+        action_value = '{"files":[{"file_id":"V123","file_name":"video.mp4"}]}'
+        message = {
+            "thread_ts": "123456.789",
+            "files": [{"id": "F123", "name": "captions.srt", "filetype": "srt"}],
+        }
+
+        updated_action_value = build_thread_media_embed_action_value(
+            action_value, message
+        )
+
+        action_data = json.loads(updated_action_value)
+        assert action_data["subtitle_file"]["file_id"] == "F123"
+        assert action_data["subtitle_file"]["file_name"] == "captions.srt"
+        assert action_data["subtitle_file"]["language_code"] == "und"
+        assert action_data["thread_ts"] == "123456.789"
+
+    def test_get_video_embed_action_value(self):
+        """Test extraction of the original embed payload from thread messages."""
+        action_value = '{"files":[{"file_id":"V123","file_name":"video.mp4"}]}'
+        message = {
+            "blocks": [
+                {
+                    "type": "section",
+                    "accessory": {
+                        "type": "button",
+                        "action_id": "video_embed_subtitles",
+                        "value": action_value,
+                    },
+                }
+            ]
+        }
+
+        assert get_video_embed_action_value(message) == action_value
+
+    @pytest.mark.asyncio
+    async def test_maybe_show_thread_media_embed_option(self):
+        """Test SRT uploads in a video thread reuse the original embed button."""
+        action_value = '{"files":[{"file_id":"V123","file_name":"video.mp4"}]}'
+        client = AsyncMock()
+        client.conversations_replies.return_value = {
+            "messages": [
+                {
+                    "blocks": [
+                        {
+                            "type": "section",
+                            "accessory": {
+                                "type": "button",
+                                "action_id": "video_embed_subtitles",
+                                "value": action_value,
+                            },
+                        }
+                    ]
+                }
+            ]
+        }
+        context = MagicMock()
+        context.get.return_value = "C123"
+        context.say = AsyncMock()
+        message = {
+            "thread_ts": "123456.789",
+            "files": [{"id": "F123", "name": "captions.srt", "filetype": "srt"}],
+        }
+
+        with patch(
+            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+        ) as mock_require:
+            mock_require.return_value = True
+            handled = await maybe_show_thread_media_embed_option(
+                client, context, message
+            )
+
+        assert handled is True
+        client.conversations_replies.assert_called_once_with(
+            channel="C123", ts="123456.789", limit=20
+        )
+        assert context.say.call_count == 1
+        assert context.say.call_args.kwargs["thread_ts"] == "123456.789"
+        assert context.say.call_args.kwargs["blocks"][0]["accessory"]["action_id"] == (
+            "video_embed_subtitles"
+        )
+        updated_action_data = json.loads(
+            context.say.call_args.kwargs["blocks"][0]["accessory"]["value"]
+        )
+        assert updated_action_data["files"][0]["file_id"] == "V123"
+        assert updated_action_data["subtitle_file"]["file_id"] == "F123"
 
 
 class TestApprovePendingClient:

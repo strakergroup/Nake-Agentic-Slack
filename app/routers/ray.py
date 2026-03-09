@@ -600,7 +600,13 @@ async def _handle_transcription_complete(
         channel_id=channel_id,
         thread_ts=thread_ts,
     )
-    effective_thread_ts = thread_ts or response.get("ts")
+    effective_thread_ts = thread_ts
+    if (
+        not effective_thread_ts
+        and isinstance(response, AsyncSlackResponse)
+        and isinstance(response.data, dict)
+    ):
+        effective_thread_ts = response.data.get("ts")
 
     if result_file_id and result_file_name:
         upload_channel_id: str | None = channel_id or (
