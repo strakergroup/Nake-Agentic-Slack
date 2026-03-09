@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Moved direct thread subtitle-embed helpers into `app/slack/listener_actions.py` and rebuild thread embed actions from the root Slack media message so SRT follow-ups no longer depend on `conversations.replies` (Wade Norman, 2026-03-09)
+- [Fixed]: Explicitly typed thread media embed action payloads in `app/slack/listener_actions.py` so mypy accepts adding the nested `subtitle_file` object before JSON serialization (Wade Norman, 2026-03-09)
 - [Fixed]: Tightened Slack notification/reply typing so mypy accepts threaded response timestamp handling in ray callbacks and listener actions (Wade Norman, 2026-03-09)
 - [Fixed]: Direct thread subtitle embedding now uploads the posted Slack SRT to the internal file server before creating the embed task, so the subtitle consumer receives a valid file-server ID instead of a Slack file ID (Wade Norman, 2026-03-09)
 - [Fixed]: Direct thread subtitle embedding now uses a dedicated bounded dedupe key for video+SRT pairs, avoiding `target_language` column overflows in `slack_file_translation_submissions` (Wade Norman, 2026-03-09)

@@ -83,7 +83,9 @@ from .listener_actions import (
     post_job_status,
     post_job_summary,
     post_report_insights,
+    resolve_media_thread_ts,
     respond_to_message,
+    submit_existing_srt_embed_task,
     submit_job,
     submit_verification_job,
     verify_help,
@@ -183,156 +185,6 @@ async def _send_translation_success_message(
                 "The file is being translated to {langs_string}. You will be notified when they are ready."
             ),
         )
-
-
-def _resolve_media_thread_ts(
-    action_data: Dict[str, Any] | None, body: Dict[str, Any] | None
-) -> str | None:
-    """Resolve the best thread timestamp for media workflows."""
-    action_data = action_data or {}
-    body = body or {}
-    container = body.get("container", {}) or {}
-    message = body.get("message", {}) or {}
-    return (
-        action_data.get("thread_ts")
-        or container.get("thread_ts")
-        or message.get("thread_ts")
-        or container.get("message_ts")
-        or message.get("ts")
-    )
-
-
-async def _submit_existing_srt_embed_task(
-    client: AsyncWebClient,
-    context: RayContext,
-    action_data: Dict[str, Any],
-    thread_ts: str | None,
-) -> bool:
-    """Create an embed-only task using an uploaded SRT and the original video."""
-    from ..models import ASRTask, TranscriptionTaskData
-    from ..ray.submissions import check_and_record_direct_embed_submission_async
-    from ..transcriber_tasks.tasks import create_asr_task
-    from .listener_actions import is_audio_only_file
-
-    assert context["ray"] is not None
-    assert context["ray"].client is not None
-
-    subtitle_file = action_data.get("subtitle_file") or {}
-    subtitle_file_id = subtitle_file.get("file_id")
-    subtitle_language_code = subtitle_file.get("language_code", "und")
-    subtitle_file_path: str | None = None
-    channel_id = (
-        action_data.get("channel_id") or context.get("channel_id") or context["user_id"]
-    )
-
-    if not subtitle_file_id:
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=_(
-                "Please upload an SRT file in the thread before embedding subtitles."
-            ),
-        )
-        return False
-
-    video_files = [
-        file_info
-        for file_info in action_data.get("files", [])
-        if not is_audio_only_file(file_info)
-    ]
-    if len(video_files) != 1:
-        await client.chat_postMessage(
-            channel=channel_id,
-            text=_(
-                "Direct subtitle embedding from a thread requires exactly one original video file."
-            ),
-            thread_ts=thread_ts,
-        )
-        return False
-
-    video_file = video_files[0]
-    is_dup, submission_record = await check_and_record_direct_embed_submission_async(
-        video_file_id=video_file["file_id"],
-        subtitle_file_id=subtitle_file_id,
-        file_name=video_file["file_name"],
-        user_id=context["user_id"],
-        team_id=context["team_id"],
-        channel_id=channel_id,
-    )
-    if is_dup:
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=_(
-                "Please allow the system to complete the ongoing subtitle embedding to prevent duplicate submissions."
-            ),
-        )
-        return False
-
-    slack_file_info = await client.files_info(file=video_file["file_id"])
-    slack_file_data: dict[str, Any] = slack_file_info.get("file", {})
-    download_url = slack_file_data.get("url_private_download") or slack_file_data.get(
-        "url_private"
-    )
-    if not download_url:
-        await client.chat_postMessage(
-            channel=context["user_id"],
-            text=_("Unable to access the original video file for subtitle embedding."),
-        )
-        return False
-
-    try:
-        subtitle_file_path = await download_file(
-            client=client, file_id=subtitle_file_id, http=None
-        )
-        uploaded_srt_file_id = await upload_to_file_server(subtitle_file_path)
-
-        task_data = TranscriptionTaskData(
-            client_id=context["ray"].client.id,
-            file_name=video_file["file_name"],
-            download_url=download_url,
-            app_token=client.token or "",
-            out_stream_name=f"{domains.stream_proxy}/events/transcription:slack:media:results",
-            service="azure",
-            model="whisper-1",
-            embed_subtitles=True,
-            sandbox=False,
-        )
-        extra_data_dict = {
-            "slack_user_id": context["user_id"],
-            "slack_team_id": context["team_id"],
-            "slack_enterprise_id": context.enterprise_id,
-            "slack_channel_id": channel_id,
-            "slack_thread_ts": thread_ts,
-            "pipeline_type": "embed",
-            "original_video_file_id": video_file["file_id"],
-            "original_video_download_url": download_url,
-            "original_video_file_name": video_file["file_name"],
-            "srt_file_ids": [uploaded_srt_file_id],
-            "language_codes": [subtitle_language_code],
-            "submission_ids": [submission_record.id],
-        }
-        asr_task = ASRTask(
-            member_uuid=context["ray"].client.id,
-            event_name="sup-subtitle-ai:media:asr",
-            app_source="slack",
-            service="azure",
-            model="whisper-1",
-            extra_data=extra_data_dict,
-            task_data=task_data,
-        )
-
-        await create_asr_task(asr_task)
-    finally:
-        if subtitle_file_path and os.path.exists(subtitle_file_path):
-            os.unlink(subtitle_file_path)
-
-    await client.chat_postMessage(
-        channel=channel_id,
-        text=_(
-            ":stopwatch: Please wait a moment while we embed the uploaded subtitles into your video."
-        ),
-        thread_ts=thread_ts,
-    )
-    return True
 
 
 # ---------------------------------------------------------
@@ -2778,7 +2630,7 @@ async def handle_video_transcribe_only(
         )
 
         files = action_data["files"]
-        thread_ts = _resolve_media_thread_ts(action_data, body)
+        thread_ts = resolve_media_thread_ts(action_data, body)
 
         # Check for duplicate transcription-only submissions
         from ..ray.submissions import (
@@ -2911,7 +2763,7 @@ async def handle_video_transcribe_translate(
         from .templates.views import video_transcribe_translate_modal
 
         action_data = json.loads(action.get("value", "{}"))
-        thread_ts = _resolve_media_thread_ts(action_data, body)
+        thread_ts = resolve_media_thread_ts(action_data, body)
         view = video_transcribe_translate_modal(
             channel_id=action_data.get("channel_id", context.get("channel_id", "")),
             files=action_data["files"],
@@ -2937,9 +2789,9 @@ async def handle_video_embed_subtitles(
         from .templates.views import video_embed_subtitles_modal
 
         action_data = json.loads(action.get("value", "{}"))
-        thread_ts = _resolve_media_thread_ts(action_data, body)
+        thread_ts = resolve_media_thread_ts(action_data, body)
         if action_data.get("subtitle_file"):
-            await _submit_existing_srt_embed_task(
+            await submit_existing_srt_embed_task(
                 client, context, action_data, thread_ts
             )
             return

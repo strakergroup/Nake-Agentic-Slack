@@ -10,7 +10,6 @@ from app.slack.listener_actions import (
     build_thread_media_embed_action_value,
     create_service_language_mapping,
     get_groups,
-    get_video_embed_action_value,
     is_video_file,
     maybe_show_thread_media_embed_option,
     post_batch_list,
@@ -159,58 +158,39 @@ class TestIsVideoFile:
 
 class TestThreadMediaEmbedOption:
     def test_build_thread_media_embed_action_value(self):
-        """Test thread embed payload includes the uploaded SRT metadata."""
-        action_value = '{"files":[{"file_id":"V123","file_name":"video.mp4"}]}'
-        message = {
+        """Test thread embed payload is rebuilt from the root media message."""
+        root_message = {
+            "files": [
+                {"id": "V123", "name": "video.mp4", "filetype": "mp4"},
+                {"id": "A123", "name": "audio.mp3", "filetype": "mp3"},
+            ]
+        }
+        reply_message = {
             "thread_ts": "123456.789",
             "files": [{"id": "F123", "name": "captions.srt", "filetype": "srt"}],
         }
 
         updated_action_value = build_thread_media_embed_action_value(
-            action_value, message
+            "C123", "123456.789", root_message, reply_message
         )
 
         action_data = json.loads(updated_action_value)
+        assert action_data["channel_id"] == "C123"
+        assert action_data["files"] == [{"file_id": "V123", "file_name": "video.mp4"}]
         assert action_data["subtitle_file"]["file_id"] == "F123"
         assert action_data["subtitle_file"]["file_name"] == "captions.srt"
         assert action_data["subtitle_file"]["language_code"] == "und"
         assert action_data["thread_ts"] == "123456.789"
 
-    def test_get_video_embed_action_value(self):
-        """Test extraction of the original embed payload from thread messages."""
-        action_value = '{"files":[{"file_id":"V123","file_name":"video.mp4"}]}'
-        message = {
-            "blocks": [
-                {
-                    "type": "section",
-                    "accessory": {
-                        "type": "button",
-                        "action_id": "video_embed_subtitles",
-                        "value": action_value,
-                    },
-                }
-            ]
-        }
-
-        assert get_video_embed_action_value(message) == action_value
-
     @pytest.mark.asyncio
-    async def test_maybe_show_thread_media_embed_option(self):
-        """Test SRT uploads in a video thread reuse the original embed button."""
-        action_value = '{"files":[{"file_id":"V123","file_name":"video.mp4"}]}'
+    async def test_maybe_show_thread_media_embed_option_uses_thread_root_message(self):
+        """Test SRT uploads use the root thread message instead of thread replies."""
         client = AsyncMock()
-        client.conversations_replies.return_value = {
+        client.conversations_history.return_value = {
             "messages": [
                 {
-                    "blocks": [
-                        {
-                            "type": "section",
-                            "accessory": {
-                                "type": "button",
-                                "action_id": "video_embed_subtitles",
-                                "value": action_value,
-                            },
-                        }
+                    "files": [
+                        {"id": "V123", "name": "video.mp4", "filetype": "mp4"},
                     ]
                 }
             ]
@@ -232,8 +212,12 @@ class TestThreadMediaEmbedOption:
             )
 
         assert handled is True
-        client.conversations_replies.assert_called_once_with(
-            channel="C123", ts="123456.789", limit=20
+        client.conversations_history.assert_called_once_with(
+            channel="C123",
+            latest="123456.789",
+            oldest="123456.789",
+            inclusive=True,
+            limit=1,
         )
         assert context.say.call_count == 1
         assert context.say.call_args.kwargs["thread_ts"] == "123456.789"
@@ -245,6 +229,40 @@ class TestThreadMediaEmbedOption:
         )
         assert updated_action_data["files"][0]["file_id"] == "V123"
         assert updated_action_data["subtitle_file"]["file_id"] == "F123"
+
+    @pytest.mark.asyncio
+    async def test_maybe_show_thread_media_embed_option_returns_false_for_non_media_root(
+        self,
+    ):
+        """Test non-video root thread messages do not show the embed CTA."""
+        client = AsyncMock()
+        client.conversations_history.return_value = {
+            "messages": [
+                {
+                    "files": [
+                        {"id": "A123", "name": "audio.mp3", "filetype": "mp3"},
+                    ]
+                }
+            ]
+        }
+        context = MagicMock()
+        context.get.return_value = "C123"
+        context.say = AsyncMock()
+        message = {
+            "thread_ts": "123456.789",
+            "files": [{"id": "F123", "name": "captions.srt", "filetype": "srt"}],
+        }
+
+        with patch(
+            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+        ) as mock_require:
+            mock_require.return_value = True
+            handled = await maybe_show_thread_media_embed_option(
+                client, context, message
+            )
+
+        assert handled is False
+        assert context.say.call_count == 0
 
 
 class TestApprovePendingClient:
