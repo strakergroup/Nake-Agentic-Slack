@@ -111,6 +111,10 @@ AUDIO_ONLY_TYPES = ["mp3", "mpga", "m4a", "wav"]
 # Video formats (can have subtitles embedded)
 VIDEO_ONLY_TYPES = ["mp4", "mpeg", "webm"]
 
+MEDIA_ACTION_IDS = frozenset(
+    {"video_transcribe_only", "video_transcribe_translate", "video_embed_subtitles"}
+)
+
 
 def create_service_language_mapping(
     target_langs: list[str], glossary_ids: dict[str, str] | None = None
@@ -198,6 +202,31 @@ def is_srt_file(file_details: dict[str, Any]) -> bool:
     )
 
 
+def _extract_media_files_from_blocks(root_message: dict[str, Any]) -> list[dict]:
+    """Extract video file info from VideoOptionsMessage action button values.
+
+    When the thread root is a VideoOptionsMessage (no attached files), the
+    original video metadata lives inside the JSON ``value`` of its action
+    buttons.
+    """
+    for block in root_message.get("blocks", []):
+        accessory = block.get("accessory") or {}
+        if accessory.get("action_id") not in MEDIA_ACTION_IDS:
+            continue
+        try:
+            payload = json.loads(accessory.get("value", "{}"))
+        except (json.JSONDecodeError, TypeError):
+            continue
+        files = payload.get("files")
+        if files:
+            return [
+                {"file_id": f["file_id"], "file_name": f["file_name"]}
+                for f in files
+                if f.get("file_id") and f.get("file_name")
+            ]
+    return []
+
+
 def build_thread_media_embed_action_value(
     channel_id: str,
     thread_ts: str,
@@ -225,6 +254,9 @@ def build_thread_media_embed_action_value(
             continue
 
         media_files.append({"file_id": file_id, "file_name": file_name})
+
+    if not media_files:
+        media_files = _extract_media_files_from_blocks(root_message)
 
     if not media_files:
         return ""

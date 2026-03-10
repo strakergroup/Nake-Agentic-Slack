@@ -3330,7 +3330,7 @@ class MediaEmbedOptionMessage(SlackMessage):
         embed_section = SectionBlock(
             text=MarkdownTextObject(
                 text=_(
-                    "*Embed Subtitles* - Embed the uploaded subtitle file into the original video from this thread."
+                    "We have received your edited file(s). You're ready to Embed Subtitles."
                 )
             ),
             accessory=embed_button,

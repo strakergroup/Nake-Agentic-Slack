@@ -749,28 +749,19 @@ async def _handle_transcribe_embed_pipeline(
             # which means Slack has processed and made the file available
             # Use the original filename, not the temp file path
             output_filename = result_file_name or task_info.file_name
-            upload_response = await upload_file_to_slack_memory_efficient(
+            await upload_file_to_slack_memory_efficient(
                 client=client,
                 file_path=file_path,
                 channel_id=channel_id,
                 thread_ts=effective_thread_ts,
                 title=output_filename,
                 filename=output_filename,
+                initial_comment=_(
+                    "Your video with embedded subtitles is ready! "
+                    "Please download the media file(s) to view the embedded subtitles."
+                ),
             )
             os.unlink(file_path)
-
-            # Verify upload completed successfully before posting the download message
-            # upload_file_to_slack_memory_efficient only returns if files_completeUploadExternal
-            # returns ok=True, so if we reach here, the file is uploaded and available
-            if upload_response and upload_response.get("ok"):
-                # Post comment about downloading the media file after the file is uploaded
-                await client.chat_postMessage(
-                    channel=channel_id,
-                    text=_(
-                        "Please download the media file(s) to view the embedded subtitles."
-                    ),
-                    thread_ts=effective_thread_ts,
-                )
 
             # Show token message at the end for transcribe_translate_embed pipeline
             if task_info.pipeline_type == "transcribe_translate_embed":
@@ -869,6 +860,15 @@ async def _handle_transcribe_success_background(
                 channel_id=channel_id,
                 title=file_name,
                 filename=file_name,
+                thread_ts=thread_ts,
+            )
+
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=_(
+                    "Download the AI translations provided above, make your edits, "
+                    "and reupload the edited files back to the same thread."
+                ),
                 thread_ts=thread_ts,
             )
         finally:

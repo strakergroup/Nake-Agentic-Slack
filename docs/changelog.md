@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Embed pipeline download message now uses `initial_comment` on the file upload instead of a separate `chat_postMessage` with sleep delay, ensuring it always appears alongside the video (Wade Norman, 2026-03-10)
+- [Fixed]: Thread embed option now appears when user re-uploads an edited SRT in a DM thread — `build_thread_media_embed_action_value` falls back to extracting video file info from the `VideoOptionsMessage` button action values when the root message has no direct file attachments (Wade Norman, 2026-03-10)
+- [Changed]: Moved instructional "download/edit/reupload" message from `JobTranscribedEventMessage` to `_handle_transcribe_success_background` so it posts after the SRT file upload, ensuring the file appears before the instruction (Wade Norman, 2026-03-10)
 - [Fixed]: Extracted duplicated thread_ts resolution in `ray_events` into `_resolve_event_thread_ts` helper; replaced f-string inside `_()` with `%s` formatting for i18n compatibility; replaced `assert` with proper error handling in `submit_existing_srt_embed_task`; added `except` block to mark submissions as FAILED and notify users on task creation errors (Wade Norman, 2026-03-10)
 - [Changed]: Moved direct thread subtitle-embed helpers into `app/slack/listener_actions.py` and rebuild thread embed actions from the root Slack media message so SRT follow-ups no longer depend on `conversations.replies` (Wade Norman, 2026-03-09)
 - [Fixed]: Explicitly typed thread media embed action payloads in `app/slack/listener_actions.py` so mypy accepts adding the nested `subtitle_file` object before JSON serialization (Wade Norman, 2026-03-09)
