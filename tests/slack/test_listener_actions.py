@@ -5,6 +5,7 @@ import pytest
 
 from app.slack.listener_actions import (
     VIDEO_FILE_TYPES,
+    _language_code_from_srt_filename,
     ai_translate_help,
     approve_pending_client,
     build_thread_media_embed_action_value,
@@ -182,6 +183,22 @@ class TestThreadMediaEmbedOption:
         assert action_data["subtitle_file"]["language_code"] == "und"
         assert action_data["thread_ts"] == "123456.789"
 
+    def test_build_thread_media_embed_action_value_detects_language_from_filename(self):
+        """Test language code is inferred from SRT filename like video_Japanese.srt."""
+        root_message = {"files": [{"id": "V1", "name": "clip.mp4", "filetype": "mp4"}]}
+        reply_message = {
+            "thread_ts": "100.200",
+            "files": [{"id": "F1", "name": "clip_Japanese.srt", "filetype": "srt"}],
+        }
+
+        result = json.loads(
+            build_thread_media_embed_action_value(
+                "C1", "100.200", root_message, reply_message
+            )
+        )
+        assert result["subtitle_file"]["language_code"] == "ja"
+        assert result["subtitle_file"]["file_name"] == "clip_Japanese.srt"
+
     @pytest.mark.asyncio
     async def test_maybe_show_thread_media_embed_option_uses_thread_root_message(self):
         """Test SRT uploads use the root thread message instead of thread replies."""
@@ -263,6 +280,29 @@ class TestThreadMediaEmbedOption:
 
         assert handled is False
         assert context.say.call_count == 0
+
+
+class TestLanguageCodeFromSrtFilename:
+    """Tests for _language_code_from_srt_filename helper."""
+
+    @pytest.mark.parametrize(
+        "filename, expected",
+        [
+            ("video_Japanese.srt", "ja"),
+            ("video_Spanish.srt", "es"),
+            ("video_French.srt", "fr"),
+            ("clip_Chinese (Simplified).srt", "zh-CN"),
+            ("video_ja.srt", "ja"),
+            ("video_es.srt", "es"),
+            ("video_japanese.srt", "ja"),
+            ("captions.srt", "und"),
+            ("subtitles.srt", "und"),
+            ("video_UnknownLang.srt", "und"),
+            ("video.srt", "und"),
+        ],
+    )
+    def test_filename_to_language_code(self, filename: str, expected: str):
+        assert _language_code_from_srt_filename(filename) == expected
 
 
 class TestApprovePendingClient:

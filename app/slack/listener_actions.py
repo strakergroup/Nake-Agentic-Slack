@@ -54,6 +54,7 @@ from ..auth.connector import (
 from ..config import Environment, config, domains
 from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
+    get_auto_translate_languages,
     get_auto_translate_settings_and_langs,
 )
 from ..ray.submissions import (
@@ -114,6 +115,29 @@ VIDEO_ONLY_TYPES = ["mp4", "mpeg", "webm"]
 MEDIA_ACTION_IDS = frozenset(
     {"video_transcribe_only", "video_transcribe_translate", "video_embed_subtitles"}
 )
+
+
+def _language_code_from_srt_filename(filename: str) -> str:
+    """Infer a language code from an SRT filename like ``video_Japanese.srt``.
+
+    The translation pipeline names output files as ``{stem}_{LanguageName}.srt``.
+    This reverses that convention by matching the trailing segment against the
+    known auto-translate language list.
+
+    Returns the ISO language code (e.g. ``"ja"``) or ``"und"`` if no match.
+    """
+    stem = os.path.splitext(filename)[0]  # "video_Japanese"
+    if "_" not in stem:
+        return "und"
+
+    candidate = stem.rsplit("_", 1)[1]  # "Japanese"
+    candidate_lower = candidate.casefold()
+
+    for code, name in get_auto_translate_languages(include_variations=True):
+        if name.casefold() == candidate_lower or code.casefold() == candidate_lower:
+            return code
+
+    return "und"
 
 
 def create_service_language_mapping(
@@ -267,12 +291,13 @@ def build_thread_media_embed_action_value(
         "thread_ts": thread_ts,
     }
 
+    srt_name = (
+        subtitle_file.get("name") or subtitle_file.get("title") or "subtitles.srt"
+    )
     action_data["subtitle_file"] = {
         "file_id": subtitle_file["id"],
-        "file_name": subtitle_file.get("name")
-        or subtitle_file.get("title")
-        or "subtitles.srt",
-        "language_code": "und",
+        "file_name": srt_name,
+        "language_code": _language_code_from_srt_filename(srt_name),
     }
     return json.dumps(action_data)
 
