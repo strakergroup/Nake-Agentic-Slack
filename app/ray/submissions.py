@@ -263,6 +263,8 @@ async def check_and_record_direct_embed_submission_async(
             channel_id=channel_id,
             file_hash=dedupe_hash,
             file_name=file_name,
+            # Embed-only submissions don't track file size; the video isn't
+            # re-downloaded here so the actual size is unavailable.
             file_size=0,
             target_language="embed",
             file_id=video_file_id,

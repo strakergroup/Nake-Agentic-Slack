@@ -109,6 +109,17 @@ _background_tasks = set()
 logger = logging.getLogger(__name__)
 
 
+def _resolve_event_thread_ts(
+    extra_data: dict[str, Any] | None, event_data: dict[str, Any]
+) -> str | None:
+    """Resolve the best thread timestamp from task extra_data and the raw event payload."""
+    return (
+        (extra_data.get("slack_thread_ts") if extra_data else None)
+        or event_data.get("thread_ts")
+        or event_data.get("message_ts")
+    )
+
+
 async def _update_tokens_consumed(
     task_uuid: str,
     additional_tokens: int,
@@ -1167,36 +1178,27 @@ async def ray_events(
                     return
 
                 # Handle errors
+                extra_data = task_info.extra_data or {}
                 if transcribed_event.error or event.data.get("error"):
-                    extra_data = task_info.extra_data or {}
-                    thread_ts = (
-                        (extra_data.get("slack_thread_ts") if extra_data else None)
-                        or event.data.get("thread_ts")
-                        or event.data.get("message_ts")
-                    )
+                    thread_ts = _resolve_event_thread_ts(extra_data, event.data)
                     error_msg = transcribed_event.error or event.data.get(
                         "error", "Unknown error"
                     )
                     await client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
-                        text=_(f"Transcription failed: {error_msg}"),
+                        text=_("Transcription failed: %s") % error_msg,
                         thread_ts=thread_ts,
                     )
                     return
 
                 # Get channel and thread info
-                extra_data = task_info.extra_data or {}
                 channel_id = (
                     extra_data.get("slack_channel_id")
                     if extra_data
                     else auth.slack_user.channel_id
                 )
-                thread_ts = (
-                    (extra_data.get("slack_thread_ts") if extra_data else None)
-                    or event.data.get("thread_ts")
-                    or event.data.get("message_ts")
-                )
+                thread_ts = _resolve_event_thread_ts(extra_data, event.data)
 
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
@@ -1253,36 +1255,27 @@ async def ray_events(
                     return
 
                 # Handle errors
+                extra_data = task_info.extra_data or {}
                 if transcribed_event.error or event.data.get("error"):
-                    extra_data = task_info.extra_data or {}
-                    thread_ts = (
-                        (extra_data.get("slack_thread_ts") if extra_data else None)
-                        or event.data.get("thread_ts")
-                        or event.data.get("message_ts")
-                    )
+                    thread_ts = _resolve_event_thread_ts(extra_data, event.data)
                     error_msg = transcribed_event.error or event.data.get(
                         "error", "Unknown error"
                     )
                     await client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
-                        text=_(f"Translation failed: {error_msg}"),
+                        text=_("Translation failed: %s") % error_msg,
                         thread_ts=thread_ts,
                     )
                     return
 
                 # Get channel and thread info
-                extra_data = task_info.extra_data or {}
                 channel_id = (
                     extra_data.get("slack_channel_id")
                     if extra_data
                     else auth.slack_user.channel_id
                 )
-                thread_ts = (
-                    (extra_data.get("slack_thread_ts") if extra_data else None)
-                    or event.data.get("thread_ts")
-                    or event.data.get("message_ts")
-                )
+                thread_ts = _resolve_event_thread_ts(extra_data, event.data)
 
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
@@ -1337,36 +1330,27 @@ async def ray_events(
                     return
 
                 # Handle errors
+                extra_data = task_info.extra_data or {}
                 if transcribed_event.error or event.data.get("error"):
-                    extra_data = task_info.extra_data or {}
-                    thread_ts = (
-                        (extra_data.get("slack_thread_ts") if extra_data else None)
-                        or event.data.get("thread_ts")
-                        or event.data.get("message_ts")
-                    )
+                    thread_ts = _resolve_event_thread_ts(extra_data, event.data)
                     error_msg = transcribed_event.error or event.data.get(
                         "error", "Unknown error"
                     )
                     await client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
-                        text=_(f"Embedding failed: {error_msg}"),
+                        text=_("Embedding failed: %s") % error_msg,
                         thread_ts=thread_ts,
                     )
                     return
 
                 # Get channel and thread info
-                extra_data = task_info.extra_data or {}
                 channel_id = (
                     extra_data.get("slack_channel_id")
                     if extra_data
                     else auth.slack_user.channel_id
                 )
-                thread_ts = (
-                    (extra_data.get("slack_thread_ts") if extra_data else None)
-                    or event.data.get("thread_ts")
-                    or event.data.get("message_ts")
-                )
+                thread_ts = _resolve_event_thread_ts(extra_data, event.data)
 
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])

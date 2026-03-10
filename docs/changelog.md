@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: Extracted duplicated thread_ts resolution in `ray_events` into `_resolve_event_thread_ts` helper; replaced f-string inside `_()` with `%s` formatting for i18n compatibility; replaced `assert` with proper error handling in `submit_existing_srt_embed_task`; added `except` block to mark submissions as FAILED and notify users on task creation errors (Wade Norman, 2026-03-10)
 - [Changed]: Moved direct thread subtitle-embed helpers into `app/slack/listener_actions.py` and rebuild thread embed actions from the root Slack media message so SRT follow-ups no longer depend on `conversations.replies` (Wade Norman, 2026-03-09)
 - [Fixed]: Explicitly typed thread media embed action payloads in `app/slack/listener_actions.py` so mypy accepts adding the nested `subtitle_file` object before JSON serialization (Wade Norman, 2026-03-09)
 - [Fixed]: Tightened Slack notification/reply typing so mypy accepts threaded response timestamp handling in ray callbacks and listener actions (Wade Norman, 2026-03-09)

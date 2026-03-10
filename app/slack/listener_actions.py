@@ -56,7 +56,11 @@ from ..ray.service import RayService, get_job_predictions
 from ..ray.settings import (
     get_auto_translate_settings_and_langs,
 )
-from ..ray.submissions import check_and_record_direct_embed_submission_async
+from ..ray.submissions import (
+    SubmissionStatus,
+    check_and_record_direct_embed_submission_async,
+    updated_submission_status,
+)
 from ..ray.utils import (
     is_ibm_enterprise,
     upload_to_file_server,
@@ -210,6 +214,8 @@ def build_thread_media_embed_action_value(
 
     media_files = []
     for file in root_message.get("files", []):
+        # VIDEO_FILE_TYPES includes audio formats (mp3, wav, etc.) so
+        # is_audio_only_file is needed to exclude non-embeddable audio.
         if not is_video_file(file) or is_audio_only_file(file):
             continue
 
@@ -595,8 +601,13 @@ async def submit_existing_srt_embed_task(
     thread_ts: str | None,
 ) -> bool:
     """Create an embed-only task using an uploaded SRT and the original video."""
-    assert context["ray"] is not None
-    assert context["ray"].client is not None
+    ray_conn = context.get("ray")
+    if not ray_conn or not ray_conn.client:
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=_("You must be connected to use subtitle embedding."),
+        )
+        return False
 
     subtitle_file = action_data.get("subtitle_file") or {}
     subtitle_file_id = subtitle_file.get("file_id")
@@ -667,7 +678,7 @@ async def submit_existing_srt_embed_task(
         uploaded_srt_file_id = await upload_to_file_server(subtitle_file_path)
 
         task_data = TranscriptionTaskData(
-            client_id=context["ray"].client.id,
+            client_id=ray_conn.client.id,
             file_name=video_file["file_name"],
             download_url=download_url,
             app_token=client.token or "",
@@ -692,7 +703,7 @@ async def submit_existing_srt_embed_task(
             "submission_ids": [submission_record.id],
         }
         asr_task = ASRTask(
-            member_uuid=context["ray"].client.id,
+            member_uuid=ray_conn.client.id,
             event_name="sup-subtitle-ai:media:asr",
             app_source="slack",
             service="azure",
@@ -702,6 +713,20 @@ async def submit_existing_srt_embed_task(
         )
 
         await create_asr_task(asr_task)
+    except Exception as e:
+        notify_exception(e, "Failed to create direct embed task")
+        updated_submission_status(
+            submission_id=submission_record.id,
+            processing_status=SubmissionStatus.FAILED,
+        )
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "An error occurred while preparing your subtitle embedding. Please try again."
+            ),
+            thread_ts=thread_ts,
+        )
+        return False
     finally:
         if subtitle_file_path and os.path.exists(subtitle_file_path):
             os.unlink(subtitle_file_path)
