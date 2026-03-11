@@ -634,7 +634,7 @@ async def document_machine_translate(
         task_data.task_uuid = task_uuid
         async with httpx.AsyncClient() as http:
             await http.post(
-                f"{domains.stream_proxy}/events/slack:job:machine:translate",
+                f"{domains.stream_proxy}/events/slack:job:machine:translate:v2",
                 json={
                     "data": task_data.model_dump(),
                     "source": "Straker Translate for Slack",
