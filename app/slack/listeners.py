@@ -10,6 +10,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, cast
 
+import httpx
 from pydantic import ValidationError
 from ray_sdk import RayAPIResponseError
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
@@ -1896,6 +1897,52 @@ async def message_changed_event(
                     )
 
 
+async def _publish_pdf_evaluate_convert(
+    ray_client,
+    input_files: list[str],
+    file_titles: list[str],
+    target_langs_uuid: list[str],
+    reference: str,
+    channel_id: str,
+    workflow_uuid: str | None = None,
+    job_notes: str = "",
+    workflow_version: float = 3.0,
+    docconverter_version: str = "m48",
+) -> None:
+    """Upload files to GridFS and publish to the PDF conversion stream.
+
+    The int-slack-verify-consumer will convert PDFs to DOCX and submit
+    the evaluate job on behalf of the user.
+    """
+    file_ids = []
+    for file_path in input_files:
+        file_id = await upload_to_file_server(file_path)
+        file_ids.append(file_id)
+
+    payload = {
+        "client_uuid": ray_client.id,
+        "file_ids": file_ids,
+        "file_names": file_titles,
+        "target_languages_uuid": target_langs_uuid,
+        "reference": reference,
+        "workflow_uuid": workflow_uuid or "",
+        "job_notes": job_notes,
+        "workflow_version": workflow_version,
+        "docconverter_version": docconverter_version,
+        "channel_id": channel_id,
+        "app_source": "slack",
+    }
+
+    async with httpx.AsyncClient() as http:
+        await http.post(
+            f"{domains.stream_proxy}/events/slack:evaluate:pdf:convert",
+            json={
+                "data": payload,
+                "source": "Straker Translate for Slack",
+            },
+        )
+
+
 @app.view("evaluate_job", middleware=[ray_connection])
 @app.view("evaluate_job_human", middleware=[ray_connection])
 @slack_log_decorator
@@ -1932,6 +1979,7 @@ async def evaluate_job_submit(
             )
         await client.chat_postMessage(channel=channel_id, text=msg)
         input_files = []
+        file_titles = []
         for file in form.files:
             input_file = await download_file(client=client, file_id=file.id, http=None)
             is_valid, is_valid_content, error_message = validate_file(input_file)
@@ -1942,19 +1990,34 @@ async def evaluate_job_submit(
                 await client.chat_postMessage(channel=channel_id, text=error_message)
                 continue
             input_files.append(input_file)
+            file_titles.append(file.title)
         if not input_files:
             return
         try:
             assert context["ray"] is not None
             assert context["ray"].client is not None
-            await submit_evaluation_job(
-                context["ray"].client,
-                input_files,
-                form.target_langs_uuid,
-                form.reference,
-                workflow_uuid=form.workflow_options,
-                job_notes=form.job_notes or "",
-            )
+
+            has_pdf = any(t.lower().endswith(".pdf") for t in file_titles)
+            if has_pdf:
+                await _publish_pdf_evaluate_convert(
+                    ray_client=context["ray"].client,
+                    input_files=input_files,
+                    file_titles=file_titles,
+                    target_langs_uuid=form.target_langs_uuid,
+                    reference=form.reference,
+                    channel_id=channel_id,
+                    workflow_uuid=form.workflow_options,
+                    job_notes=form.job_notes or "",
+                )
+            else:
+                await submit_evaluation_job(
+                    context["ray"].client,
+                    input_files,
+                    form.target_langs_uuid,
+                    form.reference,
+                    workflow_uuid=form.workflow_options,
+                    job_notes=form.job_notes or "",
+                )
         except VerifyAPIError as e:
             await client.chat_postMessage(
                 channel=channel_id,
