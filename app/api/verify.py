@@ -39,6 +39,7 @@ async def submit_evaluation_job(
         "source": "slack",
         "workflow_version": workflow_version,
         "docconverter_version": docconverter_version,
+        "confirmation_required": False,
     }
     if job_notes:
         target_languages_data["client_notes"] = job_notes
