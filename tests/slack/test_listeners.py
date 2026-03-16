@@ -2175,6 +2175,11 @@ class TestEvaluateJobSubmit:
             "private_metadata": "C123",
             "state": {
                 "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "src-lang-001"}
+                        }
+                    },
                     "target_langs": {
                         "language_options_uuid": {
                             "selected_options": [{"value": "lang-123"}]
@@ -2221,6 +2226,11 @@ class TestEvaluateJobSubmit:
             "private_metadata": "C123",
             "state": {
                 "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "src-lang-001"}
+                        }
+                    },
                     "target_langs": {
                         "language_options_uuid": {
                             "selected_options": [{"value": "lang-123"}]
@@ -2283,6 +2293,11 @@ class TestEvaluateJobSubmit:
             "private_metadata": "C123",
             "state": {
                 "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "src-lang-001"}
+                        }
+                    },
                     "target_langs": {
                         "language_options_uuid": {
                             "selected_options": [{"value": "lang-123"}]
@@ -2349,6 +2364,11 @@ class TestEvaluateJobSubmit:
             "private_metadata": "C123",
             "state": {
                 "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "src-lang-001"}
+                        }
+                    },
                     "target_langs": {
                         "language_options_uuid": {
                             "selected_options": [{"value": "lang-123"}]

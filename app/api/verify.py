@@ -27,12 +27,12 @@ async def submit_evaluation_job(
     file_path: list[str],
     target_languages_uuid: List[str],
     reference: str,
+    source_language_uuid: str = "",
     workflow_uuid: str | None = None,
     job_notes: str = "",
     workflow_version: float = 3.0,
     docconverter_version: str = "m48",
 ):
-    # Prepare the data for the request
     target_languages_data = {
         "target_languages": target_languages_uuid,
         "title": reference,
@@ -41,6 +41,8 @@ async def submit_evaluation_job(
         "docconverter_version": docconverter_version,
         "confirmation_required": False,
     }
+    if source_language_uuid:
+        target_languages_data["source_language"] = source_language_uuid
     if job_notes:
         target_languages_data["client_notes"] = job_notes
     target_languages_data["workflow"] = workflow_uuid or ""

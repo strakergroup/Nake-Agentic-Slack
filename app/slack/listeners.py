@@ -1678,6 +1678,12 @@ async def language_options_uuid(ack: AsyncAck, payload: Dict[str, Any]):
     await ack(options=options)
 
 
+@app.options("source_language_option_uuid", middleware=[ray_connection])
+async def source_language_option_uuid(ack: AsyncAck, payload: Dict[str, Any]):
+    options = await get_language_options(payload.get("value"), "uuid")
+    await ack(options=options)
+
+
 @app.options("group_options", middleware=[ray_connection])
 async def group_options(ack: AsyncAck, context: RayContext):
     if await require_ray_client(context):
@@ -1904,6 +1910,7 @@ async def _publish_pdf_evaluate_convert(
     target_langs_uuid: list[str],
     reference: str,
     channel_id: str,
+    source_lang_uuid: str = "",
     workflow_uuid: str | None = None,
     job_notes: str = "",
     workflow_version: float = 3.0,
@@ -1924,6 +1931,7 @@ async def _publish_pdf_evaluate_convert(
         "file_ids": file_ids,
         "file_names": file_titles,
         "target_languages_uuid": target_langs_uuid,
+        "source_language_uuid": source_lang_uuid,
         "reference": reference,
         "workflow_uuid": workflow_uuid or "",
         "job_notes": job_notes,
@@ -2006,6 +2014,7 @@ async def evaluate_job_submit(
                     target_langs_uuid=form.target_langs_uuid,
                     reference=form.reference,
                     channel_id=channel_id,
+                    source_lang_uuid=form.source_lang_uuid,
                     workflow_uuid=form.workflow_options,
                     job_notes=form.job_notes or "",
                 )
@@ -2015,6 +2024,7 @@ async def evaluate_job_submit(
                     input_files,
                     form.target_langs_uuid,
                     form.reference,
+                    source_language_uuid=form.source_lang_uuid,
                     workflow_uuid=form.workflow_options,
                     job_notes=form.job_notes or "",
                 )
