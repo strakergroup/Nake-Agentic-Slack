@@ -27,6 +27,7 @@ flowchart LR
         StreamProxy["redis-stream-proxy"]
         Redis[(Redis Streams)]
         SlackConsumer["redis-slack-consumer"]
+        VerifyConsumer["int-slack-verify-consumer"]
     end
 
     App -->|HTTP| VerifyAPI
@@ -39,7 +40,9 @@ flowchart LR
     App -->|HTTP POST events| StreamProxy
     StreamProxy -->|XADD| Redis
     Redis -->|XREADGROUP| SlackConsumer
+    Redis -->|"XREADGROUP (v2 streams)"| VerifyConsumer
     SlackConsumer -->|POST /ray/events| App
+    VerifyConsumer -->|"results via redis-slack-consumer"| SlackConsumer
 ```
 
 
@@ -70,6 +73,8 @@ Handles quality evaluation jobs, human translation, and language metadata.
 
 
 **Auth:** Bearer token from the user's LanguageCloud JWT (`ray_client.id_token`).
+
+> **Consumer relationship:** Quality evaluation jobs created via `POST /evaluate/create` are processed by **[cloud-verify-consumer](https://github.com/strakergroup/cloud-verify-consumer)**. Results arrive back as `verify:slack:evaluate:complete` and `verify:human_verification:completed` inbound events. For PDF submissions, files are first routed through `slack:evaluate:pdf:convert` → **int-slack-verify-consumer** for PDF→DOCX conversion before the evaluate job is created.
 
 ---
 
@@ -137,7 +142,7 @@ GridFS-backed file storage service for uploading, downloading, and deleting file
 
 ---
 
-### 5. Insights API
+### 5. Insights API (depricated)
 
 
 | Env Var               | Domain Attribute       |
@@ -145,7 +150,7 @@ GridFS-backed file storage service for uploading, downloading, and deleting file
 | `INSIGHTS_API_DOMAIN` | `domains.insights_api` |
 
 
-NLP processing service for natural language prompts and insights.
+NLP processing service for natural language prompts and insights. !! This should be removed it is not used or maintianed
 
 
 | Method | Endpoint | Purpose                                            | Source File                     |
@@ -283,9 +288,11 @@ All events are published via HTTP POST to `{STREAM_PROXY_DOMAIN}/events/{stream_
 | ----------------- | --------------------------------------------------------------------------------------------- |
 | **Purpose**       | File-based machine translation (documents, SRT subtitle files)                                |
 | **Trigger**       | User submits a document for MT, or transcribe+translate pipeline triggers SRT translation     |
-| **Consumer**      | **cloud-verify-consumer** (handles file translation, credit logging)                          |
+| **Consumer**      | **[int-slack-verify-consumer](https://github.com/strakergroup/int-slack-verify-consumer)** (file download, extract, translate, merge, upload, credit logging) |
 | **Output Stream** | Results via redis-slack-consumer → `POST /ray/events` with `verify:slack:document:translated` |
 | **Source Files**  | `app/api/stream_proxy.py`, `app/slack/listener_actions.py`                                    |
+
+> **Note:** This stream uses the `v2` suffix and is consumed by `int-slack-verify-consumer` (forked from `cloud-verify-consumer`). The consumer also handles `teams:job:machine:translate:v2` and `srt:translate:multi:v2` for Teams file MT and SRT subtitle multi-language translation respectively.
 
 
 **Payload:**
@@ -422,9 +429,9 @@ These events arrive via `POST /ray/events` from **redis-slack-consumer**, which 
 | `ray:job:quote_accepted`                          | RAY Platform          | Quote accepted by client                                        |
 | `ray:job:quote_cancelled`                         | RAY Platform          | Quote cancelled                                                 |
 | `transcription:slack:media:transcription:results` | sup-subtitle-ai       | Media transcription (ASR) complete                              |
-| `transcription:slack:media:translation:results`   | cloud-verify-consumer | SRT subtitle translation complete                               |
+| `transcription:slack:media:translation:results`   | int-slack-verify-consumer | SRT subtitle translation complete                               |
 | `transcription:slack:media:embedding:results`     | sup-subtitle-ai       | Subtitle embedding into video complete                          |
-| `verify:slack:document:translated`                | cloud-verify-consumer | Document machine translation complete (success or error)        |
+| `verify:slack:document:translated`                | int-slack-verify-consumer | Document machine translation complete (success or error)        |
 | `verify:slack:evaluate:complete`                  | Verify API            | Quality evaluation job complete                                 |
 | `verify:human_verification:completed`             | Verify API            | Human verification/translation job complete                     |
 | `slack:direct:mt:result`                          | mt-service            | Direct/channel text MT translation result                       |

@@ -23,7 +23,8 @@ Detailed documentation is available in the [`docs/`](docs/) folder:
 - Redis (in docker-compose)
 - [redis-stream-proxy](https://github.com/strakergroup/redis-stream-proxy-api/) Called by other apps to send events to slack
 - [redis-slack-consumer](https://github.com/strakergroup/redis-slack-consumer) proccesses events
-- [cloud-verify-consumer](https://github.com/strakergroup/cloud-verify-consumer) used for document machine translating
+- [int-slack-verify-consumer](https://github.com/strakergroup/int-slack-verify-consumer) handles all `v2` Redis streams — file MT (`slack:job:machine:translate:v2`), SRT subtitle translation (`srt:translate:multi:v2`), and PDF evaluation (`slack:evaluate:pdf:convert`). Forked from cloud-verify-consumer.
+- [cloud-verify-consumer](https://github.com/strakergroup/cloud-verify-consumer) still used for quality evaluation jobs created via the Verify API (`POST /evaluate/create`)
 - [cloud-verify-api](https://github.com/strakergroup/cloud-verify-api) used for verify job submission
 - [cloud-verify-ui](https://github.com/strakergroup/cloud-verify-ui) verify ui for connect
 
