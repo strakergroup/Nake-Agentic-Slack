@@ -379,7 +379,9 @@ def replace_quebecois_with_french_canadian(filename: str) -> str:
     return filename
 
 
-def validate_file(file_path: str) -> Tuple[bool, bool, str]:
+def validate_file(
+    file_path: str, max_pdf_size_bytes: int | None = None
+) -> Tuple[bool, bool, str]:
     """Checks if the file type is supported and validates content if applicable.
 
     Args:
@@ -399,11 +401,26 @@ def validate_file(file_path: str) -> Tuple[bool, bool, str]:
         (False, False, 'Unsupported file type: unsupported')
     """
     # Extract extension from file path
-    _, ext = os.path.splitext(file_path)
+    _file_root, ext = os.path.splitext(file_path)
     ext = ext.lower().lstrip(".")
     # Check if file extension is valid
     if ext not in VALID_FILE_TYPES:
         return False, False, f"Unsupported file type: {ext}"
+
+    if ext == "pdf" and max_pdf_size_bytes is not None:
+        file_size = os.path.getsize(file_path)
+        if file_size > max_pdf_size_bytes:
+            max_size_mb = max_pdf_size_bytes / 1048576
+            file_name = os.path.basename(file_path)
+            return (
+                True,
+                False,
+                _(
+                    f"*{file_name}* exceeds the current PDF limit of {max_size_mb:.0f}MB "
+                    f"(~{file_size / 1048576:.1f} MiB). "
+                    "Please compress and re-upload according to the current limit."
+                ),
+            )
 
     # Get the corresponding validator function (if any)
     content_validator = VALID_FILE_TYPES[ext]

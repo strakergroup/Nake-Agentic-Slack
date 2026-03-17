@@ -22,8 +22,6 @@ from sqlalchemy import bindparam, text
 from straker_auth.languagecloud import create_languagecloud_id_token
 from straker_utils.sql.async_engine import execute, fetch_all, fetch_one
 
-from app.slack.buglog_notifier import notify_exception
-
 from ..config import Environment, config, domains
 from ..database import async_engines, engines
 from ..slack.buglog_notifier import notify_exception
@@ -108,6 +106,10 @@ class RayClient:
     """The Slack enterprise ID."""
     sso: bool
     """The SSO flag."""
+    is_trial: bool | None = None
+    """Whether the effective LanguageCloud session is currently in trial."""
+    trial_remaining: int | None = None
+    """Days remaining in the current trial, if available."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -597,7 +599,7 @@ async def get_ray_demo_client(
         slack_access_token=slack_access_token,
         settings_id=settings_id,
         id_token=id_token,
-        planname="Enterprise",
+        planname=None,
         sso=False,
     )
 
@@ -681,7 +683,6 @@ async def get_ray_client(
         ray_client_id,
         user_group_id,
         username,
-        groupid,
         is_sso,
         slack_access_token,
         settings_id,
@@ -689,7 +690,6 @@ async def get_ray_client(
         row["member_uuid"],
         row["groupid"],
         row["login"],
-        row["groupid"],
         row["is_sso"],
         row["access_token"],
         row["settings_id"],
@@ -708,29 +708,6 @@ async def get_ray_client(
         access_token = ""
     else:
         access_token = access_token_result["obj_uuid"]
-
-    # TODO Fix this, sometimes the plan is incorrect.
-    # get group subscription plan
-    sql = text(
-        """
-                SELECT psp.plan_name
-                FROM ps_service ps
-                LEFT JOIN ps_plan psp
-                ON psp.service_type_uuid = ps.service_type_uuid
-                LEFT JOIN ps_subscription pss
-                ON pss.ps_service_uuid = ps.obj_uuid
-                LEFT JOIN ps_subscription_billing psb
-                ON psb.ps_subscription_uuid = pss.obj_uuid
-                WHERE ps.group_uuid = :group_uuid
-                AND pss.is_active = 1
-                AND psb.expiry > NOW()
-                """
-    ).bindparams(group_uuid=groupid)
-    plan_rows = await fetch_all(sql, async_engines["sitemanager_readonly"])
-    if not plan_rows:
-        plan = "Free"
-    else:
-        plan = plan_rows[0]["plan_name"]
     return RayClient(
         id=ray_client_id,
         user_group_id=user_group_id,
@@ -742,7 +719,7 @@ async def get_ray_client(
         slack_access_token=slack_access_token,
         settings_id=settings_id,
         id_token=id_token,
-        planname=plan,
+        planname=None,
         sso=is_sso,
     )
 
@@ -1526,6 +1503,29 @@ async def get_client_tokens(languagecloud_api_key: str):
             # For all other exceptions, log and return default immediately
             notify_exception(e)
             return GetCreditBalanceResponse(0, 0)
+
+
+async def get_verify_trial_status(
+    id_token: str | None,
+) -> tuple[bool | None, int | None]:
+    """Fetch the effective Verify session trial status for the current user."""
+    if not id_token:
+        return None, None
+
+    url = f"{domains.languagecloud_api}/session"
+    headers = {"Authorization": f"Bearer {id_token}"}
+    params = {"app": "verify"}
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            response = await http.get(url, headers=headers, params=params)
+            response.raise_for_status()
+    except httpx.HTTPError as e:
+        notify_exception(e, "Failed to fetch Verify session trial status")
+        return None, None
+
+    data = response.json()
+    return data.get("is_trial"), data.get("trial_remaining")
 
 
 async def get_group_tokens(org_uuid: str):

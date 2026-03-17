@@ -180,6 +180,8 @@ def ray_client(user_id, team_id, enterprise_id):
         id_token=str(uuid4()),  # Add id_token for tests that need it
         planname=None,
         sso=False,
+        is_trial=None,
+        trial_remaining=None,
     )
 
 
