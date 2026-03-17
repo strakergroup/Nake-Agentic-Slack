@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.mt.translate import resolve_language, resolve_language_code
 
 

@@ -17,7 +17,7 @@ import json
 from itertools import islice
 from typing import Any, Iterable
 
-from app.api.verify import get_verify_languages
+from app.api.verify import get_verify_languages, get_verify_source_languages
 from app.slack.buglog_notifier import notify_exception
 from app.translate import _
 
@@ -88,13 +88,14 @@ async def initialize_languages_cache():
 
 
 async def get_language_options(
-    filter: str | None = None, format: str = "code"
+    filter: str | None = None, format: str = "code", source_only: bool = False
 ) -> list[dict[str, Any]]:
-    languages = (
-        await _get_languages_cached()
-        if format == "code"
-        else await get_verify_languages()
-    )
+    if format == "code":
+        languages = await _get_languages_cached()
+    elif source_only:
+        languages = await get_verify_source_languages()
+    else:
+        languages = await get_verify_languages()
     # Filter language options from keyword filter.
     if filter:
         languages = (

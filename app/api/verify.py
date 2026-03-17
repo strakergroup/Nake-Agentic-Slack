@@ -216,11 +216,10 @@ async def create_human_job(
     return response.json()
 
 
-async def get_verify_languages():
-    key = "slack-ray-translator:verify:languages"
+async def _get_cached_verify_languages(cache_key: str, endpoint_path: str):
     cached = ""
     try:
-        cached = await redis_conn.get(key)
+        cached = await redis_conn.get(cache_key)
     except Exception as e:
         notify_exception(e)
     if cached:
@@ -231,7 +230,7 @@ async def get_verify_languages():
         except Exception as e:
             notify_exception(e)
 
-    url = f"{domains.verify_api}/languages"
+    url = f"{domains.verify_api}{endpoint_path}"
     async with httpx.AsyncClient(timeout=300) as client:
         response = await client.get(url)
 
@@ -255,10 +254,22 @@ async def get_verify_languages():
     ]
     # Cache languages for 1 hour.
     try:
-        await redis_conn.set(key, json.dumps(languages), ex=3600)
+        await redis_conn.set(cache_key, json.dumps(languages), ex=3600)
     except Exception as e:
         notify_exception(e)
     return languages
+
+
+async def get_verify_languages():
+    return await _get_cached_verify_languages(
+        "slack-ray-translator:verify:languages", "/languages"
+    )
+
+
+async def get_verify_source_languages():
+    return await _get_cached_verify_languages(
+        "slack-ray-translator:verify:source-languages", "/languages/source"
+    )
 
 
 async def get_job_pricing(

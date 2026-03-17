@@ -134,6 +134,43 @@ async def test_get_language_options():
 
 
 @pytest.mark.asyncio
+async def test_get_language_options_uuid_uses_verify_languages():
+    with patch(
+        "app.slack.select_options.get_verify_languages", new_callable=AsyncMock
+    ) as mock_get_verify_languages:
+        mock_get_verify_languages.return_value = [
+            {"code": "fr", "name": "French", "uuid": "uuid-fr"},
+            {"code": "en", "name": "English", "uuid": "uuid-en"},
+        ]
+
+        options = await get_language_options(format="uuid")
+
+        mock_get_verify_languages.assert_called_once()
+        assert [option["value"] for option in options] == ["uuid-en", "uuid-fr"]
+        assert [option["text"]["text"] for option in options] == ["English", "French"]
+
+
+@pytest.mark.asyncio
+async def test_get_source_language_options_uses_verify_source_languages():
+    with patch(
+        "app.slack.select_options.get_verify_source_languages", new_callable=AsyncMock
+    ) as mock_get_verify_source_languages:
+        mock_get_verify_source_languages.return_value = [
+            {"code": "pt-BR", "name": "Portuguese", "uuid": "uuid-pt"},
+            {"code": "en-US", "name": "English", "uuid": "uuid-en"},
+        ]
+
+        options = await get_language_options(format="uuid", source_only=True)
+
+        mock_get_verify_source_languages.assert_called_once()
+        assert [option["value"] for option in options] == ["uuid-en", "uuid-pt"]
+        assert [option["text"]["text"] for option in options] == [
+            "English",
+            "Portuguese",
+        ]
+
+
+@pytest.mark.asyncio
 async def test_get_language_options_filter():
     # Mock the get_languages API call
     # Create proper mock language objects with attributes

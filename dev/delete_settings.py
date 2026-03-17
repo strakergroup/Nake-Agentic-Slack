@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Any
 
 import requests
 from sqlalchemy import text
@@ -10,7 +11,7 @@ parent_dir = os.path.abspath(
 )
 sys.path.append(parent_dir)
 
-from app.database import engines
+from app.database import engines  # noqa: E402
 
 # Use the ray_integration engine from database.py
 with open("update.sql", "w", buffering=1) as sql_file:
@@ -20,10 +21,10 @@ with open("update.sql", "w", buffering=1) as sql_file:
     GROUP BY channel_id
     HAVING COUNT(*) > 1;
     """
-    duplicated_channel_ids = []
+    duplicated_channel_ids: list[Any] = []
     # Execute the query to get duplicated channel_ids
     with engines["ray_integration"].connect() as conn:
-        duplicated_channel_ids = conn.execute(text(query)).fetchall()
+        duplicated_channel_ids = list(conn.execute(text(query)).fetchall())
 
         # Step 2: For each duplicated channel_id, find the oldest entry and delete it
         for row in duplicated_channel_ids:

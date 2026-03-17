@@ -14,7 +14,7 @@ parent_dir = os.path.abspath(
 )
 sys.path.append(parent_dir)
 
-from app.translate import Translator, translator_var  # type: ignore
+from app.translate import Translator, translator_var  # type: ignore  # noqa: E402
 
 langs = ["fr", "de", "es", "fr-ca", "ja"]
 

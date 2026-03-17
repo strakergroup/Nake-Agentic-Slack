@@ -67,6 +67,7 @@ from ..ray.settings import (
 )
 from ..redis import is_duplicate_event, redis_conn
 from .app import app
+from .language_validation import get_conflicting_target_language_labels
 from .listener_actions import (
     ai_translate_help,
     approve_pending_client,
@@ -1680,7 +1681,7 @@ async def language_options_uuid(ack: AsyncAck, payload: Dict[str, Any]):
 
 @app.options("source_language_option_uuid", middleware=[ray_connection])
 async def source_language_option_uuid(ack: AsyncAck, payload: Dict[str, Any]):
-    options = await get_language_options(payload.get("value"), "uuid")
+    options = await get_language_options(payload.get("value"), "uuid", source_only=True)
     await ack(options=options)
 
 
@@ -1977,6 +1978,20 @@ async def evaluate_job_submit(
         field_to_block = {"target_langs_uuid": "target_langs"}
         errors = {field_to_block.get(k, k): v for k, v in errors.items()}
         await ack(response_action="errors", errors=errors)
+        return
+
+    conflicting_target_labels = await get_conflicting_target_language_labels(
+        form.source_lang_uuid, form.target_langs_uuid
+    )
+    if conflicting_target_labels:
+        await ack(
+            response_action="errors",
+            errors={
+                "target_langs": _(
+                    "The source language cannot be the same language or regional variant as a target language. Please remove: {languages}."
+                ).format(languages=", ".join(conflicting_target_labels))
+            },
+        )
         return
 
     await ack(response_action="clear")
