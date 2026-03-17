@@ -42,7 +42,7 @@ async def submit_evaluation_job(
         "confirmation_required": False,
     }
     if source_language_uuid:
-        target_languages_data["source_language"] = source_language_uuid
+        target_languages_data["sl"] = source_language_uuid
     if job_notes:
         target_languages_data["client_notes"] = job_notes
     target_languages_data["workflow"] = workflow_uuid or ""
