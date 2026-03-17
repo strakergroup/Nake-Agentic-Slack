@@ -11,6 +11,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [OCR + Translate Pipeline](ocr-translate-pipeline.md) - Image OCR and translation pipeline using output_stream forwarding between consumers
 - [Image Render Pipeline](image-render-pipeline.md) - Full image translation pipeline: XLIFF extraction, translation, and rendered image output
 - [Cloud-Verify-Consumer Requirements](cloud-verify-consumer-requirements.md) - Specification for CV XLIFF translation and pipeline forwarding support
+- [Service Dependencies & Architecture](service-dependencies.md) - Comprehensive service dependency graphs, event flows, and communication patterns
 - [UI Export Tool](ui-export.md) - Renders all Slack Block Kit templates to a single HTML file for visual review
 - [Changelog](changelog/changelog.md) - Record of all changes to the codebase
 

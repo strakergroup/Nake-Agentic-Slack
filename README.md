@@ -11,12 +11,11 @@ The [Slack App](https://api.slack.com/) for Straker LanguageCloud. This app allo
 - MySQL
 - MongoDB (docker compose)
 - [sup-file-api](https://github.com/strakergroup/sup-file-api)
-- [pt-languagecloud-api](https://bitbucket.org/strakertech/pt-languagecloud-api)
+- [pt-languagecloud-api](https://github.com/strakergroup/pt-languagecloud-api)
 - Redis (in docker-compose)
-- [redis-stream-proxy](https://bitbucket.org/strakertech/redis-stream-proxy-api/) Called by other apps to send events to slack
-- [redis-slack-consumer](https://bitbucket.org/strakertech/redis-slack-consumer) proccesses events
-- [wb-task-consumer](https://bitbucket.org/strakertech/wb-task-consumer/) used for transcribing of video posted to slack
-- [verify-task-consumer](https://bitbucket.org/strakertech/pt-verify-consumer/) used for document machine translating
+- [redis-stream-proxy](https://github.com/strakergroup/redis-stream-proxy-api/) Called by other apps to send events to slack
+- [redis-slack-consumer](https://github.com/strakergroup/redis-slack-consumer) proccesses events
+- [cloud-verify-consumer](https://github.com/strakergroup/cloud-verify-consumer) used for document machine translating
 - [cloud-verify-api](https://github.com/strakergroup/cloud-verify-api) used for verify job submission
 - [cloud-verify-ui](https://github.com/strakergroup/cloud-verify-ui) verify ui for connect
 
@@ -80,11 +79,11 @@ These are Dependencies you will probably need to set up. Check the repo for read
 
 local-redis - this is in the docker repo development/servers/redis/docker-compose.yml
 
-redis-slack-consumer - This is for events. You can find the repo [here](https://bitbucket.org/strakertech/redis-slack-consumer/)
+redis-slack-consumer - This is for events. You can find the repo [here](https://github.com/strakergroup/redis-slack-consumer/)
 
-slack-sdk - If you need to update the sdk you can find repo [here](https://bitbucket.org/strakertech/ray-python-sdk/)
+slack-sdk - DEPRECATED (should not be used now) if you need to update the sdk you can find repo [here](https://github.com/strakergroup/ray-python-sdk/)
 
-languagecloud-api - On going work to port to using languagecloud-api repo [here](https://bitbucket.org/strakertech/pt-languagecloud-api/)
+languagecloud-api - On going work to port to using languagecloud-api repo [here](https://github.com/strakergroup/pt-languagecloud-api/)
 
 ### Troubleshooting
 
