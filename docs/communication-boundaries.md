@@ -9,7 +9,7 @@ This document describes the communication boundaries between the Slack App and a
 | Participant | Description |
 |---|---|
 | **Slack** | Slack's platform — sends authenticated HTTP events, actions, commands to the app |
-| **Slack App** | This service (`slack-ray-translator`) — FastAPI + Slack Bolt |
+| **Slack App** | This service slack-straker-translate (`slack-ray-translator` - previous name) — FastAPI + Slack Bolt |
 | **Slack API** | Slack's web API — used by the app to post messages, upload files, etc. |
 | **Stream Proxy** | Internal event bus — receives published events and routes them to consumers |
 | **Internal Services** | RAY platform, MT services, transcription consumers, cloud-verify-consumer, etc. |
