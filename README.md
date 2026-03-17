@@ -2,6 +2,14 @@
 
 The [Slack App](https://api.slack.com/) for Straker LanguageCloud. This app allows clients to view and manage their translation jobs from Slack.
 
+## Documentation
+
+Detailed documentation is available in the [`docs/`](docs/) folder:
+
+- [Documentation Overview](docs/overview.md) — index of all documentation
+- [Internal Services & Redis Stream Events](docs/internal-services.md) — all internal service endpoints called and Redis stream events dispatched
+- [Communication Boundaries](docs/communication-boundaries.md) — sequence diagram and route summary for inbound/outbound service communication
+
 ## Development
 
 ### Requirements
