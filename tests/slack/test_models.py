@@ -367,3 +367,56 @@ class TestEvaluateJobForm:
         form = EvaluateJobForm.parse_slack(values)
         assert form.workflow_options is None
         assert form.source_lang_uuid == "src-lang-001"
+
+    def test_evaluate_job_form_rejects_source_in_targets(self):
+        """Test that source language cannot be a target language."""
+        values = {
+            "source_lang": {
+                "source_language_option_uuid": {
+                    "selected_option": {"value": "lang-123"}
+                }
+            },
+            "target_langs": {
+                "language_options_uuid": {
+                    "selected_options": [{"value": "lang-123"}, {"value": "lang-456"}]
+                }
+            },
+            "files": {
+                "files": {
+                    "selected_options": [
+                        {"value": "file-123", "text": {"text": "test.txt"}}
+                    ]
+                }
+            },
+            "reference": {"reference": {"value": "REF-123"}},
+        }
+        with pytest.raises(ValidationError) as exc_info:
+            EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+        errors = exc_info.value.errors()
+        assert any("source language" in e["msg"].lower() for e in errors)
+
+    def test_evaluate_job_form_allows_different_source_and_targets(self):
+        """Test that different source and target languages are accepted."""
+        values = {
+            "source_lang": {
+                "source_language_option_uuid": {
+                    "selected_option": {"value": "lang-001"}
+                }
+            },
+            "target_langs": {
+                "language_options_uuid": {
+                    "selected_options": [{"value": "lang-123"}, {"value": "lang-456"}]
+                }
+            },
+            "files": {
+                "files": {
+                    "selected_options": [
+                        {"value": "file-123", "text": {"text": "test.txt"}}
+                    ]
+                }
+            },
+            "reference": {"reference": {"value": "REF-123"}},
+        }
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+        assert form.source_lang_uuid == "lang-001"
+        assert form.target_langs_uuid == ["lang-123", "lang-456"]

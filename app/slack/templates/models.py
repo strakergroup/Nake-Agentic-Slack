@@ -270,6 +270,16 @@ class EvaluateJobForm(BaseModel):
     files: list[SlackFile]
     job_notes: str | None = None
 
+    @field_validator("target_langs_uuid")
+    @classmethod
+    def validate_target_langs_uuid(
+        cls, v: list[str], info: ValidationInfo
+    ) -> list[str]:
+        source = info.data.get("source_lang_uuid")
+        if source and source in v:
+            raise ValueError("The source language cannot also be a target language.")
+        return v
+
     @classmethod
     def parse_human_job_form(
         cls, values: dict[str, dict[str, Any]], callback_id: str = "evaluate_job_human"

@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Added]: Source/target language overlap validation — `EvaluateJobForm` now rejects submissions where the source language appears in the target list; handler acks with `response_action="errors"` to show inline modal errors instead of dismissing and posting a chat message (Wade Norman, 2026-03-17)
 - [Added]: Human Translation and Quality Evaluation modals now include a required source language selection (single-select, same options as target languages); added `source_lang_uuid` to `EvaluateJobForm`, new `source_language_option_uuid` options handler, and passed source language as `sl` to Verify API `/evaluate/create` and PDF convert stream payloads (Wade Norman, 2026-03-17)
 - [Added]: PDF evaluate submissions now route through `slack:evaluate:pdf:convert` Redis stream — when any file in an evaluate submission has a `.pdf` extension, all files are uploaded to GridFS and the payload is published to the stream for int-slack-verify-consumer to handle PDF-to-DOCX conversion before creating the evaluate job; non-PDF submissions continue using the direct API call (Wade Norman, 2026-03-13)
 - [Fixed]: Addressed high-priority reliability/performance issues by making Insights API calls non-blocking in async Slack handlers, hardening slow-request diagnostics to avoid JSON parsing failures on non-JSON payloads, and making Redis duplicate-event detection atomic with `SET NX EX` to prevent race-condition double-processing (Wade Norman, 2026-02-24)

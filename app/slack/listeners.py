@@ -1961,21 +1961,25 @@ async def evaluate_job_submit(
     context: RayContext,
 ):
     """Evaluate job. Triggered from the Evaluate form view."""
-    await ack(response_action="clear")
+    if not view:
+        await ack(response_action="clear")
+        return
+    channel_id = view.get("private_metadata")
+    if not channel_id:
+        await ack(response_action="clear")
+        return
+
+    form_data = view["state"]["values"]
     try:
-        if not view:
-            return
-        channel_id = view.get("private_metadata")
-        if not channel_id:
-            return
-        form_data = view["state"]["values"]
         form = EvaluateJobForm.parse_human_job_form(form_data, view["callback_id"])
     except ValidationError as e:
         errors = convert_pydantic_to_slack_error(e)
-        await client.chat_postMessage(
-            channel=context.user_id or "", text="Error: " + str(errors)
-        )
+        field_to_block = {"target_langs_uuid": "target_langs"}
+        errors = {field_to_block.get(k, k): v for k, v in errors.items()}
+        await ack(response_action="errors", errors=errors)
         return
+
+    await ack(response_action="clear")
     if await require_ray_client(context, prompt_login=True):
         if form.workflow_options:
             msg = _(
