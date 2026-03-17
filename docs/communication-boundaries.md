@@ -2,6 +2,8 @@
 
 This document describes the communication boundaries between the Slack App and all internal/external services it interacts with.
 
+> For a detailed catalogue of every endpoint and Redis stream event, see [Internal Services & Redis Stream Events](internal-services.md).
+
 ---
 
 ## Participants
@@ -73,24 +75,3 @@ sequenceDiagram
 | **Slack** | HTTPS (Slack SDK) | Post messages, upload files, open modals, ephemeral messages |
 | **Stream Proxy** | HTTP POST | Publish MT translation requests, SRT translation jobs, and other processing events |
 | **RAY / Internal APIs** | HTTP | Auth lookups, job pricing, evaluation jobs, credit spending |
-
----
-
-## Key Event Types on `/ray/events`
-
-| Event | Direction | Description |
-|---|---|---|
-| `ray:slack:account_connected` | redis-slack-consumer → App | User successfully connected their RAY account |
-| `ray:client:signup` | redis-slack-consumer → App | New client signed up on the RAY platform |
-| `ray:client:approved` | redis-slack-consumer → App | Client approved by admin |
-| `ray:job:status_changed` | redis-slack-consumer → App | Job status updated (LEAD, IN_PROGRESS, COMPLETED, etc.) |
-| `ray:job:quote_created` | redis-slack-consumer → App | New job quote available |
-| `ray:job:quote_accepted` | redis-slack-consumer → App | Quote accepted by client |
-| `ray:job:quote_cancelled` | redis-slack-consumer → App | Quote cancelled |
-| `transcription:slack:media:transcription:results` | redis-slack-consumer → App | Media transcription pipeline complete |
-| `transcription:slack:media:translation:results` | redis-slack-consumer → App | SRT translation pipeline complete |
-| `transcription:slack:media:embedding:results` | redis-slack-consumer → App | Subtitle embedding pipeline complete |
-| `verify:slack:document:translated` | redis-slack-consumer → App | Document MT translation complete (success or error) |
-| `verify:slack:evaluate:complete` | redis-slack-consumer → App | Evaluation job complete |
-| `verify:human_verification:completed` | redis-slack-consumer → App | Human verification job complete |
-| `slack:direct:mt:result` | redis-slack-consumer → App | Direct / channel MT translation result |
