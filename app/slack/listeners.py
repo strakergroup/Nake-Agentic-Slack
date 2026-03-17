@@ -75,6 +75,8 @@ from .listener_actions import (
     document_machine_translate,
     get_groups,
     get_mt_translation,
+    is_srt_file,
+    maybe_show_thread_media_embed_option,
     post_batch_list,
     post_file_list,
     post_job_details,
@@ -82,7 +84,9 @@ from .listener_actions import (
     post_job_status,
     post_job_summary,
     post_report_insights,
+    resolve_media_thread_ts,
     respond_to_message,
+    submit_existing_srt_embed_task,
     submit_job,
     submit_verification_job,
     verify_help,
@@ -210,7 +214,19 @@ async def message_event(
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # use threads in channels or group conversations (see the "app_mention" event).
     if not context.is_bot:
-        if message.get("channel_type") == "im" or is_channel_im(context["channel_id"]):
+        if (
+            message.get("thread_ts")
+            and message.get("files")
+            and any(is_srt_file(file) for file in message.get("files", []))
+        ):
+            handled = await maybe_show_thread_media_embed_option(
+                client, context, message
+            )
+            if handled:
+                return
+        elif message.get("channel_type") == "im" or is_channel_im(
+            context["channel_id"]
+        ):
             # extract team id from body
             body_team_id = body.get("event", {}).get("team")
             if body_team_id:
@@ -2677,7 +2693,7 @@ async def handle_video_transcribe_only(
         )
 
         files = action_data["files"]
-        thread_ts = action_data.get("thread_ts")
+        thread_ts = resolve_media_thread_ts(action_data, body)
 
         # Check for duplicate transcription-only submissions
         from ..ray.submissions import (
@@ -2810,10 +2826,11 @@ async def handle_video_transcribe_translate(
         from .templates.views import video_transcribe_translate_modal
 
         action_data = json.loads(action.get("value", "{}"))
+        thread_ts = resolve_media_thread_ts(action_data, body)
         view = video_transcribe_translate_modal(
             channel_id=action_data.get("channel_id", context.get("channel_id", "")),
             files=action_data["files"],
-            thread_ts=action_data.get("thread_ts"),
+            thread_ts=thread_ts,
         )
         await client.views_open(trigger_id=body["trigger_id"], view=view)
 
@@ -2827,7 +2844,7 @@ async def handle_video_embed_subtitles(
     body: Dict[str, Any],
     client: AsyncWebClient,
 ):
-    """Show the embed subtitles modal for language selection."""
+    """Handle subtitle embedding from either the modal flow or a thread-uploaded SRT."""
     await ack()
     if await require_ray_client(context):
         assert action is not None
@@ -2835,6 +2852,13 @@ async def handle_video_embed_subtitles(
         from .templates.views import video_embed_subtitles_modal
 
         action_data = json.loads(action.get("value", "{}"))
+        thread_ts = resolve_media_thread_ts(action_data, body)
+        if action_data.get("subtitle_file"):
+            await submit_existing_srt_embed_task(
+                client, context, action_data, thread_ts
+            )
+            return
+
         all_files = action_data["files"]
 
         # Filter to only include video files (exclude audio-only like MP3, WAV)
@@ -2855,7 +2879,7 @@ async def handle_video_embed_subtitles(
         view = video_embed_subtitles_modal(
             channel_id=action_data.get("channel_id", context.get("channel_id", "")),
             files=video_files,  # Only video files, not audio
-            thread_ts=action_data.get("thread_ts"),
+            thread_ts=thread_ts,
         )
         await client.views_open(trigger_id=body["trigger_id"], view=view)
 

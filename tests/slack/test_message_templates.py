@@ -1,8 +1,8 @@
 from app.auth.connector import RayClient, RayConnection, RaySuperGroup
 from app.slack.templates.messages import (
-    AutoTranslationMessage,
     AutoTranslateSettingsChangedMessage,
     AutoTranslateSettingsDisabledMessage,
+    AutoTranslationMessage,
     CancelJobMessage,
     ClientAlreadyApprovedMessage,
     ClientApprovedMessage,
@@ -20,6 +20,7 @@ from app.slack.templates.messages import (
     LoginMessage,
     LogoutMessage,
     MachineTranslationMessage,
+    MediaEmbedOptionMessage,
     OnboardingMessage,
     RequiresMtTokenMessage,
     SlackPermissionsMessage,
@@ -855,3 +856,17 @@ class TestSrtTranslateMessage:
         assert message.blocks[1]["elements"][0]["action_id"] == "srt_translate"
         assert message.blocks[1]["elements"][0]["value"] == task_uuid
         assert message.blocks[1]["elements"][0]["style"] == "primary"
+
+
+class TestMediaEmbedOptionMessage:
+    def test_message_structure(self):
+        """Test that MediaEmbedOptionMessage creates the embed CTA block."""
+        action_value = '{"files":[{"file_id":"F123","file_name":"video.mp4"}]}'
+        message = MediaEmbedOptionMessage(action_value)
+
+        assert message.text == "Media embed option"
+        assert len(message.blocks) == 1
+        assert message.blocks[0]["type"] == "section"
+        assert message.blocks[0]["accessory"]["type"] == "button"
+        assert message.blocks[0]["accessory"]["action_id"] == "video_embed_subtitles"
+        assert message.blocks[0]["accessory"]["value"] == action_value

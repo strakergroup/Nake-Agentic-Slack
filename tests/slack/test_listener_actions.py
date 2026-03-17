@@ -1,14 +1,18 @@
+import json
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
 from app.slack.listener_actions import (
     VIDEO_FILE_TYPES,
+    _language_code_from_srt_filename,
     ai_translate_help,
     approve_pending_client,
+    build_thread_media_embed_action_value,
     create_service_language_mapping,
     get_groups,
     is_video_file,
+    maybe_show_thread_media_embed_option,
     post_batch_list,
     post_file_list,
     post_job_status,
@@ -151,6 +155,154 @@ class TestIsVideoFile:
             assert (
                 is_video_file(file_details) is True
             ), f"Failed for extension: {video_type}"
+
+
+class TestThreadMediaEmbedOption:
+    def test_build_thread_media_embed_action_value(self):
+        """Test thread embed payload is rebuilt from the root media message."""
+        root_message = {
+            "files": [
+                {"id": "V123", "name": "video.mp4", "filetype": "mp4"},
+                {"id": "A123", "name": "audio.mp3", "filetype": "mp3"},
+            ]
+        }
+        reply_message = {
+            "thread_ts": "123456.789",
+            "files": [{"id": "F123", "name": "captions.srt", "filetype": "srt"}],
+        }
+
+        updated_action_value = build_thread_media_embed_action_value(
+            "C123", "123456.789", root_message, reply_message
+        )
+
+        action_data = json.loads(updated_action_value)
+        assert action_data["channel_id"] == "C123"
+        assert action_data["files"] == [{"file_id": "V123", "file_name": "video.mp4"}]
+        assert action_data["subtitle_file"]["file_id"] == "F123"
+        assert action_data["subtitle_file"]["file_name"] == "captions.srt"
+        assert action_data["subtitle_file"]["language_code"] == "und"
+        assert action_data["thread_ts"] == "123456.789"
+
+    def test_build_thread_media_embed_action_value_detects_language_from_filename(self):
+        """Test language code is inferred from SRT filename like video_Japanese.srt."""
+        root_message = {"files": [{"id": "V1", "name": "clip.mp4", "filetype": "mp4"}]}
+        reply_message = {
+            "thread_ts": "100.200",
+            "files": [{"id": "F1", "name": "clip_Japanese.srt", "filetype": "srt"}],
+        }
+
+        result = json.loads(
+            build_thread_media_embed_action_value(
+                "C1", "100.200", root_message, reply_message
+            )
+        )
+        assert result["subtitle_file"]["language_code"] == "ja"
+        assert result["subtitle_file"]["file_name"] == "clip_Japanese.srt"
+
+    @pytest.mark.asyncio
+    async def test_maybe_show_thread_media_embed_option_uses_thread_root_message(self):
+        """Test SRT uploads use the root thread message instead of thread replies."""
+        client = AsyncMock()
+        client.conversations_history.return_value = {
+            "messages": [
+                {
+                    "files": [
+                        {"id": "V123", "name": "video.mp4", "filetype": "mp4"},
+                    ]
+                }
+            ]
+        }
+        context = MagicMock()
+        context.get.return_value = "C123"
+        context.say = AsyncMock()
+        message = {
+            "thread_ts": "123456.789",
+            "files": [{"id": "F123", "name": "captions.srt", "filetype": "srt"}],
+        }
+
+        with patch(
+            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+        ) as mock_require:
+            mock_require.return_value = True
+            handled = await maybe_show_thread_media_embed_option(
+                client, context, message
+            )
+
+        assert handled is True
+        client.conversations_history.assert_called_once_with(
+            channel="C123",
+            latest="123456.789",
+            oldest="123456.789",
+            inclusive=True,
+            limit=1,
+        )
+        assert context.say.call_count == 1
+        assert context.say.call_args.kwargs["thread_ts"] == "123456.789"
+        assert context.say.call_args.kwargs["blocks"][0]["accessory"]["action_id"] == (
+            "video_embed_subtitles"
+        )
+        updated_action_data = json.loads(
+            context.say.call_args.kwargs["blocks"][0]["accessory"]["value"]
+        )
+        assert updated_action_data["files"][0]["file_id"] == "V123"
+        assert updated_action_data["subtitle_file"]["file_id"] == "F123"
+
+    @pytest.mark.asyncio
+    async def test_maybe_show_thread_media_embed_option_returns_false_for_non_media_root(
+        self,
+    ):
+        """Test non-video root thread messages do not show the embed CTA."""
+        client = AsyncMock()
+        client.conversations_history.return_value = {
+            "messages": [
+                {
+                    "files": [
+                        {"id": "A123", "name": "audio.mp3", "filetype": "mp3"},
+                    ]
+                }
+            ]
+        }
+        context = MagicMock()
+        context.get.return_value = "C123"
+        context.say = AsyncMock()
+        message = {
+            "thread_ts": "123456.789",
+            "files": [{"id": "F123", "name": "captions.srt", "filetype": "srt"}],
+        }
+
+        with patch(
+            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+        ) as mock_require:
+            mock_require.return_value = True
+            handled = await maybe_show_thread_media_embed_option(
+                client, context, message
+            )
+
+        assert handled is False
+        assert context.say.call_count == 0
+
+
+class TestLanguageCodeFromSrtFilename:
+    """Tests for _language_code_from_srt_filename helper."""
+
+    @pytest.mark.parametrize(
+        "filename, expected",
+        [
+            ("video_Japanese.srt", "ja"),
+            ("video_Spanish.srt", "es"),
+            ("video_French.srt", "fr"),
+            ("clip_Chinese (Simplified).srt", "zh-CN"),
+            ("video_ja.srt", "ja"),
+            ("video_es.srt", "es"),
+            ("video_japanese.srt", "ja"),
+            ("captions.srt", "und"),
+            ("subtitles.srt", "und"),
+            ("video_UnknownLang.srt", "und"),
+            ("video.srt", "und"),
+        ],
+    )
+    def test_filename_to_language_code(self, filename: str, expected: str):
+        assert _language_code_from_srt_filename(filename) == expected
 
 
 class TestApprovePendingClient:

@@ -109,6 +109,17 @@ _background_tasks = set()
 logger = logging.getLogger(__name__)
 
 
+def _resolve_event_thread_ts(
+    extra_data: dict[str, Any] | None, event_data: dict[str, Any]
+) -> str | None:
+    """Resolve the best thread timestamp from task extra_data and the raw event payload."""
+    return (
+        (extra_data.get("slack_thread_ts") if extra_data else None)
+        or event_data.get("thread_ts")
+        or event_data.get("message_ts")
+    )
+
+
 async def _update_tokens_consumed(
     task_uuid: str,
     additional_tokens: int,
@@ -593,8 +604,20 @@ async def _handle_transcription_complete(
         is_ibm_enterprise=is_ibm,
     )
     response = await post_notification(
-        client, event, auth_slack_user, transcribed_message
+        client,
+        event,
+        auth_slack_user,
+        transcribed_message,
+        channel_id=channel_id,
+        thread_ts=thread_ts,
     )
+    effective_thread_ts = thread_ts
+    if (
+        not effective_thread_ts
+        and isinstance(response, AsyncSlackResponse)
+        and isinstance(response.data, dict)
+    ):
+        effective_thread_ts = response.data.get("ts")
 
     if result_file_id and result_file_name:
         upload_channel_id: str | None = channel_id or (
@@ -613,7 +636,7 @@ async def _handle_transcription_complete(
                     auth,
                     response,
                     override_channel_id=upload_channel_id,
-                    thread_ts=thread_ts,
+                    thread_ts=effective_thread_ts,
                 )
             )
 
@@ -628,11 +651,12 @@ async def _handle_translation_complete(
     """Handle translation completion - upload translated files."""
     translated_file_ids = task_info.translated_file_ids or {}
 
-    await client.chat_postMessage(
+    status_response = await client.chat_postMessage(
         channel=channel_id,
         text=_("Your file is AI translated and can be downloaded below."),
         thread_ts=thread_ts,
     )
+    effective_thread_ts = thread_ts or status_response.get("ts")
 
     # Upload each translated file
     # Use original file_name from database (the uploaded file) as base for naming
@@ -669,7 +693,7 @@ async def _handle_translation_complete(
                 channel_id=channel_id,
                 title=title,
                 filename=title,
-                thread_ts=thread_ts,
+                thread_ts=effective_thread_ts,
             )
 
             # Clean up temp file
@@ -688,7 +712,11 @@ async def _handle_translation_complete(
             else False
         )
         await _show_tokens_message(
-            client, task_info.task_uuid, channel_id, thread_ts, is_ibm=is_ibm
+            client,
+            task_info.task_uuid,
+            channel_id,
+            effective_thread_ts,
+            is_ibm=is_ibm,
         )
 
 
@@ -705,7 +733,15 @@ async def _handle_transcribe_embed_pipeline(
     if not result_file_id:
         return
 
+    effective_thread_ts = thread_ts
     try:
+        if not effective_thread_ts:
+            anchor_response = await client.chat_postMessage(
+                channel=channel_id,
+                text=_("Your embedded media file is ready. Uploading now..."),
+            )
+            effective_thread_ts = anchor_response.get("ts")
+
         output_file = await download_from_file_server_async(result_file_id)
         file_path = output_file.get("file")
         if file_path and os.path.exists(file_path):
@@ -713,28 +749,19 @@ async def _handle_transcribe_embed_pipeline(
             # which means Slack has processed and made the file available
             # Use the original filename, not the temp file path
             output_filename = result_file_name or task_info.file_name
-            upload_response = await upload_file_to_slack_memory_efficient(
+            await upload_file_to_slack_memory_efficient(
                 client=client,
                 file_path=file_path,
                 channel_id=channel_id,
-                thread_ts=thread_ts,
+                thread_ts=effective_thread_ts,
                 title=output_filename,
                 filename=output_filename,
+                initial_comment=_(
+                    "Your video with embedded subtitles is ready! "
+                    "Please download the media file(s) to view the embedded subtitles."
+                ),
             )
             os.unlink(file_path)
-
-            # Verify upload completed successfully before posting the download message
-            # upload_file_to_slack_memory_efficient only returns if files_completeUploadExternal
-            # returns ok=True, so if we reach here, the file is uploaded and available
-            if upload_response and upload_response.get("ok"):
-                # Post comment about downloading the media file after the file is uploaded
-                await client.chat_postMessage(
-                    channel=channel_id,
-                    text=_(
-                        "Please download the media file(s) to view the embedded subtitles."
-                    ),
-                    thread_ts=thread_ts,
-                )
 
             # Show token message at the end for transcribe_translate_embed pipeline
             if task_info.pipeline_type == "transcribe_translate_embed":
@@ -744,7 +771,11 @@ async def _handle_transcribe_embed_pipeline(
                     else False
                 )
                 await _show_tokens_message(
-                    client, task_info.task_uuid, channel_id, thread_ts, is_ibm=is_ibm
+                    client,
+                    task_info.task_uuid,
+                    channel_id,
+                    effective_thread_ts,
+                    is_ibm=is_ibm,
                 )
 
     except Exception as e:
@@ -754,7 +785,7 @@ async def _handle_transcribe_embed_pipeline(
             text=_(
                 "An error occurred while processing your embedded video. Please try again."
             ),
-            thread_ts=thread_ts,
+            thread_ts=effective_thread_ts,
         )
 
 
@@ -829,6 +860,16 @@ async def _handle_transcribe_success_background(
                 channel_id=channel_id,
                 title=file_name,
                 filename=file_name,
+                thread_ts=thread_ts,
+            )
+
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=_(
+                    "Download the AI translations provided above, make your edits, "
+                    "and reupload the edited files back to the same thread."
+                ),
+                thread_ts=thread_ts,
             )
         finally:
             if os.path.exists(file_path):
@@ -1137,25 +1178,27 @@ async def ray_events(
                     return
 
                 # Handle errors
+                extra_data = task_info.extra_data or {}
                 if transcribed_event.error or event.data.get("error"):
+                    thread_ts = _resolve_event_thread_ts(extra_data, event.data)
                     error_msg = transcribed_event.error or event.data.get(
                         "error", "Unknown error"
                     )
                     await client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
-                        text=_(f"Transcription failed: {error_msg}"),
+                        text=_("Transcription failed: %s") % error_msg,
+                        thread_ts=thread_ts,
                     )
                     return
 
                 # Get channel and thread info
-                extra_data = task_info.extra_data or {}
                 channel_id = (
                     extra_data.get("slack_channel_id")
                     if extra_data
                     else auth.slack_user.channel_id
                 )
-                thread_ts = extra_data.get("slack_thread_ts") if extra_data else None
+                thread_ts = _resolve_event_thread_ts(extra_data, event.data)
 
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
@@ -1212,25 +1255,27 @@ async def ray_events(
                     return
 
                 # Handle errors
+                extra_data = task_info.extra_data or {}
                 if transcribed_event.error or event.data.get("error"):
+                    thread_ts = _resolve_event_thread_ts(extra_data, event.data)
                     error_msg = transcribed_event.error or event.data.get(
                         "error", "Unknown error"
                     )
                     await client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
-                        text=_(f"Translation failed: {error_msg}"),
+                        text=_("Translation failed: %s") % error_msg,
+                        thread_ts=thread_ts,
                     )
                     return
 
                 # Get channel and thread info
-                extra_data = task_info.extra_data or {}
                 channel_id = (
                     extra_data.get("slack_channel_id")
                     if extra_data
                     else auth.slack_user.channel_id
                 )
-                thread_ts = extra_data.get("slack_thread_ts") if extra_data else None
+                thread_ts = _resolve_event_thread_ts(extra_data, event.data)
 
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
@@ -1285,25 +1330,27 @@ async def ray_events(
                     return
 
                 # Handle errors
+                extra_data = task_info.extra_data or {}
                 if transcribed_event.error or event.data.get("error"):
+                    thread_ts = _resolve_event_thread_ts(extra_data, event.data)
                     error_msg = transcribed_event.error or event.data.get(
                         "error", "Unknown error"
                     )
                     await client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
-                        text=_(f"Embedding failed: {error_msg}"),
+                        text=_("Embedding failed: %s") % error_msg,
+                        thread_ts=thread_ts,
                     )
                     return
 
                 # Get channel and thread info
-                extra_data = task_info.extra_data or {}
                 channel_id = (
                     extra_data.get("slack_channel_id")
                     if extra_data
                     else auth.slack_user.channel_id
                 )
-                thread_ts = extra_data.get("slack_thread_ts") if extra_data else None
+                thread_ts = _resolve_event_thread_ts(extra_data, event.data)
 
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
