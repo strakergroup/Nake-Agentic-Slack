@@ -255,22 +255,27 @@ async def delete_from_file_server(file_id: str):
         response.raise_for_status()
 
 
+GRIDFS_UPLOAD_EXPIRY_DAYS = 7
+
+
 async def upload_to_file_server(file_path: str) -> str:
     """
     Upload the file to sup-file-api and return the file ID.
+    Files are stored in GridFS with a 7-day expiry since they are temporary
+    source files for AI translation that are deleted after delivery.
     """
+    expires_at = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=GRIDFS_UPLOAD_EXPIRY_DAYS)).isoformat()
     file_id = ""
     with open(file_path, "rb") as f:
-        # Make the PUT request
         async with httpx.AsyncClient(timeout=FILE_TRANSFER_TIMEOUT) as client:
-            response = await client.put(domains.file_api + "/gridfs", files={"file": f})
+            response = await client.put(
+                domains.file_api + "/gridfs",
+                files={"file": f},
+                data={"expires_at": expires_at},
+            )
 
-    # If the request was successful
     if response.status_code == 200:
-        # Parse the response as JSON
         data = response.json()
-
-        # Extract the file ID from the response
         file_id = data.get("id")
         if not file_id:
             raise ValueError("Response does not contain a 'id' field")
