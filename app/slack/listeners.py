@@ -1984,12 +1984,13 @@ async def evaluate_job_submit(
         form.source_lang_uuid, form.target_langs_uuid
     )
     if conflicting_target_labels:
+        languages = ", ".join(conflicting_target_labels)
         await ack(
             response_action="errors",
             errors={
                 "target_langs": _(
                     "The source language cannot be the same language or regional variant as a target language. Please remove: {languages}."
-                ).format(languages=", ".join(conflicting_target_labels))
+                )
             },
         )
         return
