@@ -2176,6 +2176,11 @@ class TestEvaluateJobSubmit:
             "private_metadata": "C123",
             "state": {
                 "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "src-lang-001"}
+                        }
+                    },
                     "target_langs": {
                         "language_options_uuid": {
                             "selected_options": [{"value": "lang-123"}]
@@ -2200,15 +2205,121 @@ class TestEvaluateJobSubmit:
         await evaluate_job_submit(
             context_dict, view=view, client=mock_client, ack=mock_ack
         )
-        mock_ack.assert_called_once()
-        # Empty files list will cause ValidationError when parsing
-        # The error is caught and posted to user
-        assert mock_client.chat_postMessage.call_count >= 1
-        # Check that an error message was posted
-        call_args_list = mock_client.chat_postMessage.call_args_list
-        assert any(
-            "error" in str(call[1].get("text", "")).lower() for call in call_args_list
+        mock_ack.assert_called_once_with(
+            response_action="errors", errors=mock_ack.call_args.kwargs.get("errors", {})
         )
+        mock_client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_submit_source_equals_target(
+        self, user_id, team_id, ray_client
+    ):
+        """Test that submitting with the same source and target language shows an inline error."""
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "callback_id": "evaluate_job",
+            "private_metadata": "C123",
+            "state": {
+                "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "lang-123"}
+                        }
+                    },
+                    "target_langs": {
+                        "language_options_uuid": {
+                            "selected_options": [{"value": "lang-123"}]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.txt"}}
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        await evaluate_job_submit(
+            context_dict, view=view, client=mock_client, ack=mock_ack
+        )
+        mock_ack.assert_called_once()
+        call_kwargs = mock_ack.call_args.kwargs
+        assert call_kwargs["response_action"] == "errors"
+        assert "target_langs" in call_kwargs["errors"]
+        assert "source language" in call_kwargs["errors"]["target_langs"].lower()
+        mock_client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_submit_source_equals_target_family(
+        self, user_id, team_id, ray_client
+    ):
+        """Test that regional variants in the same language family are rejected inline."""
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "callback_id": "evaluate_job",
+            "private_metadata": "C123",
+            "state": {
+                "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "lang-fr"}
+                        }
+                    },
+                    "target_langs": {
+                        "language_options_uuid": {
+                            "selected_options": [{"value": "lang-fr-ca"}]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.txt"}}
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        with patch(
+            "app.slack.listeners.get_conflicting_target_language_labels",
+            new_callable=AsyncMock,
+        ) as mock_conflicts:
+            mock_conflicts.return_value = ["French Canadian"]
+            await evaluate_job_submit(
+                context_dict, view=view, client=mock_client, ack=mock_ack
+            )
+
+        mock_ack.assert_called_once()
+        call_kwargs = mock_ack.call_args.kwargs
+        assert call_kwargs["response_action"] == "errors"
+        assert "target_langs" in call_kwargs["errors"]
+        assert "regional variant" in call_kwargs["errors"]["target_langs"].lower()
+        assert "french canadian" in call_kwargs["errors"]["target_langs"].lower()
+        mock_client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_evaluate_job_submit_success(self, user_id, team_id, ray_client):
@@ -2222,6 +2333,11 @@ class TestEvaluateJobSubmit:
             "private_metadata": "C123",
             "state": {
                 "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "src-lang-001"}
+                        }
+                    },
                     "target_langs": {
                         "language_options_uuid": {
                             "selected_options": [{"value": "lang-123"}]
@@ -2258,16 +2374,21 @@ class TestEvaluateJobSubmit:
                 "app.slack.listeners.validate_file", return_value=(True, True, None)
             ):
                 with patch(
-                    "app.slack.listeners.submit_evaluation_job",
+                    "app.slack.listeners.get_conflicting_target_language_labels",
                     new_callable=AsyncMock,
-                ) as mock_submit:
-                    await evaluate_job_submit(
-                        context_dict, view=view, client=mock_client, ack=mock_ack
-                    )
-                    mock_ack.assert_called_once()
-                    mock_submit.assert_called_once()
-                    # Should post success message
-                    assert mock_client.chat_postMessage.call_count >= 1
+                ) as mock_conflicts:
+                    mock_conflicts.return_value = []
+                    with patch(
+                        "app.slack.listeners.submit_evaluation_job",
+                        new_callable=AsyncMock,
+                    ) as mock_submit:
+                        await evaluate_job_submit(
+                            context_dict, view=view, client=mock_client, ack=mock_ack
+                        )
+                        mock_ack.assert_called_once()
+                        mock_submit.assert_called_once()
+                        # Should post success message
+                        assert mock_client.chat_postMessage.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_evaluate_job_submit_verify_api_error(
@@ -2284,6 +2405,11 @@ class TestEvaluateJobSubmit:
             "private_metadata": "C123",
             "state": {
                 "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "src-lang-001"}
+                        }
+                    },
                     "target_langs": {
                         "language_options_uuid": {
                             "selected_options": [{"value": "lang-123"}]
@@ -2319,22 +2445,27 @@ class TestEvaluateJobSubmit:
                 "app.slack.listeners.validate_file", return_value=(True, True, None)
             ):
                 with patch(
-                    "app.slack.listeners.submit_evaluation_job",
+                    "app.slack.listeners.get_conflicting_target_language_labels",
                     new_callable=AsyncMock,
-                ) as mock_submit:
-                    mock_submit.side_effect = VerifyAPIError("Permission denied")
-                    await evaluate_job_submit(
-                        context_dict, view=view, client=mock_client, ack=mock_ack
-                    )
-                    mock_ack.assert_called_once()
-                    # Should post permission error message
-                    assert mock_client.chat_postMessage.call_count >= 2
-                    call_args_list = mock_client.chat_postMessage.call_args_list
-                    last_call_text = call_args_list[-1][1]["text"].lower()
-                    assert (
-                        "permission" in last_call_text
-                        or "administrator" in last_call_text
-                    )
+                ) as mock_conflicts:
+                    mock_conflicts.return_value = []
+                    with patch(
+                        "app.slack.listeners.submit_evaluation_job",
+                        new_callable=AsyncMock,
+                    ) as mock_submit:
+                        mock_submit.side_effect = VerifyAPIError("Permission denied")
+                        await evaluate_job_submit(
+                            context_dict, view=view, client=mock_client, ack=mock_ack
+                        )
+                        mock_ack.assert_called_once()
+                        # Should post permission error message
+                        assert mock_client.chat_postMessage.call_count >= 2
+                        call_args_list = mock_client.chat_postMessage.call_args_list
+                        last_call_text = call_args_list[-1][1]["text"].lower()
+                        assert (
+                            "permission" in last_call_text
+                            or "administrator" in last_call_text
+                        )
 
     @pytest.mark.asyncio
     async def test_evaluate_job_submit_general_exception(
@@ -2350,6 +2481,11 @@ class TestEvaluateJobSubmit:
             "private_metadata": "C123",
             "state": {
                 "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "src-lang-001"}
+                        }
+                    },
                     "target_langs": {
                         "language_options_uuid": {
                             "selected_options": [{"value": "lang-123"}]
@@ -2385,21 +2521,31 @@ class TestEvaluateJobSubmit:
                 "app.slack.listeners.validate_file", return_value=(True, True, None)
             ):
                 with patch(
-                    "app.slack.listeners.submit_evaluation_job",
+                    "app.slack.listeners.get_conflicting_target_language_labels",
                     new_callable=AsyncMock,
-                ) as mock_submit:
-                    mock_submit.side_effect = Exception("General error")
-                    with patch("app.slack.listeners.notify_exception") as mock_notify:
-                        await evaluate_job_submit(
-                            context_dict, view=view, client=mock_client, ack=mock_ack
-                        )
-                        mock_ack.assert_called_once()
-                        mock_notify.assert_called_once()
-                        # Should post error message
-                        assert mock_client.chat_postMessage.call_count >= 2
-                        call_args_list = mock_client.chat_postMessage.call_args_list
-                        last_call_text = call_args_list[-1][1]["text"].lower()
-                        assert "error" in last_call_text
+                ) as mock_conflicts:
+                    mock_conflicts.return_value = []
+                    with patch(
+                        "app.slack.listeners.submit_evaluation_job",
+                        new_callable=AsyncMock,
+                    ) as mock_submit:
+                        mock_submit.side_effect = Exception("General error")
+                        with patch(
+                            "app.slack.listeners.notify_exception"
+                        ) as mock_notify:
+                            await evaluate_job_submit(
+                                context_dict,
+                                view=view,
+                                client=mock_client,
+                                ack=mock_ack,
+                            )
+                            mock_ack.assert_called_once()
+                            mock_notify.assert_called_once()
+                            # Should post error message
+                            assert mock_client.chat_postMessage.call_count >= 2
+                            call_args_list = mock_client.chat_postMessage.call_args_list
+                            last_call_text = call_args_list[-1][1]["text"].lower()
+                            assert "error" in last_call_text
 
 
 class TestHandleDocumentMtJob:

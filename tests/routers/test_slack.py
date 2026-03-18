@@ -1,6 +1,6 @@
 """Tests for app/routers/slack.py - Slack endpoint handlers."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio

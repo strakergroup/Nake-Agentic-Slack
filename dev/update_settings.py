@@ -10,7 +10,7 @@ parent_dir = os.path.abspath(
 )
 sys.path.append(parent_dir)
 
-from app.database import engines
+from app.database import engines  # noqa: E402
 
 # Use the ray_integration engine from database.py
 with open("update_2.sql", "w", buffering=1) as sql_file:

@@ -7,7 +7,7 @@ https://docs.sqlalchemy.org/en/20/orm/declarative_tables.html
 """
 
 import datetime
-from typing import Literal, Optional, TypeAlias
+from typing import Literal, TypeAlias
 
 from pydantic import BaseModel
 from sqlalchemy import JSON, Boolean, DateTime, Enum, Integer, String, func

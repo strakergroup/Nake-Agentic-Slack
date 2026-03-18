@@ -68,6 +68,7 @@ from ..ray.settings import (
 )
 from ..redis import is_duplicate_event, redis_conn
 from .app import app
+from .language_validation import get_conflicting_target_language_labels
 from .listener_actions import (
     ai_translate_help,
     approve_pending_client,
@@ -1695,6 +1696,12 @@ async def language_options_uuid(ack: AsyncAck, payload: Dict[str, Any]):
     await ack(options=options)
 
 
+@app.options("source_language_option_uuid", middleware=[ray_connection])
+async def source_language_option_uuid(ack: AsyncAck, payload: Dict[str, Any]):
+    options = await get_language_options(payload.get("value"), "uuid", source_only=True)
+    await ack(options=options)
+
+
 @app.options("group_options", middleware=[ray_connection])
 async def group_options(ack: AsyncAck, context: RayContext):
     if await require_ray_client(context):
@@ -1921,6 +1928,7 @@ async def _publish_pdf_evaluate_convert(
     target_langs_uuid: list[str],
     reference: str,
     channel_id: str,
+    source_lang_uuid: str = "",
     workflow_uuid: str | None = None,
     job_notes: str = "",
     workflow_version: float = 3.0,
@@ -1941,6 +1949,7 @@ async def _publish_pdf_evaluate_convert(
         "file_ids": file_ids,
         "file_names": file_titles,
         "target_languages_uuid": target_langs_uuid,
+        "source_language_uuid": source_lang_uuid,
         "reference": reference,
         "workflow_uuid": workflow_uuid or "",
         "job_notes": job_notes,
@@ -1970,21 +1979,40 @@ async def evaluate_job_submit(
     context: RayContext,
 ):
     """Evaluate job. Triggered from the Evaluate form view."""
-    await ack(response_action="clear")
+    if not view:
+        await ack(response_action="clear")
+        return
+    channel_id = view.get("private_metadata")
+    if not channel_id:
+        await ack(response_action="clear")
+        return
+
+    form_data = view["state"]["values"]
     try:
-        if not view:
-            return
-        channel_id = view.get("private_metadata")
-        if not channel_id:
-            return
-        form_data = view["state"]["values"]
         form = EvaluateJobForm.parse_human_job_form(form_data, view["callback_id"])
     except ValidationError as e:
         errors = convert_pydantic_to_slack_error(e)
-        await client.chat_postMessage(
-            channel=context.user_id or "", text="Error: " + str(errors)
+        field_to_block = {"target_langs_uuid": "target_langs"}
+        errors = {field_to_block.get(k, k): v for k, v in errors.items()}
+        await ack(response_action="errors", errors=errors)
+        return
+
+    conflicting_target_labels = await get_conflicting_target_language_labels(
+        form.source_lang_uuid, form.target_langs_uuid
+    )
+    if conflicting_target_labels:
+        languages = ", ".join(conflicting_target_labels)
+        await ack(
+            response_action="errors",
+            errors={
+                "target_langs": _(
+                    "The source language cannot be the same language or regional variant as a target language. Please remove: {languages}."
+                )
+            },
         )
         return
+
+    await ack(response_action="clear")
     if await require_ray_client(context, prompt_login=True):
         if form.workflow_options:
             msg = _(
@@ -2023,6 +2051,7 @@ async def evaluate_job_submit(
                     target_langs_uuid=form.target_langs_uuid,
                     reference=form.reference,
                     channel_id=channel_id,
+                    source_lang_uuid=form.source_lang_uuid,
                     workflow_uuid=form.workflow_options,
                     job_notes=form.job_notes or "",
                 )
@@ -2032,6 +2061,7 @@ async def evaluate_job_submit(
                     input_files,
                     form.target_langs_uuid,
                     form.reference,
+                    source_language_uuid=form.source_lang_uuid,
                     workflow_uuid=form.workflow_options,
                     job_notes=form.job_notes or "",
                 )

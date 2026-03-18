@@ -609,6 +609,28 @@ def human_job_modal(
             },
         )
 
+    # Add source language block (shared for both job types)
+    source_lang_block = {
+        "type": "input",
+        "block_id": "source_lang",
+        "element": {
+            "type": "external_select",
+            "placeholder": {
+                "type": "plain_text",
+                "text": _("Select source language"),
+                "emoji": True,
+            },
+            "action_id": "source_language_option_uuid",
+            "min_query_length": 0,
+        },
+        "label": {
+            "type": "plain_text",
+            "text": _("Translate from"),
+            "emoji": True,
+        },
+    }
+    blocks.append(source_lang_block)
+
     # Add target languages block (shared for both job types)
     target_langs_block = {
         "type": "input",

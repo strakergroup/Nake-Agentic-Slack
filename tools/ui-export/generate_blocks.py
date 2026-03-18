@@ -12,11 +12,10 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import sys
-from dataclasses import dataclass
 from datetime import datetime, timedelta
+from enum import Enum
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -66,9 +65,6 @@ for sub in (
 ):
     sys.modules.setdefault(sub, _straker_utils)
 
-# Provide a real Environment enum for config
-from enum import Enum
-
 
 class _Environment(str, Enum):
     production = "production"
@@ -104,7 +100,6 @@ sys.modules.setdefault("ray_sdk.api.v3.file", MagicMock())
 sys.modules["ray_sdk.api.v3.file"].is_valid_file_ext = lambda _: True
 
 # Patch translation function to act as identity with variable interpolation
-import builtins
 
 
 def _mock_translate(text, *args, **kwargs):
@@ -149,21 +144,12 @@ sys.modules.setdefault("app.slack.web", MagicMock())
 # Pre-import app modules to ensure submodules are registered before patching.
 # This allows unittest.mock.patch to resolve dotted paths like
 # "app.ray.settings.get_auto_translate_language_name".
-import app.auth.connector  # noqa: E402
-import app.ray.events.models  # noqa: E402
-import app.ray.settings  # noqa: E402
-import app.ray.utils  # noqa: E402
-import app.slack.select_options  # noqa: E402
-import app.slack.templates.blocks  # noqa: E402
-import app.slack.templates.messages  # noqa: E402
-import app.slack.templates.views  # noqa: E402
-import app.slack.utils  # noqa: E402
-from app.auth.connector import (
+from app.auth.connector import (  # noqa: E402
     RayClient,
     RayConnection,
     RaySuperGroup,
 )
-from app.ray.events.models import (
+from app.ray.events.models import (  # noqa: E402
     ClientGroup,
     ClientSignupEvent,
     JobQuoteAcceptedEvent,

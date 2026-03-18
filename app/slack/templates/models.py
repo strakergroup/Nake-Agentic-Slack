@@ -264,15 +264,29 @@ class EvaluateJobForm(BaseModel):
     """The model for an evaluation job form."""
 
     reference: str  # Max 100 chars, validated in view
+    source_lang_uuid: str
     target_langs_uuid: list[str]
     workflow_options: str | None = None
     files: list[SlackFile]
     job_notes: str | None = None
 
+    @field_validator("target_langs_uuid")
+    @classmethod
+    def validate_target_langs_uuid(
+        cls, v: list[str], info: ValidationInfo
+    ) -> list[str]:
+        source = info.data.get("source_lang_uuid")
+        if source and source in v:
+            raise ValueError("The source language cannot also be a target language.")
+        return v
+
     @classmethod
     def parse_human_job_form(
         cls, values: dict[str, dict[str, Any]], callback_id: str = "evaluate_job_human"
     ) -> "EvaluateJobForm":
+        source_lang_uuid = values["source_lang"]["source_language_option_uuid"][
+            "selected_option"
+        ]["value"]
         target_langs_uuid = [
             opt["value"]
             for opt in values["target_langs"]["language_options_uuid"][
@@ -283,7 +297,6 @@ class EvaluateJobForm(BaseModel):
 
         # Set workflow_options based on callback_id
         if callback_id == "evaluate_job":
-            # For evaluate jobs, try to get workflow_options from form, default to None
             selected_option = (
                 values.get("workflow_options", {})
                 .get("workflow_options", {})
@@ -291,13 +304,13 @@ class EvaluateJobForm(BaseModel):
             )
             workflow_options = selected_option["value"] if selected_option else None
         else:
-            # For human jobs, use the hardcoded workflow UUID
             workflow_options = HUMAN_EVALUATION_WORKFLOW_UUID
         reference = (
             values.get("reference", {}).get("reference", {}).get("value", "slack job")
         )
         return cls(
             reference=reference,
+            source_lang_uuid=source_lang_uuid,
             target_langs_uuid=target_langs_uuid,
             workflow_options=workflow_options,
             files=[
@@ -310,6 +323,9 @@ class EvaluateJobForm(BaseModel):
     @classmethod
     def parse_slack(cls, values: dict[str, dict[str, Any]]) -> "EvaluateJobForm":
         reference = values["reference"]["reference"]["value"]
+        source_lang_uuid = values["source_lang"]["source_language_option_uuid"][
+            "selected_option"
+        ]["value"]
         target_langs_uuid = [
             opt["value"]
             for opt in values["target_langs"]["language_options_uuid"][
@@ -326,6 +342,7 @@ class EvaluateJobForm(BaseModel):
 
         return cls(
             reference=reference,
+            source_lang_uuid=source_lang_uuid,
             target_langs_uuid=target_langs_uuid,
             workflow_options=workflow_options,
             files=[
