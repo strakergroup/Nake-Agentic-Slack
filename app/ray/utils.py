@@ -12,7 +12,7 @@ import httpx
 from babel.numbers import format_currency as babel_format_currency
 
 from app.auth.connector import is_ibm_super_group
-from app.constants import FILE_TRANSFER_TIMEOUT
+from app.constants import DEFAULT_UPLOAD_EXPIRY_DAYS, FILE_TRANSFER_TIMEOUT
 from app.ray.file_validators import validate_json
 from app.slack.buglog_notifier import notify_exception
 from app.translate import Translator, _, translator_var
@@ -255,23 +255,31 @@ async def delete_from_file_server(file_id: str):
         response.raise_for_status()
 
 
-GRIDFS_UPLOAD_EXPIRY_DAYS = 7
+async def upload_to_file_server(
+    file_path: str,
+    expires_days: int = DEFAULT_UPLOAD_EXPIRY_DAYS,
+) -> str:
+    """Upload the file to sup-file-api and return the file ID.
 
+    Args:
+        file_path: Local path to the file to upload.
+        expires_days: Number of days until the uploaded file expires.
+            Defaults to ``DEFAULT_UPLOAD_EXPIRY_DAYS`` (30 days).
 
-async def upload_to_file_server(file_path: str) -> str:
+    Returns:
+        The file metadata ID from sup-file-api.
     """
-    Upload the file to sup-file-api and return the file ID.
-    Files are stored in GridFS with a 7-day expiry since they are temporary
-    source files for AI translation that are deleted after delivery.
-    """
-    expires_at = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=GRIDFS_UPLOAD_EXPIRY_DAYS)).isoformat()
+    expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+        days=expires_days
+    )
+
     file_id = ""
     with open(file_path, "rb") as f:
         async with httpx.AsyncClient(timeout=FILE_TRANSFER_TIMEOUT) as client:
             response = await client.put(
                 domains.file_api + "/gridfs",
                 files={"file": f},
-                data={"expires_at": expires_at},
+                data={"expires_at": expires_at.isoformat()},
             )
 
     if response.status_code == 200:

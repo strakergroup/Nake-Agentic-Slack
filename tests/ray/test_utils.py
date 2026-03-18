@@ -1,7 +1,7 @@
 import datetime
 import os
 import tempfile
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -11,11 +11,8 @@ import app  # Bug - circular import
 import app.ray.utils
 from app.auth.connector import get_group_mt_engine, get_job_group_quote_settings
 from app.config import domains
-from app.ray.utils import (
-    GRIDFS_UPLOAD_EXPIRY_DAYS,
-    upload_to_file_server,
-    validate_file,
-)
+from app.constants import DEFAULT_UPLOAD_EXPIRY_DAYS
+from app.ray.utils import upload_to_file_server, validate_file
 from app.translate import Translator, _, translator_var
 
 
@@ -250,67 +247,79 @@ def test_validate_file():
         os.unlink(json_upper_file)
 
 
-@pytest.mark.asyncio
-async def test_upload_to_file_server_sets_expiry():
-    """upload_to_file_server must send expires_at (~7 days) to the /gridfs endpoint."""
-    fake_file_id = "abc123"
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {"id": fake_file_id}
+# --- upload_to_file_server tests ---
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as f:
-        f.write(b"test content")
-        tmp_path = f.name
 
-    try:
-        with patch("app.ray.utils.httpx.AsyncClient") as mock_client_cls:
+class TestUploadToFileServer:
+    """Tests for upload_to_file_server with expires_at behaviour."""
+
+    @pytest.mark.asyncio
+    async def test_sends_expires_at_with_default_days(self):
+        """Upload should include expires_at form data using DEFAULT_UPLOAD_EXPIRY_DAYS."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("test content")
+            tmp = f.name
+        try:
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"id": "abc-123"}
+
             mock_client = AsyncMock()
-            mock_client.__aenter__.return_value = mock_client
-            mock_client.__aexit__.return_value = False
-            mock_client.put.return_value = mock_response
-            mock_client_cls.return_value = mock_client
+            mock_client.put = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
 
-            result = await upload_to_file_server(tmp_path)
+            with patch("app.ray.utils.httpx.AsyncClient", return_value=mock_client):
+                file_id = await upload_to_file_server(tmp)
 
-            assert result == fake_file_id
+            assert file_id == "abc-123"
 
+            # Verify expires_at was sent in form data
             call_kwargs = mock_client.put.call_args
-            data = call_kwargs.kwargs.get("data", {})
+            sent_data = call_kwargs.kwargs.get("data", {})
+            assert "expires_at" in sent_data
 
-            assert "expires_at" in data, "expires_at must be sent to /gridfs"
+            # Parse the sent value and verify it is ~DEFAULT_UPLOAD_EXPIRY_DAYS from now
+            sent_expires = datetime.datetime.fromisoformat(sent_data["expires_at"])
+            expected_min = datetime.datetime.now(
+                datetime.timezone.utc
+            ) + datetime.timedelta(days=DEFAULT_UPLOAD_EXPIRY_DAYS - 1)
+            expected_max = datetime.datetime.now(
+                datetime.timezone.utc
+            ) + datetime.timedelta(days=DEFAULT_UPLOAD_EXPIRY_DAYS + 1)
+            assert expected_min <= sent_expires <= expected_max
+        finally:
+            os.unlink(tmp)
 
-            expires_at = datetime.datetime.fromisoformat(data["expires_at"])
-            print(f"expires_at sent to /gridfs: {expires_at.isoformat()}")
-            now = datetime.datetime.now(datetime.timezone.utc)
-            delta_seconds = (expires_at - now).total_seconds()
-            expected_seconds = GRIDFS_UPLOAD_EXPIRY_DAYS * 86400
-            assert expected_seconds - 60 <= delta_seconds <= expected_seconds + 60, (
-                f"Expected ~{GRIDFS_UPLOAD_EXPIRY_DAYS} day expiry, got {delta_seconds:.0f}s"
-            )
-    finally:
-        os.unlink(tmp_path)
+    @pytest.mark.asyncio
+    async def test_sends_custom_expires_days(self):
+        """Upload should honour a custom expires_days value."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("test content")
+            tmp = f.name
+        try:
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"id": "def-456"}
 
-
-@pytest.mark.asyncio
-async def test_upload_to_file_server_raises_on_missing_id():
-    """upload_to_file_server must raise ValueError when the response has no 'id'."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {}
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as f:
-        f.write(b"test content")
-        tmp_path = f.name
-
-    try:
-        with patch("app.ray.utils.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
-            mock_client.__aenter__.return_value = mock_client
-            mock_client.__aexit__.return_value = False
-            mock_client.put.return_value = mock_response
-            mock_client_cls.return_value = mock_client
+            mock_client.put = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=False)
 
-            with pytest.raises(ValueError, match="'id'"):
-                await upload_to_file_server(tmp_path)
-    finally:
-        os.unlink(tmp_path)
+            with patch("app.ray.utils.httpx.AsyncClient", return_value=mock_client):
+                file_id = await upload_to_file_server(tmp, expires_days=7)
+
+            assert file_id == "def-456"
+
+            sent_data = mock_client.put.call_args.kwargs.get("data", {})
+            sent_expires = datetime.datetime.fromisoformat(sent_data["expires_at"])
+            expected_min = datetime.datetime.now(
+                datetime.timezone.utc
+            ) + datetime.timedelta(days=6)
+            expected_max = datetime.datetime.now(
+                datetime.timezone.utc
+            ) + datetime.timedelta(days=8)
+            assert expected_min <= sent_expires <= expected_max
+        finally:
+            os.unlink(tmp)
