@@ -11,7 +11,6 @@ from ray_sdk.api.v3.models import (
 )
 
 from app.slack.buglog_notifier import notify_exception
-
 from ..auth.connector import RayClient
 from ..config import domains
 
