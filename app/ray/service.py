@@ -2,7 +2,6 @@ import asyncio
 from typing import Any, Iterable
 from urllib.parse import urlencode
 
-import httpx
 from httpx import Response
 from ray_sdk import RayAPIResponseError, RayAuthError, RayResponse, RayV3
 from ray_sdk.api.v3.models import (
