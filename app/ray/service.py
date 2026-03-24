@@ -14,7 +14,7 @@ from ray_sdk.api.v3.models import (
 from app.slack.buglog_notifier import notify_exception
 
 from ..auth.connector import RayClient
-from ..config import Environment, config, domains
+from ..config import domains
 
 
 class RayService:
@@ -279,36 +279,3 @@ _noauth_service = RayService(None, None, None)
 
 async def get_languages():
     return await _noauth_service.get_languages()
-
-
-async def get_job_predictions(job_ids: list[str]):
-    """Gets the job on-time predictions from the ml-job-on-time-prediction API.
-
-    Args:
-        job_ids (list[str]): The list of job IDs to check.
-
-    Returns:
-        list[bool]: A list of dictionaries containing the job ID and on time status.
-    """
-    job_predictions = [
-        {"job_id": job_id.upper(), "prediction": ""} for job_id in job_ids
-    ]
-    if (
-        config.environment == Environment.production
-        or config.environment == Environment.local
-    ):
-        # TODO: Disable predictions on live for now.
-        return job_predictions
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.post(
-                f"{domains.job_on_time_prediction}/predict",
-                json={"job_ids": [job_id.upper() for job_id in job_ids]},
-            )
-            predictions = r.json()
-            if predictions:
-                return predictions
-    except Exception as e:
-        notify_exception(e)
-        return job_predictions
-    return job_predictions

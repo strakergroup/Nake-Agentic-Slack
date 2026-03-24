@@ -17,7 +17,6 @@ flowchart LR
         LCAPI["LanguageCloud API"]
         FileAPI["File API"]
         InsightsAPI["Insights API"]
-        JOTPrediction["Job-on-Time Prediction"]
         BugLog["BugLog"]
         Stingray["Stingray / RAY SDK"]
         VerifyUI["Verify Web App"]
@@ -34,7 +33,6 @@ flowchart LR
     App -->|HTTP| LCAPI
     App -->|HTTP| FileAPI
     App -->|HTTP| InsightsAPI
-    App -->|HTTP| JOTPrediction
     App -->|HTTP| BugLog
     App -->|HTTP| Stingray
     App -->|HTTP POST events| StreamProxy
@@ -162,27 +160,7 @@ NLP processing service for natural language prompts and insights. !! This should
 
 ---
 
-### 6. Job-on-Time Prediction
-
-
-| Env Var                         | Domain Attribute                 |
-| ------------------------------- | -------------------------------- |
-| `JOB_ON_TIME_PREDICTION_DOMAIN` | `domains.job_on_time_prediction` |
-
-
-ML prediction service for estimating job completion times. Currently disabled in production.
-
-
-| Method | Endpoint   | Purpose                                    | Source File          |
-| ------ | ---------- | ------------------------------------------ | -------------------- |
-| POST   | `/predict` | Predict whether jobs will complete on time | `app/ray/service.py` |
-
-
-**Payload:** `{ "job_ids": ["JOB_ID_1", "JOB_ID_2", ...] }`
-
----
-
-### 7. Verify Web App
+### 6. Verify Web App
 
 
 | Env Var         | Domain Attribute |
@@ -202,7 +180,7 @@ The Verify frontend — used for generating user-facing links (not API calls).
 
 ---
 
-### 8. Stingray (RAY SDK)
+### 7. Stingray (RAY SDK)
 
 
 | Env Var           | Domain Attribute   |
@@ -216,7 +194,7 @@ The RAY platform API — accessed via the `ray_sdk` library, not direct HTTP cal
 
 ---
 
-### 9. BugLog
+### 8. BugLog
 
 
 | Env Var         | Domain Attribute |
@@ -451,7 +429,6 @@ All service domains are loaded via `StrakerDomains.from_environment()` from `str
 | `STREAM_PROXY_DOMAIN`           | redis-stream-proxy            | `domains.stream_proxy`           |
 | `FILE_API_DOMAIN`               | File API (GridFS)             | `domains.file_api`               |
 | `INSIGHTS_API_DOMAIN`           | Insights API                  | `domains.insights_api`           |
-| `JOB_ON_TIME_PREDICTION_DOMAIN` | Job-on-Time Prediction        | `domains.job_on_time_prediction` |
 | `VERIFY_DOMAIN`                 | Verify Web App                | `domains.verify`                 |
 | `STINGRAY_DOMAIN`               | Stingray / RAY SDK            | `domains.stingray`               |
 | `BUGLOG_DOMAIN`                 | BugLog                        | `domains.buglog`                 |

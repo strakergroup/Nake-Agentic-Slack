@@ -141,35 +141,6 @@ def format_job_due_date_slack(
     return formatted_date
 
 
-def format_predictions(in_progress_count: int, predictions: dict[str, int]) -> str:
-    """Returns the progress text for the job."""
-    status = f"*In Progress Jobs*\n{in_progress_count} job(s) currently in progress"
-    if in_progress_count:
-        aPredictions = []
-        if predictions["on_time"]:
-            aPredictions.append(
-                f":large_green_circle: *{predictions['on_time']} {'job is' if int(predictions['on_time']) == 1 else 'jobs are'} predicted to be on-time"
-            )
-        if predictions["late"] or predictions["over_due"]:
-            aPredictions.append(
-                f":large_orange_circle: *{int(predictions['late']) + int(predictions['over_due'])} {'job' if int(predictions['late']) + int(predictions['over_due']) == 1 else 'jobs'} may be behind schedule"
-            )
-        status = "*In Progress Jobs*\n" + "\n".join(aPredictions)
-    return status
-
-
-def format_job_prediction(prediction: str, target_date: datetime.datetime) -> str:
-    if target_date.tzinfo is None:
-        target_date = target_date.replace(tzinfo=datetime.timezone.utc)
-    date_delta = target_date - datetime.datetime.now(datetime.timezone.utc)
-    if date_delta.total_seconds() < 0 or prediction == "late":
-        return ":large_orange_circle: May be tracking behind schedule."
-    elif prediction == "on time":
-        return ":large_green_circle: Tracking on time"
-    else:
-        return ""
-
-
 def is_min_langugagecloud_plan(
     plan: str | None,
     min_plan: Literal["Free", "Essentials", "Growth", "Enterprise"] | None,
