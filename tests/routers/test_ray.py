@@ -507,25 +507,40 @@ class TestRayEventsEndpoint:
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
                     ):
                         with patch(
-                            "app.transcriber_tasks.tasks.get_transcription_task",
+                            "app.routers.ray.get_transcription_task",
+                            new_callable=AsyncMock,
                             return_value=mock_task_info,
                         ):
                             with patch(
-                                "app.routers.ray.post_notification",
+                                "app.routers.ray._mark_stage_processed",
                                 new_callable=AsyncMock,
-                                return_value=mock_response,
-                            ) as mock_post:
+                            ):
                                 with patch(
-                                    "app.routers.ray._create_background_task"
-                                ) as mock_bg_task:
-                                    auth = RayEventAuth()
-                                    await auth.initialize(event, "valid-token")
+                                    "app.routers.ray._spend_transcription_credits",
+                                    new_callable=AsyncMock,
+                                    return_value=0,
+                                ):
+                                    with patch(
+                                        "app.routers.ray._update_tokens_consumed",
+                                        new_callable=AsyncMock,
+                                    ):
+                                        with patch(
+                                            "app.routers.ray.post_notification",
+                                            new_callable=AsyncMock,
+                                            return_value=mock_response,
+                                        ) as mock_post:
+                                            with patch(
+                                                "app.routers.ray._create_background_task"
+                                            ) as mock_bg_task:
+                                                auth = RayEventAuth()
+                                                await auth.initialize(
+                                                    event, "valid-token"
+                                                )
 
-                                    await ray_events(event, auth)
+                                                await ray_events(event, auth)
 
-                                    # Verify notification was sent and background task created
-                                    mock_post.assert_called_once()
-                                    mock_bg_task.assert_called_once()
+                                                mock_post.assert_called_once()
+                                                mock_bg_task.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_transcription_error(
@@ -589,7 +604,8 @@ class TestRayEventsEndpoint:
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
                     ):
                         with patch(
-                            "app.transcriber_tasks.tasks.get_transcription_task",
+                            "app.routers.ray.get_transcription_task",
+                            new_callable=AsyncMock,
                             return_value=mock_task_info,
                         ):
                             auth = RayEventAuth()
@@ -597,7 +613,6 @@ class TestRayEventsEndpoint:
 
                             await ray_events(event, auth)
 
-                            # Verify error message was sent
                             mock_client.chat_postEphemeral.assert_called_once()
 
     @pytest.mark.asyncio
@@ -865,9 +880,11 @@ class TestRayEventsEndpoint:
         """Test direct MT result event."""
         extra_data = {
             "client_id": str(uuid4()),
-            "service_language_mapping": {"service1": ["fr"]},
+            "service_language_mapping": {"google": {"fr": ""}},
             "source_language": "en",
             "organization_uuid": str(uuid4()),
+            "team_id": team_id,
+            "group_id": str(uuid4()),
             "channel_id": "C123",
             "text_length": 100,
             "usage_type": "direct_machine_translation",
@@ -887,7 +904,12 @@ class TestRayEventsEndpoint:
 
         mock_client = AsyncMock()
         mock_client.users_info.return_value = {
-            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+            "user": {
+                "id": user_id,
+                "locale": "en-US",
+                "tz": "America/New_York",
+                "profile": {"email": "test@example.com"},
+            }
         }
         mock_client.conversations_info.return_value = {
             "channel": {"name": "test-channel"}
@@ -930,9 +952,11 @@ class TestRayEventsEndpoint:
         """Test channel translation result event."""
         extra_data = {
             "client_id": str(uuid4()),
-            "service_language_mapping": {"service1": ["fr", "es"]},
+            "service_language_mapping": {"google": {"fr": "", "es": ""}},
             "source_language": "en",
             "organization_uuid": str(uuid4()),
+            "team_id": team_id,
+            "group_id": str(uuid4()),
             "channel_id": "C123",
             "text_length": 100,
             "usage_type": "channel_translation",
@@ -951,7 +975,12 @@ class TestRayEventsEndpoint:
 
         mock_client = AsyncMock()
         mock_client.users_info.return_value = {
-            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+            "user": {
+                "id": user_id,
+                "locale": "en-US",
+                "tz": "America/New_York",
+                "profile": {"email": "test@example.com"},
+            }
         }
         mock_client.conversations_info.return_value = {
             "channel": {"name": "test-channel"}

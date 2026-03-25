@@ -4,6 +4,7 @@ Tests for app/slack/listeners.py
 
 import json
 import tempfile
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -2171,24 +2172,27 @@ class TestEvaluateJobSubmit:
 
         mock_ack = AsyncMock()
         mock_client = AsyncMock()
+        # Source language cannot also be a target (Pydantic validation on EvaluateJobForm)
         view = {
-            "callback_id": "evaluate_job",
+            "callback_id": "evaluate_job_human",
             "private_metadata": "C123",
             "state": {
                 "values": {
                     "source_lang": {
                         "source_language_option_uuid": {
-                            "selected_option": {"value": "src-lang-001"}
+                            "selected_option": {"value": "same-lang-uuid"}
                         }
                     },
                     "target_langs": {
                         "language_options_uuid": {
-                            "selected_options": [{"value": "lang-123"}]
+                            "selected_options": [{"value": "same-lang-uuid"}]
                         }
                     },
                     "files": {
                         "files": {
-                            "selected_options": []  # Empty files will cause validation error
+                            "selected_options": [
+                                {"value": "F1", "text": {"text": "doc.pdf"}}
+                            ]
                         }
                     },
                 }
@@ -2205,9 +2209,9 @@ class TestEvaluateJobSubmit:
         await evaluate_job_submit(
             context_dict, view=view, client=mock_client, ack=mock_ack
         )
-        mock_ack.assert_called_once_with(
-            response_action="errors", errors=mock_ack.call_args.kwargs.get("errors", {})
-        )
+        mock_ack.assert_called_once()
+        assert mock_ack.call_args.kwargs.get("response_action") == "errors"
+        assert mock_ack.call_args.kwargs.get("errors")
         mock_client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
@@ -3081,13 +3085,14 @@ class TestMessageEvent:
                 new_callable=AsyncMock,
             ) as mock_check_record,
             patch(
-                "app.slack.listeners.download_file", new_callable=AsyncMock
+                "app.slack.listener_actions.download_file", new_callable=AsyncMock
             ) as mock_download_file,
             patch(
-                "app.slack.listeners.upload_to_file_server", new_callable=AsyncMock
+                "app.slack.listener_actions.upload_to_file_server",
+                new_callable=AsyncMock,
             ) as mock_upload_to_file_server,
             patch(
-                "app.transcriber_tasks.tasks.create_asr_task", new_callable=AsyncMock
+                "app.slack.listener_actions.create_asr_task", new_callable=AsyncMock
             ) as mock_create_task,
         ):
             mock_check_record.return_value = (False, MagicMock(id=99))
@@ -3349,19 +3354,24 @@ class TestRespondToMessage:
         )
 
         with patch(
-            "app.slack.listener_actions.detect_language", new_callable=AsyncMock
-        ) as mock_detect:
-            mock_detect.return_value = MagicMock(language="en")
+            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+        ) as mock_require_ray:
+            mock_require_ray.return_value = True
             with patch(
-                "app.slack.listener_actions.get_mt_translation", new_callable=AsyncMock
-            ) as mock_mt:
-                await respond_to_message(mock_client, context, message)
-                mock_mt.assert_called_once()
-                # Should extract source lang, target lang, and text
-                call_args = mock_mt.call_args
-                assert call_args[1]["source_lang"] == "en"
-                assert call_args[1]["target_lang"] == "fr"
-                assert call_args[1]["sentence"] == "Hello world"
+                "app.slack.listener_actions.detect_language", new_callable=AsyncMock
+            ) as mock_detect:
+                mock_detect.return_value = MagicMock(language="en")
+                with patch(
+                    "app.slack.listener_actions.get_mt_translation",
+                    new_callable=AsyncMock,
+                ) as mock_mt:
+                    await respond_to_message(mock_client, context, message)
+                    mock_mt.assert_called_once()
+                    # Should extract source lang, target lang, and text
+                    call_args = mock_mt.call_args
+                    assert call_args[1]["source_lang"] == "en"
+                    assert call_args[1]["target_lang"] == "fr"
+                    assert call_args[1]["sentence"] == "Hello world"
 
     @pytest.mark.asyncio
     async def test_respond_to_message_mt_request_no_source_lang(self, user_id, team_id):
@@ -3382,15 +3392,20 @@ class TestRespondToMessage:
         )
 
         with patch(
-            "app.slack.listener_actions.detect_language", new_callable=AsyncMock
-        ) as mock_detect:
-            mock_detect.return_value = MagicMock(language="en")
+            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+        ) as mock_require_ray:
+            mock_require_ray.return_value = True
             with patch(
-                "app.slack.listener_actions.get_mt_translation", new_callable=AsyncMock
-            ) as mock_mt:
-                await respond_to_message(mock_client, context, message)
-                mock_detect.assert_called_once()
-                mock_mt.assert_called_once()
+                "app.slack.listener_actions.detect_language", new_callable=AsyncMock
+            ) as mock_detect:
+                mock_detect.return_value = MagicMock(language="en")
+                with patch(
+                    "app.slack.listener_actions.get_mt_translation",
+                    new_callable=AsyncMock,
+                ) as mock_mt:
+                    await respond_to_message(mock_client, context, message)
+                    mock_detect.assert_called_once()
+                    mock_mt.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_respond_to_message_watson_help_intent(self, user_id, team_id):
@@ -3735,19 +3750,28 @@ class TestAutoTranslateMessage:
                 with patch(
                     "app.slack.listener_actions.detect_language", new_callable=AsyncMock
                 ) as mock_detect:
-                    mock_detect.return_value = MagicMock(language="en")
+                    # Real str language; MagicMock breaks .lower() / equality in filters
+                    mock_detect.return_value = SimpleNamespace(language="en")
                     with patch(
                         "app.slack.listener_actions.evaluate_get_glossary_resource",
                         new_callable=AsyncMock,
                     ) as mock_glossary:
-                        mock_glossary.return_value = None
+                        # stream_proxy validation requires glossary IDs to be strings
+                        mock_glossary.return_value = ""
                         with patch(
-                            "app.slack.listener_actions.send_mt_translation_request",
+                            "app.slack.listener_actions.get_group_id",
                             new_callable=AsyncMock,
-                        ) as mock_send_mt:
-                            await auto_translate_message(mock_client, context, message)
-                            # Should send translation request
-                            mock_send_mt.assert_called_once()
+                        ) as mock_group_id:
+                            mock_group_id.return_value = "group-test-id"
+                            with patch(
+                                "app.slack.listener_actions.send_mt_translation_request",
+                                new_callable=AsyncMock,
+                            ) as mock_send_mt:
+                                await auto_translate_message(
+                                    mock_client, context, message
+                                )
+                                # Should send translation request
+                                mock_send_mt.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_auto_translate_message_same_source_target_lang(

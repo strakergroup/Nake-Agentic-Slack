@@ -9,11 +9,7 @@ from app.api.verify import VerifyAPIError, create_human_job
 
 @pytest.mark.asyncio
 async def test_create_human_job_sends_multiple_file_and_languages_fields():
-    """Test that create_human_job sends file_and_languages correctly.
-
-    httpx automatically converts dict data with list values to multipart form data,
-    so file_and_languages list gets converted to separate form fields.
-    """
+    """Test that create_human_job POSTs the expected URL, headers, and form ``data``."""
     # Setup - import RayClient here to avoid circular dependency
     from app.auth.connector import RayClient
 
@@ -67,27 +63,13 @@ async def test_create_human_job_sends_multiple_file_and_languages_fields():
             kwargs = call_args[1] if len(call_args) > 1 else call_args.kwargs
             assert kwargs["headers"] == {"Authorization": "Bearer test-token"}
 
-            # httpx converts dict data with list values to multipart form data (files)
-            # So we check the files parameter instead
-            assert (
-                "files" in kwargs
-            ), f"files parameter should be passed to httpx.post. Got kwargs: {list(kwargs.keys())}"
-            files_data = kwargs["files"]
-            assert isinstance(files_data, list), "files should be a list of tuples"
-            assert len(files_data) == 6  # 3 regular fields + 3 file_and_languages
-
-            # Verify all fields are present
-            field_names = [field[0] for field in files_data]
-            assert "job_uuid" in field_names
-            assert "service_uuid" in field_names
-            assert "purchase_order_number" in field_names
-            assert field_names.count("file_and_languages") == 3
-
-            # Verify file_and_languages values
-            file_and_lang_values = [
-                field[1] for field in files_data if field[0] == "file_and_languages"
-            ]
-            assert set(file_and_lang_values) == set(file_and_languages)
+            # Implementation sends a form body via data= (not multipart files=)
+            assert "data" in kwargs, f"Expected data= on httpx.post. Got: {list(kwargs.keys())}"
+            posted = kwargs["data"]
+            assert posted["job_uuid"] == job_uuid
+            assert posted["file_and_languages"] == file_and_languages
+            assert posted["purchase_order_number"] == "123456"
+            assert posted["service_uuid"] == "37f2e44b-ba3c-42b1-83c7-d3023298292f"
 
 
 @pytest.mark.asyncio

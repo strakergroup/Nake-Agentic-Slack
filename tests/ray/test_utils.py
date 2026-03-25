@@ -1,7 +1,7 @@
 import datetime
 import os
 import tempfile
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -260,7 +260,7 @@ class TestUploadToFileServer:
             f.write("test content")
             tmp = f.name
         try:
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = {"id": "abc-123"}
 
@@ -298,7 +298,7 @@ class TestUploadToFileServer:
             f.write("test content")
             tmp = f.name
         try:
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = {"id": "def-456"}
 
