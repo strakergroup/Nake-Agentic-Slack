@@ -888,3 +888,29 @@ class TestMediaEmbedOptionMessage:
         assert message.blocks[0]["accessory"]["type"] == "button"
         assert message.blocks[0]["accessory"]["action_id"] == "video_embed_subtitles"
         assert message.blocks[0]["accessory"]["value"] == action_value
+
+
+class TestInsightsRemoval:
+    """Guard tests: verify Insights symbols were fully removed (RAY-79162)."""
+
+    def test_insights_message_not_importable(self):
+        """InsightsMessage should no longer exist in the messages module."""
+        import app.slack.templates.messages as msg_mod
+
+        assert not hasattr(msg_mod, "InsightsMessage")
+
+    def test_report_insights_message_not_importable(self):
+        """ReportInsightsMessage should no longer exist in the messages module."""
+        import app.slack.templates.messages as msg_mod
+
+        assert not hasattr(msg_mod, "ReportInsightsMessage")
+
+    def test_login_message_no_insights_variation(self):
+        """LoginMessage.INSIGHTS constant should no longer exist."""
+        assert not hasattr(LoginMessage, "INSIGHTS")
+
+    def test_is_min_languagecloud_plan_not_in_utils(self):
+        """is_min_langugagecloud_plan should no longer exist in utils."""
+        import app.ray.utils as utils_mod
+
+        assert not hasattr(utils_mod, "is_min_langugagecloud_plan")

@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Added]: Guard tests for Insights removal — verify `InsightsMessage`, `ReportInsightsMessage`, `LoginMessage.INSIGHTS`, `is_min_langugagecloud_plan` are no longer importable; verify `home_view` source has no `report_insights` (Alex Zhao, 2026-03-26)
 - [Fixed]: Post–Insights removal cleanup — restore continuous markdown env table in `internal-services.md`, remove stray blank lines in `.env.example`, test imports, and `generate_blocks.py` (Alex Zhao, 2026-03-26)
 - [Removed]: Deprecated Insights feature fully removed — runtime entry points (post_insights, post_report_insights, Show_Insights intent), UI (InsightsMessage, ReportInsightsMessage, report_insights buttons in home/help/welcome/login), is_min_langugagecloud_plan helper, INSIGHTS_API_DOMAIN config, tests, and docs (Alex Zhao, 2026-03-26)
 - [Fixed]: Subtitle embed language code now inferred from SRT filename convention (`video_Japanese.srt` → `ja`) via `_language_code_from_srt_filename` instead of always sending `"und"`; falls back to `"und"` when the filename doesn't match a known language (Wade Norman, 2026-03-11)
