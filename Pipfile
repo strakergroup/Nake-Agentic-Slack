@@ -43,10 +43,10 @@ pytest-asyncio = "*"
 coverage = "*"
 ruff = "*"
 black = "*"
-mypy = "*"
 openpyxl = "*"
 pre-commit = "*"
 pytest-cov = "*"
+pyright = "*"
 
 [requires]
 python_version = "3.11"

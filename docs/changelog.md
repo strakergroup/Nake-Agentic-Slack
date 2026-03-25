@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Removed]: Deleted unused Microsoft Translator environment settings and config validation from the app because this repository no longer reads those credentials (Wade Norman, 2026-03-26)
+- [Changed]: Updated the GitHub `Pyright` workflow to install only `Pyright` on CI so PR type checks can run without VPN-only internal dependencies (Wade Norman, 2026-03-26)
+- [Changed]: Replaced `mypy` with `Pyright` for repository type checking, added a GitHub PR typecheck workflow, and documented the staged ignored-module rollout for team adoption (Wade Norman, 2026-03-26)
 - [Fixed]: Subtitle embed language code now inferred from SRT filename convention (`video_Japanese.srt` → `ja`) via `_language_code_from_srt_filename` instead of always sending `"und"`; falls back to `"und"` when the filename doesn't match a known language (Wade Norman, 2026-03-11)
 - [Changed]: Embed pipeline download message now uses `initial_comment` on the file upload instead of a separate `chat_postMessage` with sleep delay, ensuring it always appears alongside the video (Wade Norman, 2026-03-10)
 - [Fixed]: Thread embed option now appears when user re-uploads an edited SRT in a DM thread — `build_thread_media_embed_action_value` falls back to extracting video file info from the `VideoOptionsMessage` button action values when the root message has no direct file attachments (Wade Norman, 2026-03-10)

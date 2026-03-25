@@ -195,10 +195,10 @@ class SsoLoginForm(BaseModel):
 
     email: EmailStr
     firstName: str = Field(
-        min_length=3, max_length=55, pattern='^[^*<>\\%$##!();}{\[\]&"]*$'
+        min_length=3, max_length=55, pattern=r'^[^*<>\\%$##!();}{\[\]&"]*$'
     )
     lastName: str = Field(
-        min_length=3, max_length=55, pattern='^[^*<>\\%$##!();}{\[\]&"]*$'
+        min_length=3, max_length=55, pattern=r'^[^*<>\\%$##!();}{\[\]&"]*$'
     )
 
     @classmethod

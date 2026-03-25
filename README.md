@@ -163,11 +163,15 @@ This package uses [Ruff](https://github.com/astral-sh/ruff) for linting and [Bla
 
 ### Static Type Checking
 
-We use [mypy](http://mypy-lang.org) to perform static type checks on the codebase and can be run from the command line:
+We use [Pyright](https://github.com/microsoft/pyright) to perform static type checks on the codebase:
 
 ```bash
-pipenv run python -m mypy app/**/*.py
+pipenv run pyright
 ```
+
+Pyright is also wired into pre-commit and the GitHub pull request workflow so local checks match the automated PR gate. The current configuration intentionally ignores a small set of large backlog-heavy modules while the team migrates them incrementally.
+
+The GitHub workflow installs `Pyright` directly rather than syncing the full Pipenv environment, which allows the PR typecheck to run even when private dependencies are only reachable from the VPN.
 
 ### Slack API fields in env file
 

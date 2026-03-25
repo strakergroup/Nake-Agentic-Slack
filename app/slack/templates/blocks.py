@@ -112,22 +112,20 @@ def home_auth_blocks(
                 "elements": [],
             },
         ]
-        (
-            blocks[1]["elements"].insert(
-                0,
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": _("Connect to Verify"),
-                    },
-                    "style": "primary",
-                    "url": get_language_cloud_connect_url(
-                        user_id, team_id, enterprise_id, channel_id or user_id
-                    ),
-                    "action_id": "login",
+        blocks[1]["elements"].insert(
+            0,
+            {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": _("Connect to Verify"),
                 },
-            ),
+                "style": "primary",
+                "url": get_language_cloud_connect_url(
+                    user_id, team_id, enterprise_id, channel_id or user_id
+                ),
+                "action_id": "login",
+            },
         )
 
     return blocks

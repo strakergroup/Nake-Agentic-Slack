@@ -38,9 +38,6 @@ class StrakerConfig(BaseSettings):
     watson_assistant_id: str = Field(min_length=1)
     watson_environment_id: str = Field(min_length=1)
     google_mt_api_key: SecretStr = SecretStr("")
-    microsoft_mt_api_key: SecretStr = SecretStr("")
-    microsoft_mt_website: str = ""
-    microsoft_mt_url: str = ""
     document_mt_pdf_max_size_mb: int = Field(default=25, ge=1)
     # taus_api_key: SecretStr = Field(min_length=1)
     elastic_apm_server_url: str | None = None
@@ -63,14 +60,6 @@ class StrakerConfig(BaseSettings):
         if info.data["environment"] in [Environment.production, Environment.uat]:
             if not v:
                 raise ValueError("GOOGLE_MT_API_KEY must be set in production and uat")
-        return v
-
-    def validate_microsoft_mt_api_key(cls, v, info: ValidationInfo):
-        if info.data["environment"] in [Environment.production, Environment.uat]:
-            if not v:
-                raise ValueError(
-                    "MICROSOFT_MT_API_KEY must be set in production and uat"
-                )
         return v
 
     @field_validator("buglog_listener_url", mode="before")
