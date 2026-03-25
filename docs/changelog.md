@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Removed]: Deprecated Insights feature fully removed — runtime entry points (post_insights, post_report_insights, Show_Insights intent), UI (InsightsMessage, ReportInsightsMessage, report_insights buttons in home/help/welcome/login), is_min_langugagecloud_plan helper, INSIGHTS_API_DOMAIN config, tests, and docs (Alex Zhao, 2026-03-26)
 - [Fixed]: Subtitle embed language code now inferred from SRT filename convention (`video_Japanese.srt` → `ja`) via `_language_code_from_srt_filename` instead of always sending `"und"`; falls back to `"und"` when the filename doesn't match a known language (Wade Norman, 2026-03-11)
 - [Changed]: Embed pipeline download message now uses `initial_comment` on the file upload instead of a separate `chat_postMessage` with sleep delay, ensuring it always appears alongside the video (Wade Norman, 2026-03-10)
 - [Fixed]: Thread embed option now appears when user re-uploads an edited SRT in a DM thread — `build_thread_media_embed_action_value` falls back to extracting video file info from the `VideoOptionsMessage` button action values when the root message has no direct file attachments (Wade Norman, 2026-03-10)
