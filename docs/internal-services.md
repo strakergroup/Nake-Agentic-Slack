@@ -430,7 +430,6 @@ All service domains are loaded via `StrakerDomains.from_environment()` from `str
 | `LANGUAGECLOUD_API_DOMAIN`      | LanguageCloud API             | `domains.languagecloud_api`      |
 | `STREAM_PROXY_DOMAIN`           | redis-stream-proxy            | `domains.stream_proxy`           |
 | `FILE_API_DOMAIN`               | File API (GridFS)             | `domains.file_api`               |
-
 | `JOB_ON_TIME_PREDICTION_DOMAIN` | Job-on-Time Prediction        | `domains.job_on_time_prediction` |
 | `VERIFY_DOMAIN`                 | Verify Web App                | `domains.verify`                 |
 | `STINGRAY_DOMAIN`               | Stingray / RAY SDK            | `domains.stingray`               |

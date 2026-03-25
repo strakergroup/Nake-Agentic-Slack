@@ -589,7 +589,6 @@ def build_all_messages() -> list[dict[str, Any]]:
             f"{MSG}.format_job_prediction", return_value=":large_green_circle: On Time"
         ),
         patch(f"{MSG}.is_ibm_enterprise", return_value=False),
-
         patch(
             f"{MSG}.get_auto_translate_language_options",
             return_value=MOCK_LANGUAGE_OPTIONS,
@@ -653,7 +652,6 @@ def build_all_messages() -> list[dict[str, Any]]:
             HumanJobQuoteMessage,
             ImageToMarkdownMessage,
             InfoMessage,
-
             InvalidCommandMessage,
             InvalidJobMessage,
             InvalidMTResultMessage,
@@ -681,7 +679,6 @@ def build_all_messages() -> list[dict[str, Any]]:
             NewJobMessage,
             OnboardingMessage,
             QuoteMessage,
-
             RequiresMtTokenAdminMessage,
             RequiresMtTokenMessage,
             SlackPermissionsMessage,

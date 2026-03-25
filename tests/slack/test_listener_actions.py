@@ -17,7 +17,6 @@ from app.slack.listener_actions import (
     post_file_list,
     post_job_status,
     post_job_target_lang,
-
     submit_job,
     update_machine_translation_score,
     verify_help,
