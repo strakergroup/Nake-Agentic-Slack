@@ -169,9 +169,7 @@ We use [Pyright](https://github.com/microsoft/pyright) to perform static type ch
 pipenv run pyright
 ```
 
-Pyright is also wired into pre-commit and the GitHub pull request workflow so local checks match the automated PR gate. The current configuration intentionally ignores a small set of large backlog-heavy modules while the team migrates them incrementally.
-
-The GitHub workflow installs `Pyright` directly rather than syncing the full Pipenv environment, which allows the PR typecheck to run even when private dependencies are only reachable from the VPN.
+Pyright is also wired into pre-commit so developers can catch regressions before pushing changes. The current configuration intentionally ignores a small set of large backlog-heavy modules while the team migrates them incrementally.
 
 ### Slack API fields in env file
 

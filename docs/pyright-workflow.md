@@ -31,15 +31,14 @@ To keep the rollout practical, a small set of backlog-heavy modules are temporar
 
 These files should be removed from the ignore list incrementally as they are cleaned up.
 
-## Pull Request Check
+## Current Rollout
 
-GitHub Actions runs `pyright` on pull requests and pushes to the default branch.
+Type checking currently runs through local development tooling only:
 
-The workflow intentionally installs only `Pyright` on the GitHub runner and does not perform a full `pipenv sync --dev`. This keeps the PR check working even when private Straker dependencies are only available on VPN-protected package indexes.
+- `pipenv run pyright`
+- `pipenv run pre-commit run pyright --all-files`
 
-Because the CI job does not install the full application dependency set, type information at those unavailable package boundaries may be less precise than a fully provisioned local development environment.
-
-After the workflow is merged and green on the default branch, make the `pyright` job a required status check in the repository branch protection or ruleset settings.
+There is intentionally no repository-level GitHub Actions workflow for `Pyright` at the moment because several repositories depend on internal packages that are only available behind the VPN.
 
 ## Editor Setup
 

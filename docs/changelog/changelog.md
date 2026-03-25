@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Removed]: Deleted the repository GitHub Actions `Pyright` workflow so type checking remains local/pre-commit only until a reusable CI approach is in place for VPN-only dependencies (Wade Norman, 2026-03-26)
 - [Removed]: Deleted unused Microsoft Translator environment settings and config validation from the app because this repository no longer reads those credentials (Wade Norman, 2026-03-26)
 - [Changed]: Updated the GitHub `Pyright` workflow to install only `Pyright` on CI so PR type checks can run without VPN-only internal dependencies (Wade Norman, 2026-03-26)
 - [Changed]: Replaced `mypy` with `Pyright` for repository type checking, added a GitHub PR typecheck workflow, and documented the staged ignored-module rollout for team adoption (Wade Norman, 2026-03-26)
