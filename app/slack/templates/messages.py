@@ -46,7 +46,6 @@ from ...ray.utils import (
     format_job_status,
     get_job_url,
     is_ibm_enterprise,
-    is_min_langugagecloud_plan,
 )
 from ..utils import format_strings_display, split_text_into_blocks, unescape_slack_emoji
 from .blocks import (
@@ -142,7 +141,6 @@ class LoginMessage(SlackMessage):
 
     GET_JOB = "get_job"
     NEW_JOB = "new_job"
-    INSIGHTS = "insights"
     CANCEL_JOB = "cancel_job"
     AI_HELP = "ai_help"
     QUALITY_EVALUATION = "quality_evaluation"
@@ -184,8 +182,6 @@ class LoginMessage(SlackMessage):
             block_text = "Connect your account to view your jobs."
         elif variation == self.NEW_JOB:
             block_text = "Connect your account to submit a new translation job."
-        elif variation == self.INSIGHTS:
-            block_text = "Connect your account to view your insights."
         elif variation == self.CANCEL_JOB:
             block_text = "Connect your account to cancel your job."
         elif variation == self.QUALITY_EVALUATION:
@@ -441,24 +437,6 @@ class WelcomeBackMessage(SlackMessage):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": _(
-                            ":bar_chart: Insights uses AI to gather and show data about your translation experience"
-                        ),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _("Insights"),
-                        },
-                        "action_id": "report_insights",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
                         "text": _(":blue_book: Learn The Basics"),
                     },
                     "accessory": {
@@ -652,24 +630,6 @@ class SuccessfulLoginMessage(SlackMessage):
                             "text": _("Cancel"),
                         },
                         "action_id": "cancel_job",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            ":bar_chart: Insights uses AI to gather and show data about your translation experience"
-                        ),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": _("Insights"),
-                        },
-                        "action_id": "report_insights",
                     },
                 },
                 {
@@ -1864,28 +1824,6 @@ class JobSubmitMessage(SlackMessage):
         )
 
 
-class InsightsMessage(SlackMessage):
-    def __init__(self, message: str):
-        super().__init__(
-            _(":bulb: Here are your insights"),
-            [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(":bulb: *Here are your insights*"),
-                    },
-                },
-                {
-                    "type": "section",
-                    "fields": [
-                        {"type": "mrkdwn", "text": ">" + message},
-                    ],
-                },
-            ],
-        )
-
-
 class JobCreationMessage(SlackMessage):
     """A job TJ number is created after submitting a new job (from API v3 callback)."""
 
@@ -2137,20 +2075,6 @@ class HelpMessage(SlackMessage):
                         "type": "button",
                         "text": {"type": "plain_text", "text": _("Jobs")},
                         "action_id": "all_summary",
-                    },
-                },
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": _(
-                            ":bar_chart: Insights uses AI to gather and show data about your translation experience"
-                        ),
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": _("Insights")},
-                        "action_id": "report_insights",
                     },
                 },
                 {
@@ -3049,18 +2973,6 @@ class FileListMessage(SlackMessage):
                 *job_file_block,
                 *pagination_blocks,
             ],
-        )
-
-
-class ReportInsightsMessage(SlackMessage):
-    def __init__(self, plan: str | None) -> None:
-        if not is_min_langugagecloud_plan(plan, "Essentials"):
-            message = "The insights feature is only avaiable on the Growth and Enterprise plans."
-        else:
-            message = "You can use the message pane below to type your insights request using natural language. Get turn around times, cost, or validation quality. An example:\n>Can you tell me how many jobs have been delivered on time in the last 30 days"
-        super().__init__(
-            _(":bulb: Here are your insights"),
-            [{"type": "section", "text": {"type": "mrkdwn", "text": _(message)}}],
         )
 
 

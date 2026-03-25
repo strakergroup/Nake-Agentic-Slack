@@ -405,16 +405,6 @@ async def home_view(
                         "text": {
                             "type": "plain_text",
                             "emoji": True,
-                            "text": _("{barEmoji} Insights"),
-                        },
-                        "action_id": "report_insights",
-                        "url": message_url,
-                    },
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
                             "text": _("{helpEmoji} AI Translate Help"),
                         },
                         "action_id": "ai_translate_help",
