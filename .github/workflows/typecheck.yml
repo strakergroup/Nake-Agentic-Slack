@@ -2,9 +2,13 @@ name: Typecheck
 
 on:
   pull_request:
+    branches:
+      - master
+      - uat
   push:
     branches:
-      - main
+      - master
+      - uat
 
 jobs:
   pyright:
