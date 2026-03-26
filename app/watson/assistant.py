@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any, cast
 
 from ibm_watson import AssistantV2  # type: ignore
 
@@ -16,7 +17,7 @@ async def watson_message(text: str, user_id: str | None = None) -> WatsonRespons
     response = await asyncio.to_thread(
         assistant.message_stateless,
         config.watson_environment_id,
-        input={"text": cleaned_text},
+        input=cast(Any, {"text": cleaned_text}),
         user_id=user_id,
     )
 

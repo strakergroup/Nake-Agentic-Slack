@@ -1,9 +1,14 @@
-from typing import Tuple
+from typing import Protocol, Tuple, runtime_checkable
 
 import ijson
 from PyPDF2 import PdfReader
 
 from app.translate import _
+
+
+@runtime_checkable
+class _PdfMetadataObject(Protocol):
+    def get_object(self) -> object: ...
 
 
 def validate_json(file_path: str) -> Tuple[bool, str]:
@@ -144,7 +149,7 @@ def _normalize_metadata_string(value: object | None) -> str:
     """
     if value is None:
         return ""
-    if hasattr(value, "get_object"):
+    if isinstance(value, _PdfMetadataObject):
         try:
             value = value.get_object()
         except Exception:

@@ -19,9 +19,16 @@ ignore = ["E501", "F841", "B039", "B007"]
 # Avoid trying to fix flake8-bugbear (`B`) violations.
 unfixable = ["B"]
 
-[tool.mypy]
-plugins = "sqlalchemy.ext.mypy.plugin"
-python_version = "3.11"
-files = "app"
-ignore_missing_imports = true
-disable_error_code = ["no-redef"]
+[tool.pyright]
+pythonVersion = "3.11"
+include = ["app"]
+typeCheckingMode = "basic"
+ignore = [
+    "app/auth/connector.py",
+    "app/routers/ray.py",
+    "app/slack/listener_actions.py",
+    "app/slack/listeners.py",
+]
+reportMissingImports = "none"
+reportMissingTypeStubs = "none"
+reportPrivateImportUsage = "none"

@@ -5,7 +5,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, cast
 
 import httpx
 from slack_sdk.errors import SlackApiError
@@ -68,7 +68,19 @@ async def get_file_info(
         return []
     tasks = (client.files_info(file=file_id) for file_id in files)
     responses = await asyncio.gather(*tasks, return_exceptions=True)
-    return [r["file"] if not isinstance(r, BaseException) else r for r in responses]
+    file_info: list[dict[str, Any] | BaseException] = []
+    for response in responses:
+        if isinstance(response, BaseException):
+            file_info.append(response)
+            continue
+        file = response.get("file")
+        if isinstance(file, dict):
+            file_info.append(cast(dict[str, Any], file))
+        else:
+            file_info.append(
+                ValueError("Slack files_info response is missing file data")
+            )
+    return file_info
 
 
 async def get_bot_accessible_files(
@@ -112,7 +124,14 @@ async def download_file(
     # Download the file from slack.
     try:
         file = await client.files_info(file=file_id)
-        download_url = file["file"]["url_private"]
+        file_data = file.get("file")
+        if not isinstance(file_data, dict):
+            raise ValueError("Slack files_info response is missing file data")
+        download_url = file_data.get("url_private")
+        if not isinstance(download_url, str):
+            raise ValueError(
+                "Slack files_info response is missing a private download URL"
+            )
     except SlackApiError:
         # Slack auth error, file_not_found error, etc.
         raise
@@ -137,7 +156,12 @@ async def download_file(
                 )
                 # Create the directory if it doesn't exist.
                 Path(temp_directory).mkdir(parents=True, exist_ok=True)
-                file_path = os.path.join(temp_directory, file["file"]["title"])
+                file_title = file_data.get("title")
+                if not isinstance(file_title, str):
+                    raise ValueError(
+                        "Slack files_info response is missing a file title"
+                    )
+                file_path = os.path.join(temp_directory, file_title)
 
                 with open(file_path, "wb") as f:
                     async for chunk in response.aiter_bytes():
@@ -251,8 +275,10 @@ async def upload_file_to_slack_memory_efficient(
         if not upload_response.get("ok"):
             raise SlackApiError("Failed to get upload URL", upload_response)
 
-        upload_url = upload_response["upload_url"]
-        file_id = upload_response["file_id"]
+        upload_url = upload_response.get("upload_url")
+        file_id = upload_response.get("file_id")
+        if not isinstance(upload_url, str) or not isinstance(file_id, str):
+            raise ValueError("Slack upload URL response is missing required fields")
 
     except SlackApiError as e:
         notify_exception(e, f"Failed to get upload URL for {filename}")
@@ -284,8 +310,9 @@ async def upload_file_to_slack_memory_efficient(
 
     # Step 3: Complete the upload
     try:
+        upload_title = title or filename
         complete_response = await client.files_completeUploadExternal(
-            files=[{"id": file_id, "title": title or filename}],
+            files=[{"id": file_id, "title": upload_title}],
             channel_id=channel_id,
             initial_comment=initial_comment,
             thread_ts=thread_ts,

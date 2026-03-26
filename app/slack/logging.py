@@ -5,7 +5,7 @@ import logging
 import resource
 import sys
 import time
-from typing import Any, Callable, Coroutine
+from typing import Any, Awaitable, Callable
 
 from ray_logger.slack import SlackAppLog, SlackMySQLLogger
 from slack_bolt.request.payload_utils import (
@@ -121,8 +121,8 @@ async def log_slack(log: SlackAppLog):
 
 
 def slack_log_decorator(
-    listener_func: Callable[..., Coroutine],
-) -> Callable[..., Coroutine]:
+    listener_func: Callable[..., Awaitable[Any]],
+) -> Callable[..., Awaitable[Any]]:
     """A decorator for Slack Bolt listener functions to log with `ray_logger`
     at the end of the function.
 
@@ -133,13 +133,16 @@ def slack_log_decorator(
     context_in_listener = "context" in listener_sig.parameters
 
     # Add the "context" argument to wrapper() if it does not exist in listener_func().
+    wrapper_sig_func: Callable[..., Awaitable[Any]]
     if context_in_listener:
         wrapper_sig_func = listener_func
     else:
         # This is a placeholder function to set the signature of the listener
         # function the additional "context" argument.
-        async def wrapper_sig_func():
+        async def wrapper_sig_placeholder(*args: Any, **kwargs: Any) -> Any:
             pass
+
+        wrapper_sig_func = wrapper_sig_placeholder
 
         params = list(listener_sig.parameters.values())
         # Limitation: No positional only arguments allowed in the listener function.
