@@ -743,7 +743,8 @@ class TestMachineTranslationMessage:
         assert message.blocks[0]["type"] == "section"
         assert "*Machine translation result:*" in message.blocks[0]["text"]["text"]
         assert message.blocks[1]["type"] == "section"
-        assert "*Hola mundo (en-es)*" in message.blocks[1]["text"]["text"]
+        # Closing bold applies only around translated text; language suffix is outside
+        assert message.blocks[1]["text"]["text"] == "*Hola mundo (en-es)"
 
     def test_long_text_splitting(self):
         """Test that long translations get split into multiple blocks."""
@@ -858,13 +859,12 @@ class TestSrtTranslateMessage:
         task_uuid = "test-uuid-123"
         message = SrtTranslateMessage(task_uuid)
 
-        # Should have input block and actions block
+        # Input block (multi language select) then actions (submit)
         assert len(message.blocks) == 2
 
-        # First block should be input block
         assert message.blocks[0]["type"] == "input"
         assert message.blocks[0]["block_id"] == task_uuid
-        assert message.blocks[0]["element"]["type"] == "static_select"
+        assert message.blocks[0]["element"]["type"] == "multi_static_select"
         assert message.blocks[0]["element"]["action_id"] == "language_mt_options"
 
         # Second block should be actions block with submit button

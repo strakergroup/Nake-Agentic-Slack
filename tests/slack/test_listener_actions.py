@@ -36,27 +36,27 @@ class TestCreateServiceLanguageMapping:
         """Test with Google-supported languages."""
         result = create_service_language_mapping(["en", "fr", "es"])
         assert "google" in result
-        assert result["google"] == ["en", "fr", "es"]
+        assert result["google"] == {"en": "", "fr": "", "es": ""}
         assert "microsoft" not in result
 
     def test_create_service_language_mapping_french_canada(self):
         """Test with French Canada language."""
         result = create_service_language_mapping(["fr-ca"])
         assert "microsoft" in result
-        assert result["microsoft"] == ["fr-ca"]
+        assert result["microsoft"] == {"fr-ca": ""}
         assert "google" not in result
 
     def test_create_service_language_mapping_french_canadian(self):
         """Test with french-canadian variant."""
         result = create_service_language_mapping(["french-canadian"])
         assert "microsoft" in result
-        assert result["microsoft"] == ["french-canadian"]
+        assert result["microsoft"] == {"fr-ca": ""}
 
     def test_create_service_language_mapping_french_canada_variant(self):
         """Test with french-canada variant."""
         result = create_service_language_mapping(["french-canada"])
         assert "microsoft" in result
-        assert result["microsoft"] == ["french-canada"]
+        assert result["microsoft"] == {"fr-ca": ""}
 
     def test_create_service_language_mapping_mixed(self):
         """Test with mixed languages."""
@@ -65,19 +65,16 @@ class TestCreateServiceLanguageMapping:
         )
         assert "google" in result
         assert "microsoft" in result
-        assert result["google"] == ["en", "es"]
-        assert result["microsoft"] == ["fr-ca", "french-canadian"]
+        assert result["google"] == {"en": "", "es": ""}
+        assert result["microsoft"] == {"fr-ca": ""}
 
     def test_create_service_language_mapping_multiple_french_canada(self):
-        """Test with multiple French Canada variants."""
+        """Regional variants all map to the same Microsoft fr-ca key."""
         result = create_service_language_mapping(
             ["fr-ca", "french-canada", "french-canadian"]
         )
         assert "microsoft" in result
-        assert len(result["microsoft"]) == 3
-        assert "fr-ca" in result["microsoft"]
-        assert "french-canada" in result["microsoft"]
-        assert "french-canadian" in result["microsoft"]
+        assert result["microsoft"] == {"fr-ca": ""}
 
 
 class TestIsVideoFile:

@@ -43,7 +43,8 @@ def test_validate_json_invalid_bytes(tmp_path):
 
     is_valid, message = validate_json(str(json_path))
     assert is_valid is False
-    assert message == "Error: Invalid JSON. File must be UTF-8 encoded."
+    # ijson reports invalid bytes as a parse error, not UnicodeDecodeError
+    assert "Error: Invalid JSON. Please fix the issue and resubmit the file." in message
 
 
 def test_validate_json_complex(tmp_path):

@@ -415,14 +415,15 @@ class TestSrtTranslateModal:
     def test_srt_translate_modal_structure(self):
         """Test that srt_translate_modal returns a properly structured modal."""
         task_uuid = "test-task-uuid-123"
-        modal = srt_translate_modal(task_uuid)
+        channel_id = "C999"
+        modal = srt_translate_modal(task_uuid, channel_id)
 
         # Verify modal structure
         assert modal.get("type") == "modal"
         assert modal.get("callback_id") == "srt_translate"
         assert "blocks" in modal
         assert "private_metadata" in modal
-        assert modal["private_metadata"] == task_uuid
+        assert modal["private_metadata"] == f"{task_uuid}|{channel_id}"
 
         # Verify title
         assert "title" in modal
@@ -438,7 +439,7 @@ class TestSrtTranslateModal:
     def test_srt_translate_modal_blocks(self):
         """Test that the modal contains the correct blocks."""
         task_uuid = "test-task-uuid-456"
-        modal = srt_translate_modal(task_uuid)
+        modal = srt_translate_modal(task_uuid, "C888")
 
         blocks = modal["blocks"]
         assert len(blocks) == 2  # Section block + input block
@@ -492,12 +493,13 @@ class TestSrtTranslateModal:
         """Test that different task UUIDs are correctly stored in private_metadata."""
         uuid1 = "task-123"
         uuid2 = "task-456"
+        channel_id = "C777"
 
-        modal1 = srt_translate_modal(uuid1)
-        modal2 = srt_translate_modal(uuid2)
+        modal1 = srt_translate_modal(uuid1, channel_id)
+        modal2 = srt_translate_modal(uuid2, channel_id)
 
-        assert modal1["private_metadata"] == uuid1
-        assert modal2["private_metadata"] == uuid2
+        assert modal1["private_metadata"] == f"{uuid1}|{channel_id}"
+        assert modal2["private_metadata"] == f"{uuid2}|{channel_id}"
         assert modal1["private_metadata"] != modal2["private_metadata"]
 
 
@@ -513,9 +515,13 @@ class TestVideoTranscribeTranslateModal:
 
         modal = video_transcribe_translate_modal(
             channel_id=channel_id,
-            file_id=file_id,
-            file_name=file_name,
-            duration_ms=duration_ms,
+            files=[
+                {
+                    "file_id": file_id,
+                    "file_name": file_name,
+                    "duration_ms": duration_ms,
+                }
+            ],
         )
 
         assert modal.get("type") == "modal"
@@ -535,9 +541,13 @@ class TestVideoTranscribeTranslateModal:
 
         modal = video_transcribe_translate_modal(
             channel_id=channel_id,
-            file_id=file_id,
-            file_name=file_name,
-            duration_ms=duration_ms,
+            files=[
+                {
+                    "file_id": file_id,
+                    "file_name": file_name,
+                    "duration_ms": duration_ms,
+                }
+            ],
         )
 
         # Find the selected_file block
@@ -573,17 +583,25 @@ class TestVideoTranscribeTranslateModal:
 
         modal = video_transcribe_translate_modal(
             channel_id=channel_id,
-            file_id=file_id,
-            file_name=file_name,
-            duration_ms=duration_ms,
+            files=[
+                {
+                    "file_id": file_id,
+                    "file_name": file_name,
+                    "duration_ms": duration_ms,
+                }
+            ],
             thread_ts=thread_ts,
         )
 
         metadata = json.loads(modal.get("private_metadata", "{}"))
         assert metadata.get("channel_id") == channel_id
-        assert metadata.get("file_id") == file_id
-        assert metadata.get("file_name") == file_name
-        assert metadata.get("duration_ms") == duration_ms
+        assert metadata.get("files") == [
+            {
+                "file_id": file_id,
+                "file_name": file_name,
+                "duration_ms": duration_ms,
+            }
+        ]
         assert metadata.get("thread_ts") == thread_ts
         assert metadata.get("pipeline_type") == "transcription_translation"
 
@@ -596,9 +614,13 @@ class TestVideoTranscribeTranslateModal:
 
         modal = video_transcribe_translate_modal(
             channel_id=channel_id,
-            file_id=file_id,
-            file_name=file_name,
-            duration_ms=duration_ms,
+            files=[
+                {
+                    "file_id": file_id,
+                    "file_name": file_name,
+                    "duration_ms": duration_ms,
+                }
+            ],
         )
 
         blocks = modal.get("blocks", [])

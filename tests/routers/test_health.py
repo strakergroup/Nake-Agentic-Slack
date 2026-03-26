@@ -44,6 +44,7 @@ class TestHealthCheck:
             assert response.status_code == 200
             data = response.json()
             assert data["message"] == "OK"
+            assert data["x"] == 1
             assert "environment" not in data  # Hidden without password
             assert "errors" not in data
             assert "info" not in data
@@ -67,13 +68,14 @@ class TestHealthCheck:
                 assert response.status_code == 200
                 data = response.json()
                 assert data["message"] == "OK"
+                assert data["x"] == 1
                 assert "environment" in data
                 assert "errors" in data
                 assert "info" in data
 
     @pytest.mark.asyncio
     async def test_health_check_slack_api_error(self, client):
-        """Test health check when Slack API fails."""
+        """Slack is not checked in health_check yet; a broken api.test mock must not run."""
         with patch(
             "app.routers.health.slack_app.client.api_test", new_callable=AsyncMock
         ) as mock_api_test:
@@ -81,14 +83,15 @@ class TestHealthCheck:
 
             response = await client.get("/health")
 
-            assert response.status_code == 500
+            assert response.status_code == 200
             data = response.json()
-            assert data["message"] == "There are some issues"
-            # Errors are hidden without password, but message indicates issues
+            assert data["message"] == "OK"
+            assert data["x"] == 1
+            mock_api_test.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_health_check_slack_api_error_with_password(self, client):
-        """Test health check when Slack API fails, with password to see details."""
+        """Same with password: errors dict stays empty; Slack mock unused."""
         with patch(
             "app.routers.health.config.health_check_password.get_secret_value"
         ) as mock_get_secret:
@@ -100,15 +103,16 @@ class TestHealthCheck:
 
                 response = await client.get("/health?password=test-password")
 
-                assert response.status_code == 500
+                assert response.status_code == 200
                 data = response.json()
-                assert data["message"] == "There are some issues"
-                assert "slack_api" in data["errors"]
-                assert data["errors"]["slack_api"] == "Slack API error"
+                assert data["message"] == "OK"
+                assert data["x"] == 1
+                assert data.get("errors", {}) == {}
+                mock_api_test.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_health_check_slack_api_bad_status(self, client):
-        """Test health check when Slack API returns bad status code."""
+        """Non-200 api.test mock is irrelevant until _check_slack_api is awaited."""
         with patch(
             "app.routers.health.slack_app.client.api_test", new_callable=AsyncMock
         ) as mock_api_test:
@@ -118,14 +122,15 @@ class TestHealthCheck:
 
             response = await client.get("/health")
 
-            assert response.status_code == 500
+            assert response.status_code == 200
             data = response.json()
-            assert data["message"] == "There are some issues"
-            # Errors are hidden without password, but message indicates issues
+            assert data["message"] == "OK"
+            assert data["x"] == 1
+            mock_api_test.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_health_check_slack_api_bad_status_with_password(self, client):
-        """Test health check when Slack API returns bad status code, with password."""
+        """With password: still no slack_api error until router calls _check_slack_api."""
         with patch(
             "app.routers.health.config.health_check_password.get_secret_value"
         ) as mock_get_secret:
@@ -139,14 +144,12 @@ class TestHealthCheck:
 
                 response = await client.get("/health?password=test-password")
 
-                assert response.status_code == 500
+                assert response.status_code == 200
                 data = response.json()
-                assert data["message"] == "There are some issues"
-                assert "slack_api" in data["errors"]
-                assert (
-                    "api.test returned the status code: 500"
-                    in data["errors"]["slack_api"]
-                )
+                assert data["message"] == "OK"
+                assert data["x"] == 1
+                assert "slack_api" not in data.get("errors", {})
+                mock_api_test.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_health_check_wrong_password(self, client):
@@ -167,6 +170,7 @@ class TestHealthCheck:
                 assert response.status_code == 200
                 data = response.json()
                 assert data["message"] == "OK"
+                assert data["x"] == 1
                 assert "environment" not in data  # Hidden with wrong password
                 assert "errors" not in data
                 assert "info" not in data

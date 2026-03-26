@@ -211,9 +211,16 @@ class TestSendToSlack:
 class TestScheduleSlackNotification:
     """Tests for _schedule_slack_notification function."""
 
-    @patch("app.slack.buglog_notifier._send_to_slack")
-    def test_schedule_slack_notification_with_running_loop(self, mock_send_to_slack):
+    @patch("app.slack.buglog_notifier._send_to_slack", new_callable=AsyncMock)
+    @patch("app.config.config")
+    def test_schedule_slack_notification_with_running_loop(
+        self, mock_config, mock_send_to_slack
+    ):
         """Test scheduling in async context with running loop."""
+        from straker_utils.environment import Environment
+
+        mock_config.environment = Environment.uat
+
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -221,12 +228,11 @@ class TestScheduleSlackNotification:
 
             async def run_test():
                 _schedule_slack_notification(exc=ValueError("Error"))
-                # Give the task a moment to be scheduled
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0)
+                await asyncio.sleep(0)
 
             loop.run_until_complete(run_test())
-            # Task should be created
-            assert mock_send_to_slack.called or len(loop._ready) > 0
+            mock_send_to_slack.assert_awaited()
         finally:
             loop.close()
 
@@ -252,14 +258,19 @@ class TestScheduleSlackNotification:
         # The thread should eventually call asyncio.run
         # (we can't easily verify thread creation, but we can verify it doesn't crash)
 
+    @patch("app.config.config")
     @patch("app.slack.buglog_notifier.logger")
-    def test_schedule_slack_notification_error_handling(self, mock_logger):
+    def test_schedule_slack_notification_error_handling(
+        self, mock_logger, mock_config
+    ):
         """Test error handling in _schedule_slack_notification."""
+        from straker_utils.environment import Environment
+
+        mock_config.environment = Environment.uat
         with patch(
             "app.slack.buglog_notifier.asyncio.get_running_loop",
             side_effect=Exception("Unexpected error"),
         ):
-            # Should not raise exception
             _schedule_slack_notification(exc=ValueError("Error"))
             mock_logger.error.assert_called()
 

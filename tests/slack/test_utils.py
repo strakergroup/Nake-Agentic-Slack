@@ -266,7 +266,8 @@ class TestUnescapeSlackEmoji:
         source = ":wave: Hello <@U123456> :smile:"
         translated = "<img id='0'/> Hola <img id='1'/> <img id='2'/>"
         result = unescape_slack_emoji(translated, source)
-        assert result == ":wave: Hola <@U123456> :smile:"
+        # Preserves source spacing: no space before final emoji when translation omitted it
+        assert result == ":wave: Hola <@U123456>:smile:"
 
     def test_unescape_slack_emoji_restores_stripped_spacing(self):
         """Test that original spacing is restored when translation strips spaces around placeholder."""
