@@ -86,10 +86,10 @@ async def _send_to_google_chat(
     from app.config import Environment, config
 
     try:
-        url = config.google_chat_webhook_pm.get_secret_value().strip()
+        url = config.google_chat_webhook.get_secret_value().strip()
         if not url:
             logger.debug(
-                "Google Chat dev alert skipped: GOOGLE_CHAT_WEBHOOK_PM not configured "
+                "Google Chat dev alert skipped: GOOGLE_CHAT_WEBHOOK not configured "
                 f"(environment={config.environment.value})"
             )
             return

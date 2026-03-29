@@ -38,9 +38,9 @@ class TestSendToGoogleChat:
 
     @pytest_asyncio.fixture
     async def mock_config(self):
-        """Mock config with GOOGLE_CHAT_WEBHOOK_PM (defaults to UAT for env display)."""
+        """Mock config with GOOGLE_CHAT_WEBHOOK (defaults to UAT for env display)."""
         with patch("app.config.config") as mock_config:
-            mock_config.google_chat_webhook_pm.get_secret_value.return_value = (
+            mock_config.google_chat_webhook.get_secret_value.return_value = (
                 "https://chat.googleapis.com/v1/spaces/alert/messages?key=test"
             )
             from straker_utils.environment import Environment
@@ -94,8 +94,8 @@ class TestSendToGoogleChat:
 
     @pytest.mark.asyncio
     async def test_send_missing_webhook_url(self, mock_config, mock_http_client):
-        """Test that empty GOOGLE_CHAT_WEBHOOK_PM skips the request."""
-        mock_config.google_chat_webhook_pm.get_secret_value.return_value = ""
+        """Test that empty GOOGLE_CHAT_WEBHOOK skips the request."""
+        mock_config.google_chat_webhook.get_secret_value.return_value = ""
         await _send_to_google_chat(exc=ValueError("Error"))
 
         mock_http_client.post.assert_not_called()
