@@ -585,9 +585,6 @@ def build_all_messages() -> list[dict[str, Any]]:
         patch(
             f"{MSG}.format_job_status", return_value=":large_blue_circle: In Progress"
         ),
-        patch(
-            f"{MSG}.format_job_prediction", return_value=":large_green_circle: On Time"
-        ),
         patch(f"{MSG}.is_ibm_enterprise", return_value=False),
         patch(
             f"{MSG}.get_auto_translate_language_options",
@@ -862,26 +859,6 @@ def build_all_messages() -> list[dict[str, Any]]:
             "Jobs",
             JobDetailsMessage(job, CLIENT_UUID, True),
         )
-        add(
-            "JobDetailsMessage (with prediction)",
-            "Jobs",
-            JobDetailsMessage(
-                job,
-                CLIENT_UUID,
-                False,
-                job_prediction=":large_green_circle: This job is predicted to be on time",
-            ),
-        )
-        add(
-            "JobDetailsMessage (IBM, with prediction)",
-            "Jobs",
-            JobDetailsMessage(
-                job,
-                CLIENT_UUID,
-                True,
-                job_prediction=":large_green_circle: This job is predicted to be on time",
-            ),
-        )
         add("InvalidJobMessage", "Jobs", InvalidJobMessage("TJ999999"))
         add("JobStatusNoIdMessage", "Jobs", JobStatusNoIdMessage())
         add(
@@ -895,7 +872,6 @@ def build_all_messages() -> list[dict[str, Any]]:
                 validation=4,
                 pending_quotes=2,
                 order_now=1,
-                predictions={"in_progress": 8, "on_time": 5, "late": 2, "over_due": 1},
             ),
         )
         add(
@@ -909,7 +885,6 @@ def build_all_messages() -> list[dict[str, Any]]:
                 validation=4,
                 pending_quotes=2,
                 order_now=1,
-                predictions={"in_progress": 8, "on_time": 5, "late": 2, "over_due": 1},
                 all_jobs=True,
             ),
         )
@@ -927,7 +902,6 @@ def build_all_messages() -> list[dict[str, Any]]:
                 "In Progress Jobs",
                 [job],
                 list_pagination,
-                [{"prediction": ":large_green_circle: On time", "job_id": "TJ123456"}],
             ),
         )
         add(

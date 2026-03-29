@@ -9,10 +9,8 @@ from app.ray.events.models import (
 )
 from app.slack.templates.blocks import (
     evaluate_success_blocks,
-    get_progess_text,
     home_auth_blocks,
     job_link_block,
-    job_prediction_block,
     job_summary_no_score,
     job_summary_string,
     quote_message_block,
@@ -91,83 +89,6 @@ class TestJobLinkBlock:
         assert block["elements"][0]["type"] == "button"
         assert block["elements"][0]["style"] == "primary"
         assert "job-123" in block["elements"][0]["url"]
-
-
-class TestGetProgessText:
-    """Tests for get_progess_text function."""
-
-    def test_get_progess_text_simple(self):
-        """Test simple progress text."""
-        predictions = {
-            "in_progress": 5,
-            "on_time": 0,
-            "late": 0,
-            "over_due": 0,
-        }
-        result = get_progess_text(predictions)
-        assert "5" in result
-        assert "in progress" in result.lower()
-
-    def test_get_progess_text_with_predictions(self):
-        """Test progress text with all prediction types."""
-        predictions = {
-            "in_progress": 0,
-            "on_time": 3,
-            "late": 2,
-            "over_due": 1,
-        }
-        result = get_progess_text(predictions)
-        assert "3" in result  # on_time
-        assert "2" in result  # late
-        assert "1" in result  # over_due
-
-    def test_get_progess_text_on_time_only(self):
-        """Test progress text with only on-time predictions."""
-        # Note: get_progess_text only shows predictions if ALL three are truthy
-        # If only on_time is set, it falls back to simple status
-        predictions = {
-            "in_progress": 0,
-            "on_time": 5,
-            "late": 0,
-            "over_due": 0,
-        }
-        result = get_progess_text(predictions)
-        # Should show simple status since not all three prediction types are set
-        assert "0" in result  # in_progress is 0
-
-
-class TestJobPredictionBlock:
-    """Tests for job_prediction_block function."""
-
-    def test_job_prediction_block_behind_schedule(self):
-        """Test prediction block for behind schedule."""
-        block = job_prediction_block("Job is behind schedule", 5, ":large_red_circle:")
-
-        assert block["type"] == "section"
-        assert "behind schedule" in block["text"]["text"].lower()
-        assert "accessory" in block
-        assert block["accessory"]["action_id"] == "delay_info"
-
-    def test_job_prediction_block_on_time(self):
-        """Test prediction block for on-time."""
-        block = job_prediction_block("Job is on time", 0, ":large_green_circle:")
-
-        assert block["type"] == "section"
-        assert "on time" in block["text"]["text"].lower()
-        assert "accessory" not in block
-
-    def test_job_prediction_block_on_time_with_dash(self):
-        """Test prediction block for on-time with dash."""
-        block = job_prediction_block("Job is on-time", 0, ":large_green_circle:")
-
-        assert block["type"] == "section"
-        assert "on-time" in block["text"]["text"].lower()
-
-    def test_job_prediction_block_other(self):
-        """Test prediction block for other cases."""
-        block = job_prediction_block("Some other prediction", 0)
-
-        assert block == {}
 
 
 class TestJobSummaryString:

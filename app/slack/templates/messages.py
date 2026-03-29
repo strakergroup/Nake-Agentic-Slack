@@ -42,7 +42,6 @@ from ...ray.settings import get_auto_translate_language_name
 from ...ray.utils import (
     format_datetime_slack,
     format_job_due_date_slack,
-    format_job_prediction,
     format_job_status,
     get_job_url,
     is_ibm_enterprise,
@@ -51,7 +50,6 @@ from ..utils import format_strings_display, split_text_into_blocks, unescape_sla
 from .blocks import (
     evaluate_success_blocks,
     job_link_block,
-    job_prediction_block,
     quote_message_block,
     verify_quote_blocks,
 )
@@ -796,9 +794,7 @@ class SlackPermissionsMessage(SlackMessage):
 class JobStatusMessage(SlackMessage):
     """Message showing the status of a translation job."""
 
-    def __init__(
-        self, job: Job, client_id: str, is_ibm: bool, job_prediction: str = ""
-    ) -> None:
+    def __init__(self, job: Job, client_id: str, is_ibm: bool) -> None:
         job_status_block: list[dict[str, Any]] = [
             {
                 "type": "section",
@@ -936,13 +932,6 @@ class JobStatusMessage(SlackMessage):
                     ],
                 },
             )
-        if job_prediction != "":
-            job_status_block.insert(
-                1,
-                job_prediction_block(
-                    format_job_prediction(job_prediction, job.target_date)
-                ),
-            )
         super().__init__(
             f"Job status ({job.id}): {format_job_status(job.status)}",
             job_status_block,
@@ -952,9 +941,7 @@ class JobStatusMessage(SlackMessage):
 class JobDetailsMessage(SlackMessage):
     """Message showing the details of a translation job."""
 
-    def __init__(
-        self, job: Job, client_id: str, is_ibm: bool, job_prediction: str = ""
-    ) -> None:
+    def __init__(self, job: Job, client_id: str, is_ibm: bool) -> None:
         job_link = (
             f"<{get_job_url(job.uuid, client_id)}|*{job.id}*>"
             if not is_ibm
@@ -1127,13 +1114,6 @@ class JobDetailsMessage(SlackMessage):
                     ],
                 },
             )
-        if job_prediction != "":
-            job_detail_block.insert(
-                1,
-                job_prediction_block(
-                    format_job_prediction(job_prediction, job.target_date)
-                ),
-            )
         super().__init__(
             f"The information for {job.id} is below:",
             job_detail_block,
@@ -1175,7 +1155,6 @@ class JobSummaryMessage(SlackMessage):
         validation: int,
         pending_quotes: int,
         order_now: int,
-        predictions: dict,
         all_jobs: bool = False,
     ) -> None:
         """The constructor.
@@ -1254,39 +1233,6 @@ class JobSummaryMessage(SlackMessage):
                         },
                     },
                 )
-
-            if config.environment != Environment.production:
-                if (predictions["on_time"]) > 0:
-                    job_plural = (
-                        "job is" if int(predictions["on_time"]) == 1 else "jobs are"
-                    )
-                    sections.append(
-                        job_prediction_block(
-                            (
-                                "*     {emorji} {value}"
-                                + f" {job_plural}* predicted to be on-time"
-                            ),
-                            predictions["on_time"],
-                            ":large_green_circle:",
-                        )
-                    )
-                if (predictions["late"]) > 0 or (predictions["over_due"]) > 0:
-                    total_late = int(predictions["late"]) + int(predictions["over_due"])
-                    job_plural = (
-                        "job"
-                        if int(predictions["late"]) + int(predictions["over_due"]) == 1
-                        else "jobs"
-                    )
-                    sections.append(
-                        job_prediction_block(
-                            (
-                                "*     {emorji} {value}"
-                                + f" {job_plural}* may be behind schedule"
-                            ),
-                            total_late,
-                            ":large_orange_circle:",
-                        )
-                    )
         if completed > 0 or all_jobs:
             sections.append(
                 {
@@ -1427,7 +1373,6 @@ class JobListMessage(SlackMessage):
         title: str,
         jobs: list[Job],
         pagination: Pagination,
-        job_predictions: list[dict],
         client_ref: str = "",
     ) -> None:
         jobs_blocks: list[dict[str, Any]] = []
@@ -1442,20 +1387,6 @@ class JobListMessage(SlackMessage):
                 job_text += f"\n{job.sl.shortname.upper()} > {', '.join(lang.shortname.upper() for lang in job.tl)}"
                 job_text += _("\nDue: ") + format_job_due_date_slack(
                     job.target_date, job.status, traffic_light=True
-                )
-                prediction = (
-                    next(
-                        prediction.get("prediction", "")
-                        for prediction in job_predictions
-                        if prediction["job_id"] == job.id.upper()
-                    )
-                    if job_predictions
-                    else ""
-                )
-                formatted_job_prediction = (
-                    format_job_prediction(prediction, job.target_date)
-                    if prediction != ""
-                    else ""
                 )
                 jobs_blocks.append(
                     {
@@ -1601,8 +1532,6 @@ class JobListMessage(SlackMessage):
                             ],
                         },
                     )
-                if formatted_job_prediction != "":
-                    jobs_blocks.append(job_prediction_block(formatted_job_prediction))
         else:
             jobs_blocks.append(
                 {
