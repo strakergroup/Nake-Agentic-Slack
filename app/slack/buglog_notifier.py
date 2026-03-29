@@ -1,6 +1,6 @@
-"""Slack notification helpers for BugLog exceptions and messages.
+"""Google Chat webhook notification helpers for BugLog exceptions and messages.
 
-This module provides functions that send notifications to both BugLogHQ and Slack.
+This module provides functions that send notifications to both BugLogHQ and Google Chat.
 """
 
 import asyncio
@@ -8,29 +8,22 @@ import logging
 import traceback
 from typing import Any
 
+import httpx
 from buglog import notify_exception as buglog_notify_exception
 from buglog import notify_message as buglog_notify_message
-from slack_sdk.models.blocks import (
-    HeaderBlock,
-    MarkdownTextObject,
-    PlainTextObject,
-    SectionBlock,
-)
-from slack_sdk.web.async_client import AsyncWebClient
 
 logger = logging.getLogger(__name__)
 
-# Slack's limit for mrkdwn text in section blocks is 3000 characters
-# Use a smaller limit to account for markdown formatting overhead
-MAX_BLOCK_TEXT_LENGTH = 2800
+# Google Chat incoming webhook text payloads are limited; stay under API limits.
+MAX_ALERT_TEXT_LENGTH = 3800
 
 
-def _truncate_text(text: str, max_length: int = MAX_BLOCK_TEXT_LENGTH) -> str:
-    """Truncate text to fit within Slack's character limit.
+def _truncate_text(text: str, max_length: int = MAX_ALERT_TEXT_LENGTH) -> str:
+    """Truncate text to fit within Google Chat webhook limits.
 
     Args:
         text: Text to truncate
-        max_length: Maximum length (default: 2800 to leave buffer for formatting)
+        max_length: Maximum length
 
     Returns:
         Truncated text with ellipsis if needed
@@ -40,53 +33,49 @@ def _truncate_text(text: str, max_length: int = MAX_BLOCK_TEXT_LENGTH) -> str:
     return text[: max_length - 20] + "\n... (truncated)"
 
 
-def _split_text_into_blocks(
-    text: str, max_length: int = MAX_BLOCK_TEXT_LENGTH
-) -> list[str]:
-    """Split long text into chunks that fit within Slack's block limit.
+def _build_alert_text(
+    exc: BaseException | None,
+    msg: str | None,
+    extra: dict[str, Any] | None,
+    severity: str,
+    env_display: str,
+) -> str:
+    """Build plain-text body for Google Chat webhook."""
+    lines: list[str] = []
+    if exc is not None:
+        lines.append("Exception (from BugLogHQ)")
+        lines.append(f"Environment: {env_display}")
+        lines.append(f"Error type: {type(exc).__name__}")
+        if msg:
+            lines.append(f"Context: {msg}")
+        err_msg = _truncate_text(str(exc), max_length=800)
+        lines.append(f"Error message: {err_msg}")
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        lines.append("Traceback:")
+        lines.append(tb)
+    else:
+        lines.append("Alert (from BugLogHQ)")
+        lines.append(f"Environment: {env_display}")
+        lines.append(f"Severity: {severity}")
+        alert_msg = msg or "No message provided"
+        lines.append(f"Message: {_truncate_text(alert_msg, max_length=2000)}")
 
-    Args:
-        text: Text to split
-        max_length: Maximum length per chunk
+    if extra:
+        lines.append("Extra:")
+        for k, v in extra.items():
+            lines.append(f"  {k}: {v}")
 
-    Returns:
-        List of text chunks
-    """
-    if len(text) <= max_length:
-        return [text]
-
-    # Split by lines to avoid breaking in the middle of a line
-    lines = text.split("\n")
-    chunks: list[str] = []
-    current_chunk: list[str] = []
-    current_length: int = 0
-
-    for line in lines:
-        line_length = len(line) + 1  # +1 for newline
-
-        # If adding this line would exceed the limit, start a new chunk
-        if current_length + line_length > max_length and current_chunk:
-            chunks.append("\n".join(current_chunk))
-            current_chunk = [line]
-            current_length = line_length
-        else:
-            current_chunk.append(line)
-            current_length += line_length
-
-    # Add the last chunk
-    if current_chunk:
-        chunks.append("\n".join(current_chunk))
-
-    return chunks
+    body = "\n".join(lines)
+    return _truncate_text(body)
 
 
-async def _send_to_slack(
+async def _send_to_google_chat(
     exc: BaseException | None = None,
     msg: str | None = None,
     extra: dict[str, Any] | None = None,
     severity: str = "ERROR",
 ) -> None:
-    """Send exception or message to Slack dev alert channel.
+    """Send exception or message to Google Chat via incoming webhook.
 
     Args:
         exc: Exception to report (optional)
@@ -94,153 +83,60 @@ async def _send_to_slack(
         extra: Extra information to include
         severity: Severity level (ERROR, INFO, FATAL)
     """
-    # Import config here to avoid circular imports
     from app.config import Environment, config
 
     try:
-        token = config.slack_dev_alert_bot_token.get_secret_value()
-        # Select channel based on environment
-        if config.environment == Environment.production:
-            channel_id = config.slack_dev_alert_channel_id_production
-        else:
-            channel_id = config.slack_dev_alert_channel_id_non_production
-
-        if not channel_id or not token:
+        url = config.google_chat_webhook_pm.get_secret_value().strip()
+        if not url:
             logger.debug(
-                f"Slack notification skipped: channel_id={bool(channel_id)}, token={bool(token)}, "
-                f"environment={config.environment.value}"
+                "Google Chat dev alert skipped: GOOGLE_CHAT_WEBHOOK_PM not configured "
+                f"(environment={config.environment.value})"
             )
             return
 
-        # Build message
-        env_prefix = (
-            f"{config.environment.title()}"
+        env_display = (
+            config.environment.title()
             if config.environment != Environment.production
-            else ""
+            else "Production"
         )
 
-        # Format exception information if present
-        if exc is not None:
-            error_type = type(exc).__name__
-            error_message = str(exc)
-            error_traceback = "".join(
-                traceback.format_exception(type(exc), exc, exc.__traceback__)
+        text = _build_alert_text(exc, msg, extra, severity, env_display)
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, json={"text": text})
+
+        if response.status_code >= 400:
+            logger.error(
+                "Google Chat dev alert failed: HTTP %s (body length=%s)",
+                response.status_code,
+                len(response.text),
+                exc_info=False,
             )
-
-            # Truncate error message if too long
-            error_message = _truncate_text(error_message)
-
-            # Fallback text for notifications (also truncate)
-            fallback_text = f"🚨 Exception: {error_type} - {error_message}"
-            if msg:
-                fallback_text = f"🚨 {msg}: {error_type} - {error_message}"
-            fallback_text = _truncate_text(fallback_text, max_length=2000)
-        else:
-            # No exception, just a message
-            error_type = None
-            error_message = msg or "No message provided"
-            error_message = _truncate_text(error_message)
-            error_traceback = None
-            fallback_text = f"🚨 Alert: {error_message}"
-            fallback_text = _truncate_text(fallback_text, max_length=2000)
-
-        # Build Block Kit blocks
-        blocks = [
-            HeaderBlock(
-                text=PlainTextObject(
-                    text="🚨 Exception (from BugLogHQ)"
-                    if exc
-                    else "🚨 Alert (from BugLogHQ)",
-                    emoji=True,
-                )
-            ),
-            SectionBlock(
-                fields=[
-                    MarkdownTextObject(
-                        text=f"*Environment:*\n{env_prefix or 'Production'}"
-                    ),
-                    MarkdownTextObject(
-                        text=f"*{'Error Type' if exc else 'Severity'}:*\n`{error_type or severity}`"
-                    ),
-                ]
-            ),
-            SectionBlock(
-                text=MarkdownTextObject(
-                    text=f"*{'Error' if exc else 'Alert'} Message:*\n{error_message}"
-                )
-            ),
-        ]
-
-        # Add traceback block only if we have an exception
-        # Split traceback into multiple blocks if needed
-        if error_traceback:
-            # Account for markdown formatting overhead: "*Traceback:*\n```\n" and "\n```"
-            traceback_prefix = "*Traceback:*\n```\n"
-            traceback_suffix = "\n```"
-            available_length = (
-                MAX_BLOCK_TEXT_LENGTH - len(traceback_prefix) - len(traceback_suffix)
-            )
-
-            traceback_chunks = _split_text_into_blocks(
-                error_traceback, max_length=available_length
-            )
-
-            for i, chunk in enumerate(traceback_chunks):
-                if i == 0:
-                    # First chunk with header
-                    blocks.append(
-                        SectionBlock(
-                            text=MarkdownTextObject(
-                                text=f"{traceback_prefix}{chunk}{traceback_suffix}"
-                            )
-                        )
-                    )
-                else:
-                    # Subsequent chunks without header
-                    blocks.append(
-                        SectionBlock(text=MarkdownTextObject(text=f"```\n{chunk}\n```"))
-                    )
-
-        # Add extra info if present
-        if extra:
-            extra_text = "\n".join([f"*{k}:* {v}" for k, v in extra.items()])
-            # Truncate extra text to fit in a single block
-            extra_text = _truncate_text(extra_text)
-            blocks.append(
-                SectionBlock(
-                    text=MarkdownTextObject(text=f"*Extra Info:*\n{extra_text}")
-                )
-            )
-
-        # Create Slack client and send message
-        slack_client = AsyncWebClient(token=token)
-        await slack_client.chat_postMessage(
-            channel=channel_id,
-            text=fallback_text,
-            blocks=blocks,
-        )
+            return
 
         logger.info(
-            f"Successfully sent {'exception' if exc else 'alert'} notification to Slack channel {channel_id}"
+            "Successfully sent %s notification to Google Chat webhook",
+            "exception" if exc else "alert",
         )
 
-    except Exception as slack_error:
-        # Don't let Slack notification failures break the app
+    except Exception as chat_error:
         error_info = f"{type(exc).__name__}: {exc}" if exc else f"Message: {msg}"
         logger.error(
-            f"Failed to send {'exception' if exc else 'alert'} to Slack: {slack_error}. "
-            f"Original: {error_info}",
+            "Failed to send %s to Google Chat: %s. Original: %s",
+            "exception" if exc else "alert",
+            chat_error,
+            error_info,
             exc_info=True,
         )
 
 
-def _schedule_slack_notification(
+def _schedule_dev_alert_notification(
     exc: BaseException | None = None,
     msg: str | None = None,
     extra: dict[str, Any] | None = None,
     severity: str = "ERROR",
 ) -> None:
-    """Schedule a Slack notification task (async-safe).
+    """Schedule a Google Chat dev alert task (async-safe).
 
     Args:
         exc: Exception to report (optional)
@@ -248,45 +144,43 @@ def _schedule_slack_notification(
         extra: Extra information to include
         severity: Severity level
     """
-    # Import config here to avoid circular imports
     from app.config import Environment, config
 
-    # Skip Slack notifications when running locally
     if config.environment == Environment.local:
-        logger.debug("Slack notification skipped: running in local environment")
+        logger.debug("Google Chat dev alert skipped: running in local environment")
         return
 
     try:
-        # Try to get the current event loop
         try:
             loop = asyncio.get_running_loop()
-            # If we're in an async context, schedule the task
-            loop.create_task(_send_to_slack(exc, msg, extra, severity))
+            loop.create_task(_send_to_google_chat(exc, msg, extra, severity))
             logger.debug(
-                f"Scheduled Slack notification task: exc={exc is not None}, msg={bool(msg)}"
+                "Scheduled Google Chat dev alert: exc=%s, msg=%s",
+                exc is not None,
+                bool(msg),
             )
         except RuntimeError:
-            # No running loop, create one for this task
-            # Use a thread to avoid blocking
             import threading
 
-            def run_async():
+            def run_async() -> None:
                 try:
-                    asyncio.run(_send_to_slack(exc, msg, extra, severity))
+                    asyncio.run(_send_to_google_chat(exc, msg, extra, severity))
                 except Exception as e:
                     logger.error(
-                        f"Error in async thread for Slack notification: {e}",
+                        "Error in async thread for Google Chat dev alert: %s",
+                        e,
                         exc_info=True,
                     )
 
             thread = threading.Thread(target=run_async, daemon=True)
             thread.start()
             logger.debug(
-                f"Started thread for Slack notification: exc={exc is not None}, msg={bool(msg)}"
+                "Started thread for Google Chat dev alert: exc=%s, msg=%s",
+                exc is not None,
+                bool(msg),
             )
     except Exception as e:
-        # Don't let Slack failures break BugLogHQ notifications
-        logger.error(f"Failed to schedule Slack notification: {e}", exc_info=True)
+        logger.error("Failed to schedule Google Chat dev alert: %s", e, exc_info=True)
 
 
 def notify_exception(
@@ -295,10 +189,10 @@ def notify_exception(
     extra: dict[str, Any] | None = None,
     severity: str = "ERROR",
 ) -> bool:
-    """Send exception to both BugLogHQ and Slack.
+    """Send exception to both BugLogHQ and Google Chat.
 
     This function wraps buglog.notify_exception and also sends a notification
-    to the Slack dev alert channel.
+    to the Google Chat dev alert webhook.
 
     Args:
         exc: Exception to report. If not given, automatically retrieved with sys.exc_info.
@@ -309,14 +203,12 @@ def notify_exception(
     Returns:
         bool: True if the exception was sent to BugLogHQ.
     """
-    # Send to BugLogHQ first
     result = buglog_notify_exception(exc, msg, extra, severity)
 
-    # Also send to Slack (async, fire-and-forget) - only for ERROR, FATAL, or WARNING
     if severity.upper() in ("ERROR", "FATAL", "WARNING") and (
         exc is not None or msg is not None
     ):
-        _schedule_slack_notification(exc, msg, extra, severity)
+        _schedule_dev_alert_notification(exc, msg, extra, severity)
 
     return result
 
@@ -326,10 +218,10 @@ def notify_message(
     extra: dict[str, Any] | None = None,
     severity: str = "INFO",
 ) -> bool:
-    """Send message to both BugLogHQ and Slack.
+    """Send message to both BugLogHQ and Google Chat.
 
     This function wraps buglog.notify_message and also sends a notification
-    to the Slack dev alert channel.
+    to the Google Chat dev alert webhook for elevated severities.
 
     Args:
         msg: Message to send. If empty, does nothing.
@@ -339,11 +231,9 @@ def notify_message(
     Returns:
         bool: True if the message was sent to BugLogHQ.
     """
-    # Send to BugLogHQ first
     result = buglog_notify_message(msg, extra, severity)
 
-    # Also send to Slack (async, fire-and-forget) - only for ERROR, FATAL, or WARNING
     if severity.upper() in ("ERROR", "FATAL", "WARNING") and msg:
-        _schedule_slack_notification(None, msg, extra, severity)
+        _schedule_dev_alert_notification(None, msg, extra, severity)
 
     return result

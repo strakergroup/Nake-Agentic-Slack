@@ -48,12 +48,8 @@ class StrakerConfig(BaseSettings):
     health_check_password: SecretStr = SecretStr("")
     languagecloud_api_key: SecretStr = SecretStr("")
 
-    # Slack Dev Alert Bot
-    slack_dev_alert_channel_id_production: str = ""  # Production channel
-    slack_dev_alert_channel_id_non_production: str = (
-        ""  # Non-production channel (UAT, local, etc.)
-    )
-    slack_dev_alert_bot_token: SecretStr = SecretStr("")
+    # Google Chat incoming webhook for dev alerts (after BugLogHQ); env: GOOGLE_CHAT_WEBHOOK_PM
+    google_chat_webhook_pm: SecretStr = SecretStr("")
 
     @field_validator("google_mt_api_key", mode="after")
     def validate_google_mt_api_key(cls, v, info: ValidationInfo):
