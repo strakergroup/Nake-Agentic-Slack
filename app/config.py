@@ -48,7 +48,7 @@ class StrakerConfig(BaseSettings):
     health_check_password: SecretStr = SecretStr("")
     languagecloud_api_key: SecretStr = SecretStr("")
 
-    # Google Chat incoming webhook for dev alerts (after BugLogHQ); env: GOOGLE_CHAT_WEBHOOK
+    # Google Chat incoming webhook for dev alerts; env: GOOGLE_CHAT_WEBHOOK
     google_chat_webhook: SecretStr = SecretStr("")
 
     @field_validator("google_mt_api_key", mode="after")

@@ -11,6 +11,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [Channel Info Caching](channel-info-caching.md) - How channel names and privacy status are cached in the database
 - [Source Language Options](source-language-options.md) - How Cloud Verify source-language options flow from the Verify API and how Slack now matches them
 - [Pyright Workflow](pyright-workflow.md) - Local type checking and ignored-module backlog during the Pyright rollout
+- [Google Chat notifications](google-chat-notifications.md) - Standalone webhook alerts and mirroring from `buglog_notifier`
 - [Changelog](changelog.md) - Record of all changes to the codebase
 
 ## Unreleased

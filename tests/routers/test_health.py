@@ -73,7 +73,7 @@ class TestHealthCheck:
 
     @pytest.mark.asyncio
     async def test_health_check_slack_api_error(self, client):
-        """Test health check when Slack API fails."""
+        """Slack api_test is not invoked while /health dependency checks are commented out."""
         with patch(
             "app.routers.health.slack_app.client.api_test", new_callable=AsyncMock
         ) as mock_api_test:
@@ -81,14 +81,12 @@ class TestHealthCheck:
 
             response = await client.get("/health")
 
-            assert response.status_code == 500
-            data = response.json()
-            assert data["message"] == "There are some issues"
-            # Errors are hidden without password, but message indicates issues
+            assert response.status_code == 200
+            mock_api_test.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_health_check_slack_api_error_with_password(self, client):
-        """Test health check when Slack API fails, with password to see details."""
+        """With password: still OK and Slack not called when checks are commented out."""
         with patch(
             "app.routers.health.config.health_check_password.get_secret_value"
         ) as mock_get_secret:
@@ -100,15 +98,15 @@ class TestHealthCheck:
 
                 response = await client.get("/health?password=test-password")
 
-                assert response.status_code == 500
+                assert response.status_code == 200
                 data = response.json()
-                assert data["message"] == "There are some issues"
-                assert "slack_api" in data["errors"]
-                assert data["errors"]["slack_api"] == "Slack API error"
+                assert data["message"] == "OK"
+                assert data["errors"] == {}
+                mock_api_test.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_health_check_slack_api_bad_status(self, client):
-        """Test health check when Slack API returns bad status code."""
+        """Bad Slack status mock unused when /health does not call api_test."""
         with patch(
             "app.routers.health.slack_app.client.api_test", new_callable=AsyncMock
         ) as mock_api_test:
@@ -118,14 +116,12 @@ class TestHealthCheck:
 
             response = await client.get("/health")
 
-            assert response.status_code == 500
-            data = response.json()
-            assert data["message"] == "There are some issues"
-            # Errors are hidden without password, but message indicates issues
+            assert response.status_code == 200
+            mock_api_test.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_health_check_slack_api_bad_status_with_password(self, client):
-        """Test health check when Slack API returns bad status code, with password."""
+        """With password: OK and empty errors when Slack check is not wired."""
         with patch(
             "app.routers.health.config.health_check_password.get_secret_value"
         ) as mock_get_secret:
@@ -139,14 +135,11 @@ class TestHealthCheck:
 
                 response = await client.get("/health?password=test-password")
 
-                assert response.status_code == 500
+                assert response.status_code == 200
                 data = response.json()
-                assert data["message"] == "There are some issues"
-                assert "slack_api" in data["errors"]
-                assert (
-                    "api.test returned the status code: 500"
-                    in data["errors"]["slack_api"]
-                )
+                assert data["message"] == "OK"
+                assert data["errors"] == {}
+                mock_api_test.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_health_check_wrong_password(self, client):

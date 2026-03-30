@@ -1,5 +1,6 @@
 """Tests for app/main.py - FastAPI application setup."""
 
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,6 +22,100 @@ async def client():
 
 class TestMainApp:
     """Tests for main FastAPI application."""
+
+    @pytest.mark.asyncio
+    async def test_buglog_middleware_calls_notify_exception_when_call_next_raises(self):
+        """``buglog_middleware`` forwards failures to ``notify_exception`` then re-raises."""
+        from app.main import buglog_middleware
+
+        request = MagicMock()
+
+        async def call_next(_request):
+            raise RuntimeError("unhandled handler error for buglog middleware test")
+
+        with patch("app.main.notify_exception") as mock_notify:
+            with pytest.raises(RuntimeError, match="unhandled handler error"):
+                await buglog_middleware(request, call_next)
+
+        mock_notify.assert_called_once()
+        err = mock_notify.call_args[0][0]
+        assert isinstance(err, RuntimeError)
+        assert str(err) == "unhandled handler error for buglog middleware test"
+
+    @pytest.mark.skipif(
+        sys.version_info < (3, 11),
+        reason="ExceptionGroup requires Python 3.11+",
+    )
+    @pytest.mark.asyncio
+    async def test_buglog_middleware_exception_group_notifies_leaf_exceptions(self):
+        from app.main import buglog_middleware
+
+        request = MagicMock()
+
+        async def call_next(_request):
+            raise ExceptionGroup(
+                "eg",
+                [ValueError("a"), ValueError("b")],
+            )
+
+        with patch("app.main.notify_exception") as mock_notify:
+            with pytest.raises(ExceptionGroup):
+                await buglog_middleware(request, call_next)
+
+        assert mock_notify.call_count == 2
+        assert {mock_notify.call_args_list[i][0][0].args[0] for i in range(2)} == {
+            "a",
+            "b",
+        }
+
+    @pytest.mark.skipif(
+        sys.version_info < (3, 11),
+        reason="ExceptionGroup requires Python 3.11+",
+    )
+    @pytest.mark.asyncio
+    async def test_buglog_middleware_nested_exception_group(self):
+        from app.main import buglog_middleware
+
+        request = MagicMock()
+
+        async def call_next(_request):
+            raise ExceptionGroup(
+                "outer",
+                [ExceptionGroup("inner", [ValueError("nested_leaf")])],
+            )
+
+        with patch("app.main.notify_exception") as mock_notify:
+            with pytest.raises(ExceptionGroup):
+                await buglog_middleware(request, call_next)
+
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args[0][0].args[0] == "nested_leaf"
+
+    @pytest.mark.skipif(
+        sys.version_info < (3, 11),
+        reason="ExceptionGroup requires Python 3.11+",
+    )
+    @pytest.mark.asyncio
+    async def test_buglog_middleware_base_exception_group_skips_non_exception_leaves(
+        self,
+    ):
+        """``ExceptionGroup`` cannot mix in ``SystemExit``; ``BaseExceptionGroup`` can."""
+        from app.main import buglog_middleware
+
+        request = MagicMock()
+
+        async def call_next(_request):
+            raise BaseExceptionGroup(
+                "mixed",
+                [ValueError("notify_this"), SystemExit(42)],
+            )
+
+        with patch("app.main.notify_exception") as mock_notify:
+            with pytest.raises(BaseExceptionGroup):
+                await buglog_middleware(request, call_next)
+
+        mock_notify.assert_called_once()
+        assert mock_notify.call_args[0][0].args[0] == "notify_this"
 
     @pytest.mark.asyncio
     async def test_root_endpoint(self, client):
