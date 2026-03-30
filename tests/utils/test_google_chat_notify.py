@@ -1,4 +1,4 @@
-"""Tests for app.utils.google_chat_notifications.notify."""
+"""Tests for app.utils.google_chat_notify."""
 
 import asyncio
 import logging
@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 from straker_utils.environment import Environment
 
-from app.utils.google_chat_notifications.notify import (
+from app.utils.google_chat_notify import (
     GoogleChatContext,
     build_google_chat_text,
     post_google_chat_notification,
@@ -105,7 +105,7 @@ class TestSendGoogleChatNotification:
         )
         mock_cfg.environment = Environment.uat
         with patch(
-            "app.utils.google_chat_notifications.notify._runtime_env_and_config",
+            "app.utils.google_chat_notify._runtime_env_and_config",
             return_value=(Environment, mock_cfg),
         ):
             yield mock_cfg
@@ -113,7 +113,7 @@ class TestSendGoogleChatNotification:
     @pytest_asyncio.fixture
     async def mock_http_client(self):
         mock_ac, mock_inner = _make_mock_async_client()
-        with patch("app.utils.google_chat_notifications.notify.httpx.AsyncClient", mock_ac):
+        with patch("app.utils.google_chat_notify.httpx.AsyncClient", mock_ac):
             yield mock_inner
 
     @pytest.mark.asyncio
@@ -230,8 +230,8 @@ class TestSendGoogleChatNotification:
 
 
 class TestPostGoogleChatNotification:
-    @patch("app.utils.google_chat_notifications.notify._runtime_env_and_config")
-    @patch("app.utils.google_chat_notifications.notify._send_google_chat_notification")
+    @patch("app.utils.google_chat_notify._runtime_env_and_config")
+    @patch("app.utils.google_chat_notify._send_google_chat_notification")
     def test_schedule_with_running_loop(self, mock_send, mock_rt):
         mock_cfg = MagicMock()
         mock_cfg.environment = Environment.uat
@@ -252,10 +252,10 @@ class TestPostGoogleChatNotification:
         finally:
             loop.close()
 
-    @patch("app.utils.google_chat_notifications.notify._runtime_env_and_config")
-    @patch("app.utils.google_chat_notifications.notify.asyncio.run")
+    @patch("app.utils.google_chat_notify._runtime_env_and_config")
+    @patch("app.utils.google_chat_notify.asyncio.run")
     @patch(
-        "app.utils.google_chat_notifications.notify.asyncio.get_running_loop",
+        "app.utils.google_chat_notify.asyncio.get_running_loop",
         side_effect=RuntimeError("no running event loop"),
     )
     def test_schedule_no_running_loop_starts_thread_that_calls_asyncio_run(
@@ -284,23 +284,23 @@ class TestPostGoogleChatNotification:
         coro = mock_asyncio_run.call_args[0][0]
         assert asyncio.iscoroutine(coro)
 
-    @patch("app.utils.google_chat_notifications.notify._runtime_env_and_config")
-    @patch("app.utils.google_chat_notifications.notify.logger")
+    @patch("app.utils.google_chat_notify._runtime_env_and_config")
+    @patch("app.utils.google_chat_notify.logger")
     def test_schedule_error_handling(self, mock_logger, mock_rt):
         mock_cfg = MagicMock()
         mock_cfg.environment = Environment.uat
         mock_rt.return_value = (Environment, mock_cfg)
 
         with patch(
-            "app.utils.google_chat_notifications.notify.asyncio.get_running_loop",
+            "app.utils.google_chat_notify.asyncio.get_running_loop",
             side_effect=Exception("Unexpected error"),
         ):
             post_google_chat_notification(exc=ValueError("Error"))
             mock_logger.error.assert_called()
 
     @pytest.mark.asyncio
-    @patch("app.utils.google_chat_notifications.notify._send_google_chat_notification")
-    @patch("app.utils.google_chat_notifications.notify._runtime_env_and_config")
+    @patch("app.utils.google_chat_notify._send_google_chat_notification")
+    @patch("app.utils.google_chat_notify._runtime_env_and_config")
     async def test_post_queues_when_environment_local(self, mock_rt, mock_send):
         """Local env no longer skips; work is still queued like other environments."""
         mock_cfg = MagicMock()

@@ -1,13 +1,13 @@
 # Google Chat notifications
 
-Operational and dev alerts can be posted to a Google Chat space via an [incoming webhook](https://developers.google.com/chat/how-tos/webhooks). This lives under `app/utils/google_chat_notifications` (cross-cutting utilities). Chat message bodies use neutral headings (`Exception`, `Alert`, `Notice`) with no internal product names.
+Operational and dev alerts can be posted to a Google Chat space via an [incoming webhook](https://developers.google.com/chat/how-tos/webhooks). This is implemented in `app/utils/google_chat_notify.py` (cross-cutting utilities). Chat message bodies use neutral headings (`Exception`, `Alert`, `Notice`) with no internal product names.
 
 ## Standalone usage
 
 From any code path that already loads app configuration (or in async/sync contexts where scheduling is acceptable):
 
 ```python
-from app.utils.google_chat_notifications import (
+from app.utils.google_chat_notify import (
     GoogleChatContext,
     post_google_chat_notification,
 )
@@ -51,7 +51,7 @@ flowchart LR
     A[Any feature]
     B[buglog_notifier]
   end
-  subgraph gc [app.utils.google_chat_notifications]
+  subgraph gc [app.utils.google_chat_notify]
     S[post_google_chat_notification]
     P[POST webhook]
   end

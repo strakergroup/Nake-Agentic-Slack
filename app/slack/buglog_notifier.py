@@ -2,7 +2,7 @@
 
 BugLog payloads are sent via the ``buglog`` package unchanged. When there is an
 exception and/or a message with non-whitespace content to mirror, the same payload is **also**
-queued for Google Chat via ``app.utils.google_chat_notifications``, regardless of
+queued for Google Chat via ``app.utils.google_chat_notify``, regardless of
 whether BugLogHQ accepted the report (``True``/``False``). That keeps Chat as a
 separate channel when BugLog is down or misconfigured. Delivery is skipped when
 the webhook URL is unset — see ``post_google_chat_notification``.
@@ -29,7 +29,7 @@ def _schedule_chat_mirror(
     extra: dict[str, Any] | None,
     severity: str,
 ) -> None:
-    from app.utils.google_chat_notifications import (
+    from app.utils.google_chat_notify import (
         GoogleChatContext,
         post_google_chat_notification,
     )

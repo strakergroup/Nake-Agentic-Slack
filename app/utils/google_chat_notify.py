@@ -17,6 +17,12 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "GoogleChatContext",
+    "build_google_chat_text",
+    "post_google_chat_notification",
+]
+
 
 def _runtime_env_and_config():
     """Lazy config access so tests can patch without importing ``app.config`` at collection."""

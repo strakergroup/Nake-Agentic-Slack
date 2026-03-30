@@ -6,7 +6,7 @@ import types
 from pathlib import Path
 from unittest.mock import patch
 
-from app.utils.google_chat_notifications import GoogleChatContext
+from app.utils.google_chat_notify import GoogleChatContext
 
 _ROOT = Path(__file__).resolve().parents[2]
 
@@ -39,7 +39,7 @@ notify_message = _bn.notify_message
 
 class TestNotifyException:
     @patch("app.slack.buglog_notifier.buglog_notify_exception")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_exception_calls_buglog(self, mock_schedule, mock_buglog_notify):
         mock_buglog_notify.return_value = True
         exc = ValueError("Test error")
@@ -52,7 +52,7 @@ class TestNotifyException:
         assert result is True
 
     @patch("app.slack.buglog_notifier.buglog_notify_exception")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_exception_schedules_chat(self, mock_schedule, mock_buglog_notify):
         mock_buglog_notify.return_value = True
         exc = ValueError("Test error")
@@ -68,7 +68,7 @@ class TestNotifyException:
         )
 
     @patch("app.slack.buglog_notifier.buglog_notify_exception")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_exception_buglog_false_still_schedules_chat(
         self, mock_schedule, mock_buglog_notify
     ):
@@ -81,7 +81,7 @@ class TestNotifyException:
         )
 
     @patch("app.slack.buglog_notifier.buglog_notify_exception")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_exception_with_message_only(
         self, mock_schedule, mock_buglog_notify
     ):
@@ -98,7 +98,7 @@ class TestNotifyException:
         )
 
     @patch("app.slack.buglog_notifier.buglog_notify_exception")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_exception_no_exception_no_message(
         self, mock_schedule, mock_buglog_notify
     ):
@@ -110,7 +110,7 @@ class TestNotifyException:
         mock_schedule.assert_not_called()
 
     @patch("app.slack.buglog_notifier.buglog_notify_exception")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_exception_whitespace_only_message_skips_chat_mirror(
         self, mock_schedule, mock_buglog_notify
     ):
@@ -124,7 +124,7 @@ class TestNotifyException:
 
 class TestNotifyMessage:
     @patch("app.slack.buglog_notifier.buglog_notify_message")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_message_calls_buglog(self, mock_schedule, mock_buglog_notify):
         mock_buglog_notify.return_value = True
 
@@ -136,7 +136,7 @@ class TestNotifyMessage:
         assert result is True
 
     @patch("app.slack.buglog_notifier.buglog_notify_message")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_message_schedules_chat_for_error(
         self, mock_schedule, mock_buglog_notify
     ):
@@ -153,7 +153,7 @@ class TestNotifyMessage:
         )
 
     @patch("app.slack.buglog_notifier.buglog_notify_message")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_message_empty_message(self, mock_schedule, mock_buglog_notify):
         mock_buglog_notify.return_value = True
 
@@ -163,7 +163,7 @@ class TestNotifyMessage:
         mock_schedule.assert_not_called()
 
     @patch("app.slack.buglog_notifier.buglog_notify_message")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_message_whitespace_only_skips_chat_mirror(
         self, mock_schedule, mock_buglog_notify
     ):
@@ -175,7 +175,7 @@ class TestNotifyMessage:
         mock_schedule.assert_not_called()
 
     @patch("app.slack.buglog_notifier.buglog_notify_message")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_message_default_severity(self, mock_schedule, mock_buglog_notify):
         mock_buglog_notify.return_value = True
 
@@ -191,7 +191,7 @@ class TestNotifyMessage:
         )
 
     @patch("app.slack.buglog_notifier.buglog_notify_message")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_message_info_severity_mirrors_chat(
         self, mock_schedule, mock_buglog_notify
     ):
@@ -209,7 +209,7 @@ class TestNotifyMessage:
         )
 
     @patch("app.slack.buglog_notifier.buglog_notify_message")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_message_error_severity_sends(
         self, mock_schedule, mock_buglog_notify
     ):
@@ -227,7 +227,7 @@ class TestNotifyMessage:
         )
 
     @patch("app.slack.buglog_notifier.buglog_notify_message")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_message_warning_severity_sends(
         self, mock_schedule, mock_buglog_notify
     ):
@@ -245,7 +245,7 @@ class TestNotifyMessage:
         )
 
     @patch("app.slack.buglog_notifier.buglog_notify_message")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_message_fatal_severity_sends(
         self, mock_schedule, mock_buglog_notify
     ):
@@ -263,7 +263,7 @@ class TestNotifyMessage:
         )
 
     @patch("app.slack.buglog_notifier.buglog_notify_exception")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_exception_info_severity_mirrors_chat(
         self, mock_schedule, mock_buglog_notify
     ):
@@ -278,7 +278,7 @@ class TestNotifyMessage:
         )
 
     @patch("app.slack.buglog_notifier.buglog_notify_exception")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_exception_warning_severity_sends(
         self, mock_schedule, mock_buglog_notify
     ):
@@ -293,7 +293,7 @@ class TestNotifyMessage:
         )
 
     @patch("app.slack.buglog_notifier.buglog_notify_exception")
-    @patch("app.utils.google_chat_notifications.post_google_chat_notification")
+    @patch("app.utils.google_chat_notify.post_google_chat_notification")
     def test_notify_exception_fatal_severity_sends(
         self, mock_schedule, mock_buglog_notify
     ):

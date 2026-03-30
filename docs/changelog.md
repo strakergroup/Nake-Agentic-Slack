@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Collapsed `app/utils/google_chat_notifications/` package into single module `app/utils/google_chat_notify.py`; tests moved to `tests/utils/test_google_chat_notify.py`; imports and docs updated (Jiro Sasamoto, 2026-03-30)
 - [Added]: Pipfile `[scripts] test = "pytest"` so `pipenv run test` runs the suite (Jiro Sasamoto, 2026-03-30)
 - [Changed]: `buglog_notifier` mirrors to Google Chat only when `msg` has non-whitespace text (or an exception object is present); `notify_message` still calls BugLog for empty/whitespace `msg` but skips Chat mirroring for whitespace-only strings; docs updated; tests added (Jiro Sasamoto, 2026-03-30)
 - [Changed]: Second review follow-up: Google Chat transport failure logs use `transport_error_type` only with `exc_info=False` (avoid webhook URL in httpx string/traceback); docs clarify BugLog mirror conditions (`exc`/`msg` vs non-empty `notify_message`) and transport log shape; middleware tests for nested `ExceptionGroup` and `BaseExceptionGroup` with `SystemExit` leaf; `test_schedule_with_running_loop` asserts `mock_send.assert_called()`; redaction test expects no `https://` in failure logs (Jiro Sasamoto, 2026-03-30)
