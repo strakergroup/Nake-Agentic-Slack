@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Removed]: Debug `notify_message` in `ray_events` that posted MT service mapping and translations strings to BugLog (Jiro Sasamoto, 2026-03-30)
 - [Changed]: Collapsed `app/utils/google_chat_notifications/` package into single module `app/utils/google_chat_notify.py`; tests moved to `tests/utils/test_google_chat_notify.py`; imports and docs updated (Jiro Sasamoto, 2026-03-30)
 - [Added]: Pipfile `[scripts] test = "pytest"` so `pipenv run test` runs the suite (Jiro Sasamoto, 2026-03-30)
 - [Changed]: `buglog_notifier` mirrors to Google Chat only when `msg` has non-whitespace text (or an exception object is present); `notify_message` still calls BugLog for empty/whitespace `msg` but skips Chat mirroring for whitespace-only strings; docs updated; tests added (Jiro Sasamoto, 2026-03-30)
