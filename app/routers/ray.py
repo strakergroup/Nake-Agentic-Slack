@@ -1571,11 +1571,6 @@ async def ray_events(
                 # Parse translations from the new service-based response format
                 translations = event.data.get("translations", {})
 
-                # Log the response for debugging
-                notify_message(
-                    f"MT Result - Service mapping: {mt_result_extra_data.service_language_mapping}, Translations: {translations}"
-                )
-
                 if (
                     mt_result_extra_data.usage_type == "direct_machine_translation"
                     or mt_result_extra_data.usage_type == "shortcut_translate"
