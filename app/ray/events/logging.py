@@ -102,8 +102,11 @@ async def post_notification(
                 )
                 # save timestamp to cache
                 if thread_ts:
+                    reply_ts = response.get("ts")
+                    if not isinstance(reply_ts, str):
+                        raise ValueError("Slack response is missing a string timestamp")
                     asyncio.create_task(
-                        set_mt_ts_edit(send_ts=thread_ts, reply_ts=response["ts"])
+                        set_mt_ts_edit(send_ts=thread_ts, reply_ts=reply_ts)
                     )
         elif display_format == "message":
             if timestamp:
@@ -122,8 +125,11 @@ async def post_notification(
                 )
                 # save timestamp to cache
                 if thread_ts:
+                    reply_ts = response.get("ts")
+                    if not isinstance(reply_ts, str):
+                        raise ValueError("Slack response is missing a string timestamp")
                     asyncio.create_task(
-                        set_mt_ts_edit(send_ts=thread_ts, reply_ts=response["ts"])
+                        set_mt_ts_edit(send_ts=thread_ts, reply_ts=reply_ts)
                     )
     else:
         # Determine the appropriate response method based on parameters
@@ -223,8 +229,11 @@ async def post_channel_translation_notification(
         )
         # save timestamp to cache
         if thread_timestamp:
+            reply_ts = response.get("ts")
+            if not isinstance(reply_ts, str):
+                raise ValueError("Slack response is missing a string timestamp")
             asyncio.create_task(
-                set_mt_ts_edit(send_ts=thread_timestamp, reply_ts=response["ts"])
+                set_mt_ts_edit(send_ts=thread_timestamp, reply_ts=reply_ts)
             )
 
     asyncio.create_task(

@@ -38,9 +38,6 @@ class StrakerConfig(BaseSettings):
     watson_assistant_id: str = Field(min_length=1)
     watson_environment_id: str = Field(min_length=1)
     google_mt_api_key: SecretStr = SecretStr("")
-    microsoft_mt_api_key: SecretStr = SecretStr("")
-    microsoft_mt_website: str = ""
-    microsoft_mt_url: str = ""
     document_mt_pdf_max_size_mb: int = Field(default=25, ge=1)
     # taus_api_key: SecretStr = Field(min_length=1)
     elastic_apm_server_url: str | None = None
@@ -51,26 +48,14 @@ class StrakerConfig(BaseSettings):
     health_check_password: SecretStr = SecretStr("")
     languagecloud_api_key: SecretStr = SecretStr("")
 
-    # Slack Dev Alert Bot
-    slack_dev_alert_channel_id_production: str = ""  # Production channel
-    slack_dev_alert_channel_id_non_production: str = (
-        ""  # Non-production channel (UAT, local, etc.)
-    )
-    slack_dev_alert_bot_token: SecretStr = SecretStr("")
+    # Google Chat incoming webhook for dev alerts; env: GOOGLE_CHAT_WEBHOOK
+    google_chat_webhook: SecretStr = SecretStr("")
 
     @field_validator("google_mt_api_key", mode="after")
     def validate_google_mt_api_key(cls, v, info: ValidationInfo):
         if info.data["environment"] in [Environment.production, Environment.uat]:
             if not v:
                 raise ValueError("GOOGLE_MT_API_KEY must be set in production and uat")
-        return v
-
-    def validate_microsoft_mt_api_key(cls, v, info: ValidationInfo):
-        if info.data["environment"] in [Environment.production, Environment.uat]:
-            if not v:
-                raise ValueError(
-                    "MICROSOFT_MT_API_KEY must be set in production and uat"
-                )
         return v
 
     @field_validator("buglog_listener_url", mode="before")

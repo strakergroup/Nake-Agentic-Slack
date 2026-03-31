@@ -87,9 +87,14 @@ async def ray_connection(
             user_info = await context.client.users_info(
                 user=context["user_id"], include_locale=True
             )
-            context["is_bot"] = user_info["user"]["is_bot"]
+            if user_info is None:
+                raise ValueError("Slack users_info returned no response")
+            user = user_info.get("user")
+            if not isinstance(user, dict):
+                raise ValueError("Slack users_info response is missing user data")
+            context["is_bot"] = bool(user.get("is_bot", False))
             set_user_language(user_info, context)
-            context["user_info"] = user_info["user"]
+            context["user_info"] = user
     except Exception as e:
         context["is_bot"] = False
         notify_exception(e)
@@ -114,7 +119,7 @@ async def ray_connection(
             # get slack user info from api and log it
             try:
                 # insert to db
-                await log_new_user_info(user_info["user"])
+                await log_new_user_info(user)
             except Exception as e:
                 print(e)
                 notify_exception(e)
@@ -183,6 +188,8 @@ async def require_mt_tokens(context: AsyncBoltContext, value=1):
     value = math.ceil(value * mt_scale)
     if context["ray"].client is not None:
         user_tokens = await get_client_tokens(context["ray"].client.id_token)
+        if user_tokens is None:
+            return False
         ai_tokens = user_tokens.ai_token
         if ai_tokens >= value:
             return True
@@ -190,6 +197,8 @@ async def require_mt_tokens(context: AsyncBoltContext, value=1):
         client_tokens = await get_group_tokens(
             context["ray"].super_group[0].verify_organization_uuid
         )
+        if client_tokens is None:
+            return False
         ai_tokens = client_tokens.ai_token
         if ai_tokens and ai_tokens >= value:
             return True

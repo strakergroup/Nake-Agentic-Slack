@@ -92,4 +92,3 @@ spec:
 status:
   loadBalancer: {}
 ---
-

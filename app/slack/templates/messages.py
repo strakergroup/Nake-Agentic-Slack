@@ -2448,6 +2448,7 @@ class SsoConnectionInfoMessage(SlackMessage):
         ray_connection: RayConnection,
         is_ibm=False,
     ) -> None:
+        text = _("Your connected account could not be determined.")
         if ray_connection.client is not None:
             text = _("Your connected account is: *{ray_connection.client.username}*.")
         msg: list[dict[str, Any]] = [

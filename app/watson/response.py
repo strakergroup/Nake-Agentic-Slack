@@ -1,5 +1,6 @@
-from typing import Any
 from dataclasses import dataclass
+from typing import Any, cast
+
 from ibm_watson import DetailedResponse
 
 
@@ -108,11 +109,14 @@ class WatsonResponse:
         cls, input: str, watson_response: DetailedResponse
     ) -> "WatsonResponse":
         """Creates an instance from the response from the ibm_watson sdk."""
+        data = cast(dict[str, Any], watson_response.get_result() or {})
+        headers = cast(dict[str, str], watson_response.get_headers() or {})
+        status_code = watson_response.get_status_code() or 0
         return cls(
             input=input,
-            data=watson_response.get_result(),
-            headers=watson_response.get_headers(),
-            status_code=watson_response.get_status_code(),
+            data=data,
+            headers=headers,
+            status_code=status_code,
         )
 
     @staticmethod

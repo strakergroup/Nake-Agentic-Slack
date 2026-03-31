@@ -7,7 +7,7 @@ and connection pooling for improved performance.
 
 import asyncio
 import logging
-from typing import Callable, TypeVar
+from typing import Awaitable, Callable, TypeVar
 
 import httpx
 
@@ -81,7 +81,7 @@ def _get_notify_exception() -> Callable:
 
 
 async def retry_on_timeout(
-    func,
+    func: Callable[..., Awaitable[T]],
     *args,
     max_retries: int = DEFAULT_MAX_RETRIES,
     base_delay: float = DEFAULT_BASE_DELAY,
