@@ -25,14 +25,21 @@ def test_build_all_messages_includes_other_ibm_sensitive_variants():
     entries = build_all_messages()
     names = {entry["name"] for entry in entries}
 
-    assert "WelcomeBackMessage (IBM)" in names
-    assert "SuccessfulLoginMessage (IBM)" in names
-    assert "HelpMessage (IBM)" in names
+    assert "WelcomeBackMessage (IBM, admin)" in names
+    assert "WelcomeBackMessage (IBM, non-admin)" in names
+    assert "SuccessfulLoginMessage (IBM, admin)" in names
+    assert "SuccessfulLoginMessage (IBM, non-admin)" in names
+    assert "HelpMessage (IBM, admin)" in names
+    assert "HelpMessage (IBM, non-admin)" in names
+    assert "WelcomeBackMessage (IBM)" not in names
+    assert "SuccessfulLoginMessage (IBM)" not in names
+    assert "HelpMessage (IBM)" not in names
 
 
 def test_build_all_views_includes_ibm_connected_home_variants():
     entries = build_all_views()
     names = {entry["name"] for entry in entries}
 
-    assert "home_view (IBM, connected)" in names
     assert "home_view (IBM, connected, admin)" in names
+    assert "home_view (IBM, connected, non-admin)" in names
+    assert "home_view (IBM, connected)" not in names

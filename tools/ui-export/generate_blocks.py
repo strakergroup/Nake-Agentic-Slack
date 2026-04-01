@@ -1286,41 +1286,73 @@ def build_all_messages() -> list[dict[str, Any]]:
                 variation=LoginMessage.NEW_JOB,
             ),
         )
+        ray_connection_ibm_admin = make_ray_connection(enable_verify=True)
+        ray_connection_ibm_non_admin = make_ray_connection(enable_verify=False)
+
         add(
-            "WelcomeBackMessage (IBM)",
+            "WelcomeBackMessage (IBM, admin)",
             "Auth",
             WelcomeBackMessage(
-                USER_ID, ray_connection_verify, enterprise_id=ENTERPRISE_ID
+                USER_ID, ray_connection_ibm_admin, enterprise_id=ENTERPRISE_ID
             ),
         )
         add(
-            "SuccessfulLoginMessage (IBM)",
+            "WelcomeBackMessage (IBM, non-admin)",
+            "Auth",
+            WelcomeBackMessage(
+                USER_ID, ray_connection_ibm_non_admin, enterprise_id=ENTERPRISE_ID
+            ),
+        )
+        add(
+            "SuccessfulLoginMessage (IBM, admin)",
             "Auth",
             SuccessfulLoginMessage(
                 USER_ID,
                 "jane.doe@acme.com",
-                ray_connection_verify,
+                ray_connection_ibm_admin,
+                enterprise_id=ENTERPRISE_ID,
+            ),
+        )
+        add(
+            "SuccessfulLoginMessage (IBM, non-admin)",
+            "Auth",
+            SuccessfulLoginMessage(
+                USER_ID,
+                "jane.doe@acme.com",
+                ray_connection_ibm_non_admin,
                 enterprise_id=ENTERPRISE_ID,
             ),
         )
 
-        mock_ibm_context = MagicMock()
-        mock_ibm_context.__getitem__ = lambda self, key: {
-            "user_id": USER_ID,
-            "team_id": TEAM_ID,
-            "channel_id": CHANNEL_ID,
-            "enterprise_id": ENTERPRISE_ID,
-        }.get(key, None)
-        mock_ibm_context.get = lambda key, default=None: {
-            "user_id": USER_ID,
-            "team_id": TEAM_ID,
-            "channel_id": CHANNEL_ID,
-            "enterprise_id": ENTERPRISE_ID,
-            "ray": ray_connection_verify,
-        }.get(key, default)
-        mock_ibm_context.enterprise_id = ENTERPRISE_ID
-        mock_ibm_context.ray = ray_connection_verify
-        add("HelpMessage (IBM)", "Help", HelpMessage(mock_ibm_context))
+        def make_mock_ibm_context(ray_connection: RayConnection) -> MagicMock:
+            mock_ibm_context = MagicMock()
+            mock_ibm_context.__getitem__ = lambda self, key: {
+                "user_id": USER_ID,
+                "team_id": TEAM_ID,
+                "channel_id": CHANNEL_ID,
+                "enterprise_id": ENTERPRISE_ID,
+            }.get(key, None)
+            mock_ibm_context.get = lambda key, default=None: {
+                "user_id": USER_ID,
+                "team_id": TEAM_ID,
+                "channel_id": CHANNEL_ID,
+                "enterprise_id": ENTERPRISE_ID,
+                "ray": ray_connection,
+            }.get(key, default)
+            mock_ibm_context.enterprise_id = ENTERPRISE_ID
+            mock_ibm_context.ray = ray_connection
+            return mock_ibm_context
+
+        add(
+            "HelpMessage (IBM, admin)",
+            "Help",
+            HelpMessage(make_mock_ibm_context(ray_connection_ibm_admin)),
+        )
+        add(
+            "HelpMessage (IBM, non-admin)",
+            "Help",
+            HelpMessage(make_mock_ibm_context(ray_connection_ibm_non_admin)),
+        )
 
     return entries
 
@@ -1694,7 +1726,7 @@ def build_all_views() -> list[dict[str, Any]]:
         )
         entries.append(
             {
-                "name": "home_view (IBM, connected)",
+                "name": "home_view (IBM, connected, non-admin)",
                 "category": "Home",
                 **safe_extract(
                     {

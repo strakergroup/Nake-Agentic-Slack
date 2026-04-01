@@ -268,7 +268,7 @@ const html = `<!DOCTYPE html>
 
     /* Page layout */
     :root {
-      --sidebar-width: 260px;
+      --sidebar-width: 340px;
       --bg-primary: #1a1d21;
       --bg-secondary: #222529;
       --bg-content: #ffffff;

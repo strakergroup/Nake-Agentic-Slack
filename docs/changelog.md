@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Increased the `tools/ui-export` catalog sidebar width to `340px`, added a renderer guard test, and regenerated the HTML catalog for easier navigation of longer template names (Wade Norman, 2026-04-02)
+- [Changed]: Renamed the IBM connected home-view export in `tools/ui-export` to explicit `admin` / `non-admin` wording and regenerated the catalog so IBM labels are consistent across message and home variants (Wade Norman, 2026-04-02)
+- [Changed]: Relabeled IBM `HelpMessage`, `WelcomeBackMessage`, and `SuccessfulLoginMessage` variants in `tools/ui-export` as explicit admin vs non-admin entries and regenerated the UI catalog so those IBM branches are visible by name (Wade Norman, 2026-04-02)
 - [Added]: Expanded `tools/ui-export` IBM coverage with `WelcomeBackMessage`, `SuccessfulLoginMessage`, `HelpMessage`, and separate IBM connected home variants for non-admin vs admin states so the catalog reflects more IBM-specific Slack UI branches (Wade Norman, 2026-04-02)
 - [Added]: Added IBM and IBM verify-enabled `NewJobMessage` variants to the UI export catalog so the tool reflects all current Slack new-job button combinations (Wade Norman, 2026-04-02)
 - [Fixed]: Repaired `tools/ui-export` by removing stale FactCheck message exports, falling back to `pipenv run python` when `.venv` is absent, and adding a local renderer typecheck workflow with strict JSDoc typings (Wade Norman, 2026-04-02)
