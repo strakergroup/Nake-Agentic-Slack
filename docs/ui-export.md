@@ -98,6 +98,6 @@ When a new message class or view function is added to the app:
 | Quality     | 4     | Evaluation results, verify complete      |
 | FactCheck   | 2     | Claim extraction results                 |
 | Modals      | 19    | All modal dialogs                        |
-| Help        | 6     | Help messages, AI helper, insights       |
+| Help        | 4     | Help messages, AI helper                 |
 | Tokens      | 3     | Token purchase prompts                   |
 | Errors      | 7     | Error and warning messages               |

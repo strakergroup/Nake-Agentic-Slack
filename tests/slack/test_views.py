@@ -636,3 +636,16 @@ class TestVideoTranscribeTranslateModal:
                 break
 
         assert target_lang_block is not None, "Target languages block not found"
+
+
+class TestInsightsRemovedFromHomeView:
+    """Guard test: report_insights button must not appear in home_view (RAY-79162)."""
+
+    def test_home_view_source_has_no_report_insights(self):
+        """Verify report_insights does not appear in the home_view function source."""
+        import inspect
+
+        from app.slack.templates.views import home_view
+
+        source = inspect.getsource(home_view)
+        assert "report_insights" not in source

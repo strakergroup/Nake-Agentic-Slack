@@ -85,7 +85,6 @@ from .listener_actions import (
     post_job_list,
     post_job_status,
     post_job_summary,
-    post_report_insights,
     resolve_media_thread_ts,
     respond_to_message,
     submit_existing_srt_embed_task,
@@ -1139,19 +1138,6 @@ async def all_summary(ack: AsyncAck, context: RayContext, client: AsyncWebClient
         await post_job_summary(
             client, context=context, ray_client=context["ray"].client, all_jobs=True
         )
-
-
-@app.action("report_insights", middleware=[ray_connection])
-@slack_log_decorator
-async def handle_report_insights_action(
-    ack: AsyncAck, context: RayContext, client: AsyncWebClient
-):
-    """Get Report and Insights. Triggered from the Home Report Insights button"""
-    await ack()
-    if await require_ray_client(context, variation=LoginMessage.GET_JOB):
-        assert context["ray"] is not None
-        assert context["ray"].client is not None
-        await post_report_insights(client, context, context["ray"].client)
 
 
 @app.action("ai_translate_help", middleware=[ray_connection])

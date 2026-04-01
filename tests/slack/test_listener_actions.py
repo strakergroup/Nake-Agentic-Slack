@@ -17,7 +17,6 @@ from app.slack.listener_actions import (
     post_file_list,
     post_job_status,
     post_job_target_lang,
-    post_report_insights,
     submit_job,
     update_machine_translation_score,
     verify_help,
@@ -630,63 +629,6 @@ class TestPostJobStatus:
                 "TJ123" in call_args[1]["text"].upper()
                 or "find" in call_args[1]["text"].lower()
             )
-
-
-class TestPostReportInsights:
-    """Tests for post_report_insights function."""
-
-    @pytest.mark.asyncio
-    async def test_post_report_insights_with_respond(self, ray_client, context):
-        """Test post_report_insights using respond when available."""
-        mock_client = AsyncMock()
-        mock_respond = AsyncMock()
-        context["response_url"] = "https://hooks.slack.com/test"
-        context["channel_id"] = "C123"
-
-        with patch.object(
-            context.__class__,
-            "respond",
-            new_callable=PropertyMock,
-            return_value=mock_respond,
-        ):
-            await post_report_insights(mock_client, context, ray_client)
-
-            mock_respond.assert_called_once()
-            call_args = mock_respond.call_args
-            assert "text" in call_args[1]
-            assert "blocks" in call_args[1]
-            mock_client.chat_postMessage.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_post_report_insights_with_chat_post_message(
-        self, ray_client, context
-    ):
-        """Test post_report_insights using chat_postMessage when respond not available."""
-        mock_client = AsyncMock()
-        context["response_url"] = None
-        context["channel_id"] = "C123"
-
-        await post_report_insights(mock_client, context, ray_client, channel_id="C456")
-
-        mock_client.chat_postMessage.assert_called_once()
-        call_args = mock_client.chat_postMessage.call_args
-        assert call_args[1]["channel"] == "C456"
-        assert "text" in call_args[1]
-        assert "blocks" in call_args[1]
-
-    @pytest.mark.asyncio
-    async def test_post_report_insights_with_thread_ts(self, ray_client, context):
-        """Test post_report_insights with thread timestamp."""
-        mock_client = AsyncMock()
-        context["response_url"] = None
-        context["channel_id"] = "C123"
-
-        await post_report_insights(
-            mock_client, context, ray_client, thread_ts="123456.789"
-        )
-
-        mock_client.chat_postMessage.assert_called_once()
-        assert mock_client.chat_postMessage.call_args[1]["thread_ts"] == "123456.789"
 
 
 class TestPostBatchList:

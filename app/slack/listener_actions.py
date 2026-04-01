@@ -14,7 +14,6 @@ from ray_sdk import RayResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.web.async_client import AsyncWebClient
 
-from app.api.http_client import retry_on_timeout
 from app.api.language_cloud import detect_language
 from app.api.models import MtTranslationExtraData
 from app.api.stream_proxy import send_mt_translation_request
@@ -52,7 +51,7 @@ from ..auth.connector import (
     log_transcribe_request,  # noqa: F401 - kept for potential future use
 )
 from ..config import Environment, config, domains
-from ..ray.service import RayService, get_job_predictions
+from ..ray.service import RayService
 from ..ray.settings import (
     get_auto_translate_languages,
     get_auto_translate_settings_and_langs,
@@ -80,7 +79,6 @@ from .templates.messages import (
     FileListMessage,
     HelpMessage,
     HumanJobQuoteMessage,
-    InsightsMessage,
     InvalidJobMessage,
     InvalidMTResultMessage,
     JobDetailsMessage,
@@ -95,7 +93,6 @@ from .templates.messages import (
     LogoutMessage,
     MediaEmbedOptionMessage,
     NewJobMessage,
-    ReportInsightsMessage,
     SlackMessage,
     TranscriptionMessage,  # noqa: F401 - kept for potential future use
     VerifyHelperMessage,
@@ -588,15 +585,6 @@ async def respond_to_message(
                     )
             else:
                 await context.say(JobTargetsNoIdMessage().text, thread_ts=thread_ts)
-        case "Show_Insights":
-            if await require_ray_client(context, variation=LoginMessage.INSIGHTS):
-                await post_insights(
-                    client,
-                    context,
-                    context["ray"].client,
-                    message["text"],
-                    thread_ts=thread_ts,
-                )
         case "Jokes":
             # Delegate jokes to IBM Watson Assistant dialog.
             if response.reply:
@@ -1088,18 +1076,12 @@ async def post_job_status(
     try:
         if jobs is not None:
             for job in jobs:
-                job_prediction = (
-                    (await get_job_predictions([job_id]))[0].get("prediction", "")
-                    if job.status == "IN_PROGRESS"
-                    else ""
-                )
                 msg = JobStatusMessage(
                     job,
                     ray_client.id,
                     is_ibm_enterprise(
                         enterprise_id=context.enterprise_id,
                     ),
-                    job_prediction,
                 )
                 if context.response_url and context.respond:
                     await context.respond(text=msg.text, blocks=msg.blocks)
@@ -1211,21 +1193,12 @@ async def post_job_details(
             if jobs is not None:
                 for job in jobs:
                     if job:
-                        # get the job prediction
-                        job_prediction = (
-                            (await get_job_predictions([job_id]))[0].get(
-                                "prediction", ""
-                            )
-                            if job.status == "IN_PROGRESS"
-                            else ""
-                        )
                         job_msg = JobDetailsMessage(
                             job,
                             ray_client.id,
                             is_ibm_enterprise(
                                 enterprise_id=context.enterprise_id,
                             ),
-                            job_prediction,
                         )
                         if context.response_url and context.respond:
                             return await context.respond(
@@ -1321,51 +1294,21 @@ async def post_job_summary(
     order_now_count = 0
     in_progress_count_24 = 0
     in_progress_due = 0
-    predictions = {"on_time": 0, "late": 0, "over_due": 0}
     if isinstance(responses[2], RayResponse):
         in_progress_count_24 = responses[2].data.summary.get("in_progress", 0)
     if isinstance(responses[3], RayResponse):
         in_progress_due = responses[3].data.summary.get("in_progress", 0)
     if isinstance(responses[0], RayResponse):
-        if isinstance(responses[0], RayResponse):
-            in_progress_count = responses[0].data.summary.get("in_progress", 0)
-        else:
-            in_progress_count = 0  # or handle the exception case appropriately
+        in_progress_count = responses[0].data.summary.get("in_progress", 0)
 
         if isinstance(responses[4], RayResponse):
             validation_count = responses[4].data.summary.get("validation", 0)
-        else:
-            validation_count = 0  # or handle the exception case appropriately
 
         if isinstance(responses[5], RayResponse):
             pending_quotes_count = responses[5].data.summary.get("pending_quotes", 0)
-        else:
-            pending_quotes_count = 0  # or handle the exception case appropriately
 
         if isinstance(responses[6], RayResponse):
             order_now_count = responses[6].data.summary.get("order_now", 0)
-        else:
-            order_now_count = 0  # or handle the exception case appropriately
-        # Get job predictions.
-        job_ids: list[str] = []
-        for group in responses[0].data.groups:
-            group_in_progress = group.get("in_progress", {})
-            group_total = group_in_progress.get("count", 0)
-            group_overdue = group.get("over_due_count", 0)
-            predictions["over_due"] += group_overdue
-            job_ids.extend(
-                group_in_progress.get("jobs", [])[: group_total - group_overdue]
-            )
-        if job_ids and config.environment != Environment.production:
-            try:
-                job_predictions = await get_job_predictions(job_ids)
-                for pred in job_predictions:
-                    if pred.get("prediction") == "on_time":
-                        predictions["on_time"] += 1
-                    else:
-                        predictions["late"] += 1
-            except Exception as e:
-                notify_exception(e)
     else:
         notify_exception(responses[0])
     if isinstance(responses[1], RayResponse):
@@ -1381,7 +1324,6 @@ async def post_job_summary(
             validation=validation_count,
             pending_quotes=pending_quotes_count,
             order_now=order_now_count,
-            predictions=predictions,
             all_jobs=all_jobs,
         )
         if context.response_url and context.respond:
@@ -1545,21 +1487,12 @@ async def post_job_list(
         notify_exception(e)
         raise
     try:
-        job_ids_in_progress = [
-            Job.id for Job in response.data[0] if Job.status == "IN_PROGRESS"
-        ]
-        job_predictions = (
-            await get_job_predictions(job_ids_in_progress)
-            if job_ids_in_progress
-            else []
-        )
         msg = JobListMessage(
             preset=preset,
             title=title,
             jobs=response.data[0],
             pagination=response.data[1],
             client_ref=client_ref,
-            job_predictions=job_predictions,
         )
         if context.response_url and context.respond:
             return await context.respond(
@@ -1592,64 +1525,6 @@ async def post_job_list(
             headers=dict(response.response.headers.items()),
             version="v3",
         )
-
-
-async def post_insights(
-    client: AsyncWebClient,
-    context: AsyncBoltContext,
-    ray_client: RayClient,
-    prompt: str,
-    channel_id: str | None = None,
-    thread_ts: str | None = None,
-):
-    channel_id = channel_id or context.channel_id or context.user_id
-
-    async def send_insights_message():
-        try:
-
-            async def _insights_request():
-                async with httpx.AsyncClient(timeout=30) as http:
-                    response = await http.post(
-                        f"{domains.insights_api}/nlp",
-                        json={"clientId": ray_client.id, "prompt": prompt},
-                    )
-                    response.raise_for_status()
-                    return response.json()
-
-            insights_response = await retry_on_timeout(
-                _insights_request, notify_on_final_failure=False
-            )
-            insights_msg = InsightsMessage(insights_response["result"].strip())
-            if context.response_url and context.respond:
-                await context.respond(
-                    text=insights_msg.text, blocks=insights_msg.blocks
-                )
-            else:
-                if not channel_id:
-                    raise AssertionError("No channel to post to")
-                await client.chat_postMessage(
-                    channel=channel_id,
-                    text=insights_msg.text,
-                    blocks=insights_msg.blocks,
-                    thread_ts=thread_ts,
-                )
-        except Exception as e:
-            notify_exception(e, "Failed to get insights from Insights API")
-
-    waiting_msg = ":stopwatch: Please wait as we gather your information..."
-    if context.response_url and context.respond:
-        await context.respond(text=waiting_msg)
-    else:
-        if not channel_id:
-            raise AssertionError("No channel to post to")
-        await client.chat_postMessage(
-            channel=channel_id,
-            text=waiting_msg,
-            thread_ts=thread_ts,
-        )
-
-    # Send insights message async because it might take a long time.
-    asyncio.create_task(send_insights_message())
 
 
 async def submit_job(
@@ -1965,45 +1840,6 @@ async def post_job_target_lang(
             )
 
 
-async def post_report_insights(
-    client: AsyncWebClient,
-    context: AsyncBoltContext,
-    ray_client: RayClient,
-    channel_id: str | None = None,
-    thread_ts: str | None = None,
-):
-    """Show Insight message modal.
-
-    Args:
-        context (AsyncBoltContext): The context from the listener.
-        ray_client (RayClient): The RAY client details.
-        channel_id (str | None, optional): The channel to post the message to.
-            If not given, posts to the source channel.
-        thread_ts (str | None, optional): The message thread to reply to.
-    """
-    channel_id = channel_id or context.channel_id or context.user_id
-
-    insights_msg = ReportInsightsMessage(ray_client.planname)
-    try:
-        if context.response_url and context.respond:
-            await context.respond(
-                text=insights_msg.text,
-                blocks=insights_msg.blocks,
-                replace_original=False,
-            )
-        else:
-            if not channel_id:
-                raise AssertionError("No channel to post to")
-            await client.chat_postMessage(
-                channel=channel_id,
-                text=insights_msg.text,
-                blocks=insights_msg.blocks,
-                thread_ts=thread_ts,
-            )
-    except Exception as e:
-        notify_exception(e, "Failed to get insights from Insights API")
-
-
 async def ai_translate_help(
     client: AsyncWebClient,
     context: AsyncBoltContext,
@@ -2011,7 +1847,7 @@ async def ai_translate_help(
     channel_id: str | None = None,
     thread_ts: str | None = None,
 ):
-    """Show Insight message modal.
+    """Show AI Translate Help message.
 
     Args:
         context (AsyncBoltContext): The context from the listener.

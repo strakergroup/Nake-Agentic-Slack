@@ -36,6 +36,19 @@ from app.slack.templates.messages import (
 from app.translate import _
 
 
+def _blocks_contain_action(blocks: list, action_id: str) -> bool:
+    """Return True if any block element has the given action_id."""
+    for block in blocks:
+        for element in block.get("elements", []):
+            if element.get("action_id") == action_id:
+                return True
+            if element.get("accessory", {}).get("action_id") == action_id:
+                return True
+        if block.get("accessory", {}).get("action_id") == action_id:
+            return True
+    return False
+
+
 class TestLoginMessage:
     def test_no_enterprise_id(self, user_id: str, team_id: str, channel_id: str):
         message = LoginMessage(user_id, team_id, None, channel_id)
@@ -335,6 +348,7 @@ class TestWelcomeBackMessage:
 
         assert "Welcome" in message.text
         assert len(message.blocks) > 0
+        assert not _blocks_contain_action(message.blocks, "report_insights")
 
     def test_welcome_back_message_without_connection(self, user_id):
         """Test welcome back message without ray connection."""
@@ -342,6 +356,7 @@ class TestWelcomeBackMessage:
 
         assert "Welcome" in message.text
         assert len(message.blocks) > 0
+        assert not _blocks_contain_action(message.blocks, "report_insights")
 
 
 class TestSuccessfulLoginMessage:
@@ -360,6 +375,7 @@ class TestSuccessfulLoginMessage:
         message = SuccessfulLoginMessage(user_id, "test.user", ray_connection)
         assert "Login was successful" in message.text
         assert len(message.blocks) > 0
+        assert not _blocks_contain_action(message.blocks, "report_insights")
 
 
 class TestSlackPermissionsMessage:
@@ -534,6 +550,7 @@ class TestHelpMessage:
         message = HelpMessage(context)
         assert "help" in message.text.lower() or "wave" in message.text.lower()
         assert len(message.blocks) > 0
+        assert not _blocks_contain_action(message.blocks, "report_insights")
 
     def test_help_message_without_connection(self, user_id, team_id):
         """Test help message without ray connection."""
@@ -550,6 +567,7 @@ class TestHelpMessage:
         message = HelpMessage(context)
         assert "help" in message.text.lower() or "wave" in message.text.lower()
         assert len(message.blocks) > 0
+        assert not _blocks_contain_action(message.blocks, "report_insights")
 
 
 class TestCancelJobMessage:
@@ -870,3 +888,29 @@ class TestMediaEmbedOptionMessage:
         assert message.blocks[0]["accessory"]["type"] == "button"
         assert message.blocks[0]["accessory"]["action_id"] == "video_embed_subtitles"
         assert message.blocks[0]["accessory"]["value"] == action_value
+
+
+class TestInsightsRemoval:
+    """Guard tests: verify Insights symbols were fully removed (RAY-79162)."""
+
+    def test_insights_message_not_importable(self):
+        """InsightsMessage should no longer exist in the messages module."""
+        import app.slack.templates.messages as msg_mod
+
+        assert not hasattr(msg_mod, "InsightsMessage")
+
+    def test_report_insights_message_not_importable(self):
+        """ReportInsightsMessage should no longer exist in the messages module."""
+        import app.slack.templates.messages as msg_mod
+
+        assert not hasattr(msg_mod, "ReportInsightsMessage")
+
+    def test_login_message_no_insights_variation(self):
+        """LoginMessage.INSIGHTS constant should no longer exist."""
+        assert not hasattr(LoginMessage, "INSIGHTS")
+
+    def test_is_min_languagecloud_plan_not_in_utils(self):
+        """is_min_langugagecloud_plan should no longer exist in utils."""
+        import app.ray.utils as utils_mod
+
+        assert not hasattr(utils_mod, "is_min_langugagecloud_plan")

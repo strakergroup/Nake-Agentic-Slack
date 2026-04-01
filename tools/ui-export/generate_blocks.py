@@ -585,11 +585,7 @@ def build_all_messages() -> list[dict[str, Any]]:
         patch(
             f"{MSG}.format_job_status", return_value=":large_blue_circle: In Progress"
         ),
-        patch(
-            f"{MSG}.format_job_prediction", return_value=":large_green_circle: On Time"
-        ),
         patch(f"{MSG}.is_ibm_enterprise", return_value=False),
-        patch(f"{MSG}.is_min_langugagecloud_plan", return_value=True),
         patch(
             f"{MSG}.get_auto_translate_language_options",
             return_value=MOCK_LANGUAGE_OPTIONS,
@@ -653,7 +649,6 @@ def build_all_messages() -> list[dict[str, Any]]:
             HumanJobQuoteMessage,
             ImageToMarkdownMessage,
             InfoMessage,
-            InsightsMessage,
             InvalidCommandMessage,
             InvalidJobMessage,
             InvalidMTResultMessage,
@@ -681,7 +676,6 @@ def build_all_messages() -> list[dict[str, Any]]:
             NewJobMessage,
             OnboardingMessage,
             QuoteMessage,
-            ReportInsightsMessage,
             RequiresMtTokenAdminMessage,
             RequiresMtTokenMessage,
             SlackPermissionsMessage,
@@ -751,17 +745,6 @@ def build_all_messages() -> list[dict[str, Any]]:
                 ENTERPRISE_ID,
                 CHANNEL_ID,
                 variation=LoginMessage.NEW_JOB,
-            ),
-        )
-        add(
-            "LoginMessage (insights)",
-            "Auth",
-            LoginMessage(
-                USER_ID,
-                TEAM_ID,
-                ENTERPRISE_ID,
-                CHANNEL_ID,
-                variation=LoginMessage.INSIGHTS,
             ),
         )
         add(
@@ -876,26 +859,6 @@ def build_all_messages() -> list[dict[str, Any]]:
             "Jobs",
             JobDetailsMessage(job, CLIENT_UUID, True),
         )
-        add(
-            "JobDetailsMessage (with prediction)",
-            "Jobs",
-            JobDetailsMessage(
-                job,
-                CLIENT_UUID,
-                False,
-                job_prediction=":large_green_circle: This job is predicted to be on time",
-            ),
-        )
-        add(
-            "JobDetailsMessage (IBM, with prediction)",
-            "Jobs",
-            JobDetailsMessage(
-                job,
-                CLIENT_UUID,
-                True,
-                job_prediction=":large_green_circle: This job is predicted to be on time",
-            ),
-        )
         add("InvalidJobMessage", "Jobs", InvalidJobMessage("TJ999999"))
         add("JobStatusNoIdMessage", "Jobs", JobStatusNoIdMessage())
         add(
@@ -909,7 +872,6 @@ def build_all_messages() -> list[dict[str, Any]]:
                 validation=4,
                 pending_quotes=2,
                 order_now=1,
-                predictions={"in_progress": 8, "on_time": 5, "late": 2, "over_due": 1},
             ),
         )
         add(
@@ -923,7 +885,6 @@ def build_all_messages() -> list[dict[str, Any]]:
                 validation=4,
                 pending_quotes=2,
                 order_now=1,
-                predictions={"in_progress": 8, "on_time": 5, "late": 2, "over_due": 1},
                 all_jobs=True,
             ),
         )
@@ -941,7 +902,6 @@ def build_all_messages() -> list[dict[str, Any]]:
                 "In Progress Jobs",
                 [job],
                 list_pagination,
-                [{"prediction": ":large_green_circle: On time", "job_id": "TJ123456"}],
             ),
         )
         add(
@@ -1246,14 +1206,6 @@ def build_all_messages() -> list[dict[str, Any]]:
 
         # ---- Help & Info ----
         add("HelpMessage", "Help", HelpMessage(mock_context))
-        add(
-            "InsightsMessage",
-            "Help",
-            InsightsMessage(
-                "You have completed 15 jobs in the last 30 days with an average turnaround of 3.2 days."
-            ),
-        )
-        add("ReportInsightsMessage", "Help", ReportInsightsMessage("Growth"))
         add("AIHelperMessage", "Help", AIHelperMessage())
         add("VerifyHelperMessage", "Help", VerifyHelperMessage())
         add("HumanJobMessage", "Help", HumanJobMessage())
@@ -1447,16 +1399,6 @@ def _build_home_blocks(
                         "text": ":sunny: Daily Summary",
                     },
                     "action_id": "daily_summary",
-                    "url": _HOME_MESSAGE_URL,
-                },
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": ":bar_chart: Insights",
-                    },
-                    "action_id": "report_insights",
                     "url": _HOME_MESSAGE_URL,
                 },
                 {
