@@ -68,10 +68,22 @@ async def csp_middleware(request, call_next):
     return response
 
 
+def _notify_exception_from_middleware(exc: BaseException) -> None:
+    """Notify for each ``Exception`` leaf under ``BaseExceptionGroup`` or a single error."""
+    if isinstance(exc, BaseExceptionGroup):
+        for sub in exc.exceptions:
+            _notify_exception_from_middleware(sub)
+    elif isinstance(exc, Exception):
+        notify_exception(exc)
+
+
 @app.middleware("http")
 async def buglog_middleware(request, call_next):
     try:
         return await call_next(request)
+    except BaseExceptionGroup as e:
+        _notify_exception_from_middleware(e)
+        raise
     except Exception as e:
         notify_exception(e)
         raise
