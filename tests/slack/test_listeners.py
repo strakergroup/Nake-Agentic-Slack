@@ -2115,6 +2115,112 @@ class TestLoginSsoAction:
                 mock_respond.assert_called()
 
 
+class TestEvaluateJobAction:
+    """Tests for evaluate_job_action safeguards and modal routing."""
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_action_blocks_quality_evaluation_for_ibm(
+        self, user_id, team_id, ray_client
+    ):
+        """IBM workspaces should not be able to open the QE modal."""
+        from app.slack.listeners import evaluate_job_action
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        body = {"trigger_id": "trigger-123"}
+        action = {
+            "value": json.dumps(
+                {
+                    "files": [{"id": "F123", "title": "file.txt"}],
+                    "channel_id": "C123",
+                }
+            )
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": "E123",
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, "E123", "C123"),
+        }
+
+        with (
+            patch(
+                "app.slack.listeners.require_ray_client", new_callable=AsyncMock
+            ) as mock_require_ray_client,
+            patch("app.slack.listeners.is_ibm_enterprise", return_value=True),
+        ):
+            mock_require_ray_client.return_value = True
+
+            await evaluate_job_action(
+                context_dict,
+                mock_client,
+                body=body,
+                action=action,
+                ack=mock_ack,
+            )
+
+        mock_ack.assert_called_once()
+        mock_client.views_open.assert_not_called()
+        mock_client.chat_postMessage.assert_called_once()
+        assert (
+            "Quality Evaluation is not available"
+            in mock_client.chat_postMessage.call_args.kwargs["text"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_action_allows_human_translation_for_ibm(
+        self, user_id, team_id, ray_client
+    ):
+        """IBM workspaces should still be able to open the human modal."""
+        from app.slack.listeners import evaluate_job_action
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        body = {"trigger_id": "trigger-123"}
+        action = {
+            "value": json.dumps(
+                {
+                    "files": [{"id": "F123", "title": "file.txt"}],
+                    "channel_id": "C123",
+                    "job_type": "human",
+                }
+            )
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": "E123",
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, "E123", "C123"),
+        }
+
+        with (
+            patch(
+                "app.slack.listeners.require_ray_client", new_callable=AsyncMock
+            ) as mock_require_ray_client,
+            patch("app.slack.listeners.is_ibm_enterprise", return_value=True),
+            patch(
+                "app.slack.listeners.human_job_modal", return_value={"type": "modal"}
+            ),
+        ):
+            mock_require_ray_client.return_value = True
+
+            await evaluate_job_action(
+                context_dict,
+                mock_client,
+                body=body,
+                action=action,
+                ack=mock_ack,
+            )
+
+        mock_ack.assert_called_once()
+        mock_client.views_open.assert_called_once()
+        mock_client.chat_postMessage.assert_not_called()
+
+
 class TestEvaluateJobSubmit:
     """Tests for evaluate_job_submit function - quality evaluation job handler."""
 
@@ -2138,6 +2244,41 @@ class TestEvaluateJobSubmit:
         )
         mock_ack.assert_called_once_with(response_action="clear")
         mock_client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_submit_blocks_quality_evaluation_for_ibm(
+        self, user_id, team_id, ray_client
+    ):
+        """IBM workspaces should not be able to submit QE forms."""
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "callback_id": "evaluate_job",
+            "private_metadata": "C123",
+            "state": {"values": {}},
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": "E123",
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, "E123", "C123"),
+        }
+
+        with patch("app.slack.listeners.is_ibm_enterprise", return_value=True):
+            await evaluate_job_submit(
+                context_dict, view=view, client=mock_client, ack=mock_ack
+            )
+
+        mock_ack.assert_called_once_with(response_action="clear")
+        mock_client.chat_postMessage.assert_called_once()
+        assert (
+            "Quality Evaluation is not available"
+            in mock_client.chat_postMessage.call_args.kwargs["text"]
+        )
 
     @pytest.mark.asyncio
     async def test_evaluate_job_submit_no_channel_id(

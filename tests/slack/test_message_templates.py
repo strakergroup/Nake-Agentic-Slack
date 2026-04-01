@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from app.auth.connector import RayClient, RayConnection, RaySuperGroup
 from app.slack.templates.messages import (
     AutoTranslateSettingsChangedMessage,
@@ -15,12 +17,14 @@ from app.slack.templates.messages import (
     InvalidCommandMessage,
     InvalidJobMessage,
     InvalidMTResultMessage,
+    JobCreationMessage,
     JobStatusNoIdMessage,
     JobTargetsNoIdMessage,
     LoginMessage,
     LogoutMessage,
     MachineTranslationMessage,
     MediaEmbedOptionMessage,
+    NewJobMessage,
     OnboardingMessage,
     RequiresMtTokenMessage,
     SlackPermissionsMessage,
@@ -45,6 +49,22 @@ def _blocks_contain_action(blocks: list, action_id: str) -> bool:
             if element.get("accessory", {}).get("action_id") == action_id:
                 return True
         if block.get("accessory", {}).get("action_id") == action_id:
+            return True
+    return False
+
+
+def _blocks_contain_text(blocks: list, text: str) -> bool:
+    """Return True if any block or element text contains the given text."""
+    for block in blocks:
+        block_text = block.get("text", {})
+        if text in block_text.get("text", ""):
+            return True
+        for element in block.get("elements", []):
+            element_text = element.get("text")
+            if isinstance(element_text, dict) and text in element_text.get("text", ""):
+                return True
+        accessory = block.get("accessory", {})
+        if text in accessory.get("text", {}).get("text", ""):
             return True
     return False
 
@@ -350,6 +370,23 @@ class TestWelcomeBackMessage:
         assert len(message.blocks) > 0
         assert not _blocks_contain_action(message.blocks, "report_insights")
 
+    def test_welcome_back_message_hides_quality_help_for_ibm(self, user_id, team_id):
+        """IBM workspaces should keep human help without QE help."""
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=team_id,
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+            enable_verify_in_slack=True,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=None)
+        with patch("app.slack.templates.messages.is_ibm_enterprise", return_value=True):
+            message = WelcomeBackMessage(user_id, ray_connection, enterprise_id="E123")
+
+        assert not _blocks_contain_text(message.blocks, "Quality Evaluation")
+        assert _blocks_contain_text(message.blocks, "Human Translation")
+
     def test_welcome_back_message_without_connection(self, user_id):
         """Test welcome back message without ray connection."""
         message = WelcomeBackMessage(user_id, None)
@@ -376,6 +413,27 @@ class TestSuccessfulLoginMessage:
         assert "Login was successful" in message.text
         assert len(message.blocks) > 0
         assert not _blocks_contain_action(message.blocks, "report_insights")
+
+    def test_successful_login_message_hides_quality_help_for_ibm(
+        self, user_id, team_id
+    ):
+        """IBM workspaces should keep human help without QE help."""
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=team_id,
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+            enable_verify_in_slack=True,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=None)
+        with patch("app.slack.templates.messages.is_ibm_enterprise", return_value=True):
+            message = SuccessfulLoginMessage(
+                user_id, "test.user", ray_connection, enterprise_id="E123"
+            )
+
+        assert not _blocks_contain_text(message.blocks, "Quality Evaluation")
+        assert _blocks_contain_text(message.blocks, "Human Translation")
 
 
 class TestSlackPermissionsMessage:
@@ -552,6 +610,34 @@ class TestHelpMessage:
         assert len(message.blocks) > 0
         assert not _blocks_contain_action(message.blocks, "report_insights")
 
+    def test_help_message_hides_quality_help_for_ibm(self, user_id, team_id):
+        """IBM workspaces should keep human help without QE help."""
+        from app.auth.connector import RayContext
+
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=team_id,
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+            enable_verify_in_slack=True,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=None)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "enterprise_id": "E123",
+            }
+        )
+        context["ray"] = ray_connection
+        with patch("app.slack.templates.messages.is_ibm_enterprise", return_value=True):
+            message = HelpMessage(context)
+
+        assert not _blocks_contain_text(message.blocks, "Quality Evaluation")
+        assert _blocks_contain_text(message.blocks, "Human Translation")
+
     def test_help_message_without_connection(self, user_id, team_id):
         """Test help message without ray connection."""
         from app.auth.connector import RayContext
@@ -568,6 +654,45 @@ class TestHelpMessage:
         assert "help" in message.text.lower() or "wave" in message.text.lower()
         assert len(message.blocks) > 0
         assert not _blocks_contain_action(message.blocks, "report_insights")
+
+
+class TestNewJobMessage:
+    def test_new_job_message_hides_quality_evaluation_for_ibm(self):
+        files = [{"id": "F123", "title": "sample.docx"}]
+
+        message = NewJobMessage(
+            "C123",
+            "123.456",
+            files,
+            is_verify_enabled=True,
+            is_ibm_enterprise=True,
+        )
+
+        assert _blocks_contain_text(message.blocks, "AI Translation")
+        assert _blocks_contain_text(message.blocks, "Human Translation")
+        assert not _blocks_contain_text(message.blocks, "Quality Evaluation")
+
+    def test_new_job_message_keeps_quality_evaluation_for_non_ibm(self):
+        files = [{"id": "F123", "title": "sample.docx"}]
+
+        message = NewJobMessage(
+            "C123",
+            "123.456",
+            files,
+            is_verify_enabled=True,
+            is_ibm_enterprise=False,
+        )
+
+        assert _blocks_contain_text(message.blocks, "Human Translation")
+        assert _blocks_contain_text(message.blocks, "Quality Evaluation")
+
+
+class TestJobCreationMessage:
+    def test_job_creation_message_uses_neutral_copy(self):
+        message = JobCreationMessage("TJ123456", False)
+
+        assert "IBM" not in message.blocks[0]["text"]["text"]
+        assert "Human translation" in message.blocks[0]["text"]["text"]
 
 
 class TestCancelJobMessage:

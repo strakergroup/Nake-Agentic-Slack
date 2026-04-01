@@ -945,7 +945,10 @@ async def ray_events(
                     )
                 assert ray_connection is not None
                 login_message: SuccessfulLoginMessage = SuccessfulLoginMessage(
-                    event_data.user_id, event_data.username, ray_connection
+                    event_data.user_id,
+                    event_data.username,
+                    ray_connection,
+                    event_data.enterprise_id,
                 )
                 # Send login message to the same conversation where it was prompted
                 await post_notification_ephemeral(

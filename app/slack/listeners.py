@@ -319,7 +319,7 @@ async def home_opened(
                 )
                 if not history_last_24_hours.get("messages"):
                     message: SlackMessage = WelcomeBackMessage(
-                        context["user_id"], context["ray"]
+                        context["user_id"], context["ray"], context.enterprise_id
                     )
                     await say(blocks=message.blocks, text=message.text)
                 else:
@@ -399,6 +399,7 @@ async def new_job_shortcut(
                 context.ray.super_group[0].enable_verify_in_slack
                 if context.ray and context.ray.super_group
                 else False,
+                is_ibm_enterprise(context.enterprise_id),
             )
             await context.say(
                 text=new_job_msg.text,
@@ -745,6 +746,7 @@ async def login_sso_action(
                         context["user_id"],
                         user_info["profile"]["email"],
                         context["ray"],
+                        context.enterprise_id,
                     )
                     await ack(response_action="clear")
                     if msg:
@@ -1972,6 +1974,15 @@ async def evaluate_job_submit(
     if not channel_id:
         await ack(response_action="clear")
         return
+    if view.get("callback_id") == "evaluate_job" and is_ibm_enterprise(
+        context.enterprise_id
+    ):
+        await ack(response_action="clear")
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_("Quality Evaluation is not available in Slack for your workspace."),
+        )
+        return
 
     form_data = view["state"]["values"]
     try:
@@ -2092,6 +2103,14 @@ async def evaluate_job_action(
         channel_id = action_data.get("channel_id")
         if files:
             job_type = action_data.get("job_type", "evaluate")
+            if job_type != "human" and is_ibm_enterprise(context.enterprise_id):
+                await client.chat_postMessage(
+                    channel=channel_id or context["user_id"],
+                    text=_(
+                        "Quality Evaluation is not available in Slack for your workspace."
+                    ),
+                )
+                return
             view = human_job_modal(
                 channel_id, files, is_ibm_enterprise(context.enterprise_id), job_type
             )

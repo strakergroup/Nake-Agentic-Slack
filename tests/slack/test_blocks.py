@@ -65,6 +65,7 @@ class TestHomeAuthBlocks:
             assert blocks[1]["type"] == "actions"
             assert len(blocks[1]["elements"]) == 1
             assert blocks[1]["elements"][0]["action_id"] == "login_sso"
+            assert "Quality Evaluation" not in blocks[0]["text"]["text"]
 
     def test_home_auth_blocks_no_connection(self, user_id, team_id):
         """Test home auth blocks when not connected."""

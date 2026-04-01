@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Hid Slack Quality Evaluation entry points and QE help for IBM workspaces while keeping Human Translation available, removed `Translate@IBM` copy, and added IBM guard coverage for stale QE actions/submissions (Wade Norman, 2026-04-01)
 - [Changed]: ``test_verify`` docstring for ``create_human_job`` POST expectations aligned with ``data=`` body (Jiro Sasamoto, 2026-03-25)
 - [Changed]: Health tests assert 200/``OK``/``x`` and ``api.test`` ``assert_not_called`` when Slack is patched to fail, matching ``health_check`` without ``_check_slack_api`` (Jiro Sasamoto, 2026-03-25)
 - [Changed]: Aligned automated tests with current application behaviour only (no production code changes): health endpoint expectations while Slack checks are disabled in the router; `create_human_job` assertions for `data=` POST bodies; JSON validator and upload mocks; `create_service_language_mapping` dict shape; listener tests for MT/auto-translate (`require_ray_client`, `get_group_id`, real `language` values, glossary string IDs, embed-task patch targets); evaluate-job validation via source/target overlap; modal/view and message-template assertions; `MtTranslationExtraData`-shaped ray event fixtures with `users_info.profile.email`; buglog scheduler tests patching `app.config.config` for non-local environment (Jiro Sasamoto, 2026-03-25)

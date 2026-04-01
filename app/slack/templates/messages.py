@@ -67,6 +67,57 @@ class TextMessage:
         return self._text
 
 
+def _verification_help_blocks(
+    show_quality_evaluation: bool, show_human_translation: bool
+) -> list[dict[str, Any]]:
+    blocks: list[dict[str, Any]] = []
+    if show_quality_evaluation:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        ":sports_medal: AI translate your content and receive translation quality scores, then opt for human verification if needed."
+                    ),
+                },
+                "accessory": {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": _("Quality Evaluation Help"),
+                    },
+                    "url": "https://help.straker.ai/en/docs/quality-evaluation",
+                    "action_id": "link_verify_help",
+                },
+            }
+        )
+    if show_human_translation:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(
+                        ":bust_in_silhouette: Have content translated from one language to another by professional translators."
+                    ),
+                },
+                "accessory": {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": _("Human Translation Help"),
+                    },
+                    "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
+                    "action_id": "link_human_help",
+                },
+            }
+        )
+    return blocks
+
+
 class SlackMessage(TextMessage):
     """A class representing a Slack Message with blocks."""
 
@@ -267,13 +318,22 @@ class WelcomeBackMessage(SlackMessage):
     account.
     """
 
-    def __init__(self, user_id: str, ray_connection: RayConnection | None) -> None:
+    def __init__(
+        self,
+        user_id: str,
+        ray_connection: RayConnection | None,
+        enterprise_id: str | None = None,
+    ) -> None:
         waveEmoji = ":wave:"
         is_verify_enabled = (
             ray_connection.super_group[0].enable_verify_in_slack
             if ray_connection
             else False
         )
+        show_quality_evaluation = is_verify_enabled and not is_ibm_enterprise(
+            enterprise_id
+        )
+        show_human_translation = is_verify_enabled
         super().__init__(
             "Welcome back :wave:",
             [
@@ -336,49 +396,8 @@ class WelcomeBackMessage(SlackMessage):
                         "action_id": "link_document_mt",
                     },
                 },
-                *(
-                    [
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    ":sports_medal: AI translate your content and receive translation quality scores, then opt for human verification if needed."
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": _("Quality Evaluation Help"),
-                                },
-                                "url": "https://help.straker.ai/en/docs/quality-evaluation",
-                                "action_id": "link_verify_help",
-                            },
-                        },
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    ":bust_in_silhouette: Have content translated from one language to another by professional translators."
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": _("Human Translation Help"),
-                                },
-                                "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
-                                "action_id": "link_human_help",
-                            },
-                        },
-                    ]
-                    if is_verify_enabled
-                    else []
+                *_verification_help_blocks(
+                    show_quality_evaluation, show_human_translation
                 ),
                 {
                     "type": "section",
@@ -465,7 +484,11 @@ class SuccessfulLoginMessage(SlackMessage):
     """
 
     def __init__(
-        self, user_id: str, ray_username: str, ray_connection: RayConnection
+        self,
+        user_id: str,
+        ray_username: str,
+        ray_connection: RayConnection,
+        enterprise_id: str | None = None,
     ) -> None:
         waveEmoji = ":wave:"
         is_verify_enabled = (
@@ -473,6 +496,10 @@ class SuccessfulLoginMessage(SlackMessage):
             if ray_connection
             else False
         )
+        show_quality_evaluation = is_verify_enabled and not is_ibm_enterprise(
+            enterprise_id
+        )
+        show_human_translation = is_verify_enabled
         super().__init__(
             ":white_check_mark: Login was successful!",
             [
@@ -535,49 +562,8 @@ class SuccessfulLoginMessage(SlackMessage):
                         "action_id": "link_document_mt",
                     },
                 },
-                *(
-                    [
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    ":sports_medal: AI translate your content and receive translation quality scores, then opt for human verification if needed."
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": _("Quality Evaluation Help"),
-                                },
-                                "url": "https://help.straker.ai/en/docs/quality-evaluation",
-                                "action_id": "link_verify_help",
-                            },
-                        },
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    ":bust_in_silhouette: Have content translated from one language to another by professional translators."
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": _("Human Translation Help"),
-                                },
-                                "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
-                                "action_id": "link_human_help",
-                            },
-                        },
-                    ]
-                    if is_verify_enabled
-                    else []
+                *_verification_help_blocks(
+                    show_quality_evaluation, show_human_translation
                 ),
                 {
                     "type": "section",
@@ -1613,8 +1599,11 @@ class NewJobMessage(SlackMessage):
         timestamp: str,
         files: list[dict[str, Any]],
         is_verify_enabled: bool = False,
+        is_ibm_enterprise: bool = False,
     ):
         files_dict = [{"id": f["id"], "title": f["title"]} for f in files]
+        show_quality_evaluation = is_verify_enabled and not is_ibm_enterprise
+        show_human_translation = is_verify_enabled
         message_blocks = [
             {
                 "type": "section",
@@ -1649,7 +1638,7 @@ class NewJobMessage(SlackMessage):
             },
         ]
 
-        if is_verify_enabled:
+        if show_quality_evaluation:
             message_blocks.append(
                 {
                     "type": "section",
@@ -1677,6 +1666,7 @@ class NewJobMessage(SlackMessage):
                     },
                 },
             )
+        if show_human_translation:
             message_blocks.append(
                 {
                     "type": "section",
@@ -1759,7 +1749,7 @@ class JobCreationMessage(SlackMessage):
     def __init__(self, job_id: str = "", is_auto_quote: bool = False) -> None:
         tadeEmoji = ":tada:"
         quote_message = _(
-            "Human translation is currently not supported, please continue to use Translate@IBM for human translation requests until further notice."
+            "Human translation is not currently available in Slack for your workspace. Please use your usual human translation request process until further notice."
         )
         blocks = [
             {
@@ -1875,6 +1865,11 @@ class HelpMessage(SlackMessage):
             if ray_connection
             else False
         )
+        enterprise_id = context.get("enterprise_id")
+        show_quality_evaluation = is_verify_enabled and not is_ibm_enterprise(
+            enterprise_id
+        )
+        show_human_translation = is_verify_enabled
         super().__init__(
             "Hi there :wave: here are some ideas of what you can currently do with our app:",
             [
@@ -1934,49 +1929,8 @@ class HelpMessage(SlackMessage):
                         "action_id": "link_document_mt",
                     },
                 },
-                *(
-                    [
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    ":sports_medal: AI translate your content and receive translation quality scores, then opt for human verification if needed."
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": _("Quality Evaluation Help"),
-                                },
-                                "url": "https://help.straker.ai/en/docs/quality-evaluation",
-                                "action_id": "link_verify_help",
-                            },
-                        },
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": _(
-                                    ":bust_in_silhouette: Have content translated from one language to another by professional translators."
-                                ),
-                            },
-                            "accessory": {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "emoji": True,
-                                    "text": _("Human Translation Help"),
-                                },
-                                "url": "https://help.straker.ai/en/docs/human-verification-workflow-in-slack",
-                                "action_id": "link_human_help",
-                            },
-                        },
-                    ]
-                    if is_verify_enabled
-                    else []
+                *_verification_help_blocks(
+                    show_quality_evaluation, show_human_translation
                 ),
                 {
                     "type": "section",

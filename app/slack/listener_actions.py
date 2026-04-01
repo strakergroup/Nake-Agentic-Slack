@@ -50,7 +50,7 @@ from ..auth.connector import (
     get_group_tokens,
     log_transcribe_request,  # noqa: F401 - kept for potential future use
 )
-from ..config import Environment, config, domains
+from ..config import domains
 from ..ray.service import RayService
 from ..ray.settings import (
     get_auto_translate_languages,
@@ -391,6 +391,7 @@ async def respond_to_message(
             files = []
             unsupported_files = []
             video_files = []
+            is_ibm = is_ibm_enterprise(context.enterprise_id)
             for file in message["files"]:
                 if is_video_file(file):
                     file_info = await client.files_info(file=file["id"])
@@ -413,8 +414,7 @@ async def respond_to_message(
 
             # Show video options message for all video files at once
             if video_files and await require_ray_client(context, prompt_login=False):
-                # Get IBM status and token balance
-                is_ibm = is_ibm_enterprise(context.enterprise_id)
+                # Get token balance for non-IBM workspaces.
                 tokens = None
                 if not is_ibm:
                     if context["ray"].client is not None:
@@ -460,6 +460,7 @@ async def respond_to_message(
                     context.ray.super_group[0].enable_verify_in_slack
                     if context.ray
                     else False,
+                    is_ibm,
                 )
                 await context.say(
                     text=new_job_msg.text,
