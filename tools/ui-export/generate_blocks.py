@@ -463,17 +463,6 @@ def make_cancel_job_detail() -> dict[str, Any]:
     }
 
 
-def make_fact_check_data() -> dict[str, Any]:
-    return {
-        "file_name": "product-claims.pdf",
-        "job_uuid": "fc-job-uuid-001",
-        "fact_check_result": {
-            "total_claims": 14,
-            "claims": [{"claim": "Our product is #1", "verdict": "Needs Review"}],
-        },
-    }
-
-
 FILE_INFO = [
     {"id": "F001", "title": "homepage.html", "initial": True},
     {"id": "F002", "title": "about-us.docx"},
@@ -640,14 +629,12 @@ def build_all_messages() -> list[dict[str, Any]]:
             DocumentMTJobMessage,
             EvaluateErrorMessage,
             EvaluateSuccessMessage,
-            FactCheckResultMessage,
             FileListMessage,
             FileTooLargeMessage,
             FileTranslatedMessage,
             HelpMessage,
             HumanJobMessage,
             HumanJobQuoteMessage,
-            ImageToMarkdownMessage,
             InfoMessage,
             InvalidCommandMessage,
             InvalidJobMessage,
@@ -916,6 +903,27 @@ def build_all_messages() -> list[dict[str, Any]]:
                 CHANNEL_ID, "1234567890.123456", FILE_INFO, is_verify_enabled=True
             ),
         )
+        add(
+            "NewJobMessage (IBM)",
+            "Jobs",
+            NewJobMessage(
+                CHANNEL_ID,
+                "1234567890.123456",
+                FILE_INFO,
+                is_ibm_enterprise=True,
+            ),
+        )
+        add(
+            "NewJobMessage (IBM, verify)",
+            "Jobs",
+            NewJobMessage(
+                CHANNEL_ID,
+                "1234567890.123456",
+                FILE_INFO,
+                is_verify_enabled=True,
+                is_ibm_enterprise=True,
+            ),
+        )
 
         new_job_form = NewJobForm(
             files=[SlackFile(id="F001", title="homepage.html")],
@@ -1107,15 +1115,6 @@ def build_all_messages() -> list[dict[str, Any]]:
             "Translation",
             AutoTranslateSettingsDisabledMessage(USER_ID, CHANNEL_ID),
         )
-        add(
-            "ImageToMarkdownMessage",
-            "Translation",
-            ImageToMarkdownMessage(
-                "# Document Title\n\nThis is a **translated** document with some content.\n\n- Item 1\n- Item 2",
-                "scan.png",
-            ),
-        )
-
         # ---- Video / Transcription ----
         video_files = [
             {
@@ -1190,20 +1189,6 @@ def build_all_messages() -> list[dict[str, Any]]:
             VerifyCompleteMessage("Website Q1", "French"),
         )
 
-        # ---- Fact Check ----
-        add(
-            "FactCheckResultMessage",
-            "FactCheck",
-            FactCheckResultMessage(make_fact_check_data()),
-        )
-        add(
-            "FactCheckResultMessage (error)",
-            "FactCheck",
-            FactCheckResultMessage(
-                {"file_name": "doc.pdf", "job_uuid": "x", "fact_check_result": None}
-            ),
-        )
-
         # ---- Help & Info ----
         add("HelpMessage", "Help", HelpMessage(mock_context))
         add("AIHelperMessage", "Help", AIHelperMessage())
@@ -1248,9 +1233,9 @@ def build_all_messages() -> list[dict[str, Any]]:
             "RequiresMtTokenAdminMessage", "Tokens", RequiresMtTokenAdminMessage(0, 500)
         )
 
-    # ---- IBM-specific LoginMessage variants ----
-    # LoginMessage calls is_ibm_enterprise() internally; separate patch context
-    # to avoid exceeding Python's static nesting limit.
+    # ---- IBM-specific message variants ----
+    # These templates call is_ibm_enterprise() internally; separate patch
+    # context to avoid exceeding Python's static nesting limit.
     MSG = "app.slack.templates.messages"
     BLK = "app.slack.templates.blocks"
     with (
@@ -1262,7 +1247,12 @@ def build_all_messages() -> list[dict[str, Any]]:
         patch(f"{MSG}.domains", _domains_mock),
         patch(f"{BLK}.is_ibm_enterprise", return_value=True),
     ):
-        from app.slack.templates.messages import LoginMessage
+        from app.slack.templates.messages import (
+            HelpMessage,
+            LoginMessage,
+            SuccessfulLoginMessage,
+            WelcomeBackMessage,
+        )
 
         def add(name: str, category: str, obj: Any):
             data = safe_extract(obj)
@@ -1296,6 +1286,41 @@ def build_all_messages() -> list[dict[str, Any]]:
                 variation=LoginMessage.NEW_JOB,
             ),
         )
+        add(
+            "WelcomeBackMessage (IBM)",
+            "Auth",
+            WelcomeBackMessage(
+                USER_ID, ray_connection_verify, enterprise_id=ENTERPRISE_ID
+            ),
+        )
+        add(
+            "SuccessfulLoginMessage (IBM)",
+            "Auth",
+            SuccessfulLoginMessage(
+                USER_ID,
+                "jane.doe@acme.com",
+                ray_connection_verify,
+                enterprise_id=ENTERPRISE_ID,
+            ),
+        )
+
+        mock_ibm_context = MagicMock()
+        mock_ibm_context.__getitem__ = lambda self, key: {
+            "user_id": USER_ID,
+            "team_id": TEAM_ID,
+            "channel_id": CHANNEL_ID,
+            "enterprise_id": ENTERPRISE_ID,
+        }.get(key, None)
+        mock_ibm_context.get = lambda key, default=None: {
+            "user_id": USER_ID,
+            "team_id": TEAM_ID,
+            "channel_id": CHANNEL_ID,
+            "enterprise_id": ENTERPRISE_ID,
+            "ray": ray_connection_verify,
+        }.get(key, default)
+        mock_ibm_context.enterprise_id = ENTERPRISE_ID
+        mock_ibm_context.ray = ray_connection_verify
+        add("HelpMessage (IBM)", "Help", HelpMessage(mock_ibm_context))
 
     return entries
 
@@ -1523,9 +1548,6 @@ def build_all_views() -> list[dict[str, Any]]:
         from app.slack.templates.views import (
             cancel_job_modal,
             document_mt_job_modal,
-            fact_check_human_verification_modal,
-            fact_check_human_verification_thank_you_modal,
-            fact_check_job_modal,
             human_job_modal,
             job_search_modal,
             loading_modal,
@@ -1610,26 +1632,6 @@ def build_all_views() -> list[dict[str, Any]]:
             "Modals",
             document_mt_job_modal(CHANNEL_ID, FILE_INFO),
         )
-        add(
-            "document_mt_job_modal (with images)",
-            "Modals",
-            document_mt_job_modal(CHANNEL_ID, FILE_INFO, has_images=True),
-        )
-        add(
-            "fact_check_job_modal",
-            "Modals",
-            fact_check_job_modal(CHANNEL_ID, FILE_INFO),
-        )
-        add(
-            "fact_check_human_verification_modal",
-            "Modals",
-            fact_check_human_verification_modal("fc-uuid", "claims.pdf", 14, "English"),
-        )
-        add(
-            "fact_check_human_verification_thank_you_modal",
-            "Modals",
-            fact_check_human_verification_thank_you_modal(),
-        )
         add("loading_modal", "Modals", loading_modal())
         add(
             "srt_translate_modal",
@@ -1693,6 +1695,18 @@ def build_all_views() -> list[dict[str, Any]]:
         entries.append(
             {
                 "name": "home_view (IBM, connected)",
+                "category": "Home",
+                **safe_extract(
+                    {
+                        "type": "home",
+                        "blocks": _build_home_blocks(ibm_auth_connected, False, True),
+                    }
+                ),
+            }
+        )
+        entries.append(
+            {
+                "name": "home_view (IBM, connected, admin)",
                 "category": "Home",
                 **safe_extract(
                     {

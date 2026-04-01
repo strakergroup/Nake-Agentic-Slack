@@ -10,14 +10,20 @@
 SHELL := /bin/bash
 
 REPO_ROOT := $(shell git rev-parse --show-toplevel)
-PYTHON    := $(REPO_ROOT)/.venv/bin/python
+PYTHON_VENV := $(REPO_ROOT)/.venv/bin/python
+
+ifeq ($(wildcard $(PYTHON_VENV)),)
+PYTHON := pipenv run python
+else
+PYTHON := $(PYTHON_VENV)
+endif
 
 # nvm lazy-loads in interactive shells, so we source it explicitly for Make.
 NVM_INIT  := export NVM_DIR="$$HOME/.nvm" && [ -s "$$NVM_DIR/nvm.sh" ] && . "$$NVM_DIR/nvm.sh"
 NODE_BIN  := $(NVM_INIT) && node
 NPM_BIN   := $(NVM_INIT) && npm
 
-.PHONY: all generate render open clean install
+.PHONY: all generate render typecheck open clean install
 
 all: generate render open
 
@@ -38,6 +44,9 @@ render: output/ui-catalog.html
 
 output/ui-catalog.html: output/blocks.json render.mjs node_modules
 	$(NODE_BIN) render.mjs
+
+typecheck: node_modules render.mjs tsconfig.json
+	$(NPM_BIN) run typecheck
 
 open: output/ui-catalog.html
 	@echo "Opening ui-catalog.html in default browser..."

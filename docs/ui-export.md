@@ -25,13 +25,15 @@ flowchart LR
     end
 ```
 
-1. **Python** (`generate_blocks.py`) - Instantiates all message classes and view functions with mock data, exports Block Kit JSON
+1. **Python** (`generate_blocks.py`) - Instantiates all current message classes and view functions with mock data, exports Block Kit JSON
 2. **Node.js** (`render.mjs`) - Reads the JSON, renders each template via React SSR using `slack-blocks-to-jsx`, outputs a styled HTML page
+3. **TypeScript** (`tsconfig.json`) - Checks the renderer in `checkJs` mode so HTML export changes stay type-safe
 
 ## Prerequisites
 
-- Python 3.12+ with the project virtual environment (`.venv`)
+- Python 3.11+ with the project `pipenv` environment available
 - Node.js 18+ (used for the React SSR rendering step)
+- Node dependencies installed in `tools/ui-export/` via `make install`
 
 ## Usage
 
@@ -44,6 +46,7 @@ make
 # Individual steps
 make generate   # Python: create output/blocks.json
 make render     # Node.js: create output/ui-catalog.html
+make typecheck  # TypeScript: static-check render.mjs
 make open       # Open the HTML file in browser
 make clean      # Remove generated files
 

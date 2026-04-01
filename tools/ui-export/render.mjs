@@ -9,20 +9,49 @@
  *   node render.mjs
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { dirname, join } from "path";
-import { fileURLToPath } from "url";
-import { createRequire } from "module";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { Message } from "slack-blocks-to-jsx";
+
+/**
+ * @typedef {import("slack-blocks-to-jsx").Block} SlackBlock
+ * @typedef {"message" | "modal" | "home" | "text_only"} TemplateType
+ * @typedef {"message" | "view"} TemplateKind
+ * @typedef {{
+ *   name: string,
+ *   category: string,
+ *   type: TemplateType,
+ *   blocks?: SlackBlock[],
+ *   text?: string,
+ *   title?: string,
+ * }} ExportTemplate
+ * @typedef {ExportTemplate & { kind: TemplateKind }} RenderTemplate
+ * @typedef {{
+ *   total: number,
+ *   total_messages: number,
+ *   total_views: number,
+ * }} ExportStats
+ * @typedef {{
+ *   generated_at: string,
+ *   messages: ExportTemplate[],
+ *   views: ExportTemplate[],
+ *   stats: ExportStats,
+ * }} ExportData
+ */
 
 const require = createRequire(import.meta.url);
-const { createElement } = require("react");
-const { renderToStaticMarkup } = require("react-dom/server");
-const { Message } = require("slack-blocks-to-jsx");
+/** @type {{ emojify: (text: string) => string }} */
+const emoji = require("node-emoji");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Read the generated blocks JSON
 const blocksPath = join(__dirname, "output", "blocks.json");
+/** @type {ExportData} */
 const data = JSON.parse(readFileSync(blocksPath, "utf-8"));
 
 // Read the slack-blocks-to-jsx stylesheet to inline
@@ -36,12 +65,18 @@ const libCssPath = join(
 const libCss = readFileSync(libCssPath, "utf-8");
 
 // Combine messages + views, preserving order
+/** @type {RenderTemplate[]} */
 const allTemplates = [
-  ...data.messages.map((m) => ({ ...m, kind: "message" })),
-  ...data.views.map((v) => ({ ...v, kind: "view" })),
+  ...data.messages.map(
+    (m) => /** @type {RenderTemplate} */ ({ ...m, kind: "message" })
+  ),
+  ...data.views.map(
+    (v) => /** @type {RenderTemplate} */ ({ ...v, kind: "view" })
+  ),
 ];
 
 // Group by category
+/** @type {Record<string, RenderTemplate[]>} */
 const grouped = {};
 for (const t of allTemplates) {
   if (!grouped[t.category]) grouped[t.category] = [];
@@ -64,7 +99,7 @@ const categoryOrder = [
   "Tokens",
   "Errors",
 ];
-const sortedCategories = categoryOrder.filter((c) => grouped[c]);
+const sortedCategories = categoryOrder.filter((c) => grouped[c] !== undefined);
 // Add any categories not in the explicit order
 for (const c of Object.keys(grouped)) {
   if (!sortedCategories.includes(c)) sortedCategories.push(c);
@@ -78,8 +113,7 @@ for (const c of Object.keys(grouped)) {
 //
 // Fix: convert Slack emoji shortcodes to Unicode *before* the library sees them
 // using node-emoji (already a transitive dependency).
-const emoji = require("node-emoji");
-
+/** @type {Record<string, string>} */
 const SLACK_EMOJI_FALLBACKS = {
   large_blue_circle: "\u{1F535}",
   large_green_circle: "\u{1F7E2}",
@@ -95,6 +129,10 @@ const SLACK_EMOJI_FALLBACKS = {
   coin: "\u{1FA99}",
 };
 
+/**
+ * @param {unknown} text
+ * @returns {unknown}
+ */
 function sanitiseMrkdwn(text) {
   if (typeof text !== "string") return text;
   let result = emoji.emojify(text);
@@ -104,17 +142,28 @@ function sanitiseMrkdwn(text) {
   return result;
 }
 
+/**
+ * @param {SlackBlock[] | undefined} blocks
+ * @returns {SlackBlock[] | undefined}
+ */
 function sanitiseBlocks(blocks) {
   if (!Array.isArray(blocks)) return blocks;
-  return JSON.parse(
+  return /** @type {SlackBlock[]} */ (
+    JSON.parse(
     JSON.stringify(blocks, (key, value) => {
       if (key === "text" && typeof value === "string") return sanitiseMrkdwn(value);
       return value;
     })
+    )
   );
 }
 
 // Render each template's blocks to HTML via React SSR
+/**
+ * @param {SlackBlock[] | undefined} blocks
+ * @param {string} name
+ * @returns {string}
+ */
 function renderBlocks(blocks, name) {
   blocks = sanitiseBlocks(blocks);
   if (!blocks || blocks.length === 0) return "<em>No blocks</em>";
@@ -127,18 +176,30 @@ function renderBlocks(blocks, name) {
     });
     return renderToStaticMarkup(el);
   } catch (err) {
-    return `<div class="render-error">Render error for ${name}: ${err.message}</div>`;
+    return `<div class="render-error">Render error for ${name}: ${formatErrorMessage(err)}</div>`;
   }
+}
+
+/**
+ * @param {unknown} error
+ * @returns {string}
+ */
+function formatErrorMessage(error) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 // Build the nav sidebar HTML
 let navHtml = "";
 for (const cat of sortedCategories) {
   const slug = cat.toLowerCase().replace(/\s+/g, "-");
+  const templates = grouped[cat] ?? [];
   navHtml += `<div class="nav-category">`;
   navHtml += `<a href="#cat-${slug}" class="nav-cat-link">${cat}</a>`;
   navHtml += `<div class="nav-items">`;
-  for (const t of grouped[cat]) {
+  for (const t of templates) {
     const id = `tpl-${slug}-${t.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
     navHtml += `<a href="#${id}" class="nav-item">${t.name}</a>`;
   }
@@ -149,9 +210,10 @@ for (const cat of sortedCategories) {
 let contentHtml = "";
 for (const cat of sortedCategories) {
   const slug = cat.toLowerCase().replace(/\s+/g, "-");
+  const templates = grouped[cat] ?? [];
   contentHtml += `<div class="category-section" id="cat-${slug}">`;
   contentHtml += `<h2 class="category-title">${cat}</h2>`;
-  for (const t of grouped[cat]) {
+  for (const t of templates) {
     const id = `tpl-${slug}-${t.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
     const typeLabel =
       t.type === "modal"
@@ -164,7 +226,7 @@ for (const cat of sortedCategories) {
     const rendered = renderBlocks(t.blocks, t.name);
 
     // For text-only messages, show the text content
-    const textContent = t.text
+    const textContent = typeof t.text === "string"
       ? `<div class="text-only-content">${t.text}</div>`
       : "";
 

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Added]: Expanded `tools/ui-export` IBM coverage with `WelcomeBackMessage`, `SuccessfulLoginMessage`, `HelpMessage`, and separate IBM connected home variants for non-admin vs admin states so the catalog reflects more IBM-specific Slack UI branches (Wade Norman, 2026-04-02)
+- [Added]: Added IBM and IBM verify-enabled `NewJobMessage` variants to the UI export catalog so the tool reflects all current Slack new-job button combinations (Wade Norman, 2026-04-02)
+- [Fixed]: Repaired `tools/ui-export` by removing stale FactCheck message exports, falling back to `pipenv run python` when `.venv` is absent, and adding a local renderer typecheck workflow with strict JSDoc typings (Wade Norman, 2026-04-02)
 - [Changed]: Hid Slack Quality Evaluation entry points and QE help for IBM workspaces while keeping Human Translation available, removed `Translate@IBM` copy, and added IBM guard coverage for stale QE actions/submissions (Wade Norman, 2026-04-01)
 - [Changed]: ``test_verify`` docstring for ``create_human_job`` POST expectations aligned with ``data=`` body (Jiro Sasamoto, 2026-03-25)
 - [Changed]: Health tests assert 200/``OK``/``x`` and ``api.test`` ``assert_not_called`` when Slack is patched to fail, matching ``health_check`` without ``_check_slack_api`` (Jiro Sasamoto, 2026-03-25)

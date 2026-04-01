@@ -3,11 +3,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "render": "node render.mjs"
+    "render": "node render.mjs",
+    "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "slack-blocks-to-jsx": "^0.8.6"
+    "slack-blocks-to-jsx": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.2"
   }
 }
