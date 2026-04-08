@@ -130,6 +130,26 @@ class SlackMessage(TextMessage):
         return self._blocks
 
 
+class JobFileListEmptyMessage(SlackMessage):
+    """Message shown when a job has no files to display."""
+
+    def __init__(self, job_id: str, list_type: str) -> None:
+        list_label = "completed" if list_type == "completed" else "in-progress"
+        message = _("No {list_label} files are available for *{job_id}* right now.")
+        super().__init__(
+            message,
+            [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": message,
+                    },
+                }
+            ],
+        )
+
+
 class OnboardingMessage(SlackMessage):
     """Message to send to onboard a new user."""
 
@@ -2653,6 +2673,12 @@ class BatchListMessage(SlackMessage):
     def __init__(self, job: Job, client_id: str) -> None:
         title = _("The in progress file list for *{job.id}* is below:")
 
+        job_batches = json.loads(job.batches)
+        if not job_batches:
+            empty_message = JobFileListEmptyMessage(job.id, "in-progress")
+            super().__init__(empty_message.text, empty_message.blocks)
+            return
+
         job_file_block: list[dict[str, Any]] = []
         # Prepare download links prefix
         if config.environment == Environment.production:
@@ -2664,8 +2690,6 @@ class BatchListMessage(SlackMessage):
         else:
             download_prefix = "https://local-workbench.strakertranslations.com/shadomx/apps/wbadmin/fw1/index.cfm?action=download.translation&filePath="
 
-        # If there is any jobs result
-        job_batches = json.loads(job.batches)
         job_text = ""
 
         # Loop for each sub batch inside a job and print out detailed information and download links if available
@@ -2778,6 +2802,11 @@ class FileListMessage(SlackMessage):
     """Message showing the list of translation files."""
 
     def __init__(self, job: Job, client_id: str) -> None:
+        if not job.translated_file:
+            empty_message = JobFileListEmptyMessage(job.id, "completed")
+            super().__init__(empty_message.text, empty_message.blocks)
+            return
+
         title = _("The completed file list for *{job.id}* is below:")
         job_file_block: list[dict[str, Any]] = []
         for x in job.translated_file:

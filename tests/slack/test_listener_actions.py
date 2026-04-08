@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
@@ -679,6 +680,43 @@ class TestPostBatchList:
                 or "find" in call_args[1]["text"].lower()
             )
 
+    @pytest.mark.asyncio
+    async def test_post_batch_list_shows_empty_state_when_job_has_no_batches(
+        self, ray_client, context
+    ):
+        """Valid jobs with no batches should return a clear empty-state message."""
+        mock_client = AsyncMock()
+        context["channel_id"] = "C123"
+        context["response_url"] = None
+        mock_log = MagicMock()
+        mock_log.add_api_log = MagicMock()
+        context["log"] = mock_log
+
+        job = SimpleNamespace(
+            id="TJ123456",
+            status="IN_PROGRESS",
+            batches="[]",
+            pagination=SimpleNamespace(page=1, total_pages=1, rows_per_page=5),
+        )
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.url = "https://api.example.com/job/TJ123456"
+        mock_response.json = MagicMock(return_value={})
+        mock_response.content = b""
+        mock_response.headers = {}
+        mock_service.get_job = AsyncMock(return_value=([job], mock_response))
+
+        with patch(
+            "app.slack.listener_actions.RayService.get_service",
+            return_value=mock_service,
+        ):
+            await post_batch_list(mock_client, context, ray_client, "TJ123456", 1, 5)
+
+        mock_client.chat_postMessage.assert_called_once()
+        call_args = mock_client.chat_postMessage.call_args
+        assert "no in-progress files are available" in call_args[1]["text"].lower()
+
 
 class TestPostFileList:
     """Tests for post_file_list function."""
@@ -727,6 +765,44 @@ class TestPostFileList:
                 "TJ123" in call_args[1]["text"].upper()
                 or "find" in call_args[1]["text"].lower()
             )
+
+    @pytest.mark.asyncio
+    async def test_post_file_list_shows_empty_state_when_job_has_no_files(
+        self, ray_client, context
+    ):
+        """Valid jobs with no translated files should return a clear empty-state message."""
+        mock_client = AsyncMock()
+        context["channel_id"] = "C123"
+        context["response_url"] = None
+        mock_log = MagicMock()
+        mock_log.add_api_log = MagicMock()
+        context["log"] = mock_log
+
+        job = SimpleNamespace(
+            id="TJ123456",
+            translated_file=[],
+            sl=SimpleNamespace(name="EN-US"),
+            f_pagination=SimpleNamespace(page=1, total_pages=1, rows_per_page=5),
+            pagination=SimpleNamespace(page=1, total_pages=1, rows_per_page=5),
+        )
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.url = "https://api.example.com/job/TJ123456"
+        mock_response.json = MagicMock(return_value={})
+        mock_response.content = b""
+        mock_response.headers = {}
+        mock_service.get_job = AsyncMock(return_value=([job], mock_response))
+
+        with patch(
+            "app.slack.listener_actions.RayService.get_service",
+            return_value=mock_service,
+        ):
+            await post_file_list(mock_client, context, ray_client, "TJ123456", 1, 5)
+
+        mock_client.chat_postMessage.assert_called_once()
+        call_args = mock_client.chat_postMessage.call_args
+        assert "no completed files are available" in call_args[1]["text"].lower()
 
 
 class TestPostJobTargetLang:
