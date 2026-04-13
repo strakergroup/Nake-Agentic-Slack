@@ -93,6 +93,28 @@ async def get_group_id(verify_organization_uuid: str) -> str | None:
     return ":".join(row["obj_uuid"] for row in results)
 
 
+def glossary_language_candidates(lang: str | None) -> list[str]:
+    """Return ordered language candidates for glossary lookup.
+
+    Slack direct MT often resolves English to the generic `en`, while the
+    terminology record may have been created for `en-us` or `en-gb`. Try the
+    exact value first, then the common English variants.
+    """
+    if not lang:
+        return []
+
+    normalized = lang.strip().lower()
+    if not normalized:
+        return []
+
+    candidates = [normalized]
+    if normalized.startswith("en"):
+        for variant in ("en", "en-us", "en-gb"):
+            if variant not in candidates:
+                candidates.append(variant)
+    return candidates
+
+
 async def evaluate_get_glossary_resource(
     org_uuid: str, client: RayClient | None, sl: str | None, tl: str | None, engine: str
 ) -> str:
@@ -105,6 +127,13 @@ async def evaluate_get_glossary_resource(
     if not groups:
         return ""
 
+    source_candidates = glossary_language_candidates(sl)
+    target_candidates = glossary_language_candidates(tl)
+    if not source_candidates:
+        source_candidates = [sl or ""]
+    if not target_candidates:
+        target_candidates = [tl or ""]
+
     sql = text("""
         SELECT terminology_id
         FROM terminology_third_party_info
@@ -114,12 +143,23 @@ async def evaluate_get_glossary_resource(
         AND terminology_engine = :engine
         ORDER BY created_at DESC
         LIMIT 1
-    """).bindparams(groups=groups, sl=sl, tl=tl, engine=engine)
-    result = await fetch_one(sql, async_engines["machine_translation_readonly"])
-    if not result:
-        return ""
+    """)
 
-    return result["terminology_id"]
+    for source_candidate in source_candidates:
+        for target_candidate in target_candidates:
+            result = await fetch_one(
+                sql.bindparams(
+                    groups=groups,
+                    sl=source_candidate,
+                    tl=target_candidate,
+                    engine=engine,
+                ),
+                async_engines["machine_translation_readonly"],
+            )
+            if result:
+                return result["terminology_id"]
+
+    return ""
 
 
 def get_auto_translate_languages(

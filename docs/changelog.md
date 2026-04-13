@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: Slack direct/channel MT glossary lookup now retries English variants (`en`, `en-us`, `en-gb`) when resolving Microsoft terminology so `fr-ca` dispatch can still attach glossaries created under regional English codes; added regression tests for the fallback order (Wade Norman, 2026-04-13)
 - [Changed]: Increased the `tools/ui-export` catalog sidebar width to `340px`, added a renderer guard test, and regenerated the HTML catalog for easier navigation of longer template names (Wade Norman, 2026-04-02)
 - [Changed]: Renamed the IBM connected home-view export in `tools/ui-export` to explicit `admin` / `non-admin` wording and regenerated the catalog so IBM labels are consistent across message and home variants (Wade Norman, 2026-04-02)
 - [Changed]: Relabeled IBM `HelpMessage`, `WelcomeBackMessage`, and `SuccessfulLoginMessage` variants in `tools/ui-export` as explicit admin vs non-admin entries and regenerated the UI catalog so those IBM branches are visible by name (Wade Norman, 2026-04-02)

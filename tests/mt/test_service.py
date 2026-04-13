@@ -1,0 +1,69 @@
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from app.mt.service import evaluate_get_glossary_resource, glossary_language_candidates
+
+
+class TestGlossaryLanguageCandidates:
+    def test_non_english_returns_single_candidate(self):
+        assert glossary_language_candidates("fr-ca") == ["fr-ca"]
+
+    def test_english_returns_variant_candidates(self):
+        assert glossary_language_candidates("en") == ["en", "en-us", "en-gb"]
+
+    def test_regional_english_keeps_exact_first(self):
+        assert glossary_language_candidates("EN-US") == ["en-us", "en", "en-gb"]
+
+
+@pytest.mark.asyncio
+@patch("app.mt.service.evaluate_get_org_groups", new_callable=AsyncMock)
+@patch("app.mt.service.fetch_one", new_callable=AsyncMock)
+async def test_evaluate_get_glossary_resource_tries_english_variants(
+    mock_fetch_one, mock_get_org_groups
+):
+    mock_get_org_groups.return_value = ["group-1"]
+
+    async def _fetch_one_side_effect(query, _engine):
+        params = {name: bind.value for name, bind in query._bindparams.items()}
+        if params["sl"] == "en-us" and params["tl"] == "fr-ca":
+            return {"terminology_id": "glossary-123"}
+        return None
+
+    mock_fetch_one.side_effect = _fetch_one_side_effect
+
+    result = await evaluate_get_glossary_resource(
+        org_uuid="org-1",
+        client=None,
+        sl="en",
+        tl="fr-ca",
+        engine="microsoft",
+    )
+
+    assert result == "glossary-123"
+    attempted_pairs = [
+        (call.args[0]._bindparams["sl"].value, call.args[0]._bindparams["tl"].value)
+        for call in mock_fetch_one.await_args_list
+    ]
+    assert attempted_pairs[:2] == [("en", "fr-ca"), ("en-us", "fr-ca")]
+
+
+@pytest.mark.asyncio
+@patch("app.mt.service.evaluate_get_org_groups", new_callable=AsyncMock)
+@patch("app.mt.service.fetch_one", new_callable=AsyncMock)
+async def test_evaluate_get_glossary_resource_prefers_exact_match(
+    mock_fetch_one, mock_get_org_groups
+):
+    mock_get_org_groups.return_value = ["group-1"]
+    mock_fetch_one.return_value = {"terminology_id": "glossary-exact"}
+
+    result = await evaluate_get_glossary_resource(
+        org_uuid="org-1",
+        client=None,
+        sl="en-us",
+        tl="fr-ca",
+        engine="microsoft",
+    )
+
+    assert result == "glossary-exact"
+    assert mock_fetch_one.await_count == 1
