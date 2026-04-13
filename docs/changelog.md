@@ -4,7 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Slack MT routing now keeps `fr-ca` targets on Microsoft and also routes `fr-ca -> *` pairs through Microsoft when a direction-specific Microsoft glossary exists, with direct/channel regression coverage for the symmetric dispatch path (Wade Norman, 2026-04-13)
 - [Fixed]: Slack direct/channel MT glossary lookup now retries English variants (`en`, `en-us`, `en-gb`) when resolving Microsoft terminology so `fr-ca` dispatch can still attach glossaries created under regional English codes; added regression tests for the fallback order (Wade Norman, 2026-04-13)
+- [Fixed]: Hotfix to strip UUID prefix from filenames returned by file server in `get_filename_from_header` — upstream `cloud-verify-consumer` prepends a UUID to temp filenames which leaks into stored metadata and user-facing downloads (Wade Norman, 2026-04-09)
+- [Changed]: Resolved merge conflicts while integrating `hotfix/RAY-79347_Hide-Quality-Evaluation-in-IBM-Slack-App` into `uat`, preserving the IBM QE visibility changes alongside the latest docs and test coverage updates (Wade Norman, 2026-04-02)
 - [Changed]: Increased the `tools/ui-export` catalog sidebar width to `340px`, added a renderer guard test, and regenerated the HTML catalog for easier navigation of longer template names (Wade Norman, 2026-04-02)
 - [Changed]: Renamed the IBM connected home-view export in `tools/ui-export` to explicit `admin` / `non-admin` wording and regenerated the catalog so IBM labels are consistent across message and home variants (Wade Norman, 2026-04-02)
 - [Changed]: Relabeled IBM `HelpMessage`, `WelcomeBackMessage`, and `SuccessfulLoginMessage` variants in `tools/ui-export` as explicit admin vs non-admin entries and regenerated the UI catalog so those IBM branches are visible by name (Wade Norman, 2026-04-02)
