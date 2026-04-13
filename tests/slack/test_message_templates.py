@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.auth.connector import RayClient, RayConnection, RaySuperGroup
@@ -5,6 +6,7 @@ from app.slack.templates.messages import (
     AutoTranslateSettingsChangedMessage,
     AutoTranslateSettingsDisabledMessage,
     AutoTranslationMessage,
+    BatchListMessage,
     CancelJobMessage,
     ClientAlreadyApprovedMessage,
     ClientApprovedMessage,
@@ -12,6 +14,7 @@ from app.slack.templates.messages import (
     DocMtMessage,
     EvaluateErrorMessage,
     EvaluateSuccessMessage,
+    FileListMessage,
     HelpMessage,
     InfoMessage,
     InvalidCommandMessage,
@@ -67,6 +70,12 @@ def _blocks_contain_text(blocks: list, text: str) -> bool:
         if text in accessory.get("text", {}).get("text", ""):
             return True
     return False
+
+
+def _pagination(page: int = 1, total_pages: int = 1, rows_per_page: int = 5):
+    return SimpleNamespace(
+        page=page, total_pages=total_pages, rows_per_page=rows_per_page
+    )
 
 
 class TestLoginMessage:
@@ -1013,6 +1022,41 @@ class TestMediaEmbedOptionMessage:
         assert message.blocks[0]["accessory"]["type"] == "button"
         assert message.blocks[0]["accessory"]["action_id"] == "video_embed_subtitles"
         assert message.blocks[0]["accessory"]["value"] == action_value
+
+
+class TestBatchAndFileListMessages:
+    def test_batch_list_message_shows_empty_state_when_no_batches(self):
+        job = SimpleNamespace(
+            id="TJ123456",
+            status="IN_PROGRESS",
+            batches="[]",
+            pagination=_pagination(),
+        )
+
+        message = BatchListMessage(job, "client-id")
+
+        assert _blocks_contain_text(
+            message.blocks,
+            "No in-progress files are available for *TJ123456* right now.",
+        )
+        assert not _blocks_contain_text(message.blocks, "Show more files")
+
+    def test_file_list_message_shows_empty_state_when_no_completed_files(self):
+        job = SimpleNamespace(
+            id="TJ123456",
+            translated_file=[],
+            sl=SimpleNamespace(name="EN-US"),
+            f_pagination=_pagination(),
+            pagination=_pagination(),
+        )
+
+        message = FileListMessage(job, "client-id")
+
+        assert _blocks_contain_text(
+            message.blocks,
+            "No completed files are available for *TJ123456* right now.",
+        )
+        assert not _blocks_contain_text(message.blocks, "Download")
 
 
 class TestInsightsRemoval:

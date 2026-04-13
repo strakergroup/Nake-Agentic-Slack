@@ -81,6 +81,7 @@ from .templates.messages import (
     HumanJobQuoteMessage,
     InvalidJobMessage,
     InvalidMTResultMessage,
+    JobFileListEmptyMessage,
     JobDetailsMessage,
     JobListMessage,
     JobQuotedMessage,
@@ -112,6 +113,18 @@ VIDEO_ONLY_TYPES = ["mp4", "mpeg", "webm"]
 MEDIA_ACTION_IDS = frozenset(
     {"video_transcribe_only", "video_transcribe_translate", "video_embed_subtitles"}
 )
+
+
+def _job_has_batches(job: Any) -> bool:
+    batches = getattr(job, "batches", "[]")
+    if not batches:
+        return False
+    if isinstance(batches, str):
+        try:
+            batches = json.loads(batches)
+        except (TypeError, ValueError):
+            return False
+    return bool(batches)
 
 
 def _language_code_from_srt_filename(filename: str) -> str:
@@ -1617,6 +1630,23 @@ async def post_batch_list(
     try:
         if jobs is not None:
             for job in jobs:
+                if not _job_has_batches(job):
+                    msg = JobFileListEmptyMessage(job.id, "in-progress")
+                    if context.response_url and context.respond:
+                        return await context.respond(
+                            text=msg.text,
+                            blocks=msg.blocks,
+                            replace_original=replace_original,
+                        )
+                    else:
+                        if not channel_id:
+                            raise AssertionError("No channel to post to")
+                        return await client.chat_postMessage(
+                            channel=channel_id,
+                            text=msg.text,
+                            blocks=msg.blocks,
+                            thread_ts=thread_ts,
+                        )
                 msg = BatchListMessage(job, ray_client.id)
                 if context.response_url and context.respond:
                     return await context.respond(
@@ -1702,6 +1732,23 @@ async def post_file_list(
     try:
         if jobs is not None:
             for job in jobs:
+                if not job.translated_file:
+                    msg = JobFileListEmptyMessage(job.id, "completed")
+                    if context.response_url and context.respond:
+                        return await context.respond(
+                            text=msg.text,
+                            blocks=msg.blocks,
+                            replace_original=replace_original,
+                        )
+                    else:
+                        if not channel_id:
+                            raise AssertionError("No channel to post to")
+                        return await client.chat_postMessage(
+                            channel=channel_id,
+                            text=msg.text,
+                            blocks=msg.blocks,
+                            thread_ts=thread_ts,
+                        )
                 msg = FileListMessage(job, ray_client.id)
                 if context.response_url and context.respond:
                     return await context.respond(
