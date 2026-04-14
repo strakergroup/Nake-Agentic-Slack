@@ -1,6 +1,7 @@
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from uuid import uuid4
 
 import pytest
 
@@ -12,6 +13,10 @@ from app.slack.listener_actions import (
     build_thread_media_embed_action_value,
     create_service_language_mapping,
     get_groups,
+    get_mt_translation,
+    image_ocr_translate,
+    image_xliff_render_translate,
+    is_image_file,
     is_video_file,
     maybe_show_thread_media_embed_option,
     post_batch_list,
@@ -582,6 +587,90 @@ class TestVerifyHelp:
 
         mock_client.chat_postMessage.assert_called_once()
         assert mock_client.chat_postMessage.call_args[1]["thread_ts"] == "123456.789"
+
+
+class TestGetMtTranslation:
+    @pytest.mark.asyncio
+    async def test_direct_mt_uses_non_empty_frca_glossary_when_only_en_us_exists(
+        self, user_id, team_id, ray_client
+    ):
+        from app.auth.connector import RayConnection, RayContext, RaySuperGroup
+
+        mock_client = AsyncMock()
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "D123",
+                "ray": RayConnection(super_group=[super_group], client=ray_client),
+            }
+        )
+
+        with (
+            patch(
+                "app.slack.listener_actions.require_mt_tokens",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listener_actions.resolve_language",
+                new_callable=AsyncMock,
+                side_effect=[["fr-ca"], ["en"]],
+            ),
+            patch(
+                "app.slack.listener_actions.get_group_id",
+                new_callable=AsyncMock,
+                return_value="group-a:group-b",
+            ),
+            patch(
+                "app.mt.service.get_client_groups",
+                new_callable=AsyncMock,
+                return_value=["group-a"],
+            ),
+            patch("app.mt.service.fetch_one", new_callable=AsyncMock) as mock_fetch_one,
+            patch(
+                "app.slack.listener_actions.send_mt_translation_request",
+                new_callable=AsyncMock,
+            ) as mock_send_mt,
+        ):
+
+            async def _fetch_one_side_effect(query, _engine):
+                params = {name: bind.value for name, bind in query._bindparams.items()}
+                if params["sl"] == "en-us" and params["tl"] == "fr-ca":
+                    return {"terminology_id": "group-a:en-us:fr-ca"}
+                return None
+
+            mock_fetch_one.side_effect = _fetch_one_side_effect
+
+            await get_mt_translation(
+                mock_client,
+                context,
+                target_lang="fr-ca",
+                source_lang="en-us",
+                sentence="this is my GLSS Account test",
+            )
+
+            mock_send_mt.assert_called_once()
+            assert (
+                mock_send_mt.await_args.kwargs["service_language_mapping"]["microsoft"][
+                    "fr-ca"
+                ]
+                == "group-a:en-us:fr-ca"
+            )
+            assert (
+                mock_send_mt.await_args.kwargs["extra_data"].service_language_mapping[
+                    "microsoft"
+                ]["fr-ca"]
+                == "group-a:en-us:fr-ca"
+            )
 
 
 class TestPostJobStatus:

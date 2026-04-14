@@ -3915,6 +3915,84 @@ class TestAutoTranslateMessage:
                                 mock_send_mt.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_auto_translate_message_routes_frca_source_to_microsoft(
+        self, user_id, team_id, ray_client
+    ):
+        """fr-ca source should use Microsoft when the matching pair glossary exists."""
+        from app.slack.listener_actions import auto_translate_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "Bonjour monde"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+            }
+        )
+
+        with patch(
+            "app.slack.listener_actions.get_auto_translate_settings_and_langs",
+            new_callable=AsyncMock,
+        ) as mock_get_settings:
+            mock_get_settings.return_value = [
+                {"target_lang": "en", "display_format": "thread"}
+            ]
+            with patch(
+                "app.slack.listener_actions.require_mt_tokens", new_callable=AsyncMock
+            ) as mock_require_tokens:
+                mock_require_tokens.return_value = True
+                with patch(
+                    "app.slack.listener_actions.detect_language", new_callable=AsyncMock
+                ) as mock_detect:
+                    mock_detect.return_value = SimpleNamespace(language="fr-ca")
+                    with patch(
+                        "app.slack.listener_actions.evaluate_get_glossary_resource",
+                        new_callable=AsyncMock,
+                    ) as mock_glossary:
+                        with patch(
+                            "app.slack.listener_actions.get_group_id",
+                            new_callable=AsyncMock,
+                        ) as mock_group_id:
+                            mock_group_id.return_value = "group-test-id"
+                            with patch(
+                                "app.slack.listener_actions.send_mt_translation_request",
+                                new_callable=AsyncMock,
+                            ) as mock_send_mt:
+
+                                async def _glossary_side_effect(
+                                    _org_uuid, _client, sl, tl, engine
+                                ):
+                                    if (
+                                        engine == "microsoft"
+                                        and sl == "fr-ca"
+                                        and tl == "en"
+                                    ):
+                                        return "group-test-id:fr-ca:en"
+                                    return ""
+
+                                mock_glossary.side_effect = _glossary_side_effect
+
+                                await auto_translate_message(
+                                    mock_client, context, message
+                                )
+
+                                mock_send_mt.assert_called_once()
+                                assert mock_send_mt.await_args.args[1] == {
+                                    "microsoft": {"en": "group-test-id:fr-ca:en"}
+                                }
+
+    @pytest.mark.asyncio
     async def test_auto_translate_message_same_source_target_lang(
         self, user_id, team_id, ray_client
     ):

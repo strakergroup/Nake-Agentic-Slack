@@ -114,6 +114,8 @@ MEDIA_ACTION_IDS = frozenset(
     {"video_transcribe_only", "video_transcribe_translate", "video_embed_subtitles"}
 )
 
+FR_CA_VARIANTS = frozenset({"fr-ca", "french-canada", "french-canadian"})
+
 
 def _job_has_batches(job: Any) -> bool:
     batches = getattr(job, "batches", "[]")
@@ -151,32 +153,75 @@ def _language_code_from_srt_filename(filename: str) -> str:
 
 
 def create_service_language_mapping(
-    target_langs: list[str], glossary_ids: dict[str, str] | None = None
+    target_langs: list[str],
+    glossary_ids: dict[str, str] | None = None,
+    service_overrides: dict[str, str] | None = None,
 ) -> dict[str, dict[str, str]]:
     """Create service language mapping based on target languages with glossary IDs.
 
     Args:
         target_langs: List of target languages
         glossary_ids: Optional dictionary mapping language codes to glossary IDs
+        service_overrides: Optional dictionary mapping language codes to services
 
     Returns:
         Dictionary mapping services to dictionaries of language codes to glossary IDs
     """
     service_language_mapping: dict[str, dict[str, str]] = {}
     glossary_ids = glossary_ids or {}
+    service_overrides = service_overrides or {}
 
     for target_lang in target_langs:
-        glossary_id = glossary_ids.get(target_lang, "")
-        if target_lang.lower() in ["fr-ca", "french-canada", "french-canadian"]:
-            if "microsoft" not in service_language_mapping:
-                service_language_mapping["microsoft"] = {}
-            service_language_mapping["microsoft"]["fr-ca"] = glossary_id
-        else:
-            if "google" not in service_language_mapping:
-                service_language_mapping["google"] = {}
-            service_language_mapping["google"][target_lang] = glossary_id
+        normalized_target = (
+            "fr-ca" if target_lang.lower() in FR_CA_VARIANTS else target_lang
+        )
+        glossary_id = glossary_ids.get(
+            normalized_target, glossary_ids.get(target_lang, "")
+        )
+        service = service_overrides.get(
+            normalized_target,
+            service_overrides.get(
+                target_lang,
+                "microsoft" if target_lang.lower() in FR_CA_VARIANTS else "google",
+            ),
+        )
+        if service not in service_language_mapping:
+            service_language_mapping[service] = {}
+        service_language_mapping[service][normalized_target] = glossary_id
 
     return service_language_mapping
+
+
+async def _resolve_mt_route_and_glossary(
+    org_uuid: str,
+    client: RayClient | None,
+    source_lang: str,
+    target_lang: str,
+) -> tuple[str, str, str]:
+    """Resolve the target code, engine, and glossary for a single MT pair."""
+    normalized_source = (
+        "fr-ca" if source_lang.lower() in FR_CA_VARIANTS else source_lang
+    )
+    normalized_target = (
+        "fr-ca" if target_lang.lower() in FR_CA_VARIANTS else target_lang
+    )
+
+    microsoft_glossary = ""
+    if (
+        normalized_source.lower() in FR_CA_VARIANTS
+        or normalized_target.lower() in FR_CA_VARIANTS
+    ):
+        microsoft_glossary = await evaluate_get_glossary_resource(
+            org_uuid, client, normalized_source, normalized_target, "microsoft"
+        )
+
+    if normalized_target.lower() in FR_CA_VARIANTS or microsoft_glossary:
+        return normalized_target, "microsoft", microsoft_glossary
+
+    google_glossary = await evaluate_get_glossary_resource(
+        org_uuid, client, normalized_source, normalized_target, "google"
+    )
+    return normalized_target, "google", google_glossary
 
 
 def is_video_file(file_details: dict[str, Any]) -> bool:
@@ -866,22 +911,24 @@ async def auto_translate_message(
 
         # Get display_format from settings
         display_format = settings[0]["display_format"] if settings else None
-        # Get glossary_id for each target language
+        # Resolve service + glossary for each target language
         glossary_ids: dict[str, str] = {}
+        service_overrides: dict[str, str] = {}
         for target_lang in target_langs:
-            is_fr_ca = target_lang.lower() in [
-                "fr-ca",
-                "french-canada",
-                "french-canadian",
-            ]
-            target_lang = "fr-ca" if is_fr_ca else target_lang
-            engine = "microsoft" if is_fr_ca else "google"
-            glossary_id = await evaluate_get_glossary_resource(
-                org_uuid, context["ray"].client, source_lang, target_lang, engine
+            (
+                normalized_target,
+                service,
+                glossary_id,
+            ) = await _resolve_mt_route_and_glossary(
+                org_uuid,
+                context["ray"].client,
+                source_lang,
+                target_lang,
             )
-            glossary_ids[target_lang] = glossary_id
+            glossary_ids[normalized_target] = glossary_id
+            service_overrides[normalized_target] = service
         service_language_mapping = create_service_language_mapping(
-            target_langs, glossary_ids
+            target_langs, glossary_ids, service_overrides
         )
         assert context.team_id is not None
         await send_mt_translation_request(
@@ -2013,25 +2060,25 @@ async def get_mt_translation(
         group_id = await get_group_id(
             context.ray.super_group[0].verify_organization_uuid
         )
-        # Get glossary_id for each target language
+        # Resolve service + glossary for each target language
         glossary_ids: dict[str, str] = {}
+        service_overrides: dict[str, str] = {}
         for target_lang in target_langs:
-            engine = (
-                "microsoft"
-                if target_lang.lower() in ["fr-ca", "french-canada", "french-canadian"]
-                else "google"
-            )
-            glossary_id = await evaluate_get_glossary_resource(
+            (
+                normalized_target,
+                service,
+                glossary_id,
+            ) = await _resolve_mt_route_and_glossary(
                 context.ray.super_group[0].verify_organization_uuid,
                 context.ray.client,
                 source_lang,
                 target_lang,
-                engine,
             )
-            glossary_ids[target_lang] = glossary_id
+            glossary_ids[normalized_target] = glossary_id
+            service_overrides[normalized_target] = service
         # Create service language mapping based on target language
         service_language_mapping = create_service_language_mapping(
-            target_langs, glossary_ids
+            target_langs, glossary_ids, service_overrides
         )
         assert context.team_id is not None
         extra_data = MtTranslationExtraData(
