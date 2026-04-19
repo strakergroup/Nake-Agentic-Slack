@@ -1424,16 +1424,16 @@ async def ray_events(
                         )
                 elif document_translated_data.error_type == "conversion_error":
                     document_message: SlackMessage = DocParseErrorMessage(
-                        document_translated_data.error_data["ext"],
-                        document_translated_data.error_data["file_expected"],
+                        document_translated_data.error_data.get("ext", ""),
+                        document_translated_data.error_data.get("file_expected", ""),
                     )
                 elif document_translated_data.error_type == "file_complexity_error":
                     document_message: SlackMessage = DocComplexityErrorMessage(
-                        document_translated_data.error_data["ext"],
+                        document_translated_data.error_data.get("ext", ""),
                     )
                 elif document_translated_data.error_type == "invalid_pdf":
                     document_message: SlackMessage = DocInvalidPdfErrorMessage(
-                        document_translated_data.error_data["message"],
+                        document_translated_data.error_data.get("message", ""),
                     )
                 else:
                     document_message: SlackMessage = DocMtMessage()
