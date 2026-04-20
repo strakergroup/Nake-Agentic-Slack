@@ -1,0 +1,172 @@
+name: Lint & Typecheck (non-blocking)
+
+# Non-blocking quality reports for ruff and pyright.
+#
+# Both jobs use `continue-on-error: true` so a failed lint or typecheck
+# never blocks a PR merge. The intent is to surface the report in the
+# PR checks UI and as a downloadable artifact, not to gate the build.
+#
+# Internal Straker libraries are installed directly from their private
+# GitHub repos using `PRIVATE_REPO_TOKEN` (an org-level secret, see
+# docs/lint-typecheck-ci.md). GitHub Actions runners cannot reach the
+# VPN-only internal PyPI server, so we pin to git tags here instead.
+
+on:
+  pull_request:
+    branches: [master, main, develop, uat]
+  push:
+    branches: [master, main, develop, uat]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-typecheck-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  ruff:
+    name: Ruff (lint)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Ruff version
+        run: ruff --version
+
+      - name: Run ruff (human-readable, for the step summary)
+        id: ruff_text
+        continue-on-error: true
+        run: |
+          set +e
+          {
+            echo "## Ruff report"
+            echo
+            echo '```'
+            ruff check app tests --output-format=concise
+            EXIT=$?
+            echo '```'
+            echo
+            echo "Exit code: ${EXIT}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          # Always succeed; this is a report, not a gate.
+          exit 0
+
+      - name: Run ruff (SARIF, for artifact upload)
+        continue-on-error: true
+        run: |
+          ruff check app tests --output-format=sarif > ruff.sarif || true
+
+      - name: Upload ruff SARIF report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-report
+          path: ruff.sarif
+          if-no-files-found: ignore
+          retention-days: 14
+
+  pyright:
+    name: Pyright (typecheck)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Configure pip auth for private GitHub repos
+        env:
+          PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+        run: |
+          if [ -z "${PRIVATE_REPO_TOKEN}" ]; then
+            echo "::warning::PRIVATE_REPO_TOKEN secret is not set; private Straker libs will be skipped."
+            echo "HAVE_TOKEN=0" >> "$GITHUB_ENV"
+          else
+            # Rewrite https://github.com/strakergroup/* so all `pip install git+https://...`
+            # calls inherit the token without exposing it on the command line.
+            git config --global url."https://x-access-token:${PRIVATE_REPO_TOKEN}@github.com/strakergroup/".insteadOf "https://github.com/strakergroup/"
+            echo "HAVE_TOKEN=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install pyright and base tooling
+        run: pip install pyright
+
+      - name: Install public dependencies from Pipfile
+        run: |
+          pip install pipenv
+          # Install only the [packages] section minus the Straker private libs;
+          # we install those separately from GitHub below. We also skip the
+          # internal PyPI source since runners can't reach it.
+          pipenv requirements \
+            | grep -viE '^(straker-auth|ray-sdk|ray-logger|buglog|straker-utils)([=<>!~ ]|$)' \
+            | grep -viE 'mgmt-k8s-pypi-fra02\.straker\.io' \
+            > requirements.public.txt
+          pip install -r requirements.public.txt
+
+      - name: Install private Straker libraries from GitHub
+        if: env.HAVE_TOKEN == '1'
+        continue-on-error: true
+        run: |
+          # Versions mirror Pipfile pins. ray-sdk==0.6.3 has no matching git
+          # tag in sup-python-languagecloud-sdk (latest is v0.6.2); we pin to
+          # v0.6.2 here as best-effort. Update once v0.6.3 is tagged.
+          pip install \
+            "git+https://github.com/strakergroup/sup-python-auth.git@v0.1.8#egg=straker-auth" \
+            "git+https://github.com/strakergroup/sup-python-languagecloud-sdk.git@v0.6.2#egg=ray-sdk" \
+            "git+https://github.com/strakergroup/sup-python-languagecloud-logger.git@v0.1.2#egg=ray-logger" \
+            "git+https://github.com/strakergroup/sup-python-buglog-sdk.git@v0.1.3#egg=buglog" \
+            "git+https://github.com/strakergroup/sup-python-utils.git@v0.3.0.7#egg=straker-utils"
+
+      - name: Pyright version
+        run: pyright --version
+
+      - name: Run pyright (human-readable, for the step summary)
+        continue-on-error: true
+        run: |
+          set +e
+          {
+            echo "## Pyright report"
+            echo
+            if [ "${HAVE_TOKEN}" != "1" ]; then
+              echo "> :warning: \`PRIVATE_REPO_TOKEN\` not set — Straker private libs were skipped. Type errors involving them are expected."
+              echo
+            fi
+            echo '```'
+            pyright
+            EXIT=$?
+            echo '```'
+            echo
+            echo "Exit code: ${EXIT}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 0
+
+      - name: Run pyright (JSON, for artifact upload)
+        continue-on-error: true
+        run: pyright --outputjson > pyright.json || true
+
+      - name: Upload pyright JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyright-report
+          path: pyright.json
+          if-no-files-found: ignore
+          retention-days: 14
