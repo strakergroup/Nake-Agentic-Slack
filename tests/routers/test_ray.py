@@ -661,6 +661,63 @@ class TestRayEventsEndpoint:
                                     mock_post.assert_called_once()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error_type,error_data",
+        [
+            ("conversion_error", {"message": "extract failed"}),
+            ("conversion_error", {}),
+            ("file_complexity_error", {}),
+            ("invalid_pdf", {}),
+        ],
+    )
+    async def test_ray_events_document_translated_error_missing_keys_does_not_raise(
+        self, mock_slack_user, user_id, team_id, error_type, error_data
+    ):
+        """Regression: error_data without the legacy 'ext'/'message' keys must
+        not raise ``KeyError`` (RAY-79527).
+
+        Producers (e.g. ``int-slack-verify-consumer``'s
+        ``handle_extract_error``) historically published payloads that omit
+        ``ext``/``file_expected``. The handler must degrade gracefully and
+        still post an ephemeral notification.
+        """
+        payload = {
+            "error": True,
+            "client_id": str(uuid4()),
+            "channel_id": "C123",
+            "error_type": error_type,
+            "error_data": error_data,
+            "submission_id": 123,
+        }
+        event = RayEvent(
+            event="verify:slack:document:translated",
+            data={"client_id": mock_slack_user.ray_client_id, **payload},
+        )
+
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+        }
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray.post_notification_ephemeral",
+                            new_callable=AsyncMock,
+                        ) as mock_post:
+                            with patch("app.routers.ray.updated_submission_status"):
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
+
+                                await ray_events(event, auth)
+
+                                mock_post.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_ray_events_document_translated_success(
         self, mock_slack_user, user_id, team_id
     ):

@@ -12,6 +12,7 @@ from app.slack.templates.messages import (
     ClientApprovedMessage,
     ConnectionInfoMessage,
     DocMtMessage,
+    DocParseErrorMessage,
     EvaluateErrorMessage,
     EvaluateSuccessMessage,
     FileListMessage,
@@ -781,6 +782,60 @@ class TestEvaluateErrorMessage:
         message = EvaluateErrorMessage()
         assert "failed" in message.text.lower() or "evaluation" in message.text.lower()
         assert len(message.blocks) > 0
+
+
+class TestDocParseErrorMessage:
+    """Tests for DocParseErrorMessage empty-field handling.
+
+    RAY-79527 follow-up: when the producer sends an empty `error_data`
+    (e.g. cloud-verify-consumer's `_notify_app_source_on_pipeline_failure`
+    which always sends `{}`), the handler in `app/routers/ray.py` calls us
+    with empty strings. The template must render a clean generic message
+    instead of leaking blanks like "with  is a valid ".
+    """
+
+    @staticmethod
+    def _block_text(message: DocParseErrorMessage) -> str:
+        return message.blocks[0]["text"]["text"]
+
+    def test_renders_detailed_message_when_both_fields_present(self):
+        message = DocParseErrorMessage(".xlf", "xliff")
+        text = self._block_text(message)
+        assert "with .xlf" in text
+        assert "is a valid xliff" in text
+
+    def test_falls_back_to_generic_when_ext_missing(self):
+        message = DocParseErrorMessage("", "xliff")
+        text = self._block_text(message)
+        assert text == (
+            "Error parsing file. Please ensure your file is in a supported format."
+        )
+
+    def test_falls_back_to_generic_when_file_type_missing(self):
+        message = DocParseErrorMessage(".xlf", "")
+        text = self._block_text(message)
+        assert text == (
+            "Error parsing file. Please ensure your file is in a supported format."
+        )
+
+    def test_falls_back_to_generic_when_both_missing(self):
+        message = DocParseErrorMessage("", "")
+        text = self._block_text(message)
+        assert text == (
+            "Error parsing file. Please ensure your file is in a supported format."
+        )
+        assert "{ext}" not in text
+        assert "{file_type}" not in text
+        assert "with  is a valid" not in text
+
+    def test_falls_back_to_generic_when_fields_are_whitespace(self):
+        """Whitespace-only values are treated as missing — they would
+        render as awkward gaps in the detailed template."""
+        message = DocParseErrorMessage("   ", "\t")
+        text = self._block_text(message)
+        assert text == (
+            "Error parsing file. Please ensure your file is in a supported format."
+        )
 
 
 class TestEvaluateSuccessMessage:
