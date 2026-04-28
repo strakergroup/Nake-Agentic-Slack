@@ -81,8 +81,8 @@ from .templates.messages import (
     HumanJobQuoteMessage,
     InvalidJobMessage,
     InvalidMTResultMessage,
-    JobFileListEmptyMessage,
     JobDetailsMessage,
+    JobFileListEmptyMessage,
     JobListMessage,
     JobQuotedMessage,
     JobStatusMessage,
@@ -115,6 +115,15 @@ MEDIA_ACTION_IDS = frozenset(
 )
 
 FR_CA_VARIANTS = frozenset({"fr-ca", "french-canada", "french-canadian"})
+
+
+def _normalize_document_target_languages(
+    selected_language: str | list[str],
+) -> list[str]:
+    if isinstance(selected_language, str):
+        return [selected_language] if selected_language else []
+
+    return [str(language) for language in selected_language if language]
 
 
 def _job_has_batches(job: Any) -> bool:
@@ -977,8 +986,8 @@ async def auto_translate_message(
 async def document_machine_translate(
     context: AsyncBoltContext,
     file_id: str,
-    selected_language: str,
-    submission_id: int,
+    selected_language: str | list[str],
+    submission_id: int | dict[str, int],
 ):
     """Translate the Document using verify-task-consumer
 
@@ -997,9 +1006,13 @@ async def document_machine_translate(
         is_gropid = True
     else:
         user_group_id = context["ray"].client.user_group_id
+    target_languages = _normalize_document_target_languages(selected_language)
+    if not target_languages:
+        return
+
     # check ai engine from group setting and only fr-ca will support by microsoft
     ai_engine = await get_group_mt_engine(user_group_id, is_gropid)
-    if selected_language.lower() == "fr-ca":
+    if len(target_languages) == 1 and target_languages[0].lower() == "fr-ca":
         ai_engine = "microsoft"
 
     client: RayClient | None = context["ray"].client
@@ -1008,15 +1021,22 @@ async def document_machine_translate(
     try:
         # file_info = await client.files_info(file=slack_file_id)
         # download_url = file_info["file"]["url_private"]
+        submission_ids = (
+            submission_id
+            if isinstance(submission_id, dict)
+            else {target_languages[0]: submission_id}
+        )
         task_data = MtFileRequestSchema.model_validate(
             {
                 "file_id": file_id,
                 "client_id": client.id,
                 "channel_id": context["channel_id"],
-                "target_language": selected_language,
+                "target_language": target_languages[0],
+                "target_languages": target_languages,
                 "ai_engine": ai_engine,
                 "data_source": "slack",
-                "submission_id": submission_id,
+                "submission_id": submission_ids.get(target_languages[0]),
+                "submission_ids": submission_ids,
             }
         )
         task_uuid = await create_slack_job(task_data, status="pending")

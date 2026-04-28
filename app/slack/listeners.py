@@ -158,6 +158,24 @@ from .web import (
 # ---------------------------------------------------------
 
 
+def _document_mt_selected_languages(raw_value: Any) -> list[str]:
+    if raw_value is None:
+        return []
+    if isinstance(raw_value, bytes):
+        raw_value = raw_value.decode("utf-8")
+    if isinstance(raw_value, str):
+        try:
+            parsed_value = json.loads(raw_value)
+        except json.JSONDecodeError:
+            return [raw_value] if raw_value else []
+        if isinstance(parsed_value, list):
+            return [str(language) for language in parsed_value if language]
+        return [str(parsed_value)] if parsed_value else []
+    if isinstance(raw_value, list):
+        return [str(language) for language in raw_value if language]
+    return [str(raw_value)] if raw_value else []
+
+
 async def _send_translation_success_message(
     client: AsyncWebClient, channel_id: str, language_codes: list[str]
 ) -> None:
@@ -475,35 +493,43 @@ async def document_mt_submit_action(
         assert action is not None
         slack_file_ids = json.loads(action["value"])
         selected_language = await redis_conn.get(f"output_file_{action['value']}")
+        selected_languages = _document_mt_selected_languages(selected_language)
         # get uuid from output_file
         if await require_mt_tokens(context, 1):
             # get selected language from redis keyed on output_file
             # selected from get_auto_translate_language_options
             for slack_file_id in slack_file_ids:
-                if selected_language:
+                if selected_languages:
                     input_file = await download_file(
                         client=client, file_id=slack_file_id, http=None
                     )
                     input_file_id = await upload_to_file_server(input_file)
                     # Dedupe check and record in DB
-                    is_dup, _record = await check_and_record_submission_async(
-                        path=input_file,
-                        file_name=os.path.basename(input_file),
-                        file_id=input_file_id,
-                        user_id=context["user_id"],
-                        team_id=context["team_id"],
-                        channel_id=context.get("channel_id", context["user_id"]),
-                        target_language=str(selected_language),
-                    )
-                    if is_dup:
-                        await say(
-                            _(
-                                f"This file has already been submitted for {selected_language}. Skipping duplicate."
-                            )
+                    submitted_languages: list[str] = []
+                    submission_ids: dict[str, int] = {}
+                    for selected_language_code in selected_languages:
+                        is_dup, _record = await check_and_record_submission_async(
+                            path=input_file,
+                            file_name=os.path.basename(input_file),
+                            file_id=input_file_id,
+                            user_id=context["user_id"],
+                            team_id=context["team_id"],
+                            channel_id=context.get("channel_id", context["user_id"]),
+                            target_language=selected_language_code,
                         )
-                    else:
+                        if is_dup:
+                            await say(
+                                _(
+                                    f"This file has already been submitted for {selected_language_code}. Skipping duplicate."
+                                )
+                            )
+                            continue
+                        submitted_languages.append(selected_language_code)
+                        submission_ids[selected_language_code] = _record.id
+
+                    if submitted_languages:
                         await document_machine_translate(
-                            context, input_file_id, selected_language, _record.id
+                            context, input_file_id, submitted_languages, submission_ids
                         )
                         await say(
                             _(
@@ -2621,8 +2647,10 @@ async def handle_document_mt_job(
                     continue
                 input_file_id = await upload_to_file_server(input_file)
                 submitted_for_file = False
-                # Submit machine translation job for each selected language
+                submitted_languages: list[str] = []
+                submission_ids: dict[str, int] = {}
                 for lang in selected_languages:
+                    target_language = str(lang["value"])
                     is_dup, _record = await check_and_record_submission_async(
                         path=input_file,
                         file_name=os.path.basename(input_file),
@@ -2630,14 +2658,18 @@ async def handle_document_mt_job(
                         user_id=context["user_id"],
                         team_id=context["team_id"],
                         channel_id=context["channel_id"],
-                        target_language=str(lang["value"]),
+                        target_language=target_language,
                     )
                     if is_dup:
                         duplicate_submissions.append(f"{file_name} ({lang['value']})")
                         continue
 
+                    submitted_languages.append(target_language)
+                    submission_ids[target_language] = _record.id
+
+                if submitted_languages:
                     await document_machine_translate(
-                        context, input_file_id, lang["value"], _record.id
+                        context, input_file_id, submitted_languages, submission_ids
                     )
                     submitted_for_file = True
 
