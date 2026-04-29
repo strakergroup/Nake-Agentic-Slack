@@ -8,6 +8,8 @@ import csv
 import json
 import os
 import re
+import sys
+from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +37,7 @@ OUTPUT_COLUMNS = (
     "db_lang",
     "source_text",
     "db_label",
+    "translation",
     "max_length",
     "locations",
     "notes",
@@ -63,6 +66,7 @@ class MissingStringRow:
     db_lang: str
     source_text: str
     db_label: str
+    translation: str
     max_length: int
     locations: str
     notes: str
@@ -70,6 +74,12 @@ class MissingStringRow:
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def ensure_repo_root_on_path() -> None:
+    root = str(repo_root())
+    if root not in sys.path:
+        sys.path.insert(0, root)
 
 
 def parse_languages(value: str | None) -> list[str]:
@@ -206,6 +216,7 @@ def build_missing_rows(
                     db_lang=target.db_lang,
                     source_text=entry.source_text,
                     db_label=entry.db_label,
+                    translation="",
                     max_length=entry.max_length,
                     locations="; ".join(entry.locations),
                     notes=notes,
@@ -216,6 +227,7 @@ def build_missing_rows(
 
 
 def fetch_language_map() -> dict[str, str]:
+    ensure_repo_root_on_path()
     from app.database import engines
 
     with engines["translators_readonly"].connect() as conn:
@@ -233,6 +245,7 @@ def fetch_language_map() -> dict[str, str]:
 
 
 def fetch_existing_labels(db_langs: Iterable[str]) -> dict[str, set[str]]:
+    ensure_repo_root_on_path()
     from app.database import engines
 
     labels_by_lang: dict[str, set[str]] = {}
@@ -306,6 +319,34 @@ def write_rows(
     raise ValueError(f"Unsupported output format: {output_format}")
 
 
+def slugify_language(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", value).strip("_") or "unknown"
+
+
+def split_output_path(output_path: Path, db_lang: str, output_format: str) -> Path:
+    suffix = output_path.suffix or f".{output_format}"
+    stem = output_path.stem if output_path.suffix else output_path.name
+    return output_path.with_name(f"{stem}_{slugify_language(db_lang)}{suffix}")
+
+
+def write_rows_by_language(
+    rows: Sequence[MissingStringRow],
+    output_path: Path,
+    output_format: str,
+    db_langs: Sequence[str],
+) -> list[Path]:
+    rows_by_lang: dict[str, list[MissingStringRow]] = defaultdict(list)
+    for row in rows:
+        rows_by_lang[row.db_lang].append(row)
+
+    output_paths: list[Path] = []
+    for db_lang in dict.fromkeys(db_langs):
+        language_output_path = split_output_path(output_path, db_lang, output_format)
+        write_rows(rows_by_lang.get(db_lang, []), language_output_path, output_format)
+        output_paths.append(language_output_path)
+    return output_paths
+
+
 def infer_format(output_path: Path, explicit_format: str | None) -> str:
     if explicit_format:
         return explicit_format
@@ -348,6 +389,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Include English-like locales that runtime translation normally skips.",
     )
+    parser.add_argument(
+        "--split-by-language",
+        action="store_true",
+        help="Write one output file per resolved DB language.",
+    )
     return parser.parse_args()
 
 
@@ -376,11 +422,19 @@ def main() -> None:
         include_english=args.include_english,
     )
     output_format = infer_format(args.output, args.format)
-    write_rows(rows, args.output, output_format)
+    if args.split_by_language:
+        output_paths = write_rows_by_language(
+            rows, args.output, output_format, db_langs
+        )
+    else:
+        write_rows(rows, args.output, output_format)
+        output_paths = [args.output]
 
     print(f"Scanned {len(entries)} unique strings from {source_dir}")
     print(f"Checked Slack locales: {', '.join(slack_locales)}")
-    print(f"Exported {len(rows)} missing strings -> {args.output}")
+    print(f"Exported {len(rows)} missing strings")
+    for output_path in output_paths:
+        print(f"  -> {output_path}")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,8 @@ PYTHON := $(PYTHON_VENV)
 endif
 
 EXPORT_ARGS :=
+FILL_ARGS :=
+IMPORT_ARGS :=
 ifdef LANGUAGES
 EXPORT_ARGS += --languages $(LANGUAGES)
 endif
@@ -26,11 +28,33 @@ endif
 ifdef INCLUDE_ENGLISH
 EXPORT_ARGS += --include-english
 endif
+ifdef PER_LANGUAGE
+EXPORT_ARGS += --split-by-language
+endif
+ifdef INPUT
+FILL_ARGS += --input $(INPUT)
+IMPORT_ARGS += --input $(INPUT)
+endif
+ifdef SQL_OUTPUT
+IMPORT_ARGS += --output $(SQL_OUTPUT)
+endif
+ifdef VALIDATION_REPORT
+IMPORT_ARGS += --validation-report $(VALIDATION_REPORT)
+endif
 
-.PHONY: missing clean
+.PHONY: missing missing-per-language mt-fill import-sql clean
 
 missing:
 	$(PYTHON) export_missing_strings.py $(EXPORT_ARGS)
+
+missing-per-language:
+	$(PYTHON) export_missing_strings.py $(EXPORT_ARGS) --split-by-language
+
+mt-fill:
+	$(PYTHON) mt_fill_translations.py $(FILL_ARGS)
+
+import-sql:
+	$(PYTHON) import_xlsx_translation.py $(IMPORT_ARGS)
 
 clean:
 	rm -rf output

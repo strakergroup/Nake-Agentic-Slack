@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Ignored generated `tools/translation-export/output/` files so exported workbooks, SQL imports, and validation reports do not appear as untracked git artifacts (Wade Norman, 2026-04-30)
+- [Changed]: `tools/translation-export` SQL import generation now validates `<x id=N>` placeholder tags, fails on missing/unexpected/malformed tags, and writes a CSV validation report instead of producing unsafe import SQL (Wade Norman, 2026-04-30)
+- [Changed]: `tools/translation-export` can now split missing-string exports into one output file per resolved DB language, and MT fill / SQL import targets accept workbook globs for the per-language workflow (Wade Norman, 2026-04-30)
+- [Added]: `tools/translation-export` now mirrors the legacy `dev/` translation workflow with XLSX missing-string export, LanguageCloud MT fill, and SQL reimport generation targets (`missing`, `mt-fill`, `import-sql`) (Wade Norman, 2026-04-30)
+- [Fixed]: `tools/translation-export/export_missing_strings.py` now adds the repository root to `sys.path` before importing app modules, so `make missing` works when run from the tool directory (Wade Norman, 2026-04-30)
+- [Changed]: Added `make supported-languages` / `make all-languages` to `tools/ui-export` so the full supported Slack locale set can be generated and rendered through the DB-backed app translator by default (Wade Norman, 2026-04-30)
 - [Added]: `tools/translation-export` exports `_()` UI strings missing from `obj_stringtranslator` for Slack locale codes resolved through `obj_m_langs.bcp_47`, with CSV/JSON/XLSX output, Makefile workflow, docs, and tests (Wade Norman, 2026-04-30)
 - [Changed]: `tools/ui-export` can now opt into the real DB-backed `app.translate.Translator` for `_()` template translations via `--translation-source app`/`TRANSLATION_SOURCE=app`, while retaining offline catalog mode for deterministic exports (Wade Norman, 2026-04-30)
 - [Changed]: `tools/ui-export` can now generate per-language template catalogs from an optional translation JSON file via CLI, environment, or Makefile arguments, and the rendered HTML catalog includes a language selector for switching translated templates (Wade Norman, 2026-04-29)

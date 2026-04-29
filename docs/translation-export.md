@@ -35,6 +35,21 @@ make missing LANGUAGES=fr-FR,fr-CA,de-DE,es-ES,ja-JP
 
 # XLSX output
 make missing LANGUAGES=fr-FR,fr-CA OUTPUT=output/missing_strings.xlsx FORMAT=xlsx
+
+# XLSX output split into one file per resolved DB language
+make missing-per-language OUTPUT=output/missing_strings.xlsx FORMAT=xlsx
+
+# Fill blank translation cells with LanguageCloud MT
+make mt-fill INPUT=output/missing_strings.xlsx
+
+# Fill all per-language workbooks
+make mt-fill INPUT='output/missing_strings_*.xlsx'
+
+# Generate SQL insert statements for obj_stringtranslator
+make import-sql INPUT=output/missing_strings.xlsx SQL_OUTPUT=output/import.sql
+
+# Generate one combined SQL file from all per-language workbooks
+make import-sql INPUT='output/missing_strings_*.xlsx' SQL_OUTPUT=output/import.sql
 ```
 
 The equivalent direct command is:
@@ -46,6 +61,44 @@ pipenv run python tools/translation-export/export_missing_strings.py \
 ```
 
 `TRANSLATION_EXPORT_LANGUAGES` can also be used instead of `--languages`.
+
+## Translation Workflow
+
+The maintained tool mirrors the older `dev/` workflow as three explicit steps:
+
+1. `make missing-per-language OUTPUT=output/missing_strings.xlsx FORMAT=xlsx`
+   exports one workbook per resolved DB language, e.g.
+   `missing_strings_fr.xlsx` and `missing_strings_fr-ca.xlsx`.
+2. `make mt-fill INPUT='output/missing_strings_*.xlsx'` fills blank
+   `translation` cells using LanguageCloud MT. Set `LANGUAGECLOUD_API_TOKEN`
+   before running this step. `LANGUAGECLOUD_API_URL` can override the default
+   configured API base URL.
+3. `make import-sql INPUT='output/missing_strings_*.xlsx' SQL_OUTPUT=output/import.sql`
+   creates SQL insert statements for `obj_stringtranslator` from all filled
+   workbooks.
+
+Review MT output before importing. The generated SQL is an import artifact; it
+does not execute against the database.
+
+Use `make missing OUTPUT=output/missing_strings.xlsx FORMAT=xlsx` when a single
+combined workbook is preferred.
+
+## Import Validation
+
+`make import-sql` validates placeholder tags before writing SQL. Every `<x id=N>`
+tag present in `db_label` must also be present in `translation`, and translations
+must not introduce unexpected or malformed `<x ...>` tags. This protects the
+runtime replacement logic used by `app.translate.Translator`.
+
+If validation fails, no SQL file is written. A CSV report is written next to the
+SQL output by default, e.g. `output/import_validation_errors.csv`. Override the
+path when needed:
+
+```bash
+make import-sql INPUT='output/missing_strings_*.xlsx' \
+  SQL_OUTPUT=output/import.sql \
+  VALIDATION_REPORT=output/import_errors.csv
+```
 
 ## Locale Handling
 
@@ -68,6 +121,7 @@ behaviour; include both `fr-FR` and `fr-CA` when both need coverage.
 - `db_lang` - The resolved `obj_stringtranslator.lang` value.
 - `source_text` - The original English app string.
 - `db_label` - The placeholder-tagged lookup key expected in the DB.
+- `translation` - The translated `langstring` value to import.
 - `max_length` - Optional `_()` max length metadata.
 - `locations` - Source file and line references where the string appears.
 - `notes` - Warnings such as missing `obj_m_langs.bcp_47` mapping.

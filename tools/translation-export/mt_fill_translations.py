@@ -1,0 +1,160 @@
+"""Fill missing translation workbook rows with LanguageCloud MT."""
+
+from __future__ import annotations
+
+import argparse
+import glob
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+import httpx
+import openpyxl
+from export_missing_strings import ensure_repo_root_on_path
+
+TRANSLATION_COLUMN = "translation"
+DB_LABEL_COLUMN = "db_label"
+DB_LANG_COLUMN = "db_lang"
+NOTES_COLUMN = "notes"
+
+
+def load_app_mt_types() -> tuple[Any, Any, str]:
+    ensure_repo_root_on_path()
+    from app.config import domains
+    from app.mt.schemas import TranslationRequest, TranslationResponse
+
+    return TranslationRequest, TranslationResponse, str(domains.languagecloud_api)
+
+
+def build_auth_header() -> dict[str, str]:
+    env_token = os.getenv("LANGUAGECLOUD_API_TOKEN")
+    if not env_token:
+        raise ValueError("LANGUAGECLOUD_API_TOKEN is not set")
+    return {"Authorization": f"Bearer {env_token}"}
+
+
+def service_language_mapping(target_lang: str) -> dict[str, list[str]]:
+    normalized = target_lang.lower()
+    if normalized in {"fr-ca", "french-canada", "french-canadian"}:
+        return {"microsoft": [target_lang]}
+    return {"google": [target_lang]}
+
+
+def mt_translate_db_label(text: str, target_lang: str) -> str:
+    TranslationRequest, TranslationResponse, default_base_url = load_app_mt_types()
+    base_url = os.getenv("LANGUAGECLOUD_API_URL") or default_base_url
+    url = f"{base_url.rstrip('/')}/mt/translate"
+    payload = TranslationRequest(
+        text=text,
+        service_language_mapping=service_language_mapping(target_lang),
+        app_name="slack-translation-export",
+        usage_type="translation_export_mt_fill",
+    )
+
+    with httpx.Client(timeout=60.0) as client:
+        response = client.post(
+            url, headers=build_auth_header(), json=payload.model_dump()
+        )
+        response.raise_for_status()
+        data = response.json()
+
+    translations: dict[str, str] = {}
+    if isinstance(data, dict) and isinstance(data.get("translations"), dict):
+        translations = data["translations"]
+    else:
+        translations = TranslationResponse.model_validate(data).translations or {}
+
+    return translations.get(target_lang) or next(iter(translations.values()), text)
+
+
+def header_indexes(sheet) -> dict[str, int]:
+    headers = [cell.value for cell in sheet[1]]
+    return {
+        str(header): index + 1
+        for index, header in enumerate(headers)
+        if isinstance(header, str)
+    }
+
+
+def append_note(existing: object, note: str) -> str:
+    existing_text = "" if existing is None else str(existing).strip()
+    if not existing_text:
+        return note
+    return f"{existing_text}; {note}"
+
+
+def fill_workbook_translations(xlsx_path: Path) -> tuple[int, int]:
+    workbook = openpyxl.load_workbook(xlsx_path)
+    try:
+        sheet = workbook.active
+        indexes = header_indexes(sheet)
+        required_columns = {DB_LABEL_COLUMN, DB_LANG_COLUMN, TRANSLATION_COLUMN}
+        missing_columns = required_columns - set(indexes)
+        if missing_columns:
+            missing = ", ".join(sorted(missing_columns))
+            raise ValueError(f"Workbook is missing required columns: {missing}")
+
+        notes_index = indexes.get(NOTES_COLUMN)
+        filled = 0
+        total = 0
+        for row_number in range(2, sheet.max_row + 1):
+            label_cell = sheet.cell(row=row_number, column=indexes[DB_LABEL_COLUMN])
+            lang_cell = sheet.cell(row=row_number, column=indexes[DB_LANG_COLUMN])
+            translation_cell = sheet.cell(
+                row=row_number,
+                column=indexes[TRANSLATION_COLUMN],
+            )
+            if not label_cell.value or not lang_cell.value:
+                continue
+            total += 1
+            if translation_cell.value and str(translation_cell.value).strip():
+                continue
+            try:
+                translation_cell.value = mt_translate_db_label(
+                    str(label_cell.value),
+                    str(lang_cell.value),
+                )
+                filled += 1
+            except Exception as exc:
+                if notes_index:
+                    notes_cell = sheet.cell(row=row_number, column=notes_index)
+                    notes_cell.value = append_note(notes_cell.value, f"MT error: {exc}")
+
+        workbook.save(xlsx_path)
+        return filled, total
+    finally:
+        workbook.close()
+
+
+def resolve_workbook_paths(input_pattern: str) -> list[Path]:
+    matches = sorted(glob.glob(input_pattern))
+    if matches:
+        return [Path(match) for match in matches]
+    return [Path(input_pattern)]
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Fill translation-export workbook rows with LanguageCloud MT."
+    )
+    parser.add_argument(
+        "--input",
+        default=str(Path(__file__).parent / "output" / "missing_strings.xlsx"),
+        help="Workbook generated by export_missing_strings.py. Globs are supported.",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    summary = []
+    for input_path in resolve_workbook_paths(args.input):
+        filled, total = fill_workbook_translations(input_path)
+        summary.append({"file": str(input_path), "filled": filled, "total": total})
+    print(json.dumps(summary, indent=2))
+
+
+if __name__ == "__main__":
+    sys.exit(main())
