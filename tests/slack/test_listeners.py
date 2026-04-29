@@ -5423,3 +5423,60 @@ class TestHandleTranslateShortcut:
                 mock_mt.assert_not_called()
                 # Should send a message to the user
                 mock_client.chat_postMessage.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_translate_shortcut_does_not_send_mt_when_same_resolved_language(
+        self, user_id, team_id, ray_client
+    ):
+        """Real get_mt_translation path: resolved source == target → no stream send."""
+        from app.slack.listeners import handle_translate_shortcut
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        body = {"message": {"text": "Hello world"}}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context_dict = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "locale": "en",
+                "channel_id": "C1",
+                "ray": ray_connection,
+            }
+        )
+
+        with (
+            patch(
+                "app.slack.listeners.detect_language", new_callable=AsyncMock
+            ) as mock_detect,
+            patch(
+                "app.slack.listener_actions.resolve_language",
+                new_callable=AsyncMock,
+                side_effect=[["en"], ["en"]],
+            ),
+            patch(
+                "app.slack.listener_actions.send_mt_translation_request",
+                new_callable=AsyncMock,
+            ) as mock_send,
+            patch(
+                "app.slack.listener_actions.require_mt_tokens",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+        ):
+            mock_detect.return_value = SimpleNamespace(language="en")
+            await handle_translate_shortcut(
+                context_dict, mock_ack, body=body, client=mock_client
+            )
+
+        mock_ack.assert_called_once()
+        mock_detect.assert_called_once()
+        mock_send.assert_not_called()

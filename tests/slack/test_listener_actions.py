@@ -733,6 +733,58 @@ class TestGetMtTranslation:
                 == "group-a:en-us:fr-ca"
             )
 
+    @pytest.mark.asyncio
+    async def test_get_mt_translation_skips_when_resolved_source_equals_target(
+        self, user_id, team_id, ray_client
+    ):
+        """Do not call send_mt_translation_request when resolve_language maps both to the same code."""
+        from app.auth.connector import RayConnection, RayContext, RaySuperGroup
+
+        mock_client = AsyncMock()
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "D123",
+                "ray": RayConnection(super_group=[super_group], client=ray_client),
+            }
+        )
+
+        with (
+            patch(
+                "app.slack.listener_actions.require_mt_tokens",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listener_actions.resolve_language",
+                new_callable=AsyncMock,
+                side_effect=[["zh-cn"], ["zh-cn"]],
+            ),
+            patch(
+                "app.slack.listener_actions.send_mt_translation_request",
+                new_callable=AsyncMock,
+            ) as mock_send_mt,
+        ):
+            await get_mt_translation(
+                mock_client,
+                context,
+                target_lang="zh",
+                source_lang="zh-CN",
+                sentence="你好",
+                usage_type="shortcut_translate",
+            )
+
+        mock_send_mt.assert_not_called()
+
 
 class TestPostJobStatus:
     """Tests for post_job_status function."""
