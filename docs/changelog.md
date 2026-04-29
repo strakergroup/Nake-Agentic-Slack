@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: `tools/translation-export` MT fill now decodes HTML entities from LanguageCloud/Google HTML-mode responses before writing XLSX translations while preserving `<x id=N>` placeholder tags (Wade Norman, 2026-04-29)
+- [Changed]: `tools/translation-export` MT fill now sends raw `<x id=N>` tags directly to the HTML-mode LanguageCloud MT API instead of replacing them with sentinel tokens (Wade Norman, 2026-04-30)
+- [Fixed]: `tools/translation-export` MT fill now protects `<x id=N>` tags with sentinel tokens during MT and restores them before import validation, preventing Google MT from dropping placeholder tags (Wade Norman, 2026-04-30)
+- [Changed]: `tools/translation-export` MT fill now sends `app_name="slack"` to LanguageCloud while retaining `usage_type="translation_export_mt_fill"` so API credit logging follows the existing Slack app source path (Wade Norman, 2026-04-30)
+- [Fixed]: `tools/translation-export` MT fill now sends the `pt-languagecloud-api` `/mt/translate` schema (`target_languages`) instead of the Slack stream proxy schema (`service_language_mapping`) (Wade Norman, 2026-04-30)
+- [Changed]: Removed the hardcoded LanguageCloud client id from `tools/translation-export` MT fill; callers must now provide `CLIENT_ID`/`LANGUAGECLOUD_API_CLIENT_ID` or a pre-generated `LANGUAGECLOUD_API_TOKEN` (Wade Norman, 2026-04-30)
+- [Fixed]: `tools/translation-export` MT fill now treats `Elanex-205317` as the LanguageCloud client/member id (`obj_m_member.obj_uuid`) instead of a login when generating the bearer JWT (Wade Norman, 2026-04-30)
+- [Changed]: `tools/translation-export` MT fill now generates a LanguageCloud bearer JWT for `Elanex-205317` by default using the app's existing `create_languagecloud_id_token` flow, with env/Make overrides and `.env.example` documentation (Wade Norman, 2026-04-30)
 - [Changed]: Ignored generated `tools/translation-export/output/` files so exported workbooks, SQL imports, and validation reports do not appear as untracked git artifacts (Wade Norman, 2026-04-30)
 - [Changed]: `tools/translation-export` SQL import generation now validates `<x id=N>` placeholder tags, fails on missing/unexpected/malformed tags, and writes a CSV validation report instead of producing unsafe import SQL (Wade Norman, 2026-04-30)
 - [Changed]: `tools/translation-export` can now split missing-string exports into one output file per resolved DB language, and MT fill / SQL import targets accept workbook globs for the per-language workflow (Wade Norman, 2026-04-30)

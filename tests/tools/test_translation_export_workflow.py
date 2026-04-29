@@ -51,7 +51,7 @@ def test_fill_workbook_translations_populates_blank_translation(tmp_path, monkey
     monkeypatch.setattr(
         MT_FILL,
         "mt_translate_db_label",
-        lambda text, target_lang: f"{target_lang}:{text}",
+        lambda text, target_lang, client_login=None: f"{target_lang}:{text}",
     )
 
     filled, total = MT_FILL.fill_workbook_translations(workbook_path)
@@ -63,6 +63,31 @@ def test_fill_workbook_translations_populates_blank_translation(tmp_path, monkey
         assert total == 2
         assert sheet["E2"].value == "fr:Submit <x id=1>"
         assert sheet["E3"].value == "Abbrechen"
+    finally:
+        workbook.close()
+
+
+def test_fill_workbook_translations_decodes_html_entities_and_preserves_tags(
+    tmp_path, monkeypatch
+):
+    workbook_path = tmp_path / "missing_strings.xlsx"
+    make_workbook(workbook_path)
+    monkeypatch.setattr(
+        MT_FILL,
+        "mt_translate_db_label",
+        lambda text, target_lang, client_login=None: (
+            "L&#39;envoi &quot;OK&quot; &amp; <x id=1>&nbsp;"
+        ),
+    )
+
+    filled, total = MT_FILL.fill_workbook_translations(workbook_path)
+
+    workbook = openpyxl.load_workbook(workbook_path)
+    try:
+        sheet = workbook.active
+        assert filled == 1
+        assert total == 2
+        assert sheet["E2"].value == 'L\'envoi "OK" & <x id=1>\xa0'
     finally:
         workbook.close()
 
@@ -145,7 +170,7 @@ def test_fill_workbooks_accepts_glob_input(tmp_path, monkeypatch):
     monkeypatch.setattr(
         MT_FILL,
         "mt_translate_db_label",
-        lambda text, target_lang: f"{target_lang}:{text}",
+        lambda text, target_lang, client_login=None: f"{target_lang}:{text}",
     )
 
     paths = MT_FILL.resolve_workbook_paths(str(tmp_path / "missing_strings_*.xlsx"))
@@ -164,3 +189,107 @@ def test_format_insert_statement_escapes_sql_values():
 
     assert 'Label \\"quoted\\"' in statement
     assert "Line 1\\nLine 2" in statement
+
+
+def test_build_auth_header_prefers_env_token(monkeypatch):
+    monkeypatch.setenv("LANGUAGECLOUD_API_TOKEN", "env-token")
+    monkeypatch.setattr(
+        MT_FILL,
+        "generate_languagecloud_api_token",
+        lambda client_login: "generated-token",
+    )
+
+    assert MT_FILL.build_auth_header("Elanex-205317") == {
+        "Authorization": "Bearer env-token"
+    }
+
+
+def test_build_auth_header_generates_token_for_client_id(monkeypatch):
+    monkeypatch.delenv("LANGUAGECLOUD_API_TOKEN", raising=False)
+    monkeypatch.setattr(
+        MT_FILL,
+        "generate_languagecloud_api_token",
+        lambda client_login: f"generated:{client_login}",
+    )
+
+    assert MT_FILL.build_auth_header("Elanex-205317") == {
+        "Authorization": "Bearer generated:Elanex-205317"
+    }
+
+
+def test_mt_translate_db_label_uses_languagecloud_api_schema(monkeypatch):
+    class FakeTranslationResponse:
+        @classmethod
+        def model_validate(cls, data):
+            raise AssertionError("translations dict should be read directly")
+
+    class FakePayload:
+        def __init__(self):
+            self.data = {
+                "translations": {
+                    "fr": "Bonjour <x id=1>",
+                }
+            }
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.data
+
+    class FakeClient:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return None
+
+        def post(self, url, headers, json):
+            assert url == "https://languagecloud.example.test/mt/translate"
+            assert headers == {"Authorization": "Bearer token"}
+            assert json == {
+                "text": "Hello <x id=1>",
+                "target_languages": ["fr"],
+                "app_name": "slack",
+                "usage_type": "translation_export_mt_fill",
+            }
+            return FakePayload()
+
+    monkeypatch.setattr(
+        MT_FILL,
+        "load_app_mt_types",
+        lambda: (FakeTranslationResponse, "https://languagecloud.example.test"),
+    )
+    monkeypatch.setattr(
+        MT_FILL,
+        "build_auth_header",
+        lambda client_id: {"Authorization": "Bearer token"},
+    )
+    monkeypatch.setattr(MT_FILL.httpx, "Client", FakeClient)
+
+    assert (
+        MT_FILL.mt_translate_db_label("Hello <x id=1>", "fr", "client-id")
+        == "Bonjour <x id=1>"
+    )
+
+
+def test_configured_client_id_prefers_client_id_env(monkeypatch):
+    monkeypatch.setenv("LANGUAGECLOUD_API_CLIENT_ID", "client-id")
+    monkeypatch.setenv("LANGUAGECLOUD_API_CLIENT_LOGIN", "old-login")
+
+    assert MT_FILL.configured_client_id() == "client-id"
+
+
+def test_configured_client_id_requires_env_or_cli(monkeypatch):
+    monkeypatch.delenv("LANGUAGECLOUD_API_CLIENT_ID", raising=False)
+    monkeypatch.delenv("LANGUAGECLOUD_API_CLIENT_LOGIN", raising=False)
+
+    try:
+        MT_FILL.configured_client_id()
+    except ValueError as exc:
+        assert "LANGUAGECLOUD_API_CLIENT_ID or --client-id must be set" in str(exc)
+    else:
+        raise AssertionError("Expected missing client id to fail")

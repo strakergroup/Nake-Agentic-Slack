@@ -69,10 +69,13 @@ The maintained tool mirrors the older `dev/` workflow as three explicit steps:
 1. `make missing-per-language OUTPUT=output/missing_strings.xlsx FORMAT=xlsx`
    exports one workbook per resolved DB language, e.g.
    `missing_strings_fr.xlsx` and `missing_strings_fr-ca.xlsx`.
-2. `make mt-fill INPUT='output/missing_strings_*.xlsx'` fills blank
-   `translation` cells using LanguageCloud MT. Set `LANGUAGECLOUD_API_TOKEN`
-   before running this step. `LANGUAGECLOUD_API_URL` can override the default
-   configured API base URL.
+2. `make mt-fill INPUT='output/missing_strings_*.xlsx' CLIENT_ID=...` fills
+   blank `translation` cells using LanguageCloud MT. The tool generates a
+   LanguageCloud JWT for the supplied client id, using the same
+   `create_languagecloud_id_token` pattern as the app. Use
+   `LANGUAGECLOUD_API_CLIENT_ID`, or set `LANGUAGECLOUD_API_TOKEN` to use a
+   pre-generated bearer token.
+   `LANGUAGECLOUD_API_URL` can override the default configured API base URL.
 3. `make import-sql INPUT='output/missing_strings_*.xlsx' SQL_OUTPUT=output/import.sql`
    creates SQL insert statements for `obj_stringtranslator` from all filled
    workbooks.
@@ -82,6 +85,19 @@ does not execute against the database.
 
 Use `make missing OUTPUT=output/missing_strings.xlsx FORMAT=xlsx` when a single
 combined workbook is preferred.
+
+### MT Auth
+
+The MT fill step follows the app's existing LanguageCloud auth pattern. It reads
+the `languagecloud_api` integration key through `app.config`, fetches the
+configured member from `obj_m_member` by `obj_uuid`, and creates a bearer JWT for the
+`/mt/translate` request. No generated token is written to `.env`.
+
+```bash
+make mt-fill INPUT='output/missing_strings_*.xlsx'
+make mt-fill INPUT='output/missing_strings_*.xlsx' CLIENT_ID=<client-uuid>
+LANGUAGECLOUD_API_CLIENT_ID=<client-uuid> make mt-fill INPUT='output/missing_strings_*.xlsx'
+```
 
 ## Import Validation
 

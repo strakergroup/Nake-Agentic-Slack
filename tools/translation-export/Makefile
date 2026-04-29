@@ -35,6 +35,9 @@ ifdef INPUT
 FILL_ARGS += --input $(INPUT)
 IMPORT_ARGS += --input $(INPUT)
 endif
+ifdef CLIENT_ID
+FILL_ARGS += --client-id $(CLIENT_ID)
+endif
 ifdef SQL_OUTPUT
 IMPORT_ARGS += --output $(SQL_OUTPUT)
 endif
