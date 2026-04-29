@@ -20,6 +20,7 @@ sqlalchemy = "==2.*"
 mysql-connector-python = "*"
 httpx = "<1.0"
 redis = "==5.*"
+saq = {extras = ["hiredis"], version = "==0.26.*"}
 cryptography = "*"
 python-dateutil = "*"
 babel = "*"

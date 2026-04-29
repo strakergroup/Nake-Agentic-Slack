@@ -51,6 +51,17 @@ class StrakerConfig(BaseSettings):
     # Google Chat incoming webhook for dev alerts; env: GOOGLE_CHAT_WEBHOOK
     google_chat_webhook: SecretStr = SecretStr("")
 
+    # SAQ (Simple Async Queue) settings for durable background tasks (RAY-79638).
+    # The SAQ worker is embedded inside this uvicorn process via the FastAPI
+    # lifespan; jobs are persisted in Redis so they survive process restarts.
+    saq_queue_name: str = Field(default="slack-ray-translator", min_length=1)
+    saq_worker_enabled: bool = True
+    saq_worker_concurrency: int = Field(default=10, ge=1, le=100)
+    saq_file_upload_retries: int = Field(default=5, ge=0, le=20)
+    saq_file_upload_timeout_seconds: int = Field(default=300, ge=10, le=3600)
+    saq_logging_retries: int = Field(default=3, ge=0, le=20)
+    saq_logging_timeout_seconds: int = Field(default=30, ge=5, le=600)
+
     @field_validator("google_mt_api_key", mode="after")
     def validate_google_mt_api_key(cls, v, info: ValidationInfo):
         if info.data["environment"] in [Environment.production, Environment.uat]:

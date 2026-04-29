@@ -530,8 +530,9 @@ class TestRayEventsEndpoint:
                                             return_value=mock_response,
                                         ) as mock_post:
                                             with patch(
-                                                "app.routers.ray._create_background_task"
-                                            ) as mock_bg_task:
+                                                "app.routers.ray.enqueue_transcription_upload",
+                                                new_callable=AsyncMock,
+                                            ) as mock_enqueue:
                                                 auth = RayEventAuth()
                                                 await auth.initialize(
                                                     event, "valid-token"
@@ -540,7 +541,7 @@ class TestRayEventsEndpoint:
                                                 await ray_events(event, auth)
 
                                                 mock_post.assert_called_once()
-                                                mock_bg_task.assert_called_once()
+                                                mock_enqueue.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_transcription_error(
@@ -748,15 +749,16 @@ class TestRayEventsEndpoint:
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
                     ):
                         with patch(
-                            "app.routers.ray._create_background_task"
-                        ) as mock_bg_task:
+                            "app.routers.ray.enqueue_mt_success_upload",
+                            new_callable=AsyncMock,
+                        ) as mock_enqueue:
                             auth = RayEventAuth()
                             await auth.initialize(event, "valid-token")
 
                             await ray_events(event, auth)
 
-                            # Verify background task was created
-                            mock_bg_task.assert_called_once()
+                            # MT success upload was enqueued onto SAQ (RAY-79638)
+                            mock_enqueue.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_evaluate_complete_error(
@@ -921,16 +923,17 @@ class TestRayEventsEndpoint:
                                 return_value=mock_response,
                             ) as mock_post:
                                 with patch(
-                                    "app.routers.ray._create_background_task"
-                                ) as mock_bg_task:
+                                    "app.routers.ray.enqueue_verify_complete_upload",
+                                    new_callable=AsyncMock,
+                                ) as mock_enqueue:
                                     auth = RayEventAuth()
                                     await auth.initialize(event, "valid-token")
 
                                     await ray_events(event, auth)
 
-                                    # Verify notification was sent and background task created
+                                    # Verify notification was sent and durable upload was enqueued (RAY-79638)
                                     mock_post.assert_called_once()
-                                    mock_bg_task.assert_called_once()
+                                    mock_enqueue.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_direct_mt_result(self, mock_slack_user, user_id, team_id):

@@ -1,4 +1,3 @@
-import asyncio
 import json
 from typing import Any, Union
 
@@ -9,13 +8,14 @@ from slack_sdk.webhook import WebhookResponse
 from sqlalchemy import text
 from straker_utils.sql.async_engine import execute
 
+from app.saq_jobs import enqueue_log_notification, enqueue_mt_ts_edit
 from app.slack.buglog_notifier import notify_exception
 
 from ...auth.connector import SlackUser
 from ...database import async_engines
 from ...dependencies import RayEvent
 from ...slack.templates.messages import SlackMessage
-from ...slack.web import get_mt_ts_cached, set_mt_ts_edit
+from ...slack.web import get_mt_ts_cached
 
 
 async def log_notification(
@@ -26,7 +26,13 @@ async def log_notification(
     ray_client_id: str,
     message: str,
 ):
-    """Logs a Slack notification which was sent to a Slack user to the database."""
+    """Logs a Slack notification which was sent to a Slack user to the database.
+
+    This is the implementation called by the SAQ ``persist_log_notification``
+    task; producers should enqueue via
+    :func:`app.saq_jobs.enqueue_log_notification` so the DB write is durable
+    across process restarts.
+    """
     try:
         # Use async engine for database operations
         sql = text(
@@ -100,14 +106,11 @@ async def post_notification(
                     blocks=message.blocks,
                     thread_ts=thread_ts,
                 )
-                # save timestamp to cache
                 if thread_ts:
                     reply_ts = response.get("ts")
                     if not isinstance(reply_ts, str):
                         raise ValueError("Slack response is missing a string timestamp")
-                    asyncio.create_task(
-                        set_mt_ts_edit(send_ts=thread_ts, reply_ts=reply_ts)
-                    )
+                    await enqueue_mt_ts_edit(send_ts=thread_ts, reply_ts=reply_ts)
         elif display_format == "message":
             if timestamp:
                 response = await client.chat_update(
@@ -123,14 +126,11 @@ async def post_notification(
                     blocks=message.blocks,
                     thread_ts=thread_ts if post_thread else None,
                 )
-                # save timestamp to cache
                 if thread_ts:
                     reply_ts = response.get("ts")
                     if not isinstance(reply_ts, str):
                         raise ValueError("Slack response is missing a string timestamp")
-                    asyncio.create_task(
-                        set_mt_ts_edit(send_ts=thread_ts, reply_ts=reply_ts)
-                    )
+                    await enqueue_mt_ts_edit(send_ts=thread_ts, reply_ts=reply_ts)
     else:
         # Determine the appropriate response method based on parameters
         if response_url and not is_edit:
@@ -158,15 +158,13 @@ async def post_notification(
                 thread_ts=thread_ts,
             )
 
-    asyncio.create_task(
-        log_notification(
-            event=event.event,
-            event_data=event.data,
-            user_id=slack_user.user_id,
-            channel_id=target_channel,
-            ray_client_id=slack_user.ray_client_id,
-            message=type(message).__name__,
-        )
+    await enqueue_log_notification(
+        event=event.event,
+        event_data=event.data,
+        user_id=slack_user.user_id,
+        channel_id=target_channel,
+        ray_client_id=slack_user.ray_client_id,
+        message=type(message).__name__,
     )
     return response
 
@@ -227,24 +225,19 @@ async def post_channel_translation_notification(
             blocks=message.blocks,
             thread_ts=thread_timestamp if use_thread else None,
         )
-        # save timestamp to cache
         if thread_timestamp:
             reply_ts = response.get("ts")
             if not isinstance(reply_ts, str):
                 raise ValueError("Slack response is missing a string timestamp")
-            asyncio.create_task(
-                set_mt_ts_edit(send_ts=thread_timestamp, reply_ts=reply_ts)
-            )
+            await enqueue_mt_ts_edit(send_ts=thread_timestamp, reply_ts=reply_ts)
 
-    asyncio.create_task(
-        log_notification(
-            event=event.event,
-            event_data=event.data,
-            user_id=slack_user.user_id,
-            channel_id=channel_id,
-            ray_client_id=slack_user.ray_client_id,
-            message=type(message).__name__,
-        )
+    await enqueue_log_notification(
+        event=event.event,
+        event_data=event.data,
+        user_id=slack_user.user_id,
+        channel_id=channel_id,
+        ray_client_id=slack_user.ray_client_id,
+        message=type(message).__name__,
     )
     return response
 
@@ -302,13 +295,11 @@ async def post_notification_ephemeral(
             thread_ts=thread_ts,
         )
 
-    asyncio.create_task(
-        log_notification(
-            event=event.event,
-            event_data=event.data,
-            user_id=slack_user.user_id,
-            channel_id=channel_id,
-            ray_client_id=slack_user.ray_client_id,
-            message=type(message).__name__,
-        )
+    await enqueue_log_notification(
+        event=event.event,
+        event_data=event.data,
+        user_id=slack_user.user_id,
+        channel_id=channel_id,
+        ray_client_id=slack_user.ray_client_id,
+        message=type(message).__name__,
     )
