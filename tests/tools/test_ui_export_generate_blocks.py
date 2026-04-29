@@ -11,6 +11,10 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 build_all_messages = MODULE.build_all_messages
 build_all_views = MODULE.build_all_views
+configure_translation = MODULE.configure_translation
+parse_languages = MODULE.parse_languages
+_requested_translation_source = MODULE._requested_translation_source
+_mock_translate = MODULE._mock_translate
 
 
 def test_build_all_messages_includes_ibm_new_job_variants():
@@ -43,3 +47,37 @@ def test_build_all_views_includes_ibm_connected_home_variants():
     assert "home_view (IBM, connected, admin)" in names
     assert "home_view (IBM, connected, non-admin)" in names
     assert "home_view (IBM, connected)" not in names
+
+
+def test_parse_languages_deduplicates_and_defaults():
+    assert parse_languages("fr, es, fr, ,de") == ["fr", "es", "de"]
+    assert parse_languages("") == ["en"]
+
+
+def test_requested_translation_source_prefers_cli(monkeypatch):
+    monkeypatch.setenv("UI_EXPORT_TRANSLATION_SOURCE", "catalog")
+    monkeypatch.setattr(
+        MODULE.sys,
+        "argv",
+        ["generate_blocks.py", "--translation-source", "app"],
+    )
+
+    assert _requested_translation_source() == "app"
+
+
+def test_requested_translation_source_reads_env(monkeypatch):
+    monkeypatch.setenv("UI_EXPORT_TRANSLATION_SOURCE", "db")
+    monkeypatch.setattr(MODULE.sys, "argv", ["generate_blocks.py"])
+
+    assert _requested_translation_source() == "db"
+
+
+def test_mock_translate_uses_configured_language_catalog():
+    configure_translation("fr", {"Hello <x id=1>": "Bonjour <x id=1>"})
+
+    try:
+        translated = _mock_translate("Hello {name}")
+    finally:
+        configure_translation("en")
+
+    assert translated == "Bonjour {name}"

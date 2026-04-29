@@ -23,6 +23,20 @@ NVM_INIT  := export NVM_DIR="$$HOME/.nvm" && [ -s "$$NVM_DIR/nvm.sh" ] && . "$$N
 NODE_BIN  := $(NVM_INIT) && node
 NPM_BIN   := $(NVM_INIT) && npm
 
+UI_EXPORT_ARGS :=
+ifdef LANGUAGE
+UI_EXPORT_ARGS += --language $(LANGUAGE)
+endif
+ifdef LANGUAGES
+UI_EXPORT_ARGS += --languages $(LANGUAGES)
+endif
+ifdef TRANSLATIONS_FILE
+UI_EXPORT_ARGS += --translations-file $(TRANSLATIONS_FILE)
+endif
+ifdef TRANSLATION_SOURCE
+UI_EXPORT_ARGS += --translation-source $(TRANSLATION_SOURCE)
+endif
+
 .PHONY: all generate render typecheck open clean install
 
 all: generate render open
@@ -32,13 +46,14 @@ install: node_modules
 node_modules: package.json
 	$(NPM_BIN) install
 
-generate: output/blocks.json
+generate:
+	$(PYTHON) generate_blocks.py $(UI_EXPORT_ARGS)
 
 output/blocks.json: $(REPO_ROOT)/app/slack/templates/messages.py \
                     $(REPO_ROOT)/app/slack/templates/views.py \
                     $(REPO_ROOT)/app/slack/templates/blocks.py \
                     generate_blocks.py
-	$(PYTHON) generate_blocks.py
+	$(PYTHON) generate_blocks.py $(UI_EXPORT_ARGS)
 
 render: output/ui-catalog.html
 

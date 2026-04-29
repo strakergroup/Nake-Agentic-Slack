@@ -12,13 +12,35 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
+import re
 import sys
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+
+APP_TRANSLATION_SOURCES = {"app", "db", "database"}
+
+
+def _requested_translation_source() -> str:
+    """Read translation source early, before import-time mocks are installed."""
+    for index, arg in enumerate(sys.argv[1:]):
+        if arg == "--translation-source" and index + 2 < len(sys.argv):
+            return sys.argv[index + 2].strip().lower()
+        if arg.startswith("--translation-source="):
+            return arg.split("=", 1)[1].strip().lower()
+    env_value = os.environ.get("UI_EXPORT_TRANSLATION_SOURCE")
+    if env_value:
+        return env_value.strip().lower()
+    return "catalog"
+
+
+TRANSLATION_SOURCE = _requested_translation_source()
+USE_APP_TRANSLATOR = TRANSLATION_SOURCE in APP_TRANSLATION_SOURCES
 
 # ---------------------------------------------------------------------------
 # Ensure the repo root is on sys.path so app.* imports resolve
@@ -30,8 +52,9 @@ sys.path.insert(0, str(REPO_ROOT))
 # Patch heavy/side-effecty modules *before* importing app code
 # ---------------------------------------------------------------------------
 
-# Patch database engines (they try to connect on import)
-sys.modules.setdefault("app.database", MagicMock())
+# Patch database engines unless the real app translator was explicitly requested.
+if not USE_APP_TRANSLATOR:
+    sys.modules.setdefault("app.database", MagicMock())
 
 # Patch redis (it tries to connect on import)
 _redis_mock = MagicMock()
@@ -55,16 +78,6 @@ _ray_logger = MagicMock()
 for sub in ("ray_logger", "ray_logger.slack"):
     sys.modules.setdefault(sub, _ray_logger)
 
-_straker_utils = MagicMock()
-for sub in (
-    "straker_utils",
-    "straker_utils.sql",
-    "straker_utils.sql.async_engine",
-    "straker_utils.domain",
-    "straker_utils.environment",
-):
-    sys.modules.setdefault(sub, _straker_utils)
-
 
 class _Environment(str, Enum):
     production = "production"
@@ -72,7 +85,17 @@ class _Environment(str, Enum):
     local = "local"
 
 
-sys.modules["straker_utils.environment"].Environment = _Environment
+if not USE_APP_TRANSLATOR:
+    _straker_utils = MagicMock()
+    for sub in (
+        "straker_utils",
+        "straker_utils.sql",
+        "straker_utils.sql.async_engine",
+        "straker_utils.domain",
+        "straker_utils.environment",
+    ):
+        sys.modules.setdefault(sub, _straker_utils)
+    sys.modules["straker_utils.environment"].Environment = _Environment
 
 # Patch the domains object
 _domains_mock = MagicMock()
@@ -99,11 +122,91 @@ sys.modules.setdefault("ray_sdk.api.v3.file", MagicMock())
 # Make is_valid_file_ext always return True
 sys.modules["ray_sdk.api.v3.file"].is_valid_file_ext = lambda _: True
 
-# Patch translation function to act as identity with variable interpolation
+# Patch translation function to use a selectable export language. By default
+# this stays offline and deterministic using JSON catalogs; opt into the app's
+# real DB-backed translator with --translation-source app.
+
+DEFAULT_LANGUAGE = "en"
+PLACEHOLDER_PATTERN = re.compile(r":\w+:|\{.*?\}")
+_active_language = DEFAULT_LANGUAGE
+_translation_catalog: dict[str, str] = {}
+
+
+def parse_languages(value: str | None) -> list[str]:
+    """Parse comma-separated language codes, preserving order."""
+    if not value:
+        return [DEFAULT_LANGUAGE]
+    languages = []
+    seen = set()
+    for language in value.split(","):
+        language = language.strip()
+        if not language or language in seen:
+            continue
+        languages.append(language)
+        seen.add(language)
+    return languages or [DEFAULT_LANGUAGE]
+
+
+def load_translation_catalog(path: Path | None, language: str) -> dict[str, str]:
+    """Load optional UI export translations for a language.
+
+    Supported JSON shapes:
+      {"fr": {"Hello": "Bonjour"}}
+      {"Hello": "Bonjour"}
+    """
+    if path is None:
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("translation catalog must be a JSON object")
+    language_data = data.get(language, data)
+    if not isinstance(language_data, dict):
+        raise ValueError(f"translation catalog for {language} must be a JSON object")
+    return {
+        str(source): str(translation)
+        for source, translation in language_data.items()
+        if isinstance(source, str) and isinstance(translation, str)
+    }
+
+
+def configure_translation(language: str, catalog: dict[str, str] | None = None) -> None:
+    """Set the language used by the export translation function."""
+    global _active_language, _translation_catalog
+    _active_language = language
+    _translation_catalog = catalog or {}
+    if USE_APP_TRANSLATOR:
+        translator_var.set(Translator(language))
+
+
+def _tag_placeholders(text: str) -> tuple[str, dict[str, str]]:
+    replacements = {}
+
+    def replace(match: re.Match[str]) -> str:
+        tag = f"<x id={len(replacements) + 1}>"
+        replacements[match.group()] = tag
+        return tag
+
+    return PLACEHOLDER_PATTERN.sub(replace, text), replacements
+
+
+def _translate_catalog_text(text: str) -> str:
+    if _active_language.lower().startswith(("en", "gb", "us")):
+        return text
+
+    tagged_text, replacements = _tag_placeholders(text)
+    translation = _translation_catalog.get(tagged_text) or _translation_catalog.get(
+        text
+    )
+    if translation is None:
+        return text
+
+    for original, tag in replacements.items():
+        translation = translation.replace(tag, original)
+    return translation
 
 
 def _mock_translate(text, *args, **kwargs):
-    """Identity translation that resolves f-string style variables."""
+    """Translate via the selected catalog and resolve f-string style variables."""
     import inspect
 
     frame = inspect.currentframe()
@@ -113,14 +216,18 @@ def _mock_translate(text, *args, **kwargs):
         # Check one more level up for class __init__ methods
         if frame.f_back.f_back:
             caller_locals = {**frame.f_back.f_back.f_locals, **caller_locals}
+    translated_text = _translate_catalog_text(text)
     try:
-        return text.format(**caller_locals)
+        return translated_text.format(**caller_locals)
     except (KeyError, IndexError, AttributeError):
-        return text
+        return translated_text
 
 
-sys.modules.setdefault("app.translate", MagicMock())
-sys.modules["app.translate"]._ = _mock_translate
+if USE_APP_TRANSLATOR:
+    from app.translate import Translator, translator_var  # noqa: E402
+else:
+    sys.modules.setdefault("app.translate", MagicMock())
+    sys.modules["app.translate"]._ = _mock_translate
 
 # Don't mock sqlalchemy — the real package is needed for imports
 
@@ -1775,14 +1882,13 @@ def build_all_views() -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def main():
-    print("Generating Block Kit JSON for all templates...")
-
+def build_catalog(
+    language: str, catalog: dict[str, str] | None = None
+) -> dict[str, Any]:
+    configure_translation(language, catalog)
     messages = build_all_messages()
     views = build_all_views()
-
-    output = {
-        "generated_at": datetime.now().isoformat(),
+    return {
         "messages": messages,
         "views": views,
         "stats": {
@@ -1792,11 +1898,88 @@ def main():
         },
     }
 
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate Block Kit JSON for Slack UI templates."
+    )
+    parser.add_argument(
+        "--language",
+        help="Single UI language to export. Defaults to UI_EXPORT_LANGUAGE or en.",
+    )
+    parser.add_argument(
+        "--languages",
+        help=(
+            "Comma-separated UI languages to export. Overrides --language and "
+            "UI_EXPORT_LANGUAGE. Defaults to UI_EXPORT_LANGUAGES when set."
+        ),
+    )
+    parser.add_argument(
+        "--translations-file",
+        type=Path,
+        default=(
+            Path(os.environ["UI_EXPORT_TRANSLATIONS_FILE"])
+            if os.environ.get("UI_EXPORT_TRANSLATIONS_FILE")
+            else None
+        ),
+        help=(
+            "Optional JSON translation catalog. Supports either "
+            "{language: {source: translation}} or {source: translation}."
+        ),
+    )
+    parser.add_argument(
+        "--translation-source",
+        choices=("catalog", "app", "db", "database"),
+        default=TRANSLATION_SOURCE,
+        help=(
+            "Translation source for app.translate._ calls. 'catalog' uses the "
+            "optional JSON file; 'app'/'db' uses the real DB-backed app translator."
+        ),
+    )
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    language_value = (
+        args.languages
+        or os.environ.get("UI_EXPORT_LANGUAGES")
+        or args.language
+        or os.environ.get("UI_EXPORT_LANGUAGE")
+        or DEFAULT_LANGUAGE
+    )
+    languages = parse_languages(language_value)
+    print(f"Generating Block Kit JSON for languages: {', '.join(languages)}...")
+
+    use_app_translator = args.translation_source in APP_TRANSLATION_SOURCES
+    catalogs = {}
+    for language in languages:
+        translation_catalog = (
+            {}
+            if use_app_translator
+            else load_translation_catalog(args.translations_file, language)
+        )
+        catalogs[language] = build_catalog(language, translation_catalog)
+
+    default_language = languages[0]
+    default_catalog = catalogs[default_language]
+    output = {
+        "generated_at": datetime.now().isoformat(),
+        "default_language": default_language,
+        "languages": languages,
+        "catalogs": catalogs,
+        # Keep the legacy shape for tools/tests that read output/blocks.json directly.
+        "messages": default_catalog["messages"],
+        "views": default_catalog["views"],
+        "stats": default_catalog["stats"],
+    }
+
     output_path = Path(__file__).parent / "output" / "blocks.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(output, indent=2, default=str))
 
     print(f"Generated {output['stats']['total']} templates -> {output_path}")
+    print(f"  Default language: {default_language}")
     print(f"  Messages: {output['stats']['total_messages']}")
     print(f"  Views:    {output['stats']['total_views']}")
 
