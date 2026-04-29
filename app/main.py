@@ -8,6 +8,7 @@ from .api.http_client import close_shared_client
 from .config import Environment, config, domains
 from .constants import APP_VERSION
 from .routers import health, ray, slack
+from .saq_jobs.worker import start_worker, stop_worker
 from .slack.buglog_notifier import notify_exception
 from .slack.select_options import (
     initialize_languages_cache,
@@ -27,15 +28,23 @@ print(f"Starting Slack RAY Translator - Version: {APP_VERSION}")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for app startup/shutdown events."""
-    # Startup
     try:
         await initialize_languages_cache()
     except Exception as e:
         notify_exception(e)
 
+    try:
+        await start_worker()
+    except Exception as e:
+        notify_exception(e, "Failed to start SAQ worker on app startup")
+        raise
+
     yield
 
-    # Shutdown
+    try:
+        await stop_worker()
+    except Exception as e:
+        notify_exception(e, "Failed to stop SAQ worker on app shutdown")
     await close_shared_client()
 
 

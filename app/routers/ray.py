@@ -1,16 +1,14 @@
-import asyncio
 import logging
 import os
 from dataclasses import replace
 from pathlib import Path
-from typing import Annotated, Any, Optional, Union
+from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, ValidationError
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
-from slack_sdk.webhook import WebhookResponse
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from straker_utils.credits import calculate_cost, spend_credits
@@ -30,14 +28,17 @@ from app.mt.logs import log_google_api_usage
 from app.ray.settings import get_auto_translate_language_name
 from app.ray.submissions import SubmissionStatus, updated_submission_status
 from app.ray.utils import (
-    delete_from_file_server,
     download_from_file_server_async,
     is_ibm_enterprise,
     set_user_language,
 )
+from app.saq_jobs import (
+    enqueue_mt_success_upload,
+    enqueue_transcription_upload,
+    enqueue_verify_complete_upload,
+)
 from app.slack.buglog_notifier import notify_exception, notify_message
 from app.slack.select_options import _get_languages_cached
-from app.slack_job import update_slack_job
 from app.transcriber_tasks.tasks import get_transcription_task
 from app.translate import _
 
@@ -102,9 +103,6 @@ from ..slack.templates.messages import (
 from ..slack.web import upload_file_to_slack_memory_efficient
 
 router = APIRouter()
-
-# Track background tasks for potential cleanup
-_background_tasks = set()
 
 logger = logging.getLogger(__name__)
 
@@ -450,79 +448,6 @@ async def _spend_embedding_credits(
         return 0
 
 
-def _create_background_task(coro):
-    """Create a background task with proper cleanup and error handling."""
-    task = asyncio.create_task(coro)
-    _background_tasks.add(task)
-
-    def _cleanup_task(task):
-        try:
-            _background_tasks.discard(task)
-        except Exception:
-            pass
-
-    task.add_done_callback(_cleanup_task)
-    return task
-
-
-async def _handle_mt_success_background(
-    success_data: MtSuccessResponseSchema,
-    auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
-):
-    """Background task to handle MT success file download and upload."""
-    try:
-        # Update submission status if submission_id is present
-        if success_data.submission_id:
-            updated_submission_status(
-                submission_id=success_data.submission_id,
-                processing_status=SubmissionStatus.COMPLETED,
-            )
-        await update_slack_job(
-            task_uuid=success_data.task_uuid,
-            status="slack_uploading",
-        )
-        # Create a new client instance with the correct token for this user
-        if auth.slack_user is None:
-            return
-        client = AsyncWebClient(token=auth.slack_user.bot_token)
-
-        # Download file from server
-        output_file = await download_from_file_server_async(success_data.file_id)
-        file_path = output_file.get("file")
-        title = output_file.get("file_name")
-        # Get full language name for display
-        language_name = await _get_language_name(success_data.target_language)
-        initial_comment = _(
-            f"Your file is AI translated to *{language_name}* and can be downloaded below."
-        )
-        try:
-            # Upload file using memory-efficient method
-            await upload_file_to_slack_memory_efficient(
-                client=client,
-                file_path=file_path,
-                channel_id=success_data.channel_id,
-                title=title,
-                filename=title,
-                initial_comment=initial_comment,
-            )
-
-            await update_slack_job(
-                task_uuid=success_data.task_uuid,
-                status="delivered",
-            )
-            await delete_from_file_server(success_data.file_id)
-        finally:
-            # Clean up temporary file
-            if file_path and os.path.exists(file_path):
-                os.unlink(file_path)
-    except Exception as e:
-        notify_exception(e, "Background MT success file handling failed")
-        await update_slack_job(
-            task_uuid=success_data.task_uuid,
-            status="failed_delivery",
-        )
-
-
 async def _mark_stage_processed(
     task_uuid: str, stage: str, extra_data_to_merge: dict | None = None
 ) -> None:
@@ -624,20 +549,19 @@ async def _handle_transcription_complete(
             auth_slack_user.channel_id if auth_slack_user else None
         )
 
-        if upload_channel_id:
-            _create_background_task(
-                _handle_transcribe_success_background(
-                    {
-                        "file_id": result_file_id,
-                        "file_name": result_file_name,
-                        "task_uuid": task_info.task_uuid,
-                        "pipeline_type": task_info.pipeline_type,
-                    },
-                    auth,
-                    response,
-                    override_channel_id=upload_channel_id,
-                    thread_ts=effective_thread_ts,
-                )
+        if upload_channel_id and auth.slack_user is not None:
+            await enqueue_transcription_upload(
+                file_id=result_file_id,
+                file_name=result_file_name,
+                task_uuid=task_info.task_uuid,
+                pipeline_type=task_info.pipeline_type,
+                client_id=auth.slack_user.ray_client_id,
+                channel_id=upload_channel_id,
+                thread_ts=effective_thread_ts,
+                follow_up_message=_(
+                    "Download the AI translations provided above, make your edits, "
+                    "and reupload the edited files back to the same thread."
+                ),
             )
 
 
@@ -787,123 +711,6 @@ async def _handle_transcribe_embed_pipeline(
             ),
             thread_ts=effective_thread_ts,
         )
-
-
-async def _handle_transcribe_success_background(
-    event_data: dict[str, Any],
-    auth: Annotated[RayEventAuth, Depends(get_ray_event_auth)],
-    response: Union[AsyncSlackResponse, WebhookResponse, None],
-    override_channel_id: str | None = None,
-    thread_ts: str | None = None,
-):
-    """Background task to handle transcription success file download and upload."""
-    if not auth.slack_user:
-        return
-
-    file_id = event_data.get("file_id")
-    file_name = event_data.get("file_name")
-    if not file_id or not file_name:
-        notify_exception(
-            Exception(
-                f"Missing file_id or file_name in event_data. file_id={file_id}, file_name={file_name}"
-            ),
-            "Transcription background task failed",
-        )
-        return
-
-    try:
-        client = AsyncWebClient(token=auth.slack_user.bot_token)
-        output_file = await download_from_file_server_async(file_id)
-        file_path = output_file.get("file")
-
-        if not file_path:
-            notify_exception(
-                Exception(f"Failed to download file {file_id} from file server"),
-                "Transcription background task failed",
-            )
-            return
-
-        # Get channel_id from override or response
-        channel_id = override_channel_id
-
-        if (
-            not channel_id
-            and isinstance(response, AsyncSlackResponse)
-            and isinstance(response.data, dict)
-        ):
-            channel_id = response.data.get("channel")
-
-        if not channel_id:
-            # Final fallback to slack_user channel_id
-            channel_id = auth.slack_user.channel_id if auth.slack_user else None
-
-        if not channel_id:
-            notify_exception(
-                Exception(
-                    f"Missing channel_id for file upload. file_id={file_id}, override_channel_id={override_channel_id}"
-                ),
-                "Transcription background task failed",
-            )
-            return
-
-        try:
-            # Rename the temp file to have the correct filename so Slack displays it properly
-            temp_dir = os.path.dirname(file_path)
-            renamed_file_path = os.path.join(temp_dir, file_name)
-            if file_path != renamed_file_path:
-                os.rename(file_path, renamed_file_path)
-                file_path = renamed_file_path
-
-            await upload_file_to_slack_memory_efficient(
-                client=client,
-                file_path=file_path,
-                channel_id=channel_id,
-                title=file_name,
-                filename=file_name,
-                thread_ts=thread_ts,
-            )
-
-            await client.chat_postMessage(
-                channel=channel_id,
-                text=_(
-                    "Download the AI translations provided above, make your edits, "
-                    "and reupload the edited files back to the same thread."
-                ),
-                thread_ts=thread_ts,
-            )
-        finally:
-            if os.path.exists(file_path):
-                os.unlink(file_path)
-    except Exception as e:
-        notify_exception(e, "Background transcription file handling failed")
-
-
-async def _handle_verify_complete_background(event_data, auth, response):
-    """Background task to handle verify complete file download and upload."""
-    try:
-        # Create a new client instance with the correct token for this user
-        if auth.slack_user is None:
-            return
-        client = AsyncWebClient(token=auth.slack_user.bot_token)
-
-        output_file = await download_from_file_server_async(event_data["grid_file_id"])
-        file_path = output_file.get("file")
-        try:
-            await upload_file_to_slack_memory_efficient(
-                client=client,
-                file_path=file_path,
-                channel_id=response.data["channel"]
-                if isinstance(response.data, dict)
-                else "",
-                title=output_file.get("file_name"),
-                filename=output_file.get("file_name"),
-            )
-        finally:
-            # Clean up temporary file
-            if file_path and os.path.exists(file_path):
-                os.unlink(file_path)
-    except Exception as e:
-        notify_exception(e, "Background verify complete file handling failed")
 
 
 @router.post("/ray/events")
@@ -1448,9 +1255,7 @@ async def ray_events(
                     )
             except ValidationError:
                 success_data = MtSuccessResponseSchema.model_validate(event.data)
-                _create_background_task(
-                    _handle_mt_success_background(success_data, auth)
-                )
+                await enqueue_mt_success_upload(success_data)
 
         elif event.event == "verify:slack:evaluate:complete":
             if event.data.get("error"):
@@ -1547,16 +1352,22 @@ async def ray_events(
                 verify_message: VerifyCompleteMessage = VerifyCompleteMessage(
                     event.data["job_title"], lang_label
                 )
-                # Send message and handle background task
+                # Send message and enqueue durable file upload (RAY-79638)
                 response = await post_notification(
                     client,
                     event,
                     auth.slack_user,
                     verify_message,
                 )
-                _create_background_task(
-                    _handle_verify_complete_background(event.data, auth, response)
+                upload_channel_id = (
+                    response.data["channel"] if isinstance(response.data, dict) else ""
                 )
+                if upload_channel_id and auth.slack_user is not None:
+                    await enqueue_verify_complete_upload(
+                        grid_file_id=event.data["grid_file_id"],
+                        client_id=auth.slack_user.ray_client_id,
+                        channel_id=upload_channel_id,
+                    )
             except Exception as e:
                 raise HTTPException(
                     422,

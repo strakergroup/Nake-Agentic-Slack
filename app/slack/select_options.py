@@ -22,7 +22,7 @@ from app.slack.buglog_notifier import notify_exception
 from app.translate import _
 
 from ..models import SlackGroupSettingsTranslation
-from ..ray import get_languages
+from ..ray.service import get_languages
 from ..ray.settings import get_auto_translate_languages
 from ..redis import redis_conn
 

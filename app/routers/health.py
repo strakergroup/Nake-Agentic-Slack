@@ -9,7 +9,7 @@ from ..config import config
 from ..constants import APP_VERSION
 from ..database import async_engines
 from ..redis import redis_conn
-from ..slack import app as slack_app
+from ..slack.app import app as slack_app
 
 router = APIRouter()
 
