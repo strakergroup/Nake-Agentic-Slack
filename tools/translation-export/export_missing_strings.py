@@ -33,14 +33,11 @@ DEFAULT_SLACK_LOCALES = (
 ENGLISH_PREFIXES = ("en", "gb", "us")
 PLACEHOLDER_PATTERN = re.compile(r":\w+:|\{.*?\}")
 OUTPUT_COLUMNS = (
-    "slack_locale",
-    "db_lang",
+    "source_language",
+    "target_language",
     "source_text",
-    "db_label",
-    "translation",
+    "target_text",
     "max_length",
-    "locations",
-    "notes",
 )
 
 
@@ -62,14 +59,11 @@ class LocaleTarget:
 
 @dataclass(frozen=True)
 class MissingStringRow:
-    slack_locale: str
-    db_lang: str
+    source_language: str
+    target_language: str
     source_text: str
-    db_label: str
-    translation: str
+    target_text: str
     max_length: int
-    locations: str
-    notes: str
 
 
 def repo_root() -> Path:
@@ -201,25 +195,16 @@ def build_missing_rows(
             continue
 
         existing_labels = existing_labels_by_lang.get(target.db_lang, set())
-        notes = (
-            ""
-            if target.resolved_from_db
-            else "Slack locale not found in obj_m_langs.bcp_47"
-        )
-
         for entry in entries:
             if entry.db_label in existing_labels:
                 continue
             rows.append(
                 MissingStringRow(
-                    slack_locale=target.slack_locale,
-                    db_lang=target.db_lang,
-                    source_text=entry.source_text,
-                    db_label=entry.db_label,
-                    translation="",
+                    source_language="en",
+                    target_language=target.db_lang,
+                    source_text=entry.db_label,
+                    target_text="",
                     max_length=entry.max_length,
-                    locations="; ".join(entry.locations),
-                    notes=notes,
                 )
             )
 
@@ -337,7 +322,7 @@ def write_rows_by_language(
 ) -> list[Path]:
     rows_by_lang: dict[str, list[MissingStringRow]] = defaultdict(list)
     for row in rows:
-        rows_by_lang[row.db_lang].append(row)
+        rows_by_lang[row.target_language].append(row)
 
     output_paths: list[Path] = []
     for db_lang in dict.fromkeys(db_langs):

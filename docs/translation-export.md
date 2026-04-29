@@ -70,7 +70,7 @@ The maintained tool mirrors the older `dev/` workflow as three explicit steps:
    exports one workbook per resolved DB language, e.g.
    `missing_strings_fr.xlsx` and `missing_strings_fr-ca.xlsx`.
 2. `make mt-fill INPUT='output/missing_strings_*.xlsx' CLIENT_ID=...` fills
-   blank `translation` cells using LanguageCloud MT. The tool generates a
+   blank `target_text` cells using LanguageCloud MT. The tool generates a
    LanguageCloud JWT for the supplied client id, using the same
    `create_languagecloud_id_token` pattern as the app. Use
    `LANGUAGECLOUD_API_CLIENT_ID`, or set `LANGUAGECLOUD_API_TOKEN` to use a
@@ -102,9 +102,9 @@ LANGUAGECLOUD_API_CLIENT_ID=<client-uuid> make mt-fill INPUT='output/missing_str
 ## Import Validation
 
 `make import-sql` validates placeholder tags before writing SQL. Every `<x id=N>`
-tag present in `db_label` must also be present in `translation`, and translations
-must not introduce unexpected or malformed `<x ...>` tags. This protects the
-runtime replacement logic used by `app.translate.Translator`.
+tag present in `source_text` must also be present in `target_text`, and
+translations must not introduce unexpected or malformed `<x ...>` tags. This
+protects the runtime replacement logic used by `app.translate.Translator`.
 
 If validation fails, no SQL file is written. A CSV report is written next to the
 SQL output by default, e.g. `output/import_validation_errors.csv`. Override the
@@ -133,14 +133,11 @@ behaviour; include both `fr-FR` and `fr-CA` when both need coverage.
 
 ## Output Columns
 
-- `slack_locale` - The locale value expected from Slack.
-- `db_lang` - The resolved `obj_stringtranslator.lang` value.
-- `source_text` - The original English app string.
-- `db_label` - The placeholder-tagged lookup key expected in the DB.
-- `translation` - The translated `langstring` value to import.
+- `source_language` - The source language code, currently `en`.
+- `target_language` - The resolved `obj_stringtranslator.lang` value.
+- `source_text` - The placeholder-tagged source string expected in the DB.
+- `target_text` - The translated `langstring` value to import.
 - `max_length` - Optional `_()` max length metadata.
-- `locations` - Source file and line references where the string appears.
-- `notes` - Warnings such as missing `obj_m_langs.bcp_47` mapping.
 
 Placeholders such as `{client_name}` and Slack emoji shortcodes such as
 `:white_check_mark:` are converted to `<x id=N>` tags before lookup, matching

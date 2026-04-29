@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: `tools/translation-export` now writes translator-facing workbooks with only `source_language`, `target_language`, `source_text`, `target_text`, and `max_length`, while MT fill and import SQL accept the new column names (Wade Norman, 2026-04-29)
 - [Fixed]: `tools/translation-export` MT fill now decodes HTML entities from LanguageCloud/Google HTML-mode responses before writing XLSX translations while preserving `<x id=N>` placeholder tags (Wade Norman, 2026-04-29)
 - [Changed]: `tools/translation-export` MT fill now sends raw `<x id=N>` tags directly to the HTML-mode LanguageCloud MT API instead of replacing them with sentinel tokens (Wade Norman, 2026-04-30)
 - [Fixed]: `tools/translation-export` MT fill now protects `<x id=N>` tags with sentinel tokens during MT and restores them before import validation, preventing Google MT from dropping placeholder tags (Wade Norman, 2026-04-30)

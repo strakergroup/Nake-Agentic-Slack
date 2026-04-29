@@ -29,18 +29,15 @@ def make_workbook(path: Path) -> None:
     sheet = workbook.active
     sheet.append(
         [
-            "slack_locale",
-            "db_lang",
+            "source_language",
+            "target_language",
             "source_text",
-            "db_label",
-            "translation",
+            "target_text",
             "max_length",
-            "locations",
-            "notes",
         ]
     )
-    sheet.append(["fr-FR", "fr", "Submit {count}", "Submit <x id=1>", "", 0, "", ""])
-    sheet.append(["de-DE", "de", "Cancel", "Cancel", "Abbrechen", 0, "", ""])
+    sheet.append(["en", "fr", "Submit <x id=1>", "", 0])
+    sheet.append(["en", "de", "Cancel", "Abbrechen", 0])
     workbook.save(path)
     workbook.close()
 
@@ -61,8 +58,8 @@ def test_fill_workbook_translations_populates_blank_translation(tmp_path, monkey
         sheet = workbook.active
         assert filled == 1
         assert total == 2
-        assert sheet["E2"].value == "fr:Submit <x id=1>"
-        assert sheet["E3"].value == "Abbrechen"
+        assert sheet["D2"].value == "fr:Submit <x id=1>"
+        assert sheet["D3"].value == "Abbrechen"
     finally:
         workbook.close()
 
@@ -87,7 +84,7 @@ def test_fill_workbook_translations_decodes_html_entities_and_preserves_tags(
         sheet = workbook.active
         assert filled == 1
         assert total == 2
-        assert sheet["E2"].value == 'L\'envoi "OK" & <x id=1>\xa0'
+        assert sheet["D2"].value == 'L\'envoi "OK" & <x id=1>\xa0'
     finally:
         workbook.close()
 
@@ -125,26 +122,20 @@ def test_write_import_sql_fails_and_reports_placeholder_validation_errors(tmp_pa
     sheet = workbook.active
     sheet.append(
         [
-            "slack_locale",
-            "db_lang",
+            "source_language",
+            "target_language",
             "source_text",
-            "db_label",
-            "translation",
+            "target_text",
             "max_length",
-            "locations",
-            "notes",
         ]
     )
     sheet.append(
         [
-            "fr-FR",
+            "en",
             "fr",
-            "Submit {count}",
             "Submit <x id=1>",
             "Soumettre",
             0,
-            "",
-            "",
         ]
     )
     workbook.save(workbook_path)

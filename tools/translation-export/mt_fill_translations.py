@@ -16,10 +16,15 @@ import openpyxl
 from export_missing_strings import ensure_repo_root_on_path
 from sqlalchemy import text
 
-TRANSLATION_COLUMN = "translation"
-DB_LABEL_COLUMN = "db_label"
-DB_LANG_COLUMN = "db_lang"
+TRANSLATION_COLUMN = "target_text"
+DB_LABEL_COLUMN = "source_text"
+DB_LANG_COLUMN = "target_language"
 NOTES_COLUMN = "notes"
+COLUMN_ALIASES = {
+    TRANSLATION_COLUMN: ("translation",),
+    DB_LABEL_COLUMN: ("db_label",),
+    DB_LANG_COLUMN: ("db_lang",),
+}
 
 
 def load_app_mt_types() -> tuple[Any, str]:
@@ -120,6 +125,19 @@ def header_indexes(sheet) -> dict[str, int]:
     }
 
 
+def column_index(indexes: dict[str, int], column: str) -> int | None:
+    if column in indexes:
+        return indexes[column]
+    return next(
+        (
+            indexes[alias]
+            for alias in COLUMN_ALIASES.get(column, ())
+            if alias in indexes
+        ),
+        None,
+    )
+
+
 def append_note(existing: object, note: str) -> str:
     existing_text = "" if existing is None else str(existing).strip()
     if not existing_text:
@@ -139,21 +157,34 @@ def fill_workbook_translations(
     try:
         sheet = workbook.active
         indexes = header_indexes(sheet)
-        required_columns = {DB_LABEL_COLUMN, DB_LANG_COLUMN, TRANSLATION_COLUMN}
-        missing_columns = required_columns - set(indexes)
+        label_index = column_index(indexes, DB_LABEL_COLUMN)
+        lang_index = column_index(indexes, DB_LANG_COLUMN)
+        translation_index = column_index(indexes, TRANSLATION_COLUMN)
+        missing_columns = [
+            column
+            for column, index in (
+                (DB_LABEL_COLUMN, label_index),
+                (DB_LANG_COLUMN, lang_index),
+                (TRANSLATION_COLUMN, translation_index),
+            )
+            if index is None
+        ]
         if missing_columns:
             missing = ", ".join(sorted(missing_columns))
             raise ValueError(f"Workbook is missing required columns: {missing}")
+        assert label_index is not None
+        assert lang_index is not None
+        assert translation_index is not None
 
         notes_index = indexes.get(NOTES_COLUMN)
         filled = 0
         total = 0
         for row_number in range(2, sheet.max_row + 1):
-            label_cell = sheet.cell(row=row_number, column=indexes[DB_LABEL_COLUMN])
-            lang_cell = sheet.cell(row=row_number, column=indexes[DB_LANG_COLUMN])
+            label_cell = sheet.cell(row=row_number, column=label_index)
+            lang_cell = sheet.cell(row=row_number, column=lang_index)
             translation_cell = sheet.cell(
                 row=row_number,
-                column=indexes[TRANSLATION_COLUMN],
+                column=translation_index,
             )
             if not label_cell.value or not lang_cell.value:
                 continue

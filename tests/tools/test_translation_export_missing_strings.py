@@ -96,14 +96,15 @@ def test_build_missing_rows_uses_slack_locale_to_db_lang_mapping():
         existing_labels_by_lang={"fr": {"Cancel"}, "jp": set()},
     )
 
-    assert [(row.slack_locale, row.db_lang, row.db_label) for row in rows] == [
-        ("fr-FR", "fr", "Submit <x id=1>"),
-        ("ja-JP", "jp", "Submit <x id=1>"),
-        ("ja-JP", "jp", "Cancel"),
+    assert [
+        (row.source_language, row.target_language, row.source_text) for row in rows
+    ] == [
+        ("en", "fr", "Submit <x id=1>"),
+        ("en", "jp", "Submit <x id=1>"),
+        ("en", "jp", "Cancel"),
     ]
     assert rows[0].max_length == 12
-    assert rows[0].locations == "app/example.py:10"
-    assert rows[0].translation == ""
+    assert rows[0].target_text == ""
 
 
 def test_build_missing_rows_flags_unmapped_slack_locale():
@@ -114,8 +115,7 @@ def test_build_missing_rows_flags_unmapped_slack_locale():
         existing_labels_by_lang={"pt-BR": set()},
     )
 
-    assert rows[0].db_lang == "pt-BR"
-    assert rows[0].notes == "Slack locale not found in obj_m_langs.bcp_47"
+    assert rows[0].target_language == "pt-BR"
 
 
 def test_resolve_locale_target_identifies_english_shortcut():
@@ -140,14 +140,11 @@ def test_split_output_path_appends_db_language_before_suffix():
 def test_write_rows_by_language_creates_one_file_per_language(tmp_path):
     rows = [
         MissingStringRow(
-            slack_locale="fr-FR",
-            db_lang="fr",
+            source_language="en",
+            target_language="fr",
             source_text="Submit",
-            db_label="Submit",
-            translation="",
+            target_text="",
             max_length=0,
-            locations="app/example.py:1",
-            notes="",
         )
     ]
 
@@ -166,7 +163,7 @@ def test_write_rows_by_language_creates_one_file_per_language(tmp_path):
     assert (
         output_paths[1]
         .read_text(encoding="utf-8")
-        .startswith("slack_locale,db_lang,source_text")
+        .startswith("source_language,target_language,source_text")
     )
 
 

@@ -13,7 +13,15 @@ from pathlib import Path
 
 import openpyxl
 
-REQUIRED_COLUMNS = {"db_lang", "db_label", "translation"}
+LANG_COLUMN = "target_language"
+LABEL_COLUMN = "source_text"
+TRANSLATION_COLUMN = "target_text"
+REQUIRED_COLUMNS = {LANG_COLUMN, LABEL_COLUMN, TRANSLATION_COLUMN}
+COLUMN_ALIASES = {
+    LANG_COLUMN: ("db_lang",),
+    LABEL_COLUMN: ("db_label",),
+    TRANSLATION_COLUMN: ("translation",),
+}
 VALID_TAG_PATTERN = re.compile(r"<x id=(\d+)>")
 X_TAG_CANDIDATE_PATTERN = re.compile(r"</?x\b[^>]*>|<x\b[^>]*$")
 
@@ -110,6 +118,19 @@ def header_indexes(sheet) -> dict[str, int]:
     }
 
 
+def column_index(indexes: dict[str, int], column: str) -> int | None:
+    if column in indexes:
+        return indexes[column]
+    return next(
+        (
+            indexes[alias]
+            for alias in COLUMN_ALIASES.get(column, ())
+            if alias in indexes
+        ),
+        None,
+    )
+
+
 def collect_insert_statements(
     workbook_path: Path,
     created: str,
@@ -119,19 +140,31 @@ def collect_insert_statements(
     try:
         sheet = workbook.active
         indexes = header_indexes(sheet)
-        missing_columns = REQUIRED_COLUMNS - set(indexes)
+        label_index = column_index(indexes, LABEL_COLUMN)
+        lang_index = column_index(indexes, LANG_COLUMN)
+        translation_index = column_index(indexes, TRANSLATION_COLUMN)
+        missing_columns = [
+            column
+            for column, index in (
+                (LABEL_COLUMN, label_index),
+                (LANG_COLUMN, lang_index),
+                (TRANSLATION_COLUMN, translation_index),
+            )
+            if index is None
+        ]
         if missing_columns:
             missing = ", ".join(sorted(missing_columns))
             raise ValueError(f"Workbook is missing required columns: {missing}")
+        assert label_index is not None
+        assert lang_index is not None
+        assert translation_index is not None
 
         statements: list[str] = []
         validation_errors: list[TranslationValidationError] = []
         for row_number in range(2, sheet.max_row + 1):
-            label = sheet.cell(row=row_number, column=indexes["db_label"]).value
-            lang = sheet.cell(row=row_number, column=indexes["db_lang"]).value
-            translation = sheet.cell(
-                row=row_number, column=indexes["translation"]
-            ).value
+            label = sheet.cell(row=row_number, column=label_index).value
+            lang = sheet.cell(row=row_number, column=lang_index).value
+            translation = sheet.cell(row=row_number, column=translation_index).value
             if not label or not lang or not translation or not str(translation).strip():
                 continue
             label_text = str(label)
