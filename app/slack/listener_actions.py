@@ -2071,7 +2071,17 @@ async def get_mt_translation(
         source_lang = source_langs[0]
         target_lang = target_langs[0]
         if source_lang.lower() == target_lang.lower():
-            return None
+            same_lang_msg = _(
+                "Source and target languages are the same ({source_lang}). "
+                "No translation needed."
+            )
+            if context.response_url and context.respond:
+                return await context.respond(text=same_lang_msg)
+            return await client.chat_postMessage(
+                channel=channel_id,
+                text=same_lang_msg,
+                thread_ts=thread_ts,
+            )
         assert context.ray
         assert context.ray.super_group
         client_id = (

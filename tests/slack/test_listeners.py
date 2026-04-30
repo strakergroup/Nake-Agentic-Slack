@@ -5480,3 +5480,7 @@ class TestHandleTranslateShortcut:
         mock_ack.assert_called_once()
         mock_detect.assert_called_once()
         mock_send.assert_not_called()
+        mock_client.chat_postMessage.assert_called_once()
+        post_kwargs = mock_client.chat_postMessage.call_args.kwargs
+        assert post_kwargs["channel"] == "C1"
+        assert "same" in post_kwargs["text"].lower()

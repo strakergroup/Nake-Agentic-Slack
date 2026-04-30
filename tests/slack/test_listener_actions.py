@@ -737,7 +737,7 @@ class TestGetMtTranslation:
     async def test_get_mt_translation_skips_when_resolved_source_equals_target(
         self, user_id, team_id, ray_client
     ):
-        """Do not call send_mt_translation_request when resolve_language maps both to the same code."""
+        """Skip MT and notify the user when resolved source and target match."""
         from app.auth.connector import RayConnection, RayContext, RaySuperGroup
 
         mock_client = AsyncMock()
@@ -784,6 +784,11 @@ class TestGetMtTranslation:
             )
 
         mock_send_mt.assert_not_called()
+        mock_client.chat_postMessage.assert_called_once()
+        post_kwargs = mock_client.chat_postMessage.call_args.kwargs
+        assert post_kwargs["channel"] == "D123"
+        assert "same" in post_kwargs["text"].lower()
+        assert "zh-cn" in post_kwargs["text"].lower()
 
 
 class TestPostJobStatus:
