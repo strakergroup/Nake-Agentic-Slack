@@ -76,6 +76,10 @@ The maintained tool mirrors the older `dev/` workflow as three explicit steps:
    `LANGUAGECLOUD_API_CLIENT_ID`, or set `LANGUAGECLOUD_API_TOKEN` to use a
    pre-generated bearer token.
    `LANGUAGECLOUD_API_URL` can override the default configured API base URL.
+   The workbook `target_language` remains the DB language used for import, but
+   MT requests are resolved through `obj_m_langs` to an MT-compatible code such
+   as `google_code` when one is available. This prevents DB shortnames such as
+   `kr` or `jp` from falling back to English in LanguageCloud.
 3. `make import-sql INPUT='output/missing_strings_*.xlsx' SQL_OUTPUT=output/import.sql`
    creates SQL insert statements for `obj_stringtranslator` from all filled
    workbooks.
@@ -106,6 +110,12 @@ tag present in `source_text` must also be present in `target_text`, and
 translations must not introduce unexpected or malformed `<x ...>` tags. This
 protects the runtime replacement logic used by `app.translate.Translator`.
 
+The MT fill step also rejects LanguageCloud English fallback responses and
+unchanged non-English output. SQL generation performs a batch-level guard for
+non-English workbooks where a suspicious share of rows still matches the source
+text, which catches full-language fallback outputs while allowing occasional
+proper nouns to be reviewed normally.
+
 If validation fails, no SQL file is written. A CSV report is written next to the
 SQL output by default, e.g. `output/import_validation_errors.csv`. Override the
 path when needed:
@@ -115,6 +125,14 @@ make import-sql INPUT='output/missing_strings_*.xlsx' \
   SQL_OUTPUT=output/import.sql \
   VALIDATION_REPORT=output/import_errors.csv
 ```
+
+## Authoring Translatable Strings
+
+User-facing app copy must be written as literal `_()` templates so the exporter
+can discover it automatically. Payload values from callbacks, Slack, or upstream
+services should be inserted as placeholders, for example
+`_("Translation failed: {error_detail}")`, rather than translated directly with
+`_(error_detail)`.
 
 ## Locale Handling
 

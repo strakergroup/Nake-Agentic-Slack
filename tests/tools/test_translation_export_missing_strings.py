@@ -1,3 +1,4 @@
+import ast
 import importlib.util
 import sys
 from pathlib import Path
@@ -8,6 +9,7 @@ MODULE_PATH = (
     / "translation-export"
     / "export_missing_strings.py"
 )
+APP_ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location(
     "translation_export_missing_strings",
     MODULE_PATH,
@@ -29,6 +31,22 @@ tag_placeholders = MODULE.tag_placeholders
 ensure_repo_root_on_path = MODULE.ensure_repo_root_on_path
 split_output_path = MODULE.split_output_path
 write_rows_by_language = MODULE.write_rows_by_language
+
+
+def _literal_translation_strings(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    strings: set[str] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            strings.add(node.args[0].value)
+    return strings
 
 
 def test_parse_languages_deduplicates_case_insensitively():
@@ -72,6 +90,36 @@ def test_collect_string_entries_extracts_literal_calls(tmp_path):
         ("Ready :white_check_mark:", "Ready <x id=1>", 0),
     ]
     assert entries[0].locations == ["app/messages.py:2"]
+
+
+def test_ray_callback_error_templates_are_exportable_literals():
+    strings = _literal_translation_strings(APP_ROOT / "app" / "routers" / "ray.py")
+
+    assert "Transcription failed: {error_detail}" in strings
+    assert "Translation failed: {error_detail}" in strings
+    assert "Embedding failed: {error_detail}" in strings
+    assert "Transcription failed: %s" not in strings
+    assert "Translation failed: %s" not in strings
+    assert "Embedding failed: %s" not in strings
+
+
+def test_invalid_pdf_error_message_does_not_translate_payload_variable():
+    path = APP_ROOT / "app" / "slack" / "templates" / "messages.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+    for node in ast.walk(tree):
+        assert not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_"
+            and node.args
+            and isinstance(node.args[0], ast.Name)
+            and node.args[0].id == "error_message"
+        )
+
+    strings = _literal_translation_strings(path)
+    assert "Invalid PDF file: {error_detail}" in strings
+    assert "Invalid PDF file. Please check the file and try again." in strings
 
 
 def test_build_missing_rows_uses_slack_locale_to_db_lang_mapping():

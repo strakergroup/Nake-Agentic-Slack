@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: RAY error callbacks now use exportable literal translation templates with placeholder-inserted payload details, and invalid-PDF messages no longer translate payload strings directly (Wade Norman, 2026-05-01)
+- [Fixed]: `tools/translation-export` now maps DB language shortnames to MT-compatible codes before LanguageCloud fill, preserves Makefile workbook globs, and blocks suspicious non-English source-text fallback outputs during fill/import validation (Wade Norman, 2026-05-01)
 - [Changed]: `tools/translation-export` now writes translator-facing workbooks with only `source_language`, `target_language`, `source_text`, `target_text`, and `max_length`, while MT fill and import SQL accept the new column names (Wade Norman, 2026-04-29)
 - [Fixed]: `tools/translation-export` MT fill now decodes HTML entities from LanguageCloud/Google HTML-mode responses before writing XLSX translations while preserving `<x id=N>` placeholder tags (Wade Norman, 2026-04-29)
 - [Changed]: `tools/translation-export` MT fill now sends raw `<x id=N>` tags directly to the HTML-mode LanguageCloud MT API instead of replacing them with sentinel tokens (Wade Norman, 2026-04-30)

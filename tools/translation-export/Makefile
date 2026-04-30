@@ -32,8 +32,8 @@ ifdef PER_LANGUAGE
 EXPORT_ARGS += --split-by-language
 endif
 ifdef INPUT
-FILL_ARGS += --input $(INPUT)
-IMPORT_ARGS += --input $(INPUT)
+FILL_ARGS += --input '$(INPUT)'
+IMPORT_ARGS += --input '$(INPUT)'
 endif
 ifdef CLIENT_ID
 FILL_ARGS += --client-id $(CLIENT_ID)

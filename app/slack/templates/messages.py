@@ -3746,7 +3746,11 @@ class DocInvalidPdfErrorMessage(SlackMessage):
     """Message to notify about potential issues with processing a invalid PDF file."""
 
     def __init__(self, error_message: str) -> None:
-        message = _(error_message)
+        error_detail = " ".join((error_message or "").split())
+        if error_detail:
+            message = _("Invalid PDF file: {error_detail}")
+        else:
+            message = _("Invalid PDF file. Please check the file and try again.")
         super().__init__(
             _("Invalid PDF file"),
             [

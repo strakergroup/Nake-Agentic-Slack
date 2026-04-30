@@ -7,6 +7,7 @@ import csv
 import glob
 import re
 import uuid
+from collections import defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +25,7 @@ COLUMN_ALIASES = {
 }
 VALID_TAG_PATTERN = re.compile(r"<x id=(\d+)>")
 X_TAG_CANDIDATE_PATTERN = re.compile(r"</?x\b[^>]*>|<x\b[^>]*$")
+ENGLISH_PREFIXES = ("en", "gb", "us")
 
 
 @dataclass(frozen=True)
@@ -109,6 +111,22 @@ def validate_translation_tags(label: str, translation: str) -> list[str]:
     return errors
 
 
+def validate_translation_text(lang: str, label: str, translation: str) -> list[str]:
+    if lang.strip().lower().startswith(ENGLISH_PREFIXES):
+        return []
+    if label.strip() == translation.strip():
+        return [
+            "translation matches source text for non-English language; review MT output"
+        ]
+    return []
+
+
+def has_suspicious_matching_source_batch(total_rows: int, matching_rows: int) -> bool:
+    if total_rows < 5:
+        return False
+    return matching_rows / total_rows >= 0.8
+
+
 def header_indexes(sheet) -> dict[str, int]:
     headers = [cell.value for cell in sheet[1]]
     return {
@@ -161,6 +179,10 @@ def collect_insert_statements(
 
         statements: list[str] = []
         validation_errors: list[TranslationValidationError] = []
+        row_counts_by_lang: dict[str, int] = defaultdict(int)
+        matching_source_rows_by_lang: dict[str, list[TranslationValidationError]] = (
+            defaultdict(list)
+        )
         for row_number in range(2, sheet.max_row + 1):
             label = sheet.cell(row=row_number, column=label_index).value
             lang = sheet.cell(row=row_number, column=lang_index).value
@@ -171,6 +193,23 @@ def collect_insert_statements(
             lang_text = str(lang)
             translation_text = str(translation)
             row_errors = validate_translation_tags(label_text, translation_text)
+            if not lang_text.strip().lower().startswith(ENGLISH_PREFIXES):
+                row_counts_by_lang[lang_text] += 1
+                if label_text.strip() == translation_text.strip():
+                    matching_source_rows_by_lang[lang_text].append(
+                        TranslationValidationError(
+                            workbook=str(workbook_path),
+                            row=row_number,
+                            db_lang=lang_text,
+                            db_label=label_text,
+                            translation=translation_text,
+                            error=(
+                                "translation matches source text for non-English "
+                                "language across a suspicious share of this workbook; "
+                                "review MT output"
+                            ),
+                        )
+                    )
             validation_errors.extend(
                 TranslationValidationError(
                     workbook=str(workbook_path),
@@ -193,6 +232,11 @@ def collect_insert_statements(
                     modified,
                 )
             )
+        for lang, matching_rows in matching_source_rows_by_lang.items():
+            if has_suspicious_matching_source_batch(
+                row_counts_by_lang[lang], len(matching_rows)
+            ):
+                validation_errors.extend(matching_rows)
         return statements, validation_errors
     finally:
         workbook.close()

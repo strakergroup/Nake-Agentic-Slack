@@ -11,6 +11,7 @@ from app.slack.templates.messages import (
     ClientAlreadyApprovedMessage,
     ClientApprovedMessage,
     ConnectionInfoMessage,
+    DocInvalidPdfErrorMessage,
     DocMtMessage,
     DocParseErrorMessage,
     EvaluateErrorMessage,
@@ -835,6 +836,28 @@ class TestDocParseErrorMessage:
         text = self._block_text(message)
         assert text == (
             "Error parsing file. Please ensure your file is in a supported format."
+        )
+
+
+class TestDocInvalidPdfErrorMessage:
+    """Tests for invalid-PDF messages using exportable local templates."""
+
+    @staticmethod
+    def _block_text(message: DocInvalidPdfErrorMessage) -> str:
+        return message.blocks[0]["text"]["text"]
+
+    def test_renders_payload_message_as_placeholder_detail(self):
+        message = DocInvalidPdfErrorMessage("Unable to read PDF metadata")
+
+        assert self._block_text(message) == (
+            "Invalid PDF file: Unable to read PDF metadata"
+        )
+
+    def test_falls_back_to_exportable_generic_message(self):
+        message = DocInvalidPdfErrorMessage("")
+
+        assert self._block_text(message) == (
+            "Invalid PDF file. Please check the file and try again."
         )
 
 
