@@ -4040,6 +4040,134 @@ class TestAutoTranslateMessage:
                     mock_client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "detected_language,target_lang",
+        [
+            ("fr-ca", "fr"),
+            ("fr", "fr-ca"),
+            ("zh-CN", "zh"),
+            ("zh-TW", "zh"),
+            ("pt-BR", "pt"),
+        ],
+    )
+    async def test_auto_translate_message_skips_dialect_base_pair(
+        self, user_id, team_id, ray_client, detected_language, target_lang
+    ):
+        """Channel translation skips when detected source and target form a
+        dialect/base pair (e.g. fr-ca ↔ fr, zh-CN ↔ zh)."""
+        from app.slack.listener_actions import auto_translate_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "some text"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+            }
+        )
+
+        with (
+            patch(
+                "app.slack.listener_actions.get_auto_translate_settings_and_langs",
+                new_callable=AsyncMock,
+                return_value=[{"target_lang": target_lang, "display_format": "thread"}],
+            ),
+            patch(
+                "app.slack.listener_actions.require_mt_tokens",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listener_actions.detect_language",
+                new_callable=AsyncMock,
+            ) as mock_detect,
+            patch(
+                "app.slack.listener_actions.send_mt_translation_request",
+                new_callable=AsyncMock,
+            ) as mock_send,
+        ):
+            mock_detect.return_value = SimpleNamespace(language=detected_language)
+            await auto_translate_message(mock_client, context, message)
+
+        mock_send.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_translate_message_keeps_distinct_chinese_dialects(
+        self, user_id, team_id, ray_client
+    ):
+        """zh-CN source must still translate to zh-TW (and vice versa) — they
+        are genuinely different scripts/dialects, not a no-op pair."""
+        from app.slack.listener_actions import auto_translate_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "你好"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+            }
+        )
+
+        with (
+            patch(
+                "app.slack.listener_actions.get_auto_translate_settings_and_langs",
+                new_callable=AsyncMock,
+                return_value=[
+                    {"target_lang": "zh-TW", "display_format": "thread"}
+                ],
+            ),
+            patch(
+                "app.slack.listener_actions.require_mt_tokens",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listener_actions.detect_language",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(language="zh-CN"),
+            ),
+            patch(
+                "app.slack.listener_actions.evaluate_get_glossary_resource",
+                new_callable=AsyncMock,
+                return_value="",
+            ),
+            patch(
+                "app.slack.listener_actions.get_group_id",
+                new_callable=AsyncMock,
+                return_value="group-test-id",
+            ),
+            patch(
+                "app.slack.listener_actions.send_mt_translation_request",
+                new_callable=AsyncMock,
+            ) as mock_send,
+        ):
+            await auto_translate_message(mock_client, context, message)
+
+        mock_send.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_auto_translate_message_exception_handling(
         self, user_id, team_id, ray_client
     ):
@@ -5428,12 +5556,16 @@ class TestHandleTranslateShortcut:
     async def test_handle_translate_shortcut_does_not_send_mt_when_same_resolved_language(
         self, user_id, team_id, ray_client
     ):
-        """Real get_mt_translation path: resolved source == target → no stream send."""
+        """Real get_mt_translation path: detected source == target locale → skip MT.
+
+        Covers the dialect-vs-bare case (Google detects ``zh-CN`` while user
+        locale is ``zh``) which the previous raw-equality check missed.
+        """
         from app.slack.listeners import handle_translate_shortcut
 
         mock_ack = AsyncMock()
         mock_client = AsyncMock()
-        body = {"message": {"text": "Hello world"}}
+        body = {"message": {"text": "你好世界"}}
         super_group = RaySuperGroup(
             id=str(uuid4()),
             name="Test Group",
@@ -5447,7 +5579,7 @@ class TestHandleTranslateShortcut:
             {
                 "user_id": user_id,
                 "team_id": team_id,
-                "locale": "en",
+                "locale": "zh",
                 "channel_id": "C1",
                 "ray": ray_connection,
             }
@@ -5460,7 +5592,8 @@ class TestHandleTranslateShortcut:
             patch(
                 "app.slack.listener_actions.resolve_language",
                 new_callable=AsyncMock,
-                side_effect=[["en"], ["en"]],
+                # target "zh" -> ["zh"]; source "zh-CN" -> ["zh-CN"] (DB-resolved).
+                side_effect=[["zh"], ["zh-CN"]],
             ),
             patch(
                 "app.slack.listener_actions.send_mt_translation_request",
@@ -5472,7 +5605,7 @@ class TestHandleTranslateShortcut:
                 return_value=True,
             ),
         ):
-            mock_detect.return_value = SimpleNamespace(language="en")
+            mock_detect.return_value = SimpleNamespace(language="zh-CN")
             await handle_translate_shortcut(
                 context_dict, mock_ack, body=body, client=mock_client
             )

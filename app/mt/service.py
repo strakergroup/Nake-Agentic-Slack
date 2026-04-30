@@ -14,6 +14,37 @@ microsoft_languages = {
 }
 
 
+def is_no_op_translation_pair(source: str | None, target: str | None) -> bool:
+    """Return True when translating ``source`` → ``target`` is effectively a no-op.
+
+    Used to short-circuit MT requests so customers are not charged for
+    translations that would return the input unchanged.
+
+    Rules (case-insensitive):
+    - Empty / missing input on either side → False (let the normal flow handle it).
+    - Exact match → True (e.g. ``en`` ↔ ``en``).
+    - Same ISO-639 base (substring before the first ``-``) AND at least one side
+      is the bare base code → True.
+      Examples that skip: ``zh`` ↔ ``zh-CN``, ``fr`` ↔ ``fr-ca``, ``pt`` ↔ ``pt-BR``.
+    - Distinct dialects sharing a base (no bare side) → False, so the
+      translation still runs. Examples that translate: ``zh-CN`` ↔ ``zh-TW``,
+      ``pt-BR`` ↔ ``pt-PT``.
+    """
+    if not source or not target:
+        return False
+    s = source.strip().lower()
+    t = target.strip().lower()
+    if not s or not t:
+        return False
+    if s == t:
+        return True
+    s_base = s.split("-", 1)[0]
+    t_base = t.split("-", 1)[0]
+    if s_base != t_base:
+        return False
+    return s == s_base or t == t_base
+
+
 async def resolve_language_code(lang: str | None) -> Language | None:
     """Resolve the language code to a Google language code."""
 

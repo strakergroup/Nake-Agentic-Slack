@@ -737,7 +737,7 @@ class TestGetMtTranslation:
     async def test_get_mt_translation_skips_when_resolved_source_equals_target(
         self, user_id, team_id, ray_client
     ):
-        """Skip MT and notify the user when resolved source and target match."""
+        """Skip MT and notify the user when resolved source and target match exactly."""
         from app.auth.connector import RayConnection, RayContext, RaySuperGroup
 
         mock_client = AsyncMock()
@@ -767,7 +767,72 @@ class TestGetMtTranslation:
             patch(
                 "app.slack.listener_actions.resolve_language",
                 new_callable=AsyncMock,
-                side_effect=[["zh-cn"], ["zh-cn"]],
+                side_effect=[["en"], ["en"]],
+            ),
+            patch(
+                "app.slack.listener_actions.send_mt_translation_request",
+                new_callable=AsyncMock,
+            ) as mock_send_mt,
+        ):
+            await get_mt_translation(
+                mock_client,
+                context,
+                target_lang="en",
+                source_lang="en",
+                sentence="hello",
+                usage_type="shortcut_translate",
+            )
+
+        mock_send_mt.assert_not_called()
+        mock_client.chat_postMessage.assert_called_once()
+        post_kwargs = mock_client.chat_postMessage.call_args.kwargs
+        assert post_kwargs["channel"] == "D123"
+        assert "same" in post_kwargs["text"].lower()
+        assert "en" in post_kwargs["text"].lower()
+
+    @pytest.mark.asyncio
+    async def test_get_mt_translation_skips_for_zh_cn_to_zh_dialect_pair(
+        self, user_id, team_id, ray_client
+    ):
+        """Skip MT when resolved codes are dialect/base pair (zh-CN ↔ zh).
+
+        Mirrors the real ``resolve_language`` behaviour where ``zh-CN`` falls
+        through to a DB lookup and comes back as ``zh-CN`` while ``zh`` is
+        returned as ``zh`` from the dict path. The raw equality check used to
+        miss this; the helper now catches it.
+        """
+        from app.auth.connector import RayConnection, RayContext, RaySuperGroup
+
+        mock_client = AsyncMock()
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "D123",
+                "ray": RayConnection(super_group=[super_group], client=ray_client),
+            }
+        )
+
+        with (
+            patch(
+                "app.slack.listener_actions.require_mt_tokens",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listener_actions.resolve_language",
+                new_callable=AsyncMock,
+                # First call resolves target "zh" -> ["zh"], second resolves
+                # source "zh-CN" -> ["zh-CN"] (DB-resolved, case preserved).
+                side_effect=[["zh"], ["zh-CN"]],
             ),
             patch(
                 "app.slack.listener_actions.send_mt_translation_request",
@@ -788,7 +853,6 @@ class TestGetMtTranslation:
         post_kwargs = mock_client.chat_postMessage.call_args.kwargs
         assert post_kwargs["channel"] == "D123"
         assert "same" in post_kwargs["text"].lower()
-        assert "zh-cn" in post_kwargs["text"].lower()
 
 
 class TestPostJobStatus:
