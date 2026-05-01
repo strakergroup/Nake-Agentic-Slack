@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: `verify:slack:evaluate:complete` events now use a Redis idempotency guard before posting user-facing Slack notifications, preventing duplicate completion messages when upstream emits the same job completion more than once (Wade Norman, 2026-05-01)
 - [Removed]: Deleted the repository GitHub Actions `Pyright` workflow so type checking remains local/pre-commit only until a reusable CI approach is in place for VPN-only dependencies (Wade Norman, 2026-03-26)
 - [Removed]: Deleted unused Microsoft Translator environment settings and config validation from the app because this repository no longer reads those credentials (Wade Norman, 2026-03-26)
 - [Changed]: Updated the GitHub `Pyright` workflow to install only `Pyright` on CI so PR type checks can run without VPN-only internal dependencies (Wade Norman, 2026-03-26)
