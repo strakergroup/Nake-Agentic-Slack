@@ -50,6 +50,21 @@ def _literal_translation_strings(path: Path) -> set[str]:
     return strings
 
 
+def _translation_call_arg_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_"
+            and node.args
+            and isinstance(node.args[0], ast.Name)
+        ):
+            names.add(node.args[0].id)
+    return names
+
+
 def test_parse_languages_deduplicates_case_insensitively():
     assert parse_languages("fr-FR, de-DE, fr-fr, ,ja-JP") == [
         "fr-FR",
@@ -69,6 +84,7 @@ def test_tag_placeholders_matches_runtime_translator_pattern():
 def test_normalize_db_label_for_lookup_matches_observed_mysql_equality():
     assert normalize_db_label_for_lookup("Select Languages  ") == "select languages"
     assert normalize_db_label_for_lookup(" Select Languages") == " select languages"
+    assert normalize_db_label_for_lookup("*Group:*\n") == "*group:*\n"
 
 
 def test_collect_string_entries_extracts_literal_calls(tmp_path):
@@ -126,6 +142,62 @@ def test_invalid_pdf_error_message_does_not_translate_payload_variable():
     strings = _literal_translation_strings(path)
     assert "Invalid PDF file: {error_detail}" in strings
     assert "Invalid PDF file. Please check the file and try again." in strings
+
+
+def test_slack_message_ui_catalog_labels_are_exportable_literals():
+    path = APP_ROOT / "app" / "slack" / "templates" / "messages.py"
+    strings = _literal_translation_strings(path)
+
+    assert {
+        "Connect your account to view your jobs.",
+        "Connect your account to submit a new translation job.",
+        "Connect your account to cancel your job.",
+        "Connect your account to evaluate the quality of your translation.",
+        "Connect your account to perform human translation.",
+        "Your connected account is: {user_details}. \nYou can connect a different account by clicking this button.",
+        "{bookEmoji} Learn Quality Evaluation Help",
+        "{bookEmoji} Learn Human Translation Help",
+        "*<{job_url}|Straker Job Reference {quote.id}>*",
+        "*Straker Job Reference {quote.id}*",
+        "*Validation*\n{validation_status}",
+        "{user_mention} has changed the translation settings. The bot will respond to messages sent in <#{channel_id}> which will be translated into {langs_string} through thread replies in real-time.",
+        "{user_mention} has changed the translation settings. The bot will respond to messages sent in <#{channel_id}> which will be translated into {langs_string} through messages in real-time.",
+    }.issubset(strings)
+
+    dynamic_arg_names = _translation_call_arg_names(path)
+    assert "block_text" not in dynamic_arg_names
+    assert "formatted_url" not in dynamic_arg_names
+
+
+def test_payload_language_and_service_values_are_not_translated_directly():
+    message_path = APP_ROOT / "app" / "slack" / "templates" / "messages.py"
+    block_path = APP_ROOT / "app" / "slack" / "templates" / "blocks.py"
+
+    assert "lang_label" not in _translation_call_arg_names(message_path)
+
+    block_tree = ast.parse(
+        block_path.read_text(encoding="utf-8"), filename=str(block_path)
+    )
+    translated_attribute_names = {
+        node.args[0].attr
+        for node in ast.walk(block_tree)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_"
+            and node.args
+            and isinstance(node.args[0], ast.Attribute)
+        )
+    }
+    assert "label" not in translated_attribute_names
+    assert "service" not in translated_attribute_names
+
+
+def test_format_strings_display_exports_known_conjunction_literals():
+    strings = _literal_translation_strings(APP_ROOT / "app" / "slack" / "utils.py")
+
+    assert "&" in strings
+    assert "and" in strings
 
 
 def test_build_missing_rows_uses_slack_locale_to_db_lang_mapping():
@@ -209,6 +281,19 @@ def test_build_missing_rows_still_exports_truly_different_strings():
 
     assert [(row.target_language, row.source_text) for row in rows] == [
         ("fr", " Select languages")
+    ]
+
+
+def test_build_missing_rows_does_not_match_trailing_newline_variant():
+    rows = build_missing_rows(
+        entries=[StringEntry(source_text="*Group:*", db_label="*Group:*")],
+        slack_locales=["ja-JP"],
+        language_map={"ja-jp": "jp"},
+        existing_labels_by_lang={"jp": {"*Group:*\n"}},
+    )
+
+    assert [(row.target_language, row.source_text) for row in rows] == [
+        ("jp", "*Group:*")
     ]
 
 

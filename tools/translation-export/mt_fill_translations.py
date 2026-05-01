@@ -1,4 +1,4 @@
-"""Fill missing translation workbook rows with LanguageCloud MT."""
+"""Fill missing translation workbook rows with Google Cloud Translation MT."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ import json
 import os
 import sys
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import httpx
 import openpyxl
 from export_missing_strings import ensure_repo_root_on_path
 from sqlalchemy import text
@@ -22,6 +22,13 @@ DB_LABEL_COLUMN = "source_text"
 DB_LANG_COLUMN = "target_language"
 NOTES_COLUMN = "notes"
 ENGLISH_PREFIXES = ("en", "gb", "us")
+DEFAULT_GOOGLE_TRANSLATE_BATCH_SIZE = 100
+GOOGLE_TRANSLATE_BATCH_SIZE_ENV = "TRANSLATION_EXPORT_MT_BATCH_SIZE"
+GOOGLE_CLOUD_PROJECT_ENV = "GOOGLE_CLOUD_PROJECT"
+GOOGLE_CLOUD_LOCATION_ENV = "GOOGLE_CLOUD_LOCATION"
+GOOGLE_CLOUD_DEFAULT_LOCATION = "global"
+GOOGLE_SOURCE_LANGUAGE_CODE = "en"
+GOOGLE_TRANSLATE_MIME_TYPE = "text/html"
 COLUMN_ALIASES = {
     TRANSLATION_COLUMN: ("translation",),
     DB_LABEL_COLUMN: ("db_label",),
@@ -29,66 +36,61 @@ COLUMN_ALIASES = {
 }
 
 
-def load_app_mt_types() -> tuple[Any, str]:
-    ensure_repo_root_on_path()
-    from app.config import domains
-    from app.mt.schemas import TranslationResponse
-
-    return TranslationResponse, str(domains.languagecloud_api)
-
-
-def generate_languagecloud_api_token(client_id: str) -> str:
-    ensure_repo_root_on_path()
-    from straker_auth.languagecloud import create_languagecloud_id_token
-
-    from app.config import config
-    from app.database import engines
-
-    with engines["sitemanager_readonly"].connect() as conn:
-        row = conn.execute(
-            text(
-                """
-                SELECT obj_uuid, given_name, family_name, email_primary, active
-                FROM obj_m_member
-                WHERE obj_uuid = :client_id
-                AND is_deleted = 0
-                LIMIT 1
-                """
-            ).bindparams(client_id=client_id)
-        ).first()
-
-    if not row:
-        raise ValueError(f"LanguageCloud client {client_id!r} was not found")
-
-    return create_languagecloud_id_token(
-        uuid=row.obj_uuid,
-        given_name=row.given_name or "",
-        family_name=row.family_name or "",
-        email=row.email_primary or "",
-        is_active=bool(row.active),
-        aud="languagecloud-api",
-        secret=config.languagecloud_api_key.get_secret_value(),
-    )
+@dataclass(frozen=True)
+class WorkbookTranslationRow:
+    row_number: int
+    source_text: str
+    db_lang: str
+    google_target_lang: str
 
 
-def configured_client_id() -> str:
-    client_id = os.getenv("LANGUAGECLOUD_API_CLIENT_ID") or os.getenv(
-        "LANGUAGECLOUD_API_CLIENT_LOGIN"
-    )
-    if not client_id:
+def configured_google_project() -> str:
+    project_id = os.getenv(GOOGLE_CLOUD_PROJECT_ENV, "").strip()
+    if not project_id:
         raise ValueError(
-            "LANGUAGECLOUD_API_CLIENT_ID or --client-id must be set when "
-            "LANGUAGECLOUD_API_TOKEN is not set"
+            f"{GOOGLE_CLOUD_PROJECT_ENV} must be set for Google Cloud Translation"
         )
-    return client_id
+    return project_id
 
 
-def build_auth_header(client_id: str | None = None) -> dict[str, str]:
-    env_token = os.getenv("LANGUAGECLOUD_API_TOKEN")
-    token = env_token or generate_languagecloud_api_token(
-        client_id or configured_client_id()
+def configured_google_location() -> str:
+    return (
+        os.getenv(GOOGLE_CLOUD_LOCATION_ENV, GOOGLE_CLOUD_DEFAULT_LOCATION).strip()
+        or GOOGLE_CLOUD_DEFAULT_LOCATION
     )
-    return {"Authorization": f"Bearer {token}"}
+
+
+def configured_batch_size(batch_size: int | None = None) -> int:
+    raw_value = (
+        str(batch_size)
+        if batch_size is not None
+        else os.getenv(GOOGLE_TRANSLATE_BATCH_SIZE_ENV, "")
+    ).strip()
+    if not raw_value:
+        return DEFAULT_GOOGLE_TRANSLATE_BATCH_SIZE
+    try:
+        parsed = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(
+            f"{GOOGLE_TRANSLATE_BATCH_SIZE_ENV} must be a positive integer"
+        ) from exc
+    if parsed < 1:
+        raise ValueError(
+            f"{GOOGLE_TRANSLATE_BATCH_SIZE_ENV} must be a positive integer"
+        )
+    return parsed
+
+
+def build_google_translate_client() -> Any:
+    try:
+        from google.cloud import translate_v3
+    except ImportError as exc:
+        raise RuntimeError(
+            "google-cloud-translate is required for MT fill; install project "
+            "dependencies before running this tool"
+        ) from exc
+
+    return translate_v3.TranslationServiceClient()
 
 
 def fetch_mt_language_map() -> dict[str, str]:
@@ -148,8 +150,16 @@ def validate_mt_translation(
         return
     if translation.strip() == source_text.strip():
         raise ValueError(
-            f"LanguageCloud returned unchanged source text for non-English target "
+            f"Google returned unchanged source text for non-English target "
             f"{target_lang!r}"
+        )
+
+
+def validate_google_target_language(db_lang: str, google_target_lang: str) -> None:
+    if not is_english_language(db_lang) and is_english_language(google_target_lang):
+        raise ValueError(
+            f"Google target language resolved to English fallback for non-English "
+            f"DB language {db_lang!r}: {google_target_lang!r}"
         )
 
 
@@ -159,65 +169,46 @@ def has_suspicious_matching_source_batch(total_rows: int, matching_rows: int) ->
     return matching_rows / total_rows >= 0.8
 
 
-def mt_translate_db_label(
-    text: str, target_lang: str, client_id: str | None = None
-) -> str:
-    TranslationResponse, default_base_url = load_app_mt_types()
-    base_url = os.getenv("LANGUAGECLOUD_API_URL") or default_base_url
-    url = f"{base_url.rstrip('/')}/mt/translate"
-    payload = {
-        "text": text,
-        "target_languages": [target_lang],
-        "app_name": "slack",
-        "usage_type": "translation_export_mt_fill",
-    }
+def batched(items: list[WorkbookTranslationRow], batch_size: int):
+    for start in range(0, len(items), batch_size):
+        yield items[start : start + batch_size]
 
-    with httpx.Client(timeout=60.0) as client:
-        response = client.post(url, headers=build_auth_header(client_id), json=payload)
-        response.raise_for_status()
-        data = response.json()
 
-    translations: dict[str, str] = {}
-    if isinstance(data, dict) and isinstance(data.get("translations"), dict):
-        translations = data["translations"]
-    else:
-        translations = TranslationResponse.model_validate(data).translations or {}
+def google_translate_texts(
+    texts: list[str],
+    target_lang: str,
+    client: Any | None = None,
+    project_id: str | None = None,
+    location: str | None = None,
+) -> list[str]:
+    if not texts:
+        return []
 
-    if target_lang in translations:
-        return str(translations[target_lang])
-
-    target_key = target_lang.lower()
-    for language, translation in translations.items():
-        if str(language).lower() == target_key:
-            return str(translation)
-
-    if translations and not is_english_language(target_lang):
-        returned_languages = ", ".join(
-            sorted(str(language) for language in translations)
-        )
-        if any(is_english_language(str(language)) for language in translations):
-            raise ValueError(
-                f"LanguageCloud returned English fallback for non-English target "
-                f"{target_lang!r}; returned language(s): {returned_languages}"
-            )
-        raise ValueError(
-            f"LanguageCloud did not return requested target {target_lang!r}; "
-            f"returned language(s): {returned_languages}"
-        )
-
-    raise ValueError(
-        f"LanguageCloud returned no translation for target {target_lang!r}"
+    translate_client = client or build_google_translate_client()
+    parent = (
+        f"projects/{project_id or configured_google_project()}/"
+        f"locations/{location or configured_google_location()}"
     )
+    response = translate_client.translate_text(
+        contents=texts,
+        parent=parent,
+        mime_type=GOOGLE_TRANSLATE_MIME_TYPE,
+        source_language_code=GOOGLE_SOURCE_LANGUAGE_CODE,
+        target_language_code=target_lang,
+    )
+    translations = [
+        str(translation.translated_text) for translation in response.translations
+    ]
+    if len(translations) != len(texts):
+        raise ValueError(
+            f"Google returned {len(translations)} translation(s) for "
+            f"{len(texts)} requested text(s) targeting {target_lang!r}"
+        )
+    return translations
 
 
-def mt_translate_workbook_row(
-    text: str,
-    db_lang: str,
-    mt_language_map: dict[str, str],
-    client_id: str | None = None,
-) -> str:
-    mt_target_lang = resolve_mt_target_language(db_lang, mt_language_map)
-    return mt_translate_db_label(text, mt_target_lang, client_id)
+def mt_translate_db_label(text: str, target_lang: str) -> str:
+    return google_translate_texts([text], target_lang)[0]
 
 
 def header_indexes(sheet) -> dict[str, int]:
@@ -255,11 +246,14 @@ def decode_html_entities(value: str) -> str:
 
 def fill_workbook_translations(
     xlsx_path: Path,
-    client_id: str | None = None,
     mt_language_map: dict[str, str] | None = None,
+    batch_size: int | None = None,
+    google_client: Any | None = None,
 ) -> tuple[int, int]:
     if mt_language_map is None:
         mt_language_map = fetch_mt_language_map()
+    resolved_batch_size = configured_batch_size(batch_size)
+    translate_client = google_client
     workbook = openpyxl.load_workbook(xlsx_path)
     try:
         sheet = workbook.active
@@ -292,6 +286,7 @@ def fill_workbook_translations(
         errors: list[str] = []
         row_counts_by_lang: dict[str, int] = defaultdict(int)
         matching_source_rows_by_lang: dict[str, list[int]] = defaultdict(list)
+        rows_by_google_lang: dict[str, list[WorkbookTranslationRow]] = defaultdict(list)
         for row_number in range(2, sheet.max_row + 1):
             label_cell = sheet.cell(row=row_number, column=label_index)
             lang_cell = sheet.cell(row=row_number, column=lang_index)
@@ -314,24 +309,60 @@ def fill_workbook_translations(
                     matching_source_rows_by_lang[db_lang].append(row_number)
                 continue
             try:
-                translation_cell.value = decode_html_entities(
-                    mt_translate_workbook_row(
-                        source_text,
-                        db_lang,
-                        mt_language_map,
-                        client_id,
+                google_target_lang = resolve_mt_target_language(
+                    db_lang,
+                    mt_language_map,
+                )
+                validate_google_target_language(db_lang, google_target_lang)
+                rows_by_google_lang[google_target_lang].append(
+                    WorkbookTranslationRow(
+                        row_number=row_number,
+                        source_text=source_text,
+                        db_lang=db_lang,
+                        google_target_lang=google_target_lang,
                     )
                 )
-                if (
-                    not is_english_language(db_lang)
-                    and str(translation_cell.value).strip() == source_text.strip()
-                ):
-                    matching_source_rows_by_lang[db_lang].append(row_number)
-                filled += 1
             except Exception as exc:
                 errors.append(f"row {row_number}: {exc}")
                 notes_cell = sheet.cell(row=row_number, column=notes_index)
                 notes_cell.value = append_note(notes_cell.value, f"MT error: {exc}")
+
+        for google_target_lang, rows in rows_by_google_lang.items():
+            for batch in batched(rows, resolved_batch_size):
+                try:
+                    if translate_client is None:
+                        translate_client = build_google_translate_client()
+                    translations = google_translate_texts(
+                        [row.source_text for row in batch],
+                        google_target_lang,
+                        client=translate_client,
+                    )
+                except Exception as exc:
+                    for row in batch:
+                        errors.append(f"row {row.row_number}: {exc}")
+                        notes_cell = sheet.cell(
+                            row=row.row_number,
+                            column=notes_index,
+                        )
+                        notes_cell.value = append_note(
+                            notes_cell.value,
+                            f"MT error: {exc}",
+                        )
+                    continue
+
+                for row, translation in zip(batch, translations, strict=True):
+                    translation_text = decode_html_entities(translation)
+                    translation_cell = sheet.cell(
+                        row=row.row_number,
+                        column=translation_index,
+                    )
+                    translation_cell.value = translation_text
+                    if (
+                        not is_english_language(row.db_lang)
+                        and translation_text.strip() == row.source_text.strip()
+                    ):
+                        matching_source_rows_by_lang[row.db_lang].append(row.row_number)
+                    filled += 1
 
         for db_lang, matching_rows in matching_source_rows_by_lang.items():
             if has_suspicious_matching_source_batch(
@@ -372,7 +403,7 @@ def resolve_workbook_paths(input_pattern: str) -> list[Path]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Fill translation-export workbook rows with LanguageCloud MT."
+        description="Fill translation-export workbook rows with Google Cloud MT."
     )
     parser.add_argument(
         "--input",
@@ -380,12 +411,13 @@ def parse_args() -> argparse.Namespace:
         help="Workbook generated by export_missing_strings.py. Globs are supported.",
     )
     parser.add_argument(
-        "--client-id",
-        default=os.getenv("LANGUAGECLOUD_API_CLIENT_ID")
-        or os.getenv("LANGUAGECLOUD_API_CLIENT_LOGIN"),
+        "--batch-size",
+        type=int,
+        default=None,
         help=(
-            "LanguageCloud client UUID used to generate a JWT when "
-            "LANGUAGECLOUD_API_TOKEN is not set."
+            "Maximum workbook rows to translate per Google request. Defaults to "
+            f"{GOOGLE_TRANSLATE_BATCH_SIZE_ENV} or "
+            f"{DEFAULT_GOOGLE_TRANSLATE_BATCH_SIZE}."
         ),
     )
     return parser.parse_args()
@@ -395,7 +427,10 @@ def main() -> None:
     args = parse_args()
     summary = []
     for input_path in resolve_workbook_paths(args.input):
-        filled, total = fill_workbook_translations(input_path, args.client_id)
+        filled, total = fill_workbook_translations(
+            input_path,
+            batch_size=args.batch_size,
+        )
         summary.append({"file": str(input_path), "filled": filled, "total": total})
     print(json.dumps(summary, indent=2))
 

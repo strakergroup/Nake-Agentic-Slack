@@ -37,6 +37,7 @@ pypdf2 = "*"
 types-python-dateutil = "*"
 types-requests = "*"
 ijson = "*"
+google-cloud-translate = "*"
 
 [dev-packages]
 pytest = "*"

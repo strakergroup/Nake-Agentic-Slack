@@ -39,11 +39,14 @@ make missing LANGUAGES=fr-FR,fr-CA OUTPUT=output/missing_strings.xlsx FORMAT=xls
 # XLSX output split into one file per resolved DB language
 make missing-per-language OUTPUT=output/missing_strings.xlsx FORMAT=xlsx
 
-# Fill blank translation cells with LanguageCloud MT
+# Fill blank translation cells with Google Cloud Translation MT
 make mt-fill INPUT=output/missing_strings.xlsx
 
 # Fill all per-language workbooks
 make mt-fill INPUT='output/missing_strings_*.xlsx'
+
+# Override the conservative Google request batch size when needed
+make mt-fill INPUT='output/missing_strings_*.xlsx' BATCH_SIZE=50
 
 # Generate SQL insert statements for obj_stringtranslator
 make import-sql INPUT=output/missing_strings.xlsx SQL_OUTPUT=output/import.sql
@@ -69,17 +72,12 @@ The maintained tool mirrors the older `dev/` workflow as three explicit steps:
 1. `make missing-per-language OUTPUT=output/missing_strings.xlsx FORMAT=xlsx`
    exports one workbook per resolved DB language, e.g.
    `missing_strings_fr.xlsx` and `missing_strings_fr-ca.xlsx`.
-2. `make mt-fill INPUT='output/missing_strings_*.xlsx' CLIENT_ID=...` fills
-   blank `target_text` cells using LanguageCloud MT. The tool generates a
-   LanguageCloud JWT for the supplied client id, using the same
-   `create_languagecloud_id_token` pattern as the app. Use
-   `LANGUAGECLOUD_API_CLIENT_ID`, or set `LANGUAGECLOUD_API_TOKEN` to use a
-   pre-generated bearer token.
-   `LANGUAGECLOUD_API_URL` can override the default configured API base URL.
-   The workbook `target_language` remains the DB language used for import, but
-   MT requests are resolved through `obj_m_langs` to an MT-compatible code such
-   as `google_code` when one is available. This prevents DB shortnames such as
-   `kr` or `jp` from falling back to English in LanguageCloud.
+2. `make mt-fill INPUT='output/missing_strings_*.xlsx'` fills blank
+   `target_text` cells using Google Cloud Translation directly. The workbook
+   `target_language` remains the DB language used for import, but MT requests
+   are resolved through `obj_m_langs` to a Google-compatible code such as
+   `google_code` when one is available. This prevents DB shortnames such as
+   `kr` or `jp` from being sent to Google instead of `ko` or `ja`.
 3. `make import-sql INPUT='output/missing_strings_*.xlsx' SQL_OUTPUT=output/import.sql`
    creates refresh-safe SQL for `obj_stringtranslator` from all filled
    workbooks.
@@ -92,16 +90,21 @@ combined workbook is preferred.
 
 ### MT Auth
 
-The MT fill step follows the app's existing LanguageCloud auth pattern. It reads
-the `languagecloud_api` integration key through `app.config`, fetches the
-configured member from `obj_m_member` by `obj_uuid`, and creates a bearer JWT for the
-`/mt/translate` request. No generated token is written to `.env`.
+The MT fill step uses the Google Cloud Translation Python client and standard
+Google authentication. Set `GOOGLE_CLOUD_PROJECT` and authenticate with
+Application Default Credentials, or point `GOOGLE_APPLICATION_CREDENTIALS` at a
+service account JSON file outside the repository. `GOOGLE_CLOUD_LOCATION`
+defaults to `global`.
 
 ```bash
+GOOGLE_CLOUD_PROJECT=<project-id> make mt-fill INPUT='output/missing_strings_*.xlsx'
 make mt-fill INPUT='output/missing_strings_*.xlsx'
-make mt-fill INPUT='output/missing_strings_*.xlsx' CLIENT_ID=<client-uuid>
-LANGUAGECLOUD_API_CLIENT_ID=<client-uuid> make mt-fill INPUT='output/missing_strings_*.xlsx'
+make mt-fill INPUT='output/missing_strings_*.xlsx' BATCH_SIZE=50
 ```
+
+LanguageCloud-specific settings such as `LANGUAGECLOUD_API_TOKEN`,
+`LANGUAGECLOUD_API_CLIENT_ID`, and `LANGUAGECLOUD_API_URL` are no longer used by
+this tool.
 
 ## Import Validation
 
@@ -110,11 +113,11 @@ tag present in `source_text` must also be present in `target_text`, and
 translations must not introduce unexpected or malformed `<x ...>` tags. This
 protects the runtime replacement logic used by `app.translate.Translator`.
 
-The MT fill step also rejects LanguageCloud English fallback responses and
-unchanged non-English output. SQL generation performs a batch-level guard for
-non-English workbooks where a suspicious share of rows still matches the source
-text, which catches full-language fallback outputs while allowing occasional
-proper nouns to be reviewed normally.
+The MT fill step rejects Google language mappings that resolve a non-English DB
+language to English and flags unchanged non-English output. SQL generation
+performs a batch-level guard for non-English workbooks where a suspicious share
+of rows still matches the source text, which catches full-language fallback
+outputs while allowing occasional proper nouns to be reviewed normally.
 
 By default, the generated SQL is safe to rerun during UAT refresh testing. For
 each filled workbook row that passes validation, the import file writes a scoped

@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: `tools/translation-export` missing-string checks now ignore only trailing spaces, not trailing newlines, so labels like `*Group:*` are not masked by newline variants (Wade Norman, 2026-05-01)
+- [Fixed]: Slack UI translation templates now expose login, quote, helper, validation, and auto-translate setting strings as literal exportable labels while avoiding payload label translation (Wade Norman, 2026-05-01)
+- [Changed]: `tools/translation-export` MT fill now calls Google Cloud Translation directly with batched HTML requests, Google language-code mapping, and ADC/project-based configuration instead of `pt-languagecloud-api` (Wade Norman, 2026-05-01)
 - [Fixed]: `tools/translation-export` missing-string checks now compare DB labels case-insensitively and ignore trailing spaces to match MySQL lookup behavior (Wade Norman, 2026-05-01)
 - [Changed]: `tools/translation-export` import SQL now deletes only the generated `lang`/`label` pairs and emits one insert per pair, making UAT translation refreshes replace stale rows without broad language deletes (Wade Norman, 2026-05-01)
 - [Changed]: RAY error callbacks now use exportable literal translation templates with placeholder-inserted payload details, and invalid-PDF messages no longer translate payload strings directly (Wade Norman, 2026-05-01)

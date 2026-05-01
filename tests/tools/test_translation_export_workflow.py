@@ -25,6 +25,44 @@ MT_FILL = load_tool_module("mt_fill_translations")
 IMPORT_SQL = load_tool_module("import_xlsx_translation")
 
 
+class FakeGoogleTranslation:
+    def __init__(self, translated_text: str):
+        self.translated_text = translated_text
+
+
+class FakeGoogleResponse:
+    def __init__(self, translations: list[str]):
+        self.translations = [
+            FakeGoogleTranslation(translation) for translation in translations
+        ]
+
+
+class RecordingGoogleClient:
+    def __init__(self, translate_callback=None):
+        self.calls = []
+        self.translate_callback = translate_callback or (
+            lambda contents, target_language_code: [
+                f"{target_language_code}:{content}" for content in contents
+            ]
+        )
+
+    def translate_text(self, **kwargs):
+        self.calls.append(kwargs)
+        return FakeGoogleResponse(
+            self.translate_callback(
+                kwargs["contents"],
+                kwargs["target_language_code"],
+            )
+        )
+
+
+@pytest.fixture(autouse=True)
+def google_mt_env(monkeypatch):
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "translation-export-test")
+    monkeypatch.delenv("GOOGLE_CLOUD_LOCATION", raising=False)
+    monkeypatch.delenv("TRANSLATION_EXPORT_MT_BATCH_SIZE", raising=False)
+
+
 def make_workbook(path: Path) -> None:
     workbook = openpyxl.Workbook()
     sheet = workbook.active
@@ -46,14 +84,13 @@ def make_workbook(path: Path) -> None:
 def test_fill_workbook_translations_populates_blank_translation(tmp_path, monkeypatch):
     workbook_path = tmp_path / "missing_strings.xlsx"
     make_workbook(workbook_path)
+    client = RecordingGoogleClient()
     monkeypatch.setattr(MT_FILL, "fetch_mt_language_map", lambda: {})
-    monkeypatch.setattr(
-        MT_FILL,
-        "mt_translate_db_label",
-        lambda text, target_lang, client_login=None: f"{target_lang}:{text}",
-    )
 
-    filled, total = MT_FILL.fill_workbook_translations(workbook_path)
+    filled, total = MT_FILL.fill_workbook_translations(
+        workbook_path,
+        google_client=client,
+    )
 
     workbook = openpyxl.load_workbook(workbook_path)
     try:
@@ -62,6 +99,9 @@ def test_fill_workbook_translations_populates_blank_translation(tmp_path, monkey
         assert total == 2
         assert sheet["D2"].value == "fr:Submit <x id=1>"
         assert sheet["D3"].value == "Abbrechen"
+        assert client.calls[0]["contents"] == ["Submit <x id=1>"]
+        assert client.calls[0]["target_language_code"] == "fr"
+        assert client.calls[0]["mime_type"] == "text/html"
     finally:
         workbook.close()
 
@@ -71,16 +111,17 @@ def test_fill_workbook_translations_decodes_html_entities_and_preserves_tags(
 ):
     workbook_path = tmp_path / "missing_strings.xlsx"
     make_workbook(workbook_path)
-    monkeypatch.setattr(MT_FILL, "fetch_mt_language_map", lambda: {})
-    monkeypatch.setattr(
-        MT_FILL,
-        "mt_translate_db_label",
-        lambda text, target_lang, client_login=None: (
-            "L&#39;envoi &quot;OK&quot; &amp; <x id=1>&nbsp;"
-        ),
+    client = RecordingGoogleClient(
+        lambda contents, target_language_code: [
+            "L&#39;envoi &quot;OK&quot; &amp; <x id=1>&nbsp;" for _ in contents
+        ]
     )
+    monkeypatch.setattr(MT_FILL, "fetch_mt_language_map", lambda: {})
 
-    filled, total = MT_FILL.fill_workbook_translations(workbook_path)
+    filled, total = MT_FILL.fill_workbook_translations(
+        workbook_path,
+        google_client=client,
+    )
 
     workbook = openpyxl.load_workbook(workbook_path)
     try:
@@ -109,23 +150,20 @@ def test_fill_workbook_maps_korean_db_lang_to_mt_code(tmp_path, monkeypatch):
     workbook.save(workbook_path)
     workbook.close()
 
-    requested_targets = []
-
-    def fake_translate(text, target_lang, client_login=None):
-        requested_targets.append(target_lang)
-        return "제출"
-
+    client = RecordingGoogleClient(lambda contents, target_language_code: ["제출"])
     monkeypatch.setattr(MT_FILL, "fetch_mt_language_map", lambda: {"kr": "ko"})
-    monkeypatch.setattr(MT_FILL, "mt_translate_db_label", fake_translate)
 
-    filled, total = MT_FILL.fill_workbook_translations(workbook_path)
+    filled, total = MT_FILL.fill_workbook_translations(
+        workbook_path,
+        google_client=client,
+    )
 
     workbook = openpyxl.load_workbook(workbook_path)
     try:
         sheet = workbook.active
         assert filled == 1
         assert total == 1
-        assert requested_targets == ["ko"]
+        assert [call["target_language_code"] for call in client.calls] == ["ko"]
         assert sheet["B2"].value == "kr"
         assert sheet["D2"].value == "제출"
     finally:
@@ -156,15 +194,11 @@ def test_fill_workbook_raises_and_notes_unchanged_non_english_output(
         sheet.append(["en", "kr", label, "", 0])
     workbook.save(workbook_path)
     workbook.close()
+    client = RecordingGoogleClient(lambda contents, target_language_code: contents)
     monkeypatch.setattr(MT_FILL, "fetch_mt_language_map", lambda: {})
-    monkeypatch.setattr(
-        MT_FILL,
-        "mt_translate_db_label",
-        lambda text, target_lang, client_login=None: text,
-    )
 
     with pytest.raises(ValueError, match="MT fill failed for 1 row"):
-        MT_FILL.fill_workbook_translations(workbook_path)
+        MT_FILL.fill_workbook_translations(workbook_path, google_client=client)
 
     workbook = openpyxl.load_workbook(workbook_path)
     try:
@@ -363,16 +397,11 @@ def test_write_import_sql_fails_on_matching_non_english_source_text(tmp_path):
     assert not output_path.exists()
 
 
-def test_fill_workbooks_accepts_glob_input(tmp_path, monkeypatch):
+def test_fill_workbooks_accepts_glob_input(tmp_path):
     first_path = tmp_path / "missing_strings_fr.xlsx"
     second_path = tmp_path / "missing_strings_de.xlsx"
     make_workbook(first_path)
     make_workbook(second_path)
-    monkeypatch.setattr(
-        MT_FILL,
-        "mt_translate_db_label",
-        lambda text, target_lang, client_login=None: f"{target_lang}:{text}",
-    )
 
     paths = MT_FILL.resolve_workbook_paths(str(tmp_path / "missing_strings_*.xlsx"))
 
@@ -392,147 +421,131 @@ def test_format_insert_statement_escapes_sql_values():
     assert "Line 1\\nLine 2" in statement
 
 
-def test_build_auth_header_prefers_env_token(monkeypatch):
-    monkeypatch.setenv("LANGUAGECLOUD_API_TOKEN", "env-token")
-    monkeypatch.setattr(
-        MT_FILL,
-        "generate_languagecloud_api_token",
-        lambda client_login: "generated-token",
+def test_google_translate_texts_uses_google_v3_batch_request():
+    client = RecordingGoogleClient(lambda contents, target_language_code: ["Bonjour"])
+
+    translations = MT_FILL.google_translate_texts(
+        ["Hello <x id=1>"],
+        "fr",
+        client=client,
+        project_id="project-123",
+        location="global",
     )
 
-    assert MT_FILL.build_auth_header("Elanex-205317") == {
-        "Authorization": "Bearer env-token"
-    }
+    assert translations == ["Bonjour"]
+    assert client.calls == [
+        {
+            "contents": ["Hello <x id=1>"],
+            "parent": "projects/project-123/locations/global",
+            "mime_type": "text/html",
+            "source_language_code": "en",
+            "target_language_code": "fr",
+        }
+    ]
 
 
-def test_build_auth_header_generates_token_for_client_id(monkeypatch):
-    monkeypatch.delenv("LANGUAGECLOUD_API_TOKEN", raising=False)
-    monkeypatch.setattr(
-        MT_FILL,
-        "generate_languagecloud_api_token",
-        lambda client_login: f"generated:{client_login}",
+def test_google_translate_texts_requires_matching_response_count():
+    client = RecordingGoogleClient(lambda contents, target_language_code: ["Bonjour"])
+
+    with pytest.raises(ValueError, match="1 translation"):
+        MT_FILL.google_translate_texts(
+            ["Hello", "Bye"],
+            "fr",
+            client=client,
+            project_id="project-123",
+            location="global",
+        )
+
+
+def test_fill_workbook_batches_rows_by_google_language(tmp_path, monkeypatch):
+    workbook_path = tmp_path / "missing_strings.xlsx"
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.append(
+        [
+            "source_language",
+            "target_language",
+            "source_text",
+            "target_text",
+            "max_length",
+        ]
+    )
+    sheet.append(["en", "fr", "Submit", "", 0])
+    sheet.append(["en", "fr", "Cancel", "", 0])
+    sheet.append(["en", "fr", "Done", "", 0])
+    sheet.append(["en", "de", "Back", "", 0])
+    workbook.save(workbook_path)
+    workbook.close()
+
+    client = RecordingGoogleClient(
+        lambda contents, target_language_code: [
+            f"{target_language_code}:{content}" for content in contents
+        ]
+    )
+    monkeypatch.setattr(MT_FILL, "fetch_mt_language_map", lambda: {})
+
+    filled, total = MT_FILL.fill_workbook_translations(
+        workbook_path,
+        batch_size=2,
+        google_client=client,
     )
 
-    assert MT_FILL.build_auth_header("Elanex-205317") == {
-        "Authorization": "Bearer generated:Elanex-205317"
-    }
+    workbook = openpyxl.load_workbook(workbook_path)
+    try:
+        sheet = workbook.active
+        assert filled == 4
+        assert total == 4
+        assert sheet["D2"].value == "fr:Submit"
+        assert sheet["D3"].value == "fr:Cancel"
+        assert sheet["D4"].value == "fr:Done"
+        assert sheet["D5"].value == "de:Back"
+    finally:
+        workbook.close()
+
+    assert [
+        (call["target_language_code"], call["contents"]) for call in client.calls
+    ] == [
+        ("fr", ["Submit", "Cancel"]),
+        ("fr", ["Done"]),
+        ("de", ["Back"]),
+    ]
 
 
-def test_mt_translate_db_label_uses_languagecloud_api_schema(monkeypatch):
-    class FakeTranslationResponse:
-        @classmethod
-        def model_validate(cls, data):
-            raise AssertionError("translations dict should be read directly")
-
-    class FakePayload:
-        def __init__(self):
-            self.data = {
-                "translations": {
-                    "fr": "Bonjour <x id=1>",
-                }
-            }
-
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return self.data
-
-    class FakeClient:
-        def __init__(self, timeout):
-            self.timeout = timeout
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, traceback):
-            return None
-
-        def post(self, url, headers, json):
-            assert url == "https://languagecloud.example.test/mt/translate"
-            assert headers == {"Authorization": "Bearer token"}
-            assert json == {
-                "text": "Hello <x id=1>",
-                "target_languages": ["fr"],
-                "app_name": "slack",
-                "usage_type": "translation_export_mt_fill",
-            }
-            return FakePayload()
-
-    monkeypatch.setattr(
-        MT_FILL,
-        "load_app_mt_types",
-        lambda: (FakeTranslationResponse, "https://languagecloud.example.test"),
+def test_fill_workbook_rejects_non_english_db_lang_mapped_to_english(
+    tmp_path, monkeypatch
+):
+    workbook_path = tmp_path / "missing_strings.xlsx"
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.append(
+        [
+            "source_language",
+            "target_language",
+            "source_text",
+            "target_text",
+            "max_length",
+        ]
     )
-    monkeypatch.setattr(
-        MT_FILL,
-        "build_auth_header",
-        lambda client_id: {"Authorization": "Bearer token"},
-    )
-    monkeypatch.setattr(MT_FILL.httpx, "Client", FakeClient)
-
-    assert (
-        MT_FILL.mt_translate_db_label("Hello <x id=1>", "fr", "client-id")
-        == "Bonjour <x id=1>"
-    )
-
-
-def test_mt_translate_db_label_fails_english_fallback_for_non_english(monkeypatch):
-    class FakeTranslationResponse:
-        @classmethod
-        def model_validate(cls, data):
-            raise AssertionError("translations dict should be read directly")
-
-    class FakePayload:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {"translations": {"en": "Submit"}}
-
-    class FakeClient:
-        def __init__(self, timeout):
-            self.timeout = timeout
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, traceback):
-            return None
-
-        def post(self, url, headers, json):
-            return FakePayload()
-
-    monkeypatch.setattr(
-        MT_FILL,
-        "load_app_mt_types",
-        lambda: (FakeTranslationResponse, "https://languagecloud.example.test"),
-    )
-    monkeypatch.setattr(
-        MT_FILL,
-        "build_auth_header",
-        lambda client_id: {"Authorization": "Bearer token"},
-    )
-    monkeypatch.setattr(MT_FILL.httpx, "Client", FakeClient)
+    sheet.append(["en", "kr", "Submit", "", 0])
+    workbook.save(workbook_path)
+    workbook.close()
+    client = RecordingGoogleClient()
+    monkeypatch.setattr(MT_FILL, "fetch_mt_language_map", lambda: {"kr": "en"})
 
     with pytest.raises(ValueError, match="English fallback"):
-        MT_FILL.mt_translate_db_label("Submit", "ko", "client-id")
+        MT_FILL.fill_workbook_translations(workbook_path, google_client=client)
+
+    assert client.calls == []
 
 
-def test_configured_client_id_prefers_client_id_env(monkeypatch):
-    monkeypatch.setenv("LANGUAGECLOUD_API_CLIENT_ID", "client-id")
-    monkeypatch.setenv("LANGUAGECLOUD_API_CLIENT_LOGIN", "old-login")
+def test_configured_google_project_requires_env(monkeypatch):
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
 
-    assert MT_FILL.configured_client_id() == "client-id"
+    with pytest.raises(ValueError, match="GOOGLE_CLOUD_PROJECT"):
+        MT_FILL.configured_google_project()
 
 
-def test_configured_client_id_requires_env_or_cli(monkeypatch):
-    monkeypatch.delenv("LANGUAGECLOUD_API_CLIENT_ID", raising=False)
-    monkeypatch.delenv("LANGUAGECLOUD_API_CLIENT_LOGIN", raising=False)
+def test_configured_batch_size_reads_env(monkeypatch):
+    monkeypatch.setenv("TRANSLATION_EXPORT_MT_BATCH_SIZE", "25")
 
-    try:
-        MT_FILL.configured_client_id()
-    except ValueError as exc:
-        assert "LANGUAGECLOUD_API_CLIENT_ID or --client-id must be set" in str(exc)
-    else:
-        raise AssertionError("Expected missing client id to fail")
+    assert MT_FILL.configured_batch_size() == 25

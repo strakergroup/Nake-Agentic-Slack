@@ -103,7 +103,7 @@ def tag_placeholders(text_value: str) -> str:
 
 def normalize_db_label_for_lookup(label: str) -> str:
     """Mirror MySQL label equality for exporter presence checks."""
-    return label.rstrip().casefold()
+    return label.rstrip(" ").casefold()
 
 
 def extract_max_length(node: ast.Call) -> int:
