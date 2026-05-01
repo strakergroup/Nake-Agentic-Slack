@@ -81,7 +81,7 @@ The maintained tool mirrors the older `dev/` workflow as three explicit steps:
    as `google_code` when one is available. This prevents DB shortnames such as
    `kr` or `jp` from falling back to English in LanguageCloud.
 3. `make import-sql INPUT='output/missing_strings_*.xlsx' SQL_OUTPUT=output/import.sql`
-   creates SQL insert statements for `obj_stringtranslator` from all filled
+   creates refresh-safe SQL for `obj_stringtranslator` from all filled
    workbooks.
 
 Review MT output before importing. The generated SQL is an import artifact; it
@@ -115,6 +115,23 @@ unchanged non-English output. SQL generation performs a batch-level guard for
 non-English workbooks where a suspicious share of rows still matches the source
 text, which catches full-language fallback outputs while allowing occasional
 proper nouns to be reviewed normally.
+
+By default, the generated SQL is safe to rerun during UAT refresh testing. For
+each filled workbook row that passes validation, the import file writes a scoped
+delete for the exact `target_language` / `source_text` pair before the insert:
+
+```sql
+DELETE FROM `obj_stringtranslator`
+WHERE `lang` = "fr" AND `label` IN ("Example label");
+```
+
+Deletes are grouped per target language and only include labels present in the
+input workbooks. If the same `target_language` / `source_text` pair appears more
+than once, the importer emits one delete and one insert for that pair. The
+importer does not delete all rows for a language, so unrelated existing
+translations are left intact while stale test rows for the generated labels are
+replaced. Use `--no-refresh-delete` with `import_xlsx_translation.py` only when a
+pure insert-only artifact is required.
 
 If validation fails, no SQL file is written. A CSV report is written next to the
 SQL output by default, e.g. `output/import_validation_errors.csv`. Override the

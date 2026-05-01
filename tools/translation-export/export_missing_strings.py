@@ -101,6 +101,11 @@ def tag_placeholders(text_value: str) -> str:
     return tagged_text
 
 
+def normalize_db_label_for_lookup(label: str) -> str:
+    """Mirror MySQL label equality for exporter presence checks."""
+    return label.rstrip().casefold()
+
+
 def extract_max_length(node: ast.Call) -> int:
     if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
         value = node.args[1].value
@@ -194,9 +199,12 @@ def build_missing_rows(
         if target.is_english and not include_english:
             continue
 
-        existing_labels = existing_labels_by_lang.get(target.db_lang, set())
+        existing_labels = {
+            normalize_db_label_for_lookup(label)
+            for label in existing_labels_by_lang.get(target.db_lang, set())
+        }
         for entry in entries:
-            if entry.db_label in existing_labels:
+            if normalize_db_label_for_lookup(entry.db_label) in existing_labels:
                 continue
             rows.append(
                 MissingStringRow(

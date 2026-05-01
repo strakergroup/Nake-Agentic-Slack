@@ -25,6 +25,7 @@ MissingStringRow = MODULE.MissingStringRow
 build_missing_rows = MODULE.build_missing_rows
 collect_string_entries = MODULE.collect_string_entries
 infer_format = MODULE.infer_format
+normalize_db_label_for_lookup = MODULE.normalize_db_label_for_lookup
 parse_languages = MODULE.parse_languages
 resolve_locale_target = MODULE.resolve_locale_target
 tag_placeholders = MODULE.tag_placeholders
@@ -63,6 +64,11 @@ def test_tag_placeholders_matches_runtime_translator_pattern():
         == "Hello <x id=1>, use <x id=2> for <x id=3>."
     )
     assert tag_placeholders("{name} invited {name}") == "<x id=1> invited <x id=1>"
+
+
+def test_normalize_db_label_for_lookup_matches_observed_mysql_equality():
+    assert normalize_db_label_for_lookup("Select Languages  ") == "select languages"
+    assert normalize_db_label_for_lookup(" Select Languages") == " select languages"
 
 
 def test_collect_string_entries_extracts_literal_calls(tmp_path):
@@ -153,6 +159,57 @@ def test_build_missing_rows_uses_slack_locale_to_db_lang_mapping():
     ]
     assert rows[0].max_length == 12
     assert rows[0].target_text == ""
+
+
+def test_build_missing_rows_matches_existing_labels_case_insensitively():
+    rows = build_missing_rows(
+        entries=[
+            StringEntry(source_text="Select languages", db_label="Select languages")
+        ],
+        slack_locales=["fr-FR"],
+        language_map={"fr-fr": "fr"},
+        existing_labels_by_lang={"fr": {"Select Languages"}},
+    )
+
+    assert rows == []
+
+
+def test_build_missing_rows_matches_existing_labels_with_trailing_space_variants():
+    rows = build_missing_rows(
+        entries=[
+            StringEntry(
+                source_text="<x id=1> Search allows you to find specific Translation Jobs (TJs).",
+                db_label="<x id=1> Search allows you to find specific Translation Jobs (TJs).",
+            ),
+            StringEntry(source_text="Trailing DB label", db_label="Trailing DB label "),
+        ],
+        slack_locales=["fr-FR"],
+        language_map={"fr-fr": "fr"},
+        existing_labels_by_lang={
+            "fr": {
+                "<x id=1> Search allows you to find specific Translation Jobs (TJs). ",
+                "Trailing DB label",
+            }
+        },
+    )
+
+    assert rows == []
+
+
+def test_build_missing_rows_still_exports_truly_different_strings():
+    rows = build_missing_rows(
+        entries=[
+            StringEntry(source_text="Select languages", db_label="Select languages"),
+            StringEntry(source_text=" Select languages", db_label=" Select languages"),
+        ],
+        slack_locales=["fr-FR"],
+        language_map={"fr-fr": "fr"},
+        existing_labels_by_lang={"fr": {"Select Languages"}},
+    )
+
+    assert [(row.target_language, row.source_text) for row in rows] == [
+        ("fr", " Select languages")
+    ]
 
 
 def test_build_missing_rows_flags_unmapped_slack_locale():

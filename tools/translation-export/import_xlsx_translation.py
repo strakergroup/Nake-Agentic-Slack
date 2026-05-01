@@ -66,6 +66,15 @@ def format_insert_statement(
     )
 
 
+def format_delete_statement(lang: str, labels: list[str]) -> str:
+    lang_sql = escape_sql_value(lang)
+    labels_sql = ", ".join(f'"{escape_sql_value(label)}"' for label in labels)
+    return (
+        "DELETE FROM `obj_stringtranslator` "
+        f'WHERE `lang` = "{lang_sql}" AND `label` IN ({labels_sql});\n'
+    )
+
+
 def find_tag_ids(text: str) -> set[str]:
     return set(VALID_TAG_PATTERN.findall(text))
 
@@ -153,7 +162,7 @@ def collect_insert_statements(
     workbook_path: Path,
     created: str,
     modified: str,
-) -> tuple[list[str], list[TranslationValidationError]]:
+) -> tuple[list[str], dict[str, set[str]], list[TranslationValidationError]]:
     workbook = openpyxl.load_workbook(workbook_path, read_only=True, data_only=True)
     try:
         sheet = workbook.active
@@ -178,6 +187,8 @@ def collect_insert_statements(
         assert translation_index is not None
 
         statements: list[str] = []
+        seen_pairs: set[tuple[str, str]] = set()
+        delete_labels_by_lang: dict[str, set[str]] = defaultdict(set)
         validation_errors: list[TranslationValidationError] = []
         row_counts_by_lang: dict[str, int] = defaultdict(int)
         matching_source_rows_by_lang: dict[str, list[TranslationValidationError]] = (
@@ -223,6 +234,11 @@ def collect_insert_statements(
             )
             if row_errors:
                 continue
+            pair = (lang_text, label_text)
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            delete_labels_by_lang[lang_text].add(label_text)
             statements.append(
                 format_insert_statement(
                     label_text,
@@ -237,9 +253,20 @@ def collect_insert_statements(
                 row_counts_by_lang[lang], len(matching_rows)
             ):
                 validation_errors.extend(matching_rows)
-        return statements, validation_errors
+        return statements, delete_labels_by_lang, validation_errors
     finally:
         workbook.close()
+
+
+def collect_refresh_delete_statements(
+    delete_labels_by_lang: dict[str, set[str]],
+) -> list[str]:
+    statements: list[str] = []
+    for lang in sorted(delete_labels_by_lang):
+        labels = sorted(delete_labels_by_lang[lang])
+        if labels:
+            statements.append(format_delete_statement(lang, labels))
+    return statements
 
 
 def resolve_workbook_paths(input_pattern: str) -> list[Path]:
@@ -278,19 +305,25 @@ def write_import_sql(
     workbook_paths: list[Path],
     output_path: Path,
     validation_report_path: Path | None = None,
+    refresh_delete: bool = True,
 ) -> int:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     statements: list[str] = []
+    delete_labels_by_lang: dict[str, set[str]] = defaultdict(set)
     validation_errors: list[TranslationValidationError] = []
     validation_report_path = validation_report_path or default_validation_report_path(
         output_path
     )
     for workbook_path in workbook_paths:
-        workbook_statements, workbook_errors = collect_insert_statements(
-            workbook_path,
-            timestamp,
-            timestamp,
+        workbook_statements, workbook_delete_labels_by_lang, workbook_errors = (
+            collect_insert_statements(
+                workbook_path,
+                timestamp,
+                timestamp,
+            )
         )
+        for lang, labels in workbook_delete_labels_by_lang.items():
+            delete_labels_by_lang[lang].update(labels)
         statements.extend(workbook_statements)
         validation_errors.extend(workbook_errors)
 
@@ -303,6 +336,10 @@ def write_import_sql(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as sql_file:
+        if refresh_delete:
+            sql_file.writelines(
+                collect_refresh_delete_statements(delete_labels_by_lang)
+            )
         sql_file.writelines(statements)
     return len(statements)
 
@@ -327,6 +364,15 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="CSV output path for placeholder validation errors.",
     )
+    parser.add_argument(
+        "--refresh-delete",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Delete existing obj_stringtranslator rows for the exact lang/label "
+            "pairs in the input before inserting. Enabled by default."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -336,6 +382,7 @@ def main() -> None:
         resolve_workbook_paths(args.input),
         args.output,
         args.validation_report,
+        args.refresh_delete,
     )
     print(f"Generated {count} insert statements -> {args.output}")
 

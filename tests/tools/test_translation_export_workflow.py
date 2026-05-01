@@ -191,6 +191,91 @@ def test_write_import_sql_skips_empty_translations(tmp_path):
     assert "Submit" not in sql
 
 
+def test_write_import_sql_deletes_only_generated_lang_label_pairs(tmp_path):
+    workbook_path = tmp_path / "missing_strings.xlsx"
+    output_path = tmp_path / "import.sql"
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.append(
+        [
+            "source_language",
+            "target_language",
+            "source_text",
+            "target_text",
+            "max_length",
+        ]
+    )
+    sheet.append(["en", "fr", 'Quote "label"', "Libellé", 0])
+    sheet.append(["en", "fr-ca", "Regional label", "Libellé régional", 0])
+    sheet.append(["en", "de", "Needs MT", "", 0])
+    workbook.save(workbook_path)
+    workbook.close()
+
+    count = IMPORT_SQL.write_import_sql([workbook_path], output_path)
+
+    sql = output_path.read_text(encoding="utf-8")
+    assert count == 2
+    assert sql.count("DELETE FROM `obj_stringtranslator`") == 2
+    assert (
+        'DELETE FROM `obj_stringtranslator` WHERE `lang` = "fr" '
+        'AND `label` IN ("Quote \\"label\\"");'
+    ) in sql
+    assert (
+        'DELETE FROM `obj_stringtranslator` WHERE `lang` = "fr-ca" '
+        'AND `label` IN ("Regional label");'
+    ) in sql
+    assert 'WHERE `lang` = "de"' not in sql
+    assert "DELETE FROM `obj_stringtranslator` WHERE `lang` IN" not in sql
+    assert sql.count("INSERT INTO `obj_stringtranslator`") == 2
+    assert sql.index("DELETE FROM `obj_stringtranslator`") < sql.index(
+        "INSERT INTO `obj_stringtranslator`"
+    )
+
+
+def test_write_import_sql_can_disable_refresh_deletes(tmp_path):
+    workbook_path = tmp_path / "missing_strings.xlsx"
+    output_path = tmp_path / "import.sql"
+    make_workbook(workbook_path)
+
+    count = IMPORT_SQL.write_import_sql(
+        [workbook_path],
+        output_path,
+        refresh_delete=False,
+    )
+
+    sql = output_path.read_text(encoding="utf-8")
+    assert count == 1
+    assert "DELETE FROM `obj_stringtranslator`" not in sql
+    assert sql.count("INSERT INTO `obj_stringtranslator`") == 1
+
+
+def test_write_import_sql_deduplicates_generated_lang_label_pairs(tmp_path):
+    workbook_path = tmp_path / "missing_strings.xlsx"
+    output_path = tmp_path / "import.sql"
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.append(
+        [
+            "source_language",
+            "target_language",
+            "source_text",
+            "target_text",
+            "max_length",
+        ]
+    )
+    sheet.append(["en", "fr", "Submit", "Soumettre", 0])
+    sheet.append(["en", "fr", "Submit", "Soumettre", 20])
+    workbook.save(workbook_path)
+    workbook.close()
+
+    count = IMPORT_SQL.write_import_sql([workbook_path], output_path)
+
+    sql = output_path.read_text(encoding="utf-8")
+    assert count == 1
+    assert sql.count("DELETE FROM `obj_stringtranslator`") == 1
+    assert sql.count("INSERT INTO `obj_stringtranslator`") == 1
+
+
 def test_validate_translation_tags_reports_missing_and_bad_tags():
     errors = IMPORT_SQL.validate_translation_tags(
         "Submit <x id=1>",

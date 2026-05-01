@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: `tools/translation-export` missing-string checks now compare DB labels case-insensitively and ignore trailing spaces to match MySQL lookup behavior (Wade Norman, 2026-05-01)
+- [Changed]: `tools/translation-export` import SQL now deletes only the generated `lang`/`label` pairs and emits one insert per pair, making UAT translation refreshes replace stale rows without broad language deletes (Wade Norman, 2026-05-01)
 - [Changed]: RAY error callbacks now use exportable literal translation templates with placeholder-inserted payload details, and invalid-PDF messages no longer translate payload strings directly (Wade Norman, 2026-05-01)
 - [Fixed]: `tools/translation-export` now maps DB language shortnames to MT-compatible codes before LanguageCloud fill, preserves Makefile workbook globs, and blocks suspicious non-English source-text fallback outputs during fill/import validation (Wade Norman, 2026-05-01)
 - [Changed]: `tools/translation-export` now writes translator-facing workbooks with only `source_language`, `target_language`, `source_text`, `target_text`, and `max_length`, while MT fill and import SQL accept the new column names (Wade Norman, 2026-04-29)
