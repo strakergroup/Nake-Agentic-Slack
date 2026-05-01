@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: `tools/ui-export` now generates Home tab catalog entries through the real translated `home_view()` path instead of mirrored hardcoded English blocks (Wade Norman, 2026-05-01)
 - [Fixed]: `tools/translation-export` missing-string checks now ignore only trailing spaces, not trailing newlines, so labels like `*Group:*` are not masked by newline variants (Wade Norman, 2026-05-01)
 - [Fixed]: Slack UI translation templates now expose login, quote, helper, validation, and auto-translate setting strings as literal exportable labels while avoiding payload label translation (Wade Norman, 2026-05-01)
 - [Changed]: `tools/translation-export` MT fill now calls Google Cloud Translation directly with batched HTML requests, Google language-code mapping, and ADC/project-based configuration instead of `pt-languagecloud-api` (Wade Norman, 2026-05-01)

@@ -11,6 +11,7 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 build_all_messages = MODULE.build_all_messages
 build_all_views = MODULE.build_all_views
+build_catalog = MODULE.build_catalog
 configure_translation = MODULE.configure_translation
 parse_languages = MODULE.parse_languages
 _requested_translation_source = MODULE._requested_translation_source
@@ -47,6 +48,50 @@ def test_build_all_views_includes_ibm_connected_home_variants():
     assert "home_view (IBM, connected, admin)" in names
     assert "home_view (IBM, connected, non-admin)" in names
     assert "home_view (IBM, connected)" not in names
+
+
+def _collect_text_values(value):
+    if isinstance(value, dict):
+        for nested in value.values():
+            yield from _collect_text_values(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            yield from _collect_text_values(nested)
+    elif isinstance(value, str):
+        yield value
+
+
+def test_home_view_static_copy_uses_catalog_translation_path():
+    catalog = build_catalog(
+        "de-DE",
+        {
+            "Get Started": "Loslegen",
+            ":sunny: Daily Summary": ":sunny: Tageszusammenfassung",
+            "{helpEmoji} AI Translate Help": "{helpEmoji} KI Translate Hilfe",
+            "Translate Channels": "Kanaele uebersetzen",
+            ":speech_balloon: Translation settings": ":speech_balloon: Einstellungen",
+            "Give us your feedback": "Feedback geben",
+            "Learn More": "Mehr erfahren",
+            "{questionEmoji} Help Centre": "{questionEmoji} Hilfezentrum",
+            "Visit Straker Verify": "Straker Verify besuchen",
+        },
+    )
+    home_view = next(
+        entry for entry in catalog["views"] if entry["name"] == "home_view (connected)"
+    )
+    texts = set(_collect_text_values(home_view["blocks"]))
+
+    assert "Loslegen" in texts
+    assert ":sunny: Tageszusammenfassung" in texts
+    assert ":question: KI Translate Hilfe" in texts
+    assert "Kanaele uebersetzen" in texts
+    assert ":speech_balloon: Einstellungen" in texts
+    assert "Feedback geben" in texts
+    assert "Mehr erfahren" in texts
+    assert ":question: Hilfezentrum" in texts
+    assert "Straker Verify besuchen" in texts
+    assert "Get Started" not in texts
+    assert ":sunny: Daily Summary" not in texts
 
 
 def test_parse_languages_deduplicates_and_defaults():

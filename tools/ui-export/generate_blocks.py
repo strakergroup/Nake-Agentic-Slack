@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import re
@@ -1464,150 +1465,48 @@ def build_all_messages() -> list[dict[str, Any]]:
     return entries
 
 
-_HOME_MESSAGE_URL = f"slack://app?team={TEAM_ID}&id=A_MOCK_APP_ID&tab=messages"
+def make_home_context(enterprise_id: str | None = ENTERPRISE_ID) -> MagicMock:
+    """Build the minimal Slack context needed by the real Home tab view."""
+    context_data = {
+        "user_id": USER_ID,
+        "team_id": TEAM_ID,
+        "channel_id": CHANNEL_ID,
+        "enterprise_id": enterprise_id,
+    }
+    context = MagicMock()
+    context.__getitem__.side_effect = context_data.__getitem__
+    context.get.side_effect = context_data.get
+    context.client = MagicMock()
+    context.team_id = TEAM_ID
+    context.enterprise_id = enterprise_id
+    return context
 
 
-def _build_home_blocks(
-    auth_blocks: list[dict[str, Any]],
-    connected: bool,
+def build_home_view(
+    ray_connection: RayConnection | None,
+    *,
     is_ibm: bool,
-) -> list[dict[str, Any]]:
-    """Build home view blocks matching the real home_view function."""
-    translation_settings_blocks: list[dict[str, Any]] = [
-        {"type": "divider"},
-        {
-            "type": "header",
-            "text": {"type": "plain_text", "text": "Translate Channels"},
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences.",
-            },
-        },
-    ]
-    if connected:
-        translation_settings_blocks.append(
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": ":speech_balloon: Translation settings",
-                        },
-                        "action_id": "settings_auto_translate",
-                    },
-                ],
-            }
-        )
+    is_admin: bool = False,
+) -> dict[str, Any]:
+    """Call the real async home_view with mocked async dependencies."""
+    from app.slack.templates.views import home_view
 
-    footer_elements = [
-        {
-            "type": "button",
-            "text": {
-                "type": "plain_text",
-                "emoji": True,
-                "text": ":question: Help Centre",
-            },
-            "action_id": "link_2",
-            "url": "https://help.straker.ai/en/docs/workplace-apps#straker-translate-app-for-slack",
-        },
-    ]
-    if not is_ibm:
-        footer_elements.append(
-            {
-                "type": "button",
-                "text": {
-                    "type": "plain_text",
-                    "emoji": True,
-                    "text": "Visit Straker Verify",
-                },
-                "action_id": "link_1",
-                "url": _domains_mock.verify,
-            },
-        )
-
-    return [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": ":wave: Welcome to Straker Translate!",
-            },
-        },
-        *auth_blocks,
-        {"type": "divider"},
-        {
-            "type": "header",
-            "text": {"type": "plain_text", "text": "Get Started"},
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Here are some things to get you started. Also make sure you check out our Help Centre and use our built in chatbot within our app to guide you through the translation process.",
-            },
-        },
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": ":sunny: Daily Summary",
-                    },
-                    "action_id": "daily_summary",
-                    "url": _HOME_MESSAGE_URL,
-                },
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": ":question: AI Translate Help",
-                    },
-                    "action_id": "ai_translate_help",
-                    "url": _HOME_MESSAGE_URL,
-                },
-            ],
-        },
-        *translation_settings_blocks,
-        {"type": "divider"},
-        {
-            "type": "header",
-            "text": {"type": "plain_text", "text": "Give us your feedback"},
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Straker Community is a place for Straker users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest Verify and Enterprise features, provide updates, and engage with customers like you!",
-            },
-        },
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "Learn More",
-                        "emoji": False,
-                    },
-                    "action_id": "link_0",
-                    "url": "https://help.straker.ai/en/docs/straker-translate-functions",
-                },
-            ],
-        },
-        {"type": "divider"},
-        {"type": "actions", "elements": footer_elements},
-    ]
+    context = make_home_context(ENTERPRISE_ID if is_ibm else None)
+    with (
+        patch(
+            "app.slack.templates.views.is_slack_team_admin",
+            AsyncMock(return_value=is_admin),
+        ),
+        patch("app.slack.templates.views.get_pagination", AsyncMock(return_value=1)),
+        patch(
+            "app.slack.templates.views.get_full_group_translation_settings",
+            AsyncMock(return_value=[]),
+        ),
+        patch("app.slack.templates.views.is_ibm_enterprise", return_value=is_ibm),
+        patch("app.slack.templates.blocks.is_ibm_enterprise", return_value=is_ibm),
+    ):
+        view = home_view(context, "A_MOCK_APP_ID", ray_connection)
+        return asyncio.run(view)
 
 
 def build_all_views() -> list[dict[str, Any]]:
@@ -1789,31 +1688,17 @@ def build_all_views() -> list[dict[str, Any]]:
         )
 
         # home_view non-IBM variants (connected and not connected)
-        from app.slack.templates.blocks import home_auth_blocks
-
         ray_connection = make_ray_connection()
-        auth_blocks_connected = home_auth_blocks(
-            USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, ray_connection
-        )
         add(
             "home_view (connected)",
             "Home",
-            {
-                "type": "home",
-                "blocks": _build_home_blocks(auth_blocks_connected, True, False),
-            },
+            build_home_view(ray_connection, is_ibm=False),
         )
 
-        auth_blocks_not_connected = home_auth_blocks(
-            USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, None
-        )
         add(
             "home_view (not connected)",
             "Home",
-            {
-                "type": "home",
-                "blocks": _build_home_blocks(auth_blocks_not_connected, False, False),
-            },
+            build_home_view(None, is_ibm=False),
         )
 
     # IBM home view variants — separate patch context to avoid nesting limit
@@ -1825,21 +1710,13 @@ def build_all_views() -> list[dict[str, Any]]:
         patch(f"{BLK}.is_ibm_enterprise", return_value=True),
         patch(f"{BLK}.domains", _domains_mock),
     ):
-        from app.slack.templates.blocks import home_auth_blocks
-
         ray_connection = make_ray_connection()
-        ibm_auth_connected = home_auth_blocks(
-            USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, ray_connection
-        )
         entries.append(
             {
                 "name": "home_view (IBM, connected, non-admin)",
                 "category": "Home",
                 **safe_extract(
-                    {
-                        "type": "home",
-                        "blocks": _build_home_blocks(ibm_auth_connected, False, True),
-                    }
+                    build_home_view(ray_connection, is_ibm=True, is_admin=False)
                 ),
             }
         )
@@ -1848,29 +1725,16 @@ def build_all_views() -> list[dict[str, Any]]:
                 "name": "home_view (IBM, connected, admin)",
                 "category": "Home",
                 **safe_extract(
-                    {
-                        "type": "home",
-                        "blocks": _build_home_blocks(ibm_auth_connected, True, True),
-                    }
+                    build_home_view(ray_connection, is_ibm=True, is_admin=True)
                 ),
             }
         )
 
-        ibm_auth_not_connected = home_auth_blocks(
-            USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, None
-        )
         entries.append(
             {
                 "name": "home_view (IBM, not connected)",
                 "category": "Home",
-                **safe_extract(
-                    {
-                        "type": "home",
-                        "blocks": _build_home_blocks(
-                            ibm_auth_not_connected, False, True
-                        ),
-                    }
-                ),
+                **safe_extract(build_home_view(None, is_ibm=True)),
             }
         )
 
