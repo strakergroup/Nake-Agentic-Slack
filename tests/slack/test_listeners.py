@@ -4168,6 +4168,82 @@ class TestAutoTranslateMessage:
         mock_send.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_auto_translate_message_partial_filter_drops_only_no_op_target(
+        self, user_id, team_id, ray_client
+    ):
+        """Channel with multiple targets: drop only the no-op pair, translate the rest.
+
+        Detected source ``zh-CN`` with configured targets ``[zh, ja]`` should
+        skip ``zh`` (dialect/base no-op) but still translate to ``ja``.
+        """
+        from app.slack.listener_actions import auto_translate_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "你好"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+            }
+        )
+
+        with (
+            patch(
+                "app.slack.listener_actions.get_auto_translate_settings_and_langs",
+                new_callable=AsyncMock,
+                return_value=[
+                    {"target_lang": "zh", "display_format": "thread"},
+                    {"target_lang": "ja", "display_format": "thread"},
+                ],
+            ),
+            patch(
+                "app.slack.listener_actions.require_mt_tokens",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listener_actions.detect_language",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(language="zh-CN"),
+            ),
+            patch(
+                "app.slack.listener_actions.evaluate_get_glossary_resource",
+                new_callable=AsyncMock,
+                return_value="",
+            ),
+            patch(
+                "app.slack.listener_actions.get_group_id",
+                new_callable=AsyncMock,
+                return_value="group-test-id",
+            ),
+            patch(
+                "app.slack.listener_actions.send_mt_translation_request",
+                new_callable=AsyncMock,
+            ) as mock_send,
+        ):
+            await auto_translate_message(mock_client, context, message)
+
+        mock_send.assert_called_once()
+        service_language_mapping = mock_send.await_args.args[1]
+        sent_targets = {
+            target
+            for service_targets in service_language_mapping.values()
+            for target in service_targets
+        }
+        assert sent_targets == {"ja"}
+
+    @pytest.mark.asyncio
     async def test_auto_translate_message_exception_handling(
         self, user_id, team_id, ray_client
     ):
