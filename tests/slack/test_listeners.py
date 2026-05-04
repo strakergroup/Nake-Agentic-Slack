@@ -2972,8 +2972,7 @@ class TestHandleDocumentMtJob:
         self, user_id, team_id, ray_client
     ):
         """Test document MT uses the PDF limit only for trial sessions."""
-        from app.config import config
-        from app.slack.listeners import handle_document_mt_job
+        from app.slack.listeners import config, handle_document_mt_job
 
         mock_ack = AsyncMock()
         mock_client = AsyncMock()

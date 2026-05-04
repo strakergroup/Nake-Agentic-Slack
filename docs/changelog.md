@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: Corrected the document MT trial PDF-limit test to assert against the listener module's config reference, preventing suite-level config patches from causing a false failure (Wade Norman, 2026-05-04)
 - [Changed]: Resolved `master` merge conflicts in Slack document MT by preserving source-language dedupe/payload tracking alongside grouped multi-target submission IDs (Wade Norman, 2026-05-04)
 - [Changed]: Document MT submissions now group non-duplicate target languages per source file into one `slack:job:machine:translate:v2` event with `target_languages` and per-language `submission_ids`, while retaining per-target submission records for dedupe and status tracking (Wade Norman, 2026-04-28)
 - [Fixed]: App-wide circular import between `app.ray` and `app.slack` that surfaced when cold-importing `app.saq_jobs.*` (or any `app.ray.events.*` symbol). Removed eager submodule re-exports from `app/slack/__init__.py` (`app`, `slack_handler`) and `app/ray/__init__.py` (`RayService`, `get_languages`); updated the three callers (`app/routers/slack.py`, `app/routers/health.py`, `app/slack/select_options.py`) to import from explicit submodules. Tracked under [RAY-79638](https://app.clickup.com/t/36600298/RAY-79638) (Wade Norman, 2026-04-29)
