@@ -40,6 +40,9 @@ async def create_slack_job(
             extra_data["original_video_file_id"] = mt_request.original_video_file_id
         if mt_request.original_video_file_name:
             extra_data["original_video_file_name"] = mt_request.original_video_file_name
+    if len(mt_request.target_languages) > 1:
+        extra_data["target_languages"] = mt_request.target_languages
+        extra_data["submission_ids"] = mt_request.submission_ids
 
     async with async_engines["verify"].connect() as conn:
         # Try to insert with extra_data column if it exists

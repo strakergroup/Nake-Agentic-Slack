@@ -5,6 +5,7 @@ from typing import Any, Dict, Union
 from dateutil.parser import parse
 from pydantic import (
     BaseModel,
+    Field,
     RootModel,
     field_validator,
     model_validator,
@@ -159,13 +160,29 @@ class MtFileRequestSchema(BaseModel):
     client_id: str
     channel_id: str
     source_language: str | None = None
-    target_language: str
+    target_language: str | None = None
+    target_languages: list[str] = Field(default_factory=list)
+    submission_ids: Dict[str, int] = Field(default_factory=dict)
     ai_engine: str
     data_source: str
     submission_id: int | None = None
     embed_subtitles: bool = False
     original_video_file_id: str | None = None
     original_video_file_name: str | None = None
+
+    @model_validator(mode="after")
+    def normalize_target_languages(self) -> "MtFileRequestSchema":
+        targets = [language for language in self.target_languages if language]
+        if self.target_language:
+            targets.insert(0, self.target_language)
+
+        deduped_targets = list(dict.fromkeys(targets))
+        if not deduped_targets:
+            raise ValueError("target_language or target_languages is required")
+
+        self.target_language = deduped_targets[0]
+        self.target_languages = deduped_targets
+        return self
 
 
 class MtSuccessResponseSchema(BaseModel):

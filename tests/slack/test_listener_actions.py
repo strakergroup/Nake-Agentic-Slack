@@ -12,11 +12,9 @@ from app.slack.listener_actions import (
     approve_pending_client,
     build_thread_media_embed_action_value,
     create_service_language_mapping,
+    document_machine_translate,
     get_groups,
     get_mt_translation,
-    image_ocr_translate,
-    image_xliff_render_translate,
-    is_image_file,
     is_video_file,
     maybe_show_thread_media_embed_option,
     post_batch_list,
@@ -28,6 +26,72 @@ from app.slack.listener_actions import (
     verify_help,
 )
 from app.slack.templates.messages import AutoTranslationMessage
+
+
+class _FakeAsyncClient:
+    def __init__(self):
+        self.posts = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return None
+
+    async def post(self, url, json):
+        self.posts.append({"url": url, "json": json})
+        return SimpleNamespace(status_code=200)
+
+
+class TestDocumentMachineTranslate:
+    @pytest.mark.asyncio
+    async def test_emits_one_event_for_multiple_target_languages(
+        self, context, ray_client
+    ):
+        from app.auth.connector import RayConnection
+
+        fake_http_client = _FakeAsyncClient()
+        context["ray"] = RayConnection(super_group=[], client=ray_client)
+
+        with (
+            patch(
+                "app.slack.listener_actions.get_group_mt_engine",
+                new_callable=AsyncMock,
+                return_value="google",
+            ),
+            patch(
+                "app.slack.listener_actions.create_slack_job",
+                new_callable=AsyncMock,
+                return_value="task-123",
+            ) as create_job,
+            patch(
+                "app.slack.listener_actions.httpx.AsyncClient",
+                return_value=fake_http_client,
+            ),
+        ):
+            await document_machine_translate(
+                context,
+                "gridfs-file-1",
+                "en",
+                ["fr", "de"],
+                {"fr": 101, "de": 102},
+            )
+
+        create_job.assert_awaited_once()
+        task_data = create_job.await_args.args[0]
+        assert task_data.target_language == "fr"
+        assert task_data.source_language == "en"
+        assert task_data.target_languages == ["fr", "de"]
+        assert task_data.submission_ids == {"fr": 101, "de": 102}
+        assert task_data.submission_id == 101
+
+        assert len(fake_http_client.posts) == 1
+        event_data = fake_http_client.posts[0]["json"]["data"]
+        assert event_data["task_uuid"] == "task-123"
+        assert event_data["source_language"] == "en"
+        assert event_data["target_language"] == "fr"
+        assert event_data["target_languages"] == ["fr", "de"]
+        assert event_data["submission_ids"] == {"fr": 101, "de": 102}
 
 
 class TestCreateServiceLanguageMapping:

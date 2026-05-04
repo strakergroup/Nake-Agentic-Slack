@@ -3685,12 +3685,27 @@ class EvaluateSuccessMessage(SlackMessage):
 
 
 class DocParseErrorMessage(SlackMessage):
-    """Message verify consumer event response. Specific to faliure to parse file"""
+    """Slack message for failed file parsing during MT or quality evaluation.
+
+    When both `ext` and `file_type` are known we render a detailed message
+    so the user can correct the file. When either is missing (e.g. the
+    pipeline failed before we identified the file, so the producer sent an
+    empty `error_data`) we fall back to a generic but still parse-flavoured
+    message instead of leaking blanks like "with  is a valid ". RAY-79527
+    follow-up.
+    """
 
     def __init__(self, ext: str, file_type: str) -> None:
-        message = _(
-            "Error parsing file. Please ensure file with {ext} is a valid {file_type}"
-        )
+        ext = (ext or "").strip()
+        file_type = (file_type or "").strip()
+        if ext and file_type:
+            message = _(
+                "Error parsing file. Please ensure file with {ext} is a valid {file_type}"
+            )
+        else:
+            message = _(
+                "Error parsing file. Please ensure your file is in a supported format."
+            )
         super().__init__(
             _("Verify the translation"),
             [

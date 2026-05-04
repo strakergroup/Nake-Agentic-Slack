@@ -14,7 +14,14 @@ from app.models import TranscriptionTaskInfo
 from app.ray.events.models import (
     ClientGroup,
 )
-from app.routers.ray import RayCallback, api_job_callback, ray_events, router
+from app.routers.ray import (
+    RAY_EVENT_DEDUPE_TTL_SECONDS,
+    RayCallback,
+    _claim_evaluate_complete_notification,
+    api_job_callback,
+    ray_events,
+    router,
+)
 
 
 @pytest.fixture
@@ -530,8 +537,9 @@ class TestRayEventsEndpoint:
                                             return_value=mock_response,
                                         ) as mock_post:
                                             with patch(
-                                                "app.routers.ray._create_background_task"
-                                            ) as mock_bg_task:
+                                                "app.routers.ray.enqueue_transcription_upload",
+                                                new_callable=AsyncMock,
+                                            ) as mock_enqueue:
                                                 auth = RayEventAuth()
                                                 await auth.initialize(
                                                     event, "valid-token"
@@ -540,7 +548,7 @@ class TestRayEventsEndpoint:
                                                 await ray_events(event, auth)
 
                                                 mock_post.assert_called_once()
-                                                mock_bg_task.assert_called_once()
+                                                mock_enqueue.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_transcription_error(
@@ -661,6 +669,63 @@ class TestRayEventsEndpoint:
                                     mock_post.assert_called_once()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error_type,error_data",
+        [
+            ("conversion_error", {"message": "extract failed"}),
+            ("conversion_error", {}),
+            ("file_complexity_error", {}),
+            ("invalid_pdf", {}),
+        ],
+    )
+    async def test_ray_events_document_translated_error_missing_keys_does_not_raise(
+        self, mock_slack_user, user_id, team_id, error_type, error_data
+    ):
+        """Regression: error_data without the legacy 'ext'/'message' keys must
+        not raise ``KeyError`` (RAY-79527).
+
+        Producers (e.g. ``int-slack-verify-consumer``'s
+        ``handle_extract_error``) historically published payloads that omit
+        ``ext``/``file_expected``. The handler must degrade gracefully and
+        still post an ephemeral notification.
+        """
+        payload = {
+            "error": True,
+            "client_id": str(uuid4()),
+            "channel_id": "C123",
+            "error_type": error_type,
+            "error_data": error_data,
+            "submission_id": 123,
+        }
+        event = RayEvent(
+            event="verify:slack:document:translated",
+            data={"client_id": mock_slack_user.ray_client_id, **payload},
+        )
+
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+        }
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray.post_notification_ephemeral",
+                            new_callable=AsyncMock,
+                        ) as mock_post:
+                            with patch("app.routers.ray.updated_submission_status"):
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
+
+                                await ray_events(event, auth)
+
+                                mock_post.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_ray_events_document_translated_success(
         self, mock_slack_user, user_id, team_id
     ):
@@ -691,15 +756,16 @@ class TestRayEventsEndpoint:
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
                     ):
                         with patch(
-                            "app.routers.ray._create_background_task"
-                        ) as mock_bg_task:
+                            "app.routers.ray.enqueue_mt_success_upload",
+                            new_callable=AsyncMock,
+                        ) as mock_enqueue:
                             auth = RayEventAuth()
                             await auth.initialize(event, "valid-token")
 
                             await ray_events(event, auth)
 
-                            # Verify background task was created
-                            mock_bg_task.assert_called_once()
+                            # MT success upload was enqueued onto SAQ (RAY-79638)
+                            mock_enqueue.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_evaluate_complete_error(
@@ -727,15 +793,21 @@ class TestRayEventsEndpoint:
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
                     ):
                         with patch(
-                            "app.routers.ray.post_notification", new_callable=AsyncMock
-                        ) as mock_post:
-                            auth = RayEventAuth()
-                            await auth.initialize(event, "valid-token")
+                            "app.routers.ray._claim_evaluate_complete_notification",
+                            new_callable=AsyncMock,
+                            return_value=True,
+                        ):
+                            with patch(
+                                "app.routers.ray.post_notification",
+                                new_callable=AsyncMock,
+                            ) as mock_post:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
 
-                            await ray_events(event, auth)
+                                await ray_events(event, auth)
 
-                            # Verify error notification was sent
-                            mock_post.assert_called_once()
+                                # Verify error notification was sent
+                                mock_post.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_evaluate_complete_success(
@@ -813,16 +885,106 @@ class TestRayEventsEndpoint:
                                 return_value=[],
                             ):
                                 with patch(
-                                    "app.routers.ray.post_notification",
+                                    "app.routers.ray._claim_evaluate_complete_notification",
                                     new_callable=AsyncMock,
-                                ) as mock_post:
-                                    auth = RayEventAuth()
-                                    await auth.initialize(event, "valid-token")
+                                    return_value=True,
+                                ):
+                                    with patch(
+                                        "app.routers.ray.post_notification",
+                                        new_callable=AsyncMock,
+                                    ) as mock_post:
+                                        auth = RayEventAuth()
+                                        await auth.initialize(event, "valid-token")
 
-                                    await ray_events(event, auth)
+                                        await ray_events(event, auth)
 
-                                    # Verify success notification was sent
-                                    mock_post.assert_called_once()
+                                        # Verify success notification was sent
+                                        mock_post.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_ray_events_evaluate_complete_duplicate_is_skipped(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """Duplicate evaluate-complete events do not post duplicate Slack messages."""
+        event = RayEvent(
+            event="verify:slack:evaluate:complete",
+            data={
+                "client_id": mock_slack_user.ray_client_id,
+                "error": False,
+                "job_uuid": str(uuid4()),
+                "tokens": 50,
+            },
+        )
+
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+        }
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray._claim_evaluate_complete_notification",
+                            new_callable=AsyncMock,
+                            return_value=False,
+                        ):
+                            with patch(
+                                "app.routers.ray.post_notification",
+                                new_callable=AsyncMock,
+                            ) as mock_post:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
+
+                                response = await ray_events(event, auth)
+
+                                assert response == {
+                                    "message": "Duplicate evaluate-complete event skipped"
+                                }
+                                mock_post.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_claim_evaluate_complete_notification_claims_once(self):
+        """The evaluate-complete idempotency guard uses an atomic Redis claim."""
+        event = RayEvent(
+            event="verify:slack:evaluate:complete",
+            data={"client_id": "client-1", "job_uuid": "job-1"},
+        )
+
+        with patch(
+            "app.routers.ray.redis_conn.set", new_callable=AsyncMock
+        ) as mock_set:
+            mock_set.return_value = True
+
+            claimed = await _claim_evaluate_complete_notification(event)
+
+            assert claimed is True
+            mock_set.assert_awaited_once_with(
+                "ray_event:verify:slack:evaluate:complete:client-1:job-1",
+                "1",
+                ex=RAY_EVENT_DEDUPE_TTL_SECONDS,
+                nx=True,
+            )
+
+    @pytest.mark.asyncio
+    async def test_claim_evaluate_complete_notification_rejects_duplicate(self):
+        """Redis NX misses are treated as duplicate events."""
+        event = RayEvent(
+            event="verify:slack:evaluate:complete",
+            data={"client_id": "client-1", "job_uuid": "job-1"},
+        )
+
+        with patch(
+            "app.routers.ray.redis_conn.set", new_callable=AsyncMock
+        ) as mock_set:
+            mock_set.return_value = None
+
+            claimed = await _claim_evaluate_complete_notification(event)
+
+            assert claimed is False
 
     @pytest.mark.asyncio
     async def test_ray_events_human_verification_completed(
@@ -864,16 +1026,17 @@ class TestRayEventsEndpoint:
                                 return_value=mock_response,
                             ) as mock_post:
                                 with patch(
-                                    "app.routers.ray._create_background_task"
-                                ) as mock_bg_task:
+                                    "app.routers.ray.enqueue_verify_complete_upload",
+                                    new_callable=AsyncMock,
+                                ) as mock_enqueue:
                                     auth = RayEventAuth()
                                     await auth.initialize(event, "valid-token")
 
                                     await ray_events(event, auth)
 
-                                    # Verify notification was sent and background task created
+                                    # Verify notification was sent and durable upload was enqueued (RAY-79638)
                                     mock_post.assert_called_once()
-                                    mock_bg_task.assert_called_once()
+                                    mock_enqueue.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_direct_mt_result(self, mock_slack_user, user_id, team_id):

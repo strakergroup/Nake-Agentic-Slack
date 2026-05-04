@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
 from ..config import domains
-from ..slack import slack_handler
+from ..slack.listeners import slack_handler
 from ..slack.logging import get_memory_mb
 
 # Connect the Slack Bolt endpoints to FastAPI

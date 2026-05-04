@@ -2710,12 +2710,16 @@ class TestHandleDocumentMtJob:
                 "values": {
                     "target_langs": {
                         "language_mt_options": {
-                            "selected_options": [{"value": "fr", "text": {"text": "French"}}]
+                            "selected_options": [
+                                {"value": "fr", "text": {"text": "French"}}
+                            ]
                         }
                     },
                     "files": {
                         "files": {
-                            "selected_options": [{"value": "F123", "text": {"text": "file.txt"}}]
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.txt"}}
+                            ]
                         }
                     },
                 }
@@ -2729,7 +2733,9 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        await handle_document_mt_job(context_dict, mock_ack, view=view, client=mock_client)
+        await handle_document_mt_job(
+            context_dict, mock_ack, view=view, client=mock_client
+        )
 
         mock_ack.assert_called_once_with(
             response_action="errors",
@@ -2751,7 +2757,10 @@ class TestHandleDocumentMtJob:
                 "values": {
                     "source_lang": {
                         "language_mt_options": {
-                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                            "selected_option": {
+                                "value": "fr",
+                                "text": {"text": "French"},
+                            }
                         }
                     },
                     "target_langs": {
@@ -2764,7 +2773,9 @@ class TestHandleDocumentMtJob:
                     },
                     "files": {
                         "files": {
-                            "selected_options": [{"value": "F123", "text": {"text": "file.txt"}}]
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.txt"}}
+                            ]
                         }
                     },
                 }
@@ -2778,7 +2789,9 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        await handle_document_mt_job(context_dict, mock_ack, view=view, client=mock_client)
+        await handle_document_mt_job(
+            context_dict, mock_ack, view=view, client=mock_client
+        )
 
         mock_ack.assert_called_once_with(
             response_action="errors",
@@ -2803,7 +2816,10 @@ class TestHandleDocumentMtJob:
                 "values": {
                     "source_lang": {
                         "language_mt_options": {
-                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                            "selected_option": {
+                                "value": "fr",
+                                "text": {"text": "French"},
+                            }
                         }
                     },
                     "target_langs": {
@@ -2815,7 +2831,9 @@ class TestHandleDocumentMtJob:
                     },
                     "files": {
                         "files": {
-                            "selected_options": [{"value": "F123", "text": {"text": "file.txt"}}]
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.txt"}}
+                            ]
                         }
                     },
                 }
@@ -2861,7 +2879,10 @@ class TestHandleDocumentMtJob:
                 "values": {
                     "source_lang": {
                         "language_mt_options": {
-                            "selected_option": {"value": "en", "text": {"text": "English"}}
+                            "selected_option": {
+                                "value": "en",
+                                "text": {"text": "English"},
+                            }
                         }
                     },
                     "target_langs": {"language_mt_options": {"selected_options": []}},
@@ -2896,7 +2917,10 @@ class TestHandleDocumentMtJob:
                 "values": {
                     "source_lang": {
                         "language_mt_options": {
-                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                            "selected_option": {
+                                "value": "fr",
+                                "text": {"text": "French"},
+                            }
                         }
                     },
                     "target_langs": {
@@ -2958,7 +2982,10 @@ class TestHandleDocumentMtJob:
                 "values": {
                     "source_lang": {
                         "language_mt_options": {
-                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                            "selected_option": {
+                                "value": "fr",
+                                "text": {"text": "French"},
+                            }
                         }
                     },
                     "target_langs": {
@@ -3022,7 +3049,10 @@ class TestHandleDocumentMtJob:
                 "values": {
                     "source_lang": {
                         "language_mt_options": {
-                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                            "selected_option": {
+                                "value": "fr",
+                                "text": {"text": "French"},
+                            }
                         }
                     },
                     "target_langs": {
@@ -3084,7 +3114,10 @@ class TestHandleDocumentMtJob:
                 "values": {
                     "source_lang": {
                         "language_mt_options": {
-                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                            "selected_option": {
+                                "value": "fr",
+                                "text": {"text": "French"},
+                            }
                         }
                     },
                     "target_langs": {
@@ -3160,7 +3193,9 @@ class TestHandleDocumentMtJob:
                                     call_args_list = (
                                         mock_client.chat_postMessage.call_args_list
                                     )
-                                    last_call_text = call_args_list[-1][1]["text"].lower()
+                                    last_call_text = call_args_list[-1][1][
+                                        "text"
+                                    ].lower()
                                     assert "error" in last_call_text
 
     @pytest.mark.asyncio
@@ -3178,7 +3213,10 @@ class TestHandleDocumentMtJob:
                 "values": {
                     "source_lang": {
                         "language_mt_options": {
-                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                            "selected_option": {
+                                "value": "fr",
+                                "text": {"text": "French"},
+                            }
                         }
                     },
                     "target_langs": {
@@ -3242,7 +3280,7 @@ class TestHandleDocumentMtJob:
         mock_doc_mt.assert_awaited_once()
         call_args = mock_doc_mt.await_args.args
         assert call_args[0]["channel_id"] == "C123"
-        assert call_args[1:] == ("file-id-123", "fr", "en", 321)
+        assert call_args[1:] == ("file-id-123", "fr", ["en"], {"en": 321})
 
 
 class TestMessageEvent:
