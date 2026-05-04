@@ -977,6 +977,7 @@ async def auto_translate_message(
 async def document_machine_translate(
     context: AsyncBoltContext,
     file_id: str,
+    source_language: str | None,
     selected_language: str,
     submission_id: int,
 ):
@@ -1013,6 +1014,7 @@ async def document_machine_translate(
                 "file_id": file_id,
                 "client_id": client.id,
                 "channel_id": context["channel_id"],
+                "source_language": source_language,
                 "target_language": selected_language,
                 "ai_engine": ai_engine,
                 "data_source": "slack",

@@ -2697,6 +2697,157 @@ class TestHandleDocumentMtJob:
     """Tests for handle_document_mt_job function - document MT job handler."""
 
     @pytest.mark.asyncio
+    async def test_handle_document_mt_job_requires_source_language(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_document_mt_job requires a source language selection."""
+        from app.slack.listeners import handle_document_mt_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "state": {
+                "values": {
+                    "target_langs": {
+                        "language_mt_options": {
+                            "selected_options": [{"value": "fr", "text": {"text": "French"}}]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [{"value": "F123", "text": {"text": "file.txt"}}]
+                        }
+                    },
+                }
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        await handle_document_mt_job(context_dict, mock_ack, view=view, client=mock_client)
+
+        mock_ack.assert_called_once_with(
+            response_action="errors",
+            errors={"source_lang": "Please select a source language for translation."},
+        )
+        mock_client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handle_document_mt_job_rejects_matching_source_and_target_values(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_document_mt_job rejects exact source/target value matches."""
+        from app.slack.listeners import handle_document_mt_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "state": {
+                "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                        }
+                    },
+                    "target_langs": {
+                        "language_mt_options": {
+                            "selected_options": [
+                                {"value": "fr", "text": {"text": "French"}},
+                                {"value": "en", "text": {"text": "English"}},
+                            ]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [{"value": "F123", "text": {"text": "file.txt"}}]
+                        }
+                    },
+                }
+            }
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        await handle_document_mt_job(context_dict, mock_ack, view=view, client=mock_client)
+
+        mock_ack.assert_called_once_with(
+            response_action="errors",
+            errors={
+                "target_langs": "The source language cannot be the same as a target language. Please choose a different target language."
+            },
+        )
+        mock_client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_handle_document_mt_job_allows_regional_variant_targets(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_document_mt_job allows fr source with fr-ca target."""
+        from app.slack.listeners import handle_document_mt_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "private_metadata": "C123",
+            "state": {
+                "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                        }
+                    },
+                    "target_langs": {
+                        "language_mt_options": {
+                            "selected_options": [
+                                {"value": "fr-ca", "text": {"text": "French (Canada)"}}
+                            ]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [{"value": "F123", "text": {"text": "file.txt"}}]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        with patch(
+            "app.slack.listeners.get_verify_trial_status", new_callable=AsyncMock
+        ) as mock_trial_status:
+            mock_trial_status.return_value = (False, 0)
+            with patch(
+                "app.slack.listeners.download_file", new_callable=AsyncMock
+            ) as mock_download:
+                mock_download.return_value = "/tmp/file.txt"
+                with patch(
+                    "app.slack.listeners.validate_file", return_value=(False, False, "")
+                ):
+                    await handle_document_mt_job(
+                        context_dict, mock_ack, view=view, client=mock_client
+                    )
+
+        mock_ack.assert_called_once_with(response_action="clear")
+        mock_download.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_handle_document_mt_job_no_languages(
         self, user_id, team_id, ray_client
     ):
@@ -2708,6 +2859,11 @@ class TestHandleDocumentMtJob:
         view = {
             "state": {
                 "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {"value": "en", "text": {"text": "English"}}
+                        }
+                    },
                     "target_langs": {"language_mt_options": {"selected_options": []}},
                     "files": {"files": {"selected_options": [{"value": "F123"}]}},
                 }
@@ -2738,6 +2894,11 @@ class TestHandleDocumentMtJob:
         view = {
             "state": {
                 "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                        }
+                    },
                     "target_langs": {
                         "language_mt_options": {"selected_options": [{"value": "en"}]}
                     },
@@ -2779,8 +2940,7 @@ class TestHandleDocumentMtJob:
         await handle_document_mt_job(
             context_dict, mock_ack, view=view, client=mock_client
         )
-        # ack is called twice - once at start, once in else block
-        assert mock_ack.call_count == 2
+        mock_ack.assert_called_once_with(response_action="clear")
         mock_client.chat_postMessage.assert_called_once()
 
     @pytest.mark.asyncio
@@ -2796,6 +2956,11 @@ class TestHandleDocumentMtJob:
         view = {
             "state": {
                 "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                        }
+                    },
                     "target_langs": {
                         "language_mt_options": {
                             "selected_options": [
@@ -2855,6 +3020,11 @@ class TestHandleDocumentMtJob:
         view = {
             "state": {
                 "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                        }
+                    },
                     "target_langs": {
                         "language_mt_options": {
                             "selected_options": [
@@ -2912,6 +3082,11 @@ class TestHandleDocumentMtJob:
         view = {
             "state": {
                 "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                        }
+                    },
                     "target_langs": {
                         "language_mt_options": {
                             "selected_options": [
@@ -2968,21 +3143,106 @@ class TestHandleDocumentMtJob:
                             with patch(
                                 "app.slack.listeners.notify_exception"
                             ) as mock_notify:
+                                with patch(
+                                    "app.slack.listeners.updated_submission_status"
+                                ) as mock_updated_submission_status:
+                                    await handle_document_mt_job(
+                                        context_dict,
+                                        mock_ack,
+                                        view=view,
+                                        client=mock_client,
+                                    )
+                                    mock_ack.assert_called_once()
+                                    mock_notify.assert_called_once()
+                                    mock_updated_submission_status.assert_called_once()
+                                    # Should post error message
+                                    assert mock_client.chat_postMessage.call_count >= 1
+                                    call_args_list = (
+                                        mock_client.chat_postMessage.call_args_list
+                                    )
+                                    last_call_text = call_args_list[-1][1]["text"].lower()
+                                    assert "error" in last_call_text
+
+    @pytest.mark.asyncio
+    async def test_handle_document_mt_job_passes_source_language_to_translation(
+        self, user_id, team_id, ray_client
+    ):
+        """Test handle_document_mt_job passes the selected source language downstream."""
+        from app.slack.listeners import handle_document_mt_job
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "private_metadata": "C123",
+            "state": {
+                "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {"value": "fr", "text": {"text": "French"}}
+                        }
+                    },
+                    "target_langs": {
+                        "language_mt_options": {
+                            "selected_options": [
+                                {"value": "en", "text": {"text": "English"}}
+                            ]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.txt"}}
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        with patch(
+            "app.slack.listeners.get_verify_trial_status", new_callable=AsyncMock
+        ) as mock_trial_status:
+            mock_trial_status.return_value = (False, 0)
+            with patch(
+                "app.slack.listeners.download_file", new_callable=AsyncMock
+            ) as mock_download:
+                mock_download.return_value = "/tmp/file.txt"
+                with patch(
+                    "app.slack.listeners.validate_file", return_value=(True, True, None)
+                ):
+                    with patch(
+                        "app.slack.listeners.upload_to_file_server",
+                        return_value="file-id-123",
+                    ):
+                        mock_record = MagicMock()
+                        mock_record.id = 321
+                        with patch(
+                            "app.slack.listeners.check_and_record_submission_async",
+                            new_callable=AsyncMock,
+                        ) as mock_check:
+                            mock_check.return_value = (False, mock_record)
+                            with patch(
+                                "app.slack.listeners.document_machine_translate",
+                                new_callable=AsyncMock,
+                            ) as mock_doc_mt:
                                 await handle_document_mt_job(
                                     context_dict,
                                     mock_ack,
                                     view=view,
                                     client=mock_client,
                                 )
-                                mock_ack.assert_called_once()
-                                mock_notify.assert_called_once()
-                                # Should post error message
-                                assert mock_client.chat_postMessage.call_count >= 1
-                                call_args_list = (
-                                    mock_client.chat_postMessage.call_args_list
-                                )
-                                last_call_text = call_args_list[-1][1]["text"].lower()
-                                assert "error" in last_call_text
+
+        mock_doc_mt.assert_awaited_once()
+        call_args = mock_doc_mt.await_args.args
+        assert call_args[0]["channel_id"] == "C123"
+        assert call_args[1:] == ("file-id-123", "fr", "en", 321)
 
 
 class TestMessageEvent:

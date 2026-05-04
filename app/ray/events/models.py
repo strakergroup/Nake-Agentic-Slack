@@ -158,6 +158,7 @@ class MtFileRequestSchema(BaseModel):
     file_id: str
     client_id: str
     channel_id: str
+    source_language: str | None = None
     target_language: str
     ai_engine: str
     data_source: str
