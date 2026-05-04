@@ -66,6 +66,7 @@ def _insert_submission(
     file_hash: str,
     file_name: str,
     file_size: int,
+    source_language: str = "",
     target_language: str,
     file_id: str,
     processing_status: SubmissionStatus,
@@ -77,6 +78,7 @@ def _insert_submission(
         file_hash=file_hash,
         file_name=file_name,
         file_size=file_size,
+        source_language=source_language,
         target_language=target_language,
         file_id=file_id,
         processing_status=processing_status.value,
@@ -119,6 +121,7 @@ async def check_and_record_submission_async(
     user_id: str,
     team_id: str,
     channel_id: str,
+    source_language: str = "",
     target_language: str,
 ) -> Tuple[bool, SlackFileTranslationSubmission]:
     """
@@ -136,6 +139,7 @@ async def check_and_record_submission_async(
             .where(SlackFileTranslationSubmission.team_id == team_id)
             .where(SlackFileTranslationSubmission.file_hash == file_hash)
             .where(SlackFileTranslationSubmission.file_name == file_name)
+            .where(SlackFileTranslationSubmission.source_language == source_language)
             .where(SlackFileTranslationSubmission.target_language == target_language)
             .where(SlackFileTranslationSubmission.created_at >= cutoff)
             .where(
@@ -156,6 +160,7 @@ async def check_and_record_submission_async(
             file_hash=file_hash,
             file_name=file_name,
             file_size=file_size,
+            source_language=source_language,
             target_language=target_language,
             file_id=file_id,
             processing_status=SubmissionStatus.CREATED,
