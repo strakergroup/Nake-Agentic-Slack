@@ -159,6 +159,7 @@ class MtFileRequestSchema(BaseModel):
     file_id: str
     client_id: str
     channel_id: str
+    source_language: str | None = None
     target_language: str | None = None
     target_languages: list[str] = Field(default_factory=list)
     submission_ids: Dict[str, int] = Field(default_factory=dict)

@@ -72,6 +72,7 @@ class TestDocumentMachineTranslate:
             await document_machine_translate(
                 context,
                 "gridfs-file-1",
+                "en",
                 ["fr", "de"],
                 {"fr": 101, "de": 102},
             )
@@ -79,6 +80,7 @@ class TestDocumentMachineTranslate:
         create_job.assert_awaited_once()
         task_data = create_job.await_args.args[0]
         assert task_data.target_language == "fr"
+        assert task_data.source_language == "en"
         assert task_data.target_languages == ["fr", "de"]
         assert task_data.submission_ids == {"fr": 101, "de": 102}
         assert task_data.submission_id == 101
@@ -86,6 +88,7 @@ class TestDocumentMachineTranslate:
         assert len(fake_http_client.posts) == 1
         event_data = fake_http_client.posts[0]["json"]["data"]
         assert event_data["task_uuid"] == "task-123"
+        assert event_data["source_language"] == "en"
         assert event_data["target_language"] == "fr"
         assert event_data["target_languages"] == ["fr", "de"]
         assert event_data["submission_ids"] == {"fr": 101, "de": 102}

@@ -529,7 +529,11 @@ async def document_mt_submit_action(
 
                     if submitted_languages:
                         await document_machine_translate(
-                            context, input_file_id, submitted_languages, submission_ids
+                            context,
+                            input_file_id,
+                            None,
+                            submitted_languages,
+                            submission_ids,
                         )
                         await say(
                             _(
@@ -702,6 +706,7 @@ async def srt_translate_action(
                 await document_machine_translate(
                     context,
                     file_id,
+                    None,
                     cast(str, selected_language),
                     0,  # submission_id - not available in this context
                 )
@@ -2566,16 +2571,49 @@ async def handle_document_mt_job(
     client: AsyncWebClient,
 ):
     """Handle document machine translation job submission."""
-    await ack(response_action="clear")
     if await require_ray_client(context, prompt_login=False):
+        acked = False
         try:
-            # Get the selected languages from the form
             form_data = view["state"]["values"] if view else {}
+            selected_source_language = (
+                form_data.get("source_lang", {})
+                .get("language_mt_options", {})
+                .get("selected_option", {})
+                .get("value")
+            )
             selected_languages = (
                 form_data.get("target_langs", {})
                 .get("language_mt_options", {})
                 .get("selected_options", [])
             )
+
+            if not selected_source_language:
+                await ack(
+                    response_action="errors",
+                    errors={
+                        "source_lang": _(
+                            "Please select a source language for translation."
+                        )
+                    },
+                )
+                return
+
+            if any(
+                str(lang.get("value", "")) == selected_source_language
+                for lang in selected_languages
+            ):
+                await ack(
+                    response_action="errors",
+                    errors={
+                        "target_langs": _(
+                            "The source language cannot be the same as a target language. Please choose a different target language."
+                        )
+                    },
+                )
+                return
+
+            await ack(response_action="clear")
+            acked = True
 
             if not selected_languages:
                 await client.chat_postMessage(
@@ -2658,10 +2696,13 @@ async def handle_document_mt_job(
                         user_id=context["user_id"],
                         team_id=context["team_id"],
                         channel_id=context["channel_id"],
+                        source_language=selected_source_language,
                         target_language=target_language,
                     )
                     if is_dup:
-                        duplicate_submissions.append(f"{file_name} ({lang['value']})")
+                        duplicate_submissions.append(
+                            f"{file_name} ({selected_source_language} -> {lang['value']})"
+                        )
                         continue
 
                     submitted_languages.append(target_language)
@@ -2669,7 +2710,11 @@ async def handle_document_mt_job(
 
                 if submitted_languages:
                     await document_machine_translate(
-                        context, input_file_id, submitted_languages, submission_ids
+                        context,
+                        input_file_id,
+                        selected_source_language,
+                        submitted_languages,
+                        submission_ids,
                     )
                     submitted_for_file = True
 
@@ -2695,6 +2740,11 @@ async def handle_document_mt_job(
                 )
 
         except Exception as e:
+            if not acked:
+                try:
+                    await ack(response_action="clear")
+                except Exception:
+                    pass
             # Remove existing submissions if error occurs so that the user can submit again
             # Note: files and selected_languages may not be defined if error occurs early
             if "files" in locals() and "selected_languages" in locals():
