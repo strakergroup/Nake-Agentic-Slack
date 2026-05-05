@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: Sanitized Slack log payload strings before saving to the audit JSON column so malformed message encoding cannot break production Slack event handling (Wade Norman, 2026-05-05)
 - [Fixed]: Corrected the document MT trial PDF-limit test to assert against the listener module's config reference, preventing suite-level config patches from causing a false failure (Wade Norman, 2026-05-04)
 - [Changed]: Resolved `master` merge conflicts in Slack document MT by preserving source-language dedupe/payload tracking alongside grouped multi-target submission IDs (Wade Norman, 2026-05-04)
 - [Changed]: Document MT submissions now group non-duplicate target languages per source file into one `slack:job:machine:translate:v2` event with `target_languages` and per-language `submission_ids`, while retaining per-target submission records for dedupe and status tracking (Wade Norman, 2026-04-28)
