@@ -12,6 +12,7 @@ from ray_sdk.api.v3.file import is_valid_file_ext
 
 from ...constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from ...models import SlackGroupSettingsTranslation
+from ..file_submissions import parse_slack_file_option_value
 
 
 def convert_pydantic_to_slack_error(error: ValidationError) -> dict[str, str]:
@@ -55,6 +56,7 @@ class SlackFile(BaseModel):
 
     id: str
     title: str
+    size: int | None = None
 
     @classmethod
     def parse_slack_option(cls, option: dict[str, Any]) -> "SlackFile":
@@ -63,7 +65,8 @@ class SlackFile(BaseModel):
 
         https://api.slack.com/reference/block-kit/composition-objects#option
         """
-        return cls(id=option["value"], title=option["text"]["text"])
+        file_id, size = parse_slack_file_option_value(option["value"])
+        return cls(id=file_id, title=option["text"]["text"], size=size)
 
 
 class JobSearchForm(BaseModel):

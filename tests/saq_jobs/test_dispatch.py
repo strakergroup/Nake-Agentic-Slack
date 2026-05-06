@@ -15,6 +15,7 @@ import pytest
 from app.ray.events.models import MtSuccessResponseSchema
 from app.saq_jobs.dispatch import (
     _mt_success_idempotency_key,
+    _submission_queue_name,
     enqueue_document_mt_submission,
     enqueue_evaluation_submission,
     enqueue_log_notification,
@@ -64,6 +65,36 @@ def test_mt_success_idempotency_key_falls_back_when_task_uuid_missing():
     assert "no-task" in key
 
 
+def test_submission_queue_name_routes_known_small_files_to_small_queue():
+    with patch("app.saq_jobs.dispatch.app_config") as mock_cfg:
+        mock_cfg.saq_large_file_submission_threshold_mb = 10
+        mock_cfg.saq_file_submission_queue_name = "large-q"
+        mock_cfg.saq_small_file_submission_queue_name = "small-q"
+
+        queue_name = _submission_queue_name(
+            [{"id": "F1", "title": "small.docx", "size": 1024}]
+        )
+
+    assert queue_name == "small-q"
+
+
+def test_submission_queue_name_routes_large_or_unknown_files_to_limited_queue():
+    with patch("app.saq_jobs.dispatch.app_config") as mock_cfg:
+        mock_cfg.saq_large_file_submission_threshold_mb = 10
+        mock_cfg.saq_file_submission_queue_name = "large-q"
+        mock_cfg.saq_small_file_submission_queue_name = "small-q"
+
+        large_queue = _submission_queue_name(
+            [{"id": "F1", "title": "large.docx", "size": 10 * 1024 * 1024}]
+        )
+        unknown_queue = _submission_queue_name(
+            [{"id": "F1", "title": "unknown.docx", "size": None}]
+        )
+
+    assert large_queue == "large-q"
+    assert unknown_queue == "large-q"
+
+
 @pytest.mark.asyncio
 async def test_enqueue_mt_success_forwards_payload_and_settings():
     data = _success_data()
@@ -71,6 +102,7 @@ async def test_enqueue_mt_success_forwards_payload_and_settings():
         patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
         patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
     ):
+        mock_cfg.saq_file_delivery_queue_name = "delivery-q"
         mock_cfg.saq_file_upload_retries = 7
         mock_cfg.saq_file_upload_timeout_seconds = 444
         await enqueue_mt_success_upload(data)
@@ -78,6 +110,7 @@ async def test_enqueue_mt_success_forwards_payload_and_settings():
     mock_enq.assert_awaited_once()
     call_args = mock_enq.await_args
     assert call_args.args == ("slack_upload_mt_result",)
+    assert call_args.kwargs["queue_name"] == "delivery-q"
     assert call_args.kwargs["retries"] == 7
     assert call_args.kwargs["timeout"] == 444
     assert call_args.kwargs["retry_backoff"] is True
@@ -91,6 +124,7 @@ async def test_enqueue_transcription_upload_forwards_payload():
         patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
         patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
     ):
+        mock_cfg.saq_file_delivery_queue_name = "delivery-q"
         mock_cfg.saq_file_upload_retries = 5
         mock_cfg.saq_file_upload_timeout_seconds = 300
         await enqueue_transcription_upload(
@@ -107,6 +141,7 @@ async def test_enqueue_transcription_upload_forwards_payload():
     call_args = mock_enq.await_args
     assert call_args.args == ("slack_upload_transcription",)
     kwargs = call_args.kwargs
+    assert kwargs["queue_name"] == "delivery-q"
     assert kwargs["file_id"] == "f1"
     assert kwargs["file_name"] == "x.srt"
     assert kwargs["task_uuid"] == "t1"
@@ -123,8 +158,11 @@ async def test_enqueue_document_mt_submission_forwards_payload():
         patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
         patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
     ):
+        mock_cfg.saq_file_submission_queue_name = "submissions-q"
+        mock_cfg.saq_small_file_submission_queue_name = "small-submissions-q"
         mock_cfg.saq_file_upload_retries = 5
         mock_cfg.saq_file_upload_timeout_seconds = 900
+        mock_cfg.saq_small_file_upload_timeout_seconds = 300
         await enqueue_document_mt_submission(
             user_id="U1",
             team_id="T1",
@@ -138,6 +176,7 @@ async def test_enqueue_document_mt_submission_forwards_payload():
     call_args = mock_enq.await_args
     assert call_args.args == ("process_document_mt_submission",)
     kwargs = call_args.kwargs
+    assert kwargs["queue_name"] == "submissions-q"
     assert kwargs["retries"] == 5
     assert kwargs["timeout"] == 900
     assert kwargs["retry_backoff"] is True
@@ -148,13 +187,43 @@ async def test_enqueue_document_mt_submission_forwards_payload():
 
 
 @pytest.mark.asyncio
+async def test_enqueue_document_mt_submission_uses_small_file_timeout():
+    with (
+        patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
+        patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
+    ):
+        mock_cfg.saq_large_file_submission_threshold_mb = 10
+        mock_cfg.saq_file_submission_queue_name = "submissions-q"
+        mock_cfg.saq_small_file_submission_queue_name = "small-submissions-q"
+        mock_cfg.saq_file_upload_retries = 5
+        mock_cfg.saq_file_upload_timeout_seconds = 900
+        mock_cfg.saq_small_file_upload_timeout_seconds = 300
+        await enqueue_document_mt_submission(
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.pptx", "size": 1024}],
+            source_language="en",
+            target_languages=["zh-CN"],
+        )
+
+    kwargs = mock_enq.await_args.kwargs
+    assert kwargs["queue_name"] == "small-submissions-q"
+    assert kwargs["timeout"] == 300
+
+
+@pytest.mark.asyncio
 async def test_enqueue_evaluation_submission_forwards_payload():
     with (
         patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
         patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
     ):
+        mock_cfg.saq_file_submission_queue_name = "submissions-q"
+        mock_cfg.saq_small_file_submission_queue_name = "small-submissions-q"
         mock_cfg.saq_file_upload_retries = 5
         mock_cfg.saq_file_upload_timeout_seconds = 900
+        mock_cfg.saq_small_file_upload_timeout_seconds = 300
         await enqueue_evaluation_submission(
             user_id="U1",
             team_id="T1",
@@ -171,6 +240,7 @@ async def test_enqueue_evaluation_submission_forwards_payload():
     call_args = mock_enq.await_args
     assert call_args.args == ("process_evaluation_submission",)
     kwargs = call_args.kwargs
+    assert kwargs["queue_name"] == "submissions-q"
     assert kwargs["enterprise_id"] == "E1"
     assert kwargs["target_langs_uuid"] == ["lang-1"]
     assert kwargs["reference"] == "ref"
@@ -183,6 +253,7 @@ async def test_enqueue_verify_complete_upload_forwards_payload():
         patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
         patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
     ):
+        mock_cfg.saq_file_delivery_queue_name = "delivery-q"
         mock_cfg.saq_file_upload_retries = 5
         mock_cfg.saq_file_upload_timeout_seconds = 300
         await enqueue_verify_complete_upload(
@@ -191,6 +262,7 @@ async def test_enqueue_verify_complete_upload_forwards_payload():
 
     call_args = mock_enq.await_args
     assert call_args.args == ("slack_upload_verify_complete",)
+    assert call_args.kwargs["queue_name"] == "delivery-q"
     assert call_args.kwargs["grid_file_id"] == "g1"
     assert call_args.kwargs["client_id"] == "rc1"
     assert call_args.kwargs["channel_id"] == "C1"
@@ -203,6 +275,7 @@ async def test_enqueue_log_notification_forwards_payload_without_key():
         patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
         patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
     ):
+        mock_cfg.saq_background_queue_name = "background-q"
         mock_cfg.saq_logging_retries = 3
         mock_cfg.saq_logging_timeout_seconds = 30
         await enqueue_log_notification(
@@ -216,6 +289,7 @@ async def test_enqueue_log_notification_forwards_payload_without_key():
 
     call_args = mock_enq.await_args
     assert call_args.args == ("persist_log_notification",)
+    assert call_args.kwargs["queue_name"] == "background-q"
     assert "key" not in call_args.kwargs
     assert call_args.kwargs["retries"] == 3
     assert call_args.kwargs["timeout"] == 30
@@ -230,12 +304,14 @@ async def test_enqueue_mt_ts_edit_forwards_payload_with_send_ts_key():
         patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
         patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
     ):
+        mock_cfg.saq_background_queue_name = "background-q"
         mock_cfg.saq_logging_retries = 3
         mock_cfg.saq_logging_timeout_seconds = 30
         await enqueue_mt_ts_edit(send_ts="1700000000.0001", reply_ts="1700000001.0001")
 
     call_args = mock_enq.await_args
     assert call_args.args == ("persist_mt_ts_edit",)
+    assert call_args.kwargs["queue_name"] == "background-q"
     assert call_args.kwargs["key"] == "persist_mt_ts_edit:1700000000.0001"
     assert call_args.kwargs["send_ts"] == "1700000000.0001"
     assert call_args.kwargs["reply_ts"] == "1700000001.0001"

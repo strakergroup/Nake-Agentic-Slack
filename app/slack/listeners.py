@@ -64,6 +64,10 @@ from ..ray.settings import (
 )
 from ..redis import is_duplicate_event, redis_conn
 from .app import app
+from .file_submissions import (
+    slack_file_submission_payload,
+    slack_file_submission_payload_from_option,
+)
 from .language_validation import get_conflicting_target_language_labels
 from .listener_actions import (
     ai_translate_help,
@@ -2048,12 +2052,20 @@ async def evaluate_job_submit(
             )
         await client.chat_postMessage(channel=channel_id, text=msg)
         try:
+            file_payloads = [
+                slack_file_submission_payload(
+                    file_id=file.id,
+                    title=file.title,
+                    size=file.size,
+                )
+                for file in form.files
+            ]
             await enqueue_evaluation_submission(
                 user_id=context["user_id"],
                 team_id=context["team_id"],
                 enterprise_id=context.enterprise_id,
                 channel_id=channel_id,
-                files=[file.model_dump() for file in form.files],
+                files=file_payloads,
                 target_langs_uuid=form.target_langs_uuid,
                 reference=form.reference,
                 source_lang_uuid=form.source_lang_uuid,
@@ -2609,19 +2621,16 @@ async def handle_document_mt_job(
                 else None
             )
             context["channel_id"] = channel_id or context["user_id"]
-            selected_file_titles = [str(file["text"]["text"]) for file in files]
+            file_payloads = [
+                slack_file_submission_payload_from_option(file) for file in files
+            ]
+            selected_file_titles = [str(file["title"]) for file in file_payloads]
             await enqueue_document_mt_submission(
                 user_id=context["user_id"],
                 team_id=context["team_id"],
                 enterprise_id=context.enterprise_id,
                 channel_id=context["channel_id"],
-                files=[
-                    {
-                        "id": str(file["value"]),
-                        "title": str(file["text"]["text"]),
-                    }
-                    for file in files
-                ],
+                files=file_payloads,
                 source_language=selected_source_language,
                 target_languages=[str(lang["value"]) for lang in selected_languages],
             )

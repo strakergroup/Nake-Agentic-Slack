@@ -43,6 +43,7 @@ async def test_enqueue_passes_function_name_and_kwargs(mock_queue):
 async def test_enqueue_includes_optional_job_settings(mock_queue):
     await enqueue(
         "slack_upload_mt_result",
+        queue_name="delivery-q",
         key="idem-1",
         retries=5,
         timeout=300,

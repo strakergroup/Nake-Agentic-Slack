@@ -218,5 +218,5 @@ def test_map_file_options(message_file):
     assert options == initial_options
     assert options[0] == {
         "text": {"type": "plain_text", "text": message_file["title"], "emoji": False},
-        "value": message_file["id"],
+        "value": f"{message_file['id']}|{message_file['size']}",
     }

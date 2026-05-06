@@ -27,6 +27,30 @@ from app.config import config as app_config
 from app.ray.events.models import MtSuccessResponseSchema
 from app.saq_jobs.queue import enqueue
 
+FileSubmissionPayload = dict[str, str | int | None]
+
+
+def _large_file_submission_threshold_bytes() -> int:
+    return app_config.saq_large_file_submission_threshold_mb * 1024 * 1024
+
+
+def _submission_queue_name(files: list[FileSubmissionPayload]) -> str:
+    """Route known-small files to higher concurrency; unknown/large files stay limited."""
+    raw_file_sizes = [file.get("size") for file in files]
+    if not raw_file_sizes or any(not isinstance(size, int) for size in raw_file_sizes):
+        return app_config.saq_file_submission_queue_name
+    file_sizes = [size for size in raw_file_sizes if isinstance(size, int)]
+    if max(file_sizes) >= _large_file_submission_threshold_bytes():
+        return app_config.saq_file_submission_queue_name
+    return app_config.saq_small_file_submission_queue_name
+
+
+def _submission_timeout_seconds(files: list[FileSubmissionPayload]) -> int:
+    """Use shorter SAQ attempts for known-small submissions."""
+    if _submission_queue_name(files) == app_config.saq_small_file_submission_queue_name:
+        return app_config.saq_small_file_upload_timeout_seconds
+    return app_config.saq_file_upload_timeout_seconds
+
 
 def _mt_success_idempotency_key(success_data: MtSuccessResponseSchema) -> str:
     """Stable SAQ key for MT success uploads.
@@ -57,7 +81,7 @@ async def enqueue_document_mt_submission(
     team_id: str,
     enterprise_id: str | None,
     channel_id: str,
-    files: list[dict[str, str]],
+    files: list[FileSubmissionPayload],
     source_language: str | None,
     target_languages: list[str],
 ) -> None:
@@ -79,9 +103,10 @@ async def enqueue_document_mt_submission(
     )
     await enqueue(
         "process_document_mt_submission",
+        queue_name=_submission_queue_name(files),
         key=key,
         retries=app_config.saq_file_upload_retries,
-        timeout=app_config.saq_file_upload_timeout_seconds,
+        timeout=_submission_timeout_seconds(files),
         retry_delay=2.0,
         retry_backoff=True,
         user_id=user_id,
@@ -100,7 +125,7 @@ async def enqueue_evaluation_submission(
     team_id: str,
     enterprise_id: str | None,
     channel_id: str,
-    files: list[dict[str, str]],
+    files: list[FileSubmissionPayload],
     target_langs_uuid: list[str],
     reference: str,
     source_lang_uuid: str,
@@ -123,9 +148,10 @@ async def enqueue_evaluation_submission(
     )
     await enqueue(
         "process_evaluation_submission",
+        queue_name=_submission_queue_name(files),
         key=key,
         retries=app_config.saq_file_upload_retries,
-        timeout=app_config.saq_file_upload_timeout_seconds,
+        timeout=_submission_timeout_seconds(files),
         retry_delay=2.0,
         retry_backoff=True,
         user_id=user_id,
@@ -154,6 +180,7 @@ async def enqueue_mt_success_upload(
     """
     await enqueue(
         "slack_upload_mt_result",
+        queue_name=app_config.saq_file_delivery_queue_name,
         key=_mt_success_idempotency_key(success_data),
         retries=app_config.saq_file_upload_retries,
         timeout=app_config.saq_file_upload_timeout_seconds,
@@ -181,6 +208,7 @@ async def enqueue_transcription_upload(
     )
     await enqueue(
         "slack_upload_transcription",
+        queue_name=app_config.saq_file_delivery_queue_name,
         key=key,
         retries=app_config.saq_file_upload_retries,
         timeout=app_config.saq_file_upload_timeout_seconds,
@@ -207,6 +235,7 @@ async def enqueue_verify_complete_upload(
     key = f"slack_upload_verify_complete:{grid_file_id}:{channel_id}"
     await enqueue(
         "slack_upload_verify_complete",
+        queue_name=app_config.saq_file_delivery_queue_name,
         key=key,
         retries=app_config.saq_file_upload_retries,
         timeout=app_config.saq_file_upload_timeout_seconds,
@@ -235,6 +264,7 @@ async def enqueue_log_notification(
     """
     await enqueue(
         "persist_log_notification",
+        queue_name=app_config.saq_background_queue_name,
         retries=app_config.saq_logging_retries,
         timeout=app_config.saq_logging_timeout_seconds,
         retry_delay=1.0,
@@ -257,6 +287,7 @@ async def enqueue_mt_ts_edit(*, send_ts: str, reply_ts: str) -> None:
     """
     await enqueue(
         "persist_mt_ts_edit",
+        queue_name=app_config.saq_background_queue_name,
         key=f"persist_mt_ts_edit:{send_ts}",
         retries=app_config.saq_logging_retries,
         timeout=app_config.saq_logging_timeout_seconds,

@@ -1710,7 +1710,7 @@ class TestHandleNewJob:
                     "files": {
                         "file_options_C123": {
                             "selected_options": [
-                                {"value": "F123", "text": {"text": "file.txt"}}
+                                {"value": "F123|1234", "text": {"text": "file.txt"}}
                             ]
                         }
                     },
@@ -1785,7 +1785,7 @@ class TestHandleNewJob:
                     "files": {
                         "file_options_C123": {
                             "selected_options": [
-                                {"value": "F123", "text": {"text": "file.txt"}}
+                                {"value": "F123|1234", "text": {"text": "file.txt"}}
                             ]
                         }
                     },
@@ -1860,7 +1860,7 @@ class TestHandleNewJob:
                     "files": {
                         "file_options_C123": {
                             "selected_options": [
-                                {"value": "F123", "text": {"text": "file.txt"}}
+                                {"value": "F123|1234", "text": {"text": "file.txt"}}
                             ]
                         }
                     },
@@ -2381,7 +2381,7 @@ class TestEvaluateJobSubmit:
                     "files": {
                         "files": {
                             "selected_options": [
-                                {"value": "F123", "text": {"text": "file.txt"}}
+                                {"value": "F123|1234", "text": {"text": "file.txt"}}
                             ]
                         }
                     },
@@ -2490,7 +2490,7 @@ class TestEvaluateJobSubmit:
                     "files": {
                         "files": {
                             "selected_options": [
-                                {"value": "F123", "text": {"text": "file.txt"}}
+                                {"value": "F123|1234", "text": {"text": "file.txt"}}
                             ]
                         }
                     },
@@ -2521,7 +2521,7 @@ class TestEvaluateJobSubmit:
         mock_ack.assert_called_once()
         mock_enqueue.assert_awaited_once()
         assert mock_enqueue.await_args.kwargs["files"] == [
-            {"id": "F123", "title": "file.txt"}
+            {"id": "F123", "title": "file.txt", "size": 1234}
         ]
         assert mock_client.chat_postMessage.call_count >= 1
 
@@ -2955,7 +2955,7 @@ class TestHandleDocumentMtJob:
                     "files": {
                         "files": {
                             "selected_options": [
-                                {"value": "F123", "text": {"text": "file.pdf"}}
+                                {"value": "F123|1234", "text": {"text": "file.pdf"}}
                             ]
                         }
                     },
@@ -2980,7 +2980,7 @@ class TestHandleDocumentMtJob:
 
         mock_enqueue.assert_awaited_once()
         assert mock_enqueue.await_args.kwargs["files"] == [
-            {"id": "F123", "title": "file.pdf"}
+            {"id": "F123", "title": "file.pdf", "size": 1234}
         ]
         assert mock_enqueue.await_args.kwargs["target_languages"] == ["en"]
         mock_client.chat_postMessage.assert_awaited_once()
@@ -3040,7 +3040,7 @@ class TestHandleDocumentMtJob:
 
         mock_enqueue.assert_awaited_once()
         assert mock_enqueue.await_args.kwargs["files"] == [
-            {"id": "F123", "title": "file.pdf"}
+            {"id": "F123", "title": "file.pdf", "size": None}
         ]
         mock_client.chat_postMessage.assert_awaited_once()
 

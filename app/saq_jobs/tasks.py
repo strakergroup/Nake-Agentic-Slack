@@ -379,7 +379,7 @@ async def process_document_mt_submission(
     team_id: str,
     enterprise_id: str | None,
     channel_id: str,
-    files: list[dict[str, str]],
+    files: list[dict[str, Any]],
     source_language: str | None,
     target_languages: list[str],
 ) -> dict[str, Any]:
@@ -554,7 +554,7 @@ async def process_evaluation_submission(
     team_id: str,
     enterprise_id: str | None,
     channel_id: str,
-    files: list[dict[str, str]],
+    files: list[dict[str, Any]],
     target_langs_uuid: list[str],
     reference: str,
     source_lang_uuid: str,
@@ -722,16 +722,28 @@ async def persist_mt_ts_edit(
 # Task registry
 # --------------------------------------------------------------------------- #
 
+FILE_DELIVERY_TASK_FUNCTIONS = [
+    slack_upload_mt_result,
+    slack_upload_transcription,
+    slack_upload_verify_complete,
+]
+
+FILE_SUBMISSION_TASK_FUNCTIONS = [
+    process_document_mt_submission,
+    process_evaluation_submission,
+]
+
+BACKGROUND_TASK_FUNCTIONS = [
+    persist_log_notification,
+    persist_mt_ts_edit,
+]
+
 #: Public task name -> callable map. Imported by the worker module to register
 #: tasks. Keep names stable; jobs persisted in Redis reference these names.
 #: The matching :data:`app.saq_jobs._task_names.TaskName` literal is asserted
 #: in sync with this list by ``tests/saq_jobs/test_task_registry.py``.
 TASK_FUNCTIONS = [
-    slack_upload_mt_result,
-    slack_upload_transcription,
-    slack_upload_verify_complete,
-    process_document_mt_submission,
-    process_evaluation_submission,
-    persist_log_notification,
-    persist_mt_ts_edit,
+    *FILE_DELIVERY_TASK_FUNCTIONS,
+    *FILE_SUBMISSION_TASK_FUNCTIONS,
+    *BACKGROUND_TASK_FUNCTIONS,
 ]

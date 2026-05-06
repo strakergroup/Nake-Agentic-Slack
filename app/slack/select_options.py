@@ -19,6 +19,7 @@ from typing import Any, Iterable
 
 from app.api.verify import get_verify_languages, get_verify_source_languages
 from app.slack.buglog_notifier import notify_exception
+from app.slack.file_submissions import format_slack_file_option_value
 from app.translate import _
 
 from ..models import SlackGroupSettingsTranslation
@@ -164,6 +165,7 @@ def map_file_options(
     - https://api.slack.com/reference/block-kit/composition-objects#option.
     """
     max_title_length = 75
+    max_option_value_length = 150
     # Keep only the latest 10 files
     files = files[:10]
     file_options = []
@@ -177,9 +179,14 @@ def map_file_options(
         id = file.get("id")
         if not id or len(id) > max_title_length:
             continue
+        raw_size = file.get("size")
+        size = raw_size if isinstance(raw_size, int) else None
+        value = format_slack_file_option_value(id, size)
+        if len(value) > max_option_value_length:
+            continue
         option = {
             "text": {"type": "plain_text", "text": title, "emoji": False},
-            "value": id,
+            "value": value,
         }
         file_options.append(option)
     return file_options, file_options

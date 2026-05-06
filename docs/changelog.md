@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Aligned Slack file option value length validation with Slack's 150-character option value limit while preserving the 75-character display text limit (Wade Norman, 2026-05-06)
+- [Changed]: Slack file select options now carry known file sizes from the cached `files_list` response through modal submissions so queued file routing avoids refetching Slack metadata when possible (Wade Norman, 2026-05-06)
+- [Changed]: Moved Slack file submission metadata collection out of the listener module and made both SAQ submission attempts and HTTP file-transfer timeouts size-aware for known-small versus large/unknown files (Wade Norman, 2026-05-06)
+- [Changed]: Added Slack metadata based size-aware routing so known-small document MT and evaluation submissions use a higher-concurrency SAQ queue while large or unknown-size files remain on the limited submission queue (Wade Norman, 2026-05-06)
+- [Changed]: Split SAQ work across file-submission, file-delivery, and background queues so large Slack file submissions use lower concurrency and no longer share worker slots with result delivery or lightweight persistence tasks (Wade Norman, 2026-05-06)
 - [Changed]: Restored quality evaluation worker handling for Verify permission errors to use the existing administrator-contact message and kept validation feedback text aligned with the previous `error_message` behavior (Wade Norman, 2026-05-06)
 - [Changed]: Restored the document MT acknowledgement wording to the previous "Your document(s) ... are being translated" string while keeping the acknowledgement immediate (Wade Norman, 2026-05-06)
 - [Changed]: Removed the delayed document MT worker acknowledgement so users receive only the immediate processing message unless the queued task has validation, duplicate, or failure feedback (Wade Norman, 2026-05-06)
