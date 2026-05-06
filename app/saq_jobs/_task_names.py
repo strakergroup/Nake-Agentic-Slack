@@ -26,6 +26,8 @@ TaskName = Literal[
     "slack_upload_mt_result",
     "slack_upload_transcription",
     "slack_upload_verify_complete",
+    "process_document_mt_submission",
+    "process_evaluation_submission",
     "persist_log_notification",
     "persist_mt_ts_edit",
 ]

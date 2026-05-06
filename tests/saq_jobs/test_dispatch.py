@@ -15,6 +15,8 @@ import pytest
 from app.ray.events.models import MtSuccessResponseSchema
 from app.saq_jobs.dispatch import (
     _mt_success_idempotency_key,
+    enqueue_document_mt_submission,
+    enqueue_evaluation_submission,
     enqueue_log_notification,
     enqueue_mt_success_upload,
     enqueue_mt_ts_edit,
@@ -113,6 +115,66 @@ async def test_enqueue_transcription_upload_forwards_payload():
     assert kwargs["thread_ts"] == "100.0"
     assert kwargs["follow_up_message"] == "hello"
     assert "t1" in kwargs["key"] and "f1" in kwargs["key"]
+
+
+@pytest.mark.asyncio
+async def test_enqueue_document_mt_submission_forwards_payload():
+    with (
+        patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
+        patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
+    ):
+        mock_cfg.saq_file_upload_retries = 5
+        mock_cfg.saq_file_upload_timeout_seconds = 900
+        await enqueue_document_mt_submission(
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.pptx"}],
+            source_language="en",
+            target_languages=["zh-CN"],
+        )
+
+    call_args = mock_enq.await_args
+    assert call_args.args == ("process_document_mt_submission",)
+    kwargs = call_args.kwargs
+    assert kwargs["retries"] == 5
+    assert kwargs["timeout"] == 900
+    assert kwargs["retry_backoff"] is True
+    assert kwargs["user_id"] == "U1"
+    assert kwargs["files"] == [{"id": "F1", "title": "a.pptx"}]
+    assert kwargs["target_languages"] == ["zh-CN"]
+    assert kwargs["key"].startswith("process_document_mt_submission:")
+
+
+@pytest.mark.asyncio
+async def test_enqueue_evaluation_submission_forwards_payload():
+    with (
+        patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
+        patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
+    ):
+        mock_cfg.saq_file_upload_retries = 5
+        mock_cfg.saq_file_upload_timeout_seconds = 900
+        await enqueue_evaluation_submission(
+            user_id="U1",
+            team_id="T1",
+            enterprise_id="E1",
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.pdf"}],
+            target_langs_uuid=["lang-1"],
+            reference="ref",
+            source_lang_uuid="src",
+            workflow_uuid=None,
+            job_notes="",
+        )
+
+    call_args = mock_enq.await_args
+    assert call_args.args == ("process_evaluation_submission",)
+    kwargs = call_args.kwargs
+    assert kwargs["enterprise_id"] == "E1"
+    assert kwargs["target_langs_uuid"] == ["lang-1"]
+    assert kwargs["reference"] == "ref"
+    assert kwargs["key"].startswith("process_evaluation_submission:")
 
 
 @pytest.mark.asyncio

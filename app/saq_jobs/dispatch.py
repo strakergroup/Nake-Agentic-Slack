@@ -19,6 +19,8 @@ Keeping this layer here means:
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from app.config import config as app_config
@@ -40,6 +42,102 @@ def _mt_success_idempotency_key(success_data: MtSuccessResponseSchema) -> str:
         f"{success_data.file_id}:"
         f"{success_data.channel_id}:"
         f"{success_data.target_language}"
+    )
+
+
+def _stable_hash(value: Any) -> str:
+    """Short deterministic hash for idempotency-key payload segments."""
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()[:24]
+
+
+async def enqueue_document_mt_submission(
+    *,
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    channel_id: str,
+    files: list[dict[str, str]],
+    source_language: str | None,
+    target_languages: list[str],
+) -> None:
+    """Enqueue durable document MT submission processing.
+
+    The task owns Slack download, file-server upload, duplicate submission
+    tracking, and MT event publication. The key prevents duplicate modal
+    submissions for the same Slack files/languages from running concurrently.
+    """
+    key = "process_document_mt_submission:" + _stable_hash(
+        {
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": channel_id,
+            "files": files,
+            "source_language": source_language,
+            "target_languages": target_languages,
+        }
+    )
+    await enqueue(
+        "process_document_mt_submission",
+        key=key,
+        retries=app_config.saq_file_upload_retries,
+        timeout=app_config.saq_file_upload_timeout_seconds,
+        retry_delay=2.0,
+        retry_backoff=True,
+        user_id=user_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+        channel_id=channel_id,
+        files=files,
+        source_language=source_language,
+        target_languages=target_languages,
+    )
+
+
+async def enqueue_evaluation_submission(
+    *,
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    channel_id: str,
+    files: list[dict[str, str]],
+    target_langs_uuid: list[str],
+    reference: str,
+    source_lang_uuid: str,
+    workflow_uuid: str | None,
+    job_notes: str,
+) -> None:
+    """Enqueue durable quality-evaluation / human-translation submission processing."""
+    key = "process_evaluation_submission:" + _stable_hash(
+        {
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": channel_id,
+            "files": files,
+            "target_langs_uuid": target_langs_uuid,
+            "reference": reference,
+            "source_lang_uuid": source_lang_uuid,
+            "workflow_uuid": workflow_uuid,
+            "job_notes": job_notes,
+        }
+    )
+    await enqueue(
+        "process_evaluation_submission",
+        key=key,
+        retries=app_config.saq_file_upload_retries,
+        timeout=app_config.saq_file_upload_timeout_seconds,
+        retry_delay=2.0,
+        retry_backoff=True,
+        user_id=user_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+        channel_id=channel_id,
+        files=files,
+        target_langs_uuid=target_langs_uuid,
+        reference=reference,
+        source_lang_uuid=source_lang_uuid,
+        workflow_uuid=workflow_uuid,
+        job_notes=job_notes,
     )
 
 

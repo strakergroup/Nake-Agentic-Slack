@@ -39,9 +39,10 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any
+from typing import Any, cast
 
 from saq.types import Context
+from slack_bolt.context.async_context import AsyncBoltContext
 
 from app.auth.connector import get_slack_user
 from app.ray.events.models import MtSuccessResponseSchema
@@ -367,6 +368,315 @@ async def slack_upload_verify_complete(
 
 
 # --------------------------------------------------------------------------- #
+# Slack submission processing tasks
+# --------------------------------------------------------------------------- #
+
+
+async def process_document_mt_submission(
+    ctx: Context,
+    *,
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    channel_id: str,
+    files: list[dict[str, str]],
+    source_language: str | None,
+    target_languages: list[str],
+) -> dict[str, Any]:
+    """Durable document MT submission processing.
+
+    Downloads Slack files into unique temp paths, uploads valid files to the
+    file server, records duplicate-submission state, and publishes the MT job
+    request. Slack/RAY credentials are re-fetched inside the worker.
+    """
+    from slack_sdk.web.async_client import AsyncWebClient
+
+    from app.auth.connector import (
+        RayConnection,
+        get_bot_token_async,
+        get_ray_connection,
+        get_verify_trial_status,
+    )
+    from app.config import config
+    from app.ray.submissions import check_and_record_submission_async
+    from app.ray.utils import upload_to_file_server, validate_file
+    from app.slack.listener_actions import document_machine_translate
+    from app.slack.web import download_file
+
+    job = ctx.get("job")
+    attempt = job.attempts if job is not None else 1
+    log_extra = {
+        "user_id": user_id,
+        "team_id": team_id,
+        "channel_id": channel_id,
+        "attempt": attempt,
+        "file_count": len(files),
+    }
+    ray_connection = await get_ray_connection(user_id, team_id, enterprise_id)
+    if ray_connection is None or ray_connection.client is None:
+        logger.error("Document MT submission has no RAY client", extra=log_extra)
+        return {"status": "no_ray_client"}
+
+    bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
+    if not bot_token:
+        logger.error("Document MT submission has no Slack bot token", extra=log_extra)
+        return {"status": "no_bot_token"}
+
+    ray_client = ray_connection.client
+    if ray_client.is_trial is None:
+        ray_client.is_trial, ray_client.trial_remaining = await get_verify_trial_status(
+            ray_client.id_token
+        )
+    max_pdf_size_bytes = (
+        config.document_mt_pdf_max_size_bytes if ray_client.is_trial else None
+    )
+
+    client = AsyncWebClient(token=bot_token)
+    context = {
+        "user_id": user_id,
+        "team_id": team_id,
+        "channel_id": channel_id,
+        "ray": RayConnection(ray_connection.super_group, ray_client),
+    }
+    downloaded_files: list[str] = []
+    files_uploaded: list[str] = []
+    duplicate_submissions: list[str] = []
+    validation_errors: list[str] = []
+
+    try:
+        for file_data in files:
+            slack_file_id = file_data["id"]
+            file_title = file_data.get("title") or slack_file_id
+            input_file = await download_file(
+                client=client, file_id=slack_file_id, http=None
+            )
+            downloaded_files.append(input_file)
+
+            is_valid_file_type, is_valid_content, error_message = validate_file(
+                input_file,
+                max_pdf_size_bytes=max_pdf_size_bytes,
+            )
+            if not is_valid_file_type:
+                validation_errors.append(
+                    _(
+                        f"The file ({file_title}) file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
+                    )
+                )
+                continue
+            if not is_valid_content:
+                validation_errors.append(error_message or _("Invalid file content."))
+                continue
+
+            input_file_id = await upload_to_file_server(input_file)
+            submitted_languages: list[str] = []
+            submission_ids: dict[str, int] = {}
+            for target_language in target_languages:
+                is_dup, record = await check_and_record_submission_async(
+                    path=input_file,
+                    file_name=os.path.basename(input_file),
+                    file_id=input_file_id,
+                    user_id=user_id,
+                    team_id=team_id,
+                    channel_id=channel_id,
+                    source_language=source_language or "",
+                    target_language=target_language,
+                )
+                if is_dup:
+                    duplicate_submissions.append(
+                        f"{file_title} ({source_language or 'auto'} -> {target_language})"
+                    )
+                    continue
+
+                submitted_languages.append(target_language)
+                submission_ids[target_language] = record.id
+
+            if submitted_languages:
+                await document_machine_translate(
+                    cast(AsyncBoltContext, context),
+                    input_file_id,
+                    source_language,
+                    submitted_languages,
+                    submission_ids,
+                )
+                files_uploaded.append(file_title)
+
+        if duplicate_submissions:
+            await client.chat_postMessage(
+                channel=user_id,
+                text=_(
+                    f"Please allow the system to complete the ongoing translation(s) *({', '.join(duplicate_submissions)})* to prevent duplicate submissions."
+                ),
+            )
+        for message in validation_errors:
+            await client.chat_postMessage(channel=user_id, text=message)
+
+        return {
+            "status": "processed",
+            "uploaded_count": len(files_uploaded),
+            "duplicate_count": len(duplicate_submissions),
+            "validation_error_count": len(validation_errors),
+        }
+    except Exception:
+        logger.exception(
+            "Document MT submission failed; SAQ will retry", extra=log_extra
+        )
+        if job is not None and not job.retryable:
+            notify_exception(
+                Exception("Queued document MT submission failed"),
+                "Queued document MT submission failed (final attempt)",
+            )
+            await client.chat_postMessage(
+                channel=user_id,
+                text=_(
+                    "There was an error submitting your translation request, please try again."
+                ),
+            )
+        raise
+    finally:
+        for path in downloaded_files:
+            _safe_unlink(path)
+            parent_dir = os.path.dirname(path)
+            try:
+                if (
+                    parent_dir
+                    and os.path.exists(parent_dir)
+                    and not os.listdir(parent_dir)
+                ):
+                    os.rmdir(parent_dir)
+            except OSError:
+                pass
+
+
+async def process_evaluation_submission(
+    ctx: Context,
+    *,
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    channel_id: str,
+    files: list[dict[str, str]],
+    target_langs_uuid: list[str],
+    reference: str,
+    source_lang_uuid: str,
+    workflow_uuid: str | None,
+    job_notes: str,
+) -> dict[str, Any]:
+    """Durable quality-evaluation / human-translation submission processing."""
+    from slack_sdk.web.async_client import AsyncWebClient
+
+    from app.api.verify import VerifyAPIError, submit_evaluation_job
+    from app.auth.connector import get_bot_token_async, get_ray_client
+    from app.ray.utils import validate_file
+    from app.slack.listeners import _publish_pdf_evaluate_convert
+    from app.slack.web import download_file
+
+    job = ctx.get("job")
+    attempt = job.attempts if job is not None else 1
+    log_extra = {
+        "user_id": user_id,
+        "team_id": team_id,
+        "channel_id": channel_id,
+        "attempt": attempt,
+        "file_count": len(files),
+    }
+    ray_client = await get_ray_client(user_id, team_id, enterprise_id)
+    if ray_client is None:
+        logger.error("Evaluation submission has no RAY client", extra=log_extra)
+        return {"status": "no_ray_client"}
+
+    bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
+    if not bot_token:
+        logger.error("Evaluation submission has no Slack bot token", extra=log_extra)
+        return {"status": "no_bot_token"}
+
+    client = AsyncWebClient(token=bot_token)
+    downloaded_files: list[str] = []
+    input_files: list[str] = []
+    file_titles: list[str] = []
+
+    try:
+        for file_data in files:
+            input_file = await download_file(
+                client=client, file_id=file_data["id"], http=None
+            )
+            downloaded_files.append(input_file)
+            is_valid, is_valid_content, error_message = validate_file(input_file)
+            if not is_valid or not is_valid_content:
+                await client.chat_postMessage(
+                    channel=channel_id,
+                    text=error_message,
+                )
+                continue
+            input_files.append(input_file)
+            file_titles.append(file_data["title"])
+
+        if not input_files:
+            return {"status": "no_valid_files"}
+
+        has_pdf = any(title.lower().endswith(".pdf") for title in file_titles)
+        if has_pdf:
+            await _publish_pdf_evaluate_convert(
+                ray_client=ray_client,
+                input_files=input_files,
+                file_titles=file_titles,
+                target_langs_uuid=target_langs_uuid,
+                reference=reference,
+                channel_id=channel_id,
+                source_lang_uuid=source_lang_uuid,
+                workflow_uuid=workflow_uuid,
+                job_notes=job_notes,
+            )
+        else:
+            await submit_evaluation_job(
+                ray_client,
+                input_files,
+                target_langs_uuid,
+                reference,
+                source_language_uuid=source_lang_uuid,
+                workflow_uuid=workflow_uuid,
+                job_notes=job_notes,
+            )
+        return {"status": "submitted", "file_count": len(input_files)}
+    except VerifyAPIError:
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "There was an error processing your request. You do not have permission to perform this action. Please contact your team administrator."
+            ),
+        )
+        return {"status": "permission_denied"}
+    except Exception:
+        logger.exception(
+            "Evaluation submission failed; SAQ will retry", extra=log_extra
+        )
+        if job is not None and not job.retryable:
+            notify_exception(
+                Exception("Queued evaluation submission failed"),
+                "Queued evaluation submission failed (final attempt)",
+            )
+            error_msg = (
+                "There was an error submitting your human translation request, please try again."
+                if workflow_uuid
+                else "There was an error submitting your quality evaluation request, please try again."
+            )
+            await client.chat_postMessage(channel=channel_id, text=_(error_msg))
+        raise
+    finally:
+        for path in downloaded_files:
+            _safe_unlink(path)
+            parent_dir = os.path.dirname(path)
+            try:
+                if (
+                    parent_dir
+                    and os.path.exists(parent_dir)
+                    and not os.listdir(parent_dir)
+                ):
+                    os.rmdir(parent_dir)
+            except OSError:
+                pass
+
+
+# --------------------------------------------------------------------------- #
 # Logging / persistence tasks
 # --------------------------------------------------------------------------- #
 
@@ -420,6 +730,8 @@ TASK_FUNCTIONS = [
     slack_upload_mt_result,
     slack_upload_transcription,
     slack_upload_verify_complete,
+    process_document_mt_submission,
+    process_evaluation_submission,
     persist_log_notification,
     persist_mt_ts_edit,
 ]

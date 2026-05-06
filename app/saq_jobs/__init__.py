@@ -11,6 +11,8 @@ top-level ``saq`` package import.
 """
 
 from .dispatch import (
+    enqueue_document_mt_submission,
+    enqueue_evaluation_submission,
     enqueue_log_notification,
     enqueue_mt_success_upload,
     enqueue_mt_ts_edit,
@@ -24,6 +26,8 @@ __all__ = [
     "enqueue_log_notification",
     "enqueue_mt_success_upload",
     "enqueue_mt_ts_edit",
+    "enqueue_document_mt_submission",
+    "enqueue_evaluation_submission",
     "enqueue_transcription_upload",
     "enqueue_verify_complete_upload",
     "get_queue",

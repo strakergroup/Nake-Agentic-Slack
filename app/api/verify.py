@@ -7,6 +7,7 @@ import httpx
 
 from app.auth.connector import RayClient, SlackUser, get_ray_client
 from app.config import domains
+from app.constants import FILE_TRANSFER_TIMEOUT
 from app.ray.utils import get_filename_from_header
 from app.slack.buglog_notifier import notify_exception
 
@@ -48,7 +49,7 @@ async def submit_evaluation_job(
     target_languages_data["workflow"] = workflow_uuid or ""
 
     # Create a job using streaming for file uploads
-    async with httpx.AsyncClient(timeout=300) as client:
+    async with httpx.AsyncClient(timeout=FILE_TRANSFER_TIMEOUT) as client:
         # Create a multipart form with streaming files
         files = [("files", open(file, "rb")) for file in file_path]
 

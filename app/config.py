@@ -58,7 +58,7 @@ class StrakerConfig(BaseSettings):
     saq_worker_enabled: bool = True
     saq_worker_concurrency: int = Field(default=10, ge=1, le=100)
     saq_file_upload_retries: int = Field(default=5, ge=0, le=20)
-    saq_file_upload_timeout_seconds: int = Field(default=300, ge=10, le=3600)
+    saq_file_upload_timeout_seconds: int = Field(default=900, ge=10, le=3600)
     saq_logging_retries: int = Field(default=3, ge=0, le=20)
     saq_logging_timeout_seconds: int = Field(default=30, ge=5, le=600)
 

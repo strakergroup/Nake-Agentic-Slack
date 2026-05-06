@@ -39,7 +39,7 @@ runtime.
 ```mermaid
 flowchart LR
     subgraph FastAPI["uvicorn / FastAPI process"]
-        Router["app/routers/ray.py\n(MT success / transcribe / verify)"]
+        Router["app/routers/ray.py + app/slack/listeners.py\n(MT / QE submissions + result delivery)"]
         Logger["app/ray/events/logging.py\n(post_notification)"]
         Dispatch["app/saq_jobs/dispatch.py\nenqueue_*_upload\nenqueue_log_notification\nenqueue_mt_ts_edit"]
         Queue["app/saq_jobs/queue.py\nenqueue()"]
@@ -144,7 +144,7 @@ All values live in `app/config.py` and are documented in `.env.example`.
 | `SAQ_WORKER_ENABLED`              | `True`                 | Set to `False` to disable the in-process worker (e.g. when running the worker out of process). |
 | `SAQ_WORKER_CONCURRENCY`          | `10`                   | Maximum jobs executing in parallel inside the in-process worker.                               |
 | `SAQ_FILE_UPLOAD_RETRIES`         | `5`                    | Per-job retry budget for `slack_upload_*` tasks. SAQ uses jittered exponential backoff.        |
-| `SAQ_FILE_UPLOAD_TIMEOUT_SECONDS` | `300`                  | Per-attempt timeout for file-upload tasks (covers download-from-file-server + Slack upload).   |
+| `SAQ_FILE_UPLOAD_TIMEOUT_SECONDS` | `900`                  | Per-attempt timeout for large file-submission/upload tasks, sized for files up to 500 MB.      |
 | `SAQ_LOGGING_RETRIES`             | `3`                    | Per-job retry budget for `persist_log_notification` / `persist_mt_ts_edit`.                    |
 | `SAQ_LOGGING_TIMEOUT_SECONDS`     | `30`                   | Per-attempt timeout for the logging tasks.                                                     |
 
@@ -158,6 +158,8 @@ Ray events do not produce duplicate Slack uploads.
 
 | Trigger                                         | Previous implementation                      | New SAQ task                   | Idempotency key                                              |
 | ----------------------------------------------- | -------------------------------------------- | ------------------------------ | ------------------------------------------------------------ |
+| Document MT modal submission                    | synchronous Slack download → file-server upload → MT publish | `process_document_mt_submission` | `process_document_mt_submission:{stable submission hash}` |
+| QE / human-translation modal submission         | synchronous Slack download → Verify/file-server upload | `process_evaluation_submission` | `process_evaluation_submission:{stable submission hash}` |
 | `verify:slack:document:translated` (MT success) | `_handle_mt_success_background`              | `slack_upload_mt_result`       | `mt_upload:{task_uuid}:{file_id}:{tl}:{thread_ts}`           |
 | `verify:slack:transcribe:complete`              | `_handle_transcribe_success_background`      | `slack_upload_transcription`   | `transcribe_upload:{task_uuid}:{file_id}:{channel_id}`       |
 | `verify:slack:evaluate:complete`                | `_handle_verify_complete_background`         | `slack_upload_verify_complete` | `verify_upload:{grid_file_id}:{channel_id}`                  |

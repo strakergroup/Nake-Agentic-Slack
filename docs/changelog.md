@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Restored quality evaluation worker handling for Verify permission errors to use the existing administrator-contact message and kept validation feedback text aligned with the previous `error_message` behavior (Wade Norman, 2026-05-06)
+- [Changed]: Restored the document MT acknowledgement wording to the previous "Your document(s) ... are being translated" string while keeping the acknowledgement immediate (Wade Norman, 2026-05-06)
+- [Changed]: Removed the delayed document MT worker acknowledgement so users receive only the immediate processing message unless the queued task has validation, duplicate, or failure feedback (Wade Norman, 2026-05-06)
+- [Changed]: Removed info-level startup logs from queued document MT and evaluation submission SAQ tasks while retaining warning/error retry logs (Wade Norman, 2026-05-06)
+- [Changed]: Queued document MT and evaluation submissions through durable idempotent SAQ jobs, unified Slack file download cleanup with unique temp paths, and increased file-transfer/SAQ timeouts for 500 MB uploads (Wade Norman, 2026-05-05)
 - [Fixed]: Corrected the document MT trial PDF-limit test to assert against the listener module's config reference, preventing suite-level config patches from causing a false failure (Wade Norman, 2026-05-04)
 - [Changed]: Resolved `master` merge conflicts in Slack document MT by preserving source-language dedupe/payload tracking alongside grouped multi-target submission IDs (Wade Norman, 2026-05-04)
 - [Changed]: Document MT submissions now group non-duplicate target languages per source file into one `slack:job:machine:translate:v2` event with `target_languages` and per-language `submission_ids`, while retaining per-target submission records for dedupe and status tracking (Wade Norman, 2026-04-28)
