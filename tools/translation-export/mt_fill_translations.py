@@ -21,6 +21,7 @@ TRANSLATION_COLUMN = "target_text"
 DB_LABEL_COLUMN = "source_text"
 DB_LANG_COLUMN = "target_language"
 NOTES_COLUMN = "notes"
+TRANSLATOR_METADATA_SHEET = "_translation_metadata"
 ENGLISH_PREFIXES = ("en", "gb", "us")
 DEFAULT_GOOGLE_TRANSLATE_BATCH_SIZE = 100
 GOOGLE_TRANSLATE_BATCH_SIZE_ENV = "TRANSLATION_EXPORT_MT_BATCH_SIZE"
@@ -233,11 +234,45 @@ def column_index(indexes: dict[str, int], column: str) -> int | None:
     )
 
 
+def infer_target_language_from_path(xlsx_path: Path) -> str | None:
+    """Infer legacy translator workbook language from names like translations_fr.xlsx."""
+    stem = xlsx_path.stem
+    if "_" not in stem:
+        return None
+    return stem.rsplit("_", 1)[1] or None
+
+
+def read_translator_metadata(workbook) -> dict[int, str]:
+    if TRANSLATOR_METADATA_SHEET not in workbook.sheetnames:
+        return {}
+    metadata_sheet = workbook[TRANSLATOR_METADATA_SHEET]
+    indexes = header_indexes(metadata_sheet)
+    label_index = column_index(indexes, DB_LABEL_COLUMN)
+    if label_index is None:
+        return {}
+    labels_by_visible_row: dict[int, str] = {}
+    for metadata_row_number in range(2, metadata_sheet.max_row + 1):
+        label = metadata_sheet.cell(
+            row=metadata_row_number,
+            column=label_index,
+        ).value
+        if label:
+            labels_by_visible_row[metadata_row_number - 1] = str(label)
+    return labels_by_visible_row
+
+
 def append_note(existing: object, note: str) -> str:
     existing_text = "" if existing is None else str(existing).strip()
     if not existing_text:
         return note
     return f"{existing_text}; {note}"
+
+
+def append_row_note(sheet, row_number: int, notes_index: int | None, note: str) -> None:
+    if notes_index is None:
+        return
+    notes_cell = sheet.cell(row=row_number, column=notes_index)
+    notes_cell.value = append_note(notes_cell.value, note)
 
 
 def decode_html_entities(value: str) -> str:
@@ -261,24 +296,36 @@ def fill_workbook_translations(
         label_index = column_index(indexes, DB_LABEL_COLUMN)
         lang_index = column_index(indexes, DB_LANG_COLUMN)
         translation_index = column_index(indexes, TRANSLATION_COLUMN)
-        missing_columns = [
-            column
-            for column, index in (
-                (DB_LABEL_COLUMN, label_index),
-                (DB_LANG_COLUMN, lang_index),
-                (TRANSLATION_COLUMN, translation_index),
-            )
-            if index is None
-        ]
+        translator_metadata = read_translator_metadata(workbook)
+        is_single_column_translator_workbook = bool(translator_metadata)
+        inferred_db_lang = (
+            None
+            if lang_index is not None
+            else infer_target_language_from_path(xlsx_path)
+        )
+        missing_columns = []
+        if not is_single_column_translator_workbook:
+            missing_columns = [
+                column
+                for column, index in (
+                    (DB_LABEL_COLUMN, label_index),
+                    (TRANSLATION_COLUMN, translation_index),
+                )
+                if index is None
+            ]
+        if lang_index is None and inferred_db_lang is None:
+            missing_columns.append(DB_LANG_COLUMN)
         if missing_columns:
             missing = ", ".join(sorted(missing_columns))
             raise ValueError(f"Workbook is missing required columns: {missing}")
-        assert label_index is not None
-        assert lang_index is not None
-        assert translation_index is not None
+        if not is_single_column_translator_workbook:
+            assert label_index is not None
+            assert translation_index is not None
 
-        notes_index = indexes.get(NOTES_COLUMN)
-        if notes_index is None:
+        notes_index = (
+            None if is_single_column_translator_workbook else indexes.get(NOTES_COLUMN)
+        )
+        if notes_index is None and not is_single_column_translator_workbook:
             notes_index = sheet.max_column + 1
             sheet.cell(row=1, column=notes_index).value = NOTES_COLUMN
         filled = 0
@@ -287,24 +334,44 @@ def fill_workbook_translations(
         row_counts_by_lang: dict[str, int] = defaultdict(int)
         matching_source_rows_by_lang: dict[str, list[int]] = defaultdict(list)
         rows_by_google_lang: dict[str, list[WorkbookTranslationRow]] = defaultdict(list)
-        for row_number in range(2, sheet.max_row + 1):
-            label_cell = sheet.cell(row=row_number, column=label_index)
-            lang_cell = sheet.cell(row=row_number, column=lang_index)
+        start_row = 1 if is_single_column_translator_workbook else 2
+        for row_number in range(start_row, sheet.max_row + 1):
+            label_value = (
+                translator_metadata.get(row_number)
+                if is_single_column_translator_workbook
+                else sheet.cell(row=row_number, column=label_index).value
+            )
+            lang_cell = (
+                sheet.cell(row=row_number, column=lang_index)
+                if lang_index is not None
+                else None
+            )
             translation_cell = sheet.cell(
                 row=row_number,
-                column=translation_index,
+                column=1 if is_single_column_translator_workbook else translation_index,
             )
-            if not label_cell.value or not lang_cell.value:
+            if not label_value:
                 continue
-            db_lang = str(lang_cell.value)
-            source_text = str(label_cell.value)
+            db_lang = str(
+                lang_cell.value if lang_cell is not None else inferred_db_lang
+            )
+            source_text = str(label_value)
             total += 1
             if not is_english_language(db_lang):
                 row_counts_by_lang[db_lang] += 1
-            if translation_cell.value and str(translation_cell.value).strip():
+            translation_value = (
+                "" if translation_cell.value is None else str(translation_cell.value)
+            )
+            has_existing_translation = bool(translation_value.strip())
+            if (
+                is_single_column_translator_workbook
+                and translation_value.strip() == source_text.strip()
+            ):
+                has_existing_translation = False
+            if has_existing_translation:
                 if (
                     not is_english_language(db_lang)
-                    and str(translation_cell.value).strip() == source_text.strip()
+                    and translation_value.strip() == source_text.strip()
                 ):
                     matching_source_rows_by_lang[db_lang].append(row_number)
                 continue
@@ -324,8 +391,7 @@ def fill_workbook_translations(
                 )
             except Exception as exc:
                 errors.append(f"row {row_number}: {exc}")
-                notes_cell = sheet.cell(row=row_number, column=notes_index)
-                notes_cell.value = append_note(notes_cell.value, f"MT error: {exc}")
+                append_row_note(sheet, row_number, notes_index, f"MT error: {exc}")
 
         for google_target_lang, rows in rows_by_google_lang.items():
             for batch in batched(rows, resolved_batch_size):
@@ -340,12 +406,10 @@ def fill_workbook_translations(
                 except Exception as exc:
                     for row in batch:
                         errors.append(f"row {row.row_number}: {exc}")
-                        notes_cell = sheet.cell(
-                            row=row.row_number,
-                            column=notes_index,
-                        )
-                        notes_cell.value = append_note(
-                            notes_cell.value,
+                        append_row_note(
+                            sheet,
+                            row.row_number,
+                            notes_index,
                             f"MT error: {exc}",
                         )
                     continue
@@ -354,7 +418,9 @@ def fill_workbook_translations(
                     translation_text = decode_html_entities(translation)
                     translation_cell = sheet.cell(
                         row=row.row_number,
-                        column=translation_index,
+                        column=1
+                        if is_single_column_translator_workbook
+                        else translation_index,
                     )
                     translation_cell.value = translation_text
                     if (
@@ -374,9 +440,10 @@ def fill_workbook_translations(
                 )
                 errors.append(error)
                 for row_number in matching_rows:
-                    notes_cell = sheet.cell(row=row_number, column=notes_index)
-                    notes_cell.value = append_note(
-                        notes_cell.value,
+                    append_row_note(
+                        sheet,
+                        row_number,
+                        notes_index,
                         "MT validation error: translation matches source text across "
                         "a suspicious share of this workbook",
                     )

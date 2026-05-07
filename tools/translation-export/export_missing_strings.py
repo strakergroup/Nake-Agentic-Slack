@@ -39,6 +39,8 @@ OUTPUT_COLUMNS = (
     "target_text",
     "max_length",
 )
+TRANSLATOR_METADATA_SHEET = "_translation_metadata"
+TRANSLATOR_METADATA_COLUMNS = ("source_text", "max_length")
 
 
 @dataclass
@@ -97,7 +99,7 @@ def tag_placeholders(text_value: str) -> str:
     """Match app.translate.Translator placeholder tagging for DB labels."""
     tagged_text = text_value
     for index, match in enumerate(PLACEHOLDER_PATTERN.finditer(text_value), start=1):
-        tagged_text = tagged_text.replace(match.group(), f"<x id={index}>")
+        tagged_text = tagged_text.replace(match.group(), f"<x id={index}/>")
     return tagged_text
 
 
@@ -265,6 +267,16 @@ def write_csv(rows: Sequence[MissingStringRow], output_path: Path) -> None:
         writer.writerows(asdict(row) for row in rows)
 
 
+def write_translator_csv(
+    rows: Sequence[MissingStringRow],
+    output_path: Path,
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerows([row.source_text] for row in rows)
+
+
 def write_json(rows: Sequence[MissingStringRow], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -295,11 +307,47 @@ def write_xlsx(rows: Sequence[MissingStringRow], output_path: Path) -> None:
     workbook.save(output_path)
 
 
+def write_translator_xlsx(
+    rows: Sequence[MissingStringRow],
+    output_path: Path,
+) -> None:
+    try:
+        import openpyxl
+    except ImportError as exc:
+        raise RuntimeError(
+            "XLSX export requires openpyxl. Run through the dev environment."
+        ) from exc
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "Translations"
+    for row_number, row in enumerate(rows, start=1):
+        sheet.cell(row=row_number, column=1).value = row.source_text
+
+    metadata_sheet = workbook.create_sheet(TRANSLATOR_METADATA_SHEET)
+    metadata_sheet.append(list(TRANSLATOR_METADATA_COLUMNS))
+    for row in rows:
+        metadata_sheet.append([row.source_text, row.max_length])
+    metadata_sheet.sheet_state = "hidden"
+    workbook.save(output_path)
+
+
 def write_rows(
     rows: Sequence[MissingStringRow],
     output_path: Path,
     output_format: str,
+    audience: str = "internal",
 ) -> None:
+    if audience == "translator":
+        if output_format == "csv":
+            write_translator_csv(rows, output_path)
+            return
+        if output_format == "xlsx":
+            write_translator_xlsx(rows, output_path)
+            return
+        raise ValueError("Translator exports support only csv and xlsx formats")
+
     if output_format == "csv":
         write_csv(rows, output_path)
         return
@@ -327,6 +375,7 @@ def write_rows_by_language(
     output_path: Path,
     output_format: str,
     db_langs: Sequence[str],
+    audience: str = "internal",
 ) -> list[Path]:
     rows_by_lang: dict[str, list[MissingStringRow]] = defaultdict(list)
     for row in rows:
@@ -335,7 +384,12 @@ def write_rows_by_language(
     output_paths: list[Path] = []
     for db_lang in dict.fromkeys(db_langs):
         language_output_path = split_output_path(output_path, db_lang, output_format)
-        write_rows(rows_by_lang.get(db_lang, []), language_output_path, output_format)
+        write_rows(
+            rows_by_lang.get(db_lang, []),
+            language_output_path,
+            output_format,
+            audience,
+        )
         output_paths.append(language_output_path)
     return output_paths
 
@@ -387,6 +441,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Write one output file per resolved DB language.",
     )
+    parser.add_argument(
+        "--audience",
+        choices=("internal", "translator"),
+        default="internal",
+        help=(
+            "Output schema audience. 'translator' writes a single unnamed text "
+            "column for vendor-facing per-language workbooks."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -415,12 +478,26 @@ def main() -> None:
         include_english=args.include_english,
     )
     output_format = infer_format(args.output, args.format)
+    if args.audience == "translator" and output_format == "json":
+        raise ValueError("Translator exports support only csv and xlsx formats")
+    if (
+        args.audience == "translator"
+        and not args.split_by_language
+        and len(db_langs) != 1
+    ):
+        raise ValueError(
+            "Translator exports must be split by language unless one target language is selected"
+        )
     if args.split_by_language:
         output_paths = write_rows_by_language(
-            rows, args.output, output_format, db_langs
+            rows,
+            args.output,
+            output_format,
+            db_langs,
+            args.audience,
         )
     else:
-        write_rows(rows, args.output, output_format)
+        write_rows(rows, args.output, output_format, args.audience)
         output_paths = [args.output]
 
     print(f"Scanned {len(entries)} unique strings from {source_dir}")

@@ -76,9 +76,9 @@ def test_parse_languages_deduplicates_case_insensitively():
 def test_tag_placeholders_matches_runtime_translator_pattern():
     assert (
         tag_placeholders("Hello {name}, use :white_check_mark: for {thing}.")
-        == "Hello <x id=1>, use <x id=2> for <x id=3>."
+        == "Hello <x id=1/>, use <x id=2/> for <x id=3/>."
     )
-    assert tag_placeholders("{name} invited {name}") == "<x id=1> invited <x id=1>"
+    assert tag_placeholders("{name} invited {name}") == "<x id=1/> invited <x id=1/>"
 
 
 def test_normalize_db_label_for_lookup_matches_observed_mysql_equality():
@@ -108,8 +108,8 @@ def test_collect_string_entries_extracts_literal_calls(tmp_path):
     assert [
         (entry.source_text, entry.db_label, entry.max_length) for entry in entries
     ] == [
-        ("Translate {count} files", "Translate <x id=1> files", 40),
-        ("Ready :white_check_mark:", "Ready <x id=1>", 0),
+        ("Translate {count} files", "Translate <x id=1/> files", 40),
+        ("Ready :white_check_mark:", "Ready <x id=1/>", 0),
     ]
     assert entries[0].locations == ["app/messages.py:2"]
 
@@ -204,7 +204,7 @@ def test_build_missing_rows_uses_slack_locale_to_db_lang_mapping():
     entries = [
         StringEntry(
             source_text="Submit {count}",
-            db_label="Submit <x id=1>",
+            db_label="Submit <x id=1/>",
             max_length=12,
             locations=["app/example.py:10"],
         ),
@@ -225,8 +225,8 @@ def test_build_missing_rows_uses_slack_locale_to_db_lang_mapping():
     assert [
         (row.source_language, row.target_language, row.source_text) for row in rows
     ] == [
-        ("en", "fr", "Submit <x id=1>"),
-        ("en", "jp", "Submit <x id=1>"),
+        ("en", "fr", "Submit <x id=1/>"),
+        ("en", "jp", "Submit <x id=1/>"),
         ("en", "jp", "Cancel"),
     ]
     assert rows[0].max_length == 12
@@ -250,8 +250,8 @@ def test_build_missing_rows_matches_existing_labels_with_trailing_space_variants
     rows = build_missing_rows(
         entries=[
             StringEntry(
-                source_text="<x id=1> Search allows you to find specific Translation Jobs (TJs).",
-                db_label="<x id=1> Search allows you to find specific Translation Jobs (TJs).",
+                source_text="<x id=1/> Search allows you to find specific Translation Jobs (TJs).",
+                db_label="<x id=1/> Search allows you to find specific Translation Jobs (TJs).",
             ),
             StringEntry(source_text="Trailing DB label", db_label="Trailing DB label "),
         ],
@@ -259,7 +259,7 @@ def test_build_missing_rows_matches_existing_labels_with_trailing_space_variants
         language_map={"fr-fr": "fr"},
         existing_labels_by_lang={
             "fr": {
-                "<x id=1> Search allows you to find specific Translation Jobs (TJs). ",
+                "<x id=1/> Search allows you to find specific Translation Jobs (TJs). ",
                 "Trailing DB label",
             }
         },

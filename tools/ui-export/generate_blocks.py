@@ -179,12 +179,14 @@ def configure_translation(language: str, catalog: dict[str, str] | None = None) 
         translator_var.set(Translator(language))
 
 
-def _tag_placeholders(text: str) -> tuple[str, dict[str, str]]:
+def _tag_placeholders(text: str) -> tuple[str, dict[str, tuple[str, str]]]:
     replacements = {}
 
     def replace(match: re.Match[str]) -> str:
-        tag = f"<x id={len(replacements) + 1}>"
-        replacements[match.group()] = tag
+        index = len(replacements) + 1
+        tag = f"<x id={index}/>"
+        legacy_tag = f"<x id={index}>"
+        replacements[match.group()] = (tag, legacy_tag)
         return tag
 
     return PLACEHOLDER_PATTERN.sub(replace, text), replacements
@@ -199,10 +201,16 @@ def _translate_catalog_text(text: str) -> str:
         text
     )
     if translation is None:
-        return text
+        legacy_tagged_text = tagged_text
+        for tag, legacy_tag in replacements.values():
+            legacy_tagged_text = legacy_tagged_text.replace(tag, legacy_tag)
+        translation = _translation_catalog.get(legacy_tagged_text)
+        if translation is None:
+            return text
 
-    for original, tag in replacements.items():
+    for original, (tag, legacy_tag) in replacements.items():
         translation = translation.replace(tag, original)
+        translation = translation.replace(legacy_tag, original)
     return translation
 
 

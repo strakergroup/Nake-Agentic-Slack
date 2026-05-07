@@ -22,6 +22,9 @@ endif
 ifdef FORMAT
 EXPORT_ARGS += --format $(FORMAT)
 endif
+ifdef AUDIENCE
+EXPORT_ARGS += --audience $(AUDIENCE)
+endif
 ifdef SOURCE_DIR
 EXPORT_ARGS += --source-dir $(SOURCE_DIR)
 endif
@@ -45,13 +48,16 @@ ifdef VALIDATION_REPORT
 IMPORT_ARGS += --validation-report $(VALIDATION_REPORT)
 endif
 
-.PHONY: missing missing-per-language mt-fill import-sql clean
+.PHONY: missing missing-per-language translator-missing mt-fill import-sql clean
 
 missing:
 	$(PYTHON) export_missing_strings.py $(EXPORT_ARGS)
 
 missing-per-language:
 	$(PYTHON) export_missing_strings.py $(EXPORT_ARGS) --split-by-language
+
+translator-missing:
+	$(PYTHON) export_missing_strings.py $(EXPORT_ARGS) --audience translator --format xlsx --split-by-language
 
 mt-fill:
 	$(PYTHON) mt_fill_translations.py $(FILL_ARGS)

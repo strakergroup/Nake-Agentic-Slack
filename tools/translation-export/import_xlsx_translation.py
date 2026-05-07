@@ -18,12 +18,13 @@ LANG_COLUMN = "target_language"
 LABEL_COLUMN = "source_text"
 TRANSLATION_COLUMN = "target_text"
 REQUIRED_COLUMNS = {LANG_COLUMN, LABEL_COLUMN, TRANSLATION_COLUMN}
+TRANSLATOR_METADATA_SHEET = "_translation_metadata"
 COLUMN_ALIASES = {
     LANG_COLUMN: ("db_lang",),
     LABEL_COLUMN: ("db_label",),
     TRANSLATION_COLUMN: ("translation",),
 }
-VALID_TAG_PATTERN = re.compile(r"<x id=(\d+)>")
+VALID_TAG_PATTERN = re.compile(r"<x id=(\d+)\s*/?>")
 X_TAG_CANDIDATE_PATTERN = re.compile(r"</?x\b[^>]*>|<x\b[^>]*$")
 ENGLISH_PREFIXES = ("en", "gb", "us")
 
@@ -79,6 +80,10 @@ def find_tag_ids(text: str) -> set[str]:
     return set(VALID_TAG_PATTERN.findall(text))
 
 
+def format_x_tag(tag_id: str) -> str:
+    return f"<x id={tag_id}/>"
+
+
 def find_malformed_tags(text: str) -> list[str]:
     candidates = X_TAG_CANDIDATE_PATTERN.findall(text)
     return [
@@ -109,12 +114,12 @@ def validate_translation_tags(label: str, translation: str) -> list[str]:
     if missing_tag_ids:
         errors.append(
             "translation is missing placeholder tag(s): "
-            + ", ".join(f"<x id={tag_id}>" for tag_id in missing_tag_ids)
+            + ", ".join(format_x_tag(tag_id) for tag_id in missing_tag_ids)
         )
     if extra_tag_ids:
         errors.append(
             "translation contains unexpected placeholder tag(s): "
-            + ", ".join(f"<x id={tag_id}>" for tag_id in extra_tag_ids)
+            + ", ".join(format_x_tag(tag_id) for tag_id in extra_tag_ids)
         )
 
     return errors
@@ -158,6 +163,33 @@ def column_index(indexes: dict[str, int], column: str) -> int | None:
     )
 
 
+def infer_target_language_from_path(workbook_path: Path) -> str | None:
+    """Infer legacy translator workbook language from names like translations_fr.xlsx."""
+    stem = workbook_path.stem
+    if "_" not in stem:
+        return None
+    return stem.rsplit("_", 1)[1] or None
+
+
+def read_translator_metadata(workbook) -> dict[int, str]:
+    if TRANSLATOR_METADATA_SHEET not in workbook.sheetnames:
+        return {}
+    metadata_sheet = workbook[TRANSLATOR_METADATA_SHEET]
+    indexes = header_indexes(metadata_sheet)
+    label_index = column_index(indexes, LABEL_COLUMN)
+    if label_index is None:
+        return {}
+    labels_by_visible_row: dict[int, str] = {}
+    for metadata_row_number in range(2, metadata_sheet.max_row + 1):
+        label = metadata_sheet.cell(
+            row=metadata_row_number,
+            column=label_index,
+        ).value
+        if label:
+            labels_by_visible_row[metadata_row_number - 1] = str(label)
+    return labels_by_visible_row
+
+
 def collect_insert_statements(
     workbook_path: Path,
     created: str,
@@ -170,21 +202,31 @@ def collect_insert_statements(
         label_index = column_index(indexes, LABEL_COLUMN)
         lang_index = column_index(indexes, LANG_COLUMN)
         translation_index = column_index(indexes, TRANSLATION_COLUMN)
-        missing_columns = [
-            column
-            for column, index in (
-                (LABEL_COLUMN, label_index),
-                (LANG_COLUMN, lang_index),
-                (TRANSLATION_COLUMN, translation_index),
-            )
-            if index is None
-        ]
+        translator_metadata = read_translator_metadata(workbook)
+        is_single_column_translator_workbook = bool(translator_metadata)
+        inferred_lang = (
+            None
+            if lang_index is not None
+            else infer_target_language_from_path(workbook_path)
+        )
+        missing_columns = []
+        if not is_single_column_translator_workbook:
+            missing_columns = [
+                column
+                for column, index in (
+                    (LABEL_COLUMN, label_index),
+                    (TRANSLATION_COLUMN, translation_index),
+                )
+                if index is None
+            ]
+        if lang_index is None and inferred_lang is None:
+            missing_columns.append(LANG_COLUMN)
         if missing_columns:
             missing = ", ".join(sorted(missing_columns))
             raise ValueError(f"Workbook is missing required columns: {missing}")
-        assert label_index is not None
-        assert lang_index is not None
-        assert translation_index is not None
+        if not is_single_column_translator_workbook:
+            assert label_index is not None
+            assert translation_index is not None
 
         statements: list[str] = []
         seen_pairs: set[tuple[str, str]] = set()
@@ -194,15 +236,33 @@ def collect_insert_statements(
         matching_source_rows_by_lang: dict[str, list[TranslationValidationError]] = (
             defaultdict(list)
         )
-        for row_number in range(2, sheet.max_row + 1):
-            label = sheet.cell(row=row_number, column=label_index).value
-            lang = sheet.cell(row=row_number, column=lang_index).value
-            translation = sheet.cell(row=row_number, column=translation_index).value
+        start_row = 1 if is_single_column_translator_workbook else 2
+        for row_number in range(start_row, sheet.max_row + 1):
+            label = (
+                translator_metadata.get(row_number)
+                if is_single_column_translator_workbook
+                else sheet.cell(row=row_number, column=label_index).value
+            )
+            lang = (
+                sheet.cell(row=row_number, column=lang_index).value
+                if lang_index is not None
+                else inferred_lang
+            )
+            translation = (
+                sheet.cell(row=row_number, column=1).value
+                if is_single_column_translator_workbook
+                else sheet.cell(row=row_number, column=translation_index).value
+            )
             if not label or not lang or not translation or not str(translation).strip():
                 continue
             label_text = str(label)
             lang_text = str(lang)
             translation_text = str(translation)
+            if (
+                is_single_column_translator_workbook
+                and translation_text.strip() == label_text.strip()
+            ):
+                continue
             row_errors = validate_translation_tags(label_text, translation_text)
             if not lang_text.strip().lower().startswith(ENGLISH_PREFIXES):
                 row_counts_by_lang[lang_text] += 1

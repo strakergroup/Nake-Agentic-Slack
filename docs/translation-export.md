@@ -19,7 +19,8 @@ flowchart LR
     Locale[Slack locale codes] --> Map[obj_m_langs bcp_47 to shortname]
     Map --> Compare[Compare labels in obj_stringtranslator]
     Tag --> Compare
-    Compare --> Export[CSV / JSON / XLSX missing strings]
+    Compare --> Export[Internal CSV / JSON / XLSX missing strings]
+    Compare --> TranslatorExport[Single-column translator XLSX workbooks]
 ```
 
 ## Usage
@@ -38,6 +39,9 @@ make missing LANGUAGES=fr-FR,fr-CA OUTPUT=output/missing_strings.xlsx FORMAT=xls
 
 # XLSX output split into one file per resolved DB language
 make missing-per-language OUTPUT=output/missing_strings.xlsx FORMAT=xlsx
+
+# Translator-facing XLSX files with one unnamed text column
+make translator-missing OUTPUT=output/translations.xlsx
 
 # Fill blank translation cells with Google Cloud Translation MT
 make mt-fill INPUT=output/missing_strings.xlsx
@@ -67,17 +71,37 @@ pipenv run python tools/translation-export/export_missing_strings.py \
 
 ## Translation Workflow
 
-The maintained tool mirrors the older `dev/` workflow as three explicit steps:
+The maintained tool supports two workbook shapes:
+
+- Internal import workbooks keep `source_language`, `target_language`,
+  `source_text`, `target_text`, and `max_length`.
+- Translator-facing workbooks show only one unnamed text column. They are
+  generated per language so `mt-fill` and `import-sql` can infer the target DB
+  language from filenames such as `translations_fr.xlsx`.
+
+For professional translators, use the vendor-facing workflow:
+
+1. `make translator-missing OUTPUT=output/translations.xlsx` exports one workbook
+   per resolved DB language, e.g. `translations_fr.xlsx` and
+   `translations_fr-ca.xlsx`.
+2. Send the per-language workbooks to translators. They should replace the text
+   in the single visible column with the translated text and preserve every
+   `<x id=N/>` tag exactly.
+3. `make import-sql INPUT='output/translations_*.xlsx' SQL_OUTPUT=output/import.sql`
+   creates refresh-safe SQL for the filled workbooks.
+
+The internal MT workflow remains available as three explicit steps:
 
 1. `make missing-per-language OUTPUT=output/missing_strings.xlsx FORMAT=xlsx`
    exports one workbook per resolved DB language, e.g.
    `missing_strings_fr.xlsx` and `missing_strings_fr-ca.xlsx`.
 2. `make mt-fill INPUT='output/missing_strings_*.xlsx'` fills blank
-   `target_text` cells using Google Cloud Translation directly. The workbook
-   `target_language` remains the DB language used for import, but MT requests
-   are resolved through `obj_m_langs` to a Google-compatible code such as
-   `google_code` when one is available. This prevents DB shortnames such as
-   `kr` or `jp` from being sent to Google instead of `ko` or `ja`.
+   `target_text` cells using Google Cloud Translation directly. For
+   translator-facing files, it replaces the visible single-column cells and
+   infers the DB language from the filename. MT requests are resolved through
+   `obj_m_langs` to a Google-compatible code such as `google_code` when one is
+   available. This prevents DB shortnames such as `kr` or `jp` from being sent to
+   Google instead of `ko` or `ja`.
 3. `make import-sql INPUT='output/missing_strings_*.xlsx' SQL_OUTPUT=output/import.sql`
    creates refresh-safe SQL for `obj_stringtranslator` from all filled
    workbooks.
@@ -108,10 +132,14 @@ this tool.
 
 ## Import Validation
 
-`make import-sql` validates placeholder tags before writing SQL. Every `<x id=N>`
-tag present in `source_text` must also be present in `target_text`, and
-translations must not introduce unexpected or malformed `<x ...>` tags. This
-protects the runtime replacement logic used by `app.translate.Translator`.
+`make import-sql` validates placeholder tags before writing SQL. Every `<x id=N/>`
+tag present in `source_text` must also be present in the translated cell
+(`target_text` for internal workbooks or the visible text cell for
+translator-facing workbooks), and translations must not introduce unexpected or
+malformed `<x ...>` tags. The importer still accepts legacy `<x id=N>` tags in
+older workbooks, but new exports use self-closing `<x id=N/>` tags. This
+protects the runtime replacement logic used by
+`app.translate.Translator`.
 
 The MT fill step rejects Google language mappings that resolve a non-English DB
 language to English and flags unchanged non-English output. SQL generation
@@ -121,7 +149,7 @@ outputs while allowing occasional proper nouns to be reviewed normally.
 
 By default, the generated SQL is safe to rerun during UAT refresh testing. For
 each filled workbook row that passes validation, the import file writes a scoped
-delete for the exact `target_language` / `source_text` pair before the insert:
+delete for the exact target language / `source_text` pair before the insert:
 
 ```sql
 DELETE FROM `obj_stringtranslator`
@@ -129,7 +157,7 @@ WHERE `lang` = "fr" AND `label` IN ("Example label");
 ```
 
 Deletes are grouped per target language and only include labels present in the
-input workbooks. If the same `target_language` / `source_text` pair appears more
+input workbooks. If the same target language / `source_text` pair appears more
 than once, the importer emits one delete and one insert for that pair. The
 importer does not delete all rows for a language, so unrelated existing
 translations are left intact while stale test rows for the generated labels are
@@ -171,6 +199,13 @@ behaviour; include both `fr-FR` and `fr-CA` when both need coverage.
 
 ## Output Columns
 
+Translator-facing XLSX files use one visible unnamed column. On export, each
+cell contains the placeholder-tagged source string to translate. Translators
+replace those cells with the translated text. The workbook keeps hidden metadata
+for import matching; the visible sheet remains a single column.
+
+Internal import files use these columns:
+
 - `source_language` - The source language code, currently `en`.
 - `target_language` - The resolved `obj_stringtranslator.lang` value.
 - `source_text` - The placeholder-tagged source string expected in the DB.
@@ -178,5 +213,5 @@ behaviour; include both `fr-FR` and `fr-CA` when both need coverage.
 - `max_length` - Optional `_()` max length metadata.
 
 Placeholders such as `{client_name}` and Slack emoji shortcodes such as
-`:white_check_mark:` are converted to `<x id=N>` tags before lookup, matching
-the app's current `Translator` behaviour.
+`:white_check_mark:` are converted to self-closing `<x id=N/>` tags before
+lookup, matching the app's current `Translator` behaviour.

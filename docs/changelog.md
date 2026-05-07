@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: `tools/translation-export` translator XLSX files now use a single unnamed text column with hidden import metadata and self-closing placeholder tags that runtime translation restores correctly (Wade Norman, 2026-05-07)
+- [Added]: `tools/translation-export` now supports per-language translator-facing XLSX exports with `source_text`, `translation`, and `notes`, while MT fill and import SQL infer language from legacy workbook filenames (Wade Norman, 2026-05-06)
 - [Fixed]: `tools/ui-export` now generates Home tab catalog entries through the real translated `home_view()` path instead of mirrored hardcoded English blocks (Wade Norman, 2026-05-01)
 - [Fixed]: `tools/translation-export` missing-string checks now ignore only trailing spaces, not trailing newlines, so labels like `*Group:*` are not masked by newline variants (Wade Norman, 2026-05-01)
 - [Fixed]: Slack UI translation templates now expose login, quote, helper, validation, and auto-translate setting strings as literal exportable labels while avoiding payload label translation (Wade Norman, 2026-05-01)
