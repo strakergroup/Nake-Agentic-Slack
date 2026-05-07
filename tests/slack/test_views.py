@@ -384,6 +384,20 @@ class TestDocumentMtJobModal:
         assert modal["callback_id"] == "document_mt_job"
         assert modal["private_metadata"] == "C123"
 
+        source_block = next(
+            (block for block in modal["blocks"] if block.get("block_id") == "source_lang"),
+            None,
+        )
+        assert source_block is not None
+        assert source_block["element"]["type"] == "static_select"
+
+        target_block = next(
+            (block for block in modal["blocks"] if block.get("block_id") == "target_langs"),
+            None,
+        )
+        assert target_block is not None
+        assert modal["blocks"].index(source_block) < modal["blocks"].index(target_block)
+
     def test_document_mt_job_modal_with_initial_files(self):
         """Test document MT job modal with initial files."""
         initial_files = [{"id": "file-123", "name": "test.txt"}]

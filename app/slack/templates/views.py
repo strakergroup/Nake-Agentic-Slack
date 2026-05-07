@@ -1033,6 +1033,29 @@ def document_mt_job_modal(
             },
             {
                 "type": "input",
+                "block_id": "source_lang",
+                "element": {
+                    "type": "static_select",
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": _("Select language"),
+                        "emoji": True,
+                    },
+                    "options": language_options,
+                    "action_id": "language_mt_options",
+                },
+                "label": {
+                    "type": "plain_text",
+                    "text": _("Translate from"),
+                    "emoji": True,
+                },
+                "hint": {
+                    "type": "plain_text",
+                    "text": _("Which language are the file(s) currently written in?"),
+                },
+            },
+            {
+                "type": "input",
                 "block_id": "target_langs",
                 "element": {
                     "type": "multi_static_select",

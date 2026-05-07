@@ -73,6 +73,7 @@ from ..ray.events.models import (
     MtSuccessResponseSchema,
     SlackAccountConnectedEvent,
 )
+from ..redis import redis_conn
 from ..slack.templates.messages import (
     AutoTranslationMessage,
     ClientApprovedEventMessage,
@@ -107,6 +108,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 CALLBACK_ERROR_DETAIL_MAX_LENGTH = 500
+RAY_EVENT_DEDUPE_TTL_SECONDS = 7 * 24 * 60 * 60
 
 
 def _safe_callback_error_detail(payload_error: Any) -> str:
@@ -125,6 +127,37 @@ def _format_callback_error(stage: str, payload_error: Any) -> str:
     if stage == "embedding":
         return _("Embedding failed: {error_detail}")
     raise ValueError(f"Unsupported callback error stage: {stage}")
+
+
+async def _claim_evaluate_complete_notification(event: RayEvent) -> bool:
+    """Atomically claim a user-facing evaluate-complete notification."""
+    client_id = event.data.get("client_id")
+    job_uuid = event.data.get("job_uuid")
+    if not client_id or not job_uuid:
+        return True
+
+    key = f"ray_event:{event.event}:{client_id}:{job_uuid}"
+    try:
+        was_set = await redis_conn.set(
+            key,
+            "1",
+            ex=RAY_EVENT_DEDUPE_TTL_SECONDS,
+            nx=True,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to claim evaluate-complete notification idempotency key",
+            exc_info=True,
+        )
+        return True
+
+    if isinstance(was_set, bool):
+        return was_set
+    if was_set is None:
+        return False
+    if isinstance(was_set, str):
+        return was_set.upper() == "OK"
+    return bool(was_set)
 
 
 def _resolve_event_thread_ts(
@@ -1278,6 +1311,13 @@ async def ray_events(
                 await enqueue_mt_success_upload(success_data)
 
         elif event.event == "verify:slack:evaluate:complete":
+            if not await _claim_evaluate_complete_notification(event):
+                logger.info(
+                    "Skipping duplicate evaluate-complete notification for job %s",
+                    event.data.get("job_uuid"),
+                )
+                return {"message": "Duplicate evaluate-complete event skipped"}
+
             if event.data.get("error"):
                 try:
                     error_data = MtErrorResponseSchema.model_validate(event.data)
