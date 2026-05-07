@@ -85,6 +85,9 @@ def test_normalize_db_label_for_lookup_matches_observed_mysql_equality():
     assert normalize_db_label_for_lookup("Select Languages  ") == "select languages"
     assert normalize_db_label_for_lookup(" Select Languages") == " select languages"
     assert normalize_db_label_for_lookup("*Group:*\n") == "*group:*\n"
+    assert normalize_db_label_for_lookup(
+        "Submit <x id=1>"
+    ) == normalize_db_label_for_lookup("Submit <x id=1/>")
 
 
 def test_collect_string_entries_extracts_literal_calls(tmp_path):
@@ -263,6 +266,22 @@ def test_build_missing_rows_matches_existing_labels_with_trailing_space_variants
                 "Trailing DB label",
             }
         },
+    )
+
+    assert rows == []
+
+
+def test_build_missing_rows_matches_existing_legacy_x_tags():
+    rows = build_missing_rows(
+        entries=[
+            StringEntry(
+                source_text="Submit {count}",
+                db_label="Submit <x id=1/>",
+            ),
+        ],
+        slack_locales=["fr-FR"],
+        language_map={"fr-fr": "fr"},
+        existing_labels_by_lang={"fr": {"Submit <x id=1>"}},
     )
 
     assert rows == []
