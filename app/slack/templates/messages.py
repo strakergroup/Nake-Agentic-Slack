@@ -1949,6 +1949,23 @@ class HelpMessage(SlackMessage):
                         "action_id": "link_document_mt",
                     },
                 },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(":movie_camera: Learn Media Translation and Transcription"),
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Media Translation Help"),
+                        },
+                        "url": "https://help.straker.ai/en/docs/ai-translate-for-videos-in-straker-translate-app-for-slack",
+                        "action_id": "link_media_translation_help",
+                    },
+                },
                 *_verification_help_blocks(
                     show_quality_evaluation, show_human_translation
                 ),
@@ -3357,7 +3374,7 @@ class VideoOptionsMessage(SlackMessage):
             embed_section = SectionBlock(
                 text=MarkdownTextObject(
                     text=_(
-                        "*Embed Subtitles* - Transcribe, translate, and automatically embed the final translated text as subtitles into your media file."
+                        "*Embed Subtitles* - Transcribe, translate, and automatically embed the translated text as subtitles into your media file."
                     )
                 ),
                 accessory=embed_button,

@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -36,6 +37,7 @@ from app.slack.templates.messages import (
     SuccessfulLoginMessage,
     SuccessfulLogoutMessage,
     TranscriptionMessage,
+    VideoOptionsMessage,
     VerifyCompleteMessage,
     WelcomeBackMessage,
     get_account_blocks,
@@ -664,6 +666,54 @@ class TestHelpMessage:
         assert "help" in message.text.lower() or "wave" in message.text.lower()
         assert len(message.blocks) > 0
         assert not _blocks_contain_action(message.blocks, "report_insights")
+
+    def test_help_message_includes_media_translation_help(self, user_id, team_id):
+        """RAY-79731: Help lists media translation help with doc link."""
+        from app.auth.connector import RayContext
+
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+            }
+        )
+        context["ray"] = None
+        message = HelpMessage(context)
+        media_url = (
+            "https://help.straker.ai/en/docs/ai-translate-for-videos-in-straker-translate-app-for-slack"
+        )
+        assert _blocks_contain_text(
+            message.blocks, "Learn Media Translation and Transcription"
+        )
+        assert _blocks_contain_text(message.blocks, "Media Translation Help")
+        assert _blocks_contain_action(message.blocks, "link_media_translation_help")
+        assert any(
+            block.get("accessory", {}).get("url") == media_url
+            for block in message.blocks
+        )
+
+
+class TestVideoOptionsMessage:
+    """RAY-79726: Embed Subtitles option copy."""
+
+    def test_embed_subtitles_description_uses_translated_text(self):
+        message = VideoOptionsMessage(
+            channel_id="C123",
+            files=[
+                {
+                    "file_id": "F1",
+                    "file_name": "clip.mp4",
+                    "duration_ms": 1000,
+                }
+            ],
+            show_embed_option=True,
+        )
+        assert "final translated text" not in json.dumps(message.blocks)
+        assert _blocks_contain_text(
+            message.blocks,
+            "*Embed Subtitles* - Transcribe, translate, and automatically embed the translated text as subtitles into your media file.",
+        )
 
 
 class TestNewJobMessage:

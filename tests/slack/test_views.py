@@ -663,3 +663,20 @@ class TestInsightsRemovedFromHomeView:
 
         source = inspect.getsource(home_view)
         assert "report_insights" not in source
+
+
+class TestHomeViewMediaTranslationHelp:
+    """RAY-79731: Home tab exposes media translation help link."""
+
+    def test_home_view_includes_media_translation_help_button(self):
+        import inspect
+
+        from app.slack.templates.views import home_view
+
+        source = inspect.getsource(home_view)
+        assert "link_media_translation_help" in source
+        assert (
+            "https://help.straker.ai/en/docs/ai-translate-for-videos-in-straker-translate-app-for-slack"
+            in source
+        )
+        assert "Media Translation Help" in source
