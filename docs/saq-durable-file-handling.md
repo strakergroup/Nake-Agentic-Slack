@@ -42,7 +42,7 @@ flowchart LR
         Router["app/routers/ray.py + app/slack/listeners.py\n(MT / QE submissions + result delivery)"]
         Logger["app/ray/events/logging.py\n(post_notification)"]
         Dispatch["app/saq_jobs/dispatch.py\nenqueue_*_upload\nenqueue_log_notification\nenqueue_mt_ts_edit"]
-        Queue["app/saq_jobs/queue.py\nenqueue()\nthree Redis queues"]
+        Queue["app/saq_jobs/queue.py\nenqueue()\nsplit Redis queues + legacy drain"]
         Worker["app/saq_jobs/worker.py\nin-process Workers (lifespan)\nsubmissions / delivery / background"]
         Tasks["app/saq_jobs/tasks.py\nslack_upload_*\npersist_log_notification\npersist_mt_ts_edit"]
     end
@@ -76,6 +76,30 @@ flowchart LR
 | `app/saq_jobs/tasks.py`       | All durable task functions. Accepts only JSON-serialisable kwargs. Re-fetches `slack_user` (and the bot token) inside the task by `client_id`. Exposes `TASK_FUNCTIONS`, the worker registration list.                                                                                                                                     |
 | `app/saq_jobs/worker.py`      | `start_worker` / `stop_worker` lifecycle helpers. Runs the SAQ `Worker` as an asyncio task in the FastAPI lifespan. Provides an out-of-process `settings` entry point as a future-proofing hook.                                                                                                                                           |
 | `app/main.py`                 | Wires `start_worker()` and `stop_worker()` into the FastAPI lifespan context manager.                                                                                                                                                                                                                                                      |
+
+
+### Worker liveness and hot reload recovery
+
+Local development commonly runs `uvicorn --reload`. When WatchFiles reloads the
+app while an SAQ task is active, the in-process worker can be cancelled during
+shutdown and the durable job may remain in Redis until a healthy worker resumes.
+
+To reduce manual restarts:
+
+- `app/saq_jobs/worker.py` tracks each queue worker independently.
+- `ensure_worker_running()` starts or restarts any enabled worker task that is
+  missing, cancelled, or stopped unexpectedly.
+- The low-level SAQ `enqueue()` boundary calls `ensure_worker_running()` before
+  writing a job to Redis, so every producer can self-heal a partially stopped
+  worker set without adding per-call wrapper functions.
+- A compatibility worker also listens to the legacy `SAQ_QUEUE_NAME` queue so
+  jobs created before the split queue rollout are drained after deploy/reload.
+- `/health` reports SAQ worker state and returns `500` when
+  `SAQ_WORKER_ENABLED=true` but not all expected queue workers are alive.
+
+This recovery only applies while the FastAPI process itself is running. If the
+process or container is stopped, no event handler is alive to restart workers;
+the queued jobs remain durable in Redis and are picked up when the app starts.
 
 
 ### Package layering hygiene

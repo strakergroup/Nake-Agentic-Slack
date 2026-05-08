@@ -26,6 +26,19 @@ async def client(app):
         yield ac
 
 
+@pytest.fixture(autouse=True)
+def mock_saq_worker_status():
+    with patch("app.routers.health.worker_status") as mock_status:
+        mock_status.return_value = {
+            "enabled": True,
+            "expected_count": 5,
+            "running_count": 5,
+            "all_running": True,
+            "workers": [],
+        }
+        yield mock_status
+
+
 class TestHealthCheck:
     """Tests for /health endpoint."""
 
@@ -72,6 +85,34 @@ class TestHealthCheck:
                 assert "environment" in data
                 assert "errors" in data
                 assert "info" in data
+                assert data["info"]["saq_workers"]["all_running"] is True
+
+    @pytest.mark.asyncio
+    async def test_health_check_fails_when_saq_workers_are_not_running(
+        self, client, mock_saq_worker_status
+    ):
+        mock_saq_worker_status.return_value = {
+            "enabled": True,
+            "expected_count": 5,
+            "running_count": 3,
+            "all_running": False,
+            "workers": [
+                {
+                    "label": "file-delivery",
+                    "queue_name": "slack-ray-translator-file-delivery",
+                    "running": False,
+                    "done": True,
+                    "cancelled": True,
+                }
+            ],
+        }
+
+        response = await client.get("/health")
+
+        assert response.status_code == 500
+        data = response.json()
+        assert data["message"] == "There are some issues"
+        assert "errors" not in data
 
     @pytest.mark.asyncio
     async def test_health_check_slack_api_error(self, client):

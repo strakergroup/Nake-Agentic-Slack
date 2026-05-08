@@ -9,6 +9,7 @@ from ..config import config
 from ..constants import APP_VERSION
 from ..database import async_engines
 from ..redis import redis_conn
+from ..saq_jobs.worker import worker_status
 from ..slack.app import app as slack_app
 
 router = APIRouter()
@@ -27,6 +28,7 @@ async def health_check(response: Response, password: str | None = None):
     #     # _check_redis(errors),
     #     # TODO: Watson
     # )
+    _check_saq_workers(errors, info)
 
     result = {
         "message": "There are some issues" if len(errors) else "OK",
@@ -68,6 +70,15 @@ async def _check_redis(errors: dict[str, Any]):
         await redis_conn.ping()
     except Exception as e:
         errors["redis"] = str(e)
+
+
+def _check_saq_workers(errors: dict[str, Any], info: dict[str, Any]):
+    status = worker_status()
+    info["saq_workers"] = status
+    if status["enabled"] and not status["all_running"]:
+        errors["saq_workers"] = (
+            f"{status['running_count']}/{status['expected_count']} workers running"
+        )
 
 
 async def _check_slack_api(errors: dict[str, Any]):

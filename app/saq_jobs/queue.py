@@ -75,6 +75,9 @@ async def enqueue(
             access tokens, file contents). Pass identifiers and re-fetch
             secrets from the database inside the task.
     """
+    from app.saq_jobs.worker import ensure_worker_running
+
+    await ensure_worker_running()
     queue = get_queue(queue_name)
     job_kwargs: dict[str, Any] = {}
     if key is not None:
