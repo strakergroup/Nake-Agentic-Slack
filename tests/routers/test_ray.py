@@ -18,6 +18,7 @@ from app.routers.ray import (
     RAY_EVENT_DEDUPE_TTL_SECONDS,
     RayCallback,
     _claim_evaluate_complete_notification,
+    _format_callback_error,
     api_job_callback,
     ray_events,
     router,
@@ -76,6 +77,26 @@ def valid_token():
 
 class TestRayEventsEndpoint:
     """Tests for /ray/events endpoint."""
+
+    @pytest.mark.parametrize(
+        ("stage", "expected"),
+        [
+            ("transcription", "Transcription failed: No sound"),
+            ("translation", "Translation failed: MT service unavailable"),
+            ("embedding", "Embedding failed: Video codec unsupported"),
+        ],
+    )
+    def test_callback_error_text_uses_exportable_literal_template(
+        self, stage, expected
+    ):
+        payload_error = expected.split(": ", 1)[1]
+
+        assert _format_callback_error(stage, payload_error) == expected
+
+    def test_callback_error_text_uses_exportable_unknown_error_template(self):
+        assert _format_callback_error("translation", "") == (
+            "Translation failed: Unknown error"
+        )
 
     @pytest.mark.asyncio
     async def test_ray_events_invalid_token(self, mock_slack_user):
@@ -622,6 +643,10 @@ class TestRayEventsEndpoint:
                             await ray_events(event, auth)
 
                             mock_client.chat_postEphemeral.assert_called_once()
+                            assert (
+                                mock_client.chat_postEphemeral.call_args.kwargs["text"]
+                                == "Transcription failed: No sound"
+                            )
 
     @pytest.mark.asyncio
     async def test_ray_events_document_translated_error(

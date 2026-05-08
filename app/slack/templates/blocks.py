@@ -173,7 +173,7 @@ def quote_message_block(
                 quote.quote.tl[lang.code].price if lang.code in quote.quote.tl else 0.0
             )
             lang_price_formatted = format_currency(lang_price, quote.quote.currency)
-            target_lang = _(lang.label)
+            target_lang = lang.label
             current_fields.append(
                 {
                     "type": "mrkdwn",
@@ -267,8 +267,8 @@ def quote_message_block(
                 "action_id": "link_2",
             },
         )
-    source_lang = _(quote.sl.label)
-    service_tra = _(quote.service)
+    source_lang = quote.sl.label
+    service_tra = quote.service
     return [
         {
             "type": "section",
@@ -346,7 +346,7 @@ def verify_quote_blocks(
                     break
             if target_file and target_file.get("human_job_status", ""):
                 if target_file["human_job_status"] == "Submitted":
-                    lang_label = f"*{_(lang['name'])}*\n"
+                    lang_label = f"*{lang['name']}*\n"
                     cost_block = {
                         "type": "section",
                         "text": {
@@ -360,7 +360,7 @@ def verify_quote_blocks(
                         total_cost += cost
                     blocks.append(cost_block)
                 elif target_file["human_job_status"] == "Cancelled":
-                    lang_label = f"*{_(lang['name'])}*\n"
+                    lang_label = f"*{lang['name']}*\n"
                     cost_block = {
                         "type": "section",
                         "text": {
@@ -476,7 +476,7 @@ def verify_quote_blocks(
                             "type": "section",
                             "text": {
                                 "type": "mrkdwn",
-                                "text": f"*{_(lang['name'])}*\n>USD ${cost:.2f}",
+                                "text": f"*{lang['name']}*\n>USD ${cost:.2f}",
                             },
                         }
                     )
@@ -550,7 +550,7 @@ def evaluate_success_blocks(
                 None,
             )
             if target_file and target_file.get("human_job_status", ""):
-                lang_label = f"*{_(lang['name'])}*\n"
+                lang_label = f"*{lang['name']}*\n"
                 cost_block = {
                     "type": "section",
                     "text": {
@@ -654,8 +654,8 @@ def job_summary_string(
     source_lang: dict[str, Any], lang: dict[str, Any], file: dict[str, Any]
 ):
     """Returns the job summary string."""
-    formatted_source_lang = _(source_lang["name"])
-    formatted_target_lang = _(lang["name"])
+    formatted_source_lang = source_lang["name"]
+    formatted_target_lang = lang["name"]
     file_name = file["filename"]
     report = lang.get("report", None)
 
@@ -669,6 +669,6 @@ def job_summary_string(
 
 def job_summary_no_score(lang: dict[str, Any], file: dict[str, Any]):
     """Returns the job summary string."""
-    formatted_target_lang = _(lang["name"])
+    formatted_target_lang = lang["name"]
     file_name = file["filename"]
     return _("Translate to: {formatted_target_lang}\nFile Uploaded: {file_name}\n")
