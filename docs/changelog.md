@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: Deferred Ray event scheduler imports until enqueue time to break the SAQ startup circular import that crashed UAT pods (Wade Norman, 2026-05-10)
 - [Changed]: Moved Ray callback durable delivery scheduling behind `app.ray.events` so `app/routers/ray.py` no longer imports SAQ worker enqueue helpers directly (Wade Norman, 2026-05-08)
 - [Fixed]: Added SAQ worker liveness checks at the low-level enqueue boundary, per-queue restart recovery, legacy queue draining, and health reporting so hot reload or branch changes do not leave Slack delivery jobs undrained (Wade Norman, 2026-05-08)
 - [Changed]: Aligned Slack file option value length validation with Slack's 150-character option value limit while preserving the 75-character display text limit (Wade Norman, 2026-05-06)
