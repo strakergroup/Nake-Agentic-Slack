@@ -12,6 +12,7 @@ from typing import Any, cast
 import httpx
 from ray_sdk import RayResponse
 from slack_bolt.context.async_context import AsyncBoltContext
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.api.language_cloud import detect_language
@@ -93,6 +94,7 @@ from .templates.messages import (
     LoginMessage,
     LogoutMessage,
     MediaEmbedOptionMessage,
+    MissingSlackFilesMessage,
     NewJobMessage,
     SlackMessage,
     TranscriptionMessage,  # noqa: F401 - kept for potential future use
@@ -100,7 +102,12 @@ from .templates.messages import (
     VideoOptionsMessage,
 )
 from .templates.models import NewJobForm
-from .web import download_file, download_files, files_list_simple
+from .web import (
+    download_file,
+    download_files,
+    files_list_simple,
+    get_bot_accessible_files,
+)
 
 VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
 
@@ -115,6 +122,72 @@ MEDIA_ACTION_IDS = frozenset(
 )
 
 FR_CA_VARIANTS = frozenset({"fr-ca", "french-canada", "french-canadian"})
+
+
+def slack_api_error_code(error: SlackApiError) -> str | None:
+    response = error.response
+    if isinstance(response, dict):
+        error_code = response.get("error")
+        return str(error_code) if error_code else None
+    try:
+        error_code = response.get("error")
+    except Exception:
+        return None
+    return str(error_code) if error_code else None
+
+
+def is_slack_file_not_found(error: SlackApiError) -> bool:
+    return slack_api_error_code(error) == "file_not_found"
+
+
+def slack_file_id(file: dict[str, Any]) -> str | None:
+    file_id = file.get("id") or file.get("value")
+    return str(file_id) if file_id else None
+
+
+def document_mt_selected_languages(raw_value: Any) -> list[str]:
+    if raw_value is None:
+        return []
+    if isinstance(raw_value, bytes):
+        raw_value = raw_value.decode("utf-8")
+    if isinstance(raw_value, str):
+        try:
+            parsed_value = json.loads(raw_value)
+        except json.JSONDecodeError:
+            return [raw_value] if raw_value else []
+        if isinstance(parsed_value, list):
+            return [str(language) for language in parsed_value if language]
+        return [str(parsed_value)] if parsed_value else []
+    if isinstance(raw_value, list):
+        return [str(language) for language in raw_value if language]
+    return [str(raw_value)] if raw_value else []
+
+
+async def get_accessible_slack_files(
+    client: AsyncWebClient, files: list[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    file_ids = [
+        file_id for file_id in (slack_file_id(file) for file in files) if file_id
+    ]
+    accessible_files = await get_bot_accessible_files(client, file_ids)
+    accessible_file_ids = {
+        file_id
+        for file_id in (slack_file_id(file) for file in accessible_files)
+        if file_id
+    }
+    missing_files = [
+        file for file in files if slack_file_id(file) not in accessible_file_ids
+    ]
+    return accessible_files, missing_files
+
+
+async def notify_missing_slack_files(
+    client: AsyncWebClient, user_id: str, files: list[dict[str, Any]]
+) -> None:
+    if not files:
+        return
+    message = MissingSlackFilesMessage(files)
+    await client.chat_postMessage(channel=user_id, text=message.text)
 
 
 def _normalize_document_target_languages(
