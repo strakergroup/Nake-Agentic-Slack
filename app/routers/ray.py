@@ -49,11 +49,6 @@ from ..auth.connector import (
     validate_api_callback_signature,
 )
 from ..dependencies import RayEvent, RayEventAuth, get_ray_event_auth
-from ..ray.events import (
-    schedule_mt_success_upload,
-    schedule_transcription_upload,
-    schedule_verify_complete_upload,
-)
 from ..ray.events.logging import (
     post_channel_translation_notification,
     post_notification,
@@ -74,6 +69,11 @@ from ..ray.events.models import (
     SlackAccountConnectedEvent,
 )
 from ..redis import redis_conn
+from ..saq_jobs.dispatch import (
+    enqueue_mt_success_upload,
+    enqueue_transcription_upload,
+    enqueue_verify_complete_upload,
+)
 from ..slack.templates.messages import (
     AutoTranslationMessage,
     ClientApprovedEventMessage,
@@ -603,7 +603,7 @@ async def _handle_transcription_complete(
         )
 
         if upload_channel_id and auth.slack_user is not None:
-            await schedule_transcription_upload(
+            await enqueue_transcription_upload(
                 file_id=result_file_id,
                 file_name=result_file_name,
                 task_uuid=task_info.task_uuid,
@@ -1308,7 +1308,7 @@ async def ray_events(
                     )
             except ValidationError:
                 success_data = MtSuccessResponseSchema.model_validate(event.data)
-                await schedule_mt_success_upload(success_data)
+                await enqueue_mt_success_upload(success_data)
 
         elif event.event == "verify:slack:evaluate:complete":
             if not await _claim_evaluate_complete_notification(event):
@@ -1423,7 +1423,7 @@ async def ray_events(
                     response.data["channel"] if isinstance(response.data, dict) else ""
                 )
                 if upload_channel_id and auth.slack_user is not None:
-                    await schedule_verify_complete_upload(
+                    await enqueue_verify_complete_upload(
                         grid_file_id=event.data["grid_file_id"],
                         client_id=auth.slack_user.ray_client_id,
                         channel_id=upload_channel_id,

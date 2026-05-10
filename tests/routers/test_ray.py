@@ -558,7 +558,7 @@ class TestRayEventsEndpoint:
                                             return_value=mock_response,
                                         ) as mock_post:
                                             with patch(
-                                                "app.routers.ray.schedule_transcription_upload",
+                                                "app.routers.ray.enqueue_transcription_upload",
                                                 new_callable=AsyncMock,
                                             ) as mock_enqueue:
                                                 auth = RayEventAuth()
@@ -781,7 +781,7 @@ class TestRayEventsEndpoint:
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
                     ):
                         with patch(
-                            "app.routers.ray.schedule_mt_success_upload",
+                            "app.routers.ray.enqueue_mt_success_upload",
                             new_callable=AsyncMock,
                         ) as mock_enqueue:
                             auth = RayEventAuth()
@@ -1051,7 +1051,7 @@ class TestRayEventsEndpoint:
                                 return_value=mock_response,
                             ) as mock_post:
                                 with patch(
-                                    "app.routers.ray.schedule_verify_complete_upload",
+                                    "app.routers.ray.enqueue_verify_complete_upload",
                                     new_callable=AsyncMock,
                                 ) as mock_enqueue:
                                     auth = RayEventAuth()
