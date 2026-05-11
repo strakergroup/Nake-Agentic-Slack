@@ -130,6 +130,30 @@ class SlackMessage(TextMessage):
         return self._blocks
 
 
+def _slack_file_title(file: dict[str, Any]) -> str:
+    text = file.get("text")
+    if isinstance(text, dict) and text.get("text"):
+        return str(text["text"])
+    title = file.get("title") or file.get("name") or file.get("id") or file.get("value")
+    return str(title) if title else _("selected file")
+
+
+class MissingSlackFilesMessage(TextMessage):
+    """Message shown when selected Slack files disappeared before submission."""
+
+    def __init__(self, files: list[dict[str, Any]]) -> None:
+        file_names = ", ".join(_slack_file_title(file) for file in files)
+        if len(files) == 1:
+            message = _(
+                "The selected file ({file_names}) is no longer available in Slack. Please upload it again and retry."
+            )
+        else:
+            message = _(
+                "The selected files ({file_names}) are no longer available in Slack. Please upload them again and retry."
+            )
+        super().__init__(message)
+
+
 class JobFileListEmptyMessage(SlackMessage):
     """Message shown when a job has no files to display."""
 

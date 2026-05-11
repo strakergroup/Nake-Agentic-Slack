@@ -75,10 +75,14 @@ from .listener_actions import (
     auto_translate_message,
     cancel_job_process,
     document_machine_translate,
+    document_mt_selected_languages,
+    get_accessible_slack_files,
     get_groups,
     get_mt_translation,
+    is_slack_file_not_found,
     is_srt_file,
     maybe_show_thread_media_embed_option,
+    notify_missing_slack_files,
     post_batch_list,
     post_file_list,
     post_job_details,
@@ -152,28 +156,6 @@ from .web import (
     get_mt_ts_cached,
     upload_file_to_slack_memory_efficient,
 )
-
-# ---------------------------------------------------------
-# Helper functions
-# ---------------------------------------------------------
-
-
-def _document_mt_selected_languages(raw_value: Any) -> list[str]:
-    if raw_value is None:
-        return []
-    if isinstance(raw_value, bytes):
-        raw_value = raw_value.decode("utf-8")
-    if isinstance(raw_value, str):
-        try:
-            parsed_value = json.loads(raw_value)
-        except json.JSONDecodeError:
-            return [raw_value] if raw_value else []
-        if isinstance(parsed_value, list):
-            return [str(language) for language in parsed_value if language]
-        return [str(parsed_value)] if parsed_value else []
-    if isinstance(raw_value, list):
-        return [str(language) for language in raw_value if language]
-    return [str(raw_value)] if raw_value else []
 
 
 async def _send_translation_success_message(
@@ -464,7 +446,17 @@ async def document_mt_job_action(
         files = action_data.get("files", [])
         channel_id = action_data.get("channel_id")
         if files:
-            view = document_mt_job_modal(channel_id, files)
+            accessible_files, missing_files = await get_accessible_slack_files(
+                client, files
+            )
+            if missing_files:
+                await notify_missing_slack_files(
+                    client, context["user_id"], missing_files
+                )
+            if not accessible_files:
+                return
+
+            view = document_mt_job_modal(channel_id, accessible_files)
             await client.views_open(
                 trigger_id=body["trigger_id"],
                 view=view,
@@ -493,7 +485,7 @@ async def document_mt_submit_action(
         assert action is not None
         slack_file_ids = json.loads(action["value"])
         selected_language = await redis_conn.get(f"output_file_{action['value']}")
-        selected_languages = _document_mt_selected_languages(selected_language)
+        selected_languages = document_mt_selected_languages(selected_language)
         # get uuid from output_file
         if await require_mt_tokens(context, 1):
             # get selected language from redis keyed on output_file
@@ -2050,7 +2042,6 @@ async def evaluate_job_submit(
             msg = _(
                 "You've successfully submitted your document(s) for quality evaluation."
             )
-        await client.chat_postMessage(channel=channel_id, text=msg)
         try:
             file_payloads = [
                 slack_file_submission_payload(
@@ -2060,6 +2051,23 @@ async def evaluate_job_submit(
                 )
                 for file in form.files
             ]
+            accessible_files, missing_files = await get_accessible_slack_files(
+                client, file_payloads
+            )
+            if missing_files:
+                await notify_missing_slack_files(
+                    client, context["user_id"], missing_files
+                )
+            accessible_file_ids = {
+                str(file["id"]) for file in accessible_files if file.get("id")
+            }
+            file_payloads = [
+                file for file in file_payloads if str(file["id"]) in accessible_file_ids
+            ]
+            if not file_payloads:
+                return
+
+            await client.chat_postMessage(channel=channel_id, text=msg)
             await enqueue_evaluation_submission(
                 user_id=context["user_id"],
                 team_id=context["team_id"],
@@ -2121,8 +2129,20 @@ async def evaluate_job_action(
                     ),
                 )
                 return
+            accessible_files, missing_files = await get_accessible_slack_files(
+                client, files
+            )
+            if missing_files:
+                await notify_missing_slack_files(
+                    client, context["user_id"], missing_files
+                )
+            if not accessible_files:
+                return
             view = human_job_modal(
-                channel_id, files, is_ibm_enterprise(context.enterprise_id), job_type
+                channel_id,
+                accessible_files,
+                is_ibm_enterprise(context.enterprise_id),
+                job_type,
             )
             await client.views_open(
                 trigger_id=body["trigger_id"],
@@ -2624,6 +2644,22 @@ async def handle_document_mt_job(
             file_payloads = [
                 slack_file_submission_payload_from_option(file) for file in files
             ]
+            accessible_files, missing_files = await get_accessible_slack_files(
+                client, file_payloads
+            )
+            if missing_files:
+                await notify_missing_slack_files(
+                    client, context["user_id"], missing_files
+                )
+            accessible_file_ids = {
+                str(file["id"]) for file in accessible_files if file.get("id")
+            }
+            file_payloads = [
+                file for file in file_payloads if str(file["id"]) in accessible_file_ids
+            ]
+            if not file_payloads:
+                return
+
             selected_file_titles = [str(file["title"]) for file in file_payloads]
             await enqueue_document_mt_submission(
                 user_id=context["user_id"],

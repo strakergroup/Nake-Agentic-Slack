@@ -4,10 +4,11 @@ Tests for app/slack/listeners.py
 
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from slack_sdk.errors import SlackApiError
 
 from app.auth.connector import RayConnection, RayContext, RaySuperGroup
 from app.slack.templates.messages import LoginMessage
@@ -2204,6 +2205,11 @@ class TestEvaluateJobAction:
             patch(
                 "app.slack.listeners.human_job_modal", return_value={"type": "modal"}
             ),
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=([{"id": "F123", "title": "file.txt"}], []),
+            ),
         ):
             mock_require_ray_client.return_value = True
 
@@ -2218,6 +2224,64 @@ class TestEvaluateJobAction:
         mock_ack.assert_called_once()
         mock_client.views_open.assert_called_once()
         mock_client.chat_postMessage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_action_stale_file_does_not_open_modal(
+        self, user_id, team_id, ray_client
+    ):
+        """Deleted Slack files should be reported before opening QE modal."""
+        from app.slack.listeners import evaluate_job_action
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        body = {"trigger_id": "trigger-123"}
+        action = {
+            "value": json.dumps(
+                {
+                    "files": [{"id": "F_MISSING", "title": "deleted.docx"}],
+                    "channel_id": "C123",
+                }
+            )
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": "E123",
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, "E123", "C123"),
+        }
+
+        with (
+            patch(
+                "app.slack.listeners.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("app.slack.listeners.is_ibm_enterprise", return_value=False),
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=([], [{"id": "F_MISSING", "title": "deleted.docx"}]),
+            ) as mock_get_accessible_files,
+        ):
+            await evaluate_job_action(
+                context_dict,
+                mock_client,
+                body=body,
+                action=action,
+                ack=mock_ack,
+            )
+
+        mock_ack.assert_called_once()
+        mock_get_accessible_files.assert_called_once_with(
+            mock_client, [{"id": "F_MISSING", "title": "deleted.docx"}]
+        )
+        mock_client.views_open.assert_not_called()
+        mock_client.chat_postMessage.assert_called_once()
+        message_text = mock_client.chat_postMessage.call_args.kwargs["text"].lower()
+        assert "no longer available" in message_text
+        assert "deleted.docx" in message_text
 
 
 class TestEvaluateJobSubmit:
@@ -2466,6 +2530,164 @@ class TestEvaluateJobSubmit:
         mock_client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_evaluate_job_submit_file_not_found_does_not_notify_exception(
+        self, user_id, team_id, ray_client
+    ):
+        """Deleted Slack files should be reported without submitting QE."""
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "callback_id": "evaluate_job",
+            "private_metadata": "C123",
+            "state": {
+                "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "src-lang-001"}
+                        }
+                    },
+                    "target_langs": {
+                        "language_options_uuid": {
+                            "selected_options": [{"value": "lang-123"}]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {
+                                    "value": "F_MISSING",
+                                    "text": {"text": "deleted.docx"},
+                                }
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+        with (
+            patch(
+                "app.slack.listeners.get_conflicting_target_language_labels",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=(
+                    [],
+                    [{"id": "F_MISSING", "title": "deleted.docx", "size": None}],
+                ),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_evaluation_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+            patch("app.slack.listeners.notify_exception") as mock_notify,
+        ):
+            await evaluate_job_submit(
+                context_dict, view=view, client=mock_client, ack=mock_ack
+            )
+
+        mock_ack.assert_called_once_with(response_action="clear")
+        mock_enqueue.assert_not_called()
+        mock_notify.assert_not_called()
+        mock_client.chat_postMessage.assert_called_once()
+        message_text = mock_client.chat_postMessage.call_args.kwargs["text"].lower()
+        assert "no longer available" in message_text
+        assert "deleted.docx" in message_text
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_submit_mixed_missing_and_valid_files(
+        self, user_id, team_id, ray_client
+    ):
+        """QE should continue with valid files when another selected file is gone."""
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "callback_id": "evaluate_job",
+            "private_metadata": "C123",
+            "state": {
+                "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "src-lang-001"}
+                        }
+                    },
+                    "target_langs": {
+                        "language_options_uuid": {
+                            "selected_options": [{"value": "lang-123"}]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {
+                                    "value": "F_MISSING",
+                                    "text": {"text": "deleted.docx"},
+                                },
+                                {"value": "F_VALID", "text": {"text": "valid.docx"}},
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+        with (
+            patch(
+                "app.slack.listeners.get_conflicting_target_language_labels",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=(
+                    [{"id": "F_VALID"}],
+                    [{"id": "F_MISSING", "title": "deleted.docx", "size": None}],
+                ),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_evaluation_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+            patch("app.slack.listeners.notify_exception") as mock_notify,
+        ):
+            await evaluate_job_submit(
+                context_dict, view=view, client=mock_client, ack=mock_ack
+            )
+
+        mock_ack.assert_called_once_with(response_action="clear")
+        mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.kwargs["files"] == [
+            {"id": "F_VALID", "title": "valid.docx", "size": None}
+        ]
+        mock_notify.assert_not_called()
+        posted_texts = [
+            call.kwargs["text"].lower()
+            for call in mock_client.chat_postMessage.call_args_list
+        ]
+        assert any("no longer available" in text for text in posted_texts)
+        assert any("successfully submitted" in text for text in posted_texts)
+
+    @pytest.mark.asyncio
     async def test_evaluate_job_submit_success(self, user_id, team_id, ray_client):
         """Test evaluate_job_submit successful submission."""
         from app.slack.listeners import evaluate_job_submit
@@ -2510,10 +2732,17 @@ class TestEvaluateJobSubmit:
             new_callable=AsyncMock,
         ) as mock_conflicts:
             mock_conflicts.return_value = []
-            with patch(
-                "app.slack.listeners.enqueue_evaluation_submission",
-                new_callable=AsyncMock,
-            ) as mock_enqueue:
+            with (
+                patch(
+                    "app.slack.listeners.get_accessible_slack_files",
+                    new_callable=AsyncMock,
+                    return_value=([{"id": "F123"}], []),
+                ),
+                patch(
+                    "app.slack.listeners.enqueue_evaluation_submission",
+                    new_callable=AsyncMock,
+                ) as mock_enqueue,
+            ):
                 await evaluate_job_submit(
                     context_dict, view=view, client=mock_client, ack=mock_ack
                 )
@@ -2573,10 +2802,17 @@ class TestEvaluateJobSubmit:
             new_callable=AsyncMock,
         ) as mock_conflicts:
             mock_conflicts.return_value = []
-            with patch(
-                "app.slack.listeners.enqueue_evaluation_submission",
-                new_callable=AsyncMock,
-            ) as mock_enqueue:
+            with (
+                patch(
+                    "app.slack.listeners.get_accessible_slack_files",
+                    new_callable=AsyncMock,
+                    return_value=([{"id": "F123"}], []),
+                ),
+                patch(
+                    "app.slack.listeners.enqueue_evaluation_submission",
+                    new_callable=AsyncMock,
+                ) as mock_enqueue,
+            ):
                 mock_enqueue.side_effect = VerifyAPIError("Permission denied")
                 await evaluate_job_submit(
                     context_dict, view=view, client=mock_client, ack=mock_ack
@@ -2635,10 +2871,17 @@ class TestEvaluateJobSubmit:
             new_callable=AsyncMock,
         ) as mock_conflicts:
             mock_conflicts.return_value = []
-            with patch(
-                "app.slack.listeners.enqueue_evaluation_submission",
-                new_callable=AsyncMock,
-            ) as mock_enqueue:
+            with (
+                patch(
+                    "app.slack.listeners.get_accessible_slack_files",
+                    new_callable=AsyncMock,
+                    return_value=([{"id": "F123"}], []),
+                ),
+                patch(
+                    "app.slack.listeners.enqueue_evaluation_submission",
+                    new_callable=AsyncMock,
+                ) as mock_enqueue,
+            ):
                 mock_enqueue.side_effect = Exception("General error")
                 with patch("app.slack.listeners.notify_exception") as mock_notify:
                     await evaluate_job_submit(
@@ -2654,6 +2897,60 @@ class TestEvaluateJobSubmit:
         call_args_list = mock_client.chat_postMessage.call_args_list
         last_call_text = call_args_list[-1][1]["text"].lower()
         assert "error" in last_call_text
+
+
+class TestDocumentMtJobAction:
+    """Tests for opening the document MT modal from a file action."""
+
+    @pytest.mark.asyncio
+    async def test_document_mt_job_action_stale_file_does_not_open_modal(
+        self, user_id, team_id
+    ):
+        """Test stale Slack file IDs are reported before opening the modal."""
+        from app.slack.listeners import document_mt_job_action
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        context_dict = {"user_id": user_id, "team_id": team_id}
+        action = {
+            "value": json.dumps(
+                {
+                    "files": [{"id": "F_MISSING", "title": "deleted.docx"}],
+                    "channel_id": "D123",
+                }
+            )
+        }
+        body = {"trigger_id": "trigger-123"}
+
+        with (
+            patch(
+                "app.slack.listeners.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=([], [{"id": "F_MISSING", "title": "deleted.docx"}]),
+            ) as mock_get_accessible_files,
+        ):
+            await document_mt_job_action(
+                context_dict,
+                mock_ack,
+                action=action,
+                body=body,
+                client=mock_client,
+            )
+
+        mock_ack.assert_called_once()
+        mock_get_accessible_files.assert_called_once_with(
+            mock_client, [{"id": "F_MISSING", "title": "deleted.docx"}]
+        )
+        mock_client.views_open.assert_not_called()
+        mock_client.chat_postMessage.assert_called_once()
+        message_text = mock_client.chat_postMessage.call_args[1]["text"].lower()
+        assert "no longer available" in message_text
+        assert "deleted.docx" in message_text
 
 
 class TestHandleDocumentMtJob:
@@ -2810,10 +3107,17 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch(
-            "app.slack.listeners.enqueue_document_mt_submission",
-            new_callable=AsyncMock,
-        ) as mock_enqueue:
+        with (
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=([{"id": "F123"}], []),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+        ):
             await handle_document_mt_job(
                 context_dict, mock_ack, view=view, client=mock_client
             )
@@ -2926,6 +3230,231 @@ class TestHandleDocumentMtJob:
         mock_client.chat_postMessage.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_handle_document_mt_job_file_not_found_does_not_notify_exception(
+        self, user_id, team_id, ray_client
+    ):
+        """Test deleted Slack files are reported to the user without buglogging."""
+        from app.slack.listeners import handle_document_mt_job
+
+        ray_client.is_trial = False
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "private_metadata": "D123",
+            "state": {
+                "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {
+                                "value": "fr",
+                                "text": {"text": "French"},
+                            }
+                        }
+                    },
+                    "target_langs": {
+                        "language_mt_options": {
+                            "selected_options": [
+                                {"value": "en", "text": {"text": "English"}}
+                            ]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {
+                                    "value": "F_MISSING",
+                                    "text": {"text": "deleted.docx"},
+                                }
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+        with (
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=(
+                    [],
+                    [{"id": "F_MISSING", "title": "deleted.docx", "size": None}],
+                ),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+            patch("app.slack.listeners.notify_exception") as mock_notify,
+        ):
+            await handle_document_mt_job(
+                context_dict, mock_ack, view=view, client=mock_client
+            )
+
+        mock_ack.assert_called_once()
+        mock_enqueue.assert_not_called()
+        mock_notify.assert_not_called()
+        mock_client.chat_postMessage.assert_called_once()
+        message_text = mock_client.chat_postMessage.call_args[1]["text"].lower()
+        assert "no longer available" in message_text
+        assert "deleted.docx" in message_text
+
+    @pytest.mark.asyncio
+    async def test_handle_document_mt_job_unexpected_slack_error_notifies_exception(
+        self, user_id, team_id, ray_client
+    ):
+        """Test unexpected Slack API errors keep using the generic error path."""
+        from app.slack.listeners import handle_document_mt_job
+
+        ray_client.is_trial = False
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "private_metadata": "D123",
+            "state": {
+                "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {
+                                "value": "fr",
+                                "text": {"text": "French"},
+                            }
+                        }
+                    },
+                    "target_langs": {
+                        "language_mt_options": {
+                            "selected_options": [
+                                {"value": "en", "text": {"text": "English"}}
+                            ]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "file.docx"}}
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+        slack_error = SlackApiError(
+            message="Slack API failed",
+            response={"ok": False, "error": "internal_error"},
+        )
+
+        with (
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                side_effect=slack_error,
+            ),
+            patch("app.slack.listeners.notify_exception") as mock_notify,
+        ):
+            await handle_document_mt_job(
+                context_dict, mock_ack, view=view, client=mock_client
+            )
+
+        mock_ack.assert_called_once()
+        mock_notify.assert_called_once_with(slack_error)
+        message_text = mock_client.chat_postMessage.call_args[1]["text"].lower()
+        assert "error submitting" in message_text
+
+    @pytest.mark.asyncio
+    async def test_handle_document_mt_job_mixed_missing_and_valid_files(
+        self, user_id, team_id, ray_client, tmp_path
+    ):
+        """Test valid files continue processing when another selected file is gone."""
+        from app.slack.listeners import handle_document_mt_job
+
+        ray_client.is_trial = False
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "private_metadata": "D123",
+            "state": {
+                "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {
+                                "value": "fr",
+                                "text": {"text": "French"},
+                            }
+                        }
+                    },
+                    "target_langs": {
+                        "language_mt_options": {
+                            "selected_options": [
+                                {"value": "en", "text": {"text": "English"}}
+                            ]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {
+                                    "value": "F_MISSING",
+                                    "text": {"text": "deleted.docx"},
+                                },
+                                {"value": "F_VALID", "text": {"text": "valid.docx"}},
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+        with (
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=(
+                    [{"id": "F_VALID"}],
+                    [{"id": "F_MISSING", "title": "deleted.docx", "size": None}],
+                ),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+            patch("app.slack.listeners.notify_exception") as mock_notify,
+        ):
+            await handle_document_mt_job(
+                context_dict, mock_ack, view=view, client=mock_client
+            )
+
+        mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.kwargs["files"] == [
+            {"id": "F_VALID", "title": "valid.docx", "size": None}
+        ]
+        mock_notify.assert_not_called()
+        posted_texts = [
+            call.kwargs["text"].lower()
+            for call in mock_client.chat_postMessage.call_args_list
+        ]
+        assert any("being translated" in text for text in posted_texts)
+        assert any("no longer available" in text for text in posted_texts)
+
+    @pytest.mark.asyncio
     async def test_handle_document_mt_job_applies_pdf_limit_for_trial(
         self, user_id, team_id, ray_client
     ):
@@ -2970,10 +3499,17 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch(
-            "app.slack.listeners.enqueue_document_mt_submission",
-            new_callable=AsyncMock,
-        ) as mock_enqueue:
+        with (
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=([{"id": "F123"}], []),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+        ):
             await handle_document_mt_job(
                 context_dict, mock_ack, view=view, client=mock_client
             )
@@ -3030,10 +3566,17 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch(
-            "app.slack.listeners.enqueue_document_mt_submission",
-            new_callable=AsyncMock,
-        ) as mock_enqueue:
+        with (
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=([{"id": "F123"}], []),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+        ):
             await handle_document_mt_job(
                 context_dict, mock_ack, view=view, client=mock_client
             )
@@ -3087,10 +3630,17 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch(
-            "app.slack.listeners.enqueue_document_mt_submission",
-            new_callable=AsyncMock,
-        ) as mock_enqueue:
+        with (
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=([{"id": "F123"}], []),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+        ):
             mock_enqueue.side_effect = RuntimeError("enqueue failed")
             with patch("app.slack.listeners.notify_exception") as mock_notify:
                 await handle_document_mt_job(
@@ -3154,10 +3704,17 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch(
-            "app.slack.listeners.enqueue_document_mt_submission",
-            new_callable=AsyncMock,
-        ) as mock_enqueue:
+        with (
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=([{"id": "F123"}], []),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+        ):
             await handle_document_mt_job(
                 context_dict,
                 mock_ack,
