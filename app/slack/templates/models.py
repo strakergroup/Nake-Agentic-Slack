@@ -261,8 +261,41 @@ class AutoTranslationSettingsForm(BaseModel):
 
 
 EVALUATE_JOB_REFERENCE_MAX_LENGTH = 100
-EVALUATE_JOB_REFERENCE_TRUNCATE_LENGTH = EVALUATE_JOB_REFERENCE_MAX_LENGTH - 3
 EVALUATE_JOB_REFERENCE_FALLBACK = "slack job"
+EVALUATE_JOB_REFERENCE_SEPARATOR = ", "
+EVALUATE_JOB_REFERENCE_FILENAME_MAX_LENGTH = 23
+EVALUATE_JOB_REFERENCE_ELLIPSIS = "..."
+
+
+def _abbreviate_file_title(title: str, max_length: int) -> str:
+    """Keep the searchable start and end of a file title within max_length."""
+    if len(title) <= max_length:
+        return title
+    if max_length <= len(EVALUATE_JOB_REFERENCE_ELLIPSIS):
+        return title[:max_length]
+
+    remaining_length = max_length - len(EVALUATE_JOB_REFERENCE_ELLIPSIS)
+    prefix_length = (remaining_length + 1) // 2
+    suffix_length = remaining_length - prefix_length
+    if suffix_length <= 0:
+        return f"{title[:prefix_length]}{EVALUATE_JOB_REFERENCE_ELLIPSIS}"
+    return (
+        f"{title[:prefix_length]}"
+        f"{EVALUATE_JOB_REFERENCE_ELLIPSIS}"
+        f"{title[-suffix_length:]}"
+    )
+
+
+def _build_abbreviated_file_titles(file_titles: list[str]) -> list[str]:
+    separator_budget = len(EVALUATE_JOB_REFERENCE_SEPARATOR) * (len(file_titles) - 1)
+    per_file_limit = (
+        EVALUATE_JOB_REFERENCE_MAX_LENGTH - separator_budget
+    ) // len(file_titles)
+    per_file_limit = min(
+        EVALUATE_JOB_REFERENCE_FILENAME_MAX_LENGTH,
+        per_file_limit,
+    )
+    return [_abbreviate_file_title(title, per_file_limit) for title in file_titles]
 
 
 def build_human_translation_reference(
@@ -272,13 +305,17 @@ def build_human_translation_reference(
     if manual_reference and manual_reference.strip():
         return manual_reference
 
-    generated_reference = (
-        ", ".join(title.strip() for title in file_titles if title.strip())
-        or EVALUATE_JOB_REFERENCE_FALLBACK
-    )
+    clean_titles = [title.strip() for title in file_titles if title.strip()]
+    if not clean_titles:
+        return EVALUATE_JOB_REFERENCE_FALLBACK
+
+    generated_reference = EVALUATE_JOB_REFERENCE_SEPARATOR.join(clean_titles)
     if len(generated_reference) <= EVALUATE_JOB_REFERENCE_MAX_LENGTH:
         return generated_reference
-    return f"{generated_reference[:EVALUATE_JOB_REFERENCE_TRUNCATE_LENGTH]}..."
+
+    return EVALUATE_JOB_REFERENCE_SEPARATOR.join(
+        _build_abbreviated_file_titles(clean_titles)
+    )
 
 
 class EvaluateJobForm(BaseModel):

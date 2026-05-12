@@ -312,15 +312,47 @@ class TestEvaluateJobForm:
 
         assert form.reference == "Manual reference"
 
-    def test_evaluate_job_form_truncates_generated_human_reference(self):
-        """Test generated Human Translation reference is capped at 100 chars."""
-        long_title = "a" * 120
+    def test_evaluate_job_form_abbreviates_long_generated_human_reference(self):
+        """Test long Human Translation file titles keep searchable head and tail text."""
+        long_title = f"abcdefghij{'x' * 100}klmnopqrst"
         values = self._human_job_values([long_title], include_reference=False)
 
         form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
 
-        assert form.reference == f"{'a' * 97}..."
-        assert len(form.reference) == 100
+        assert form.reference == "abcdefghij...klmnopqrst"
+        assert len(form.reference) <= 100
+
+    def test_evaluate_job_form_abbreviates_each_long_human_file_title(self):
+        """Test multi-file Human Translation references keep each file searchable."""
+        values = self._human_job_values(
+            [
+                f"abcdefghij{'x' * 100}klmnopqrst",
+                f"1234567890{'y' * 100}zyxwvutsrq",
+            ],
+            include_reference=False,
+        )
+
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+
+        assert form.reference == "abcdefghij...klmnopqrst, 1234567890...zyxwvutsrq"
+        assert len(form.reference) <= 100
+
+    def test_evaluate_job_form_keeps_all_ten_long_human_file_titles_represented(self):
+        """Test up to ten long file names are each represented within the limit."""
+        values = self._human_job_values(
+            [
+                f"f{index:02d}-very-long-file-name-version-{index:02d}"
+                for index in range(10)
+            ],
+            include_reference=False,
+        )
+
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+
+        assert len(form.reference) <= 100
+        assert form.reference.split(", ") == [
+            f"f{index:02d}...{index:02d}" for index in range(10)
+        ]
 
     def test_evaluate_job_form_empty_file_titles_fall_back_to_slack_job(self):
         """Test empty selected file titles fall back to slack job."""
