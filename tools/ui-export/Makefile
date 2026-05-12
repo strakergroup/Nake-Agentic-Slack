@@ -12,7 +12,7 @@ SHELL := /bin/bash
 
 REPO_ROOT := $(shell git rev-parse --show-toplevel)
 PYTHON_VENV := $(REPO_ROOT)/.venv/bin/python
-SUPPORTED_LANGUAGES ?= de-DE,es-ES,es-LA,fr-FR,fr-CA,it-IT,ja-JP,ko-KR,pt-BR,zh-CN,zh-TW
+SUPPORTED_LANGUAGES ?= en,de,es,fr,fr-ca,jp
 SUPPORTED_TRANSLATION_SOURCE ?= app
 
 ifeq ($(wildcard $(PYTHON_VENV)),)

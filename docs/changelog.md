@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: `tools/ui-export` supported catalog exports now render English plus the DB-backed languages currently populated in `obj_stringtranslator`: `de`, `es`, `fr`, `fr-ca`, and `jp` (Wade Norman, 2026-05-12)
 - [Fixed]: `tools/translation-export` SQL import now reads translator-returned second-column translations from single-column exports and infers DB language codes from updated workbook filenames like `translations_fr-ca_updated__French_Canada.xlsx` (Wade Norman, 2026-05-12)
 - [Fixed]: `tools/translation-export` missing-string checks now treat legacy `<x id=N>` and self-closing `<x id=N/>` placeholder labels as equivalent, preventing tagged strings already present in the DB from being re-exported (Wade Norman, 2026-05-07)
 - [Changed]: `tools/translation-export` translator XLSX files now use a single unnamed text column with hidden import metadata and self-closing placeholder tags that runtime translation restores correctly (Wade Norman, 2026-05-07)

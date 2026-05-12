@@ -70,12 +70,11 @@ UI_EXPORT_LANGUAGES=en,fr,de UI_EXPORT_TRANSLATIONS_FILE=translations.json make 
 UI_EXPORT_LANGUAGES=en,fr,de UI_EXPORT_TRANSLATION_SOURCE=app make generate
 ```
 
-`make supported-languages` generates and renders the full supported Slack locale
-set used by the translation export tooling: `de-DE`, `es-ES`, `es-LA`,
-`fr-FR`, `fr-CA`, `it-IT`, `ja-JP`, `ko-KR`, `pt-BR`, `zh-CN`, and `zh-TW`.
-It defaults to `SUPPORTED_TRANSLATION_SOURCE=app`, so it uses the live DB-backed
-app translator. Override `SUPPORTED_TRANSLATION_SOURCE=catalog` and pass
-`TRANSLATIONS_FILE=translations.json` to run it from an offline catalog.
+`make supported-languages` generates and renders English plus the DB language
+codes currently supported by `obj_stringtranslator`: `en`, `de`, `es`, `fr`,
+`fr-ca`, and `jp`. It defaults to `SUPPORTED_TRANSLATION_SOURCE=app`, so it uses
+the live DB-backed app translator. Override `SUPPORTED_TRANSLATION_SOURCE=catalog`
+and pass `TRANSLATIONS_FILE=translations.json` to run it from an offline catalog.
 
 When `--translations-file` or `UI_EXPORT_TRANSLATIONS_FILE` is provided, the generator uses that JSON catalog while templates are instantiated. The file can either be keyed by language or contain a direct source-to-translation map:
 
