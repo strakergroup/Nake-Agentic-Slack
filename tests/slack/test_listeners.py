@@ -2767,6 +2767,70 @@ class TestEvaluateJobSubmit:
                         assert mock_client.chat_postMessage.call_count >= 1
 
     @pytest.mark.asyncio
+    async def test_evaluate_job_submit_human_uses_file_titles_as_reference(
+        self, user_id, team_id, ray_client
+    ):
+        """Test human translation submit defaults reference to selected file titles."""
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "callback_id": "evaluate_job_human",
+            "private_metadata": "C123",
+            "state": {
+                "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "src-lang-001"}
+                        }
+                    },
+                    "target_langs": {
+                        "language_options_uuid": {
+                            "selected_options": [{"value": "lang-123"}]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {"value": "F123|1234", "text": {"text": "alpha.docx"}},
+                                {"value": "F456|5678", "text": {"text": "beta.pdf"}},
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        with patch(
+            "app.slack.listeners.get_conflicting_target_language_labels",
+            new_callable=AsyncMock,
+        ) as mock_conflicts:
+            mock_conflicts.return_value = []
+            with patch(
+                "app.slack.listeners.enqueue_evaluation_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue:
+                await evaluate_job_submit(
+                    context_dict, view=view, client=mock_client, ack=mock_ack
+                )
+
+        mock_ack.assert_called_once()
+        mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.kwargs["reference"] == "alpha.docx, beta.pdf"
+        assert mock_enqueue.await_args.kwargs["files"] == [
+            {"id": "F123", "title": "alpha.docx", "size": 1234},
+            {"id": "F456", "title": "beta.pdf", "size": 5678},
+        ]
+
+    @pytest.mark.asyncio
     async def test_evaluate_job_submit_verify_api_error(
         self, user_id, team_id, ray_client
     ):

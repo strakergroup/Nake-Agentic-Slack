@@ -260,6 +260,27 @@ class AutoTranslationSettingsForm(BaseModel):
             raise ValueError("The Slack payload format is incorrect") from e
 
 
+EVALUATE_JOB_REFERENCE_MAX_LENGTH = 100
+EVALUATE_JOB_REFERENCE_TRUNCATE_LENGTH = EVALUATE_JOB_REFERENCE_MAX_LENGTH - 3
+EVALUATE_JOB_REFERENCE_FALLBACK = "slack job"
+
+
+def build_human_translation_reference(
+    file_titles: list[str], manual_reference: str | None
+) -> str:
+    """Build the downstream Human Translation reference for Slack submissions."""
+    if manual_reference and manual_reference.strip():
+        return manual_reference
+
+    generated_reference = (
+        ", ".join(title.strip() for title in file_titles if title.strip())
+        or EVALUATE_JOB_REFERENCE_FALLBACK
+    )
+    if len(generated_reference) <= EVALUATE_JOB_REFERENCE_MAX_LENGTH:
+        return generated_reference
+    return f"{generated_reference[:EVALUATE_JOB_REFERENCE_TRUNCATE_LENGTH]}..."
+
+
 class EvaluateJobForm(BaseModel):
     """The model for an evaluation job form."""
 
@@ -305,18 +326,23 @@ class EvaluateJobForm(BaseModel):
             workflow_options = selected_option["value"] if selected_option else None
         else:
             workflow_options = HUMAN_EVALUATION_WORKFLOW_UUID
-        reference = (
-            values.get("reference", {}).get("reference", {}).get("value", "slack job")
-        )
+        selected_files = [
+            SlackFile.parse_slack_option(opt)
+            for opt in values["files"]["files"]["selected_options"]
+        ]
+        manual_reference = values.get("reference", {}).get("reference", {}).get("value")
+        if callback_id == "evaluate_job_human":
+            reference = build_human_translation_reference(
+                [file.title for file in selected_files], manual_reference
+            )
+        else:
+            reference = manual_reference or EVALUATE_JOB_REFERENCE_FALLBACK
         return cls(
             reference=reference,
             source_lang_uuid=source_lang_uuid,
             target_langs_uuid=target_langs_uuid,
             workflow_options=workflow_options,
-            files=[
-                SlackFile.parse_slack_option(opt)
-                for opt in values["files"]["files"]["selected_options"]
-            ],
+            files=selected_files,
             job_notes=job_notes,
         )
 
