@@ -107,7 +107,26 @@ router = APIRouter()
 
 logger = logging.getLogger(__name__)
 
+CALLBACK_ERROR_DETAIL_MAX_LENGTH = 500
 RAY_EVENT_DEDUPE_TTL_SECONDS = 7 * 24 * 60 * 60
+
+
+def _safe_callback_error_detail(payload_error: Any) -> str:
+    error_detail = " ".join(str(payload_error or "").split())
+    if not error_detail:
+        return _("Unknown error")
+    return error_detail[:CALLBACK_ERROR_DETAIL_MAX_LENGTH]
+
+
+def _format_callback_error(stage: str, payload_error: Any) -> str:
+    error_detail = _safe_callback_error_detail(payload_error)
+    if stage == "transcription":
+        return _("Transcription failed: {error_detail}")
+    if stage == "translation":
+        return _("Translation failed: {error_detail}")
+    if stage == "embedding":
+        return _("Embedding failed: {error_detail}")
+    raise ValueError(f"Unsupported callback error stage: {stage}")
 
 
 async def _claim_evaluate_complete_notification(event: RayEvent) -> bool:
@@ -1031,7 +1050,7 @@ async def ray_events(
                     await client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
-                        text=_("Transcription failed: %s") % error_msg,
+                        text=_format_callback_error("transcription", error_msg),
                         thread_ts=thread_ts,
                     )
                     return
@@ -1108,7 +1127,7 @@ async def ray_events(
                     await client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
-                        text=_("Translation failed: %s") % error_msg,
+                        text=_format_callback_error("translation", error_msg),
                         thread_ts=thread_ts,
                     )
                     return
@@ -1183,7 +1202,7 @@ async def ray_events(
                     await client.chat_postEphemeral(
                         channel=auth.slack_user.channel_id,
                         user=auth.slack_user.user_id,
-                        text=_("Embedding failed: %s") % error_msg,
+                        text=_format_callback_error("embedding", error_msg),
                         thread_ts=thread_ts,
                     )
                     return

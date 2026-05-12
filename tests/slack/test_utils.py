@@ -64,6 +64,23 @@ class TestFormatStringsDisplay:
         result = format_strings_display(["English", "French"], and_string="and")
         assert result == "English and French"
 
+    def test_format_strings_display_leaves_unknown_custom_conjunction_untranslated(
+        self, monkeypatch
+    ):
+        """Test unknown conjunction tokens are treated as caller-provided text."""
+        translated_strings = []
+
+        def mock_translate(value: str) -> str:
+            translated_strings.append(value)
+            return f"translated:{value}"
+
+        monkeypatch.setattr("app.slack.utils._", mock_translate)
+
+        result = format_strings_display(["English", "French"], and_string="/")
+
+        assert result == "English / French"
+        assert translated_strings == []
+
     def test_format_strings_display_four_items(self):
         """Test formatting four items."""
         result = format_strings_display(["English", "French", "Spanish", "German"])

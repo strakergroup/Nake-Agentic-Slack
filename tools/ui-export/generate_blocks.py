@@ -12,13 +12,36 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
+import asyncio
 import json
+import os
+import re
 import sys
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+
+APP_TRANSLATION_SOURCES = {"app", "db", "database"}
+
+
+def _requested_translation_source() -> str:
+    """Read translation source early, before import-time mocks are installed."""
+    for index, arg in enumerate(sys.argv[1:]):
+        if arg == "--translation-source" and index + 2 < len(sys.argv):
+            return sys.argv[index + 2].strip().lower()
+        if arg.startswith("--translation-source="):
+            return arg.split("=", 1)[1].strip().lower()
+    env_value = os.environ.get("UI_EXPORT_TRANSLATION_SOURCE")
+    if env_value:
+        return env_value.strip().lower()
+    return "catalog"
+
+
+TRANSLATION_SOURCE = _requested_translation_source()
+USE_APP_TRANSLATOR = TRANSLATION_SOURCE in APP_TRANSLATION_SOURCES
 
 # ---------------------------------------------------------------------------
 # Ensure the repo root is on sys.path so app.* imports resolve
@@ -30,8 +53,9 @@ sys.path.insert(0, str(REPO_ROOT))
 # Patch heavy/side-effecty modules *before* importing app code
 # ---------------------------------------------------------------------------
 
-# Patch database engines (they try to connect on import)
-sys.modules.setdefault("app.database", MagicMock())
+# Patch database engines unless the real app translator was explicitly requested.
+if not USE_APP_TRANSLATOR:
+    sys.modules.setdefault("app.database", MagicMock())
 
 # Patch redis (it tries to connect on import)
 _redis_mock = MagicMock()
@@ -55,16 +79,6 @@ _ray_logger = MagicMock()
 for sub in ("ray_logger", "ray_logger.slack"):
     sys.modules.setdefault(sub, _ray_logger)
 
-_straker_utils = MagicMock()
-for sub in (
-    "straker_utils",
-    "straker_utils.sql",
-    "straker_utils.sql.async_engine",
-    "straker_utils.domain",
-    "straker_utils.environment",
-):
-    sys.modules.setdefault(sub, _straker_utils)
-
 
 class _Environment(str, Enum):
     production = "production"
@@ -72,7 +86,17 @@ class _Environment(str, Enum):
     local = "local"
 
 
-sys.modules["straker_utils.environment"].Environment = _Environment
+if not USE_APP_TRANSLATOR:
+    _straker_utils = MagicMock()
+    for sub in (
+        "straker_utils",
+        "straker_utils.sql",
+        "straker_utils.sql.async_engine",
+        "straker_utils.domain",
+        "straker_utils.environment",
+    ):
+        sys.modules.setdefault(sub, _straker_utils)
+    sys.modules["straker_utils.environment"].Environment = _Environment
 
 # Patch the domains object
 _domains_mock = MagicMock()
@@ -99,11 +123,116 @@ sys.modules.setdefault("ray_sdk.api.v3.file", MagicMock())
 # Make is_valid_file_ext always return True
 sys.modules["ray_sdk.api.v3.file"].is_valid_file_ext = lambda _: True
 
-# Patch translation function to act as identity with variable interpolation
+# Patch translation function to use a selectable export language. By default
+# this stays offline and deterministic using JSON catalogs; opt into the app's
+# real DB-backed translator with --translation-source app.
+
+DEFAULT_LANGUAGE = "en"
+PLACEHOLDER_PATTERN = re.compile(r":\w+:|\{.*?\}")
+_active_language = DEFAULT_LANGUAGE
+_translation_catalog: dict[str, str] = {}
+
+
+def parse_languages(value: str | None) -> list[str]:
+    """Parse comma-separated language codes, preserving order."""
+    if not value:
+        return [DEFAULT_LANGUAGE]
+    languages = []
+    seen = set()
+    for language in value.split(","):
+        language = language.strip()
+        if not language or language in seen:
+            continue
+        languages.append(language)
+        seen.add(language)
+    return languages or [DEFAULT_LANGUAGE]
+
+
+def load_translation_catalog(path: Path | None, language: str) -> dict[str, str]:
+    """Load optional UI export translations for a language.
+
+    Supported JSON shapes:
+      {"fr": {"Hello": "Bonjour"}}
+      {"Hello": "Bonjour"}
+    """
+    if path is None:
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("translation catalog must be a JSON object")
+    language_data = data.get(language, data)
+    if not isinstance(language_data, dict):
+        raise ValueError(f"translation catalog for {language} must be a JSON object")
+    return {
+        str(source): str(translation)
+        for source, translation in language_data.items()
+        if isinstance(source, str) and isinstance(translation, str)
+    }
+
+
+def configure_translation(language: str, catalog: dict[str, str] | None = None) -> None:
+    """Set the language used by the export translation function."""
+    global _active_language, _translation_catalog
+    _active_language = language
+    _translation_catalog = catalog or {}
+    if USE_APP_TRANSLATOR:
+        translator_var.set(Translator(language))
+    install_template_translation_function()
+
+
+def install_template_translation_function() -> None:
+    """Keep already-imported Slack template modules on the selected translator."""
+    translate_function = (
+        sys.modules["app.translate"]._ if USE_APP_TRANSLATOR else _mock_translate
+    )
+    for module_name in (
+        "app.translate",
+        "app.slack.templates.blocks",
+        "app.slack.templates.messages",
+        "app.slack.templates.views",
+    ):
+        module = sys.modules.get(module_name)
+        if module is not None:
+            module._ = translate_function
+
+
+def _tag_placeholders(text: str) -> tuple[str, dict[str, tuple[str, str]]]:
+    replacements = {}
+
+    def replace(match: re.Match[str]) -> str:
+        index = len(replacements) + 1
+        tag = f"<x id={index}/>"
+        legacy_tag = f"<x id={index}>"
+        replacements[match.group()] = (tag, legacy_tag)
+        return tag
+
+    return PLACEHOLDER_PATTERN.sub(replace, text), replacements
+
+
+def _translate_catalog_text(text: str) -> str:
+    if _active_language.lower().startswith(("en", "gb", "us")):
+        return text
+
+    tagged_text, replacements = _tag_placeholders(text)
+    translation = _translation_catalog.get(tagged_text) or _translation_catalog.get(
+        text
+    )
+    if translation is None:
+        legacy_tagged_text = tagged_text
+        for tag, legacy_tag in replacements.values():
+            legacy_tagged_text = legacy_tagged_text.replace(tag, legacy_tag)
+        translation = _translation_catalog.get(legacy_tagged_text)
+        if translation is None:
+            return text
+
+    for original, (tag, legacy_tag) in replacements.items():
+        translation = translation.replace(tag, original)
+        translation = translation.replace(legacy_tag, original)
+    return translation
 
 
 def _mock_translate(text, *args, **kwargs):
-    """Identity translation that resolves f-string style variables."""
+    """Translate via the selected catalog and resolve f-string style variables."""
     import inspect
 
     frame = inspect.currentframe()
@@ -113,14 +242,18 @@ def _mock_translate(text, *args, **kwargs):
         # Check one more level up for class __init__ methods
         if frame.f_back.f_back:
             caller_locals = {**frame.f_back.f_back.f_locals, **caller_locals}
+    translated_text = _translate_catalog_text(text)
     try:
-        return text.format(**caller_locals)
+        return translated_text.format(**caller_locals)
     except (KeyError, IndexError, AttributeError):
-        return text
+        return translated_text
 
 
-sys.modules.setdefault("app.translate", MagicMock())
-sys.modules["app.translate"]._ = _mock_translate
+if USE_APP_TRANSLATOR:
+    from app.translate import Translator, translator_var  # noqa: E402
+else:
+    sys.modules.setdefault("app.translate", MagicMock())
+    sys.modules["app.translate"]._ = _mock_translate
 
 # Don't mock sqlalchemy — the real package is needed for imports
 
@@ -134,12 +267,6 @@ sys.modules.setdefault("app.api.verify", MagicMock())
 sys.modules.setdefault("app.api.http_client", MagicMock())
 sys.modules.setdefault("app.api.stream_proxy", MagicMock())
 sys.modules.setdefault("app.api.verifyloop", MagicMock())
-
-# Mock the slack listener modules (they import lots of heavy deps)
-sys.modules.setdefault("app.slack.listeners", MagicMock())
-sys.modules.setdefault("app.slack.listener_actions", MagicMock())
-sys.modules.setdefault("app.slack.app", MagicMock())
-sys.modules.setdefault("app.slack.web", MagicMock())
 
 # Pre-import app modules to ensure submodules are registered before patching.
 # This allows unittest.mock.patch to resolve dotted paths like
@@ -1357,150 +1484,48 @@ def build_all_messages() -> list[dict[str, Any]]:
     return entries
 
 
-_HOME_MESSAGE_URL = f"slack://app?team={TEAM_ID}&id=A_MOCK_APP_ID&tab=messages"
+def make_home_context(enterprise_id: str | None = ENTERPRISE_ID) -> MagicMock:
+    """Build the minimal Slack context needed by the real Home tab view."""
+    context_data = {
+        "user_id": USER_ID,
+        "team_id": TEAM_ID,
+        "channel_id": CHANNEL_ID,
+        "enterprise_id": enterprise_id,
+    }
+    context = MagicMock()
+    context.__getitem__.side_effect = context_data.__getitem__
+    context.get.side_effect = context_data.get
+    context.client = MagicMock()
+    context.team_id = TEAM_ID
+    context.enterprise_id = enterprise_id
+    return context
 
 
-def _build_home_blocks(
-    auth_blocks: list[dict[str, Any]],
-    connected: bool,
+def build_home_view(
+    ray_connection: RayConnection | None,
+    *,
     is_ibm: bool,
-) -> list[dict[str, Any]]:
-    """Build home view blocks matching the real home_view function."""
-    translation_settings_blocks: list[dict[str, Any]] = [
-        {"type": "divider"},
-        {
-            "type": "header",
-            "text": {"type": "plain_text", "text": "Translate Channels"},
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Transform your messages instantly so that everyone in your Slack channel can effortlessly understand and engage in conversations, regardless of their language preferences.",
-            },
-        },
-    ]
-    if connected:
-        translation_settings_blocks.append(
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "emoji": True,
-                            "text": ":speech_balloon: Translation settings",
-                        },
-                        "action_id": "settings_auto_translate",
-                    },
-                ],
-            }
-        )
+    is_admin: bool = False,
+) -> dict[str, Any]:
+    """Call the real async home_view with mocked async dependencies."""
+    from app.slack.templates.views import home_view
 
-    footer_elements = [
-        {
-            "type": "button",
-            "text": {
-                "type": "plain_text",
-                "emoji": True,
-                "text": ":question: Help Centre",
-            },
-            "action_id": "link_2",
-            "url": "https://help.straker.ai/en/docs/workplace-apps#straker-translate-app-for-slack",
-        },
-    ]
-    if not is_ibm:
-        footer_elements.append(
-            {
-                "type": "button",
-                "text": {
-                    "type": "plain_text",
-                    "emoji": True,
-                    "text": "Visit Straker Verify",
-                },
-                "action_id": "link_1",
-                "url": _domains_mock.verify,
-            },
-        )
-
-    return [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": ":wave: Welcome to Straker Translate!",
-            },
-        },
-        *auth_blocks,
-        {"type": "divider"},
-        {
-            "type": "header",
-            "text": {"type": "plain_text", "text": "Get Started"},
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Here are some things to get you started. Also make sure you check out our Help Centre and use our built in chatbot within our app to guide you through the translation process.",
-            },
-        },
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": ":sunny: Daily Summary",
-                    },
-                    "action_id": "daily_summary",
-                    "url": _HOME_MESSAGE_URL,
-                },
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "emoji": True,
-                        "text": ":question: AI Translate Help",
-                    },
-                    "action_id": "ai_translate_help",
-                    "url": _HOME_MESSAGE_URL,
-                },
-            ],
-        },
-        *translation_settings_blocks,
-        {"type": "divider"},
-        {
-            "type": "header",
-            "text": {"type": "plain_text", "text": "Give us your feedback"},
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Straker Community is a place for Straker users to provide feedback, and help each other get the most out of our platform. It's also a place for us to talk about the latest and greatest Verify and Enterprise features, provide updates, and engage with customers like you!",
-            },
-        },
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "Learn More",
-                        "emoji": False,
-                    },
-                    "action_id": "link_0",
-                    "url": "https://help.straker.ai/en/docs/straker-translate-functions",
-                },
-            ],
-        },
-        {"type": "divider"},
-        {"type": "actions", "elements": footer_elements},
-    ]
+    context = make_home_context(ENTERPRISE_ID if is_ibm else None)
+    with (
+        patch(
+            "app.slack.templates.views.is_slack_team_admin",
+            AsyncMock(return_value=is_admin),
+        ),
+        patch("app.slack.templates.views.get_pagination", AsyncMock(return_value=1)),
+        patch(
+            "app.slack.templates.views.get_full_group_translation_settings",
+            AsyncMock(return_value=[]),
+        ),
+        patch("app.slack.templates.views.is_ibm_enterprise", return_value=is_ibm),
+        patch("app.slack.templates.blocks.is_ibm_enterprise", return_value=is_ibm),
+    ):
+        view = home_view(context, "A_MOCK_APP_ID", ray_connection)
+        return asyncio.run(view)
 
 
 def build_all_views() -> list[dict[str, Any]]:
@@ -1682,31 +1707,17 @@ def build_all_views() -> list[dict[str, Any]]:
         )
 
         # home_view non-IBM variants (connected and not connected)
-        from app.slack.templates.blocks import home_auth_blocks
-
         ray_connection = make_ray_connection()
-        auth_blocks_connected = home_auth_blocks(
-            USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, ray_connection
-        )
         add(
             "home_view (connected)",
             "Home",
-            {
-                "type": "home",
-                "blocks": _build_home_blocks(auth_blocks_connected, True, False),
-            },
+            build_home_view(ray_connection, is_ibm=False),
         )
 
-        auth_blocks_not_connected = home_auth_blocks(
-            USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, None
-        )
         add(
             "home_view (not connected)",
             "Home",
-            {
-                "type": "home",
-                "blocks": _build_home_blocks(auth_blocks_not_connected, False, False),
-            },
+            build_home_view(None, is_ibm=False),
         )
 
     # IBM home view variants — separate patch context to avoid nesting limit
@@ -1718,21 +1729,13 @@ def build_all_views() -> list[dict[str, Any]]:
         patch(f"{BLK}.is_ibm_enterprise", return_value=True),
         patch(f"{BLK}.domains", _domains_mock),
     ):
-        from app.slack.templates.blocks import home_auth_blocks
-
         ray_connection = make_ray_connection()
-        ibm_auth_connected = home_auth_blocks(
-            USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, ray_connection
-        )
         entries.append(
             {
                 "name": "home_view (IBM, connected, non-admin)",
                 "category": "Home",
                 **safe_extract(
-                    {
-                        "type": "home",
-                        "blocks": _build_home_blocks(ibm_auth_connected, False, True),
-                    }
+                    build_home_view(ray_connection, is_ibm=True, is_admin=False)
                 ),
             }
         )
@@ -1741,29 +1744,16 @@ def build_all_views() -> list[dict[str, Any]]:
                 "name": "home_view (IBM, connected, admin)",
                 "category": "Home",
                 **safe_extract(
-                    {
-                        "type": "home",
-                        "blocks": _build_home_blocks(ibm_auth_connected, True, True),
-                    }
+                    build_home_view(ray_connection, is_ibm=True, is_admin=True)
                 ),
             }
         )
 
-        ibm_auth_not_connected = home_auth_blocks(
-            USER_ID, TEAM_ID, ENTERPRISE_ID, CHANNEL_ID, None
-        )
         entries.append(
             {
                 "name": "home_view (IBM, not connected)",
                 "category": "Home",
-                **safe_extract(
-                    {
-                        "type": "home",
-                        "blocks": _build_home_blocks(
-                            ibm_auth_not_connected, False, True
-                        ),
-                    }
-                ),
+                **safe_extract(build_home_view(None, is_ibm=True)),
             }
         )
 
@@ -1775,14 +1765,13 @@ def build_all_views() -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def main():
-    print("Generating Block Kit JSON for all templates...")
-
+def build_catalog(
+    language: str, catalog: dict[str, str] | None = None
+) -> dict[str, Any]:
+    configure_translation(language, catalog)
     messages = build_all_messages()
     views = build_all_views()
-
-    output = {
-        "generated_at": datetime.now().isoformat(),
+    return {
         "messages": messages,
         "views": views,
         "stats": {
@@ -1792,11 +1781,88 @@ def main():
         },
     }
 
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Generate Block Kit JSON for Slack UI templates."
+    )
+    parser.add_argument(
+        "--language",
+        help="Single UI language to export. Defaults to UI_EXPORT_LANGUAGE or en.",
+    )
+    parser.add_argument(
+        "--languages",
+        help=(
+            "Comma-separated UI languages to export. Overrides --language and "
+            "UI_EXPORT_LANGUAGE. Defaults to UI_EXPORT_LANGUAGES when set."
+        ),
+    )
+    parser.add_argument(
+        "--translations-file",
+        type=Path,
+        default=(
+            Path(os.environ["UI_EXPORT_TRANSLATIONS_FILE"])
+            if os.environ.get("UI_EXPORT_TRANSLATIONS_FILE")
+            else None
+        ),
+        help=(
+            "Optional JSON translation catalog. Supports either "
+            "{language: {source: translation}} or {source: translation}."
+        ),
+    )
+    parser.add_argument(
+        "--translation-source",
+        choices=("catalog", "app", "db", "database"),
+        default=TRANSLATION_SOURCE,
+        help=(
+            "Translation source for app.translate._ calls. 'catalog' uses the "
+            "optional JSON file; 'app'/'db' uses the real DB-backed app translator."
+        ),
+    )
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    language_value = (
+        args.languages
+        or os.environ.get("UI_EXPORT_LANGUAGES")
+        or args.language
+        or os.environ.get("UI_EXPORT_LANGUAGE")
+        or DEFAULT_LANGUAGE
+    )
+    languages = parse_languages(language_value)
+    print(f"Generating Block Kit JSON for languages: {', '.join(languages)}...")
+
+    use_app_translator = args.translation_source in APP_TRANSLATION_SOURCES
+    catalogs = {}
+    for language in languages:
+        translation_catalog = (
+            {}
+            if use_app_translator
+            else load_translation_catalog(args.translations_file, language)
+        )
+        catalogs[language] = build_catalog(language, translation_catalog)
+
+    default_language = languages[0]
+    default_catalog = catalogs[default_language]
+    output = {
+        "generated_at": datetime.now().isoformat(),
+        "default_language": default_language,
+        "languages": languages,
+        "catalogs": catalogs,
+        # Keep the legacy shape for tools/tests that read output/blocks.json directly.
+        "messages": default_catalog["messages"],
+        "views": default_catalog["views"],
+        "stats": default_catalog["stats"],
+    }
+
     output_path = Path(__file__).parent / "output" / "blocks.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(output, indent=2, default=str))
 
     print(f"Generated {output['stats']['total']} templates -> {output_path}")
+    print(f"  Default language: {default_language}")
     print(f"  Messages: {output['stats']['total_messages']}")
     print(f"  Views:    {output['stats']['total_views']}")
 

@@ -36,7 +36,15 @@ import { Message } from "slack-blocks-to-jsx";
  *   total_views: number,
  * }} ExportStats
  * @typedef {{
+ *   messages: ExportTemplate[],
+ *   views: ExportTemplate[],
+ *   stats: ExportStats,
+ * }} ExportCatalog
+ * @typedef {{
  *   generated_at: string,
+ *   default_language?: string,
+ *   languages?: string[],
+ *   catalogs?: Record<string, ExportCatalog>,
  *   messages: ExportTemplate[],
  *   views: ExportTemplate[],
  *   stats: ExportStats,
@@ -54,6 +62,19 @@ const blocksPath = join(__dirname, "output", "blocks.json");
 /** @type {ExportData} */
 const data = JSON.parse(readFileSync(blocksPath, "utf-8"));
 
+/** @type {ExportCatalog} */
+const legacyCatalog = {
+  messages: data.messages,
+  views: data.views,
+  stats: data.stats,
+};
+const languageCodes =
+  data.languages && data.languages.length > 0
+    ? data.languages
+    : [data.default_language || "en"];
+const defaultLanguage = data.default_language || languageCodes[0] || "en";
+const catalogs = data.catalogs || { [defaultLanguage]: legacyCatalog };
+
 // Read the slack-blocks-to-jsx stylesheet to inline
 const libCssPath = join(
   __dirname,
@@ -63,25 +84,6 @@ const libCssPath = join(
   "style.css"
 );
 const libCss = readFileSync(libCssPath, "utf-8");
-
-// Combine messages + views, preserving order
-/** @type {RenderTemplate[]} */
-const allTemplates = [
-  ...data.messages.map(
-    (m) => /** @type {RenderTemplate} */ ({ ...m, kind: "message" })
-  ),
-  ...data.views.map(
-    (v) => /** @type {RenderTemplate} */ ({ ...v, kind: "view" })
-  ),
-];
-
-// Group by category
-/** @type {Record<string, RenderTemplate[]>} */
-const grouped = {};
-for (const t of allTemplates) {
-  if (!grouped[t.category]) grouped[t.category] = [];
-  grouped[t.category].push(t);
-}
 
 // Category display order
 const categoryOrder = [
@@ -99,10 +101,67 @@ const categoryOrder = [
   "Tokens",
   "Errors",
 ];
-const sortedCategories = categoryOrder.filter((c) => grouped[c] !== undefined);
-// Add any categories not in the explicit order
-for (const c of Object.keys(grouped)) {
-  if (!sortedCategories.includes(c)) sortedCategories.push(c);
+
+/**
+ * @param {string} language
+ * @returns {ExportCatalog}
+ */
+function getCatalog(language) {
+  return catalogs[language] || legacyCatalog;
+}
+
+/**
+ * @param {ExportCatalog} catalog
+ * @returns {RenderTemplate[]}
+ */
+function getAllTemplates(catalog) {
+  return [
+    ...catalog.messages.map(
+      (m) => /** @type {RenderTemplate} */ ({ ...m, kind: "message" })
+    ),
+    ...catalog.views.map(
+      (v) => /** @type {RenderTemplate} */ ({ ...v, kind: "view" })
+    ),
+  ];
+}
+
+/**
+ * @param {RenderTemplate[]} templates
+ * @returns {Record<string, RenderTemplate[]>}
+ */
+function groupTemplates(templates) {
+  /** @type {Record<string, RenderTemplate[]>} */
+  const groupedTemplates = {};
+  for (const t of templates) {
+    if (!groupedTemplates[t.category]) groupedTemplates[t.category] = [];
+    groupedTemplates[t.category].push(t);
+  }
+  return groupedTemplates;
+}
+
+/**
+ * @param {Record<string, RenderTemplate[]>} groupedTemplates
+ * @returns {string[]}
+ */
+function getSortedCategories(groupedTemplates) {
+  const sorted = categoryOrder.filter((c) => groupedTemplates[c] !== undefined);
+  for (const c of Object.keys(groupedTemplates)) {
+    if (!sorted.includes(c)) sorted.push(c);
+  }
+  return sorted;
+}
+
+/**
+ * @param {string} language
+ * @param {string} category
+ * @param {string} name
+ * @returns {string}
+ */
+function templateId(language, category, name) {
+  const langSlug = language.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const categorySlug = category.toLowerCase().replace(/\s+/g, "-");
+  const templateSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return `tpl-${langSlug}-${categorySlug}-${templateSlug}`;
 }
 
 // Work around slack-blocks-to-jsx emoji tokenizer bug (github.com/themashcodee/
@@ -191,66 +250,102 @@ function formatErrorMessage(error) {
   return String(error);
 }
 
+const defaultCatalog = getCatalog(defaultLanguage);
+const defaultGrouped = groupTemplates(getAllTemplates(defaultCatalog));
+const defaultSortedCategories = getSortedCategories(defaultGrouped);
+
+const languageOptionsHtml = languageCodes
+  .map(
+    (language) =>
+      `<option value="${language}" ${
+        language === defaultLanguage ? "selected" : ""
+      }>${language}</option>`
+  )
+  .join("");
+
 // Build the nav sidebar HTML
 let navHtml = "";
-for (const cat of sortedCategories) {
-  const slug = cat.toLowerCase().replace(/\s+/g, "-");
-  const templates = grouped[cat] ?? [];
-  navHtml += `<div class="nav-category">`;
-  navHtml += `<a href="#cat-${slug}" class="nav-cat-link">${cat}</a>`;
-  navHtml += `<div class="nav-items">`;
-  for (const t of templates) {
-    const id = `tpl-${slug}-${t.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-    navHtml += `<a href="#${id}" class="nav-item">${t.name}</a>`;
+for (const language of languageCodes) {
+  const catalog = getCatalog(language);
+  const grouped = groupTemplates(getAllTemplates(catalog));
+  const sortedCategories = getSortedCategories(grouped);
+  navHtml += `<div class="language-nav ${
+    language === defaultLanguage ? "" : "is-hidden"
+  }" data-language="${language}">`;
+  for (const cat of sortedCategories) {
+    const slug = `${language.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${cat
+      .toLowerCase()
+      .replace(/\s+/g, "-")}`;
+    const templates = grouped[cat] ?? [];
+    navHtml += `<div class="nav-category">`;
+    navHtml += `<a href="#cat-${slug}" class="nav-cat-link">${cat}</a>`;
+    navHtml += `<div class="nav-items">`;
+    for (const t of templates) {
+      const id = templateId(language, cat, t.name);
+      navHtml += `<a href="#${id}" class="nav-item">${t.name}</a>`;
+    }
+    navHtml += `</div></div>`;
   }
-  navHtml += `</div></div>`;
+  navHtml += `</div>`;
 }
 
 // Build the main content
 let contentHtml = "";
-for (const cat of sortedCategories) {
-  const slug = cat.toLowerCase().replace(/\s+/g, "-");
-  const templates = grouped[cat] ?? [];
-  contentHtml += `<div class="category-section" id="cat-${slug}">`;
-  contentHtml += `<h2 class="category-title">${cat}</h2>`;
-  for (const t of templates) {
-    const id = `tpl-${slug}-${t.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-    const typeLabel =
-      t.type === "modal"
-        ? "Modal"
-        : t.type === "home"
-        ? "Home Tab"
-        : t.type === "text_only"
-        ? "Text Only"
-        : "Message";
-    const rendered = renderBlocks(t.blocks, t.name);
+for (const language of languageCodes) {
+  const catalog = getCatalog(language);
+  const grouped = groupTemplates(getAllTemplates(catalog));
+  const sortedCategories = getSortedCategories(grouped);
+  contentHtml += `<div class="language-content ${
+    language === defaultLanguage ? "" : "is-hidden"
+  }" data-language="${language}">`;
+  for (const cat of sortedCategories) {
+    const slug = `${language.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${cat
+      .toLowerCase()
+      .replace(/\s+/g, "-")}`;
+    const templates = grouped[cat] ?? [];
+    contentHtml += `<div class="category-section" id="cat-${slug}">`;
+    contentHtml += `<h2 class="category-title">${cat}</h2>`;
+    for (const t of templates) {
+      const id = templateId(language, cat, t.name);
+      const typeLabel =
+        t.type === "modal"
+          ? "Modal"
+          : t.type === "home"
+          ? "Home Tab"
+          : t.type === "text_only"
+          ? "Text Only"
+          : "Message";
+      const rendered = renderBlocks(t.blocks, t.name);
 
-    // For text-only messages, show the text content
-    const textContent = typeof t.text === "string"
-      ? `<div class="text-only-content">${t.text}</div>`
-      : "";
+      // For text-only messages, show the text content
+      const textContent =
+        typeof t.text === "string"
+          ? `<div class="text-only-content">${t.text}</div>`
+          : "";
 
-    contentHtml += `
-      <div class="template-card" id="${id}">
-        <div class="template-header">
-          <span class="template-name">${t.name}</span>
-          <span class="template-type type-${typeLabel
-            .toLowerCase()
-            .replace(/\s+/g, "-")}">${typeLabel}</span>
-        </div>
-        <div class="template-body ${
-          t.type === "modal" ? "modal-container" : ""
-        }">
-          ${
-            t.type === "modal"
-              ? `<div class="modal-chrome"><div class="modal-title-bar"><span class="modal-close-btn">×</span><span class="modal-title">${
-                  t.title || ""
-                }</span><span class="modal-submit-btn">Submit</span></div><div class="modal-content">${rendered}</div></div>`
-              : rendered
-          }
-          ${textContent}
-        </div>
-      </div>`;
+      contentHtml += `
+        <div class="template-card" id="${id}">
+          <div class="template-header">
+            <span class="template-name">${t.name}</span>
+            <span class="template-type type-${typeLabel
+              .toLowerCase()
+              .replace(/\s+/g, "-")}">${typeLabel}</span>
+          </div>
+          <div class="template-body ${
+            t.type === "modal" ? "modal-container" : ""
+          }">
+            ${
+              t.type === "modal"
+                ? `<div class="modal-chrome"><div class="modal-title-bar"><span class="modal-close-btn">×</span><span class="modal-title">${
+                    t.title || ""
+                  }</span><span class="modal-submit-btn">Submit</span></div><div class="modal-content">${rendered}</div></div>`
+                : rendered
+            }
+            ${textContent}
+          </div>
+        </div>`;
+    }
+    contentHtml += `</div>`;
   }
   contentHtml += `</div>`;
 }
@@ -316,6 +411,26 @@ const html = `<!DOCTYPE html>
       font-size: 12px;
       color: var(--text-secondary);
     }
+    .language-control {
+      padding: 0 16px 16px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+    .language-label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .language-select {
+      width: 100%;
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+    .is-hidden { display: none !important; }
     .nav-category { margin-bottom: 4px; }
     .nav-cat-link {
       display: block;
@@ -480,20 +595,41 @@ const html = `<!DOCTYPE html>
   <nav class="sidebar">
     <div class="sidebar-title">Straker Translate</div>
     <div class="sidebar-stats">
-      ${data.stats.total} templates — ${data.stats.total_messages} messages, ${data.stats.total_views} views<br>
+      ${defaultCatalog.stats.total} templates — ${defaultCatalog.stats.total_messages} messages, ${defaultCatalog.stats.total_views} views<br>
       Generated: ${new Date(data.generated_at).toLocaleDateString()}
+    </div>
+    <div class="language-control">
+      <label class="language-label" for="language-select">Language</label>
+      <select class="language-select" id="language-select">
+        ${languageOptionsHtml}
+      </select>
     </div>
     ${navHtml}
   </nav>
   <main class="main">
     <h1 class="page-title">Slack UI Catalog</h1>
     <p class="page-subtitle">
-      All ${data.stats.total} Slack Block Kit templates rendered with mock data.
-      ${data.stats.total_messages} messages and ${data.stats.total_views} views across
-      ${sortedCategories.length} categories.
+      All ${defaultCatalog.stats.total} Slack Block Kit templates rendered with mock data.
+      ${defaultCatalog.stats.total_messages} messages and ${defaultCatalog.stats.total_views} views across
+      ${defaultSortedCategories.length} categories.
     </p>
     ${contentHtml}
   </main>
+  <script>
+    const languageSelect = document.getElementById("language-select");
+    function showLanguage(language) {
+      document.querySelectorAll("[data-language]").forEach((element) => {
+        element.classList.toggle("is-hidden", element.dataset.language !== language);
+      });
+    }
+    languageSelect?.addEventListener("change", (event) => {
+      const select = event.target;
+      if (!(select instanceof HTMLSelectElement)) return;
+      showLanguage(select.value);
+      window.history.replaceState(null, "", "#");
+      window.scrollTo({ top: 0, behavior: "auto" });
+    });
+  </script>
 </body>
 </html>`;
 
@@ -503,4 +639,4 @@ mkdirSync(outputDir, { recursive: true });
 const outputPath = join(outputDir, "ui-catalog.html");
 writeFileSync(outputPath, html, "utf-8");
 
-console.log(`Rendered ${data.stats.total} templates -> ${outputPath}`);
+console.log(`Rendered ${defaultCatalog.stats.total} templates -> ${outputPath}`);

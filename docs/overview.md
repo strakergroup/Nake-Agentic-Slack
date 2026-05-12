@@ -25,6 +25,7 @@ This folder contains documentation for the Slack Ray Translator application.
 ## Dev Tools
 
 - [UI Export Tool](ui-export.md) - Renders all Slack Block Kit templates to a single HTML file for visual review
+- [Translation Missing-String Export](translation-export.md) - Exports Slack-locale UI strings missing from the translation database
 
 ## Database Migrations
 
