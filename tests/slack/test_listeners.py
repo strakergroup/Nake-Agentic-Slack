@@ -2206,11 +2206,6 @@ class TestEvaluateJobAction:
             patch(
                 "app.slack.listeners.human_job_modal", return_value={"type": "modal"}
             ),
-            patch(
-                "app.slack.listeners.get_accessible_slack_files",
-                new_callable=AsyncMock,
-                return_value=([{"id": "F123", "title": "file.txt"}], []),
-            ),
         ):
             mock_require_ray_client.return_value = True
 
@@ -2227,10 +2222,10 @@ class TestEvaluateJobAction:
         mock_client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_evaluate_job_action_stale_file_does_not_open_modal(
+    async def test_evaluate_job_action_opens_modal_without_file_access_check(
         self, user_id, team_id, ray_client
     ):
-        """Deleted Slack files should be reported before opening QE modal."""
+        """Modal triggers must not make Slack file-info calls before opening."""
         from app.slack.listeners import evaluate_job_action
 
         mock_ack = AsyncMock()
@@ -2261,10 +2256,8 @@ class TestEvaluateJobAction:
             ),
             patch("app.slack.listeners.is_ibm_enterprise", return_value=False),
             patch(
-                "app.slack.listeners.get_accessible_slack_files",
-                new_callable=AsyncMock,
-                return_value=([], [{"id": "F_MISSING", "title": "deleted.docx"}]),
-            ) as mock_get_accessible_files,
+                "app.slack.listeners.human_job_modal", return_value={"type": "modal"}
+            ) as mock_human_job_modal,
         ):
             await evaluate_job_action(
                 context_dict,
@@ -2275,14 +2268,14 @@ class TestEvaluateJobAction:
             )
 
         mock_ack.assert_called_once()
-        mock_get_accessible_files.assert_called_once_with(
-            mock_client, [{"id": "F_MISSING", "title": "deleted.docx"}]
+        mock_human_job_modal.assert_called_once_with(
+            "C123",
+            [{"id": "F_MISSING", "title": "deleted.docx"}],
+            False,
+            "evaluate",
         )
-        mock_client.views_open.assert_not_called()
-        mock_client.chat_postMessage.assert_called_once()
-        message_text = mock_client.chat_postMessage.call_args.kwargs["text"].lower()
-        assert "no longer available" in message_text
-        assert "deleted.docx" in message_text
+        mock_client.views_open.assert_called_once()
+        mock_client.chat_postMessage.assert_not_called()
 
 
 class TestEvaluateJobSubmit:
@@ -2928,10 +2921,10 @@ class TestDocumentMtJobAction:
     """Tests for opening the document MT modal from a file action."""
 
     @pytest.mark.asyncio
-    async def test_document_mt_job_action_stale_file_does_not_open_modal(
+    async def test_document_mt_job_action_opens_modal_without_file_access_check(
         self, user_id, team_id
     ):
-        """Test stale Slack file IDs are reported before opening the modal."""
+        """Modal triggers must not make Slack file-info calls before opening."""
         from app.slack.listeners import document_mt_job_action
 
         mock_ack = AsyncMock()
@@ -2954,10 +2947,9 @@ class TestDocumentMtJobAction:
                 return_value=True,
             ),
             patch(
-                "app.slack.listeners.get_accessible_slack_files",
-                new_callable=AsyncMock,
-                return_value=([], [{"id": "F_MISSING", "title": "deleted.docx"}]),
-            ) as mock_get_accessible_files,
+                "app.slack.listeners.document_mt_job_modal",
+                return_value={"type": "modal"},
+            ) as mock_document_mt_job_modal,
         ):
             await document_mt_job_action(
                 context_dict,
@@ -2968,14 +2960,11 @@ class TestDocumentMtJobAction:
             )
 
         mock_ack.assert_called_once()
-        mock_get_accessible_files.assert_called_once_with(
-            mock_client, [{"id": "F_MISSING", "title": "deleted.docx"}]
+        mock_document_mt_job_modal.assert_called_once_with(
+            "D123", [{"id": "F_MISSING", "title": "deleted.docx"}]
         )
-        mock_client.views_open.assert_not_called()
-        mock_client.chat_postMessage.assert_called_once()
-        message_text = mock_client.chat_postMessage.call_args[1]["text"].lower()
-        assert "no longer available" in message_text
-        assert "deleted.docx" in message_text
+        mock_client.views_open.assert_called_once()
+        mock_client.chat_postMessage.assert_not_called()
 
 
 class TestHandleDocumentMtJob:

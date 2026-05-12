@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: Avoided Slack file-info network calls before Document MT and Quality Evaluation modal opens so deleted-file handling no longer risks expired modal trigger IDs (Wade Norman, 2026-05-12)
 - [Fixed]: Document MT, Quality Evaluation, and Human Translation now treat deleted or inaccessible Slack files as user-facing stale-file conditions instead of production exceptions, validating file IDs before modal open, handling `file_not_found` during submission, and keeping shared file helper logic outside the listener module (Wade Norman, 2026-05-04)
 - [Changed]: Document MT submissions now group non-duplicate target languages per source file into one `slack:job:machine:translate:v2` event with `target_languages` and per-language `submission_ids`, while retaining per-target submission records for dedupe and status tracking (Wade Norman, 2026-04-28)
 - [Fixed]: App-wide circular import between `app.ray` and `app.slack` that surfaced when cold-importing `app.saq_jobs.*` (or any `app.ray.events.*` symbol). Removed eager submodule re-exports from `app/slack/__init__.py` (`app`, `slack_handler`) and `app/ray/__init__.py` (`RayService`, `get_languages`); updated the three callers (`app/routers/slack.py`, `app/routers/health.py`, `app/slack/select_options.py`) to import from explicit submodules. Tracked under [RAY-79638](https://app.clickup.com/t/36600298/RAY-79638) (Wade Norman, 2026-04-29)

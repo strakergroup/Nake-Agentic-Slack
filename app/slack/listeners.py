@@ -76,7 +76,6 @@ from .listener_actions import (
     cancel_job_process,
     document_machine_translate,
     document_mt_selected_languages,
-    get_accessible_slack_files,
     get_groups,
     get_mt_translation,
     is_slack_file_not_found,
@@ -446,17 +445,7 @@ async def document_mt_job_action(
         files = action_data.get("files", [])
         channel_id = action_data.get("channel_id")
         if files:
-            accessible_files, missing_files = await get_accessible_slack_files(
-                client, files
-            )
-            if missing_files:
-                await notify_missing_slack_files(
-                    client, context["user_id"], missing_files
-                )
-            if not accessible_files:
-                return
-
-            view = document_mt_job_modal(channel_id, accessible_files)
+            view = document_mt_job_modal(channel_id, files)
             await client.views_open(
                 trigger_id=body["trigger_id"],
                 view=view,
@@ -492,9 +481,19 @@ async def document_mt_submit_action(
             # selected from get_auto_translate_language_options
             for slack_file_id in slack_file_ids:
                 if selected_languages:
-                    input_file = await download_file(
-                        client=client, file_id=slack_file_id, http=None
-                    )
+                    try:
+                        input_file = await download_file(
+                            client=client, file_id=slack_file_id, http=None
+                        )
+                    except SlackApiError as e:
+                        if is_slack_file_not_found(e):
+                            await notify_missing_slack_files(
+                                client,
+                                context["user_id"],
+                                [{"id": slack_file_id, "title": slack_file_id}],
+                            )
+                            continue
+                        raise
                     input_file_id = await upload_to_file_server(input_file)
                     # Dedupe check and record in DB
                     submitted_languages: list[str] = []
@@ -2142,18 +2141,9 @@ async def evaluate_job_action(
                     ),
                 )
                 return
-            accessible_files, missing_files = await get_accessible_slack_files(
-                client, files
-            )
-            if missing_files:
-                await notify_missing_slack_files(
-                    client, context["user_id"], missing_files
-                )
-            if not accessible_files:
-                return
             view = human_job_modal(
                 channel_id,
-                accessible_files,
+                files,
                 is_ibm_enterprise(context.enterprise_id),
                 job_type,
             )
