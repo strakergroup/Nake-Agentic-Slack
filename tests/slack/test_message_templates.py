@@ -11,12 +11,14 @@ from app.slack.templates.messages import (
     ClientAlreadyApprovedMessage,
     ClientApprovedMessage,
     ConnectionInfoMessage,
+    DocInvalidPdfErrorMessage,
     DocMtMessage,
     DocParseErrorMessage,
     EvaluateErrorMessage,
     EvaluateSuccessMessage,
     FileListMessage,
     HelpMessage,
+    HumanJobMessage,
     InfoMessage,
     InvalidCommandMessage,
     InvalidJobMessage,
@@ -37,6 +39,7 @@ from app.slack.templates.messages import (
     SuccessfulLogoutMessage,
     TranscriptionMessage,
     VerifyCompleteMessage,
+    VerifyHelperMessage,
     WelcomeBackMessage,
     get_account_blocks,
     get_workspace_block,
@@ -727,7 +730,17 @@ class TestAutoTranslateSettingsChangedMessage:
         )
         assert user_id in message.text
         assert "C123" in message.text
+        assert "thread replies in real-time" in message.text
         assert isinstance(message.text, str)
+
+    def test_auto_translate_settings_changed_message_messages_format(self, user_id):
+        """Test auto translate settings changed message with message responses."""
+        message = AutoTranslateSettingsChangedMessage(
+            user_id, "C123", ["en", "fr"], "message"
+        )
+        assert user_id in message.text
+        assert "C123" in message.text
+        assert "messages in real-time" in message.text
 
 
 class TestAutoTranslateSettingsDisabledMessage:
@@ -762,6 +775,18 @@ class TestRequiresMtTokenMessage:
         assert "5" in message.text
         assert "10" in message.text
         assert "purchase" in message.text.lower()
+
+
+class TestHelperMessages:
+    def test_verify_helper_title_uses_exportable_emoji_placeholder(self):
+        message = VerifyHelperMessage()
+
+        assert message.text == ":books: Learn Quality Evaluation Help"
+
+    def test_human_job_helper_title_uses_exportable_emoji_placeholder(self):
+        message = HumanJobMessage()
+
+        assert message.text == ":books: Learn Human Translation Help"
 
 
 class TestDocMtMessage:
@@ -835,6 +860,28 @@ class TestDocParseErrorMessage:
         text = self._block_text(message)
         assert text == (
             "Error parsing file. Please ensure your file is in a supported format."
+        )
+
+
+class TestDocInvalidPdfErrorMessage:
+    """Tests for invalid-PDF messages using exportable local templates."""
+
+    @staticmethod
+    def _block_text(message: DocInvalidPdfErrorMessage) -> str:
+        return message.blocks[0]["text"]["text"]
+
+    def test_renders_payload_message_as_placeholder_detail(self):
+        message = DocInvalidPdfErrorMessage("Unable to read PDF metadata")
+
+        assert self._block_text(message) == (
+            "Invalid PDF file: Unable to read PDF metadata"
+        )
+
+    def test_falls_back_to_exportable_generic_message(self):
+        message = DocInvalidPdfErrorMessage("")
+
+        assert self._block_text(message) == (
+            "Invalid PDF file. Please check the file and try again."
         )
 
 
