@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Added]: Cursor project rule documenting Slack modal trigger safety so future Slack modal handlers avoid awaited network, DB, Redis, or file I/O before `views_open` (Wade Norman, 2026-05-12)
 - [Fixed]: Avoided Slack file-info network calls before Document MT and Quality Evaluation modal opens so deleted-file handling no longer risks expired modal trigger IDs (Wade Norman, 2026-05-12)
 - [Fixed]: Updated document MT listener tests for required source-language submissions and made UI catalog exports reapply the selected translator to already-imported Slack template modules (Wade Norman, 2026-05-12)
 - [Changed]: `tools/ui-export` supported catalog exports now render English plus the DB-backed languages currently populated in `obj_stringtranslator`: `de`, `es`, `fr`, `fr-ca`, and `jp` (Wade Norman, 2026-05-12)
