@@ -3266,6 +3266,14 @@ class TestHandleDocumentMtJob:
             "private_metadata": "D123",
             "state": {
                 "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {
+                                "value": "fr",
+                                "text": {"text": "French"},
+                            }
+                        }
+                    },
                     "target_langs": {
                         "language_mt_options": {
                             "selected_options": [
@@ -3333,6 +3341,14 @@ class TestHandleDocumentMtJob:
             "private_metadata": "D123",
             "state": {
                 "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {
+                                "value": "fr",
+                                "text": {"text": "French"},
+                            }
+                        }
+                    },
                     "target_langs": {
                         "language_mt_options": {
                             "selected_options": [
@@ -3395,6 +3411,14 @@ class TestHandleDocumentMtJob:
             "private_metadata": "D123",
             "state": {
                 "values": {
+                    "source_lang": {
+                        "language_mt_options": {
+                            "selected_option": {
+                                "value": "fr",
+                                "text": {"text": "French"},
+                            }
+                        }
+                    },
                     "target_langs": {
                         "language_mt_options": {
                             "selected_options": [
@@ -3442,6 +3466,7 @@ class TestHandleDocumentMtJob:
             ),
             patch(
                 "app.slack.listeners.upload_to_file_server",
+                new_callable=AsyncMock,
                 return_value="file-id-123",
             ),
             patch(
@@ -3461,7 +3486,7 @@ class TestHandleDocumentMtJob:
 
         assert mock_download.call_count == 2
         mock_document_mt.assert_called_once_with(
-            ANY, "file-id-123", ["en"], {"en": "record-123"}
+            ANY, "file-id-123", "fr", ["en"], {"en": "record-123"}
         )
         mock_notify.assert_not_called()
         posted_texts = [

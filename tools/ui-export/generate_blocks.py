@@ -177,6 +177,23 @@ def configure_translation(language: str, catalog: dict[str, str] | None = None) 
     _translation_catalog = catalog or {}
     if USE_APP_TRANSLATOR:
         translator_var.set(Translator(language))
+    install_template_translation_function()
+
+
+def install_template_translation_function() -> None:
+    """Keep already-imported Slack template modules on the selected translator."""
+    translate_function = (
+        sys.modules["app.translate"]._ if USE_APP_TRANSLATOR else _mock_translate
+    )
+    for module_name in (
+        "app.translate",
+        "app.slack.templates.blocks",
+        "app.slack.templates.messages",
+        "app.slack.templates.views",
+    ):
+        module = sys.modules.get(module_name)
+        if module is not None:
+            module._ = translate_function
 
 
 def _tag_placeholders(text: str) -> tuple[str, dict[str, tuple[str, str]]]:
@@ -250,12 +267,6 @@ sys.modules.setdefault("app.api.verify", MagicMock())
 sys.modules.setdefault("app.api.http_client", MagicMock())
 sys.modules.setdefault("app.api.stream_proxy", MagicMock())
 sys.modules.setdefault("app.api.verifyloop", MagicMock())
-
-# Mock the slack listener modules (they import lots of heavy deps)
-sys.modules.setdefault("app.slack.listeners", MagicMock())
-sys.modules.setdefault("app.slack.listener_actions", MagicMock())
-sys.modules.setdefault("app.slack.app", MagicMock())
-sys.modules.setdefault("app.slack.web", MagicMock())
 
 # Pre-import app modules to ensure submodules are registered before patching.
 # This allows unittest.mock.patch to resolve dotted paths like
