@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Changes
 
 - [Changed]: Recovered `stage` from pre-12-May baseline (`adc7adc0`) and remerged prod-intended work without uat-only features (VerifyLoop, fact-check, image translation) (Wade Norman, 2026-05-21)
+- [Fixed]: Avoided Slack file-info network calls before Document MT and Quality Evaluation modal opens so deleted-file handling no longer risks expired modal trigger IDs (Wade Norman, 2026-05-12)
 - [Changed]: `tools/ui-export` supported catalog exports now render English plus the DB-backed languages currently populated in `obj_stringtranslator`: `de`, `es`, `fr`, `fr-ca`, and `jp` (Wade Norman, 2026-05-12)
 - [Fixed]: `tools/translation-export` SQL import now reads translator-returned second-column translations from single-column exports and infers DB language codes from updated workbook filenames like `translations_fr-ca_updated__French_Canada.xlsx` (Wade Norman, 2026-05-12)
 - [Changed]: Merged latest `master` into the Slack file submission queue branch, resolving stale-file handling conflicts while preserving queued submission flow (Wade Norman, 2026-05-11)
