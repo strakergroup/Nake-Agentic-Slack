@@ -383,6 +383,26 @@ def test_write_import_sql_accepts_legacy_translator_workbook(tmp_path):
     assert "Submit" not in sql
 
 
+def test_workbook_language_inference_reads_db_code_before_update_suffix():
+    assert (
+        IMPORT_SQL.infer_target_language_from_path(
+            Path("translations_fr-ca_updated__French_Canada.xlsx")
+        )
+        == "fr-ca"
+    )
+    assert (
+        IMPORT_SQL.infer_target_language_from_path(
+            Path("translations_jp_updated__Japanese.xlsx")
+        )
+        == "jp"
+    )
+    assert MT_FILL.infer_target_language_from_path(Path("translations_fr.xlsx")) == "fr"
+    assert (
+        MT_FILL.infer_target_language_from_path(Path("missing_strings_zh-CN.xlsx"))
+        == "zh-CN"
+    )
+
+
 def test_write_import_sql_accepts_single_column_translator_workbook(tmp_path):
     workbook_path = tmp_path / "translations_fr.xlsx"
     output_path = tmp_path / "import.sql"
@@ -410,6 +430,38 @@ def test_write_import_sql_accepts_single_column_translator_workbook(tmp_path):
     sql = output_path.read_text(encoding="utf-8")
     assert count == 1
     assert '"fr"' in sql
+    assert '"Submit <x id=1/>"' in sql
+    assert '"Soumettre <x id=1/>"' in sql
+
+
+def test_write_import_sql_reads_returned_translator_second_column(tmp_path):
+    workbook_path = tmp_path / "translations_fr-ca_updated__French_Canada.xlsx"
+    output_path = tmp_path / "import.sql"
+    rows = [
+        EXPORT.MissingStringRow(
+            source_language="en",
+            target_language="fr-ca",
+            source_text="Submit <x id=1/>",
+            target_text="",
+            max_length=0,
+        )
+    ]
+    EXPORT.write_translator_xlsx(rows, workbook_path)
+
+    workbook = openpyxl.load_workbook(workbook_path)
+    try:
+        sheet = workbook.active
+        sheet["B1"].value = "Soumettre <x id=1/>"
+        workbook.save(workbook_path)
+    finally:
+        workbook.close()
+
+    count = IMPORT_SQL.write_import_sql([workbook_path], output_path)
+
+    sql = output_path.read_text(encoding="utf-8")
+    assert count == 1
+    assert '"fr-ca"' in sql
+    assert '"French_Canada"' not in sql
     assert '"Submit <x id=1/>"' in sql
     assert '"Soumettre <x id=1/>"' in sql
 

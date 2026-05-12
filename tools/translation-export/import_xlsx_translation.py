@@ -27,6 +27,9 @@ COLUMN_ALIASES = {
 VALID_TAG_PATTERN = re.compile(r"<x id=(\d+)\s*/?>")
 X_TAG_CANDIDATE_PATTERN = re.compile(r"</?x\b[^>]*>|<x\b[^>]*$")
 ENGLISH_PREFIXES = ("en", "gb", "us")
+LANGUAGE_FILENAME_PATTERN = re.compile(
+    r"^(?:translations|missing_strings)_([^_]+)(?:_|$)"
+)
 
 
 @dataclass(frozen=True)
@@ -164,11 +167,22 @@ def column_index(indexes: dict[str, int], column: str) -> int | None:
 
 
 def infer_target_language_from_path(workbook_path: Path) -> str | None:
-    """Infer legacy translator workbook language from names like translations_fr.xlsx."""
+    """Infer DB language from names like translations_fr_updated__French.xlsx."""
     stem = workbook_path.stem
+    match = LANGUAGE_FILENAME_PATTERN.match(stem)
+    if match:
+        return match.group(1) or None
     if "_" not in stem:
         return None
     return stem.rsplit("_", 1)[1] or None
+
+
+def read_single_column_translation(sheet, row_number: int) -> object:
+    for column in range(2, sheet.max_column + 1):
+        value = sheet.cell(row=row_number, column=column).value
+        if value is not None and str(value).strip():
+            return value
+    return sheet.cell(row=row_number, column=1).value
 
 
 def read_translator_metadata(workbook) -> dict[int, str]:
@@ -249,7 +263,7 @@ def collect_insert_statements(
                 else inferred_lang
             )
             translation = (
-                sheet.cell(row=row_number, column=1).value
+                read_single_column_translation(sheet, row_number)
                 if is_single_column_translator_workbook
                 else sheet.cell(row=row_number, column=translation_index).value
             )

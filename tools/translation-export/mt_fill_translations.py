@@ -7,6 +7,7 @@ import glob
 import html
 import json
 import os
+import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass
@@ -30,6 +31,9 @@ GOOGLE_CLOUD_LOCATION_ENV = "GOOGLE_CLOUD_LOCATION"
 GOOGLE_CLOUD_DEFAULT_LOCATION = "global"
 GOOGLE_SOURCE_LANGUAGE_CODE = "en"
 GOOGLE_TRANSLATE_MIME_TYPE = "text/html"
+LANGUAGE_FILENAME_PATTERN = re.compile(
+    r"^(?:translations|missing_strings)_([^_]+)(?:_|$)"
+)
 COLUMN_ALIASES = {
     TRANSLATION_COLUMN: ("translation",),
     DB_LABEL_COLUMN: ("db_label",),
@@ -235,8 +239,11 @@ def column_index(indexes: dict[str, int], column: str) -> int | None:
 
 
 def infer_target_language_from_path(xlsx_path: Path) -> str | None:
-    """Infer legacy translator workbook language from names like translations_fr.xlsx."""
+    """Infer DB language from names like translations_fr_updated__French.xlsx."""
     stem = xlsx_path.stem
+    match = LANGUAGE_FILENAME_PATTERN.match(stem)
+    if match:
+        return match.group(1) or None
     if "_" not in stem:
         return None
     return stem.rsplit("_", 1)[1] or None

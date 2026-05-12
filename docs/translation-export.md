@@ -90,6 +90,12 @@ For professional translators, use the vendor-facing workflow:
 3. `make import-sql INPUT='output/translations_*.xlsx' SQL_OUTPUT=output/import.sql`
    creates refresh-safe SQL for the filled workbooks.
 
+Returned translator workbooks may either replace the visible source-text cell or
+place the translated text in the next visible column. The importer uses the
+hidden metadata sheet to retain the DB source label, then reads the returned
+translation from column B when present, falling back to column A for files where
+the source text was replaced.
+
 The internal MT workflow remains available as three explicit steps:
 
 1. `make missing-per-language OUTPUT=output/missing_strings.xlsx FORMAT=xlsx`
@@ -196,6 +202,11 @@ the source string for languages starting with `en`, `gb`, or `us`. Use
 The app has runtime logic that can remap `fr-FR` users in North American
 timezones to `fr-CA`. The exporter does not infer that timezone-specific
 behaviour; include both `fr-FR` and `fr-CA` when both need coverage.
+
+For translator/import workbooks, the target DB language is inferred from the
+filename prefix before any returned-file suffix. For example,
+`translations_fr-ca_updated__French_Canada.xlsx` imports as `fr-ca`, matching
+the `obj_stringtranslator.lang` value used by the app.
 
 ## Output Columns
 
