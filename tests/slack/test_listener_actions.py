@@ -10,6 +10,7 @@ from app.slack.listener_actions import (
     _language_code_from_srt_filename,
     ai_translate_help,
     approve_pending_client,
+    build_human_translation_purchase_order_number,
     build_thread_media_embed_action_value,
     create_service_language_mapping,
     document_machine_translate,
@@ -1007,6 +1008,27 @@ class TestPostJobTargetLang:
 
 
 class TestSubmitVerificationJob:
+    def test_build_human_translation_purchase_order_from_multiple_source_filenames(self):
+        job = {
+            "data": {
+                "source_files": [
+                    {
+                        "filename": (
+                            f"f{index:02d}-very-long-file-name-version-{index:02d}.xlf"
+                        )
+                    }
+                    for index in range(10)
+                ]
+            }
+        }
+
+        purchase_order_number = build_human_translation_purchase_order_number(job)
+
+        assert len(purchase_order_number) <= 100
+        assert purchase_order_number.split(", ") == [
+            f"f{index:02d}-.xlf" for index in range(10)
+        ]
+
     @pytest.mark.asyncio
     async def test_human_translation_builds_purchase_order_from_source_filenames(
         self, ray_client
