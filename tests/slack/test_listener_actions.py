@@ -1023,11 +1023,13 @@ class TestSubmitVerificationJob:
         }
 
         purchase_order_number = build_human_translation_purchase_order_number(job)
-
-        assert len(purchase_order_number) <= 100
-        assert purchase_order_number.split(", ") == [
-            f"f{index:02d}-.xlf" for index in range(10)
+        file_titles = [
+            f"f{index:02d}-very-long-file-name-version-{index:02d}.xlf"
+            for index in range(10)
         ]
+
+        assert purchase_order_number == ", ".join(file_titles)[:100]
+        assert len(purchase_order_number) == 100
 
     @pytest.mark.asyncio
     async def test_human_translation_builds_purchase_order_from_source_filenames(

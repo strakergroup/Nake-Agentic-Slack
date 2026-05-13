@@ -1,4 +1,3 @@
-from pathlib import PurePath
 from typing import Any
 
 from pydantic import (
@@ -264,35 +263,6 @@ class AutoTranslationSettingsForm(BaseModel):
 EVALUATE_JOB_REFERENCE_MAX_LENGTH = 100
 EVALUATE_JOB_REFERENCE_FALLBACK = "slack job"
 EVALUATE_JOB_REFERENCE_SEPARATOR = ", "
-EVALUATE_JOB_REFERENCE_FILENAME_MAX_LENGTH = 10
-
-
-def _abbreviate_file_title(title: str, max_length: int) -> str:
-    """Keep the title prefix and file extension within max_length."""
-    if len(title) <= max_length:
-        return title
-
-    extension = PurePath(title).suffix
-    if not extension or len(extension) >= max_length:
-        return title[:max_length]
-
-    prefix_length = max_length - len(extension)
-    return f"{title[:prefix_length]}{extension}"
-
-
-def _build_abbreviated_file_titles(file_titles: list[str]) -> list[str]:
-    separator_budget = len(EVALUATE_JOB_REFERENCE_SEPARATOR) * (len(file_titles) - 1)
-    per_file_limit = (
-        EVALUATE_JOB_REFERENCE_MAX_LENGTH - separator_budget
-    ) // len(file_titles)
-    per_file_limit = max(
-        1,
-        min(
-            EVALUATE_JOB_REFERENCE_FILENAME_MAX_LENGTH,
-            per_file_limit,
-        ),
-    )
-    return [_abbreviate_file_title(title, per_file_limit) for title in file_titles]
 
 
 def build_human_translation_reference(
@@ -307,12 +277,7 @@ def build_human_translation_reference(
         return EVALUATE_JOB_REFERENCE_FALLBACK
 
     generated_reference = EVALUATE_JOB_REFERENCE_SEPARATOR.join(clean_titles)
-    if len(generated_reference) <= EVALUATE_JOB_REFERENCE_MAX_LENGTH:
-        return generated_reference
-
-    return EVALUATE_JOB_REFERENCE_SEPARATOR.join(
-        _build_abbreviated_file_titles(clean_titles)
-    )
+    return generated_reference[:EVALUATE_JOB_REFERENCE_MAX_LENGTH]
 
 
 class EvaluateJobForm(BaseModel):

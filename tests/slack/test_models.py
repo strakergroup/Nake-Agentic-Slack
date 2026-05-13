@@ -329,47 +329,41 @@ class TestEvaluateJobForm:
 
         assert form.reference == "Manual reference"
 
-    def test_evaluate_job_form_abbreviates_long_generated_human_reference(self):
-        """Test long Human Translation file titles keep the extension."""
+    def test_evaluate_job_form_truncates_long_generated_human_reference(self):
+        """Test long Human Translation file titles are cut at 100 chars."""
         long_title = f"abcdefghij{'x' * 100}.xlf"
         values = self._human_job_values([long_title], include_reference=False)
 
         form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
 
-        assert form.reference == "abcdef.xlf"
-        assert len(form.reference) <= 100
+        assert form.reference == long_title[:100]
+        assert len(form.reference) == 100
 
-    def test_evaluate_job_form_abbreviates_each_long_human_file_title(self):
-        """Test multi-file Human Translation references keep each file extension."""
-        values = self._human_job_values(
-            [
-                f"abcdefghij{'x' * 100}.xlf",
-                f"1234567890{'y' * 100}.docx",
-            ],
-            include_reference=False,
-        )
-
-        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
-
-        assert form.reference == "abcdef.xlf, 12345.docx"
-        assert len(form.reference) <= 100
-
-    def test_evaluate_job_form_keeps_all_ten_long_human_file_titles_represented(self):
-        """Test up to ten long file names are each represented within the limit."""
-        values = self._human_job_values(
-            [
-                f"f{index:02d}-very-long-file-name-version-{index:02d}.xlf"
-                for index in range(10)
-            ],
-            include_reference=False,
-        )
-
-        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
-
-        assert len(form.reference) <= 100
-        assert form.reference.split(", ") == [
-            f"f{index:02d}-.xlf" for index in range(10)
+    def test_evaluate_job_form_truncates_joined_long_human_file_titles(self):
+        """Test multi-file Human Translation references are cut after joining."""
+        file_titles = [
+            f"abcdefghij{'x' * 100}.xlf",
+            f"1234567890{'y' * 100}.docx",
         ]
+        values = self._human_job_values(file_titles, include_reference=False)
+
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+
+        assert form.reference == ", ".join(file_titles)[:100]
+        assert len(form.reference) == 100
+
+    def test_evaluate_job_form_truncates_ten_long_human_file_titles(self):
+        """Test up to ten long file names are joined before truncating."""
+        file_titles = [
+            f"f{index:02d}-very-long-file-name-version-{index:02d}.xlf"
+            for index in range(10)
+        ]
+        values = self._human_job_values(file_titles, include_reference=False)
+
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+
+        assert form.reference == ", ".join(file_titles)[:100]
+        assert len(form.reference) == 100
 
     def test_evaluate_job_form_empty_file_titles_fall_back_to_slack_job(self):
         """Test empty selected file titles fall back to slack job."""
