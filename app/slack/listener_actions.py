@@ -2397,6 +2397,7 @@ async def submit_verification_job(
                 context.ray.client,
                 job_uuid,
                 selected_languages,
+                purchase_order_number=(job["data"].get("title") or "").strip(),
             )
     except Exception as e:
         notify_exception(e)

@@ -175,6 +175,7 @@ async def create_human_job(
     ray_client: RayClient,
     job_uuid: str,
     file_and_languages: List[str],
+    purchase_order_number: str = "",
 ):
     """
     Create a human job in the Verify API
@@ -183,14 +184,13 @@ async def create_human_job(
         ray_client: RayClient object
         job_uuid: UUID of the job
         file_and_languages: List of strings with the format "file_uuid:language_uuid"
+        purchase_order_number: Client reference to show in LanguageCloud and Job Portal.
     """
 
     url = f"{domains.verify_api}/automation/service/create-human-job"
     headers = {"Authorization": f"Bearer {ray_client.id_token}"}
     # TODO: allow submission
     service_uuid = "37f2e44b-ba3c-42b1-83c7-d3023298292f"
-    # TODO: What is this?
-    purchase_order_number = "123456"
     data = {
         "job_uuid": job_uuid,
         "service_uuid": service_uuid,

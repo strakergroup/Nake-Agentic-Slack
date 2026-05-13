@@ -1,3 +1,4 @@
+from pathlib import PurePath
 from typing import Any
 
 from pydantic import (
@@ -263,27 +264,20 @@ class AutoTranslationSettingsForm(BaseModel):
 EVALUATE_JOB_REFERENCE_MAX_LENGTH = 100
 EVALUATE_JOB_REFERENCE_FALLBACK = "slack job"
 EVALUATE_JOB_REFERENCE_SEPARATOR = ", "
-EVALUATE_JOB_REFERENCE_FILENAME_MAX_LENGTH = 23
-EVALUATE_JOB_REFERENCE_ELLIPSIS = "..."
+EVALUATE_JOB_REFERENCE_FILENAME_MAX_LENGTH = 10
 
 
 def _abbreviate_file_title(title: str, max_length: int) -> str:
-    """Keep the searchable start and end of a file title within max_length."""
+    """Keep the title prefix and file extension within max_length."""
     if len(title) <= max_length:
         return title
-    if max_length <= len(EVALUATE_JOB_REFERENCE_ELLIPSIS):
+
+    extension = PurePath(title).suffix
+    if not extension or len(extension) >= max_length:
         return title[:max_length]
 
-    remaining_length = max_length - len(EVALUATE_JOB_REFERENCE_ELLIPSIS)
-    prefix_length = (remaining_length + 1) // 2
-    suffix_length = remaining_length - prefix_length
-    if suffix_length <= 0:
-        return f"{title[:prefix_length]}{EVALUATE_JOB_REFERENCE_ELLIPSIS}"
-    return (
-        f"{title[:prefix_length]}"
-        f"{EVALUATE_JOB_REFERENCE_ELLIPSIS}"
-        f"{title[-suffix_length:]}"
-    )
+    prefix_length = max_length - len(extension)
+    return f"{title[:prefix_length]}{extension}"
 
 
 def _build_abbreviated_file_titles(file_titles: list[str]) -> list[str]:
@@ -291,9 +285,12 @@ def _build_abbreviated_file_titles(file_titles: list[str]) -> list[str]:
     per_file_limit = (
         EVALUATE_JOB_REFERENCE_MAX_LENGTH - separator_budget
     ) // len(file_titles)
-    per_file_limit = min(
-        EVALUATE_JOB_REFERENCE_FILENAME_MAX_LENGTH,
-        per_file_limit,
+    per_file_limit = max(
+        1,
+        min(
+            EVALUATE_JOB_REFERENCE_FILENAME_MAX_LENGTH,
+            per_file_limit,
+        ),
     )
     return [_abbreviate_file_title(title, per_file_limit) for title in file_titles]
 
