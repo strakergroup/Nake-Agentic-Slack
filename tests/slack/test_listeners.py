@@ -2767,10 +2767,10 @@ class TestEvaluateJobSubmit:
                         assert mock_client.chat_postMessage.call_count >= 1
 
     @pytest.mark.asyncio
-    async def test_evaluate_job_submit_human_uses_file_titles_as_reference(
+    async def test_evaluate_job_submit_human_uses_slack_job_title(
         self, user_id, team_id, ray_client
     ):
-        """Test human translation submit defaults reference to selected file titles."""
+        """HT Verify job title stays slack job."""
         from app.slack.listeners import evaluate_job_submit
 
         mock_ack = AsyncMock()
@@ -2793,8 +2793,8 @@ class TestEvaluateJobSubmit:
                     "files": {
                         "files": {
                             "selected_options": [
-                                {"value": "F123|1234", "text": {"text": "alpha.docx"}},
-                                {"value": "F456|5678", "text": {"text": "beta.pdf"}},
+                                {"value": "F123", "text": {"text": "alpha.docx"}},
+                                {"value": "F456", "text": {"text": "beta.xlf"}},
                             ]
                         }
                     },
@@ -2809,26 +2809,38 @@ class TestEvaluateJobSubmit:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch(
-            "app.slack.listeners.get_conflicting_target_language_labels",
-            new_callable=AsyncMock,
-        ) as mock_conflicts:
-            mock_conflicts.return_value = []
-            with patch(
-                "app.slack.listeners.enqueue_evaluation_submission",
+        mock_file = MagicMock()
+        mock_file.name = "file.txt"
+        mock_file.content = b"test content"
+
+        with (
+            patch(
+                "app.slack.listeners.download_file",
                 new_callable=AsyncMock,
-            ) as mock_enqueue:
-                await evaluate_job_submit(
-                    context_dict, view=view, client=mock_client, ack=mock_ack
-                )
+                return_value=mock_file,
+            ),
+            patch(
+                "app.slack.listeners.validate_file",
+                return_value=(True, True, None),
+            ),
+            patch(
+                "app.slack.listeners.get_conflicting_target_language_labels",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                "app.slack.listeners.submit_evaluation_job",
+                new_callable=AsyncMock,
+                return_value={"uuid": "verify-job-uuid"},
+            ) as mock_submit,
+        ):
+            await evaluate_job_submit(
+                context_dict, view=view, client=mock_client, ack=mock_ack
+            )
 
         mock_ack.assert_called_once()
-        mock_enqueue.assert_awaited_once()
-        assert mock_enqueue.await_args.kwargs["reference"] == "alpha.docx, beta.pdf"
-        assert mock_enqueue.await_args.kwargs["files"] == [
-            {"id": "F123", "title": "alpha.docx", "size": 1234},
-            {"id": "F456", "title": "beta.pdf", "size": 5678},
-        ]
+        mock_submit.assert_awaited_once()
+        assert mock_submit.await_args.args[3] == "slack job"
 
     @pytest.mark.asyncio
     async def test_evaluate_job_submit_verify_api_error(

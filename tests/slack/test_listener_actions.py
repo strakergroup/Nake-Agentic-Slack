@@ -1008,7 +1008,7 @@ class TestPostJobTargetLang:
 
 class TestSubmitVerificationJob:
     @pytest.mark.asyncio
-    async def test_human_translation_passes_job_title_as_purchase_order_number(
+    async def test_human_translation_builds_purchase_order_from_source_filenames(
         self, ray_client
     ):
         from app.auth.connector import RayConnection, RayContext
@@ -1029,11 +1029,12 @@ class TestSubmitVerificationJob:
         job = {
             "data": {
                 "uuid": "verify-job-uuid",
-                "title": "alpha.xlf, beta.xlf",
+                "title": "slack job",
                 "workflow_uuid": HUMAN_EVALUATION_WORKFLOW_UUID,
                 "source_files": [
                     {
                         "file_uuid": "file-uuid",
+                        "filename": "alpha.xlf",
                         "target_files": [
                             {
                                 "language_uuid": "lang-uuid",
@@ -1079,5 +1080,5 @@ class TestSubmitVerificationJob:
             ray_client,
             "verify-job-uuid",
             ["file-uuid:lang-uuid"],
-            purchase_order_number="alpha.xlf, beta.xlf",
+            purchase_order_number="alpha.xlf",
         )

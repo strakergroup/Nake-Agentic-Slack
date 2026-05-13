@@ -101,7 +101,7 @@ from .templates.messages import (
     VerifyHelperMessage,
     VideoOptionsMessage,
 )
-from .templates.models import NewJobForm
+from .templates.models import NewJobForm, build_human_translation_reference
 from .web import (
     download_file,
     download_files,
@@ -122,6 +122,16 @@ MEDIA_ACTION_IDS = frozenset(
 )
 
 FR_CA_VARIANTS = frozenset({"fr-ca", "french-canada", "french-canadian"})
+
+
+def build_human_translation_purchase_order_number(job: dict[str, Any]) -> str:
+    source_files = job.get("data", {}).get("source_files", [])
+    file_titles = [
+        source_file.get("filename", "")
+        for source_file in source_files
+        if isinstance(source_file, dict)
+    ]
+    return build_human_translation_reference(file_titles, manual_reference=None)
 
 
 def slack_api_error_code(error: SlackApiError) -> str | None:
@@ -2397,7 +2407,7 @@ async def submit_verification_job(
                 context.ray.client,
                 job_uuid,
                 selected_languages,
-                purchase_order_number=(job["data"].get("title") or "").strip(),
+                purchase_order_number=build_human_translation_purchase_order_number(job),
             )
     except Exception as e:
         notify_exception(e)

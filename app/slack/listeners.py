@@ -128,6 +128,7 @@ from .templates.messages import (
 )
 from .templates.models import (
     AutoTranslationSettingsForm,
+    EVALUATE_JOB_REFERENCE_FALLBACK,
     EvaluateJobForm,
     JobSearchForm,
     NewJobForm,
@@ -2076,13 +2077,18 @@ async def evaluate_job_submit(
             assert context["ray"].client is not None
 
             has_pdf = any(t.lower().endswith(".pdf") for t in file_titles)
+            verify_reference = (
+                EVALUATE_JOB_REFERENCE_FALLBACK
+                if view["callback_id"] == "evaluate_job_human"
+                else form.reference
+            )
             if has_pdf:
                 await _publish_pdf_evaluate_convert(
                     ray_client=context["ray"].client,
                     input_files=input_files,
                     file_titles=file_titles,
                     target_langs_uuid=form.target_langs_uuid,
-                    reference=form.reference,
+                    reference=verify_reference,
                     channel_id=channel_id,
                     source_lang_uuid=form.source_lang_uuid,
                     workflow_uuid=form.workflow_options,
@@ -2093,7 +2099,7 @@ async def evaluate_job_submit(
                     context["ray"].client,
                     input_files,
                     form.target_langs_uuid,
-                    form.reference,
+                    verify_reference,
                     source_language_uuid=form.source_lang_uuid,
                     workflow_uuid=form.workflow_options,
                     job_notes=form.job_notes or "",
