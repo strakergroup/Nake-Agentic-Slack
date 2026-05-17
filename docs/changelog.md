@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: Isolated the main app router registration test from local SAQ worker runtime state so health checks remain deterministic in pytest (Wade Norman, 2026-05-17)
 - [Fixed]: Resolved master merge integration fallout by restoring the stale Slack file helper import and updating listener tests for queued file submission behavior (Wade Norman, 2026-05-17)
 - [Added]: Cursor project rule documenting Slack modal trigger safety so future Slack modal handlers avoid awaited network, DB, Redis, or file I/O before `views_open` (Wade Norman, 2026-05-12)
 - [Fixed]: Avoided Slack file-info network calls before Document MT and Quality Evaluation modal opens so deleted-file handling no longer risks expired modal trigger IDs (Wade Norman, 2026-05-12)

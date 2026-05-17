@@ -130,12 +130,22 @@ class TestMainApp:
     async def test_app_includes_routers(self, client):
         """Test that app includes all routers."""
         # Test health router
-        with patch(
-            "app.routers.health.slack_app.client.api_test", new_callable=AsyncMock
-        ) as mock_api_test:
+        with (
+            patch(
+                "app.routers.health.slack_app.client.api_test", new_callable=AsyncMock
+            ) as mock_api_test,
+            patch("app.routers.health.worker_status") as mock_status,
+        ):
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_api_test.return_value = mock_response
+            mock_status.return_value = {
+                "enabled": True,
+                "expected_count": 5,
+                "running_count": 5,
+                "all_running": True,
+                "workers": [],
+            }
 
             response = await client.get("/health")
             assert response.status_code == 200
