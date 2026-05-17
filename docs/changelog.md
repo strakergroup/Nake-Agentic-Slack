@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Changes
 
 - [Changed]: Recovered `stage` from pre-12-May baseline (`adc7adc0`) and remerged prod-intended work without uat-only features (VerifyLoop, fact-check, image translation) (Wade Norman, 2026-05-21)
+- [Fixed]: Resolved master merge integration fallout by restoring the stale Slack file helper import and updating listener tests for queued file submission behavior (Wade Norman, 2026-05-17)
 - [Fixed]: Updated document MT listener tests for required source-language submissions and made UI catalog exports reapply the selected translator to already-imported Slack template modules (Wade Norman, 2026-05-12)
 - [Added]: Cursor project rule documenting Slack modal trigger safety so future Slack modal handlers avoid awaited network, DB, Redis, or file I/O before `views_open` (Wade Norman, 2026-05-12)
 - [Fixed]: Avoided Slack file-info network calls before Document MT and Quality Evaluation modal opens so deleted-file handling no longer risks expired modal trigger IDs (Wade Norman, 2026-05-12)
