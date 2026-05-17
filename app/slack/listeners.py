@@ -76,6 +76,7 @@ from .listener_actions import (
     cancel_job_process,
     document_machine_translate,
     document_mt_selected_languages,
+    get_accessible_slack_files,
     get_groups,
     get_mt_translation,
     is_slack_file_not_found,
