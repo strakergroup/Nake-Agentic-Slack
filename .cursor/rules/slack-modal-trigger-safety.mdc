@@ -1,0 +1,30 @@
+---
+description: Prevent network calls before Slack modal opens
+globs: app/slack/**/*.py
+alwaysApply: false
+---
+
+# Slack Modal Trigger Safety
+
+Slack `trigger_id` values are time-sensitive. In handlers that open modals with
+`client.views_open(...)`, do not perform external API calls, Slack API calls,
+DB/cache queries, Redis calls, file downloads, or other awaited I/O before the
+modal opens.
+
+Open or respond immediately, then do slow work after:
+
+- Open a lightweight/loading modal first, then call `views_update(...)`.
+- Or respond/post a message immediately and continue work later.
+- Keep deleted/inaccessible Slack file checks in submit/download paths, not
+  modal-open triggers.
+
+Avoid before `views_open(...)`:
+
+- `client.files_info(...)`
+- `get_accessible_slack_files(...)`
+- `download_file(...)`
+- Ray, Verify, or LanguageCloud API calls
+- Redis/database/settings lookups unless already cached in context
+
+When reviewing modal-trigger changes, audit every `await` between `ack()` and
+`views_open(...)`.
