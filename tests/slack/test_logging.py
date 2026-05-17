@@ -1,3 +1,5 @@
+import json
+
 from app.slack.logging import get_memory_mb, init_slack_app_log
 
 
@@ -118,3 +120,23 @@ class TestInitSlackLog:
         assert log.slack_log.action_type is None
         assert log.slack_log.action_value is None
         assert log.slack_log.ts is None
+
+    def test_body_replaces_invalid_unicode_for_mysql_json(self, event_body, context):
+        event_body["event"]["text"] = "broken \ud83d payload"
+        log = init_slack_app_log(event_body, context)
+
+        sanitized_body = log.slack_log.body
+        encoded_body = json.dumps(sanitized_body)
+
+        assert sanitized_body["event"]["text"] == "broken ? payload"
+        assert "\\ud83d" not in encoded_body
+        assert json.loads(encoded_body) == sanitized_body
+
+    def test_body_sanitization_does_not_mutate_original_payload(
+        self, event_body, context
+    ):
+        event_body["event"]["text"] = "broken \ud83d payload"
+        log = init_slack_app_log(event_body, context)
+
+        assert event_body["event"]["text"] == "broken \ud83d payload"
+        assert log.slack_log.body["event"]["text"] == "broken ? payload"

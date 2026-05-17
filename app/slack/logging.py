@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import inspect
+import json
 import logging
 import resource
 import sys
@@ -31,6 +32,13 @@ slack_app_logger = SlackMySQLLogger(
     watson_log_table="slack_logs_watson",
     api_log_table="slack_logs_api",
 )
+
+
+def _mysql_json_safe(value: Any) -> Any:
+    """Return a copy that can be serialized into MySQL's JSON type."""
+    encoded = json.dumps(value, ensure_ascii=False, default=str)
+    cleaned = encoded.encode("utf-8", errors="replace").decode("utf-8")
+    return json.loads(cleaned)
 
 
 def get_memory_mb() -> float:
@@ -108,7 +116,7 @@ def init_slack_app_log(body: dict[str, Any], context: dict[str, Any]) -> SlackAp
         team_id=context.get("team_id"),
         channel_id=context.get("channel_id"),
         ts=ts,
-        body=body,
+        body=_mysql_json_safe(body),
     )
 
 
