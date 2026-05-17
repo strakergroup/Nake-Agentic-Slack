@@ -25,7 +25,10 @@ def mock_queue():
     fake_job = MagicMock(key="job-key", attempts=0)
     fake_queue = MagicMock()
     fake_queue.enqueue = AsyncMock(return_value=fake_job)
-    with patch("app.saq_jobs.queue.get_queue", return_value=fake_queue):
+    with (
+        patch("app.saq_jobs.queue.get_queue", return_value=fake_queue),
+        patch("app.saq_jobs.worker.ensure_worker_running", new_callable=AsyncMock),
+    ):
         yield fake_queue
 
 
@@ -43,6 +46,7 @@ async def test_enqueue_passes_function_name_and_kwargs(mock_queue):
 async def test_enqueue_includes_optional_job_settings(mock_queue):
     await enqueue(
         "slack_upload_mt_result",
+        queue_name="delivery-q",
         key="idem-1",
         retries=5,
         timeout=300,

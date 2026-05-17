@@ -39,11 +39,11 @@ runtime.
 ```mermaid
 flowchart LR
     subgraph FastAPI["uvicorn / FastAPI process"]
-        Router["app/routers/ray.py\n(MT success / transcribe / verify)"]
+        Router["app/routers/ray.py + app/slack/listeners.py\n(MT / QE submissions + result delivery)"]
         Logger["app/ray/events/logging.py\n(post_notification)"]
         Dispatch["app/saq_jobs/dispatch.py\nenqueue_*_upload\nenqueue_log_notification\nenqueue_mt_ts_edit"]
-        Queue["app/saq_jobs/queue.py\nenqueue()"]
-        Worker["app/saq_jobs/worker.py\nin-process Worker (lifespan)"]
+        Queue["app/saq_jobs/queue.py\nenqueue()\nsplit Redis queues + legacy drain"]
+        Worker["app/saq_jobs/worker.py\nin-process Workers (lifespan)\nsubmissions / delivery / background"]
         Tasks["app/saq_jobs/tasks.py\nslack_upload_*\npersist_log_notification\npersist_mt_ts_edit"]
     end
 
@@ -68,14 +68,39 @@ flowchart LR
 ### Components
 
 
-| File | Role |
-| --- | --- |
-| `app/saq_jobs/_task_names.py` | Leaf module declaring the `TaskName = Literal[...]` type used by `enqueue(...)`. Contains no other imports so `queue.py` can depend on the type-checked task list without forming a circular import via `tasks.py`. |
-| `app/saq_jobs/dispatch.py` | Typed enqueue helpers — one function per durable side-effect. Owns idempotency keys, retry/timeout config, and payload construction. **All callers in routers and event handlers go through this module.** |
-| `app/saq_jobs/queue.py` | Lazy singleton `RedisQueue`. Builds a dedicated bytes-mode Redis client (SAQ requires `decode_responses=False`) using the existing `straker_utils.redis.get_redis_auto` helper. Exposes the low-level `enqueue(...)` wrapper with structured logging; the `function` arg is typed as `TaskName` so pyright catches typos at the call site. |
-| `app/saq_jobs/tasks.py` | All durable task functions. Accepts only JSON-serialisable kwargs. Re-fetches `slack_user` (and the bot token) inside the task by `client_id`. Exposes `TASK_FUNCTIONS`, the worker registration list. |
-| `app/saq_jobs/worker.py` | `start_worker` / `stop_worker` lifecycle helpers. Runs the SAQ `Worker` as an asyncio task in the FastAPI lifespan. Provides an out-of-process `settings` entry point as a future-proofing hook. |
-| `app/main.py` | Wires `start_worker()` and `stop_worker()` into the FastAPI lifespan context manager. |
+| File                          | Role                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `app/saq_jobs/_task_names.py` | Leaf module declaring the `TaskName = Literal[...]` type used by `enqueue(...)`. Contains no other imports so `queue.py` can depend on the type-checked task list without forming a circular import via `tasks.py`.                                                                                                                        |
+| `app/saq_jobs/dispatch.py`    | Typed enqueue helpers — one function per durable side-effect. Owns idempotency keys, retry/timeout config, and payload construction. **All callers in routers and event handlers go through this module.**                                                                                                                                 |
+| `app/saq_jobs/queue.py`       | Lazy singleton `RedisQueue`. Builds a dedicated bytes-mode Redis client (SAQ requires `decode_responses=False`) using the existing `straker_utils.redis.get_redis_auto` helper. Exposes the low-level `enqueue(...)` wrapper with structured logging; the `function` arg is typed as `TaskName` so pyright catches typos at the call site. |
+| `app/saq_jobs/tasks.py`       | All durable task functions. Accepts only JSON-serialisable kwargs. Re-fetches `slack_user` (and the bot token) inside the task by `client_id`. Exposes `TASK_FUNCTIONS`, the worker registration list.                                                                                                                                     |
+| `app/saq_jobs/worker.py`      | `start_worker` / `stop_worker` lifecycle helpers. Runs the SAQ `Worker` as an asyncio task in the FastAPI lifespan. Provides an out-of-process `settings` entry point as a future-proofing hook.                                                                                                                                           |
+| `app/main.py`                 | Wires `start_worker()` and `stop_worker()` into the FastAPI lifespan context manager.                                                                                                                                                                                                                                                      |
+
+
+### Worker liveness and hot reload recovery
+
+Local development commonly runs `uvicorn --reload`. When WatchFiles reloads the
+app while an SAQ task is active, the in-process worker can be cancelled during
+shutdown and the durable job may remain in Redis until a healthy worker resumes.
+
+To reduce manual restarts:
+
+- `app/saq_jobs/worker.py` tracks each queue worker independently.
+- `ensure_worker_running()` starts or restarts any enabled worker task that is
+  missing, cancelled, or stopped unexpectedly.
+- The low-level SAQ `enqueue()` boundary calls `ensure_worker_running()` before
+  writing a job to Redis, so every producer can self-heal a partially stopped
+  worker set without adding per-call wrapper functions.
+- A compatibility worker also listens to the legacy `SAQ_QUEUE_NAME` queue so
+  jobs created before the split queue rollout are drained after deploy/reload.
+- `/health` reports SAQ worker state and returns `500` when
+  `SAQ_WORKER_ENABLED=true` but not all expected queue workers are alive.
+
+This recovery only applies while the FastAPI process itself is running. If the
+process or container is stopped, no event handler is alive to restart workers;
+the queued jobs remain durable in Redis and are picked up when the app starts.
+
 
 ### Package layering hygiene
 
@@ -138,15 +163,25 @@ settings — the only difference is the response codec.
 All values live in `app/config.py` and are documented in `.env.example`.
 
 
-| Env var                           | Default                | Purpose                                                                                        |
-| --------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------- |
-| `SAQ_QUEUE_NAME`                  | `slack-ray-translator` | Queue namespace inside Redis.                                                                  |
-| `SAQ_WORKER_ENABLED`              | `True`                 | Set to `False` to disable the in-process worker (e.g. when running the worker out of process). |
-| `SAQ_WORKER_CONCURRENCY`          | `10`                   | Maximum jobs executing in parallel inside the in-process worker.                               |
-| `SAQ_FILE_UPLOAD_RETRIES`         | `5`                    | Per-job retry budget for `slack_upload_*` tasks. SAQ uses jittered exponential backoff.        |
-| `SAQ_FILE_UPLOAD_TIMEOUT_SECONDS` | `300`                  | Per-attempt timeout for file-upload tasks (covers download-from-file-server + Slack upload).   |
-| `SAQ_LOGGING_RETRIES`             | `3`                    | Per-job retry budget for `persist_log_notification` / `persist_mt_ts_edit`.                    |
-| `SAQ_LOGGING_TIMEOUT_SECONDS`     | `30`                   | Per-attempt timeout for the logging tasks.                                                     |
+| Env var                                  | Default                                 | Purpose                                                                                   |
+| ---------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `SAQ_QUEUE_NAME`                         | `slack-ray-translator`                  | Legacy/default queue namespace used when no explicit queue is supplied.                   |
+| `SAQ_WORKER_ENABLED`                     | `True`                                  | Set to `False` to disable in-process workers (e.g. when running dedicated worker pods).   |
+| `SAQ_WORKER_CONCURRENCY`                 | `10`                                    | Legacy/default worker concurrency retained for compatibility.                             |
+| `SAQ_FILE_SUBMISSION_QUEUE_NAME`         | `slack-ray-translator-file-submissions` | Low-concurrency queue for large or unknown-size Slack file submissions.                   |
+| `SAQ_FILE_SUBMISSION_WORKER_CONCURRENCY` | `3`                                     | Low concurrency for large or unknown-size document MT and evaluation submission jobs.     |
+| `SAQ_SMALL_FILE_SUBMISSION_QUEUE_NAME`   | `slack-ray-translator-small-file-submissions` | Higher-concurrency queue for known-small Slack file submissions.                   |
+| `SAQ_SMALL_FILE_SUBMISSION_WORKER_CONCURRENCY` | `10`                              | Concurrency for known-small document MT and evaluation submission jobs.                   |
+| `SAQ_LARGE_FILE_SUBMISSION_THRESHOLD_MB` | `10`                                    | Files at or above this size, or files with unknown Slack size metadata, use the low-concurrency submission queue. |
+| `SAQ_SMALL_FILE_UPLOAD_TIMEOUT_SECONDS`  | `300`                                   | Per-attempt timeout for known-small submission jobs.                                       |
+| `SAQ_FILE_DELIVERY_QUEUE_NAME`           | `slack-ray-translator-file-delivery`    | Queue for result delivery uploads back to Slack.                                          |
+| `SAQ_FILE_DELIVERY_WORKER_CONCURRENCY`   | `10`                                    | Higher concurrency for user-visible completion delivery jobs.                             |
+| `SAQ_BACKGROUND_QUEUE_NAME`              | `slack-ray-translator-background`       | Queue for lightweight persistence/cache jobs.                                             |
+| `SAQ_BACKGROUND_WORKER_CONCURRENCY`      | `5`                                     | Concurrency for lightweight background jobs.                                              |
+| `SAQ_FILE_UPLOAD_RETRIES`                | `5`                                     | Per-job retry budget for `slack_upload_*` tasks. SAQ uses jittered exponential backoff.   |
+| `SAQ_FILE_UPLOAD_TIMEOUT_SECONDS`        | `900`                                   | Per-attempt timeout for large or unknown-size file-submission/upload tasks, sized for files up to 500 MB. |
+| `SAQ_LOGGING_RETRIES`                    | `3`                                     | Per-job retry budget for `persist_log_notification` / `persist_mt_ts_edit`.               |
+| `SAQ_LOGGING_TIMEOUT_SECONDS`            | `30`                                    | Per-attempt timeout for the logging tasks.                                                |
 
 
 ## Migrated background work
@@ -156,13 +191,15 @@ SAQ enqueues. Each enqueue uses a deterministic idempotency key so re-played
 Ray events do not produce duplicate Slack uploads.
 
 
-| Trigger                                         | Previous implementation                      | New SAQ task                   | Idempotency key                                              |
-| ----------------------------------------------- | -------------------------------------------- | ------------------------------ | ------------------------------------------------------------ |
-| `verify:slack:document:translated` (MT success) | `_handle_mt_success_background`              | `slack_upload_mt_result`       | `mt_upload:{task_uuid}:{file_id}:{tl}:{thread_ts}`           |
-| `verify:slack:transcribe:complete`              | `_handle_transcribe_success_background`      | `slack_upload_transcription`   | `transcribe_upload:{task_uuid}:{file_id}:{channel_id}`       |
-| `verify:slack:evaluate:complete`                | `_handle_verify_complete_background`         | `slack_upload_verify_complete` | `verify_upload:{grid_file_id}:{channel_id}`                  |
-| `post_notification` DB write                    | `asyncio.create_task(log_notification(...))` | `persist_log_notification`     | none (volume too high; SAQ retries cover transient DB blips) |
-| `set_mt_ts_edit` Redis cache write              | `asyncio.create_task(set_mt_ts_edit(...))`   | `persist_mt_ts_edit`           | `mt_ts_edit:{client_id}:{ts}`                                |
+| Trigger                                         | Previous implementation                                      | New SAQ task                     | Queue            | Idempotency key                                              |
+| ----------------------------------------------- | ------------------------------------------------------------ | -------------------------------- | ---------------- | ------------------------------------------------------------ |
+| Document MT modal submission                    | synchronous Slack download → file-server upload → MT publish | `process_document_mt_submission` | small-file-submissions or file-submissions | `process_document_mt_submission:{stable submission hash}`    |
+| QE / human-translation modal submission         | synchronous Slack download → Verify/file-server upload       | `process_evaluation_submission`  | small-file-submissions or file-submissions | `process_evaluation_submission:{stable submission hash}`     |
+| `verify:slack:document:translated` (MT success) | `_handle_mt_success_background`                              | `slack_upload_mt_result`         | file-delivery    | `mt_upload:{task_uuid}:{file_id}:{tl}:{thread_ts}`           |
+| `verify:slack:transcribe:complete`              | `_handle_transcribe_success_background`                      | `slack_upload_transcription`     | file-delivery    | `transcribe_upload:{task_uuid}:{file_id}:{channel_id}`       |
+| `verify:slack:evaluate:complete`                | `_handle_verify_complete_background`                         | `slack_upload_verify_complete`   | file-delivery    | `verify_upload:{grid_file_id}:{channel_id}`                  |
+| `post_notification` DB write                    | `asyncio.create_task(log_notification(...))`                 | `persist_log_notification`       | background       | none (volume too high; SAQ retries cover transient DB blips) |
+| `set_mt_ts_edit` Redis cache write              | `asyncio.create_task(set_mt_ts_edit(...))`                   | `persist_mt_ts_edit`             | background       | `mt_ts_edit:{client_id}:{ts}`                                |
 
 
 ### Scope rationale — `asyncio.create_task` calls left in place
@@ -182,7 +219,7 @@ cache itself.
 `ray_logger.slack.SlackAppLog` object that is not JSON-serialisable through
 SAQ. The existing `log_slack` helper already wraps the call in
 `try/except`.
-- `**RayService.api_ondemand_process**` — needs the request-scoped
+- `**RayService.api_ondemand_process`** — needs the request-scoped
 authenticated `RayClient`. Reconstituting that auth inside the worker
 would require persisting user tokens in Redis, violating the "no tokens
 in queue payloads" rule that protects the durable store from token leaks.
@@ -235,13 +272,13 @@ the major version in a dedicated PR with an integration test pass.
 ## Tests
 
 
-| Test file | Coverage |
-| --- | --- |
-| `tests/saq_jobs/test_queue.py` | Low-level `enqueue` forwards function name, kwargs, key, retries, and timeout to SAQ; duplicate keys are silently no-op; Redis errors propagate. |
-| `tests/saq_jobs/test_tasks.py` | Each task happy path (download → upload → cleanup), missing-slack-user branch, and final-retry `notify_exception` forwarding. |
-| `tests/saq_jobs/test_dispatch.py` | The typed `enqueue_*` helpers in `app.saq_jobs.dispatch` compute the documented idempotency keys and forward the configured retry / timeout values for every durable task. |
-| `tests/saq_jobs/test_task_registry.py` | Drift check between the `TaskName` Literal and `TASK_FUNCTIONS`; also asserts task names are unique. |
-| `tests/routers/test_ray.py` | Existing router tests patch the typed helpers re-exported from `app.routers.ray` (`enqueue_mt_success_upload`, `enqueue_transcription_upload`, `enqueue_verify_complete_upload`). |
+| Test file                              | Coverage                                                                                                                                                                          |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/saq_jobs/test_queue.py`         | Low-level `enqueue` forwards function name, kwargs, key, retries, and timeout to SAQ; duplicate keys are silently no-op; Redis errors propagate.                                  |
+| `tests/saq_jobs/test_tasks.py`         | Each task happy path (download → upload → cleanup), missing-slack-user branch, and final-retry `notify_exception` forwarding.                                                     |
+| `tests/saq_jobs/test_dispatch.py`      | The typed `enqueue_`* helpers in `app.saq_jobs.dispatch` compute the documented idempotency keys and forward the configured retry / timeout values for every durable task.        |
+| `tests/saq_jobs/test_task_registry.py` | Drift check between the `TaskName` Literal and `TASK_FUNCTIONS`; also asserts task names are unique.                                                                              |
+| `tests/routers/test_ray.py`            | Existing router tests patch the typed helpers re-exported from `app.routers.ray` (`enqueue_mt_success_upload`, `enqueue_transcription_upload`, `enqueue_verify_complete_upload`). |
 
 
 Run all SAQ-touching tests in isolation with:

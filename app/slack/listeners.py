@@ -24,21 +24,18 @@ from app.api.verify import (
     download_verify_file,
     get_client_evaluation_job,
     get_job_pricing,
-    submit_evaluation_job,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.models import SlackGroupSettingsTranslation
 from app.ray.submissions import (
-    SubmissionStatus,
     check_and_record_submission_async,
-    updated_submission_status,
 )
 from app.ray.utils import (
     download_from_file_server_async,
     is_ibm_enterprise,
     upload_to_file_server,
-    validate_file,
 )
+from app.saq_jobs import enqueue_document_mt_submission, enqueue_evaluation_submission
 from app.slack.buglog_notifier import notify_exception, notify_message
 from app.transcriber_tasks.tasks import get_asr_task
 from app.translate import _
@@ -53,11 +50,10 @@ from ..auth.connector import (
     get_group_quote_settings,
     get_ray_connection,
     get_token_for_team,
-    get_verify_trial_status,
     is_slack_team_admin,
     resolve_channels_to_team,
 )
-from ..config import config, domains
+from ..config import domains
 from ..ray.settings import (
     delete_channel_id,
     disable_auto_translate_group_settings,
@@ -68,6 +64,10 @@ from ..ray.settings import (
 )
 from ..redis import is_duplicate_event, redis_conn
 from .app import app
+from .file_submissions import (
+    slack_file_submission_payload,
+    slack_file_submission_payload_from_option,
+)
 from .language_validation import get_conflicting_target_language_labels
 from .listener_actions import (
     ai_translate_help,
@@ -2041,62 +2041,44 @@ async def evaluate_job_submit(
             msg = _(
                 "You've successfully submitted your document(s) for quality evaluation."
             )
-        input_files = []
-        file_titles = []
-        missing_files = []
-        for file in form.files:
-            try:
-                input_file = await download_file(
-                    client=client, file_id=file.id, http=None
-                )
-            except SlackApiError as e:
-                if is_slack_file_not_found(e):
-                    missing_files.append(
-                        {"value": file.id, "text": {"text": file.title}}
-                    )
-                    continue
-                raise
-            is_valid, is_valid_content, error_message = validate_file(input_file)
-            if not is_valid:
-                await client.chat_postMessage(channel=channel_id, text=error_message)
-                continue
-            if not is_valid_content:
-                await client.chat_postMessage(channel=channel_id, text=error_message)
-                continue
-            input_files.append(input_file)
-            file_titles.append(file.title)
-        if missing_files:
-            await notify_missing_slack_files(client, context["user_id"], missing_files)
-        if not input_files:
-            return
-        await client.chat_postMessage(channel=channel_id, text=msg)
         try:
-            assert context["ray"] is not None
-            assert context["ray"].client is not None
+            file_payloads = [
+                slack_file_submission_payload(
+                    file_id=file.id,
+                    title=file.title,
+                    size=file.size,
+                )
+                for file in form.files
+            ]
+            accessible_files, missing_files = await get_accessible_slack_files(
+                client, file_payloads
+            )
+            if missing_files:
+                await notify_missing_slack_files(
+                    client, context["user_id"], missing_files
+                )
+            accessible_file_ids = {
+                str(file["id"]) for file in accessible_files if file.get("id")
+            }
+            file_payloads = [
+                file for file in file_payloads if str(file["id"]) in accessible_file_ids
+            ]
+            if not file_payloads:
+                return
 
-            has_pdf = any(t.lower().endswith(".pdf") for t in file_titles)
-            if has_pdf:
-                await _publish_pdf_evaluate_convert(
-                    ray_client=context["ray"].client,
-                    input_files=input_files,
-                    file_titles=file_titles,
-                    target_langs_uuid=form.target_langs_uuid,
-                    reference=form.reference,
-                    channel_id=channel_id,
-                    source_lang_uuid=form.source_lang_uuid,
-                    workflow_uuid=form.workflow_options,
-                    job_notes=form.job_notes or "",
-                )
-            else:
-                await submit_evaluation_job(
-                    context["ray"].client,
-                    input_files,
-                    form.target_langs_uuid,
-                    form.reference,
-                    source_language_uuid=form.source_lang_uuid,
-                    workflow_uuid=form.workflow_options,
-                    job_notes=form.job_notes or "",
-                )
+            await client.chat_postMessage(channel=channel_id, text=msg)
+            await enqueue_evaluation_submission(
+                user_id=context["user_id"],
+                team_id=context["team_id"],
+                enterprise_id=context.enterprise_id,
+                channel_id=channel_id,
+                files=file_payloads,
+                target_langs_uuid=form.target_langs_uuid,
+                reference=form.reference,
+                source_lang_uuid=form.source_lang_uuid,
+                workflow_uuid=form.workflow_options,
+                job_notes=form.job_notes or "",
+            )
         except VerifyAPIError as e:
             await client.chat_postMessage(
                 channel=channel_id,
@@ -2649,113 +2631,41 @@ async def handle_document_mt_job(
                 else None
             )
             context["channel_id"] = channel_id or context["user_id"]
-            ray_client = context["ray"].client
-            assert ray_client is not None
-            if ray_client.is_trial is None:
-                (
-                    ray_client.is_trial,
-                    ray_client.trial_remaining,
-                ) = await get_verify_trial_status(ray_client.id_token)
-            max_pdf_size_bytes = (
-                config.document_mt_pdf_max_size_bytes if ray_client.is_trial else None
+            file_payloads = [
+                slack_file_submission_payload_from_option(file) for file in files
+            ]
+            accessible_files, missing_files = await get_accessible_slack_files(
+                client, file_payloads
             )
-            files_uploaded = []
-            duplicate_submissions = []
-            missing_files = []
-            downloaded_files = []  # Track downloaded files for cleanup
-            # Process each file
-            for file in files:
-                # Download file content
-                try:
-                    input_file = await download_file(
-                        client=client, file_id=file["value"], http=None
-                    )
-                except SlackApiError as e:
-                    if is_slack_file_not_found(e):
-                        missing_files.append(file)
-                        continue
-                    raise
-                downloaded_files.append(input_file)  # Track for cleanup
-                # validate file
-                is_valid_file_type, is_valid_content, error_message = validate_file(
-                    input_file,
-                    max_pdf_size_bytes=max_pdf_size_bytes,
-                )
-                file_name = file["text"]["text"]
-                if not is_valid_file_type:
-                    await client.chat_postMessage(
-                        channel=context["user_id"],
-                        text=_(
-                            "The file ({file_name}) file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
-                        ),
-                    )
-                    continue
-                elif not is_valid_content:
-                    msg = error_message
-                    await client.chat_postMessage(
-                        channel=context["user_id"],
-                        text=msg,
-                    )
-                    continue
-                input_file_id = await upload_to_file_server(input_file)
-                submitted_for_file = False
-                submitted_languages: list[str] = []
-                submission_ids: dict[str, int] = {}
-                for lang in selected_languages:
-                    target_language = str(lang["value"])
-                    is_dup, _record = await check_and_record_submission_async(
-                        path=input_file,
-                        file_name=os.path.basename(input_file),
-                        file_id=input_file_id,
-                        user_id=context["user_id"],
-                        team_id=context["team_id"],
-                        channel_id=context["channel_id"],
-                        source_language=selected_source_language,
-                        target_language=target_language,
-                    )
-                    if is_dup:
-                        duplicate_submissions.append(
-                            f"{file_name} ({selected_source_language} -> {lang['value']})"
-                        )
-                        continue
-
-                    submitted_languages.append(target_language)
-                    submission_ids[target_language] = _record.id
-
-                if submitted_languages:
-                    await document_machine_translate(
-                        context,
-                        input_file_id,
-                        selected_source_language,
-                        submitted_languages,
-                        submission_ids,
-                    )
-                    submitted_for_file = True
-
-                if submitted_for_file:
-                    files_uploaded.append(file_name)
-
-            # convert files to
-            # Send confirmation message to the original channel if available
-            target_channel = channel_id or context["user_id"]
-            if files_uploaded:
-                await client.chat_postMessage(
-                    channel=target_channel,
-                    text=_(
-                        f"Your document(s) *({', '.join(files_uploaded)})* are being translated. You will be notified when they are ready."
-                    ),
-                )
-            if duplicate_submissions:
-                await client.chat_postMessage(
-                    channel=context["user_id"],
-                    text=_(
-                        f"Please allow the system to complete the ongoing translation(s) *({', '.join(duplicate_submissions)})* to prevent duplicate submissions."
-                    ),
-                )
             if missing_files:
                 await notify_missing_slack_files(
                     client, context["user_id"], missing_files
                 )
+            accessible_file_ids = {
+                str(file["id"]) for file in accessible_files if file.get("id")
+            }
+            file_payloads = [
+                file for file in file_payloads if str(file["id"]) in accessible_file_ids
+            ]
+            if not file_payloads:
+                return
+
+            selected_file_titles = [str(file["title"]) for file in file_payloads]
+            await enqueue_document_mt_submission(
+                user_id=context["user_id"],
+                team_id=context["team_id"],
+                enterprise_id=context.enterprise_id,
+                channel_id=context["channel_id"],
+                files=file_payloads,
+                source_language=selected_source_language,
+                target_languages=[str(lang["value"]) for lang in selected_languages],
+            )
+            await client.chat_postMessage(
+                channel=context["channel_id"],
+                text=_(
+                    f"Your document(s) *({', '.join(selected_file_titles)})* are being translated. You will be notified when they are ready."
+                ),
+            )
 
         except Exception as e:
             if not acked:
@@ -2763,17 +2673,6 @@ async def handle_document_mt_job(
                     await ack(response_action="clear")
                 except Exception:
                     pass
-            # Remove existing submissions if error occurs so that the user can submit again
-            # Note: files and selected_languages may not be defined if error occurs early
-            if "files" in locals() and "selected_languages" in locals():
-                for input_file in files:
-                    for lang in selected_languages:
-                        # Only update if _record exists
-                        if "_record" in locals():
-                            updated_submission_status(
-                                submission_id=_record.id,
-                                processing_status=SubmissionStatus.FAILED,
-                            )
             notify_exception(e)
             await client.chat_postMessage(
                 channel=context["user_id"],
@@ -2781,29 +2680,6 @@ async def handle_document_mt_job(
                     "There was an error submitting your translation request, please try again."
                 ),
             )
-        finally:
-            # Clean up downloaded temporary files
-            if "downloaded_files" in locals():
-                for downloaded_file in downloaded_files:
-                    try:
-                        if os.path.exists(downloaded_file):
-                            os.unlink(downloaded_file)
-                            # Also try to remove the parent directory if empty
-                            parent_dir = os.path.dirname(downloaded_file)
-                            try:
-                                if os.path.exists(parent_dir) and not os.listdir(
-                                    parent_dir
-                                ):
-                                    os.rmdir(parent_dir)
-                            except OSError:
-                                # Directory not empty or other error, ignore
-                                pass
-                    except Exception as cleanup_error:
-                        # Log but don't fail on cleanup errors
-                        notify_exception(
-                            cleanup_error,
-                            f"Failed to cleanup temp file: {downloaded_file}",
-                        )
     else:
         await ack(response_action="clear")
         await client.chat_postMessage(

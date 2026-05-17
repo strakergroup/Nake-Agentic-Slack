@@ -3,7 +3,6 @@ Tests for app/slack/listeners.py
 """
 
 import json
-import tempfile
 from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -1712,7 +1711,7 @@ class TestHandleNewJob:
                     "files": {
                         "file_options_C123": {
                             "selected_options": [
-                                {"value": "F123", "text": {"text": "file.txt"}}
+                                {"value": "F123|1234", "text": {"text": "file.txt"}}
                             ]
                         }
                     },
@@ -1787,7 +1786,7 @@ class TestHandleNewJob:
                     "files": {
                         "file_options_C123": {
                             "selected_options": [
-                                {"value": "F123", "text": {"text": "file.txt"}}
+                                {"value": "F123|1234", "text": {"text": "file.txt"}}
                             ]
                         }
                     },
@@ -1862,7 +1861,7 @@ class TestHandleNewJob:
                     "files": {
                         "file_options_C123": {
                             "selected_options": [
-                                {"value": "F123", "text": {"text": "file.txt"}}
+                                {"value": "F123|1234", "text": {"text": "file.txt"}}
                             ]
                         }
                     },
@@ -2439,7 +2438,7 @@ class TestEvaluateJobSubmit:
                     "files": {
                         "files": {
                             "selected_options": [
-                                {"value": "F123", "text": {"text": "file.txt"}}
+                                {"value": "F123|1234", "text": {"text": "file.txt"}}
                             ]
                         }
                     },
@@ -2567,11 +2566,6 @@ class TestEvaluateJobSubmit:
             "ray": ray_connection,
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
-        file_not_found = SlackApiError(
-            message="File not found",
-            response={"ok": False, "error": "file_not_found"},
-        )
-
         with (
             patch(
                 "app.slack.listeners.get_conflicting_target_language_labels",
@@ -2579,14 +2573,17 @@ class TestEvaluateJobSubmit:
                 return_value=[],
             ),
             patch(
-                "app.slack.listeners.download_file",
+                "app.slack.listeners.get_accessible_slack_files",
                 new_callable=AsyncMock,
-                side_effect=file_not_found,
+                return_value=(
+                    [],
+                    [{"id": "F_MISSING", "title": "deleted.docx", "size": None}],
+                ),
             ),
-            patch("app.slack.listeners.validate_file") as mock_validate,
             patch(
-                "app.slack.listeners.submit_evaluation_job", new_callable=AsyncMock
-            ) as mock_submit,
+                "app.slack.listeners.enqueue_evaluation_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
             patch("app.slack.listeners.notify_exception") as mock_notify,
         ):
             await evaluate_job_submit(
@@ -2594,8 +2591,7 @@ class TestEvaluateJobSubmit:
             )
 
         mock_ack.assert_called_once_with(response_action="clear")
-        mock_validate.assert_not_called()
-        mock_submit.assert_not_called()
+        mock_enqueue.assert_not_called()
         mock_notify.assert_not_called()
         mock_client.chat_postMessage.assert_called_once()
         message_text = mock_client.chat_postMessage.call_args.kwargs["text"].lower()
@@ -2647,14 +2643,6 @@ class TestEvaluateJobSubmit:
             "ray": ray_connection,
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
-        file_not_found = SlackApiError(
-            message="File not found",
-            response={"ok": False, "error": "file_not_found"},
-        )
-        valid_file = MagicMock()
-        valid_file.name = "valid.docx"
-        valid_file.content = b"test content"
-
         with (
             patch(
                 "app.slack.listeners.get_conflicting_target_language_labels",
@@ -2662,17 +2650,17 @@ class TestEvaluateJobSubmit:
                 return_value=[],
             ),
             patch(
-                "app.slack.listeners.download_file",
+                "app.slack.listeners.get_accessible_slack_files",
                 new_callable=AsyncMock,
-                side_effect=[file_not_found, valid_file],
-            ) as mock_download,
-            patch(
-                "app.slack.listeners.validate_file",
-                return_value=(True, True, None),
+                return_value=(
+                    [{"id": "F_VALID"}],
+                    [{"id": "F_MISSING", "title": "deleted.docx", "size": None}],
+                ),
             ),
             patch(
-                "app.slack.listeners.submit_evaluation_job", new_callable=AsyncMock
-            ) as mock_submit,
+                "app.slack.listeners.enqueue_evaluation_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
             patch("app.slack.listeners.notify_exception") as mock_notify,
         ):
             await evaluate_job_submit(
@@ -2680,8 +2668,10 @@ class TestEvaluateJobSubmit:
             )
 
         mock_ack.assert_called_once_with(response_action="clear")
-        assert mock_download.call_count == 2
-        mock_submit.assert_called_once()
+        mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.kwargs["files"] == [
+            {"id": "F_VALID", "title": "valid.docx", "size": None}
+        ]
         mock_notify.assert_not_called()
         posted_texts = [
             call.kwargs["text"].lower()
@@ -2715,7 +2705,7 @@ class TestEvaluateJobSubmit:
                     "files": {
                         "files": {
                             "selected_options": [
-                                {"value": "F123", "text": {"text": "file.txt"}}
+                                {"value": "F123|1234", "text": {"text": "file.txt"}}
                             ]
                         }
                     },
@@ -2730,34 +2720,32 @@ class TestEvaluateJobSubmit:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        # Mock file download and validation
-        mock_file = MagicMock()
-        mock_file.name = "file.txt"
-        mock_file.content = b"test content"
-
         with patch(
-            "app.slack.listeners.download_file", new_callable=AsyncMock
-        ) as mock_download:
-            mock_download.return_value = mock_file
-            with patch(
-                "app.slack.listeners.validate_file", return_value=(True, True, None)
-            ):
-                with patch(
-                    "app.slack.listeners.get_conflicting_target_language_labels",
+            "app.slack.listeners.get_conflicting_target_language_labels",
+            new_callable=AsyncMock,
+        ) as mock_conflicts:
+            mock_conflicts.return_value = []
+            with (
+                patch(
+                    "app.slack.listeners.get_accessible_slack_files",
                     new_callable=AsyncMock,
-                ) as mock_conflicts:
-                    mock_conflicts.return_value = []
-                    with patch(
-                        "app.slack.listeners.submit_evaluation_job",
-                        new_callable=AsyncMock,
-                    ) as mock_submit:
-                        await evaluate_job_submit(
-                            context_dict, view=view, client=mock_client, ack=mock_ack
-                        )
-                        mock_ack.assert_called_once()
-                        mock_submit.assert_called_once()
-                        # Should post success message
-                        assert mock_client.chat_postMessage.call_count >= 1
+                    return_value=([{"id": "F123"}], []),
+                ),
+                patch(
+                    "app.slack.listeners.enqueue_evaluation_submission",
+                    new_callable=AsyncMock,
+                ) as mock_enqueue,
+            ):
+                await evaluate_job_submit(
+                    context_dict, view=view, client=mock_client, ack=mock_ack
+                )
+
+        mock_ack.assert_called_once()
+        mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.kwargs["files"] == [
+            {"id": "F123", "title": "file.txt", "size": 1234}
+        ]
+        assert mock_client.chat_postMessage.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_evaluate_job_submit_verify_api_error(
@@ -2802,39 +2790,32 @@ class TestEvaluateJobSubmit:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        mock_file = MagicMock()
-        mock_file.name = "file.txt"
-        mock_file.content = b"test content"
-
         with patch(
-            "app.slack.listeners.download_file", new_callable=AsyncMock
-        ) as mock_download:
-            mock_download.return_value = mock_file
-            with patch(
-                "app.slack.listeners.validate_file", return_value=(True, True, None)
-            ):
-                with patch(
-                    "app.slack.listeners.get_conflicting_target_language_labels",
+            "app.slack.listeners.get_conflicting_target_language_labels",
+            new_callable=AsyncMock,
+        ) as mock_conflicts:
+            mock_conflicts.return_value = []
+            with (
+                patch(
+                    "app.slack.listeners.get_accessible_slack_files",
                     new_callable=AsyncMock,
-                ) as mock_conflicts:
-                    mock_conflicts.return_value = []
-                    with patch(
-                        "app.slack.listeners.submit_evaluation_job",
-                        new_callable=AsyncMock,
-                    ) as mock_submit:
-                        mock_submit.side_effect = VerifyAPIError("Permission denied")
-                        await evaluate_job_submit(
-                            context_dict, view=view, client=mock_client, ack=mock_ack
-                        )
-                        mock_ack.assert_called_once()
-                        # Should post permission error message
-                        assert mock_client.chat_postMessage.call_count >= 2
-                        call_args_list = mock_client.chat_postMessage.call_args_list
-                        last_call_text = call_args_list[-1][1]["text"].lower()
-                        assert (
-                            "permission" in last_call_text
-                            or "administrator" in last_call_text
-                        )
+                    return_value=([{"id": "F123"}], []),
+                ),
+                patch(
+                    "app.slack.listeners.enqueue_evaluation_submission",
+                    new_callable=AsyncMock,
+                ) as mock_enqueue,
+            ):
+                mock_enqueue.side_effect = VerifyAPIError("Permission denied")
+                await evaluate_job_submit(
+                    context_dict, view=view, client=mock_client, ack=mock_ack
+                )
+
+        mock_ack.assert_called_once()
+        assert mock_client.chat_postMessage.call_count >= 2
+        call_args_list = mock_client.chat_postMessage.call_args_list
+        last_call_text = call_args_list[-1][1]["text"].lower()
+        assert "permission" in last_call_text or "administrator" in last_call_text
 
     @pytest.mark.asyncio
     async def test_evaluate_job_submit_general_exception(
@@ -2878,43 +2859,37 @@ class TestEvaluateJobSubmit:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        mock_file = MagicMock()
-        mock_file.name = "file.txt"
-        mock_file.content = b"test content"
-
         with patch(
-            "app.slack.listeners.download_file", new_callable=AsyncMock
-        ) as mock_download:
-            mock_download.return_value = mock_file
-            with patch(
-                "app.slack.listeners.validate_file", return_value=(True, True, None)
-            ):
-                with patch(
-                    "app.slack.listeners.get_conflicting_target_language_labels",
+            "app.slack.listeners.get_conflicting_target_language_labels",
+            new_callable=AsyncMock,
+        ) as mock_conflicts:
+            mock_conflicts.return_value = []
+            with (
+                patch(
+                    "app.slack.listeners.get_accessible_slack_files",
                     new_callable=AsyncMock,
-                ) as mock_conflicts:
-                    mock_conflicts.return_value = []
-                    with patch(
-                        "app.slack.listeners.submit_evaluation_job",
-                        new_callable=AsyncMock,
-                    ) as mock_submit:
-                        mock_submit.side_effect = Exception("General error")
-                        with patch(
-                            "app.slack.listeners.notify_exception"
-                        ) as mock_notify:
-                            await evaluate_job_submit(
-                                context_dict,
-                                view=view,
-                                client=mock_client,
-                                ack=mock_ack,
-                            )
-                            mock_ack.assert_called_once()
-                            mock_notify.assert_called_once()
-                            # Should post error message
-                            assert mock_client.chat_postMessage.call_count >= 2
-                            call_args_list = mock_client.chat_postMessage.call_args_list
-                            last_call_text = call_args_list[-1][1]["text"].lower()
-                            assert "error" in last_call_text
+                    return_value=([{"id": "F123"}], []),
+                ),
+                patch(
+                    "app.slack.listeners.enqueue_evaluation_submission",
+                    new_callable=AsyncMock,
+                ) as mock_enqueue,
+            ):
+                mock_enqueue.side_effect = Exception("General error")
+                with patch("app.slack.listeners.notify_exception") as mock_notify:
+                    await evaluate_job_submit(
+                        context_dict,
+                        view=view,
+                        client=mock_client,
+                        ack=mock_ack,
+                    )
+
+        mock_ack.assert_called_once()
+        mock_notify.assert_called_once()
+        assert mock_client.chat_postMessage.call_count >= 2
+        call_args_list = mock_client.chat_postMessage.call_args_list
+        last_call_text = call_args_list[-1][1]["text"].lower()
+        assert "error" in last_call_text
 
 
 class TestDocumentMtJobAction:
@@ -3121,23 +3096,25 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch(
-            "app.slack.listeners.get_verify_trial_status", new_callable=AsyncMock
-        ) as mock_trial_status:
-            mock_trial_status.return_value = (False, 0)
-            with patch(
-                "app.slack.listeners.download_file", new_callable=AsyncMock
-            ) as mock_download:
-                mock_download.return_value = "/tmp/file.txt"
-                with patch(
-                    "app.slack.listeners.validate_file", return_value=(False, False, "")
-                ):
-                    await handle_document_mt_job(
-                        context_dict, mock_ack, view=view, client=mock_client
-                    )
+        with (
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=([{"id": "F123"}], []),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+        ):
+            await handle_document_mt_job(
+                context_dict, mock_ack, view=view, client=mock_client
+            )
 
         mock_ack.assert_called_once_with(response_action="clear")
-        mock_download.assert_awaited_once()
+        mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.kwargs["source_language"] == "fr"
+        assert mock_enqueue.await_args.kwargs["target_languages"] == ["fr-ca"]
 
     @pytest.mark.asyncio
     async def test_handle_document_mt_job_no_languages(
@@ -3290,18 +3267,19 @@ class TestHandleDocumentMtJob:
             "ray": ray_connection,
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
-        file_not_found = SlackApiError(
-            message="File not found",
-            response={"ok": False, "error": "file_not_found"},
-        )
-
         with (
             patch(
-                "app.slack.listeners.download_file",
+                "app.slack.listeners.get_accessible_slack_files",
                 new_callable=AsyncMock,
-                side_effect=file_not_found,
+                return_value=(
+                    [],
+                    [{"id": "F_MISSING", "title": "deleted.docx", "size": None}],
+                ),
             ),
-            patch("app.slack.listeners.validate_file") as mock_validate,
+            patch(
+                "app.slack.listeners.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
             patch("app.slack.listeners.notify_exception") as mock_notify,
         ):
             await handle_document_mt_job(
@@ -3309,7 +3287,7 @@ class TestHandleDocumentMtJob:
             )
 
         mock_ack.assert_called_once()
-        mock_validate.assert_not_called()
+        mock_enqueue.assert_not_called()
         mock_notify.assert_not_called()
         mock_client.chat_postMessage.assert_called_once()
         message_text = mock_client.chat_postMessage.call_args[1]["text"].lower()
@@ -3369,7 +3347,7 @@ class TestHandleDocumentMtJob:
 
         with (
             patch(
-                "app.slack.listeners.download_file",
+                "app.slack.listeners.get_accessible_slack_files",
                 new_callable=AsyncMock,
                 side_effect=slack_error,
             ),
@@ -3394,8 +3372,6 @@ class TestHandleDocumentMtJob:
         ray_client.is_trial = False
         mock_ack = AsyncMock()
         mock_client = AsyncMock()
-        valid_file = tmp_path / "valid.docx"
-        valid_file.write_text("test content")
         view = {
             "private_metadata": "D123",
             "state": {
@@ -3436,47 +3412,29 @@ class TestHandleDocumentMtJob:
             "ray": ray_connection,
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
-        file_not_found = SlackApiError(
-            message="File not found",
-            response={"ok": False, "error": "file_not_found"},
-        )
-        mock_record = MagicMock()
-        mock_record.id = "record-123"
-
         with (
             patch(
-                "app.slack.listeners.download_file",
+                "app.slack.listeners.get_accessible_slack_files",
                 new_callable=AsyncMock,
-                side_effect=[file_not_found, str(valid_file)],
-            ) as mock_download,
-            patch(
-                "app.slack.listeners.validate_file",
-                return_value=(True, True, None),
+                return_value=(
+                    [{"id": "F_VALID"}],
+                    [{"id": "F_MISSING", "title": "deleted.docx", "size": None}],
+                ),
             ),
             patch(
-                "app.slack.listeners.upload_to_file_server",
+                "app.slack.listeners.enqueue_document_mt_submission",
                 new_callable=AsyncMock,
-                return_value="file-id-123",
-            ),
-            patch(
-                "app.slack.listeners.check_and_record_submission_async",
-                new_callable=AsyncMock,
-                return_value=(False, mock_record),
-            ),
-            patch(
-                "app.slack.listeners.document_machine_translate",
-                new_callable=AsyncMock,
-            ) as mock_document_mt,
+            ) as mock_enqueue,
             patch("app.slack.listeners.notify_exception") as mock_notify,
         ):
             await handle_document_mt_job(
                 context_dict, mock_ack, view=view, client=mock_client
             )
 
-        assert mock_download.call_count == 2
-        mock_document_mt.assert_called_once_with(
-            ANY, "file-id-123", "fr", ["en"], {"en": "record-123"}
-        )
+        mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.kwargs["files"] == [
+            {"id": "F_VALID", "title": "valid.docx", "size": None}
+        ]
         mock_notify.assert_not_called()
         posted_texts = [
             call.kwargs["text"].lower()
@@ -3490,7 +3448,7 @@ class TestHandleDocumentMtJob:
         self, user_id, team_id, ray_client
     ):
         """Test document MT uses the PDF limit only for trial sessions."""
-        from app.slack.listeners import config, handle_document_mt_job
+        from app.slack.listeners import handle_document_mt_job
 
         mock_ack = AsyncMock()
         mock_client = AsyncMock()
@@ -3515,7 +3473,7 @@ class TestHandleDocumentMtJob:
                     "files": {
                         "files": {
                             "selected_options": [
-                                {"value": "F123", "text": {"text": "file.pdf"}}
+                                {"value": "F123|1234", "text": {"text": "file.pdf"}}
                             ]
                         }
                     },
@@ -3530,27 +3488,27 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch(
-            "app.slack.listeners.get_verify_trial_status", new_callable=AsyncMock
-        ) as mock_trial_status:
-            mock_trial_status.return_value = (True, 7)
-            with patch(
-                "app.slack.listeners.download_file", new_callable=AsyncMock
-            ) as mock_download:
-                mock_download.return_value = "/tmp/file.pdf"
-                with patch(
-                    "app.slack.listeners.validate_file", return_value=(False, False, "")
-                ) as mock_validate:
-                    await handle_document_mt_job(
-                        context_dict, mock_ack, view=view, client=mock_client
-                    )
+        with (
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=([{"id": "F123"}], []),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+        ):
+            await handle_document_mt_job(
+                context_dict, mock_ack, view=view, client=mock_client
+            )
 
-        mock_validate.assert_called_once_with(
-            "/tmp/file.pdf",
-            max_pdf_size_bytes=config.document_mt_pdf_max_size_bytes,
-        )
-        assert ray_client.is_trial is True
-        assert ray_client.trial_remaining == 7
+        mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.kwargs["files"] == [
+            {"id": "F123", "title": "file.pdf", "size": 1234}
+        ]
+        assert mock_enqueue.await_args.kwargs["target_languages"] == ["en"]
+        mock_client.chat_postMessage.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_handle_document_mt_job_skips_pdf_limit_for_non_trial(
@@ -3597,27 +3555,26 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch(
-            "app.slack.listeners.get_verify_trial_status", new_callable=AsyncMock
-        ) as mock_trial_status:
-            mock_trial_status.return_value = (False, 0)
-            with patch(
-                "app.slack.listeners.download_file", new_callable=AsyncMock
-            ) as mock_download:
-                mock_download.return_value = "/tmp/file.pdf"
-                with patch(
-                    "app.slack.listeners.validate_file", return_value=(False, False, "")
-                ) as mock_validate:
-                    await handle_document_mt_job(
-                        context_dict, mock_ack, view=view, client=mock_client
-                    )
+        with (
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=([{"id": "F123"}], []),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+        ):
+            await handle_document_mt_job(
+                context_dict, mock_ack, view=view, client=mock_client
+            )
 
-        mock_validate.assert_called_once_with(
-            "/tmp/file.pdf",
-            max_pdf_size_bytes=None,
-        )
-        assert ray_client.is_trial is False
-        assert ray_client.trial_remaining == 0
+        mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.kwargs["files"] == [
+            {"id": "F123", "title": "file.pdf", "size": None}
+        ]
+        mock_client.chat_postMessage.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_handle_document_mt_job_exception(self, user_id, team_id, ray_client):
@@ -3662,58 +3619,33 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-            f.write("test content")
-            input_file = f.name
+        with (
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=([{"id": "F123"}], []),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+        ):
+            mock_enqueue.side_effect = RuntimeError("enqueue failed")
+            with patch("app.slack.listeners.notify_exception") as mock_notify:
+                await handle_document_mt_job(
+                    context_dict,
+                    mock_ack,
+                    view=view,
+                    client=mock_client,
+                )
 
-        with patch(
-            "app.slack.listeners.download_file", new_callable=AsyncMock
-        ) as mock_download:
-            mock_download.return_value = input_file
-            with patch(
-                "app.slack.listeners.validate_file", return_value=(True, True, None)
-            ):
-                with patch(
-                    "app.slack.listeners.upload_to_file_server",
-                    return_value="file-id-123",
-                ):
-                    mock_record = MagicMock()
-                    mock_record.id = "record-123"
-                    with patch(
-                        "app.slack.listeners.check_and_record_submission_async",
-                        new_callable=AsyncMock,
-                    ) as mock_check:
-                        mock_check.return_value = (False, mock_record)
-                        # Make document_machine_translate fail
-                        with patch(
-                            "app.slack.listeners.document_machine_translate",
-                            new_callable=AsyncMock,
-                        ) as mock_doc_mt:
-                            mock_doc_mt.side_effect = Exception("Submit error")
-                            with patch(
-                                "app.slack.listeners.notify_exception"
-                            ) as mock_notify:
-                                with patch(
-                                    "app.slack.listeners.updated_submission_status"
-                                ) as mock_updated_submission_status:
-                                    await handle_document_mt_job(
-                                        context_dict,
-                                        mock_ack,
-                                        view=view,
-                                        client=mock_client,
-                                    )
-                                    mock_ack.assert_called_once()
-                                    mock_notify.assert_called_once()
-                                    mock_updated_submission_status.assert_called_once()
-                                    # Should post error message
-                                    assert mock_client.chat_postMessage.call_count >= 1
-                                    call_args_list = (
-                                        mock_client.chat_postMessage.call_args_list
-                                    )
-                                    last_call_text = call_args_list[-1][1][
-                                        "text"
-                                    ].lower()
-                                    assert "error" in last_call_text
+        mock_ack.assert_called_once()
+        mock_notify.assert_called_once()
+        assert mock_client.chat_postMessage.call_count >= 1
+        last_call_text = mock_client.chat_postMessage.call_args_list[-1][1][
+            "text"
+        ].lower()
+        assert "error" in last_call_text
 
     @pytest.mark.asyncio
     async def test_handle_document_mt_job_passes_source_language_to_translation(
@@ -3761,43 +3693,28 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch(
-            "app.slack.listeners.get_verify_trial_status", new_callable=AsyncMock
-        ) as mock_trial_status:
-            mock_trial_status.return_value = (False, 0)
-            with patch(
-                "app.slack.listeners.download_file", new_callable=AsyncMock
-            ) as mock_download:
-                mock_download.return_value = "/tmp/file.txt"
-                with patch(
-                    "app.slack.listeners.validate_file", return_value=(True, True, None)
-                ):
-                    with patch(
-                        "app.slack.listeners.upload_to_file_server",
-                        return_value="file-id-123",
-                    ):
-                        mock_record = MagicMock()
-                        mock_record.id = 321
-                        with patch(
-                            "app.slack.listeners.check_and_record_submission_async",
-                            new_callable=AsyncMock,
-                        ) as mock_check:
-                            mock_check.return_value = (False, mock_record)
-                            with patch(
-                                "app.slack.listeners.document_machine_translate",
-                                new_callable=AsyncMock,
-                            ) as mock_doc_mt:
-                                await handle_document_mt_job(
-                                    context_dict,
-                                    mock_ack,
-                                    view=view,
-                                    client=mock_client,
-                                )
+        with (
+            patch(
+                "app.slack.listeners.get_accessible_slack_files",
+                new_callable=AsyncMock,
+                return_value=([{"id": "F123"}], []),
+            ),
+            patch(
+                "app.slack.listeners.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+        ):
+            await handle_document_mt_job(
+                context_dict,
+                mock_ack,
+                view=view,
+                client=mock_client,
+            )
 
-        mock_doc_mt.assert_awaited_once()
-        call_args = mock_doc_mt.await_args.args
-        assert call_args[0]["channel_id"] == "C123"
-        assert call_args[1:] == ("file-id-123", "fr", ["en"], {"en": 321})
+        mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.kwargs["channel_id"] == "C123"
+        assert mock_enqueue.await_args.kwargs["source_language"] == "fr"
+        assert mock_enqueue.await_args.kwargs["target_languages"] == ["en"]
 
 
 class TestMessageEvent:

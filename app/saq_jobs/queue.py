@@ -21,31 +21,32 @@ from app.saq_jobs._task_names import TaskName
 logger = logging.getLogger(__name__)
 
 
-_queue: Queue | None = None
+_queues: dict[str, Queue] = {}
 
 
-def get_queue() -> Queue:
+def get_queue(queue_name: str | None = None) -> Queue:
     """Return the shared SAQ queue, constructing it on first access.
 
     The queue is created lazily so importing this module does not open a
     Redis connection (important for tests and CLI tooling).
     """
-    global _queue
-    if _queue is None:
+    name = queue_name or config.saq_queue_name
+    if name not in _queues:
         # SAQ requires a bytes-mode Redis client; do not share the
         # decode_responses=True client used elsewhere in the app.
         redis = get_redis_auto(decode_responses=False)
-        _queue = RedisQueue(redis, name=config.saq_queue_name)
+        _queues[name] = RedisQueue(redis, name=name)
         logger.info(
             "SAQ queue initialised",
-            extra={"queue_name": config.saq_queue_name},
+            extra={"queue_name": name},
         )
-    return _queue
+    return _queues[name]
 
 
 async def enqueue(
     function: TaskName,
     *,
+    queue_name: str | None = None,
     key: str | None = None,
     retries: int | None = None,
     timeout: int | None = None,
@@ -74,7 +75,10 @@ async def enqueue(
             access tokens, file contents). Pass identifiers and re-fetch
             secrets from the database inside the task.
     """
-    queue = get_queue()
+    from app.saq_jobs.worker import ensure_worker_running
+
+    await ensure_worker_running()
+    queue = get_queue(queue_name)
     job_kwargs: dict[str, Any] = {}
     if key is not None:
         job_kwargs["key"] = key
@@ -92,13 +96,14 @@ async def enqueue(
         # SAQ returns None when a job with the same key already exists.
         logger.info(
             "SAQ enqueue skipped (duplicate key)",
-            extra={"function": function, "key": key},
+            extra={"function": function, "key": key, "queue_name": queue_name},
         )
     else:
         logger.info(
             "SAQ job enqueued",
             extra={
                 "function": function,
+                "queue_name": queue_name,
                 "key": key,
                 "job_key": job.key,
                 "attempts": job.attempts,
@@ -108,11 +113,10 @@ async def enqueue(
 
 async def shutdown_queue() -> None:
     """Close the SAQ queue and its Redis connection on app shutdown."""
-    global _queue
-    if _queue is not None:
+    global _queues
+    for queue in _queues.values():
         try:
-            await _queue.disconnect()
+            await queue.disconnect()
         except Exception:
             logger.exception("Failed to disconnect SAQ queue")
-        finally:
-            _queue = None
+    _queues = {}

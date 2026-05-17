@@ -6,7 +6,8 @@ from typing import List
 import httpx
 
 from app.auth.connector import RayClient, SlackUser, get_ray_client
-from app.config import domains
+from app.config import config, domains
+from app.constants import file_transfer_timeout_for_size
 from app.ray.utils import get_filename_from_header
 from app.slack.buglog_notifier import notify_exception
 
@@ -47,8 +48,16 @@ async def submit_evaluation_job(
         target_languages_data["client_notes"] = job_notes
     target_languages_data["workflow"] = workflow_uuid or ""
 
+    max_file_size = max((os.path.getsize(file) for file in file_path), default=None)
+    timeout = file_transfer_timeout_for_size(
+        max_file_size,
+        small_file_threshold_bytes=config.saq_large_file_submission_threshold_mb
+        * 1024
+        * 1024,
+    )
+
     # Create a job using streaming for file uploads
-    async with httpx.AsyncClient(timeout=300) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         # Create a multipart form with streaming files
         files = [("files", open(file, "rb")) for file in file_path]
 

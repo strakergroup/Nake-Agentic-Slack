@@ -57,8 +57,26 @@ class StrakerConfig(BaseSettings):
     saq_queue_name: str = Field(default="slack-ray-translator", min_length=1)
     saq_worker_enabled: bool = True
     saq_worker_concurrency: int = Field(default=10, ge=1, le=100)
+    saq_file_submission_queue_name: str = Field(
+        default="slack-ray-translator-file-submissions", min_length=1
+    )
+    saq_file_submission_worker_concurrency: int = Field(default=3, ge=1, le=100)
+    saq_small_file_submission_queue_name: str = Field(
+        default="slack-ray-translator-small-file-submissions", min_length=1
+    )
+    saq_small_file_submission_worker_concurrency: int = Field(default=10, ge=1, le=100)
+    saq_large_file_submission_threshold_mb: int = Field(default=10, ge=1)
+    saq_small_file_upload_timeout_seconds: int = Field(default=300, ge=10, le=3600)
+    saq_file_delivery_queue_name: str = Field(
+        default="slack-ray-translator-file-delivery", min_length=1
+    )
+    saq_file_delivery_worker_concurrency: int = Field(default=10, ge=1, le=100)
+    saq_background_queue_name: str = Field(
+        default="slack-ray-translator-background", min_length=1
+    )
+    saq_background_worker_concurrency: int = Field(default=5, ge=1, le=100)
     saq_file_upload_retries: int = Field(default=5, ge=0, le=20)
-    saq_file_upload_timeout_seconds: int = Field(default=300, ge=10, le=3600)
+    saq_file_upload_timeout_seconds: int = Field(default=900, ge=10, le=3600)
     saq_logging_retries: int = Field(default=3, ge=0, le=20)
     saq_logging_timeout_seconds: int = Field(default=30, ge=5, le=600)
 

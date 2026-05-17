@@ -21,21 +21,167 @@ from saq.worker import Worker
 
 from app.config import config
 from app.saq_jobs.queue import get_queue, shutdown_queue
-from app.saq_jobs.tasks import TASK_FUNCTIONS
+from app.saq_jobs.tasks import (
+    BACKGROUND_TASK_FUNCTIONS,
+    FILE_DELIVERY_TASK_FUNCTIONS,
+    FILE_SUBMISSION_TASK_FUNCTIONS,
+    TASK_FUNCTIONS,
+)
 
 logger = logging.getLogger(__name__)
 
-_worker: Worker | None = None
-_worker_task: asyncio.Task | None = None
+_workers: dict[str, Worker] = {}
+_worker_tasks: dict[str, asyncio.Task] = {}
 
 
-def _build_worker() -> Worker:
-    """Construct a ``Worker`` bound to the shared queue and registered tasks."""
+def _build_worker(
+    *,
+    queue_name: str,
+    functions: list[Any],
+    concurrency: int,
+) -> Worker:
+    """Construct a ``Worker`` bound to a queue and registered task group."""
     return Worker(
-        queue=get_queue(),
-        functions=list(TASK_FUNCTIONS),
-        concurrency=config.saq_worker_concurrency,
+        queue=get_queue(queue_name),
+        functions=functions,
+        concurrency=concurrency,
     )
+
+
+def _worker_specs() -> list[dict[str, Any]]:
+    """Queue/worker layout for isolating large file work from lightweight tasks."""
+    specs = [
+        {
+            "label": "file-submissions",
+            "queue_name": config.saq_file_submission_queue_name,
+            "functions": list(FILE_SUBMISSION_TASK_FUNCTIONS),
+            "concurrency": config.saq_file_submission_worker_concurrency,
+        },
+        {
+            "label": "small-file-submissions",
+            "queue_name": config.saq_small_file_submission_queue_name,
+            "functions": list(FILE_SUBMISSION_TASK_FUNCTIONS),
+            "concurrency": config.saq_small_file_submission_worker_concurrency,
+        },
+        {
+            "label": "file-delivery",
+            "queue_name": config.saq_file_delivery_queue_name,
+            "functions": list(FILE_DELIVERY_TASK_FUNCTIONS),
+            "concurrency": config.saq_file_delivery_worker_concurrency,
+        },
+        {
+            "label": "background",
+            "queue_name": config.saq_background_queue_name,
+            "functions": list(BACKGROUND_TASK_FUNCTIONS),
+            "concurrency": config.saq_background_worker_concurrency,
+        },
+    ]
+    split_queue_names = {spec["queue_name"] for spec in specs}
+    if config.saq_queue_name not in split_queue_names:
+        specs.append(
+            {
+                "label": "legacy",
+                "queue_name": config.saq_queue_name,
+                "functions": list(TASK_FUNCTIONS),
+                "concurrency": config.saq_worker_concurrency,
+            }
+        )
+    return specs
+
+
+def _task_is_running(task: asyncio.Task | None) -> bool:
+    return task is not None and not task.done()
+
+
+def _start_worker_for_spec(spec: dict[str, Any]) -> None:
+    """Start the worker for one queue spec and record it by label."""
+    worker = _build_worker(
+        queue_name=spec["queue_name"],
+        functions=spec["functions"],
+        concurrency=spec["concurrency"],
+    )
+    _workers[spec["label"]] = worker
+    logger.info(
+        "Starting SAQ worker",
+        extra={
+            "queue_name": spec["queue_name"],
+            "concurrency": spec["concurrency"],
+            "registered_tasks": [fn.__name__ for fn in spec["functions"]],
+        },
+    )
+    _worker_tasks[spec["label"]] = asyncio.create_task(
+        worker.start(), name=f"saq-worker-{spec['label']}"
+    )
+
+
+def worker_status() -> dict[str, Any]:
+    """Return in-process SAQ worker state for health checks and diagnostics."""
+    specs = _worker_specs()
+    workers = []
+    for spec in specs:
+        label = spec["label"]
+        task = _worker_tasks.get(label)
+        workers.append(
+            {
+                "label": label,
+                "queue_name": spec["queue_name"],
+                "running": _task_is_running(task),
+                "done": bool(task.done()) if task is not None else False,
+                "cancelled": bool(task.cancelled()) if task is not None else False,
+            }
+        )
+
+    running_count = sum(1 for worker in workers if worker["running"])
+    expected_count = len(specs)
+    all_running = not config.saq_worker_enabled or (
+        running_count == expected_count and expected_count > 0
+    )
+    return {
+        "enabled": config.saq_worker_enabled,
+        "expected_count": expected_count,
+        "running_count": running_count,
+        "all_running": all_running,
+        "workers": workers,
+    }
+
+
+async def ensure_worker_running() -> None:
+    """Start or restart any enabled in-process SAQ worker that is not alive.
+
+    This is intentionally safe to call from event/enqueue paths. It cannot help
+    when the whole FastAPI process is down, but it recovers from a worker task
+    being cancelled or dying while the app process continues running.
+    """
+    if not config.saq_worker_enabled:
+        return
+
+    for spec in _worker_specs():
+        label = spec["label"]
+        task = _worker_tasks.get(label)
+        if _task_is_running(task):
+            continue
+
+        if task is None:
+            logger.warning(
+                "SAQ worker is missing; starting",
+                extra={"queue_name": spec["queue_name"], "worker_label": label},
+            )
+        elif task.cancelled():
+            logger.warning(
+                "SAQ worker was cancelled; restarting",
+                extra={"queue_name": spec["queue_name"], "worker_label": label},
+            )
+        else:
+            exc = task.exception()
+            logger.error(
+                "SAQ worker stopped unexpectedly; restarting",
+                extra={
+                    "queue_name": spec["queue_name"],
+                    "worker_label": label,
+                    "error_type": type(exc).__name__ if exc else None,
+                },
+            )
+        _start_worker_for_spec(spec)
 
 
 async def start_worker() -> None:
@@ -45,24 +191,15 @@ async def start_worker() -> None:
     worker is running. Raises if SAQ initialisation fails so the operator
     sees the failure on app startup rather than silently losing work.
     """
-    global _worker, _worker_task
+    global _workers, _worker_tasks
     if not config.saq_worker_enabled:
         logger.info("SAQ worker disabled via SAQ_WORKER_ENABLED=false; skipping start")
         return
-    if _worker_task is not None and not _worker_task.done():
-        logger.debug("SAQ worker already running; start_worker is a no-op")
+    if worker_status()["all_running"]:
+        logger.debug("SAQ workers already running; start_worker is a no-op")
         return
 
-    _worker = _build_worker()
-    logger.info(
-        "Starting SAQ worker",
-        extra={
-            "queue_name": config.saq_queue_name,
-            "concurrency": config.saq_worker_concurrency,
-            "registered_tasks": [fn.__name__ for fn in TASK_FUNCTIONS],
-        },
-    )
-    _worker_task = asyncio.create_task(_worker.start(), name="saq-worker")
+    await ensure_worker_running()
 
 
 async def stop_worker() -> None:
@@ -71,22 +208,22 @@ async def stop_worker() -> None:
     Safe to call multiple times. Errors during shutdown are logged and
     swallowed so they don't block FastAPI lifespan teardown.
     """
-    global _worker, _worker_task
-    if _worker is not None:
+    global _workers, _worker_tasks
+    for worker in _workers.values():
         try:
-            await _worker.stop()
+            await worker.stop()
         except Exception:
             logger.exception("Failed to stop SAQ worker cleanly")
-    if _worker_task is not None:
+    for worker_task in _worker_tasks.values():
         try:
-            await asyncio.wait_for(_worker_task, timeout=10)
+            await asyncio.wait_for(worker_task, timeout=10)
         except (TimeoutError, asyncio.TimeoutError):
             logger.warning("SAQ worker did not stop within 10s; cancelling")
-            _worker_task.cancel()
+            worker_task.cancel()
         except Exception:
             logger.exception("SAQ worker task ended with error")
-    _worker = None
-    _worker_task = None
+    _workers = {}
+    _worker_tasks = {}
     await shutdown_queue()
 
 
@@ -100,12 +237,35 @@ async def stop_worker() -> None:
 #: code change.
 settings: dict[str, Any] = {
     "queue": None,  # Filled lazily below to avoid opening Redis at import time.
-    "functions": list(TASK_FUNCTIONS),
-    "concurrency": config.saq_worker_concurrency,
+    "functions": list(FILE_DELIVERY_TASK_FUNCTIONS),
+    "concurrency": config.saq_file_delivery_worker_concurrency,
+}
+
+file_submission_settings: dict[str, Any] = {
+    "queue": None,
+    "functions": list(FILE_SUBMISSION_TASK_FUNCTIONS),
+    "concurrency": config.saq_file_submission_worker_concurrency,
+}
+
+small_file_submission_settings: dict[str, Any] = {
+    "queue": None,
+    "functions": list(FILE_SUBMISSION_TASK_FUNCTIONS),
+    "concurrency": config.saq_small_file_submission_worker_concurrency,
+}
+
+background_settings: dict[str, Any] = {
+    "queue": None,
+    "functions": list(BACKGROUND_TASK_FUNCTIONS),
+    "concurrency": config.saq_background_worker_concurrency,
 }
 
 
 def _get_settings() -> dict[str, Any]:
     """Resolve the lazy ``queue`` field in ``settings`` for CLI use."""
-    settings["queue"] = get_queue()
+    settings["queue"] = get_queue(config.saq_file_delivery_queue_name)
+    file_submission_settings["queue"] = get_queue(config.saq_file_submission_queue_name)
+    small_file_submission_settings["queue"] = get_queue(
+        config.saq_small_file_submission_queue_name
+    )
+    background_settings["queue"] = get_queue(config.saq_background_queue_name)
     return settings

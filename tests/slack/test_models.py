@@ -72,10 +72,11 @@ class TestSlackFile:
 
     def test_slack_file_parse_slack_option(self):
         """Test parsing from Slack option format."""
-        option = {"value": "file-456", "text": {"text": "document.pdf"}}
+        option = {"value": "file-456|1234", "text": {"text": "document.pdf"}}
         file = SlackFile.parse_slack_option(option)
         assert file.id == "file-456"
         assert file.title == "document.pdf"
+        assert file.size == 1234
 
 
 class TestJobSearchForm:
