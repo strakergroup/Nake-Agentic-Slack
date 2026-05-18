@@ -151,9 +151,14 @@ def filter_auto_translate_language_options(languages: Iterable[str]):
     """Get the auto-translate language options filtered by a list of languages
     (en, es, fr, etc.).
     """
-    languages = set(languages)
-    options = get_auto_translate_language_options()
-    return [opt for opt in options if opt["value"] in languages]
+    options_by_value = {
+        option["value"]: option for option in get_auto_translate_language_options()
+    }
+    return [
+        options_by_value[language]
+        for language in languages
+        if language in options_by_value
+    ]
 
 
 def map_file_options(
