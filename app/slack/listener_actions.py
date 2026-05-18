@@ -30,6 +30,7 @@ from app.models import (  # noqa: F401 - kept for potential future use
 from app.mt.service import (
     evaluate_get_glossary_resource,
     get_group_id,
+    is_no_op_translation_pair,
     resolve_language,
 )
 from app.ray.events.models import MtFileRequestSchema
@@ -962,24 +963,16 @@ async def auto_translate_message(
     if not required_tokens or not await require_mt_tokens(context, required_tokens):
         return None
     detected_source_lang_response = await detect_language(context, text)
-    detected_lang = detected_source_lang_response.language.lower()
+    detected_lang = detected_source_lang_response.language
 
-    # Remove the detected source language from the target languages
-    # Also exclude related languages (e.g., exclude fr-ca when detected is fr, and vice versa)
-    def should_exclude_target_lang(target_lang: str) -> bool:
-        target_lang_lower = target_lang.lower()
-        # Exact match
-        if target_lang_lower == detected_lang:
-            return True
-        # Exclude fr-ca when detected is fr
-        if detected_lang == "fr" and target_lang_lower == "fr-ca":
-            return True
-        return False
-
+    # Drop targets that would produce a no-op translation against the detected
+    # source. is_no_op_translation_pair handles exact matches plus same-base /
+    # bare-code dialect pairs (e.g. fr ↔ fr-ca, zh ↔ zh-CN), while still keeping
+    # distinct dialects like zh-CN ↔ zh-TW.
     target_langs = [
         langs["target_lang"]
         for langs in settings
-        if not should_exclude_target_lang(langs["target_lang"])
+        if not is_no_op_translation_pair(detected_lang, langs["target_lang"])
     ]
 
     if not target_langs or not settings:
@@ -2145,6 +2138,18 @@ async def get_mt_translation(
         source_langs = await resolve_language([source_lang], engine="google")
         source_lang = source_langs[0]
         target_lang = target_langs[0]
+        if is_no_op_translation_pair(source_lang, target_lang):
+            same_lang_msg = _(
+                "Source and target languages are the same ({source_lang}). "
+                "No translation needed."
+            )
+            if context.response_url and context.respond:
+                return await context.respond(text=same_lang_msg)
+            return await client.chat_postMessage(
+                channel=channel_id,
+                text=same_lang_msg,
+                thread_ts=thread_ts,
+            )
         assert context.ray
         assert context.ray.super_group
         client_id = (
