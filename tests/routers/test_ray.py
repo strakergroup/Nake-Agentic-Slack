@@ -1140,7 +1140,7 @@ class TestRayEventsEndpoint:
         """Test channel translation result event."""
         extra_data = {
             "client_id": str(uuid4()),
-            "service_language_mapping": {"google": {"fr": "", "es": ""}},
+            "service_language_mapping": {"google": {"af": "", "fr": "", "la": ""}},
             "source_language": "en",
             "organization_uuid": str(uuid4()),
             "team_id": team_id,
@@ -1149,12 +1149,17 @@ class TestRayEventsEndpoint:
             "text_length": 100,
             "usage_type": "channel_translation",
             "source_text": "Hello world",
+            "target_language_order": ["la", "af", "fr"],
             "display_format": "thread",
             "message_ts": "123456.789",
         }
         event_data = {
             "extra_data": extra_data,
-            "translations": {"fr": ["Bonjour"], "es": ["Hola"]},
+            "translations": {
+                "af": ["Hallo"],
+                "fr": ["Bonjour"],
+                "la": ["Salve"],
+            },
         }
         event = RayEvent(
             event="slack:direct:mt:result",
@@ -1203,6 +1208,12 @@ class TestRayEventsEndpoint:
 
                                         # Verify channel translation notification was sent
                                         mock_post.assert_called_once()
+                                        message = mock_post.call_args.args[3]
+                                        assert list(message.translations.keys()) == [
+                                            "la",
+                                            "af",
+                                            "fr",
+                                        ]
                                         mock_spend.assert_called_once()
 
     @pytest.mark.asyncio

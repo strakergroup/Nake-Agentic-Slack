@@ -989,6 +989,7 @@ async def auto_translate_message(
         # Resolve service + glossary for each target language
         glossary_ids: dict[str, str] = {}
         service_overrides: dict[str, str] = {}
+        target_language_order: list[str] = []
         for target_lang in target_langs:
             (
                 normalized_target,
@@ -1000,6 +1001,7 @@ async def auto_translate_message(
                 source_lang,
                 target_lang,
             )
+            target_language_order.append(normalized_target)
             glossary_ids[normalized_target] = glossary_id
             service_overrides[normalized_target] = service
         service_language_mapping = create_service_language_mapping(
@@ -1022,6 +1024,7 @@ async def auto_translate_message(
                 usage_type="channel_translation",
                 group_id=group_id or "",
                 source_text=text,
+                target_language_order=target_language_order,
                 response_url=context.response_url,
                 thread_ts=thread_ts,
                 is_edit=is_edit,

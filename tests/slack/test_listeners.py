@@ -4574,7 +4574,9 @@ class TestAutoTranslateMessage:
             new_callable=AsyncMock,
         ) as mock_get_settings:
             mock_get_settings.return_value = [
-                {"target_lang": "fr", "display_format": "thread"}
+                {"target_lang": "es", "display_format": "thread"},
+                {"target_lang": "fr-ca", "display_format": "thread"},
+                {"target_lang": "de", "display_format": "thread"},
             ]
             with patch(
                 "app.slack.listener_actions.require_mt_tokens", new_callable=AsyncMock
@@ -4614,7 +4616,9 @@ class TestAutoTranslateMessage:
             new_callable=AsyncMock,
         ) as mock_get_settings:
             mock_get_settings.return_value = [
-                {"target_lang": "fr", "display_format": "thread"}
+                {"target_lang": "es", "display_format": "thread"},
+                {"target_lang": "fr-ca", "display_format": "thread"},
+                {"target_lang": "de", "display_format": "thread"},
             ]
             with patch(
                 "app.slack.listener_actions.require_mt_tokens", new_callable=AsyncMock
@@ -4645,6 +4649,20 @@ class TestAutoTranslateMessage:
                                 )
                                 # Should send translation request
                                 mock_send_mt.assert_called_once()
+                                extra_data = mock_send_mt.call_args.args[3]
+                                assert extra_data.target_language_order == [
+                                    "es",
+                                    "fr-ca",
+                                    "de",
+                                ]
+                                assert list(
+                                    extra_data.service_language_mapping["google"].keys()
+                                ) == ["es", "de"]
+                                assert list(
+                                    extra_data.service_language_mapping[
+                                        "microsoft"
+                                    ].keys()
+                                ) == ["fr-ca"]
 
     @pytest.mark.asyncio
     async def test_auto_translate_message_routes_frca_source_to_microsoft(
@@ -4866,9 +4884,7 @@ class TestAutoTranslateMessage:
             patch(
                 "app.slack.listener_actions.get_auto_translate_settings_and_langs",
                 new_callable=AsyncMock,
-                return_value=[
-                    {"target_lang": "zh-TW", "display_format": "thread"}
-                ],
+                return_value=[{"target_lang": "zh-TW", "display_format": "thread"}],
             ),
             patch(
                 "app.slack.listener_actions.require_mt_tokens",

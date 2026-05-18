@@ -129,6 +129,29 @@ def _format_callback_error(stage: str, payload_error: Any) -> str:
     raise ValueError(f"Unsupported callback error stage: {stage}")
 
 
+def _order_translations_by_target_language_order(
+    translations: dict[str, Any],
+    target_language_order: list[str] | None,
+) -> dict[str, Any]:
+    """Order translations by caller-requested target order, keeping leftovers."""
+    if not target_language_order:
+        return translations
+
+    ordered_translations: dict[str, Any] = {}
+    for target_language in target_language_order:
+        if (
+            target_language in translations
+            and target_language not in ordered_translations
+        ):
+            ordered_translations[target_language] = translations[target_language]
+
+    for target_language, translated_text in translations.items():
+        if target_language not in ordered_translations:
+            ordered_translations[target_language] = translated_text
+
+    return ordered_translations
+
+
 async def _claim_evaluate_complete_notification(event: RayEvent) -> bool:
     """Atomically claim a user-facing evaluate-complete notification."""
     client_id = event.data.get("client_id")
@@ -1495,6 +1518,10 @@ async def ray_events(
                 elif mt_result_extra_data.usage_type == "channel_translation":
                     # For channel translation, pass the translations dict directly
                     # The AutoTranslationMessage expects {lang: [text1, text2, ...]} format
+                    translations = _order_translations_by_target_language_order(
+                        translations,
+                        mt_result_extra_data.target_language_order,
+                    )
                     assert mt_result_extra_data.source_text
                     auto_translation_message: AutoTranslationMessage = (
                         AutoTranslationMessage(
@@ -1556,7 +1583,7 @@ async def ray_events(
                 # Convert translations from dict[lang, list[str]] to dict[lang, str]
                 translations_for_log = {
                     lang: " ".join(texts) if isinstance(texts, list) else texts
-                    for lang, texts in event.data["translations"].items()
+                    for lang, texts in translations.items()
                 }
 
                 channel_name = None

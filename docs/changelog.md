@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: Channel translation settings now load target languages by insertion order, send explicit target order metadata, and reorder callback results before Slack rendering so translations follow the modal selection order (Wade Norman, 2026-05-18)
 - [Fixed]: Isolated the main app router registration test from local SAQ worker runtime state so health checks remain deterministic in pytest (Wade Norman, 2026-05-17)
 - [Fixed]: Resolved master merge integration fallout by restoring the stale Slack file helper import and updating listener tests for queued file submission behavior (Wade Norman, 2026-05-17)
 - [Added]: Cursor project rule documenting Slack modal trigger safety so future Slack modal handlers avoid awaited network, DB, Redis, or file I/O before `views_open` (Wade Norman, 2026-05-12)

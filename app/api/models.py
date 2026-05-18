@@ -63,6 +63,7 @@ class MtTranslationExtraData(BaseModel):
     usage_type: str
     group_id: str
     source_text: str | None = None
+    target_language_order: list[str] | None = None
     # Response method fields
     response_url: str | None = None
     thread_ts: str | None = None
