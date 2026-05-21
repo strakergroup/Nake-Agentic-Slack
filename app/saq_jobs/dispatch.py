@@ -19,11 +19,37 @@ Keeping this layer here means:
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from app.config import config as app_config
 from app.ray.events.models import MtSuccessResponseSchema
 from app.saq_jobs.queue import enqueue
+
+FileSubmissionPayload = dict[str, str | int | None]
+
+
+def _large_file_submission_threshold_bytes() -> int:
+    return app_config.saq_large_file_submission_threshold_mb * 1024 * 1024
+
+
+def _submission_queue_name(files: list[FileSubmissionPayload]) -> str:
+    """Route known-small files to higher concurrency; unknown/large files stay limited."""
+    raw_file_sizes = [file.get("size") for file in files]
+    if not raw_file_sizes or any(not isinstance(size, int) for size in raw_file_sizes):
+        return app_config.saq_file_submission_queue_name
+    file_sizes = [size for size in raw_file_sizes if isinstance(size, int)]
+    if max(file_sizes) >= _large_file_submission_threshold_bytes():
+        return app_config.saq_file_submission_queue_name
+    return app_config.saq_small_file_submission_queue_name
+
+
+def _submission_timeout_seconds(files: list[FileSubmissionPayload]) -> int:
+    """Use shorter SAQ attempts for known-small submissions."""
+    if _submission_queue_name(files) == app_config.saq_small_file_submission_queue_name:
+        return app_config.saq_small_file_upload_timeout_seconds
+    return app_config.saq_file_upload_timeout_seconds
 
 
 def _mt_success_idempotency_key(success_data: MtSuccessResponseSchema) -> str:
@@ -43,6 +69,104 @@ def _mt_success_idempotency_key(success_data: MtSuccessResponseSchema) -> str:
     )
 
 
+def _stable_hash(value: Any) -> str:
+    """Short deterministic hash for idempotency-key payload segments."""
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()[:24]
+
+
+async def enqueue_document_mt_submission(
+    *,
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    channel_id: str,
+    files: list[FileSubmissionPayload],
+    source_language: str | None,
+    target_languages: list[str],
+) -> None:
+    """Enqueue durable document MT submission processing.
+
+    The task owns Slack download, file-server upload, duplicate submission
+    tracking, and MT event publication. The key prevents duplicate modal
+    submissions for the same Slack files/languages from running concurrently.
+    """
+    key = "process_document_mt_submission:" + _stable_hash(
+        {
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": channel_id,
+            "files": files,
+            "source_language": source_language,
+            "target_languages": target_languages,
+        }
+    )
+    await enqueue(
+        "process_document_mt_submission",
+        queue_name=_submission_queue_name(files),
+        key=key,
+        retries=app_config.saq_file_upload_retries,
+        timeout=_submission_timeout_seconds(files),
+        retry_delay=2.0,
+        retry_backoff=True,
+        user_id=user_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+        channel_id=channel_id,
+        files=files,
+        source_language=source_language,
+        target_languages=target_languages,
+    )
+
+
+async def enqueue_evaluation_submission(
+    *,
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    channel_id: str,
+    files: list[FileSubmissionPayload],
+    target_langs_uuid: list[str],
+    reference: str,
+    source_lang_uuid: str,
+    workflow_uuid: str | None,
+    job_notes: str,
+) -> None:
+    """Enqueue durable quality-evaluation / human-translation submission processing."""
+    key = "process_evaluation_submission:" + _stable_hash(
+        {
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": channel_id,
+            "files": files,
+            "target_langs_uuid": target_langs_uuid,
+            "reference": reference,
+            "source_lang_uuid": source_lang_uuid,
+            "workflow_uuid": workflow_uuid,
+            "job_notes": job_notes,
+        }
+    )
+    await enqueue(
+        "process_evaluation_submission",
+        queue_name=_submission_queue_name(files),
+        key=key,
+        retries=app_config.saq_file_upload_retries,
+        timeout=_submission_timeout_seconds(files),
+        retry_delay=2.0,
+        retry_backoff=True,
+        user_id=user_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+        channel_id=channel_id,
+        files=files,
+        target_langs_uuid=target_langs_uuid,
+        reference=reference,
+        source_lang_uuid=source_lang_uuid,
+        workflow_uuid=workflow_uuid,
+        job_notes=job_notes,
+    )
+
+
 async def enqueue_mt_success_upload(
     success_data: MtSuccessResponseSchema,
 ) -> None:
@@ -56,6 +180,7 @@ async def enqueue_mt_success_upload(
     """
     await enqueue(
         "slack_upload_mt_result",
+        queue_name=app_config.saq_file_delivery_queue_name,
         key=_mt_success_idempotency_key(success_data),
         retries=app_config.saq_file_upload_retries,
         timeout=app_config.saq_file_upload_timeout_seconds,
@@ -83,6 +208,7 @@ async def enqueue_transcription_upload(
     )
     await enqueue(
         "slack_upload_transcription",
+        queue_name=app_config.saq_file_delivery_queue_name,
         key=key,
         retries=app_config.saq_file_upload_retries,
         timeout=app_config.saq_file_upload_timeout_seconds,
@@ -109,6 +235,7 @@ async def enqueue_verify_complete_upload(
     key = f"slack_upload_verify_complete:{grid_file_id}:{channel_id}"
     await enqueue(
         "slack_upload_verify_complete",
+        queue_name=app_config.saq_file_delivery_queue_name,
         key=key,
         retries=app_config.saq_file_upload_retries,
         timeout=app_config.saq_file_upload_timeout_seconds,
@@ -137,6 +264,7 @@ async def enqueue_log_notification(
     """
     await enqueue(
         "persist_log_notification",
+        queue_name=app_config.saq_background_queue_name,
         retries=app_config.saq_logging_retries,
         timeout=app_config.saq_logging_timeout_seconds,
         retry_delay=1.0,
@@ -159,6 +287,7 @@ async def enqueue_mt_ts_edit(*, send_ts: str, reply_ts: str) -> None:
     """
     await enqueue(
         "persist_mt_ts_edit",
+        queue_name=app_config.saq_background_queue_name,
         key=f"persist_mt_ts_edit:{send_ts}",
         retries=app_config.saq_logging_retries,
         timeout=app_config.saq_logging_timeout_seconds,

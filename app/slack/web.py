@@ -151,16 +151,14 @@ async def download_file(
                 response.raise_for_status()
 
                 # Save the file to the temp directory.
-                temp_directory = os.path.join(
-                    tempfile.gettempdir(), "slack-ray-translator", file_id
-                )
-                # Create the directory if it doesn't exist.
-                Path(temp_directory).mkdir(parents=True, exist_ok=True)
+                temp_root = os.path.join(tempfile.gettempdir(), "slack-ray-translator")
+                Path(temp_root).mkdir(parents=True, exist_ok=True)
                 file_title = file_data.get("title")
                 if not isinstance(file_title, str):
                     raise ValueError(
                         "Slack files_info response is missing a file title"
                     )
+                temp_directory = tempfile.mkdtemp(prefix=f"{file_id}-", dir=temp_root)
                 file_path = os.path.join(temp_directory, file_title)
 
                 with open(file_path, "wb") as f:

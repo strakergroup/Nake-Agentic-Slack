@@ -12,12 +12,16 @@ import httpx
 from babel.numbers import format_currency as babel_format_currency
 
 from app.auth.connector import is_ibm_super_group
-from app.constants import DEFAULT_UPLOAD_EXPIRY_DAYS, FILE_TRANSFER_TIMEOUT
+from app.constants import (
+    DEFAULT_UPLOAD_EXPIRY_DAYS,
+    FILE_TRANSFER_TIMEOUT,
+    file_transfer_timeout_for_size,
+)
 from app.ray.file_validators import validate_json
 from app.slack.buglog_notifier import notify_exception
 from app.translate import Translator, _, translator_var
 
-from ..config import domains
+from ..config import config, domains
 
 
 def get_job_url(job_uuid: str, client_id: str | None = None) -> str:
@@ -215,8 +219,14 @@ async def upload_to_file_server(
     )
 
     file_id = ""
+    timeout = file_transfer_timeout_for_size(
+        os.path.getsize(file_path) if os.path.exists(file_path) else None,
+        small_file_threshold_bytes=config.saq_large_file_submission_threshold_mb
+        * 1024
+        * 1024,
+    )
     with open(file_path, "rb") as f:
-        async with httpx.AsyncClient(timeout=FILE_TRANSFER_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.put(
                 domains.file_api + "/gridfs",
                 files={"file": f},

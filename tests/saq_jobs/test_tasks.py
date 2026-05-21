@@ -16,6 +16,8 @@ import pytest
 from app.saq_jobs.tasks import (
     persist_log_notification,
     persist_mt_ts_edit,
+    process_document_mt_submission,
+    process_evaluation_submission,
     slack_upload_mt_result,
     slack_upload_transcription,
     slack_upload_verify_complete,
@@ -43,6 +45,155 @@ def _quiet_notify():
     """Avoid touching BugLog/Google Chat from inside the task body."""
     with patch("app.saq_jobs.tasks.notify_exception"):
         yield
+
+
+# --------------------------------------------------------------------------- #
+# process_document_mt_submission / process_evaluation_submission
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_process_document_mt_submission_downloads_uploads_and_submits():
+    ray_client = MagicMock()
+    ray_client.is_trial = False
+    ray_client.id_token = "id-token"
+    ray_connection = MagicMock()
+    ray_connection.client = ray_client
+    ray_connection.super_group = []
+    record = MagicMock(id=123)
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+
+    with (
+        patch(
+            "app.auth.connector.get_ray_connection",
+            new=AsyncMock(return_value=ray_connection),
+        ),
+        patch(
+            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.pptx")),
+        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
+        patch(
+            "app.ray.utils.upload_to_file_server", new=AsyncMock(return_value="grid-1")
+        ),
+        patch(
+            "app.ray.submissions.check_and_record_submission_async",
+            new=AsyncMock(return_value=(False, record)),
+        ),
+        patch(
+            "app.slack.listener_actions.document_machine_translate", new=AsyncMock()
+        ) as mock_mt,
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("os.path.exists", return_value=False),
+    ):
+        result = await process_document_mt_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.pptx"}],
+            source_language="en",
+            target_languages=["zh-CN"],
+        )
+
+    assert result["status"] == "processed"
+    mock_mt.assert_awaited_once()
+    assert mock_mt.await_args.args[1:] == ("grid-1", "en", ["zh-CN"], {"zh-CN": 123})
+    fake_slack.chat_postMessage.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_process_evaluation_submission_direct_verify_upload():
+    ray_client = MagicMock()
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+
+    with (
+        patch(
+            "app.auth.connector.get_ray_client", new=AsyncMock(return_value=ray_client)
+        ),
+        patch(
+            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.docx")),
+        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
+        patch("app.api.verify.submit_evaluation_job", new=AsyncMock()) as mock_submit,
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("os.path.exists", return_value=False),
+    ):
+        result = await process_evaluation_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.docx"}],
+            target_langs_uuid=["lang-1"],
+            reference="ref",
+            source_lang_uuid="src",
+            workflow_uuid=None,
+            job_notes="",
+        )
+
+    assert result == {"status": "submitted", "file_count": 1}
+    mock_submit.assert_awaited_once()
+    assert mock_submit.await_args.args[:4] == (
+        ray_client,
+        ["/tmp/a.docx"],
+        ["lang-1"],
+        "ref",
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_evaluation_submission_verify_api_error_posts_permission_message():
+    from app.api.verify import VerifyAPIError
+
+    ray_client = MagicMock()
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+
+    with (
+        patch(
+            "app.auth.connector.get_ray_client", new=AsyncMock(return_value=ray_client)
+        ),
+        patch(
+            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.docx")),
+        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
+        patch(
+            "app.api.verify.submit_evaluation_job",
+            new=AsyncMock(side_effect=VerifyAPIError("Permission denied")),
+        ),
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("os.path.exists", return_value=False),
+    ):
+        result = await process_evaluation_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.docx"}],
+            target_langs_uuid=["lang-1"],
+            reference="ref",
+            source_lang_uuid="src",
+            workflow_uuid=None,
+            job_notes="",
+        )
+
+    assert result == {"status": "permission_denied"}
+    fake_slack.chat_postMessage.assert_awaited_once()
+    assert "permission" in fake_slack.chat_postMessage.await_args.kwargs["text"].lower()
+    assert (
+        "administrator" in fake_slack.chat_postMessage.await_args.kwargs["text"].lower()
+    )
 
 
 # --------------------------------------------------------------------------- #

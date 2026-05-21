@@ -32,11 +32,6 @@ from app.ray.utils import (
     is_ibm_enterprise,
     set_user_language,
 )
-from app.saq_jobs import (
-    enqueue_mt_success_upload,
-    enqueue_transcription_upload,
-    enqueue_verify_complete_upload,
-)
 from app.slack.buglog_notifier import notify_exception, notify_message
 from app.slack.select_options import _get_languages_cached
 from app.transcriber_tasks.tasks import get_transcription_task
@@ -74,6 +69,11 @@ from ..ray.events.models import (
     SlackAccountConnectedEvent,
 )
 from ..redis import redis_conn
+from ..saq_jobs.dispatch import (
+    enqueue_mt_success_upload,
+    enqueue_transcription_upload,
+    enqueue_verify_complete_upload,
+)
 from ..slack.templates.messages import (
     AutoTranslationMessage,
     ClientApprovedEventMessage,
