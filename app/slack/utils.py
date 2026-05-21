@@ -40,7 +40,10 @@ def format_strings_display(strings: list[str], *, and_string: str = "&") -> str:
     Returns:
         str: The formatted string.
     """
-    and_string = _(and_string)
+    if and_string == "&":
+        and_string = _("&")
+    elif and_string == "and":
+        and_string = _("and")
     if not strings:
         return ""
     if len(strings) == 1:
