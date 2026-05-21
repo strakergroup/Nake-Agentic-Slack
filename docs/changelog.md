@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Changes
 
 - [Changed]: Recovered `stage` from pre-12-May baseline (`adc7adc0`) and remerged prod-intended work without uat-only features (VerifyLoop, fact-check, image translation) (Wade Norman, 2026-05-21)
+- [Changed]: Dropped unused VerifyLoop workflow and English language UUID constants left over from the uat recovery merge path (Wade Norman, 2026-05-21)
 - [Fixed]: Channel translation settings now load target languages by insertion order, keep edit-modal initial languages in saved order, send explicit target order metadata, and reorder callback results before Slack rendering so translations follow the modal selection order (Wade Norman, 2026-05-18)
 - [Fixed]: Isolated the main app router registration test from local SAQ worker runtime state so health checks remain deterministic in pytest (Wade Norman, 2026-05-17)
 - [Fixed]: Resolved master merge integration fallout by restoring the stale Slack file helper import and updating listener tests for queued file submission behavior (Wade Norman, 2026-05-17)
