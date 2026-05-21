@@ -2748,6 +2748,164 @@ class TestEvaluateJobSubmit:
         assert mock_client.chat_postMessage.call_count >= 1
 
     @pytest.mark.asyncio
+    async def test_evaluate_job_submit_human_uses_slack_job_title(
+        self, user_id, team_id, ray_client
+    ):
+        """HT Verify job title stays slack job."""
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "callback_id": "evaluate_job_human",
+            "private_metadata": "C123",
+            "state": {
+                "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "src-lang-001"}
+                        }
+                    },
+                    "target_langs": {
+                        "language_options_uuid": {
+                            "selected_options": [{"value": "lang-123"}]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "alpha.docx"}},
+                                {"value": "F456", "text": {"text": "beta.xlf"}},
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        mock_file = MagicMock()
+        mock_file.name = "file.txt"
+        mock_file.content = b"test content"
+
+        with (
+            patch(
+                "app.slack.listeners.download_file",
+                new_callable=AsyncMock,
+                return_value=mock_file,
+            ),
+            patch(
+                "app.slack.listeners.validate_file",
+                return_value=(True, True, None),
+            ),
+            patch(
+                "app.slack.listeners.get_conflicting_target_language_labels",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                "app.slack.listeners.submit_evaluation_job",
+                new_callable=AsyncMock,
+                return_value={"uuid": "verify-job-uuid"},
+            ) as mock_submit,
+        ):
+            await evaluate_job_submit(
+                context_dict, view=view, client=mock_client, ack=mock_ack
+            )
+
+        mock_ack.assert_called_once()
+        mock_submit.assert_awaited_once()
+        assert mock_submit.await_args.args[3] == "slack job"
+
+    @pytest.mark.asyncio
+    async def test_evaluate_job_submit_human_pdf_uses_slack_job_title(
+        self, user_id, team_id, ray_client
+    ):
+        """HT PDF conversion keeps the Verify job title as slack job."""
+        from app.slack.listeners import evaluate_job_submit
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        view = {
+            "callback_id": "evaluate_job_human",
+            "private_metadata": "C123",
+            "state": {
+                "values": {
+                    "source_lang": {
+                        "source_language_option_uuid": {
+                            "selected_option": {"value": "src-lang-001"}
+                        }
+                    },
+                    "target_langs": {
+                        "language_options_uuid": {
+                            "selected_options": [{"value": "lang-123"}]
+                        }
+                    },
+                    "files": {
+                        "files": {
+                            "selected_options": [
+                                {"value": "F123", "text": {"text": "alpha.pdf"}},
+                                {"value": "F456", "text": {"text": "beta.xlf"}},
+                            ]
+                        }
+                    },
+                }
+            },
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        mock_file = MagicMock()
+        mock_file.name = "file.txt"
+        mock_file.content = b"test content"
+
+        with (
+            patch(
+                "app.slack.listeners.download_file",
+                new_callable=AsyncMock,
+                return_value=mock_file,
+            ),
+            patch(
+                "app.slack.listeners.validate_file",
+                return_value=(True, True, None),
+            ),
+            patch(
+                "app.slack.listeners.get_conflicting_target_language_labels",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
+                "app.slack.listeners._publish_pdf_evaluate_convert",
+                new_callable=AsyncMock,
+            ) as publish_pdf_evaluate_convert,
+            patch(
+                "app.slack.listeners.submit_evaluation_job",
+                new_callable=AsyncMock,
+            ) as submit_evaluation_job,
+        ):
+            await evaluate_job_submit(
+                context_dict, view=view, client=mock_client, ack=mock_ack
+            )
+
+        mock_ack.assert_called_once()
+        publish_pdf_evaluate_convert.assert_awaited_once()
+        assert (
+            publish_pdf_evaluate_convert.await_args.kwargs["reference"] == "slack job"
+        )
+        submit_evaluation_job.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_evaluate_job_submit_verify_api_error(
         self, user_id, team_id, ray_client
     ):
@@ -4866,9 +5024,7 @@ class TestAutoTranslateMessage:
             patch(
                 "app.slack.listener_actions.get_auto_translate_settings_and_langs",
                 new_callable=AsyncMock,
-                return_value=[
-                    {"target_lang": "zh-TW", "display_format": "thread"}
-                ],
+                return_value=[{"target_lang": "zh-TW", "display_format": "thread"}],
             ),
             patch(
                 "app.slack.listener_actions.require_mt_tokens",

@@ -127,6 +127,7 @@ from .templates.messages import (
     WelcomeBackMessage,
 )
 from .templates.models import (
+    EVALUATE_JOB_REFERENCE_FALLBACK,
     AutoTranslationSettingsForm,
     EvaluateJobForm,
     JobSearchForm,
@@ -2067,6 +2068,11 @@ async def evaluate_job_submit(
             if not file_payloads:
                 return
 
+            verify_reference = (
+                EVALUATE_JOB_REFERENCE_FALLBACK
+                if view["callback_id"] == "evaluate_job_human"
+                else form.reference
+            )
             await client.chat_postMessage(channel=channel_id, text=msg)
             await enqueue_evaluation_submission(
                 user_id=context["user_id"],
@@ -2075,7 +2081,7 @@ async def evaluate_job_submit(
                 channel_id=channel_id,
                 files=file_payloads,
                 target_langs_uuid=form.target_langs_uuid,
-                reference=form.reference,
+                reference=verify_reference,
                 source_lang_uuid=form.source_lang_uuid,
                 workflow_uuid=form.workflow_options,
                 job_notes=form.job_notes or "",

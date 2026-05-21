@@ -10,6 +10,7 @@ from app.slack.listener_actions import (
     _language_code_from_srt_filename,
     ai_translate_help,
     approve_pending_client,
+    build_human_translation_purchase_order_number,
     build_thread_media_embed_action_value,
     create_service_language_mapping,
     document_machine_translate,
@@ -22,6 +23,7 @@ from app.slack.listener_actions import (
     post_job_status,
     post_job_target_lang,
     submit_job,
+    submit_verification_job,
     update_machine_translation_score,
     verify_help,
 )
@@ -1124,3 +1126,106 @@ class TestPostJobTargetLang:
                 "TJ123" in call_args[1]["text"].upper()
                 or "find" in call_args[1]["text"].lower()
             )
+
+
+class TestSubmitVerificationJob:
+    def test_build_human_translation_purchase_order_from_multiple_source_filenames(
+        self,
+    ):
+        job = {
+            "data": {
+                "source_files": [
+                    {
+                        "filename": (
+                            f"f{index:02d}-very-long-file-name-version-{index:02d}.xlf"
+                        )
+                    }
+                    for index in range(10)
+                ]
+            }
+        }
+
+        purchase_order_number = build_human_translation_purchase_order_number(job)
+        file_titles = [
+            f"f{index:02d}-very-long-file-name-version-{index:02d}.xlf"
+            for index in range(10)
+        ]
+
+        assert purchase_order_number == ", ".join(file_titles)[:100]
+        assert len(purchase_order_number) == 100
+
+    @pytest.mark.asyncio
+    async def test_human_translation_builds_purchase_order_from_source_filenames(
+        self, ray_client
+    ):
+        from app.auth.connector import RayConnection, RayContext
+        from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+
+        mock_client = AsyncMock()
+        mock_client.chat_postMessage.return_value = {
+            "channel": "D123",
+            "ts": "1710000000.000000",
+        }
+        context = RayContext(
+            {
+                "ray": RayConnection(super_group=[], client=ray_client),
+                "response_url": None,
+                "respond": None,
+            }
+        )
+        job = {
+            "data": {
+                "uuid": "verify-job-uuid",
+                "title": "slack job",
+                "workflow_uuid": HUMAN_EVALUATION_WORKFLOW_UUID,
+                "source_files": [
+                    {
+                        "file_uuid": "file-uuid",
+                        "filename": "alpha.xlf",
+                        "target_files": [
+                            {
+                                "language_uuid": "lang-uuid",
+                                "human_job_status": "Submitted",
+                            }
+                        ],
+                    }
+                ],
+                "target_languages": [{"uuid": "lang-uuid"}],
+            }
+        }
+
+        with (
+            patch(
+                "app.slack.listener_actions.get_job_pricing",
+                new_callable=AsyncMock,
+                return_value={"data": []},
+            ),
+            patch("app.slack.listener_actions.HumanJobQuoteMessage") as quote_message,
+            patch(
+                "app.slack.listener_actions.create_human_job",
+                new_callable=AsyncMock,
+            ) as create_human_job,
+            patch(
+                "app.slack.listener_actions.redis_conn.delete",
+                new_callable=AsyncMock,
+            ),
+        ):
+            quote_message.return_value.text = "Quote summary"
+            quote_message.return_value.blocks = []
+
+            await submit_verification_job(
+                client=mock_client,
+                context=context,
+                job_uuid="verify-job-uuid",
+                selected_languages=["file-uuid:lang-uuid"],
+                user_id="U123",
+                timestamp="1710000000.000000",
+                job=job,
+            )
+
+        create_human_job.assert_awaited_once_with(
+            ray_client,
+            "verify-job-uuid",
+            ["file-uuid:lang-uuid"],
+            purchase_order_number="alpha.xlf",
+        )

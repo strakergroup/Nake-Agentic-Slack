@@ -263,6 +263,119 @@ class TestAutoTranslationSettingsForm:
 class TestEvaluateJobForm:
     """Tests for EvaluateJobForm class."""
 
+    @staticmethod
+    def _human_job_values(file_titles, reference=None, include_reference=True):
+        values = {
+            "source_lang": {
+                "source_language_option_uuid": {
+                    "selected_option": {"value": "src-lang-001"}
+                }
+            },
+            "target_langs": {
+                "language_options_uuid": {
+                    "selected_options": [{"value": "lang-123"}, {"value": "lang-456"}]
+                }
+            },
+            "files": {
+                "files": {
+                    "selected_options": [
+                        {"value": f"file-{index}|1234", "text": {"text": title}}
+                        for index, title in enumerate(file_titles, start=1)
+                    ]
+                }
+            },
+        }
+        if include_reference:
+            values["reference"] = {"reference": {"value": reference}}
+        return values
+
+    def test_evaluate_job_form_uses_single_file_title_as_human_reference(self):
+        """Test Human Translation uses the selected file title without manual reference."""
+        values = self._human_job_values(["alpha.docx"], include_reference=False)
+
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+
+        assert form.reference == "alpha.docx"
+
+    def test_evaluate_job_form_uses_file_titles_as_human_reference(self):
+        """Test Human Translation joins selected file titles without manual reference."""
+        values = self._human_job_values(["alpha.docx", "beta.pdf"], reference="")
+
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+
+        assert form.reference == "alpha.docx, beta.pdf"
+
+    def test_evaluate_job_form_keeps_combined_human_reference_under_limit_unchanged(
+        self,
+    ):
+        """Test file titles are not shortened when the combined reference fits."""
+        values = self._human_job_values(
+            [
+                "cn-12-cn-content-reviewer.xlf",
+                "cn-13-cn-content-reviewer.xlf",
+            ],
+            include_reference=False,
+        )
+
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+
+        assert (
+            form.reference
+            == "cn-12-cn-content-reviewer.xlf, cn-13-cn-content-reviewer.xlf"
+        )
+
+    def test_evaluate_job_form_preserves_manual_human_reference(self):
+        """Test non-empty manual Human Translation reference wins."""
+        values = self._human_job_values(["alpha.docx"], reference="Manual reference")
+
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+
+        assert form.reference == "Manual reference"
+
+    def test_evaluate_job_form_truncates_long_generated_human_reference(self):
+        """Test long Human Translation file titles are cut at 100 chars."""
+        long_title = f"abcdefghij{'x' * 100}.xlf"
+        values = self._human_job_values([long_title], include_reference=False)
+
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+
+        assert form.reference == long_title[:100]
+        assert len(form.reference) == 100
+
+    def test_evaluate_job_form_truncates_joined_long_human_file_titles(self):
+        """Test multi-file Human Translation references are cut after joining."""
+        file_titles = [
+            f"abcdefghij{'x' * 100}.xlf",
+            f"1234567890{'y' * 100}.docx",
+        ]
+        values = self._human_job_values(file_titles, include_reference=False)
+
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+
+        assert form.reference == ", ".join(file_titles)[:100]
+        assert len(form.reference) == 100
+
+    def test_evaluate_job_form_truncates_ten_long_human_file_titles(self):
+        """Test up to ten long file names are joined before truncating."""
+        file_titles = [
+            f"f{index:02d}-very-long-file-name-version-{index:02d}.xlf"
+            for index in range(10)
+        ]
+        values = self._human_job_values(file_titles, include_reference=False)
+
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+
+        assert form.reference == ", ".join(file_titles)[:100]
+        assert len(form.reference) == 100
+
+    def test_evaluate_job_form_empty_file_titles_fall_back_to_slack_job(self):
+        """Test empty selected file titles fall back to slack job."""
+        values = self._human_job_values([" ", ""], include_reference=False)
+
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+
+        assert form.reference == "slack job"
+
     def test_evaluate_job_form_parse_human_job_form(self):
         """Test parsing human job form."""
         values = {

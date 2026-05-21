@@ -43,7 +43,10 @@ async def test_create_human_job_sends_multiple_file_and_languages_fields():
 
             # Execute
             result = await create_human_job(
-                mock_ray_client, job_uuid, file_and_languages
+                mock_ray_client,
+                job_uuid,
+                file_and_languages,
+                purchase_order_number="alpha.xlf, beta.xlf",
             )
 
             # Verify
@@ -68,7 +71,7 @@ async def test_create_human_job_sends_multiple_file_and_languages_fields():
             posted = kwargs["data"]
             assert posted["job_uuid"] == job_uuid
             assert posted["file_and_languages"] == file_and_languages
-            assert posted["purchase_order_number"] == "123456"
+            assert posted["purchase_order_number"] == "alpha.xlf, beta.xlf"
             assert posted["service_uuid"] == "37f2e44b-ba3c-42b1-83c7-d3023298292f"
 
 
