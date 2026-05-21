@@ -6,12 +6,45 @@ from straker_utils.sql.async_engine import fetch_all, fetch_one
 from app.auth.connector import RayClient
 from app.database import async_engines
 from app.models import Language
+from app.slack.language_validation import get_language_base_code
 
 microsoft_languages = {
     "fr-ca": "fr-ca",
     "french-canada": "fr-ca",
     "french-canadian": "fr-ca",
 }
+
+
+def is_no_op_translation_pair(source: str | None, target: str | None) -> bool:
+    """Return True when translating ``source`` → ``target`` is effectively a no-op.
+
+    Used to short-circuit MT requests so customers are not charged for
+    translations that would return the input unchanged.
+
+    Rules (case-insensitive, also tolerates ``_`` separators via
+    :func:`get_language_base_code`):
+
+    - Empty / missing input on either side → False (let the normal flow handle it).
+    - Exact match → True (e.g. ``en`` ↔ ``en``).
+    - Same ISO-639 base AND at least one side is the bare base code → True.
+      Examples that skip: ``zh`` ↔ ``zh-CN``, ``fr`` ↔ ``fr-ca``, ``pt`` ↔ ``pt-BR``.
+    - Distinct dialects sharing a base (no bare side) → False, so the
+      translation still runs. Examples that translate: ``zh-CN`` ↔ ``zh-TW``,
+      ``pt-BR`` ↔ ``pt-PT``.
+    """
+    if not source or not target:
+        return False
+    s_lower = source.strip().lower()
+    t_lower = target.strip().lower()
+    if not s_lower or not t_lower:
+        return False
+    if s_lower == t_lower:
+        return True
+    s_base = get_language_base_code(s_lower)
+    t_base = get_language_base_code(t_lower)
+    if not s_base or s_base != t_base:
+        return False
+    return s_lower == s_base or t_lower == t_base
 
 
 async def resolve_language_code(lang: str | None) -> Language | None:

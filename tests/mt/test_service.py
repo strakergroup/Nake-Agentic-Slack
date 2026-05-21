@@ -2,7 +2,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.mt.service import evaluate_get_glossary_resource, glossary_language_candidates
+from app.mt.service import (
+    evaluate_get_glossary_resource,
+    glossary_language_candidates,
+    is_no_op_translation_pair,
+)
 
 
 class TestGlossaryLanguageCandidates:
@@ -14,6 +18,56 @@ class TestGlossaryLanguageCandidates:
 
     def test_regional_english_keeps_exact_first(self):
         assert glossary_language_candidates("EN-US") == ["en-us", "en", "en-gb"]
+
+
+class TestIsNoOpTranslationPair:
+    @pytest.mark.parametrize(
+        "source,target",
+        [
+            ("en", "en"),
+            ("EN", "en"),
+            ("zh-CN", "zh-cn"),
+            (" fr ", "fr"),
+            ("zh", "zh-CN"),
+            ("zh-CN", "zh"),
+            ("zh-TW", "zh"),
+            ("fr", "fr-ca"),
+            ("fr-ca", "fr"),
+            ("pt", "pt-BR"),
+            ("pt-BR", "pt"),
+            ("en-US", "en"),
+        ],
+    )
+    def test_returns_true_for_no_op_pairs(self, source, target):
+        assert is_no_op_translation_pair(source, target) is True
+
+    @pytest.mark.parametrize(
+        "source,target",
+        [
+            ("zh-CN", "zh-TW"),
+            ("zh-TW", "zh-CN"),
+            ("pt-BR", "pt-PT"),
+            ("en-US", "en-GB"),
+            ("en", "fr"),
+            ("zh-CN", "ja"),
+            ("fr-ca", "en"),
+        ],
+    )
+    def test_returns_false_for_distinct_pairs(self, source, target):
+        assert is_no_op_translation_pair(source, target) is False
+
+    @pytest.mark.parametrize(
+        "source,target",
+        [
+            (None, "en"),
+            ("en", None),
+            ("", "en"),
+            ("en", ""),
+            ("   ", "en"),
+        ],
+    )
+    def test_missing_or_blank_inputs_return_false(self, source, target):
+        assert is_no_op_translation_pair(source, target) is False
 
 
 @pytest.mark.asyncio
