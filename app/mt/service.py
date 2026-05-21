@@ -285,7 +285,6 @@ def get_auto_translate_languages(
         ("sl", "Slovenian"),
         ("so", "Somali"),
         ("es", "Spanish"),
-        ("es-LA", "Spanish (Latin America)"),
         ("su", "Sundanese"),
         ("sw", "Swahili"),
         ("sv", "Swedish"),
