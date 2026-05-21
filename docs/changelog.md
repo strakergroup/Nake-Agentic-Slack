@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## Changes
 
 - [Changed]: Recovered `stage` from pre-12-May baseline (`adc7adc0`) and remerged prod-intended work without uat-only features (VerifyLoop, fact-check, image translation) (Wade Norman, 2026-05-21)
+- [Fixed]: Channel translation settings now load target languages by insertion order, keep edit-modal initial languages in saved order, send explicit target order metadata, and reorder callback results before Slack rendering so translations follow the modal selection order (Wade Norman, 2026-05-18)
 - [Fixed]: Isolated the main app router registration test from local SAQ worker runtime state so health checks remain deterministic in pytest (Wade Norman, 2026-05-17)
 - [Fixed]: Resolved master merge integration fallout by restoring the stale Slack file helper import and updating listener tests for queued file submission behavior (Wade Norman, 2026-05-17)
 - [Fixed]: Updated document MT listener tests for required source-language submissions and made UI catalog exports reapply the selected translator to already-imported Slack template modules (Wade Norman, 2026-05-12)
@@ -27,10 +28,10 @@ All notable changes to this project will be documented in this file.
 - [Changed]: Removed the delayed document MT worker acknowledgement so users receive only the immediate processing message unless the queued task has validation, duplicate, or failure feedback (Wade Norman, 2026-05-06)
 - [Changed]: Removed info-level startup logs from queued document MT and evaluation submission SAQ tasks while retaining warning/error retry logs (Wade Norman, 2026-05-06)
 - [Changed]: Queued document MT and evaluation submissions through durable idempotent SAQ jobs, unified Slack file download cleanup with unique temp paths, and increased file-transfer/SAQ timeouts for 500 MB uploads (Wade Norman, 2026-05-05)
-- [Fixed]: Sanitized Slack log payload strings before saving to the audit JSON column so malformed message encoding cannot break production Slack event handling (Wade Norman, 2026-05-05)
 - [Fixed]: `tools/translation-export` missing-string checks now treat legacy `<x id=N>` and self-closing `<x id=N/>` placeholder labels as equivalent, preventing tagged strings already present in the DB from being re-exported (Wade Norman, 2026-05-07)
 - [Changed]: `tools/translation-export` translator XLSX files now use a single unnamed text column with hidden import metadata and self-closing placeholder tags that runtime translation restores correctly (Wade Norman, 2026-05-07)
 - [Added]: `tools/translation-export` now supports per-language translator-facing XLSX exports with `source_text`, `translation`, and `notes`, while MT fill and import SQL infer language from legacy workbook filenames (Wade Norman, 2026-05-06)
+- [Fixed]: Sanitized Slack log payload strings before saving to the audit JSON column so malformed message encoding cannot break production Slack event handling (Wade Norman, 2026-05-05)
 - [Fixed]: Corrected the document MT trial PDF-limit test to assert against the listener module's config reference, preventing suite-level config patches from causing a false failure (Wade Norman, 2026-05-04)
 - [Changed]: Resolved `master` merge conflicts in Slack document MT by preserving source-language dedupe/payload tracking alongside grouped multi-target submission IDs (Wade Norman, 2026-05-04)
 - [Fixed]: Document MT, Quality Evaluation, and Human Translation now treat deleted or inaccessible Slack files as user-facing stale-file conditions instead of production exceptions, validating file IDs before modal open, handling `file_not_found` during submission, and keeping shared file helper logic outside the listener module (Wade Norman, 2026-05-04)

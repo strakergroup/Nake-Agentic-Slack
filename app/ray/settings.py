@@ -488,7 +488,7 @@ async def get_auto_translate_settings_and_langs(
     async with AsyncSession(async_engines["ray_integration"]) as session:
         query = (
             select(
-                distinct(SlackGroupSettingsTranslationLangs.lang).label("target_lang"),
+                SlackGroupSettingsTranslationLangs.lang.label("target_lang"),
                 SlackGroupSettingsTranslation.display_format,
             )
             .join(
@@ -499,14 +499,21 @@ async def get_auto_translate_settings_and_langs(
             .where(
                 SlackGroupSettingsTranslation.channel_id == channel_id,
             )
+            .order_by(SlackGroupSettingsTranslationLangs.id)
         )
         result = await session.execute(query)
         results = result.all()
 
-        return [
-            {"target_lang": row.target_lang, "display_format": row.display_format}
-            for row in results
-        ]
+        settings: list[dict[str, str]] = []
+        seen_languages: set[str] = set()
+        for row in results:
+            if row.target_lang in seen_languages:
+                continue
+            seen_languages.add(row.target_lang)
+            settings.append(
+                {"target_lang": row.target_lang, "display_format": row.display_format}
+            )
+        return settings
 
 
 async def update_auto_translate_group_settings(

@@ -6,6 +6,7 @@ from redis.asyncio import Redis
 
 from app.slack.select_options import (
     _get_languages_cached,
+    filter_auto_translate_language_options,
     get_language_options,
     get_languages_sync,
     initialize_languages_cache,
@@ -220,3 +221,9 @@ def test_map_file_options(message_file):
         "text": {"type": "plain_text", "text": message_file["title"], "emoji": False},
         "value": f"{message_file['id']}|{message_file['size']}",
     }
+
+
+def test_filter_auto_translate_language_options_preserves_input_order():
+    options = filter_auto_translate_language_options(["zu", "af", "es"])
+
+    assert [option["value"] for option in options] == ["zu", "af", "es"]
