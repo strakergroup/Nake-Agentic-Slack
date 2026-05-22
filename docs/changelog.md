@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: Channel translation edit delivery now falls back to `chat.postMessage` when `chat.update` returns Slack `message_not_found` (stale/deleted bot reply in `mt_ts` cache); clears Redis cache and re-caches the new reply ts (Wade Norman, 2026-05-22)
 - [Changed]: Recovered `stage` from pre-12-May baseline (`adc7adc0`) and remerged prod-intended work without uat-only features (VerifyLoop, fact-check, image translation) (Wade Norman, 2026-05-21)
 - [Changed]: Dropped unused VerifyLoop workflow and English language UUID constants left over from the uat recovery merge path (Wade Norman, 2026-05-21)
 - [Fixed]: Channel translation settings now load target languages by insertion order, keep edit-modal initial languages in saved order, send explicit target order metadata, and reorder callback results before Slack rendering so translations follow the modal selection order (Wade Norman, 2026-05-18)

@@ -359,3 +359,12 @@ async def get_mt_ts_cached(send_ts: str):
     if cached:
         return cached
     return mt_timestamp
+
+
+async def clear_mt_ts_cached(send_ts: str) -> None:
+    """Remove a stale bot-reply timestamp from the MT edit cache."""
+    key = f"slack-ray-translator:mt_ts:{send_ts}"
+    try:
+        await redis_conn.delete(key)
+    except Exception as e:
+        notify_exception(e)
