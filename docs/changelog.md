@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: Updated human translation listener tests to mock `enqueue_evaluation_submission` instead of removed inline file validation paths (Wade Norman, 2026-05-22)
 - [Fixed]: Channel translation edit delivery now falls back to `chat.postMessage` when `chat.update` returns Slack `message_not_found` (stale/deleted bot reply in `mt_ts` cache); clears Redis cache and re-caches the new reply ts (Wade Norman, 2026-05-22)
 - [Changed]: Recovered `stage` from pre-12-May baseline (`adc7adc0`) and remerged prod-intended work without uat-only features (VerifyLoop, fact-check, image translation) (Wade Norman, 2026-05-21)
 - [Changed]: Dropped unused VerifyLoop workflow and English language UUID constants left over from the uat recovery merge path (Wade Norman, 2026-05-21)
