@@ -2790,38 +2790,29 @@ class TestEvaluateJobSubmit:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        mock_file = MagicMock()
-        mock_file.name = "file.txt"
-        mock_file.content = b"test content"
-
-        with (
-            patch(
-                "app.slack.listeners.download_file",
-                new_callable=AsyncMock,
-                return_value=mock_file,
-            ),
-            patch(
-                "app.slack.listeners.validate_file",
-                return_value=(True, True, None),
-            ),
-            patch(
-                "app.slack.listeners.get_conflicting_target_language_labels",
-                new_callable=AsyncMock,
-                return_value=[],
-            ),
-            patch(
-                "app.slack.listeners.submit_evaluation_job",
-                new_callable=AsyncMock,
-                return_value={"uuid": "verify-job-uuid"},
-            ) as mock_submit,
-        ):
-            await evaluate_job_submit(
-                context_dict, view=view, client=mock_client, ack=mock_ack
-            )
+        with patch(
+            "app.slack.listeners.get_conflicting_target_language_labels",
+            new_callable=AsyncMock,
+        ) as mock_conflicts:
+            mock_conflicts.return_value = []
+            with (
+                patch(
+                    "app.slack.listeners.get_accessible_slack_files",
+                    new_callable=AsyncMock,
+                    return_value=([{"id": "F123"}, {"id": "F456"}], []),
+                ),
+                patch(
+                    "app.slack.listeners.enqueue_evaluation_submission",
+                    new_callable=AsyncMock,
+                ) as mock_enqueue,
+            ):
+                await evaluate_job_submit(
+                    context_dict, view=view, client=mock_client, ack=mock_ack
+                )
 
         mock_ack.assert_called_once()
-        mock_submit.assert_awaited_once()
-        assert mock_submit.await_args.args[3] == "slack job"
+        mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.kwargs["reference"] == "slack job"
 
     @pytest.mark.asyncio
     async def test_evaluate_job_submit_human_pdf_uses_slack_job_title(
@@ -2866,44 +2857,29 @@ class TestEvaluateJobSubmit:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        mock_file = MagicMock()
-        mock_file.name = "file.txt"
-        mock_file.content = b"test content"
-
-        with (
-            patch(
-                "app.slack.listeners.download_file",
-                new_callable=AsyncMock,
-                return_value=mock_file,
-            ),
-            patch(
-                "app.slack.listeners.validate_file",
-                return_value=(True, True, None),
-            ),
-            patch(
-                "app.slack.listeners.get_conflicting_target_language_labels",
-                new_callable=AsyncMock,
-                return_value=[],
-            ),
-            patch(
-                "app.slack.listeners._publish_pdf_evaluate_convert",
-                new_callable=AsyncMock,
-            ) as publish_pdf_evaluate_convert,
-            patch(
-                "app.slack.listeners.submit_evaluation_job",
-                new_callable=AsyncMock,
-            ) as submit_evaluation_job,
-        ):
-            await evaluate_job_submit(
-                context_dict, view=view, client=mock_client, ack=mock_ack
-            )
+        with patch(
+            "app.slack.listeners.get_conflicting_target_language_labels",
+            new_callable=AsyncMock,
+        ) as mock_conflicts:
+            mock_conflicts.return_value = []
+            with (
+                patch(
+                    "app.slack.listeners.get_accessible_slack_files",
+                    new_callable=AsyncMock,
+                    return_value=([{"id": "F123"}, {"id": "F456"}], []),
+                ),
+                patch(
+                    "app.slack.listeners.enqueue_evaluation_submission",
+                    new_callable=AsyncMock,
+                ) as mock_enqueue,
+            ):
+                await evaluate_job_submit(
+                    context_dict, view=view, client=mock_client, ack=mock_ack
+                )
 
         mock_ack.assert_called_once()
-        publish_pdf_evaluate_convert.assert_awaited_once()
-        assert (
-            publish_pdf_evaluate_convert.await_args.kwargs["reference"] == "slack job"
-        )
-        submit_evaluation_job.assert_not_awaited()
+        mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.kwargs["reference"] == "slack job"
 
     @pytest.mark.asyncio
     async def test_evaluate_job_submit_verify_api_error(

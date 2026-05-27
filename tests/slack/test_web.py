@@ -4,6 +4,7 @@ import pytest
 from slack_sdk.errors import SlackApiError
 
 from app.slack.web import (
+    clear_mt_ts_cached,
     download_file,
     download_files,
     files_list_simple,
@@ -489,4 +490,27 @@ class TestGetMtTsCached:
         result = await get_mt_ts_cached("123.456")
 
         assert result == ""
+        mock_notify.assert_called_once()
+
+
+class TestClearMtTsCached:
+    """Tests for clear_mt_ts_cached function."""
+
+    @pytest.mark.asyncio
+    @patch("app.slack.web.redis_conn")
+    async def test_clear_mt_ts_cached_success(self, mock_redis):
+        mock_redis.delete = AsyncMock()
+
+        await clear_mt_ts_cached("123.456")
+
+        mock_redis.delete.assert_called_once_with("slack-ray-translator:mt_ts:123.456")
+
+    @pytest.mark.asyncio
+    @patch("app.slack.web.redis_conn")
+    @patch("app.slack.web.notify_exception")
+    async def test_clear_mt_ts_cached_redis_error(self, mock_notify, mock_redis):
+        mock_redis.delete = AsyncMock(side_effect=Exception("Redis error"))
+
+        await clear_mt_ts_cached("123.456")
+
         mock_notify.assert_called_once()

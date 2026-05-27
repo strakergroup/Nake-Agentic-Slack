@@ -2,6 +2,7 @@ import json
 from typing import Any, Union
 
 from slack_bolt.context.respond.async_respond import AsyncRespond
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from slack_sdk.webhook import WebhookResponse
@@ -15,7 +16,7 @@ from ...auth.connector import SlackUser
 from ...database import async_engines
 from ...dependencies import RayEvent
 from ...slack.templates.messages import SlackMessage
-from ...slack.web import get_mt_ts_cached
+from ...slack.web import clear_mt_ts_cached, get_mt_ts_cached
 
 
 async def log_notification(
@@ -212,12 +213,29 @@ async def post_channel_translation_notification(
     # If no display_format specified, default to no thread
 
     if timestamp:
-        response = await client.chat_update(
-            channel=channel_id,
-            text=message.text,
-            blocks=message.blocks,
-            ts=timestamp,
-        )
+        try:
+            response = await client.chat_update(
+                channel=channel_id,
+                text=message.text,
+                blocks=message.blocks,
+                ts=timestamp,
+            )
+        except SlackApiError as exc:
+            if exc.response.get("error") != "message_not_found":
+                raise
+            if message_ts:
+                await clear_mt_ts_cached(message_ts)
+            response = await client.chat_postMessage(
+                channel=channel_id,
+                text=message.text,
+                blocks=message.blocks,
+                thread_ts=thread_timestamp if use_thread else None,
+            )
+            if thread_timestamp:
+                reply_ts = response.get("ts")
+                if not isinstance(reply_ts, str):
+                    raise ValueError("Slack response is missing a string timestamp")
+                await enqueue_mt_ts_edit(send_ts=thread_timestamp, reply_ts=reply_ts)
     else:
         response = await client.chat_postMessage(
             channel=channel_id,
