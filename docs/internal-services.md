@@ -91,6 +91,7 @@ Machine translation engine, language detection, and credit/token management.
 | GET    | `/credits/balance` | Get the client's AI/MT token balance              | `app/auth/connector.py`     |
 | POST   | `/mt/transcribe`   | Log a transcription request and consume AI tokens | `app/auth/connector.py`     |
 | POST   | `/mt/inline-usage` | Charge inline/channel/shortcut MT (translated by sup-mt-service) and write its usage row | `app/auth/connector.py`     |
+| POST   | `/mt/embed`        | Charge media subtitle embedding and write its usage row (languages Not applicable) | `app/auth/connector.py`     |
 
 
 **Auth:** Bearer token from user JWT or a LanguageCloud group token.

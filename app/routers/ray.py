@@ -12,7 +12,6 @@ from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
-from straker_utils.credits import spend_credits
 
 from app.api.models import MtTranslationExtraData
 from app.api.verify import get_evaluation_job, get_job_pricing
@@ -22,6 +21,7 @@ from app.auth.connector import (
     duration_to_tokens,
     get_ray_client,
     get_ray_connection,
+    log_embedding_by_client_id,
     log_inline_mt_usage_by_client_id,
     log_transcribe_by_client_id,
 )
@@ -492,20 +492,26 @@ async def _spend_embedding_credits(
         amount = tokens_per_language * num_target_languages
 
         if amount > 0:
-            # Get organization_id dynamically from client_id
-            from ..transcriber_tasks.tasks import get_client_organization_uuid
-
-            organization_id = await get_client_organization_uuid(task_info.client_id)
-
-            await spend_credits(
-                async_engines["sitemanager"],
-                auth.slack_user.ray_client_id,
-                auth.slack_user.ray_user_group_id,
-                amount,
-                "slack",
-                "media_embedding",
-                "Media Embedding",
-                organization_id,
+            # Stable per-task key so a redelivered embedding result replays to a
+            # single debit; service differs from transcription so the two stages
+            # of the same task stay distinct charges (RAY-80000 §3.5).
+            embedding_idempotency_key = build_spend_idempotency_key(
+                app_source="slack",
+                submission_id=task_info.task_uuid,
+                service="media_embedding",
+                unit_type="milliseconds",
+            )
+            # Charge through the LanguageCloud API so the gateway writes the
+            # self-describing credit_transaction_usage row (idempotency; languages
+            # are Not applicable for embedding) atomically with the debit
+            # (RAY-80000 §3.5). This replaces the direct credit-ledger write, which
+            # left no usage row.
+            await log_embedding_by_client_id(
+                client_id=auth.slack_user.ray_client_id,
+                duration_ms=duration_ms,
+                num_target_languages=num_target_languages,
+                file_name=task_info.file_name,
+                idempotency_key=embedding_idempotency_key,
             )
 
             # Mark embedding as charged in the database

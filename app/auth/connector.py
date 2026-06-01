@@ -1751,6 +1751,66 @@ async def log_inline_mt_usage_by_client_id(
         return body.get("transaction_uuid", "")
 
 
+async def log_embedding_by_client_id(
+    client_id: str,
+    duration_ms: int,
+    num_target_languages: int,
+    file_name: str | None = None,
+    app_name: str = "slack",
+    idempotency_key: str | None = None,
+) -> str:
+    """
+    Charge media subtitle embedding via the LanguageCloud API (``/mt/embed``)
+    using client_id. The gateway writes the debit *and* its
+    ``credit_transaction_usage`` row in one transaction with idempotency
+    (RAY-80000 §3.5), replacing a direct credit-ledger write that left no usage
+    row. Source/target language are Not applicable for embedding and are left
+    NULL on the row.
+
+    Returns:
+        str: the gateway transaction UUID.
+    """
+    sql = text(
+        """
+        SELECT m.obj_uuid, m.given_name, m.family_name, m.email_primary, m.active
+        FROM obj_m_member m
+        WHERE m.obj_uuid = :client_id
+        """
+    ).bindparams(client_id=client_id)
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    if not result:
+        raise Exception(f"Client {client_id} not found")
+
+    id_token = create_languagecloud_id_token(
+        uuid=client_id,
+        given_name=result["given_name"] or "",
+        family_name=result["family_name"] or "",
+        email=result["email_primary"] or "",
+        is_active=bool(result["active"]),
+        aud="languagecloud-api",
+        secret=config.languagecloud_api_key.get_secret_value(),
+    )
+
+    url = f"{domains.languagecloud_api}/mt/embed"
+    headers = {
+        "Authorization": f"Bearer {id_token}",
+    }
+    data: dict[str, Any] = {
+        "duration_ms": duration_ms,
+        "num_target_languages": num_target_languages,
+        "app_name": app_name,
+    }
+    if file_name:
+        data["file_name"] = file_name
+    if idempotency_key:
+        data["idempotency_key"] = idempotency_key
+    async with httpx.AsyncClient() as http:
+        response = await http.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        body = response.json() or {}
+        return body.get("transaction_uuid", "")
+
+
 async def get_client_type(client_id: str, group_id: str | None):
     """Get the client type for a group. Owner Admin or Normal client"""
     if not group_id:
