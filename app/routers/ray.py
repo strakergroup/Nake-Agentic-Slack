@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 from dataclasses import replace
@@ -11,7 +12,7 @@ from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
-from straker_utils.credits import calculate_cost, spend_credits
+from straker_utils.credits import spend_credits
 
 from app.api.models import MtTranslationExtraData
 from app.api.verify import get_evaluation_job, get_job_pricing
@@ -21,6 +22,7 @@ from app.auth.connector import (
     duration_to_tokens,
     get_ray_client,
     get_ray_connection,
+    log_inline_mt_usage_by_client_id,
     log_transcribe_by_client_id,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
@@ -1562,33 +1564,9 @@ async def ray_events(
                             "message": f"Invalid usage type: {mt_result_extra_data.usage_type}",
                         },
                     )
-                # Calculate total languages across all services
-                total_languages = sum(
-                    len(lang_glossary_map)
-                    for lang_glossary_map in mt_result_extra_data.service_language_mapping.values()
-                )
-                amount = calculate_cost(
-                    mt_result_extra_data.text_length * total_languages
-                )
                 assert auth.slack_user.ray_user_group_id is not None
-                transaction_uuid = await spend_credits(
-                    async_engines["sitemanager"],
-                    auth.slack_user.ray_client_id,
-                    auth.slack_user.ray_user_group_id,
-                    amount,
-                    "slack",
-                    mt_result_extra_data.usage_type,
-                    "Machine Translation",
-                    mt_result_extra_data.organization_uuid,
-                )
-
-                # Log Google API usage
-                # Convert translations from dict[lang, list[str]] to dict[lang, str]
-                translations_for_log = {
-                    lang: " ".join(texts) if isinstance(texts, list) else texts
-                    for lang, texts in translations.items()
-                }
-
+                # Resolve a friendly channel name first so it can be persisted on
+                # the usage row as well as the Google API usage log.
                 channel_name = None
                 if mt_result_extra_data.channel_id:
                     if not mt_result_extra_data.channel_id.startswith("C"):
@@ -1608,6 +1586,63 @@ async def ray_events(
                             )
                         except Exception as e:
                             notify_exception(e, "Failed to get channel info")
+
+                # One billed entry per (service, language) pair so the gateway's
+                # ceil(text_length * len(target_languages) * 0.1) reproduces the
+                # prior calculate_cost(text_length * total_languages) amount.
+                billed_target_languages = [
+                    lang
+                    for lang_glossary_map in (
+                        mt_result_extra_data.service_language_mapping.values()
+                    )
+                    for lang in lang_glossary_map
+                ]
+                # MT services contributing to this debit, recorded as context.
+                engine = (
+                    ",".join(sorted(mt_result_extra_data.service_language_mapping))
+                    or None
+                )
+                # Per-message key so a redelivered MT result replays to a single
+                # debit. The submission id combines the message ts with a
+                # fingerprint of the translated text so a genuine *edit* (same ts,
+                # new content) is still charged, while a pure redelivery (same ts,
+                # same content) dedupes. Omitted when no message ts is available so
+                # the charge stays back-compatible (RAY-80000 §3.4).
+                inline_idempotency_key = None
+                if mt_result_extra_data.message_ts:
+                    content_fingerprint = hashlib.sha256(
+                        (mt_result_extra_data.source_text or "").encode("utf-8")
+                    ).hexdigest()[:16]
+                    inline_idempotency_key = build_spend_idempotency_key(
+                        app_source="slack",
+                        submission_id=(
+                            f"{mt_result_extra_data.message_ts}:{content_fingerprint}"
+                        ),
+                        service=mt_result_extra_data.usage_type,
+                        unit_type="characters",
+                    )
+                # Charge through the LanguageCloud API so the gateway writes the
+                # self-describing credit_transaction_usage row (languages, engine,
+                # idempotency) atomically with the debit (RAY-80000 §3.4). This
+                # replaces the direct credit-ledger write, which left no usage row.
+                transaction_uuid = await log_inline_mt_usage_by_client_id(
+                    client_id=auth.slack_user.ray_client_id,
+                    text_length=mt_result_extra_data.text_length,
+                    target_languages=billed_target_languages,
+                    usage_type=mt_result_extra_data.usage_type,
+                    source_language=mt_result_extra_data.source_language,
+                    engine=engine,
+                    channel_name=channel_name,
+                    idempotency_key=inline_idempotency_key,
+                )
+
+                # Log Google API usage
+                # Convert translations from dict[lang, list[str]] to dict[lang, str]
+                translations_for_log = {
+                    lang: " ".join(texts) if isinstance(texts, list) else texts
+                    for lang, texts in translations.items()
+                }
+
                 user_email = (
                     user_info["user"]["profile"]["email"] if user_info else None
                 )

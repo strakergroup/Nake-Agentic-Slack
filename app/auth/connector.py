@@ -1678,6 +1678,79 @@ async def log_transcribe_by_client_id(
         return tokens, body.get("transaction_uuid", "")
 
 
+async def log_inline_mt_usage_by_client_id(
+    client_id: str,
+    text_length: int,
+    target_languages: list[str],
+    usage_type: str,
+    app_name: str = "slack",
+    source_language: str | None = None,
+    engine: str | None = None,
+    channel_name: str | None = None,
+    idempotency_key: str | None = None,
+) -> str:
+    """
+    Charge inline/channel/shortcut MT via the LanguageCloud API
+    (``/mt/inline-usage``) using client_id. The translation itself is performed
+    by the sup-mt-service pipeline (glossaries + multi-service routing), so it
+    cannot use ``/mt/translate``; this endpoint only records the debit *and* its
+    self-describing ``credit_transaction_usage`` row in one transaction with
+    idempotency (RAY-80000 §3.4) — replacing a direct credit-ledger write that
+    left the usage row missing.
+
+    The gateway charge is ``ceil(text_length * len(target_languages) * 0.1)``,
+    so ``target_languages`` must contain one entry per billed (service, language)
+    pair to reproduce the prior amount exactly.
+
+    Returns:
+        str: the gateway transaction UUID.
+    """
+    sql = text(
+        """
+        SELECT m.obj_uuid, m.given_name, m.family_name, m.email_primary, m.active
+        FROM obj_m_member m
+        WHERE m.obj_uuid = :client_id
+        """
+    ).bindparams(client_id=client_id)
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    if not result:
+        raise Exception(f"Client {client_id} not found")
+
+    id_token = create_languagecloud_id_token(
+        uuid=client_id,
+        given_name=result["given_name"] or "",
+        family_name=result["family_name"] or "",
+        email=result["email_primary"] or "",
+        is_active=bool(result["active"]),
+        aud="languagecloud-api",
+        secret=config.languagecloud_api_key.get_secret_value(),
+    )
+
+    url = f"{domains.languagecloud_api}/mt/inline-usage"
+    headers = {
+        "Authorization": f"Bearer {id_token}",
+    }
+    data: dict[str, Any] = {
+        "text_length": text_length,
+        "target_languages": target_languages,
+        "app_name": app_name,
+        "usage_type": usage_type,
+    }
+    if source_language:
+        data["source_language"] = source_language
+    if engine:
+        data["engine"] = engine
+    if channel_name:
+        data["channel_name"] = channel_name
+    if idempotency_key:
+        data["idempotency_key"] = idempotency_key
+    async with httpx.AsyncClient() as http:
+        response = await http.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        body = response.json() or {}
+        return body.get("transaction_uuid", "")
+
+
 async def get_client_type(client_id: str, group_id: str | None):
     """Get the client type for a group. Owner Admin or Normal client"""
     if not group_id:
