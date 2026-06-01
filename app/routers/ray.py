@@ -16,10 +16,12 @@ from straker_utils.credits import calculate_cost, spend_credits
 from app.api.models import MtTranslationExtraData
 from app.api.verify import get_evaluation_job, get_job_pricing
 from app.auth.connector import (
+    build_spend_idempotency_key,
     duration_to_subtitling_tokens,
     duration_to_tokens,
     get_ray_client,
     get_ray_connection,
+    log_transcribe_by_client_id,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.database import async_engines
@@ -313,20 +315,21 @@ async def _spend_transcription_credits(
         amount = duration_to_tokens(task_info.duration_ms)
 
         if amount > 0:
-            # Get organization_id dynamically from client_id
-            from ..transcriber_tasks.tasks import get_client_organization_uuid
-
-            organization_id = await get_client_organization_uuid(task_info.client_id)
-
-            transaction_uuid = await spend_credits(
-                async_engines["sitemanager"],
-                auth.slack_user.ray_client_id,
-                auth.slack_user.ray_user_group_id,
-                amount,
-                "slack",
-                "transcription",
-                "Media Transcription",
-                organization_id,
+            # Charge through the LanguageCloud API so the gateway writes the
+            # self-describing credit_transaction_usage row (source language +
+            # idempotency) atomically with the debit (RAY-80000 §3.2). This
+            # replaces the direct credit-ledger write, which left no usage row.
+            _tokens, transaction_uuid = await log_transcribe_by_client_id(
+                client_id=auth.slack_user.ray_client_id,
+                duration_ms=task_info.duration_ms,
+                file_name=task_info.file_name or "",
+                source_language=task_info.detected_language,
+                idempotency_key=build_spend_idempotency_key(
+                    app_source="slack",
+                    submission_id=task_info.task_uuid,
+                    service="transcription",
+                    unit_type="milliseconds",
+                ),
             )
 
             # Mark transcription as charged and store transaction UUID
@@ -359,17 +362,17 @@ async def _spend_translation_credits(
 ) -> int:
     """Mark translation stage as charged.
 
-    Note: Actual credit spending and API usage logging is now handled by
-    cloud-verify-consumer during SRT translation (spend_mt_token call in
-    srt_translate.py). This function only marks the stage as "charged" in
-    extra_data to prevent duplicate processing.
+    Note: Actual credit spending and API usage logging is handled by
+    int-slack-verify-consumer during SRT translation (async_spend_mt_token ->
+    /mt/transaction, in subtitle_translation.py). This function only marks the
+    stage as "charged" in extra_data to prevent duplicate processing.
 
     Args:
         task_info: Transcription task information
         auth: Authentication context with slack_user
 
     Returns:
-        0 (credits are spent in consumer, not here)
+        0 (credits are spent in the consumer, not here)
     """
     try:
         # Check if translation has already been marked as charged
@@ -386,8 +389,8 @@ async def _spend_translation_credits(
             return 0
 
         # Mark translation as charged in the database
-        # Note: Actual credit spending happens in cloud-verify-consumer via
-        # spend_mt_token, which also logs to google_api_log for billing reports
+        # Note: Actual credit spending happens in int-slack-verify-consumer via
+        # async_spend_mt_token, which also logs to google_api_log for billing reports
         charged_stages.append("translation")
         extra_data["_charged_stages"] = charged_stages
         async with AsyncSession(async_engines["sitecommons"]) as session:

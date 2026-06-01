@@ -1590,22 +1590,47 @@ def duration_to_subtitling_tokens(duration_ms: int) -> int:
     return math.ceil(duration_minutes * tokens_per_min)
 
 
+def build_spend_idempotency_key(
+    app_source: str,
+    submission_id: str,
+    service: str,
+    target_language: str = "",
+    unit_type: str = "",
+) -> str:
+    """Build a stable idempotency key for a credit spend (RAY-80000).
+
+    Derived from a producer-owned, per-billable-intent id (``submission_id`` —
+    the transcription task uuid) so a redelivered/retried task replays to one
+    debit, while two genuinely distinct tasks produce different keys and are
+    charged separately.
+    """
+    raw = f"{app_source}:{submission_id}:{service}:{target_language}:{unit_type}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 async def log_transcribe_by_client_id(
     client_id: str,
     duration_ms: int,
     file_name: str,
-) -> int:
+    source_language: str | None = None,
+    idempotency_key: str | None = None,
+) -> tuple[int, str]:
     """
-    Log transcription request and spend tokens using client_id.
-    This is used when we don't have a full RayConnection but need to charge for transcription.
+    Charge a transcription via the LanguageCloud API (``/mt/transcribe``) using
+    client_id. The gateway writes the debit *and* its self-describing
+    ``credit_transaction_usage`` row in one transaction (RAY-80000), so this is
+    the canonical charging path for transcription — preferred over a direct
+    credit-ledger write, which would leave the usage row missing.
 
     Args:
         client_id: The LanguageCloud client UUID
         duration_ms: Duration of the media in milliseconds
         file_name: Name of the transcribed file
+        source_language: Whisper-detected source language, persisted on the row
+        idempotency_key: Stable per-task key so a replay is charged once
 
     Returns:
-        int: Number of tokens consumed
+        tuple[int, str]: (tokens consumed, gateway transaction UUID)
     """
     tokens = duration_to_tokens(duration_ms)
     if not tokens:
@@ -1637,15 +1662,20 @@ async def log_transcribe_by_client_id(
     headers = {
         "Authorization": f"Bearer {id_token}",
     }
-    data = {
+    data: dict[str, Any] = {
         "duration_ms": duration_ms,
         "app_name": "slack",
         "file_name": file_name,
     }
+    if source_language:
+        data["source_language"] = source_language
+    if idempotency_key:
+        data["idempotency_key"] = idempotency_key
     async with httpx.AsyncClient() as http:
         response = await http.post(url, headers=headers, json=data)
         response.raise_for_status()
-        return tokens
+        body = response.json() or {}
+        return tokens, body.get("transaction_uuid", "")
 
 
 async def get_client_type(client_id: str, group_id: str | None):

@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: RAY-80000 — corrected stale code comments in `_spend_translation_credits` that attributed SRT translation charging to `cloud-verify-consumer`; the active charging path is `int-slack-verify-consumer` (`async_spend_mt_token` -> `/mt/transaction`) (Wade Norman, 2026-05-29)
+- [Changed]: RAY-80000 — transcription is now charged through the LanguageCloud API (`/mt/transcribe`) instead of a direct credit-ledger write, so the gateway writes the self-describing `credit_transaction_usage` row alongside the debit. The producer now sends the Whisper-detected `source_language` and a stable `idempotency_key` (sha256 of app_source/task_uuid/service/unit via `build_spend_idempotency_key`) so a redelivered task is charged once. Media embedding still charges directly (no gateway endpoint yet). Adds producer-boundary tests (Wade Norman, 2026-05-29)
 - [Added]: Portuguese (Brazil) (`pt-BR`) to AI translation language options for channel translation, document MT, and related Slack modals (Wade Norman, 2026-05-21)
 - [Fixed]: Updated human translation listener tests to mock `enqueue_evaluation_submission` instead of removed inline file validation paths (Wade Norman, 2026-05-22)
 - [Fixed]: Channel translation edit delivery now falls back to `chat.postMessage` when `chat.update` returns Slack `message_not_found` (stale/deleted bot reply in `mt_ts` cache); clears Redis cache and re-caches the new reply ts (Wade Norman, 2026-05-22)
