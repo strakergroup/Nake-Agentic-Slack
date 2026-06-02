@@ -27,6 +27,15 @@ from app.auth.connector import (
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.database import async_engines
+from app.media.embed_spend import (
+    embedding_source_language as _embedding_source_language,
+)
+from app.media.embed_spend import (
+    embedding_target_language_codes as _embedding_target_language_codes,
+)
+from app.media.embed_spend import (
+    is_embed_only_pipeline as _is_embed_only_pipeline,
+)
 from app.models import TranscriptionTask, TranscriptionTaskInfo
 from app.mt.logs import log_google_api_usage
 from app.ray.settings import get_auto_translate_language_name
@@ -415,18 +424,6 @@ async def _spend_translation_credits(
         return 0
 
 
-def _embedding_target_language_codes(task_info: TranscriptionTaskInfo) -> list[str]:
-    """Target language codes for an embed debit (modal selection or translated SRTs)."""
-    extra_data = task_info.extra_data or {}
-    codes = extra_data.get("target_languages")
-    if isinstance(codes, list) and codes:
-        return [str(code) for code in codes if code]
-    translated = task_info.translated_file_ids or {}
-    if translated:
-        return list(translated.keys())
-    return []
-
-
 async def _spend_embedding_credits(
     task_info: TranscriptionTaskInfo,
     auth: Any,
@@ -468,34 +465,32 @@ async def _spend_embedding_credits(
         # Store duration_ms before reloads to preserve type
         duration_ms = task_info.duration_ms
 
-        # For embedding pipelines, ensure transcription and translation are charged first
-        # 1. Charge transcription if not already charged
-        if "transcription" not in charged_stages:
-            await _spend_transcription_credits(task_info, auth)
-            # Reload task_info to get updated charged_stages
-            reloaded_task_info = await get_transcription_task(task_info.task_uuid)
-            if not reloaded_task_info:
-                return 0
-            task_info = reloaded_task_info
-            extra_data = task_info.extra_data or {}
-            charged_stages = extra_data.get("_charged_stages", [])
+        # Full modal embed: prior stages charge on their own callbacks. Thread
+        # embed-only (pipeline_type embed) must not catch up transcribe/translate here.
+        if not _is_embed_only_pipeline(task_info):
+            if "transcription" not in charged_stages:
+                await _spend_transcription_credits(task_info, auth)
+                reloaded_task_info = await get_transcription_task(task_info.task_uuid)
+                if not reloaded_task_info:
+                    return 0
+                task_info = reloaded_task_info
+                extra_data = task_info.extra_data or {}
+                charged_stages = extra_data.get("_charged_stages", [])
 
-        # 2. Charge translation if not already charged and translation data exists
-        if (
-            "translation" not in charged_stages
-            and task_info.source_text_length
-            and task_info.num_target_languages
-        ):
-            await _spend_translation_credits(task_info, auth)
-            # Reload task_info to get updated charged_stages
-            reloaded_task_info = await get_transcription_task(task_info.task_uuid)
-            if not reloaded_task_info:
-                return 0
-            task_info = reloaded_task_info
-            extra_data = task_info.extra_data or {}
-            charged_stages = extra_data.get("_charged_stages", [])
+            if (
+                "translation" not in charged_stages
+                and task_info.source_text_length
+                and task_info.num_target_languages
+            ):
+                await _spend_translation_credits(task_info, auth)
+                reloaded_task_info = await get_transcription_task(task_info.task_uuid)
+                if not reloaded_task_info:
+                    return 0
+                task_info = reloaded_task_info
+                extra_data = task_info.extra_data or {}
+                charged_stages = extra_data.get("_charged_stages", [])
 
-        # 3. Now charge for embedding
+        # Charge for embedding
         # Default to 1 target language if not specified (for transcribe_embed pipelines)
         num_target_languages = task_info.num_target_languages or 1
 
@@ -524,7 +519,7 @@ async def _spend_embedding_credits(
                 duration_ms=duration_ms,
                 num_target_languages=num_target_languages,
                 target_languages=target_languages or None,
-                source_language=task_info.detected_language,
+                source_language=_embedding_source_language(task_info),
                 file_name=task_info.file_name,
                 idempotency_key=embedding_idempotency_key,
             )
