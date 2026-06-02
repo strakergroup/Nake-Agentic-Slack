@@ -410,6 +410,16 @@ async def home_view(
                         "action_id": "ai_translate_help",
                         "url": message_url,
                     },
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": _("Media Translation Help"),
+                        },
+                        "action_id": "link_media_translation_help",
+                        "url": "https://help.straker.ai/en/docs/ai-translate-for-videos-in-straker-translate-app-for-slack",
+                    },
                 ],
             },
             *verify_settings_block,
