@@ -1755,6 +1755,8 @@ async def log_embedding_by_client_id(
     client_id: str,
     duration_ms: int,
     num_target_languages: int,
+    target_languages: list[str] | None = None,
+    source_language: str | None = None,
     file_name: str | None = None,
     app_name: str = "slack",
     idempotency_key: str | None = None,
@@ -1764,8 +1766,8 @@ async def log_embedding_by_client_id(
     using client_id. The gateway writes the debit *and* its
     ``credit_transaction_usage`` row in one transaction with idempotency
     (RAY-80000 §3.5), replacing a direct credit-ledger write that left no usage
-    row. Source/target language are Not applicable for embedding and are left
-    NULL on the row.
+    row. Target codes are listed in metadata; source_language is the detected
+    audio language when supplied.
 
     Returns:
         str: the gateway transaction UUID.
@@ -1800,6 +1802,10 @@ async def log_embedding_by_client_id(
         "num_target_languages": num_target_languages,
         "app_name": app_name,
     }
+    if target_languages:
+        data["target_languages"] = target_languages
+    if source_language:
+        data["source_language"] = source_language
     if file_name:
         data["file_name"] = file_name
     if idempotency_key:

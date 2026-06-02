@@ -415,6 +415,18 @@ async def _spend_translation_credits(
         return 0
 
 
+def _embedding_target_language_codes(task_info: TranscriptionTaskInfo) -> list[str]:
+    """Target language codes for an embed debit (modal selection or translated SRTs)."""
+    extra_data = task_info.extra_data or {}
+    codes = extra_data.get("target_languages")
+    if isinstance(codes, list) and codes:
+        return [str(code) for code in codes if code]
+    translated = task_info.translated_file_ids or {}
+    if translated:
+        return list(translated.keys())
+    return []
+
+
 async def _spend_embedding_credits(
     task_info: TranscriptionTaskInfo,
     auth: Any,
@@ -506,10 +518,13 @@ async def _spend_embedding_credits(
             # are Not applicable for embedding) atomically with the debit
             # (RAY-80000 §3.5). This replaces the direct credit-ledger write, which
             # left no usage row.
+            target_languages = _embedding_target_language_codes(task_info)
             await log_embedding_by_client_id(
                 client_id=auth.slack_user.ray_client_id,
                 duration_ms=duration_ms,
                 num_target_languages=num_target_languages,
+                target_languages=target_languages or None,
+                source_language=task_info.detected_language,
                 file_name=task_info.file_name,
                 idempotency_key=embedding_idempotency_key,
             )

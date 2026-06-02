@@ -59,6 +59,7 @@ async def test_embedding_sends_duration_languages_and_key():
             client_id="client-1",
             duration_ms=120_000,
             num_target_languages=3,
+            target_languages=["es", "fr", "de"],
             file_name="clip.mp4",
             idempotency_key="key-embed",
         )
@@ -67,6 +68,7 @@ async def test_embedding_sends_duration_languages_and_key():
     posted_json = mock_http.post.call_args.kwargs["json"]
     assert posted_json["duration_ms"] == 120_000
     assert posted_json["num_target_languages"] == 3
+    assert posted_json["target_languages"] == ["es", "fr", "de"]
     assert posted_json["file_name"] == "clip.mp4"
     assert posted_json["idempotency_key"] == "key-embed"
     assert posted_json["app_name"] == "slack"
