@@ -1637,6 +1637,13 @@ async def ray_events(
                         service=mt_result_extra_data.usage_type,
                         unit_type="characters",
                     )
+                # Channel/shortcut MT is billed against the group, so the usage
+                # report cannot resolve the poster from client_uuid. Send the
+                # Slack user identity so the usage row carries it (RAY-80000).
+                slack_profile = user_info["user"]["profile"] if user_info else {}
+                user_email = slack_profile.get("email") or None
+                user_name = slack_profile.get("real_name") or None
+
                 # Charge through the LanguageCloud API so the gateway writes the
                 # self-describing credit_transaction_usage row (languages, engine,
                 # idempotency) atomically with the debit (RAY-80000 §3.4). This
@@ -1650,6 +1657,8 @@ async def ray_events(
                     engine=engine,
                     channel_name=channel_name,
                     idempotency_key=inline_idempotency_key,
+                    email=user_email,
+                    client_name=user_name,
                 )
 
                 # Log Google API usage
@@ -1659,9 +1668,6 @@ async def ray_events(
                     for lang, texts in translations.items()
                 }
 
-                user_email = (
-                    user_info["user"]["profile"]["email"] if user_info else None
-                )
                 await log_google_api_usage(
                     user_uuid=auth.slack_user.ray_client_id,
                     group_uuid=auth.slack_user.ray_user_group_id,

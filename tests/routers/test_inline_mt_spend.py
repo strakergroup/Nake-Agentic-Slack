@@ -105,6 +105,8 @@ async def test_inline_usage_sends_full_payload():
             engine="google,microsoft",
             channel_name="general",
             idempotency_key="key-abc",
+            email="poster@example.com",
+            client_name="Channel Poster",
         )
 
     assert transaction_uuid == "txn-inline"
@@ -117,6 +119,9 @@ async def test_inline_usage_sends_full_payload():
     assert posted_json["channel_name"] == "general"
     assert posted_json["idempotency_key"] == "key-abc"
     assert posted_json["app_name"] == "slack"
+    # Group-billed channel MT carries the poster identity for the usage report.
+    assert posted_json["email"] == "poster@example.com"
+    assert posted_json["client_name"] == "Channel Poster"
 
 
 @pytest.mark.asyncio
@@ -147,6 +152,8 @@ async def test_inline_usage_omits_empty_optionals():
     assert "engine" not in posted_json
     assert "channel_name" not in posted_json
     assert "idempotency_key" not in posted_json
+    assert "email" not in posted_json
+    assert "client_name" not in posted_json
 
 
 @pytest.mark.asyncio

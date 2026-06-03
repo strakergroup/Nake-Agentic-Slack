@@ -1688,6 +1688,8 @@ async def log_inline_mt_usage_by_client_id(
     engine: str | None = None,
     channel_name: str | None = None,
     idempotency_key: str | None = None,
+    email: str | None = None,
+    client_name: str | None = None,
 ) -> str:
     """
     Charge inline/channel/shortcut MT via the LanguageCloud API
@@ -1744,6 +1746,13 @@ async def log_inline_mt_usage_by_client_id(
         data["channel_name"] = channel_name
     if idempotency_key:
         data["idempotency_key"] = idempotency_key
+    # Channel/shortcut MT is billed against the group, so the report cannot
+    # resolve the poster from client_uuid; send the Slack user identity so the
+    # usage row carries it (RAY-80000).
+    if email:
+        data["email"] = email
+    if client_name:
+        data["client_name"] = client_name
     async with httpx.AsyncClient() as http:
         response = await http.post(url, headers=headers, json=data)
         response.raise_for_status()
