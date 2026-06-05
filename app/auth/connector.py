@@ -1687,6 +1687,7 @@ async def log_inline_mt_usage_by_client_id(
     source_language: str | None = None,
     engine: str | None = None,
     channel_name: str | None = None,
+    word_count: int | None = None,
     idempotency_key: str | None = None,
     email: str | None = None,
     client_name: str | None = None,
@@ -1744,6 +1745,10 @@ async def log_inline_mt_usage_by_client_id(
         data["engine"] = engine
     if channel_name:
         data["channel_name"] = channel_name
+    # word_count is a typed report column (RAY-80000); billing stays
+    # character-based, so it is sent only when the producer computed it.
+    if word_count is not None:
+        data["word_count"] = word_count
     if idempotency_key:
         data["idempotency_key"] = idempotency_key
     # Channel/shortcut MT is billed against the group, so the report cannot

@@ -1644,6 +1644,15 @@ async def ray_events(
                 user_email = slack_profile.get("email") or None
                 user_name = slack_profile.get("real_name") or None
 
+                # Words in the source message -- a typed report column on the
+                # usage row (RAY-80000). Billing stays character-based; this is
+                # recorded for the report only.
+                source_word_count = (
+                    len(mt_result_extra_data.source_text.split())
+                    if mt_result_extra_data.source_text
+                    else None
+                )
+
                 # Charge through the LanguageCloud API so the gateway writes the
                 # self-describing credit_transaction_usage row (languages, engine,
                 # idempotency) atomically with the debit (RAY-80000 §3.4). This
@@ -1656,6 +1665,7 @@ async def ray_events(
                     source_language=mt_result_extra_data.source_language,
                     engine=engine,
                     channel_name=channel_name,
+                    word_count=source_word_count,
                     idempotency_key=inline_idempotency_key,
                     email=user_email,
                     client_name=user_name,

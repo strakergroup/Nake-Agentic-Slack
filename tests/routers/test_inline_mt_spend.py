@@ -104,6 +104,7 @@ async def test_inline_usage_sends_full_payload():
             source_language="en",
             engine="google,microsoft",
             channel_name="general",
+            word_count=35,
             idempotency_key="key-abc",
             email="poster@example.com",
             client_name="Channel Poster",
@@ -117,6 +118,8 @@ async def test_inline_usage_sends_full_payload():
     assert posted_json["source_language"] == "en"
     assert posted_json["engine"] == "google,microsoft"
     assert posted_json["channel_name"] == "general"
+    # word_count is a typed report column (RAY-80000).
+    assert posted_json["word_count"] == 35
     assert posted_json["idempotency_key"] == "key-abc"
     assert posted_json["app_name"] == "slack"
     # Group-billed channel MT carries the poster identity for the usage report.
@@ -151,6 +154,7 @@ async def test_inline_usage_omits_empty_optionals():
     assert "source_language" not in posted_json
     assert "engine" not in posted_json
     assert "channel_name" not in posted_json
+    assert "word_count" not in posted_json
     assert "idempotency_key" not in posted_json
     assert "email" not in posted_json
     assert "client_name" not in posted_json
