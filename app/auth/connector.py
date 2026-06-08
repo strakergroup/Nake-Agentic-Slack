@@ -19,7 +19,10 @@ from slack_sdk.errors import SlackApiError
 from slack_sdk.oauth.installation_store import Installation
 from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import bindparam, text
-from straker_auth.languagecloud import create_languagecloud_id_token
+from straker_auth.languagecloud import (
+    create_languagecloud_group_token,
+    create_languagecloud_id_token,
+)
 from straker_utils.sql.async_engine import execute, fetch_all, fetch_one
 
 from ..config import Environment, config, domains
@@ -1716,18 +1719,27 @@ async def log_inline_mt_usage_by_client_id(
         """
     ).bindparams(client_id=client_id)
     result = await fetch_one(sql, async_engines["sitemanager_readonly"])
-    if not result:
-        raise Exception(f"Client {client_id} not found")
-
-    id_token = create_languagecloud_id_token(
-        uuid=client_id,
-        given_name=result["given_name"] or "",
-        family_name=result["family_name"] or "",
-        email=result["email_primary"] or "",
-        is_active=bool(result["active"]),
-        aud="languagecloud-api",
-        secret=config.languagecloud_api_key.get_secret_value(),
-    )
+    if result:
+        id_token = create_languagecloud_id_token(
+            uuid=client_id,
+            given_name=result["given_name"] or "",
+            family_name=result["family_name"] or "",
+            email=result["email_primary"] or "",
+            is_active=bool(result["active"]),
+            aud="languagecloud-api",
+            secret=config.languagecloud_api_key.get_secret_value(),
+        )
+    else:
+        # Channel auto-translate bills the org when the poster has not
+        # direct-logged-in (no obj_m_member row): client_id is the org uuid.
+        # Authenticate as the group/org with a group token (matching the Teams
+        # producer and /mt/translate) instead of failing; the gateway's
+        # /mt/inline-usage accepts a user-or-group principal (RAY-80000).
+        id_token = create_languagecloud_group_token(
+            uuid=client_id,
+            aud="languagecloud-api",
+            secret=config.languagecloud_api_key.get_secret_value(),
+        )
 
     url = f"{domains.languagecloud_api}/mt/inline-usage"
     headers = {

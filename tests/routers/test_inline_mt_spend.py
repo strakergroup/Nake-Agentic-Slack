@@ -161,13 +161,43 @@ async def test_inline_usage_omits_empty_optionals():
 
 
 @pytest.mark.asyncio
-async def test_inline_usage_raises_for_unknown_client():
-    """A missing member is surfaced rather than silently dropping the charge."""
-    with patch("app.auth.connector.fetch_one", new=AsyncMock(return_value=None)):
-        with pytest.raises(Exception, match="not found"):
-            await log_inline_mt_usage_by_client_id(
-                client_id="missing",
-                text_length=10,
-                target_languages=["es"],
-                usage_type="channel_translation",
-            )
+async def test_inline_usage_uses_group_token_when_no_member():
+    """Channel auto-translate bills the org: when the client_id has no member row
+    (poster never direct-logged-in), authenticate with a group token instead of
+    raising, so the charge still lands (RAY-80000). The gateway's /mt/inline-usage
+    accepts a user-or-group principal."""
+    cm, mock_http = _patch_async_client({"transaction_uuid": "txn-org"})
+
+    with (
+        patch("app.auth.connector.fetch_one", new=AsyncMock(return_value=None)),
+        patch(
+            "app.auth.connector.create_languagecloud_group_token",
+            return_value="group-token",
+        ) as mock_group_token,
+        patch(
+            "app.auth.connector.create_languagecloud_id_token",
+            return_value="id-token",
+        ) as mock_id_token,
+        patch("app.auth.connector.httpx.AsyncClient", return_value=cm),
+    ):
+        transaction_uuid = await log_inline_mt_usage_by_client_id(
+            client_id="org-uuid",
+            text_length=100,
+            target_languages=["es"],
+            usage_type="channel_translation",
+            email="poster@example.com",
+        )
+
+    assert transaction_uuid == "txn-org"
+    # No member row -> mint a group token (not a user id token) for the org.
+    mock_id_token.assert_not_called()
+    mock_group_token.assert_called_once()
+    assert mock_group_token.call_args.kwargs["uuid"] == "org-uuid"
+    assert mock_group_token.call_args.kwargs["aud"] == "languagecloud-api"
+    # The request authenticates with the group token and still posts the charge.
+    assert mock_http.post.call_args.kwargs["headers"]["Authorization"] == (
+        "Bearer group-token"
+    )
+    posted_json = mock_http.post.call_args.kwargs["json"]
+    assert posted_json["usage_type"] == "channel_translation"
+    assert posted_json["email"] == "poster@example.com"
