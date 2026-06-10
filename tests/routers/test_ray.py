@@ -1113,25 +1113,25 @@ class TestRayEventsEndpoint:
                             "app.routers.ray.post_notification", new_callable=AsyncMock
                         ) as mock_post:
                             with patch(
-                                "app.routers.ray.calculate_cost", return_value=1.0
-                            ):
+                                "app.routers.ray.log_inline_mt_usage_by_client_id",
+                                new_callable=AsyncMock,
+                            ) as mock_spend:
+                                mock_spend.return_value = str(uuid4())
                                 with patch(
-                                    "app.routers.ray.spend_credits",
+                                    "app.routers.ray.log_google_api_usage",
                                     new_callable=AsyncMock,
-                                ) as mock_spend:
-                                    mock_spend.return_value = str(uuid4())
-                                    with patch(
-                                        "app.routers.ray.log_google_api_usage",
-                                        new_callable=AsyncMock,
-                                    ):
-                                        auth = RayEventAuth()
-                                        await auth.initialize(event, "valid-token")
+                                ):
+                                    auth = RayEventAuth()
+                                    await auth.initialize(event, "valid-token")
 
-                                        await ray_events(event, auth)
+                                    await ray_events(event, auth)
 
-                                        # Verify notification was sent
-                                        mock_post.assert_called_once()
-                                        mock_spend.assert_called_once()
+                                    # Verify notification was sent
+                                    mock_post.assert_called_once()
+                                    # Spend now routes through the gateway
+                                    # (log_inline_mt_usage_by_client_id) which writes
+                                    # the credit_transaction_usage row (RAY-80000).
+                                    mock_spend.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_channel_translation_result(
@@ -1190,31 +1190,31 @@ class TestRayEventsEndpoint:
                             new_callable=AsyncMock,
                         ) as mock_post:
                             with patch(
-                                "app.routers.ray.calculate_cost", return_value=2.0
-                            ):
+                                "app.routers.ray.log_inline_mt_usage_by_client_id",
+                                new_callable=AsyncMock,
+                            ) as mock_spend:
+                                mock_spend.return_value = str(uuid4())
                                 with patch(
-                                    "app.routers.ray.spend_credits",
+                                    "app.routers.ray.log_google_api_usage",
                                     new_callable=AsyncMock,
-                                ) as mock_spend:
-                                    mock_spend.return_value = str(uuid4())
-                                    with patch(
-                                        "app.routers.ray.log_google_api_usage",
-                                        new_callable=AsyncMock,
-                                    ):
-                                        auth = RayEventAuth()
-                                        await auth.initialize(event, "valid-token")
+                                ):
+                                    auth = RayEventAuth()
+                                    await auth.initialize(event, "valid-token")
 
-                                        await ray_events(event, auth)
+                                    await ray_events(event, auth)
 
-                                        # Verify channel translation notification was sent
-                                        mock_post.assert_called_once()
-                                        message = mock_post.call_args.args[3]
-                                        assert list(message.translations.keys()) == [
-                                            "la",
-                                            "af",
-                                            "fr",
-                                        ]
-                                        mock_spend.assert_called_once()
+                                    # Verify channel translation notification was sent
+                                    mock_post.assert_called_once()
+                                    message = mock_post.call_args.args[3]
+                                    assert list(message.translations.keys()) == [
+                                        "la",
+                                        "af",
+                                        "fr",
+                                    ]
+                                    # Spend now routes through the gateway
+                                    # (log_inline_mt_usage_by_client_id) which writes
+                                    # the credit_transaction_usage row (RAY-80000).
+                                    mock_spend.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_invalid_event_type(self, mock_slack_user):

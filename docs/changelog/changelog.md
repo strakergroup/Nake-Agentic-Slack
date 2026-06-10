@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- [Fixed]: Updated `test_ray.py` direct-MT and channel-translation result tests to patch the gateway spend (`log_inline_mt_usage_by_client_id`) instead of the removed `calculate_cost`/`spend_credits`, which RAY-80000 replaced when spend moved to the LanguageCloud gateway; test-only, no app change (Wade Norman, 2026-06-11)
+- [Fixed]: `log_inline_mt_usage_by_client_id` now mints a group token (via `create_languagecloud_group_token`) when the client_id has no `obj_m_member` row instead of raising — restores org-billed channel auto-translate charges for posters who never direct-logged-in; the gateway's `/mt/inline-usage` accepts the group principal (RAY-80000) (Wade Norman, 2026-06-07)
+- [Added]: Inline/channel MT spend now sends `word_count` (computed from the source message text) to `/mt/inline-usage`, recorded as a typed report column on `credit_transaction_usage`; billing stays character-based (RAY-80000) (Wade Norman, 2026-06-05)
 - [Removed]: Deleted the repository GitHub Actions `Pyright` workflow so type checking remains local/pre-commit only until a reusable CI approach is in place for VPN-only dependencies (Wade Norman, 2026-03-26)
 - [Removed]: Deleted unused Microsoft Translator environment settings and config validation from the app because this repository no longer reads those credentials (Wade Norman, 2026-03-26)
 - [Changed]: Updated the GitHub `Pyright` workflow to install only `Pyright` on CI so PR type checks can run without VPN-only internal dependencies (Wade Norman, 2026-03-26)

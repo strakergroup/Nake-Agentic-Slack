@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 from dataclasses import replace
@@ -11,18 +12,30 @@ from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
-from straker_utils.credits import calculate_cost, spend_credits
 
 from app.api.models import MtTranslationExtraData
 from app.api.verify import get_evaluation_job, get_job_pricing
 from app.auth.connector import (
+    build_spend_idempotency_key,
     duration_to_subtitling_tokens,
     duration_to_tokens,
     get_ray_client,
     get_ray_connection,
+    log_embedding_by_client_id,
+    log_inline_mt_usage_by_client_id,
+    log_transcribe_by_client_id,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.database import async_engines
+from app.media.embed_spend import (
+    embedding_source_language as _embedding_source_language,
+)
+from app.media.embed_spend import (
+    embedding_target_language_codes as _embedding_target_language_codes,
+)
+from app.media.embed_spend import (
+    is_embed_only_pipeline as _is_embed_only_pipeline,
+)
 from app.models import TranscriptionTask, TranscriptionTaskInfo
 from app.mt.logs import log_google_api_usage
 from app.ray.settings import get_auto_translate_language_name
@@ -313,20 +326,21 @@ async def _spend_transcription_credits(
         amount = duration_to_tokens(task_info.duration_ms)
 
         if amount > 0:
-            # Get organization_id dynamically from client_id
-            from ..transcriber_tasks.tasks import get_client_organization_uuid
-
-            organization_id = await get_client_organization_uuid(task_info.client_id)
-
-            transaction_uuid = await spend_credits(
-                async_engines["sitemanager"],
-                auth.slack_user.ray_client_id,
-                auth.slack_user.ray_user_group_id,
-                amount,
-                "slack",
-                "transcription",
-                "Media Transcription",
-                organization_id,
+            # Charge through the LanguageCloud API so the gateway writes the
+            # self-describing credit_transaction_usage row (source language +
+            # idempotency) atomically with the debit (RAY-80000 §3.2). This
+            # replaces the direct credit-ledger write, which left no usage row.
+            _tokens, transaction_uuid = await log_transcribe_by_client_id(
+                client_id=auth.slack_user.ray_client_id,
+                duration_ms=task_info.duration_ms,
+                file_name=task_info.file_name or "",
+                source_language=task_info.detected_language,
+                idempotency_key=build_spend_idempotency_key(
+                    app_source="slack",
+                    submission_id=task_info.task_uuid,
+                    service="transcription",
+                    unit_type="milliseconds",
+                ),
             )
 
             # Mark transcription as charged and store transaction UUID
@@ -359,17 +373,17 @@ async def _spend_translation_credits(
 ) -> int:
     """Mark translation stage as charged.
 
-    Note: Actual credit spending and API usage logging is now handled by
-    cloud-verify-consumer during SRT translation (spend_mt_token call in
-    srt_translate.py). This function only marks the stage as "charged" in
-    extra_data to prevent duplicate processing.
+    Note: Actual credit spending and API usage logging is handled by
+    int-slack-verify-consumer during SRT translation (async_spend_mt_token ->
+    /mt/transaction, in subtitle_translation.py). This function only marks the
+    stage as "charged" in extra_data to prevent duplicate processing.
 
     Args:
         task_info: Transcription task information
         auth: Authentication context with slack_user
 
     Returns:
-        0 (credits are spent in consumer, not here)
+        0 (credits are spent in the consumer, not here)
     """
     try:
         # Check if translation has already been marked as charged
@@ -386,8 +400,8 @@ async def _spend_translation_credits(
             return 0
 
         # Mark translation as charged in the database
-        # Note: Actual credit spending happens in cloud-verify-consumer via
-        # spend_mt_token, which also logs to google_api_log for billing reports
+        # Note: Actual credit spending happens in int-slack-verify-consumer via
+        # async_spend_mt_token, which also logs to google_api_log for billing reports
         charged_stages.append("translation")
         extra_data["_charged_stages"] = charged_stages
         async with AsyncSession(async_engines["sitecommons"]) as session:
@@ -451,34 +465,32 @@ async def _spend_embedding_credits(
         # Store duration_ms before reloads to preserve type
         duration_ms = task_info.duration_ms
 
-        # For embedding pipelines, ensure transcription and translation are charged first
-        # 1. Charge transcription if not already charged
-        if "transcription" not in charged_stages:
-            await _spend_transcription_credits(task_info, auth)
-            # Reload task_info to get updated charged_stages
-            reloaded_task_info = await get_transcription_task(task_info.task_uuid)
-            if not reloaded_task_info:
-                return 0
-            task_info = reloaded_task_info
-            extra_data = task_info.extra_data or {}
-            charged_stages = extra_data.get("_charged_stages", [])
+        # Full modal embed: prior stages charge on their own callbacks. Thread
+        # embed-only (pipeline_type embed) must not catch up transcribe/translate here.
+        if not _is_embed_only_pipeline(task_info):
+            if "transcription" not in charged_stages:
+                await _spend_transcription_credits(task_info, auth)
+                reloaded_task_info = await get_transcription_task(task_info.task_uuid)
+                if not reloaded_task_info:
+                    return 0
+                task_info = reloaded_task_info
+                extra_data = task_info.extra_data or {}
+                charged_stages = extra_data.get("_charged_stages", [])
 
-        # 2. Charge translation if not already charged and translation data exists
-        if (
-            "translation" not in charged_stages
-            and task_info.source_text_length
-            and task_info.num_target_languages
-        ):
-            await _spend_translation_credits(task_info, auth)
-            # Reload task_info to get updated charged_stages
-            reloaded_task_info = await get_transcription_task(task_info.task_uuid)
-            if not reloaded_task_info:
-                return 0
-            task_info = reloaded_task_info
-            extra_data = task_info.extra_data or {}
-            charged_stages = extra_data.get("_charged_stages", [])
+            if (
+                "translation" not in charged_stages
+                and task_info.source_text_length
+                and task_info.num_target_languages
+            ):
+                await _spend_translation_credits(task_info, auth)
+                reloaded_task_info = await get_transcription_task(task_info.task_uuid)
+                if not reloaded_task_info:
+                    return 0
+                task_info = reloaded_task_info
+                extra_data = task_info.extra_data or {}
+                charged_stages = extra_data.get("_charged_stages", [])
 
-        # 3. Now charge for embedding
+        # Charge for embedding
         # Default to 1 target language if not specified (for transcribe_embed pipelines)
         num_target_languages = task_info.num_target_languages or 1
 
@@ -487,20 +499,29 @@ async def _spend_embedding_credits(
         amount = tokens_per_language * num_target_languages
 
         if amount > 0:
-            # Get organization_id dynamically from client_id
-            from ..transcriber_tasks.tasks import get_client_organization_uuid
-
-            organization_id = await get_client_organization_uuid(task_info.client_id)
-
-            await spend_credits(
-                async_engines["sitemanager"],
-                auth.slack_user.ray_client_id,
-                auth.slack_user.ray_user_group_id,
-                amount,
-                "slack",
-                "media_embedding",
-                "Media Embedding",
-                organization_id,
+            # Stable per-task key so a redelivered embedding result replays to a
+            # single debit; service differs from transcription so the two stages
+            # of the same task stay distinct charges (RAY-80000 §3.5).
+            embedding_idempotency_key = build_spend_idempotency_key(
+                app_source="slack",
+                submission_id=task_info.task_uuid,
+                service="media_embedding",
+                unit_type="milliseconds",
+            )
+            # Charge through the LanguageCloud API so the gateway writes the
+            # self-describing credit_transaction_usage row (idempotency; languages
+            # are Not applicable for embedding) atomically with the debit
+            # (RAY-80000 §3.5). This replaces the direct credit-ledger write, which
+            # left no usage row.
+            target_languages = _embedding_target_language_codes(task_info)
+            await log_embedding_by_client_id(
+                client_id=auth.slack_user.ray_client_id,
+                duration_ms=duration_ms,
+                num_target_languages=num_target_languages,
+                target_languages=target_languages or None,
+                source_language=_embedding_source_language(task_info),
+                file_name=task_info.file_name,
+                idempotency_key=embedding_idempotency_key,
             )
 
             # Mark embedding as charged in the database
@@ -1559,33 +1580,9 @@ async def ray_events(
                             "message": f"Invalid usage type: {mt_result_extra_data.usage_type}",
                         },
                     )
-                # Calculate total languages across all services
-                total_languages = sum(
-                    len(lang_glossary_map)
-                    for lang_glossary_map in mt_result_extra_data.service_language_mapping.values()
-                )
-                amount = calculate_cost(
-                    mt_result_extra_data.text_length * total_languages
-                )
                 assert auth.slack_user.ray_user_group_id is not None
-                transaction_uuid = await spend_credits(
-                    async_engines["sitemanager"],
-                    auth.slack_user.ray_client_id,
-                    auth.slack_user.ray_user_group_id,
-                    amount,
-                    "slack",
-                    mt_result_extra_data.usage_type,
-                    "Machine Translation",
-                    mt_result_extra_data.organization_uuid,
-                )
-
-                # Log Google API usage
-                # Convert translations from dict[lang, list[str]] to dict[lang, str]
-                translations_for_log = {
-                    lang: " ".join(texts) if isinstance(texts, list) else texts
-                    for lang, texts in translations.items()
-                }
-
+                # Resolve a friendly channel name first so it can be persisted on
+                # the usage row as well as the Google API usage log.
                 channel_name = None
                 if mt_result_extra_data.channel_id:
                     if not mt_result_extra_data.channel_id.startswith("C"):
@@ -1605,9 +1602,82 @@ async def ray_events(
                             )
                         except Exception as e:
                             notify_exception(e, "Failed to get channel info")
-                user_email = (
-                    user_info["user"]["profile"]["email"] if user_info else None
+
+                # One billed entry per (service, language) pair so the gateway's
+                # ceil(text_length * len(target_languages) * 0.1) reproduces the
+                # prior calculate_cost(text_length * total_languages) amount.
+                billed_target_languages = [
+                    lang
+                    for lang_glossary_map in (
+                        mt_result_extra_data.service_language_mapping.values()
+                    )
+                    for lang in lang_glossary_map
+                ]
+                # MT services contributing to this debit, recorded as context.
+                engine = (
+                    ",".join(sorted(mt_result_extra_data.service_language_mapping))
+                    or None
                 )
+                # Per-message key so a redelivered MT result replays to a single
+                # debit. The submission id combines the message ts with a
+                # fingerprint of the translated text so a genuine *edit* (same ts,
+                # new content) is still charged, while a pure redelivery (same ts,
+                # same content) dedupes. Omitted when no message ts is available so
+                # the charge stays back-compatible (RAY-80000 §3.4).
+                inline_idempotency_key = None
+                if mt_result_extra_data.message_ts:
+                    content_fingerprint = hashlib.sha256(
+                        (mt_result_extra_data.source_text or "").encode("utf-8")
+                    ).hexdigest()[:16]
+                    inline_idempotency_key = build_spend_idempotency_key(
+                        app_source="slack",
+                        submission_id=(
+                            f"{mt_result_extra_data.message_ts}:{content_fingerprint}"
+                        ),
+                        service=mt_result_extra_data.usage_type,
+                        unit_type="characters",
+                    )
+                # Channel/shortcut MT is billed against the group, so the usage
+                # report cannot resolve the poster from client_uuid. Send the
+                # Slack user identity so the usage row carries it (RAY-80000).
+                slack_profile = user_info["user"]["profile"] if user_info else {}
+                user_email = slack_profile.get("email") or None
+                user_name = slack_profile.get("real_name") or None
+
+                # Words in the source message -- a typed report column on the
+                # usage row (RAY-80000). Billing stays character-based; this is
+                # recorded for the report only.
+                source_word_count = (
+                    len(mt_result_extra_data.source_text.split())
+                    if mt_result_extra_data.source_text
+                    else None
+                )
+
+                # Charge through the LanguageCloud API so the gateway writes the
+                # self-describing credit_transaction_usage row (languages, engine,
+                # idempotency) atomically with the debit (RAY-80000 §3.4). This
+                # replaces the direct credit-ledger write, which left no usage row.
+                transaction_uuid = await log_inline_mt_usage_by_client_id(
+                    client_id=auth.slack_user.ray_client_id,
+                    text_length=mt_result_extra_data.text_length,
+                    target_languages=billed_target_languages,
+                    usage_type=mt_result_extra_data.usage_type,
+                    source_language=mt_result_extra_data.source_language,
+                    engine=engine,
+                    channel_name=channel_name,
+                    word_count=source_word_count,
+                    idempotency_key=inline_idempotency_key,
+                    email=user_email,
+                    client_name=user_name,
+                )
+
+                # Log Google API usage
+                # Convert translations from dict[lang, list[str]] to dict[lang, str]
+                translations_for_log = {
+                    lang: " ".join(texts) if isinstance(texts, list) else texts
+                    for lang, texts in translations.items()
+                }
+
                 await log_google_api_usage(
                     user_uuid=auth.slack_user.ray_client_id,
                     group_uuid=auth.slack_user.ray_user_group_id,

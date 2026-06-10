@@ -885,6 +885,11 @@ async def submit_existing_srt_embed_task(
             embed_subtitles=True,
             sandbox=False,
         )
+        embed_target_languages = (
+            [subtitle_language_code]
+            if subtitle_language_code and subtitle_language_code != "und"
+            else []
+        )
         extra_data_dict = {
             "slack_user_id": context["user_id"],
             "slack_team_id": context["team_id"],
@@ -897,6 +902,7 @@ async def submit_existing_srt_embed_task(
             "original_video_file_name": video_file["file_name"],
             "srt_file_ids": [uploaded_srt_file_id],
             "language_codes": [subtitle_language_code],
+            "target_languages": embed_target_languages,
             "submission_ids": [submission_record.id],
         }
         asr_task = ASRTask(

@@ -19,7 +19,10 @@ from slack_sdk.errors import SlackApiError
 from slack_sdk.oauth.installation_store import Installation
 from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import bindparam, text
-from straker_auth.languagecloud import create_languagecloud_id_token
+from straker_auth.languagecloud import (
+    create_languagecloud_group_token,
+    create_languagecloud_id_token,
+)
 from straker_utils.sql.async_engine import execute, fetch_all, fetch_one
 
 from ..config import Environment, config, domains
@@ -1590,22 +1593,47 @@ def duration_to_subtitling_tokens(duration_ms: int) -> int:
     return math.ceil(duration_minutes * tokens_per_min)
 
 
+def build_spend_idempotency_key(
+    app_source: str,
+    submission_id: str,
+    service: str,
+    target_language: str = "",
+    unit_type: str = "",
+) -> str:
+    """Build a stable idempotency key for a credit spend (RAY-80000).
+
+    Derived from a producer-owned, per-billable-intent id (``submission_id`` —
+    the transcription task uuid) so a redelivered/retried task replays to one
+    debit, while two genuinely distinct tasks produce different keys and are
+    charged separately.
+    """
+    raw = f"{app_source}:{submission_id}:{service}:{target_language}:{unit_type}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
 async def log_transcribe_by_client_id(
     client_id: str,
     duration_ms: int,
     file_name: str,
-) -> int:
+    source_language: str | None = None,
+    idempotency_key: str | None = None,
+) -> tuple[int, str]:
     """
-    Log transcription request and spend tokens using client_id.
-    This is used when we don't have a full RayConnection but need to charge for transcription.
+    Charge a transcription via the LanguageCloud API (``/mt/transcribe``) using
+    client_id. The gateway writes the debit *and* its self-describing
+    ``credit_transaction_usage`` row in one transaction (RAY-80000), so this is
+    the canonical charging path for transcription — preferred over a direct
+    credit-ledger write, which would leave the usage row missing.
 
     Args:
         client_id: The LanguageCloud client UUID
         duration_ms: Duration of the media in milliseconds
         file_name: Name of the transcribed file
+        source_language: Whisper-detected source language, persisted on the row
+        idempotency_key: Stable per-task key so a replay is charged once
 
     Returns:
-        int: Number of tokens consumed
+        tuple[int, str]: (tokens consumed, gateway transaction UUID)
     """
     tokens = duration_to_tokens(duration_ms)
     if not tokens:
@@ -1637,15 +1665,182 @@ async def log_transcribe_by_client_id(
     headers = {
         "Authorization": f"Bearer {id_token}",
     }
-    data = {
+    data: dict[str, Any] = {
         "duration_ms": duration_ms,
         "app_name": "slack",
         "file_name": file_name,
     }
+    if source_language:
+        data["source_language"] = source_language
+    if idempotency_key:
+        data["idempotency_key"] = idempotency_key
     async with httpx.AsyncClient() as http:
         response = await http.post(url, headers=headers, json=data)
         response.raise_for_status()
-        return tokens
+        body = response.json() or {}
+        return tokens, body.get("transaction_uuid", "")
+
+
+async def log_inline_mt_usage_by_client_id(
+    client_id: str,
+    text_length: int,
+    target_languages: list[str],
+    usage_type: str,
+    app_name: str = "slack",
+    source_language: str | None = None,
+    engine: str | None = None,
+    channel_name: str | None = None,
+    word_count: int | None = None,
+    idempotency_key: str | None = None,
+    email: str | None = None,
+    client_name: str | None = None,
+) -> str:
+    """
+    Charge inline/channel/shortcut MT via the LanguageCloud API
+    (``/mt/inline-usage``) using client_id. The translation itself is performed
+    by the sup-mt-service pipeline (glossaries + multi-service routing), so it
+    cannot use ``/mt/translate``; this endpoint only records the debit *and* its
+    self-describing ``credit_transaction_usage`` row in one transaction with
+    idempotency (RAY-80000 §3.4) — replacing a direct credit-ledger write that
+    left the usage row missing.
+
+    The gateway charge is ``ceil(text_length * len(target_languages) * 0.1)``,
+    so ``target_languages`` must contain one entry per billed (service, language)
+    pair to reproduce the prior amount exactly.
+
+    Returns:
+        str: the gateway transaction UUID.
+    """
+    sql = text(
+        """
+        SELECT m.obj_uuid, m.given_name, m.family_name, m.email_primary, m.active
+        FROM obj_m_member m
+        WHERE m.obj_uuid = :client_id
+        """
+    ).bindparams(client_id=client_id)
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    if result:
+        id_token = create_languagecloud_id_token(
+            uuid=client_id,
+            given_name=result["given_name"] or "",
+            family_name=result["family_name"] or "",
+            email=result["email_primary"] or "",
+            is_active=bool(result["active"]),
+            aud="languagecloud-api",
+            secret=config.languagecloud_api_key.get_secret_value(),
+        )
+    else:
+        # Channel auto-translate bills the org when the poster has not
+        # direct-logged-in (no obj_m_member row): client_id is the org uuid.
+        # Authenticate as the group/org with a group token (matching the Teams
+        # producer and /mt/translate) instead of failing; the gateway's
+        # /mt/inline-usage accepts a user-or-group principal (RAY-80000).
+        id_token = create_languagecloud_group_token(
+            uuid=client_id,
+            aud="languagecloud-api",
+            secret=config.languagecloud_api_key.get_secret_value(),
+        )
+
+    url = f"{domains.languagecloud_api}/mt/inline-usage"
+    headers = {
+        "Authorization": f"Bearer {id_token}",
+    }
+    data: dict[str, Any] = {
+        "text_length": text_length,
+        "target_languages": target_languages,
+        "app_name": app_name,
+        "usage_type": usage_type,
+    }
+    if source_language:
+        data["source_language"] = source_language
+    if engine:
+        data["engine"] = engine
+    if channel_name:
+        data["channel_name"] = channel_name
+    # word_count is a typed report column (RAY-80000); billing stays
+    # character-based, so it is sent only when the producer computed it.
+    if word_count is not None:
+        data["word_count"] = word_count
+    if idempotency_key:
+        data["idempotency_key"] = idempotency_key
+    # Channel/shortcut MT is billed against the group, so the report cannot
+    # resolve the poster from client_uuid; send the Slack user identity so the
+    # usage row carries it (RAY-80000).
+    if email:
+        data["email"] = email
+    if client_name:
+        data["client_name"] = client_name
+    async with httpx.AsyncClient() as http:
+        response = await http.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        body = response.json() or {}
+        return body.get("transaction_uuid", "")
+
+
+async def log_embedding_by_client_id(
+    client_id: str,
+    duration_ms: int,
+    num_target_languages: int,
+    target_languages: list[str] | None = None,
+    source_language: str | None = None,
+    file_name: str | None = None,
+    app_name: str = "slack",
+    idempotency_key: str | None = None,
+) -> str:
+    """
+    Charge media subtitle embedding via the LanguageCloud API (``/mt/embed``)
+    using client_id. The gateway writes the debit *and* its
+    ``credit_transaction_usage`` row in one transaction with idempotency
+    (RAY-80000 §3.5), replacing a direct credit-ledger write that left no usage
+    row. Target codes are listed in metadata; source_language is the detected
+    audio language when supplied.
+
+    Returns:
+        str: the gateway transaction UUID.
+    """
+    sql = text(
+        """
+        SELECT m.obj_uuid, m.given_name, m.family_name, m.email_primary, m.active
+        FROM obj_m_member m
+        WHERE m.obj_uuid = :client_id
+        """
+    ).bindparams(client_id=client_id)
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    if not result:
+        raise Exception(f"Client {client_id} not found")
+
+    id_token = create_languagecloud_id_token(
+        uuid=client_id,
+        given_name=result["given_name"] or "",
+        family_name=result["family_name"] or "",
+        email=result["email_primary"] or "",
+        is_active=bool(result["active"]),
+        aud="languagecloud-api",
+        secret=config.languagecloud_api_key.get_secret_value(),
+    )
+
+    url = f"{domains.languagecloud_api}/mt/embed"
+    headers = {
+        "Authorization": f"Bearer {id_token}",
+    }
+    data: dict[str, Any] = {
+        "duration_ms": duration_ms,
+        "num_target_languages": num_target_languages,
+        "app_name": app_name,
+    }
+    if target_languages:
+        data["target_languages"] = target_languages
+    if source_language:
+        data["source_language"] = source_language
+    if file_name:
+        data["file_name"] = file_name
+    if idempotency_key:
+        data["idempotency_key"] = idempotency_key
+    async with httpx.AsyncClient() as http:
+        response = await http.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        body = response.json() or {}
+        return body.get("transaction_uuid", "")
 
 
 async def get_client_type(client_id: str, group_id: str | None):
