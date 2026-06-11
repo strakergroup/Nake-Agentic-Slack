@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: Inline/channel/shortcut MT charge now sends the billing group (`auth.slack_user.ray_user_group_id`) as `group_uuid` to `/mt/inline-usage`, so org-billed channel MT's ledger `group_uuid` stays the real group (e.g. IBM super group) instead of collapsing to the org uuid after the gateway migration; `log_inline_mt_usage_by_client_id` gains an optional `group_uuid` (RAY-80000 hotfix) (Wade Norman, 2026-06-11)
 - [Fixed]: Updated `test_ray.py` direct-MT and channel-translation result tests to patch the gateway spend (`log_inline_mt_usage_by_client_id`) instead of the removed `calculate_cost`/`spend_credits`, which RAY-80000 replaced when spend moved to the LanguageCloud gateway; test-only, no app change (Wade Norman, 2026-06-11)
 - [Fixed]: `log_inline_mt_usage_by_client_id` now mints a group token (via `create_languagecloud_group_token`) when the client_id has no `obj_m_member` row instead of raising — restores org-billed channel auto-translate charges for posters who never direct-logged-in; the gateway's `/mt/inline-usage` accepts the group principal (RAY-80000) (Wade Norman, 2026-06-07)
 - [Added]: Inline/channel MT spend now sends `word_count` (computed from the source message text) to `/mt/inline-usage`, recorded as a typed report column on `credit_transaction_usage`; billing stays character-based (RAY-80000) (Wade Norman, 2026-06-05)

@@ -1669,6 +1669,11 @@ async def ray_events(
                     idempotency_key=inline_idempotency_key,
                     email=user_email,
                     client_name=user_name,
+                    # Send the billing group so the gateway records the ledger
+                    # group_uuid as the real group (e.g. the IBM super group) instead
+                    # of collapsing to the org uuid for org-billed channel/shortcut
+                    # MT (RAY-80000 hotfix).
+                    group_uuid=auth.slack_user.ray_user_group_id,
                 )
 
                 # Log Google API usage
