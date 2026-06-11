@@ -108,6 +108,7 @@ async def test_inline_usage_sends_full_payload():
             idempotency_key="key-abc",
             email="poster@example.com",
             client_name="Channel Poster",
+            group_uuid="billing-group-uuid",
         )
 
     assert transaction_uuid == "txn-inline"
@@ -125,6 +126,8 @@ async def test_inline_usage_sends_full_payload():
     # Group-billed channel MT carries the poster identity for the usage report.
     assert posted_json["email"] == "poster@example.com"
     assert posted_json["client_name"] == "Channel Poster"
+    # The resolved billing group is sent so the ledger group_uuid is not the org.
+    assert posted_json["group_uuid"] == "billing-group-uuid"
 
 
 @pytest.mark.asyncio
@@ -158,6 +161,7 @@ async def test_inline_usage_omits_empty_optionals():
     assert "idempotency_key" not in posted_json
     assert "email" not in posted_json
     assert "client_name" not in posted_json
+    assert "group_uuid" not in posted_json
 
 
 @pytest.mark.asyncio

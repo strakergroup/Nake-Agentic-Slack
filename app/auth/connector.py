@@ -1694,6 +1694,7 @@ async def log_inline_mt_usage_by_client_id(
     idempotency_key: str | None = None,
     email: str | None = None,
     client_name: str | None = None,
+    group_uuid: str | None = None,
 ) -> str:
     """
     Charge inline/channel/shortcut MT via the LanguageCloud API
@@ -1770,6 +1771,12 @@ async def log_inline_mt_usage_by_client_id(
         data["email"] = email
     if client_name:
         data["client_name"] = client_name
+    # Billing group for the ledger debit. Org-billed channel/shortcut MT
+    # authenticates as the org, so the gateway would otherwise record group_uuid as
+    # the org; send the resolved billing group to keep group attribution as it was
+    # before the gateway migration (RAY-80000 hotfix).
+    if group_uuid:
+        data["group_uuid"] = group_uuid
     async with httpx.AsyncClient() as http:
         response = await http.post(url, headers=headers, json=data)
         response.raise_for_status()
