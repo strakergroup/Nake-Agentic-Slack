@@ -1580,7 +1580,19 @@ async def ray_events(
                             "message": f"Invalid usage type: {mt_result_extra_data.usage_type}",
                         },
                     )
-                assert auth.slack_user.ray_user_group_id is not None
+                # The poster's default group (`obj_m_member.groupid`) is NOT a
+                # requirement here: channel auto-translate is org-billed and needs
+                # no login, so a NULL default groupid must not fail the callback
+                # (RAY-80199). Resolve a group uuid for the usage report only,
+                # falling back to the submission's group_id (org/group context
+                # from get_group_id, colon-joined) when the member has no default
+                # group. Billing itself goes through the gateway by client_id and
+                # does not use this value.
+                usage_group_uuid = auth.slack_user.ray_user_group_id or (
+                    mt_result_extra_data.group_id.split(":")[0]
+                    if mt_result_extra_data.group_id
+                    else None
+                )
                 # Resolve a friendly channel name first so it can be persisted on
                 # the usage row as well as the Google API usage log.
                 channel_name = None
@@ -1685,7 +1697,7 @@ async def ray_events(
 
                 await log_google_api_usage(
                     user_uuid=auth.slack_user.ray_client_id,
-                    group_uuid=auth.slack_user.ray_user_group_id,
+                    group_uuid=usage_group_uuid,
                     organization_uuid=mt_result_extra_data.organization_uuid,
                     input_text=mt_result_extra_data.source_text
                     or "[Source text not available]",
@@ -1699,10 +1711,14 @@ async def ray_events(
                     email=user_email,
                 )
             except Exception as e:
+                # Some exceptions (e.g. bare AssertionError) stringify to "",
+                # which previously produced an opaque "...: " message. Fall back
+                # to the exception class name so the cause is always visible.
+                error_detail = str(e) or type(e).__name__
                 raise HTTPException(
                     422,
                     {
-                        "message": f"Error processing MT result event: {str(e)}",
+                        "message": f"Error processing MT result event: {error_detail}",
                     },
                 ) from e
 
