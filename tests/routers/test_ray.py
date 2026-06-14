@@ -1217,6 +1217,101 @@ class TestRayEventsEndpoint:
                                     mock_spend.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_ray_events_channel_translation_result_null_group_id(
+        self, user_id, team_id
+    ):
+        """Channel translation must not fail when the poster's default group
+        (`obj_m_member.groupid`) is NULL: the callback should still post, charge,
+        and log usage using the submission's group_id (RAY-80199)."""
+        # Logged-in poster whose member row has no default group.
+        slack_user_no_group = SlackUser(
+            user_id=user_id,
+            team_id=team_id,
+            enterprise_id=None,
+            channel_id=user_id,
+            bot_token="xoxb-test-token",
+            ray_client_id=str(uuid4()),
+            ray_username="test.user",
+            ray_user_group_id=None,
+            is_subscribed=True,
+        )
+        submission_group_id = str(uuid4())
+        extra_data = {
+            "client_id": str(uuid4()),
+            "service_language_mapping": {"google": {"ko": ""}},
+            "source_language": "en",
+            "organization_uuid": str(uuid4()),
+            "team_id": team_id,
+            "group_id": submission_group_id,
+            "channel_id": "C123",
+            "text_length": 65,
+            "usage_type": "channel_translation",
+            "source_text": "can u debug?",
+            "target_language_order": ["ko"],
+            "display_format": "thread",
+            "message_ts": "123456.789",
+        }
+        event_data = {
+            "extra_data": extra_data,
+            "translations": {"ko": ["디버깅"]},
+        }
+        event = RayEvent(
+            event="slack:direct:mt:result",
+            data={"client_id": slack_user_no_group.ray_client_id, **event_data},
+        )
+
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {
+                "id": user_id,
+                "locale": "en-US",
+                "tz": "America/New_York",
+                "profile": {"email": "test@example.com"},
+            }
+        }
+        mock_client.conversations_info.return_value = {
+            "channel": {"name": "test-channel"}
+        }
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch(
+                "app.dependencies.get_slack_user", return_value=slack_user_no_group
+            ):
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray.post_channel_translation_notification",
+                            new_callable=AsyncMock,
+                        ) as mock_post:
+                            with patch(
+                                "app.routers.ray.log_inline_mt_usage_by_client_id",
+                                new_callable=AsyncMock,
+                            ) as mock_spend:
+                                mock_spend.return_value = str(uuid4())
+                                with patch(
+                                    "app.routers.ray.log_google_api_usage",
+                                    new_callable=AsyncMock,
+                                ) as mock_log:
+                                    auth = RayEventAuth()
+                                    await auth.initialize(event, "valid-token")
+
+                                    # Must not raise (previously a bare assert on
+                                    # ray_user_group_id produced a 422).
+                                    await ray_events(event, auth)
+
+                                    mock_post.assert_called_once()
+                                    mock_spend.assert_called_once()
+                                    # Usage log falls back to the submission's
+                                    # group_id when the default group is NULL.
+                                    mock_log.assert_called_once()
+                                    assert (
+                                        mock_log.call_args.kwargs["group_uuid"]
+                                        == submission_group_id
+                                    )
+
+    @pytest.mark.asyncio
     async def test_ray_events_invalid_event_type(self, mock_slack_user):
         """Test invalid event type raises 400."""
         event = RayEvent(
