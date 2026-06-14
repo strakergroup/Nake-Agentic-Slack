@@ -196,7 +196,10 @@ async def _send_translation_success_message(
 
 
 @app.event(
-    {"type": "message", "subtype": (None, "message_replied", "file_share")},
+    {
+        "type": "message",
+        "subtype": (None, "message_replied", "file_share", "bot_message"),
+    },
     middleware=[ray_connection],
 )
 @slack_log_decorator
@@ -215,41 +218,46 @@ async def message_event(
     # https://api.slack.com/events/message
     # Respond to messages without threads in 1-on-1 DMs with the bot only,
     # use threads in channels or group conversations (see the "app_mention" event).
-    if not context.is_bot:
-        if (
-            message.get("thread_ts")
-            and message.get("files")
-            and any(is_srt_file(file) for file in message.get("files", []))
-        ):
-            handled = await maybe_show_thread_media_embed_option(
-                client, context, message
+    channel_id = context.get("channel_id")
+    is_direct_message = message.get("channel_type") == "im" or is_channel_im(channel_id)
+    bot_user_id = context.get("bot_user_id")
+    text = message.get("text")
+
+    if context.is_bot and is_direct_message:
+        return
+
+    if (
+        not context.is_bot
+        and message.get("thread_ts")
+        and message.get("files")
+        and any(is_srt_file(file) for file in message.get("files", []))
+    ):
+        handled = await maybe_show_thread_media_embed_option(client, context, message)
+        if handled:
+            return
+    elif not context.is_bot and is_direct_message:
+        # extract team id from body
+        body_team_id = body.get("event", {}).get("team")
+        if body_team_id:
+            token = await get_bot_token_async(
+                team_id=body_team_id,
+                enterprise_id=context.enterprise_id,
             )
-            if handled:
-                return
-        elif message.get("channel_type") == "im" or is_channel_im(
-            context["channel_id"]
-        ):
-            # extract team id from body
-            body_team_id = body.get("event", {}).get("team")
-            if body_team_id:
-                token = await get_bot_token_async(
-                    team_id=body_team_id,
-                    enterprise_id=context.enterprise_id,
-                )
-                if token:
-                    if token != client.token:
-                        client.token = token
-            await respond_to_message(client, context, message, use_thread=False)
-        elif (
-            message.get("text")
-            and f"<@{context['bot_user_id']}>" not in message["text"]
-        ):
-            # Do not auto-translate if the bot is mentioned (should default to normal response).
-            await auto_translate_message(client, context, message)
-        else:
-            # Do nothing if the Slack app is not mentioned in group chats and
-            # auto-translate is disabled.
-            pass
+            if token:
+                if token != client.token:
+                    client.token = token
+        await respond_to_message(client, context, message, use_thread=False)
+    elif (
+        text
+        and (not bot_user_id or f"<@{bot_user_id}>" not in text)
+        and message.get("user") != bot_user_id
+    ):
+        # Do not auto-translate if this app is mentioned or posted the message.
+        await auto_translate_message(client, context, message)
+    else:
+        # Do nothing if the Slack app is not mentioned in group chats and
+        # auto-translate is disabled.
+        pass
 
 
 # chhanel deletion

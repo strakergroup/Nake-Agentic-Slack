@@ -3880,12 +3880,12 @@ class TestMessageEvent:
             mock_duplicate.assert_called_once_with("E123", "message", "123456.789")
 
     @pytest.mark.asyncio
-    async def test_message_event_bot_message_ignored(self, user_id, team_id):
-        """Test message_event ignores bot messages."""
+    async def test_message_event_bot_message_auto_translate(self, user_id, team_id):
+        """Test message_event auto-translates bot messages in channels."""
         from app.slack.listeners import message_event
 
         mock_client = AsyncMock()
-        message = {"ts": "123456.789", "text": "test"}
+        message = {"ts": "123456.789", "text": "test", "bot_id": "BOT123"}
         body = {"event": {"team": team_id}}
         context_dict = {
             "user_id": user_id,
@@ -3893,13 +3893,53 @@ class TestMessageEvent:
             "enterprise_id": None,
             "is_bot": True,  # Bot message
             "channel_id": "C123",
+            "ray": RayConnection(super_group=[], client=None),
+            "bot_user_id": "B123",
+        }
+
+        with (
+            patch("app.slack.listeners.is_channel_im", return_value=False),
+            patch(
+                "app.slack.listeners.auto_translate_message", new_callable=AsyncMock
+            ) as mock_auto_translate,
+            patch(
+                "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+            ) as mock_respond,
+        ):
+            await message_event(context_dict, mock_client, message=message, body=body)
+            mock_auto_translate.assert_called_once_with(
+                mock_client, context_dict, message
+            )
+            mock_respond.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_message_event_bot_dm_ignored(self, user_id, team_id):
+        """Test message_event ignores bot messages in DMs."""
+        from app.slack.listeners import message_event
+
+        mock_client = AsyncMock()
+        message = {
+            "ts": "123456.789",
+            "text": "test",
+            "bot_id": "BOT123",
+            "channel_type": "im",
+        }
+        body = {"event": {"team": team_id}}
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "enterprise_id": None,
+            "is_bot": True,
+            "channel_id": user_id,
+            "ray": RayConnection(super_group=[], client=None),
+            "bot_user_id": "B123",
         }
 
         with patch(
-            "app.slack.listeners.respond_to_message", new_callable=AsyncMock
-        ) as mock_respond:
+            "app.slack.listeners.auto_translate_message", new_callable=AsyncMock
+        ) as mock_auto_translate:
             await message_event(context_dict, mock_client, message=message, body=body)
-            mock_respond.assert_not_called()
+            mock_auto_translate.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_message_event_dm_calls_respond_to_message(
@@ -4595,15 +4635,23 @@ class TestAutoTranslateMessage:
         mock_client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_auto_translate_message_bot_message(
+    async def test_auto_translate_message_bot_message_over_rate_limit(
         self, user_id, team_id, ray_client
     ):
-        """Test auto_translate_message ignores bot messages."""
+        """Test auto_translate_message skips bot messages over the rate limit."""
         from app.slack.listener_actions import auto_translate_message
 
         mock_client = AsyncMock()
         message = {"ts": "123456.789", "text": "Hello", "bot_id": "B123"}
-        ray_connection = RayConnection(super_group=[], client=ray_client)
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
         context = RayContext(
             {
                 "user_id": user_id,
@@ -4613,9 +4661,109 @@ class TestAutoTranslateMessage:
             }
         )
 
-        await auto_translate_message(mock_client, context, message)
-        # Should return early, no calls
-        mock_client.chat_postMessage.assert_not_called()
+        with (
+            patch(
+                "app.slack.listener_actions.get_auto_translate_settings_and_langs",
+                new_callable=AsyncMock,
+            ) as mock_get_settings,
+            patch(
+                "app.slack.listener_actions.require_mt_tokens", new_callable=AsyncMock
+            ) as mock_require_tokens,
+            patch(
+                "app.slack.listener_actions.detect_language", new_callable=AsyncMock
+            ) as mock_detect,
+            patch(
+                "app.slack.listener_actions.can_translate_bot_message",
+                new_callable=AsyncMock,
+            ) as mock_can_translate_bot_message,
+            patch(
+                "app.slack.listener_actions.send_mt_translation_request",
+                new_callable=AsyncMock,
+            ) as mock_send_mt,
+        ):
+            mock_get_settings.return_value = [
+                {"target_lang": "es", "display_format": "thread"},
+                {"target_lang": "de", "display_format": "thread"},
+            ]
+            mock_require_tokens.return_value = True
+            mock_detect.return_value = SimpleNamespace(language="en")
+            mock_can_translate_bot_message.return_value = False
+
+            await auto_translate_message(mock_client, context, message)
+
+            mock_can_translate_bot_message.assert_called_once_with("C123", "B123")
+            mock_send_mt.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_translate_message_bot_message_under_rate_limit(
+        self, user_id, team_id, ray_client
+    ):
+        """Test auto_translate_message sends bot messages under the rate limit."""
+        from app.slack.listener_actions import auto_translate_message
+
+        mock_client = AsyncMock()
+        message = {"ts": "123456.789", "text": "Hello", "bot_id": "B123"}
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+            }
+        )
+
+        with (
+            patch(
+                "app.slack.listener_actions.get_auto_translate_settings_and_langs",
+                new_callable=AsyncMock,
+            ) as mock_get_settings,
+            patch(
+                "app.slack.listener_actions.require_mt_tokens", new_callable=AsyncMock
+            ) as mock_require_tokens,
+            patch(
+                "app.slack.listener_actions.detect_language", new_callable=AsyncMock
+            ) as mock_detect,
+            patch(
+                "app.slack.listener_actions.can_translate_bot_message",
+                new_callable=AsyncMock,
+            ) as mock_can_translate_bot_message,
+            patch(
+                "app.slack.listener_actions.evaluate_get_glossary_resource",
+                new_callable=AsyncMock,
+            ) as mock_glossary,
+            patch(
+                "app.slack.listener_actions.get_group_id",
+                new_callable=AsyncMock,
+            ) as mock_group_id,
+            patch(
+                "app.slack.listener_actions.send_mt_translation_request",
+                new_callable=AsyncMock,
+            ) as mock_send_mt,
+        ):
+            mock_get_settings.return_value = [
+                {"target_lang": "es", "display_format": "thread"},
+                {"target_lang": "de", "display_format": "thread"},
+            ]
+            mock_require_tokens.return_value = True
+            mock_detect.return_value = SimpleNamespace(language="en")
+            mock_can_translate_bot_message.return_value = True
+            mock_glossary.return_value = ""
+            mock_group_id.return_value = "group-test-id"
+
+            await auto_translate_message(mock_client, context, message)
+
+            mock_send_mt.assert_called_once()
+            extra_data = mock_send_mt.call_args.args[3]
+            assert extra_data.slack_user_id == "B123"
 
     @pytest.mark.asyncio
     async def test_auto_translate_message_5k_limit(self, user_id, team_id, ray_client):

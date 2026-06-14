@@ -9,6 +9,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [VerifyLoop Integration](verifyloop.md) - Configuration, endpoints, modal form, and data flow for the VerifyLoop feature
 - [VerifyLoop Architecture Diagrams](verifyloop-architecture.md) - Visual diagrams of system architecture, auth flow, task pipeline, and component dependencies
 - [Channel Info Caching](channel-info-caching.md) - How channel names and privacy status are cached in the database
+- [Bot Message Channel Translation](bot-message-channel-translation.md) - Bot-message channel translation behavior and Redis quota flow
 - [Source Language Options](source-language-options.md) - How Cloud Verify source-language options flow from the Verify API and how Slack now matches them
 - [Pyright Workflow](pyright-workflow.md) - Local type checking and ignored-module backlog during the Pyright rollout
 - [Google Chat notifications](google-chat-notifications.md) - Standalone webhook alerts and mirroring from `buglog_notifier`

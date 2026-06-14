@@ -44,6 +44,7 @@ from app.translate import _
 
 from ..auth.connector import (
     RayClient,
+    RayConnection,
     RayContext,
     approve_pending_groups,
     duration_to_tokens,  # noqa: F401 - kept for potential future use
@@ -70,6 +71,7 @@ from ..ray.utils import (
 )
 from ..redis import redis_conn
 from ..watson import watson_message
+from .bot_translation_limits import can_translate_bot_message
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
     AIHelperMessage,
@@ -956,9 +958,6 @@ async def auto_translate_message(
     thread_ts: str | None = message.get("thread_ts")
     if not text:
         return
-    if message.get("bot_id"):
-        # Do not translate bot messages.
-        return
     # Check for 5K character limit
     if len(text) > 5000:
         error_msg = _("The message is over the 5K character limit")
@@ -971,6 +970,9 @@ async def auto_translate_message(
                 )
             except Exception as e:
                 notify_exception(e, "Failed to post 5K character limit error message")
+        return
+    ray_connection = context.get("ray")
+    if not isinstance(ray_connection, RayConnection) or not ray_connection.super_group:
         return
     assert context.channel_id  # TODO enforce this
 
@@ -996,9 +998,14 @@ async def auto_translate_message(
         return
     source_lang = detected_source_lang_response.language
 
+    bot_id = message.get("bot_id")
+    if isinstance(bot_id, str):
+        if not await can_translate_bot_message(context.channel_id, bot_id):
+            return
+
     try:
-        org_uuid = context["ray"].super_group[0].verify_organization_uuid
-        client_id = context["ray"].client.id if context["ray"].client else org_uuid
+        org_uuid = ray_connection.super_group[0].verify_organization_uuid
+        client_id = ray_connection.client.id if ray_connection.client else org_uuid
         group_id = await get_group_id(org_uuid)
 
         # Get display_format from settings
@@ -1014,7 +1021,7 @@ async def auto_translate_message(
                 glossary_id,
             ) = await _resolve_mt_route_and_glossary(
                 org_uuid,
-                context["ray"].client,
+                ray_connection.client,
                 source_lang,
                 target_lang,
             )
@@ -1032,7 +1039,7 @@ async def auto_translate_message(
             MtTranslationExtraData(
                 client_id=client_id,
                 team_id=context.team_id,
-                slack_user_id=context.user_id,
+                slack_user_id=bot_id or context.user_id,
                 service_language_mapping=service_language_mapping,
                 source_language=detected_source_lang_response.language,
                 organization_uuid=org_uuid,
