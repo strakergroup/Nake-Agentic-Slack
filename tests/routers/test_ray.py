@@ -1217,6 +1217,85 @@ class TestRayEventsEndpoint:
                                     mock_spend.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_ray_events_channel_translation_result_bot_reporting(self, team_id):
+        """Bot channel translation reports bot name and is_bot metadata."""
+        bot_slack_user = SlackUser(
+            user_id="U_BOT_USER",
+            team_id=team_id,
+            enterprise_id=None,
+            channel_id="C123",
+            bot_token="xoxb-test-token",
+            ray_client_id=str(uuid4()),
+            ray_username="bot-org",
+            ray_user_group_id="billing-group",
+            is_subscribed=True,
+        )
+        extra_data = {
+            "client_id": bot_slack_user.ray_client_id,
+            "service_language_mapping": {"google": {"fr": ""}},
+            "source_language": "en",
+            "organization_uuid": str(uuid4()),
+            "team_id": team_id,
+            "group_id": "billing-group",
+            "channel_id": "C123",
+            "text_length": 100,
+            "usage_type": "channel_translation",
+            "source_text": "Hello world",
+            "target_language_order": ["fr"],
+            "display_format": "thread",
+            "message_ts": "123456.789",
+            "slack_user_id": "U_BOT_USER",
+            "slack_user_name": "Deploy Bot",
+            "is_bot": True,
+        }
+        event = RayEvent(
+            event="slack:direct:mt:result",
+            data={
+                "client_id": bot_slack_user.ray_client_id,
+                "extra_data": extra_data,
+                "translations": {"fr": ["Bonjour"]},
+            },
+        )
+
+        mock_client = AsyncMock()
+        mock_client.users_info.side_effect = RuntimeError("bot profile unavailable")
+        mock_client.conversations_info.return_value = {
+            "channel": {"name": "test-channel"}
+        }
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch("app.dependencies.get_slack_user", return_value=bot_slack_user):
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray.post_channel_translation_notification",
+                            new_callable=AsyncMock,
+                        ):
+                            with patch(
+                                "app.routers.ray.log_inline_mt_usage_by_client_id",
+                                new_callable=AsyncMock,
+                            ) as mock_spend:
+                                mock_spend.return_value = str(uuid4())
+                                with patch(
+                                    "app.routers.ray.log_google_api_usage",
+                                    new_callable=AsyncMock,
+                                ):
+                                    auth = RayEventAuth()
+                                    await auth.initialize(event, "valid-token")
+
+                                    await ray_events(event, auth)
+
+                                    mock_spend.assert_called_once()
+                                    assert (
+                                        mock_spend.call_args.kwargs["client_name"]
+                                        == "Deploy Bot"
+                                    )
+                                    assert mock_spend.call_args.kwargs["email"] is None
+                                    assert mock_spend.call_args.kwargs["is_bot"] is True
+
+    @pytest.mark.asyncio
     async def test_ray_events_channel_translation_result_null_group_id(
         self, user_id, team_id
     ):

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- [Changed]: Bot channel translation metadata now carries `is_bot`, a resolvable Slack bot user id, and the bot display name as the reporting `client_name` fallback for `/mt/inline-usage` (Wade Norman, 2026-06-15)
+- [Fixed]: Preserved the Slack `message_not_found` exception as the cause when the channel-translation edit fallback receives a post response without a timestamp, clearing Ruff B904 for the repo lint check (Wade Norman, 2026-06-15)
 - [Changed]: RAY-80133 enabled channel translation for Slack bot messages with a Redis-backed limit of 10 bot messages per bot, per channel, per 5-minute window to prevent bot loops (Wade Norman, 2026-06-15)
 - [Fixed]: RAY-80199 — channel/direct MT result callback no longer fails with a 422 when the poster's default group (`obj_m_member.groupid`) is NULL; removed the bare `assert` and resolve the usage-report `group_uuid` from the submission's `group_id` (org/group context) so org-billed channel auto-translate succeeds without a default group. Also fall back to the exception class name when an error stringifies to empty so the 422 message is never blank. Adds a NULL-groupid channel-translation test (Wade Norman, 2026-06-11)
 - [Fixed]: Inline/channel/shortcut MT charge now sends the billing group (`auth.slack_user.ray_user_group_id`) as `group_uuid` to `/mt/inline-usage`, so org-billed channel MT's ledger `group_uuid` stays the real group (e.g. IBM super group) instead of collapsing to the org uuid after the gateway migration; `log_inline_mt_usage_by_client_id` gains an optional `group_uuid` (RAY-80000 hotfix) (Wade Norman, 2026-06-11)

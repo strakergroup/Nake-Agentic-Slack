@@ -1694,6 +1694,7 @@ async def log_inline_mt_usage_by_client_id(
     idempotency_key: str | None = None,
     email: str | None = None,
     client_name: str | None = None,
+    is_bot: bool | None = None,
     group_uuid: str | None = None,
 ) -> str:
     """
@@ -1771,6 +1772,8 @@ async def log_inline_mt_usage_by_client_id(
         data["email"] = email
     if client_name:
         data["client_name"] = client_name
+    if is_bot is not None:
+        data["is_bot"] = is_bot
     # Billing group for the ledger debit. Org-billed channel/shortcut MT
     # authenticates as the org, so the gateway would otherwise record group_uuid as
     # the org; send the resolved billing group to keep group attribution as it was

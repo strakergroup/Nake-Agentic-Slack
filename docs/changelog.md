@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Bot channel translation metadata now carries `is_bot`, a resolvable Slack bot user id, and the bot display name as the reporting `client_name` fallback for `/mt/inline-usage` (Wade Norman, 2026-06-15)
+- [Fixed]: Preserved the Slack `message_not_found` exception as the cause when the channel-translation edit fallback receives a post response without a timestamp, clearing Ruff B904 for the repo lint check (Wade Norman, 2026-06-15)
 - [Changed]: RAY-80133 enabled channel translation for Slack bot messages with a Redis-backed limit of 10 bot messages per bot, per channel, per 5-minute window to prevent bot loops (Wade Norman, 2026-06-15)
 - [Changed]: Consolidated duplicate `get_auto_translate_languages` into `app/ray/settings.py`; removed `include_variations` in favour of `AUTO_TRANSLATE_LANGUAGE_ALIASES` (`zh` only) for runtime lookup (RAY-80123, Wade Norman, 2026-06-15)
 - [Changed]: Channel/shortcut MT charge now sends the Slack poster's `email` and `client_name` to `/mt/inline-usage` so the usage report shows the poster (these debits are billed against the group, so the report cannot resolve identity from `client_uuid`). `log_inline_mt_usage_by_client_id` gains optional `email`/`client_name`; the MT-result callback passes the Slack profile email/name (Wade Norman, 2026-06-03)

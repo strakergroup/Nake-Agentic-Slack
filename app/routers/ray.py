@@ -1654,7 +1654,12 @@ async def ray_events(
                 # Slack user identity so the usage row carries it (RAY-80000).
                 slack_profile = user_info["user"]["profile"] if user_info else {}
                 user_email = slack_profile.get("email") or None
-                user_name = slack_profile.get("real_name") or None
+                user_name = (
+                    slack_profile.get("real_name")
+                    or slack_profile.get("real_name_normalized")
+                    or mt_result_extra_data.slack_user_name
+                    or None
+                )
 
                 # Words in the source message -- a typed report column on the
                 # usage row (RAY-80000). Billing stays character-based; this is
@@ -1681,6 +1686,7 @@ async def ray_events(
                     idempotency_key=inline_idempotency_key,
                     email=user_email,
                     client_name=user_name,
+                    is_bot=mt_result_extra_data.is_bot,
                     # Send the billing group so the gateway records the ledger
                     # group_uuid as the real group (e.g. the IBM super group) instead
                     # of collapsing to the org uuid for org-billed channel/shortcut

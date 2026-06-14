@@ -4642,7 +4642,13 @@ class TestAutoTranslateMessage:
         from app.slack.listener_actions import auto_translate_message
 
         mock_client = AsyncMock()
-        message = {"ts": "123456.789", "text": "Hello", "bot_id": "B123"}
+        message = {
+            "ts": "123456.789",
+            "text": "Hello",
+            "user": "U_BOT_USER",
+            "bot_id": "B123",
+            "bot_profile": {"name": "Deploy Bot"},
+        }
         super_group = RaySuperGroup(
             id=str(uuid4()),
             name="Test Group",
@@ -4702,7 +4708,13 @@ class TestAutoTranslateMessage:
         from app.slack.listener_actions import auto_translate_message
 
         mock_client = AsyncMock()
-        message = {"ts": "123456.789", "text": "Hello", "bot_id": "B123"}
+        message = {
+            "ts": "123456.789",
+            "text": "Hello",
+            "user": "U_BOT_USER",
+            "bot_id": "B123",
+            "bot_profile": {"name": "Deploy Bot"},
+        }
         super_group = RaySuperGroup(
             id=str(uuid4()),
             name="Test Group",
@@ -4763,7 +4775,9 @@ class TestAutoTranslateMessage:
 
             mock_send_mt.assert_called_once()
             extra_data = mock_send_mt.call_args.args[3]
-            assert extra_data.slack_user_id == "B123"
+            assert extra_data.slack_user_id == "U_BOT_USER"
+            assert extra_data.slack_user_name == "Deploy Bot"
+            assert extra_data.is_bot is True
 
     @pytest.mark.asyncio
     async def test_auto_translate_message_5k_limit(self, user_id, team_id, ray_client):

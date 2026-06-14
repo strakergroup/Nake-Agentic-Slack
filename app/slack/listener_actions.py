@@ -999,9 +999,17 @@ async def auto_translate_message(
     source_lang = detected_source_lang_response.language
 
     bot_id = message.get("bot_id")
+    is_bot_message = isinstance(bot_id, str)
+    slack_user_id = context.user_id
+    slack_user_name = None
     if isinstance(bot_id, str):
         if not await can_translate_bot_message(context.channel_id, bot_id):
             return
+        slack_user_id = message.get("user") or bot_id
+        bot_profile = message.get("bot_profile")
+        if isinstance(bot_profile, dict):
+            slack_user_name = bot_profile.get("name") or bot_profile.get("real_name")
+        slack_user_name = slack_user_name or message.get("username")
 
     try:
         org_uuid = ray_connection.super_group[0].verify_organization_uuid
@@ -1039,7 +1047,9 @@ async def auto_translate_message(
             MtTranslationExtraData(
                 client_id=client_id,
                 team_id=context.team_id,
-                slack_user_id=bot_id or context.user_id,
+                slack_user_id=slack_user_id,
+                slack_user_name=slack_user_name,
+                is_bot=is_bot_message,
                 service_language_mapping=service_language_mapping,
                 source_language=detected_source_lang_response.language,
                 organization_uuid=org_uuid,
