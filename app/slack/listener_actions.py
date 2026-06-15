@@ -55,7 +55,7 @@ from ..auth.connector import (
 from ..config import domains
 from ..ray.service import RayService
 from ..ray.settings import (
-    get_auto_translate_languages,
+    get_auto_translate_language_entries,
     get_auto_translate_settings_and_langs,
 )
 from ..ray.submissions import (
@@ -123,6 +123,13 @@ MEDIA_ACTION_IDS = frozenset(
 )
 
 FR_CA_VARIANTS = frozenset({"fr-ca", "french-canada", "french-canadian"})
+
+
+def _normalize_mt_language_code(language_code: str) -> str:
+    normalized = language_code.lower().replace("_", "-")
+    if normalized in FR_CA_VARIANTS:
+        return "fr-ca"
+    return language_code
 
 
 def build_human_translation_purchase_order_number(job: dict[str, Any]) -> str:
@@ -238,7 +245,7 @@ def _language_code_from_srt_filename(filename: str) -> str:
     candidate = stem.rsplit("_", 1)[1]  # "Japanese"
     candidate_lower = candidate.casefold()
 
-    for code, name in get_auto_translate_languages(include_variations=True):
+    for code, name in get_auto_translate_language_entries():
         if name.casefold() == candidate_lower or code.casefold() == candidate_lower:
             return code
 
@@ -265,9 +272,7 @@ def create_service_language_mapping(
     service_overrides = service_overrides or {}
 
     for target_lang in target_langs:
-        normalized_target = (
-            "fr-ca" if target_lang.lower() in FR_CA_VARIANTS else target_lang
-        )
+        normalized_target = _normalize_mt_language_code(target_lang)
         glossary_id = glossary_ids.get(
             normalized_target, glossary_ids.get(target_lang, "")
         )
@@ -292,12 +297,8 @@ async def _resolve_mt_route_and_glossary(
     target_lang: str,
 ) -> tuple[str, str, str]:
     """Resolve the target code, engine, and glossary for a single MT pair."""
-    normalized_source = (
-        "fr-ca" if source_lang.lower() in FR_CA_VARIANTS else source_lang
-    )
-    normalized_target = (
-        "fr-ca" if target_lang.lower() in FR_CA_VARIANTS else target_lang
-    )
+    normalized_source = _normalize_mt_language_code(source_lang)
+    normalized_target = _normalize_mt_language_code(target_lang)
 
     microsoft_glossary = ""
     if (

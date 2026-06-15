@@ -148,6 +148,11 @@ class TestCreateServiceLanguageMapping:
         assert "microsoft" in result
         assert result["microsoft"] == {"fr-ca": ""}
 
+    def test_create_service_language_mapping_spanish_latin_america(self):
+        """Spanish Latin America uses es-419 directly for Google MT."""
+        result = create_service_language_mapping(["es-419"])
+        assert result == {"google": {"es-419": ""}}
+
 
 class TestIsVideoFile:
     """Tests for is_video_file function."""

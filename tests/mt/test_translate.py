@@ -132,11 +132,11 @@ class TestResolveLanguageCode:
 class TestResolveLanguage:
     """Tests for resolve_language function."""
 
-    @patch("app.mt.translate.get_auto_translate_languages")
+    @patch("app.mt.translate.get_auto_translate_language_code_map")
     @patch("app.mt.translate.resolve_language_code")
     def test_resolve_language_google_engine(self, mock_resolve_code, mock_get_langs):
         """Test resolving languages for Google engine."""
-        mock_get_langs.return_value = {"fr": "French", "es": "Spanish"}
+        mock_get_langs.return_value = {"fr": "fr", "es": "es"}
         mock_lang = MagicMock()
         mock_lang.google_code = "de"
         mock_resolve_code.return_value = mock_lang
@@ -145,11 +145,11 @@ class TestResolveLanguage:
 
         assert result == ["fr", "de"]  # fr is in auto-translate dict, de is resolved
 
-    @patch("app.mt.translate.get_auto_translate_languages")
+    @patch("app.mt.translate.get_auto_translate_language_code_map")
     @patch("app.mt.translate.resolve_language_code")
     def test_resolve_language_microsoft_engine(self, mock_resolve_code, mock_get_langs):
         """Test resolving languages for Microsoft engine."""
-        mock_get_langs.return_value = {"fr": "French"}
+        mock_get_langs.return_value = {"fr": "fr"}
         mock_lang = MagicMock()
         mock_lang.bcp_47 = "fr-CA"
         mock_resolve_code.return_value = mock_lang
@@ -158,7 +158,7 @@ class TestResolveLanguage:
 
         assert result == ["fr-CA"]  # Uses bcp_47 for Microsoft
 
-    @patch("app.mt.translate.get_auto_translate_languages")
+    @patch("app.mt.translate.get_auto_translate_language_code_map")
     @patch("app.mt.translate.resolve_language_code")
     def test_resolve_language_microsoft_no_bcp47(
         self, mock_resolve_code, mock_get_langs
@@ -176,7 +176,7 @@ class TestResolveLanguage:
 
             assert result == ["fr"]
 
-    @patch("app.mt.translate.get_auto_translate_languages")
+    @patch("app.mt.translate.get_auto_translate_language_code_map")
     @patch("app.mt.translate.resolve_language_code")
     def test_resolve_language_no_results(self, mock_resolve_code, mock_get_langs):
         """Test resolving languages with no results defaults to English."""
@@ -187,13 +187,13 @@ class TestResolveLanguage:
 
         assert result == ["en"]  # Default fallback
 
-    @patch("app.mt.translate.get_auto_translate_languages")
+    @patch("app.mt.translate.get_auto_translate_language_code_map")
     @patch("app.mt.translate.resolve_language_code")
     def test_resolve_language_microsoft_not_in_dict(
         self, mock_resolve_code, mock_get_langs
     ):
         """Test resolving languages for Microsoft when not in auto-translate dict."""
-        mock_get_langs.return_value = {"fr": "French"}
+        mock_get_langs.return_value = {"fr": "fr"}
         mock_lang = MagicMock()
         mock_lang.bcp_47 = "es-ES"
         mock_resolve_code.return_value = mock_lang

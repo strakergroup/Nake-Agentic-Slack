@@ -2,7 +2,7 @@ import langcodes
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.ray.settings import get_auto_translate_languages
+from app.ray.settings import get_auto_translate_language_code_map
 
 from ..database import engines
 from ..models import Language
@@ -65,11 +65,12 @@ def resolve_language_code(lang: str | None) -> Language | None:
 def resolve_language(target_langs: list[str], engine: str) -> list[str]:
     """Resolve language code from language name."""
     # Resolve language code from language name
-    langs_dict = get_auto_translate_languages(True)
+    langs_dict = get_auto_translate_language_code_map()
     mapped_lang = []
     for lang in target_langs:
-        if engine != "microsoft" and lang in langs_dict:
-            mapped_lang.append(lang)
+        normalized = lang.lower().replace("_", "-")
+        if engine != "microsoft" and normalized in langs_dict:
+            mapped_lang.append(langs_dict[normalized].lower())
         else:
             db_lang = resolve_language_code(lang)
             if db_lang:

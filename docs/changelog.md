@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Consolidated duplicate `get_auto_translate_languages` into `app/ray/settings.py`; removed `include_variations` in favour of `AUTO_TRANSLATE_LANGUAGE_ALIASES` (`zh` only) for runtime lookup (RAY-80123, Wade Norman, 2026-06-15)
 - [Changed]: Channel/shortcut MT charge now sends the Slack poster's `email` and `client_name` to `/mt/inline-usage` so the usage report shows the poster (these debits are billed against the group, so the report cannot resolve identity from `client_uuid`). `log_inline_mt_usage_by_client_id` gains optional `email`/`client_name`; the MT-result callback passes the Slack profile email/name (Wade Norman, 2026-06-03)
 - [Fixed]: Thread SRT embed (`pipeline_type` embed) no longer catch-up charges transcribe/translate on embed callback; passes `target_languages` in task extra_data and resolves embed `source_language` from subtitle language codes when Whisper is absent; helpers in `app/media/embed_spend.py` (Wade Norman, 2026-06-02)
 - [Changed]: Media embed spend (`/mt/embed`) now sends `target_languages` and Whisper `source_language` on the usage row so MT reports resolve languages from usage metadata by default (Wade Norman, 2026-06-02)

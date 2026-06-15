@@ -6,6 +6,7 @@ from app.mt.service import (
     evaluate_get_glossary_resource,
     glossary_language_candidates,
     is_no_op_translation_pair,
+    resolve_language,
 )
 
 
@@ -35,6 +36,8 @@ class TestIsNoOpTranslationPair:
             ("fr-ca", "fr"),
             ("pt", "pt-BR"),
             ("pt-BR", "pt"),
+            ("es", "es-419"),
+            ("es-419", "es"),
             ("en-US", "en"),
         ],
     )
@@ -121,3 +124,9 @@ async def test_evaluate_get_glossary_resource_prefers_exact_match(
 
     assert result == "glossary-exact"
     assert mock_fetch_one.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_language_keeps_es_419_for_google():
+    result = await resolve_language(["es-419"], engine="google")
+    assert result == ["es-419"]

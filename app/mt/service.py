@@ -6,6 +6,7 @@ from straker_utils.sql.async_engine import fetch_all, fetch_one
 from app.auth.connector import RayClient
 from app.database import async_engines
 from app.models import Language
+from app.ray.settings import get_auto_translate_language_code_map
 from app.slack.language_validation import get_language_base_code
 
 microsoft_languages = {
@@ -27,7 +28,8 @@ def is_no_op_translation_pair(source: str | None, target: str | None) -> bool:
     - Empty / missing input on either side → False (let the normal flow handle it).
     - Exact match → True (e.g. ``en`` ↔ ``en``).
     - Same ISO-639 base AND at least one side is the bare base code → True.
-      Examples that skip: ``zh`` ↔ ``zh-CN``, ``fr`` ↔ ``fr-ca``, ``pt`` ↔ ``pt-BR``.
+      Examples that skip: ``zh`` ↔ ``zh-CN``, ``fr`` ↔ ``fr-ca``, ``pt`` ↔ ``pt-BR``,
+      ``es`` ↔ ``es-419``.
     - Distinct dialects sharing a base (no bare side) → False, so the
       translation still runs. Examples that translate: ``zh-CN`` ↔ ``zh-TW``,
       ``pt-BR`` ↔ ``pt-PT``.
@@ -195,131 +197,17 @@ async def evaluate_get_glossary_resource(
     return ""
 
 
-def get_auto_translate_languages(
-    include_variations: bool = False,
-) -> list[tuple[str, str]]:
-    """Get the available languages for auto-translation (ISO code and name).
-
-    Args:
-        include_variations (bool, optional): Whether to include variations of
-            languages, e.g. "zh" and "zh-CN". Defaults to False.
-
-    Returns:
-        list[tuple[str, str]]: The list of languages, tuples with code and label.
-    """
-    languages = [
-        ("af", "Afrikaans"),
-        ("sq", "Albanian"),
-        ("am", "Amharic"),
-        ("ar", "Arabic"),
-        ("hy", "Armenian"),
-        ("as", "Assamese"),
-        ("eu", "Basque"),
-        ("be", "Belarusian"),
-        ("bn", "Bengali"),
-        ("bs", "Bosnian"),
-        ("bg", "Bulgarian"),
-        ("ca", "Catalan"),
-        ("ceb", "Cebuano"),
-        ("ny", "Chichewa"),
-        ("zh-CN", "Chinese (Simplified)"),
-        ("zh-TW", "Chinese (Traditional)"),
-        ("hr", "Croatian"),
-        ("cs", "Czech"),
-        ("da", "Danish"),
-        ("dv", "Dhivehi"),
-        ("nl", "Dutch"),
-        ("en", "English"),
-        ("eo", "Esperanto"),
-        ("et", "Estonian"),
-        ("fi", "Finnish"),
-        ("fr", "French"),
-        ("fr-ca", "French (Canadian)"),
-        ("ka", "Georgian"),
-        ("de", "German"),
-        ("el", "Greek"),
-        ("gn", "Guarani"),
-        ("gu", "Gujarati"),
-        ("ht", "Haitian Creole French"),
-        ("iw", "Hebrew"),
-        ("hi", "Hindi"),
-        ("hu", "Hungarian"),
-        ("is", "Icelandic"),
-        ("id", "Indonesian"),
-        ("ga", "Irish Gaelic"),
-        ("it", "Italian"),
-        ("ja", "Japanese"),
-        ("jw", "Javanese"),
-        ("kk", "Kazakh"),
-        ("km", "Khmer"),
-        ("ko", "Korean"),
-        ("ky", "Kyrgyz"),
-        ("lo", "Lao"),
-        ("la", "Latin"),
-        ("lv", "Latvian"),
-        ("lt", "Lithuanian"),
-        ("mk", "Macedonian"),
-        ("mg", "Malagasy"),
-        ("ms", "Malay"),
-        ("ml", "Malayalam"),
-        ("mt", "Maltese"),
-        ("mi", "Maori"),
-        ("mr", "Marathi"),
-        ("mn", "Mongolian"),
-        ("ne", "Nepali"),
-        ("no", "Norwegian"),
-        ("or", "Oriya"),
-        ("ps", "Pashto"),
-        ("fa", "Persian"),
-        ("pl", "Polish"),
-        ("pt", "Portuguese"),
-        ("pt-BR", "Portuguese (Brazil)"),
-        ("pa", "Punjabi"),
-        ("ro", "Romanian"),
-        ("ru", "Russian"),
-        ("sa", "Sanskrit"),
-        ("sr", "Serbian"),
-        ("st", "Sesotho"),
-        ("si", "Sinhala"),
-        ("sk", "Slovak"),
-        ("sl", "Slovenian"),
-        ("so", "Somali"),
-        ("es", "Spanish"),
-        ("su", "Sundanese"),
-        ("sw", "Swahili"),
-        ("sv", "Swedish"),
-        ("tl", "Tagalog"),
-        ("tg", "Tajik"),
-        ("ta", "Tamil"),
-        ("th", "Thai"),
-        ("tr", "Turkish"),
-        ("uk", "Ukrainian"),
-        ("ur", "Urdu"),
-        ("uz", "Uzbek"),
-        ("vi", "Vietnamese"),
-        ("cy", "Welsh"),
-        ("zu", "Zulu"),
-    ]
-
-    if include_variations:
-        languages.append(("zh", "Chinese (Simplified)"))
-
-    languages = [(lang[0], lang[1]) for lang in languages]
-    languages = sorted(languages, key=lambda language: language[1])
-    return languages
-
-
 async def resolve_language(target_langs: list[str], engine: str) -> list[str]:
     """Resolve language code from language name."""
-    # Resolve language code from language name
-    langs_dict = dict(get_auto_translate_languages(True)) | microsoft_languages
+    code_map = get_auto_translate_language_code_map() | microsoft_languages
     mapped_lang = []
     for lang in target_langs:
-        if engine != "microsoft" and lang.lower() in langs_dict:
-            if lang.lower() in ["fr-ca", "french-canada", "french-canadian"]:
+        normalized = lang.lower().replace("_", "-")
+        if engine != "microsoft" and normalized in code_map:
+            if normalized in ["fr-ca", "french-canada", "french-canadian"]:
                 mapped_lang.append("fr-ca")
             else:
-                mapped_lang.append(lang.lower())
+                mapped_lang.append(code_map[normalized].lower())
         else:
             db_lang = await resolve_language_code(lang)
             if db_lang:
