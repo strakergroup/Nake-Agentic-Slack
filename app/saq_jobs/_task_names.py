@@ -30,4 +30,5 @@ TaskName = Literal[
     "process_evaluation_submission",
     "persist_log_notification",
     "persist_mt_ts_edit",
+    "charge_inline_mt_usage",
 ]

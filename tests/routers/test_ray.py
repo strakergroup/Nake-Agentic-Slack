@@ -1113,25 +1113,35 @@ class TestRayEventsEndpoint:
                             "app.routers.ray.post_notification", new_callable=AsyncMock
                         ) as mock_post:
                             with patch(
-                                "app.routers.ray.log_inline_mt_usage_by_client_id",
+                                "app.routers.ray.enqueue_inline_mt_billing",
                                 new_callable=AsyncMock,
-                            ) as mock_spend:
-                                mock_spend.return_value = str(uuid4())
-                                with patch(
-                                    "app.routers.ray.log_google_api_usage",
-                                    new_callable=AsyncMock,
-                                ):
-                                    auth = RayEventAuth()
-                                    await auth.initialize(event, "valid-token")
+                            ) as mock_bill:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
 
-                                    await ray_events(event, auth)
+                                await ray_events(event, auth)
 
-                                    # Verify notification was sent
-                                    mock_post.assert_called_once()
-                                    # Spend now routes through the gateway
-                                    # (log_inline_mt_usage_by_client_id) which writes
-                                    # the credit_transaction_usage row (RAY-80000).
-                                    mock_spend.assert_called_once()
+                                # Verify notification was sent
+                                mock_post.assert_called_once()
+                                # Billing is now deferred to a durable SAQ job so
+                                # a gateway timeout cannot 422 the callback after
+                                # the Slack message was posted (RAY-80258).
+                                mock_bill.assert_called_once()
+                                billing = mock_bill.call_args.kwargs["billing"]
+                                assert (
+                                    billing["client_id"]
+                                    == mock_slack_user.ray_client_id
+                                )
+                                assert billing["usage_type"] == (
+                                    "direct_machine_translation"
+                                )
+                                # No message_ts -> a stable fallback key is still
+                                # derived so the SAQ charge is idempotent.
+                                assert billing["idempotency_key"]
+                                assert (
+                                    mock_bill.call_args.kwargs["idempotency_key"]
+                                    == billing["idempotency_key"]
+                                )
 
     @pytest.mark.asyncio
     async def test_ray_events_channel_translation_result(
@@ -1190,31 +1200,26 @@ class TestRayEventsEndpoint:
                             new_callable=AsyncMock,
                         ) as mock_post:
                             with patch(
-                                "app.routers.ray.log_inline_mt_usage_by_client_id",
+                                "app.routers.ray.enqueue_inline_mt_billing",
                                 new_callable=AsyncMock,
-                            ) as mock_spend:
-                                mock_spend.return_value = str(uuid4())
-                                with patch(
-                                    "app.routers.ray.log_google_api_usage",
-                                    new_callable=AsyncMock,
-                                ):
-                                    auth = RayEventAuth()
-                                    await auth.initialize(event, "valid-token")
+                            ) as mock_bill:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
 
-                                    await ray_events(event, auth)
+                                await ray_events(event, auth)
 
-                                    # Verify channel translation notification was sent
-                                    mock_post.assert_called_once()
-                                    message = mock_post.call_args.args[3]
-                                    assert list(message.translations.keys()) == [
-                                        "la",
-                                        "af",
-                                        "fr",
-                                    ]
-                                    # Spend now routes through the gateway
-                                    # (log_inline_mt_usage_by_client_id) which writes
-                                    # the credit_transaction_usage row (RAY-80000).
-                                    mock_spend.assert_called_once()
+                                # Verify channel translation notification was sent
+                                mock_post.assert_called_once()
+                                message = mock_post.call_args.args[3]
+                                assert list(message.translations.keys()) == [
+                                    "la",
+                                    "af",
+                                    "fr",
+                                ]
+                                # Billing is deferred to a durable SAQ job that
+                                # charges the gateway and writes the
+                                # credit_transaction_usage row (RAY-80000 / 80258).
+                                mock_bill.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_channel_translation_result_bot_reporting(self, team_id):
@@ -1365,30 +1370,23 @@ class TestRayEventsEndpoint:
                             new_callable=AsyncMock,
                         ) as mock_post:
                             with patch(
-                                "app.routers.ray.log_inline_mt_usage_by_client_id",
+                                "app.routers.ray.enqueue_inline_mt_billing",
                                 new_callable=AsyncMock,
-                            ) as mock_spend:
-                                mock_spend.return_value = str(uuid4())
-                                with patch(
-                                    "app.routers.ray.log_google_api_usage",
-                                    new_callable=AsyncMock,
-                                ) as mock_log:
-                                    auth = RayEventAuth()
-                                    await auth.initialize(event, "valid-token")
+                            ) as mock_bill:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
 
-                                    # Must not raise (previously a bare assert on
-                                    # ray_user_group_id produced a 422).
-                                    await ray_events(event, auth)
+                                # Must not raise (previously a bare assert on
+                                # ray_user_group_id produced a 422).
+                                await ray_events(event, auth)
 
-                                    mock_post.assert_called_once()
-                                    mock_spend.assert_called_once()
-                                    # Usage log falls back to the submission's
-                                    # group_id when the default group is NULL.
-                                    mock_log.assert_called_once()
-                                    assert (
-                                        mock_log.call_args.kwargs["group_uuid"]
-                                        == submission_group_id
-                                    )
+                                mock_post.assert_called_once()
+                                mock_bill.assert_called_once()
+                                # Usage log falls back to the submission's
+                                # group_id when the default group is NULL; the
+                                # value is carried in the deferred billing payload.
+                                usage_log = mock_bill.call_args.kwargs["usage_log"]
+                                assert usage_log["group_uuid"] == submission_group_id
 
     @pytest.mark.asyncio
     async def test_ray_events_invalid_event_type(self, mock_slack_user):

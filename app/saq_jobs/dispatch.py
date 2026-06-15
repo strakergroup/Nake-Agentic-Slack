@@ -278,6 +278,38 @@ async def enqueue_log_notification(
     )
 
 
+async def enqueue_inline_mt_billing(
+    *,
+    idempotency_key: str,
+    billing: dict[str, Any],
+    usage_log: dict[str, Any],
+) -> None:
+    """Enqueue durable inline/channel/shortcut MT billing (RAY-80258).
+
+    Decouples the LanguageCloud ``/mt/inline-usage`` charge from the
+    ``slack:direct:mt:result`` callback so a transient ``ConnectTimeout``
+    no longer returns a 422 to ``redis-slack-consumer`` after the Slack
+    notification has been posted. ``charge_inline_mt_usage`` retries the
+    charge with the gateway idempotency key carried in ``billing`` and then
+    writes the Google API usage row.
+
+    The SAQ ``key`` reuses ``idempotency_key`` so a redelivered stream entry
+    (same message + content) collapses to a single in-flight job, matching the
+    gateway-side dedup and preventing a double charge on replay.
+    """
+    await enqueue(
+        "charge_inline_mt_usage",
+        queue_name=app_config.saq_background_queue_name,
+        key=f"charge_inline_mt_usage:{idempotency_key}",
+        retries=app_config.saq_logging_retries,
+        timeout=app_config.saq_logging_timeout_seconds,
+        retry_delay=2.0,
+        retry_backoff=True,
+        billing=billing,
+        usage_log=usage_log,
+    )
+
+
 async def enqueue_mt_ts_edit(*, send_ts: str, reply_ts: str) -> None:
     """Enqueue a durable ``persist_mt_ts_edit`` SAQ job (RAY-79638).
 

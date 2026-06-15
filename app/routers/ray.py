@@ -22,7 +22,6 @@ from app.auth.connector import (
     get_ray_client,
     get_ray_connection,
     log_embedding_by_client_id,
-    log_inline_mt_usage_by_client_id,
     log_transcribe_by_client_id,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
@@ -37,7 +36,6 @@ from app.media.embed_spend import (
     is_embed_only_pipeline as _is_embed_only_pipeline,
 )
 from app.models import TranscriptionTask, TranscriptionTaskInfo
-from app.mt.logs import log_google_api_usage
 from app.ray.settings import get_auto_translate_language_name
 from app.ray.submissions import SubmissionStatus, updated_submission_status
 from app.ray.utils import (
@@ -83,6 +81,7 @@ from ..ray.events.models import (
 )
 from ..redis import redis_conn
 from ..saq_jobs.dispatch import (
+    enqueue_inline_mt_billing,
     enqueue_mt_success_upload,
     enqueue_transcription_upload,
     enqueue_verify_complete_upload,
@@ -1330,6 +1329,7 @@ async def ray_events(
                     document_message: SlackMessage = DocParseErrorMessage(
                         document_translated_data.error_data.get("ext", ""),
                         document_translated_data.error_data.get("file_expected", ""),
+                        document_translated_data.error_data.get("message", ""),
                     )
                 elif document_translated_data.error_type == "file_complexity_error":
                     document_message: SlackMessage = DocComplexityErrorMessage(
@@ -1387,6 +1387,7 @@ async def ray_events(
                         message: SlackMessage = DocParseErrorMessage(
                             error_data.error_data.get("ext", ""),
                             error_data.error_data.get("file_expected", ""),
+                            error_data.error_data.get("message", ""),
                         )
                     elif error_data.error_type == "file_complexity_error":
                         message: SlackMessage = DocComplexityErrorMessage(
@@ -1636,15 +1637,29 @@ async def ray_events(
                 # new content) is still charged, while a pure redelivery (same ts,
                 # same content) dedupes. Omitted when no message ts is available so
                 # the charge stays back-compatible (RAY-80000 §3.4).
-                inline_idempotency_key = None
+                content_fingerprint = hashlib.sha256(
+                    (mt_result_extra_data.source_text or "").encode("utf-8")
+                ).hexdigest()[:16]
                 if mt_result_extra_data.message_ts:
-                    content_fingerprint = hashlib.sha256(
-                        (mt_result_extra_data.source_text or "").encode("utf-8")
-                    ).hexdigest()[:16]
                     inline_idempotency_key = build_spend_idempotency_key(
                         app_source="slack",
                         submission_id=(
                             f"{mt_result_extra_data.message_ts}:{content_fingerprint}"
+                        ),
+                        service=mt_result_extra_data.usage_type,
+                        unit_type="characters",
+                    )
+                else:
+                    # No message ts (e.g. slash-command direct MT). Billing now
+                    # runs in a SAQ job that can be retried/redelivered, so the
+                    # charge MUST be idempotent even without a ts. Derive a
+                    # stable key from the channel + content fingerprint so a
+                    # replayed stream entry dedupes at the gateway and the SAQ
+                    # job instead of double-charging on retry (RAY-80258).
+                    inline_idempotency_key = build_spend_idempotency_key(
+                        app_source="slack",
+                        submission_id=(
+                            f"{mt_result_extra_data.channel_id}:{content_fingerprint}"
                         ),
                         service=mt_result_extra_data.usage_type,
                         unit_type="characters",
@@ -1670,51 +1685,57 @@ async def ray_events(
                     else None
                 )
 
-                # Charge through the LanguageCloud API so the gateway writes the
-                # self-describing credit_transaction_usage row (languages, engine,
-                # idempotency) atomically with the debit (RAY-80000 §3.4). This
-                # replaces the direct credit-ledger write, which left no usage row.
-                transaction_uuid = await log_inline_mt_usage_by_client_id(
-                    client_id=auth.slack_user.ray_client_id,
-                    text_length=mt_result_extra_data.text_length,
-                    target_languages=billed_target_languages,
-                    usage_type=mt_result_extra_data.usage_type,
-                    source_language=mt_result_extra_data.source_language,
-                    engine=engine,
-                    channel_name=channel_name,
-                    word_count=source_word_count,
-                    idempotency_key=inline_idempotency_key,
-                    email=user_email,
-                    client_name=user_name,
-                    is_bot=mt_result_extra_data.is_bot,
-                    # Send the billing group so the gateway records the ledger
-                    # group_uuid as the real group (e.g. the IBM super group) instead
-                    # of collapsing to the org uuid for org-billed channel/shortcut
-                    # MT (RAY-80000 hotfix).
-                    group_uuid=auth.slack_user.ray_user_group_id,
-                )
-
-                # Log Google API usage
                 # Convert translations from dict[lang, list[str]] to dict[lang, str]
                 translations_for_log = {
                     lang: " ".join(texts) if isinstance(texts, list) else texts
                     for lang, texts in translations.items()
                 }
 
-                await log_google_api_usage(
-                    user_uuid=auth.slack_user.ray_client_id,
-                    group_uuid=usage_group_uuid,
-                    organization_uuid=mt_result_extra_data.organization_uuid,
-                    input_text=mt_result_extra_data.source_text
+                # Defer the LanguageCloud charge to a durable SAQ job so a
+                # transient ConnectTimeout to /mt/inline-usage no longer returns
+                # a 422 to redis-slack-consumer after the Slack message was
+                # posted (RAY-80258). The job charges the gateway (writing the
+                # self-describing credit_transaction_usage row, RAY-80000 §3.4)
+                # with retry + idempotency, then writes the Google API usage row
+                # against the resulting transaction_uuid. User delivery above is
+                # now independent of billing durability.
+                billing_payload = {
+                    "client_id": auth.slack_user.ray_client_id,
+                    "text_length": mt_result_extra_data.text_length,
+                    "target_languages": billed_target_languages,
+                    "usage_type": mt_result_extra_data.usage_type,
+                    "source_language": mt_result_extra_data.source_language,
+                    "engine": engine,
+                    "channel_name": channel_name,
+                    "word_count": source_word_count,
+                    "idempotency_key": inline_idempotency_key,
+                    "email": user_email,
+                    "client_name": user_name,
+                    "is_bot": mt_result_extra_data.is_bot,
+                    # Send the billing group so the gateway records the ledger
+                    # group_uuid as the real group (e.g. the IBM super group)
+                    # instead of collapsing to the org uuid for org-billed
+                    # channel/shortcut MT (RAY-80000 hotfix).
+                    "group_uuid": auth.slack_user.ray_user_group_id,
+                }
+                usage_log_payload = {
+                    "user_uuid": auth.slack_user.ray_client_id,
+                    "group_uuid": usage_group_uuid,
+                    "organization_uuid": mt_result_extra_data.organization_uuid,
+                    "input_text": mt_result_extra_data.source_text
                     or "[Source text not available]",
-                    source_lang=mt_result_extra_data.source_language,
-                    translations=translations_for_log,
-                    transaction_uuid=transaction_uuid,
-                    app_name="slack",
-                    usage_type=mt_result_extra_data.usage_type,
-                    text_length=mt_result_extra_data.text_length,
-                    channel_name=channel_name,
-                    email=user_email,
+                    "source_lang": mt_result_extra_data.source_language,
+                    "translations": translations_for_log,
+                    "app_name": "slack",
+                    "usage_type": mt_result_extra_data.usage_type,
+                    "text_length": mt_result_extra_data.text_length,
+                    "channel_name": channel_name,
+                    "email": user_email,
+                }
+                await enqueue_inline_mt_billing(
+                    idempotency_key=inline_idempotency_key,
+                    billing=billing_payload,
+                    usage_log=usage_log_payload,
                 )
             except Exception as e:
                 # Some exceptions (e.g. bare AssertionError) stringify to "",

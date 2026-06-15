@@ -11,9 +11,11 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from app.saq_jobs.tasks import (
+    charge_inline_mt_usage,
     persist_log_notification,
     persist_mt_ts_edit,
     process_document_mt_submission,
@@ -452,3 +454,116 @@ async def test_persist_mt_ts_edit_delegates_to_set_mt_ts_edit():
 
     assert result["status"] == "cached"
     set_ts.assert_awaited_once_with(send_ts="100.0", reply_ts="200.0")
+
+
+# --------------------------------------------------------------------------- #
+# charge_inline_mt_usage (RAY-80258)
+# --------------------------------------------------------------------------- #
+
+
+def _billing() -> dict[str, Any]:
+    return {
+        "client_id": str(uuid4()),
+        "text_length": 100,
+        "target_languages": ["fr"],
+        "usage_type": "channel_translation",
+        "idempotency_key": "key-abc",
+        "group_uuid": "billing-group",
+    }
+
+
+def _usage_log() -> dict[str, Any]:
+    return {
+        "user_uuid": "client-1",
+        "group_uuid": "billing-group",
+        "organization_uuid": "org-1",
+        "input_text": "hello",
+        "source_lang": "en",
+        "translations": {"fr": "bonjour"},
+        "usage_type": "channel_translation",
+    }
+
+
+@pytest.mark.asyncio
+async def test_charge_inline_mt_usage_happy_path():
+    """Charges the gateway then logs usage against the returned transaction."""
+    billing = _billing()
+    usage_log = _usage_log()
+    charge = AsyncMock(return_value="txn-123")
+    log_usage = AsyncMock()
+    with (
+        patch("app.auth.connector.log_inline_mt_usage_by_client_id", new=charge),
+        patch("app.mt.logs.log_google_api_usage", new=log_usage),
+    ):
+        result = await charge_inline_mt_usage(
+            _ctx(), billing=billing, usage_log=usage_log
+        )
+
+    assert result == {"status": "charged", "transaction_uuid": "txn-123"}
+    charge.assert_awaited_once()
+    assert charge.await_args.kwargs["idempotency_key"] == "key-abc"
+    assert charge.await_args.kwargs["client_id"] == billing["client_id"]
+    # Google API usage row carries the gateway transaction uuid.
+    log_usage.assert_awaited_once()
+    assert log_usage.await_args.kwargs["transaction_uuid"] == "txn-123"
+    assert log_usage.await_args.kwargs["group_uuid"] == "billing-group"
+
+
+@pytest.mark.asyncio
+async def test_charge_inline_mt_usage_retries_on_connect_timeout():
+    """A transient ConnectTimeout is retried inside the task before logging."""
+    charge = AsyncMock(side_effect=[httpx.ConnectTimeout("boom"), "txn-after-retry"])
+    log_usage = AsyncMock()
+    with (
+        patch("app.auth.connector.log_inline_mt_usage_by_client_id", new=charge),
+        patch("app.mt.logs.log_google_api_usage", new=log_usage),
+        # Skip the backoff sleep so the test stays fast.
+        patch("app.api.http_client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await charge_inline_mt_usage(
+            _ctx(), billing=_billing(), usage_log=_usage_log()
+        )
+
+    assert result["transaction_uuid"] == "txn-after-retry"
+    assert charge.await_count == 2
+    log_usage.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_charge_inline_mt_usage_notifies_on_final_attempt():
+    """On the final, non-retryable attempt the billing failure raises a BugLog alert."""
+    charge = AsyncMock(side_effect=RuntimeError("gateway 500"))
+    with (
+        patch("app.auth.connector.log_inline_mt_usage_by_client_id", new=charge),
+        patch("app.mt.logs.log_google_api_usage", new=AsyncMock()),
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
+    ):
+        with pytest.raises(RuntimeError):
+            await charge_inline_mt_usage(
+                _ctx(retryable=False),
+                billing=_billing(),
+                usage_log=_usage_log(),
+            )
+
+    mock_notify.assert_called_once()
+    # The billing-specific alert carries the idempotency key for replay.
+    assert mock_notify.call_args.kwargs["extra"]["idempotency_key"] == "key-abc"
+
+
+@pytest.mark.asyncio
+async def test_charge_inline_mt_usage_reraises_without_alert_when_retryable():
+    """A retryable failure re-raises so SAQ retries, but does not alert yet."""
+    charge = AsyncMock(side_effect=RuntimeError("transient"))
+    with (
+        patch("app.auth.connector.log_inline_mt_usage_by_client_id", new=charge),
+        patch("app.mt.logs.log_google_api_usage", new=AsyncMock()),
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
+    ):
+        with pytest.raises(RuntimeError):
+            await charge_inline_mt_usage(
+                _ctx(retryable=True),
+                billing=_billing(),
+                usage_log=_usage_log(),
+            )
+
+    mock_notify.assert_not_called()

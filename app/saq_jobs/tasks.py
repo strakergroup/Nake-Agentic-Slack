@@ -718,6 +718,80 @@ async def persist_mt_ts_edit(
     return {"status": "cached", "send_ts": send_ts}
 
 
+async def charge_inline_mt_usage(
+    ctx: Context,
+    *,
+    billing: dict[str, Any],
+    usage_log: dict[str, Any],
+) -> dict[str, Any]:
+    """Durable inline/channel/shortcut MT billing + usage logging (RAY-80258).
+
+    Decouples billing durability from Slack delivery: the
+    ``slack:direct:mt:result`` handler posts the Slack notification inline and
+    returns 200, then enqueues this task to charge the LanguageCloud gateway.
+    A transient ``ConnectTimeout`` to ``/mt/inline-usage`` therefore no longer
+    returns a 422 to ``redis-slack-consumer`` after the user has already been
+    notified — the charge is retried here instead of being lost.
+
+    Idempotency:
+        The caller passes ``billing["idempotency_key"]`` (the same value used
+        as the SAQ job ``key``). The gateway dedupes on that key, so a SAQ
+        retry or a redelivered stream entry never double-charges. The Google
+        API usage row is written only after the charge succeeds, so it carries
+        the gateway ``transaction_uuid`` and is the last side-effect (safe to
+        re-run after a partial failure).
+
+    Args:
+        ctx: SAQ task context (job, queue, attempts).
+        billing: Keyword arguments for ``log_inline_mt_usage_by_client_id``.
+            JSON-serialisable identifiers only — no tokens.
+        usage_log: Keyword arguments for ``log_google_api_usage`` (without
+            ``transaction_uuid``, which is resolved from the charge).
+
+    Returns:
+        Status dict with ``status`` and the gateway ``transaction_uuid``.
+    """
+    from app.api.http_client import retry_on_timeout
+    from app.auth.connector import log_inline_mt_usage_by_client_id
+    from app.mt.logs import log_google_api_usage
+
+    job = ctx.get("job")
+    attempt = job.attempts if job is not None else 1
+    log_extra = {
+        "client_id": billing.get("client_id"),
+        "usage_type": billing.get("usage_type"),
+        "idempotency_key": billing.get("idempotency_key"),
+        "attempt": attempt,
+    }
+    logger.info("Inline MT billing starting", extra=log_extra)
+
+    try:
+        # Retry transient connect/read timeouts quickly within this attempt;
+        # SAQ retries cover longer gateway outages. Suppress the inner
+        # notify so only the final SAQ attempt raises a billing alert.
+        transaction_uuid = await retry_on_timeout(
+            log_inline_mt_usage_by_client_id,
+            max_retries=2,
+            notify_on_final_failure=False,
+            **billing,
+        )
+        await log_google_api_usage(transaction_uuid=transaction_uuid, **usage_log)
+        logger.info(
+            "Inline MT billing charged",
+            extra={**log_extra, "transaction_uuid": transaction_uuid},
+        )
+        return {"status": "charged", "transaction_uuid": transaction_uuid}
+    except Exception:
+        logger.exception("Inline MT billing failed; SAQ will retry", extra=log_extra)
+        if job is not None and not job.retryable:
+            notify_exception(
+                Exception("Inline MT billing failed after retries"),
+                "Inline MT billing failed (final attempt)",
+                extra=log_extra,
+            )
+        raise
+
+
 # --------------------------------------------------------------------------- #
 # Task registry
 # --------------------------------------------------------------------------- #
@@ -736,6 +810,7 @@ FILE_SUBMISSION_TASK_FUNCTIONS = [
 BACKGROUND_TASK_FUNCTIONS = [
     persist_log_notification,
     persist_mt_ts_edit,
+    charge_inline_mt_usage,
 ]
 
 #: Public task name -> callable map. Imported by the worker module to register

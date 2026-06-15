@@ -41,10 +41,10 @@ flowchart LR
     subgraph FastAPI["uvicorn / FastAPI process"]
         Router["app/routers/ray.py + app/slack/listeners.py\n(MT / QE submissions + result delivery)"]
         Logger["app/ray/events/logging.py\n(post_notification)"]
-        Dispatch["app/saq_jobs/dispatch.py\nenqueue_*_upload\nenqueue_log_notification\nenqueue_mt_ts_edit"]
+        Dispatch["app/saq_jobs/dispatch.py\nenqueue_*_upload\nenqueue_log_notification\nenqueue_mt_ts_edit\nenqueue_inline_mt_billing"]
         Queue["app/saq_jobs/queue.py\nenqueue()\nsplit Redis queues + legacy drain"]
         Worker["app/saq_jobs/worker.py\nin-process Workers (lifespan)\nsubmissions / delivery / background"]
-        Tasks["app/saq_jobs/tasks.py\nslack_upload_*\npersist_log_notification\npersist_mt_ts_edit"]
+        Tasks["app/saq_jobs/tasks.py\nslack_upload_*\npersist_log_notification\npersist_mt_ts_edit\ncharge_inline_mt_usage"]
     end
 
     Redis[("Redis\nbytes-mode client")]
@@ -200,6 +200,7 @@ Ray events do not produce duplicate Slack uploads.
 | `verify:slack:evaluate:complete`                | `_handle_verify_complete_background`                         | `slack_upload_verify_complete`   | file-delivery    | `verify_upload:{grid_file_id}:{channel_id}`                  |
 | `post_notification` DB write                    | `asyncio.create_task(log_notification(...))`                 | `persist_log_notification`       | background       | none (volume too high; SAQ retries cover transient DB blips) |
 | `set_mt_ts_edit` Redis cache write              | `asyncio.create_task(set_mt_ts_edit(...))`                   | `persist_mt_ts_edit`             | background       | `mt_ts_edit:{client_id}:{ts}`                                |
+| `slack:direct:mt:result` inline MT billing (RAY-80258) | synchronous `log_inline_mt_usage_by_client_id` + `log_google_api_usage` in `app/routers/ray.py` (a `ConnectTimeout` 422'd the consumer after the Slack DM) | `charge_inline_mt_usage` | background | `charge_inline_mt_usage:{idempotency_key}` |
 
 
 ### Scope rationale — `asyncio.create_task` calls left in place
@@ -241,6 +242,31 @@ to avoid alert spam during transient Slack 5xx storms.
 `sup-file-api` is removed even if Slack upload fails, so retries always
 start with a clean slate.
 
+### Inline MT billing durability (RAY-80258)
+
+`charge_inline_mt_usage` decouples *user delivery* from *billing durability*
+for the `slack:direct:mt:result` callback:
+
+- The router posts the Slack notification inline and returns 200 once the
+message is sent, then enqueues the charge. A transient `ConnectTimeout` to
+`/mt/inline-usage` therefore no longer returns a 422 to
+`redis-slack-consumer` (which would alert and lose the charge) after the
+user has already been notified.
+- The task wraps `log_inline_mt_usage_by_client_id` in
+`retry_on_timeout` (fast in-attempt retries for connect/read timeouts),
+and SAQ retries cover longer gateway outages.
+- The charge is **idempotent**: the router always derives an idempotency key
+(message-ts + content fingerprint when a `message_ts` is present, else
+channel id + content fingerprint), passed both as the gateway
+`idempotency_key` and the SAQ job `key`. A redelivered stream entry collapses
+to a single charge instead of double-billing.
+- The Google API usage row is written **after** the charge succeeds, against
+the gateway `transaction_uuid`, so it is the final side-effect and safe to
+re-run on retry.
+- A billing-specific BugLog alert (`Inline MT billing failed (final attempt)`)
+carries `client_id`, `usage_type`, and `idempotency_key`, and fires only on
+the final SAQ attempt — not on every transient blip.
+
 ## Logging and correlation
 
 Every SAQ-related log line includes structured fields that allow grepping a
@@ -275,8 +301,8 @@ the major version in a dedicated PR with an integration test pass.
 | Test file                              | Coverage                                                                                                                                                                          |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tests/saq_jobs/test_queue.py`         | Low-level `enqueue` forwards function name, kwargs, key, retries, and timeout to SAQ; duplicate keys are silently no-op; Redis errors propagate.                                  |
-| `tests/saq_jobs/test_tasks.py`         | Each task happy path (download → upload → cleanup), missing-slack-user branch, and final-retry `notify_exception` forwarding.                                                     |
-| `tests/saq_jobs/test_dispatch.py`      | The typed `enqueue_`* helpers in `app.saq_jobs.dispatch` compute the documented idempotency keys and forward the configured retry / timeout values for every durable task.        |
+| `tests/saq_jobs/test_tasks.py`         | Each task happy path (download → upload → cleanup), missing-slack-user branch, final-retry `notify_exception` forwarding, and `charge_inline_mt_usage` happy path / connect-timeout retry / final-attempt alert.                                                     |
+| `tests/saq_jobs/test_dispatch.py`      | The typed `enqueue_`* helpers in `app.saq_jobs.dispatch` compute the documented idempotency keys and forward the configured retry / timeout values for every durable task (including `enqueue_inline_mt_billing`).        |
 | `tests/saq_jobs/test_task_registry.py` | Drift check between the `TaskName` Literal and `TASK_FUNCTIONS`; also asserts task names are unique.                                                                              |
 | `tests/routers/test_ray.py`            | Existing router tests patch the typed helpers re-exported from `app.routers.ray` (`enqueue_mt_success_upload`, `enqueue_transcription_upload`, `enqueue_verify_complete_upload`). |
 
