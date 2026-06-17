@@ -79,9 +79,7 @@ def _blocks_contain_text(blocks: list, text: str) -> bool:
 
 
 def _assert_media_translation_help(blocks: list) -> None:
-    media_url = (
-        "https://help.straker.ai/en/docs/ai-translate-for-videos-in-straker-translate-app-for-slack"
-    )
+    media_url = "https://help.straker.ai/en/docs/ai-translate-for-videos-in-straker-translate-app-for-slack"
     assert _blocks_contain_text(blocks, "Learn Media Translation and Transcription")
     assert _blocks_contain_text(blocks, "Media Translation Help")
     assert _blocks_contain_action(blocks, "link_media_translation_help")
@@ -944,6 +942,30 @@ class TestDocParseErrorMessage:
         assert text == (
             "Error parsing file. Please ensure your file is in a supported format."
         )
+
+    def test_explicit_message_is_rendered_verbatim(self):
+        """RAY-80261: when the producer supplies a user-facing message (e.g.
+        Adobe PDF conversion failure or a doc-converter parse reason), it must
+        be shown instead of the generic line — even when ext/file_type exist."""
+        message = DocParseErrorMessage(
+            ".pdf",
+            "",
+            ":warning: This PDF is password-protected or encrypted, so we can't "
+            "convert it for translation.",
+        )
+        text = self._block_text(message)
+        assert "password-protected or encrypted" in text
+
+    def test_explicit_message_takes_priority_over_detailed_template(self):
+        message = DocParseErrorMessage(".pdf", "pdf", "Custom parse failure reason")
+        text = self._block_text(message)
+        assert text == "Custom parse failure reason"
+
+    def test_blank_explicit_message_falls_back_to_detailed_template(self):
+        message = DocParseErrorMessage(".xlf", "xliff", "   ")
+        text = self._block_text(message)
+        assert "with .xlf" in text
+        assert "is a valid xliff" in text
 
 
 class TestDocInvalidPdfErrorMessage:

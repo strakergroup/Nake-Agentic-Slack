@@ -20,6 +20,7 @@ from ..auth.connector import (
     get_group_tokens,
     get_ray_connection,
     get_ray_connection_demo,
+    get_ray_super_group,
     log_new_user_info,
 )
 from .app import app
@@ -62,14 +63,18 @@ async def ray_connection(
     Also add a `login_prompt` message to the context containing the message to
     be sent to the user asking them to connect their LanguageCloud account.
     """
-    # Validate required context keys
-    if "user_id" not in context:
-        # Skip RAY connection for events without user context
+    if "team_id" not in context:
         context["ray"] = None
         return await next()
 
-    if "team_id" not in context:
-        context["ray"] = None
+    # Bot message events may not include a Slack user. Match the not-logged-in
+    # user path by loading the connected workspace org with no client attached.
+    if "user_id" not in context:
+        super_group = await get_ray_super_group(
+            context["team_id"], context.enterprise_id
+        )
+        context["ray"] = RayConnection(super_group=super_group or [], client=None)
+        context["is_bot"] = True
         return await next()
 
     context["ray"] = await get_ray_connection(

@@ -3766,18 +3766,25 @@ class EvaluateSuccessMessage(SlackMessage):
 class DocParseErrorMessage(SlackMessage):
     """Slack message for failed file parsing during MT or quality evaluation.
 
-    When both `ext` and `file_type` are known we render a detailed message
-    so the user can correct the file. When either is missing (e.g. the
-    pipeline failed before we identified the file, so the producer sent an
-    empty `error_data`) we fall back to a generic but still parse-flavoured
-    message instead of leaking blanks like "with  is a valid ". RAY-79527
-    follow-up.
+    Resolution order for the rendered text (RAY-80261):
+
+    1. An explicit, user-facing ``message`` from the producer (e.g. Adobe PDF
+       conversion failures, including encrypted PDFs, or doc-converter parse
+       errors). When present this is shown verbatim so the actual reason
+       reaches the user instead of a generic line.
+    2. When both ``ext`` and ``file_type`` are known, a detailed
+       format-specific hint so the user can correct the file.
+    3. Otherwise a generic but still parse-flavoured fallback, instead of
+       leaking blanks like "with  is a valid " (RAY-79527).
     """
 
-    def __init__(self, ext: str, file_type: str) -> None:
+    def __init__(self, ext: str, file_type: str, message: str = "") -> None:
         ext = (ext or "").strip()
         file_type = (file_type or "").strip()
-        if ext and file_type:
+        explicit_message = " ".join((message or "").split())
+        if explicit_message:
+            message = explicit_message
+        elif ext and file_type:
             message = _(
                 "Error parsing file. Please ensure file with {ext} is a valid {file_type}"
             )

@@ -1,10 +1,43 @@
 from unittest.mock import AsyncMock, PropertyMock, patch
 
 import pytest
+from slack_bolt.context.async_context import AsyncBoltContext
 
 from app.auth.connector import RayConnection, RaySuperGroup
-from app.slack.middleware import require_mt_tokens, require_ray_client
+from app.slack.middleware import ray_connection, require_mt_tokens, require_ray_client
 from app.slack.templates.messages import LoginMessage
+
+
+class TestRayConnectionMiddleware:
+    """Tests for ray_connection listener middleware."""
+
+    @pytest.mark.asyncio
+    async def test_ray_connection_without_user_uses_workspace_super_group(
+        self, team_id, channel_id
+    ):
+        """Test bot events without user context can still load workspace settings."""
+        context = AsyncBoltContext(team_id=team_id, channel_id=channel_id)
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=team_id,
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+        )
+        next_mock = AsyncMock()
+
+        with patch(
+            "app.slack.middleware.get_ray_super_group", new_callable=AsyncMock
+        ) as mock_get_super_group:
+            mock_get_super_group.return_value = [super_group]
+
+            await ray_connection(context, next_mock)
+
+            assert context["ray"] == RayConnection(
+                super_group=[super_group], client=None
+            )
+            assert context["is_bot"] is True
+            next_mock.assert_awaited_once()
 
 
 class TestRequireRayClient:

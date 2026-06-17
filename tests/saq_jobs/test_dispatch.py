@@ -18,6 +18,7 @@ from app.saq_jobs.dispatch import (
     _submission_queue_name,
     enqueue_document_mt_submission,
     enqueue_evaluation_submission,
+    enqueue_inline_mt_billing,
     enqueue_log_notification,
     enqueue_mt_success_upload,
     enqueue_mt_ts_edit,
@@ -296,6 +297,33 @@ async def test_enqueue_log_notification_forwards_payload_without_key():
     assert call_args.kwargs["event"] == "ray:job:status_changed"
     assert call_args.kwargs["event_data"] == {"foo": "bar"}
     assert call_args.kwargs["message"] == "StatusChangedMessage"
+
+
+@pytest.mark.asyncio
+async def test_enqueue_inline_mt_billing_forwards_payload_with_idempotency_key():
+    with (
+        patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
+        patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
+    ):
+        mock_cfg.saq_background_queue_name = "background-q"
+        mock_cfg.saq_logging_retries = 3
+        mock_cfg.saq_logging_timeout_seconds = 30
+        await enqueue_inline_mt_billing(
+            idempotency_key="key-abc",
+            billing={"client_id": "rc1", "idempotency_key": "key-abc"},
+            usage_log={"user_uuid": "rc1", "group_uuid": "g1"},
+        )
+
+    call_args = mock_enq.await_args
+    assert call_args.args == ("charge_inline_mt_usage",)
+    kwargs = call_args.kwargs
+    assert kwargs["queue_name"] == "background-q"
+    assert kwargs["key"] == "charge_inline_mt_usage:key-abc"
+    assert kwargs["retries"] == 3
+    assert kwargs["timeout"] == 30
+    assert kwargs["retry_backoff"] is True
+    assert kwargs["billing"] == {"client_id": "rc1", "idempotency_key": "key-abc"}
+    assert kwargs["usage_log"] == {"user_uuid": "rc1", "group_uuid": "g1"}
 
 
 @pytest.mark.asyncio

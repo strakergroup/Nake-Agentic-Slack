@@ -603,6 +603,10 @@ MOCK_LANGUAGE_OPTIONS = [
     {"text": {"type": "plain_text", "text": "Japanese"}, "value": "ja"},
     {"text": {"type": "plain_text", "text": "Chinese (Simplified)"}, "value": "zh-CN"},
     {"text": {"type": "plain_text", "text": "Portuguese (Brazil)"}, "value": "pt-BR"},
+    {
+        "text": {"type": "plain_text", "text": "Spanish (Latin America)"},
+        "value": "es-419",
+    },
 ]
 
 MOCK_DISPLAY_FORMAT_OPTIONS = [

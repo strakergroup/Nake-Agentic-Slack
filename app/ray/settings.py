@@ -17,19 +17,14 @@ from ..models import (
     SlackGroupSettingsTranslationLangs,
 )
 
+# Runtime-only aliases (e.g. language-detect returns bare ``zh``). Not shown in Slack selects.
+AUTO_TRANSLATE_LANGUAGE_ALIASES: dict[str, str] = {
+    "zh": "Chinese (Simplified)",
+}
 
-def get_auto_translate_languages(
-    include_variations: bool = False,
-) -> list[tuple[str, str]]:
-    """Get the available languages for auto-translation (ISO code and name).
 
-    Args:
-        include_variations (bool, optional): Whether to include variations of
-            languages, e.g. "zh" and "zh-CN". Defaults to False.
-
-    Returns:
-        list[tuple[str, str]]: The list of languages, tuples with code and label.
-    """
+def get_auto_translate_languages() -> list[tuple[str, str]]:
+    """Get MT language options for Slack selects (code and translated label)."""
     languages = [
         ("af", "Afrikaans"),
         ("sq", "Albanian"),
@@ -108,6 +103,7 @@ def get_auto_translate_languages(
         ("sl", "Slovenian"),
         ("so", "Somali"),
         ("es", "Spanish"),
+        ("es-419", "Spanish (Latin America)"),
         ("su", "Sundanese"),
         ("sw", "Swahili"),
         ("sv", "Swedish"),
@@ -124,29 +120,35 @@ def get_auto_translate_languages(
         ("zu", "Zulu"),
     ]
 
-    if include_variations:
-        languages.append(("zh", "Chinese (Simplified)"))
-
     languages = [(lang[0], _(lang[1])) for lang in languages]
     languages = sorted(languages, key=lambda language: language[1])
     return languages
 
 
+def get_auto_translate_language_entries() -> list[tuple[str, str]]:
+    """Catalog entries including runtime aliases (for lookup and name resolution)."""
+    entries = list(get_auto_translate_languages())
+    entries.extend(
+        (code, _(label)) for code, label in AUTO_TRANSLATE_LANGUAGE_ALIASES.items()
+    )
+    return entries
+
+
 @functools.cache
-def get_auto_translate_language_codes(include_variations: bool = False) -> list[str]:
-    """Get the available languages for auto-translation (ISO code only).
+def get_auto_translate_language_code_map() -> dict[str, str]:
+    """Map lowercase language codes to their canonical catalog codes."""
+    mapping: dict[str, str] = {}
+    for code, _label in get_auto_translate_languages():
+        mapping[code.lower()] = code
+    for code in AUTO_TRANSLATE_LANGUAGE_ALIASES:
+        mapping[code.lower()] = code
+    return mapping
 
-    Args:
-        include_variations (bool, optional): Whether to include variations of
-            languages, e.g. "zh" and "zh-CN". Defaults to False.
 
-    Returns:
-        list[str]: The list of language codes.
-    """
-    return [
-        lang[0]
-        for lang in get_auto_translate_languages(include_variations=include_variations)
-    ]
+@functools.cache
+def get_auto_translate_language_codes() -> list[str]:
+    """Get all valid auto-translate language codes, including runtime aliases."""
+    return list(dict.fromkeys(get_auto_translate_language_code_map().values()))
 
 
 @functools.cache
@@ -156,7 +158,9 @@ def is_valid_auto_translate_language(language: str) -> bool:
     Args:
         language (str): A language code, e.g. "en", "es", etc.
     """
-    return language in get_auto_translate_language_codes(include_variations=True)
+    return language.casefold() in {
+        code.casefold() for code in get_auto_translate_language_codes()
+    }
 
 
 def get_auto_translate_language_name(language: str) -> str:
@@ -169,15 +173,15 @@ def get_auto_translate_language_name(language: str) -> str:
         str: The name of the language if valid, else "Unknown".
     """
     language = language.casefold()
-    for lang in get_auto_translate_languages(include_variations=True):
-        if lang[0].casefold() == language or lang[1].casefold() == language:
-            return lang[1]
+    for code, name in get_auto_translate_language_entries():
+        if code.casefold() == language or name.casefold() == language:
+            return name
     lang_info = langcodes.get(language)
     if lang_info:
         language = lang_info.language or language
-    for lang in get_auto_translate_languages(include_variations=True):
-        if lang[0].casefold() == language or lang[1].casefold() == language:
-            return lang[1]
+    for code, name in get_auto_translate_language_entries():
+        if code.casefold() == language or name.casefold() == language:
+            return name
     return language
 
 

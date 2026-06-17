@@ -13,6 +13,7 @@ top-level ``saq`` package import.
 from .dispatch import (
     enqueue_document_mt_submission,
     enqueue_evaluation_submission,
+    enqueue_inline_mt_billing,
     enqueue_log_notification,
     enqueue_mt_success_upload,
     enqueue_mt_ts_edit,
@@ -23,6 +24,7 @@ from .queue import enqueue, get_queue, shutdown_queue
 
 __all__ = [
     "enqueue",
+    "enqueue_inline_mt_billing",
     "enqueue_log_notification",
     "enqueue_mt_success_upload",
     "enqueue_mt_ts_edit",

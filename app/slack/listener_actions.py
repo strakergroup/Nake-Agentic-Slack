@@ -44,6 +44,7 @@ from app.translate import _
 
 from ..auth.connector import (
     RayClient,
+    RayConnection,
     RayContext,
     approve_pending_groups,
     duration_to_tokens,  # noqa: F401 - kept for potential future use
@@ -55,7 +56,7 @@ from ..auth.connector import (
 from ..config import domains
 from ..ray.service import RayService
 from ..ray.settings import (
-    get_auto_translate_languages,
+    get_auto_translate_language_entries,
     get_auto_translate_settings_and_langs,
 )
 from ..ray.submissions import (
@@ -70,6 +71,7 @@ from ..ray.utils import (
 )
 from ..redis import redis_conn
 from ..watson import watson_message
+from .bot_translation_limits import can_translate_bot_message
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
     AIHelperMessage,
@@ -123,6 +125,13 @@ MEDIA_ACTION_IDS = frozenset(
 )
 
 FR_CA_VARIANTS = frozenset({"fr-ca", "french-canada", "french-canadian"})
+
+
+def _normalize_mt_language_code(language_code: str) -> str:
+    normalized = language_code.lower().replace("_", "-")
+    if normalized in FR_CA_VARIANTS:
+        return "fr-ca"
+    return language_code
 
 
 def build_human_translation_purchase_order_number(job: dict[str, Any]) -> str:
@@ -238,7 +247,7 @@ def _language_code_from_srt_filename(filename: str) -> str:
     candidate = stem.rsplit("_", 1)[1]  # "Japanese"
     candidate_lower = candidate.casefold()
 
-    for code, name in get_auto_translate_languages(include_variations=True):
+    for code, name in get_auto_translate_language_entries():
         if name.casefold() == candidate_lower or code.casefold() == candidate_lower:
             return code
 
@@ -265,9 +274,7 @@ def create_service_language_mapping(
     service_overrides = service_overrides or {}
 
     for target_lang in target_langs:
-        normalized_target = (
-            "fr-ca" if target_lang.lower() in FR_CA_VARIANTS else target_lang
-        )
+        normalized_target = _normalize_mt_language_code(target_lang)
         glossary_id = glossary_ids.get(
             normalized_target, glossary_ids.get(target_lang, "")
         )
@@ -292,12 +299,8 @@ async def _resolve_mt_route_and_glossary(
     target_lang: str,
 ) -> tuple[str, str, str]:
     """Resolve the target code, engine, and glossary for a single MT pair."""
-    normalized_source = (
-        "fr-ca" if source_lang.lower() in FR_CA_VARIANTS else source_lang
-    )
-    normalized_target = (
-        "fr-ca" if target_lang.lower() in FR_CA_VARIANTS else target_lang
-    )
+    normalized_source = _normalize_mt_language_code(source_lang)
+    normalized_target = _normalize_mt_language_code(target_lang)
 
     microsoft_glossary = ""
     if (
@@ -955,9 +958,6 @@ async def auto_translate_message(
     thread_ts: str | None = message.get("thread_ts")
     if not text:
         return
-    if message.get("bot_id"):
-        # Do not translate bot messages.
-        return
     # Check for 5K character limit
     if len(text) > 5000:
         error_msg = _("The message is over the 5K character limit")
@@ -970,6 +970,9 @@ async def auto_translate_message(
                 )
             except Exception as e:
                 notify_exception(e, "Failed to post 5K character limit error message")
+        return
+    ray_connection = context.get("ray")
+    if not isinstance(ray_connection, RayConnection) or not ray_connection.super_group:
         return
     assert context.channel_id  # TODO enforce this
 
@@ -995,9 +998,22 @@ async def auto_translate_message(
         return
     source_lang = detected_source_lang_response.language
 
+    bot_id = message.get("bot_id")
+    is_bot_message = isinstance(bot_id, str)
+    slack_user_id = context.user_id
+    slack_user_name = None
+    if isinstance(bot_id, str):
+        if not await can_translate_bot_message(context.channel_id, bot_id):
+            return
+        slack_user_id = message.get("user") or bot_id
+        bot_profile = message.get("bot_profile")
+        if isinstance(bot_profile, dict):
+            slack_user_name = bot_profile.get("name") or bot_profile.get("real_name")
+        slack_user_name = slack_user_name or message.get("username")
+
     try:
-        org_uuid = context["ray"].super_group[0].verify_organization_uuid
-        client_id = context["ray"].client.id if context["ray"].client else org_uuid
+        org_uuid = ray_connection.super_group[0].verify_organization_uuid
+        client_id = ray_connection.client.id if ray_connection.client else org_uuid
         group_id = await get_group_id(org_uuid)
 
         # Get display_format from settings
@@ -1013,7 +1029,7 @@ async def auto_translate_message(
                 glossary_id,
             ) = await _resolve_mt_route_and_glossary(
                 org_uuid,
-                context["ray"].client,
+                ray_connection.client,
                 source_lang,
                 target_lang,
             )
@@ -1031,7 +1047,9 @@ async def auto_translate_message(
             MtTranslationExtraData(
                 client_id=client_id,
                 team_id=context.team_id,
-                slack_user_id=context.user_id,
+                slack_user_id=slack_user_id,
+                slack_user_name=slack_user_name,
+                is_bot=is_bot_message,
                 service_language_mapping=service_language_mapping,
                 source_language=detected_source_lang_response.language,
                 organization_uuid=org_uuid,

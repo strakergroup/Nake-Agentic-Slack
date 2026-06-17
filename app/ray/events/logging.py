@@ -234,7 +234,9 @@ async def post_channel_translation_notification(
             if thread_timestamp:
                 reply_ts = response.get("ts")
                 if not isinstance(reply_ts, str):
-                    raise ValueError("Slack response is missing a string timestamp")
+                    raise ValueError(
+                        "Slack response is missing a string timestamp"
+                    ) from exc
                 await enqueue_mt_ts_edit(send_ts=thread_timestamp, reply_ts=reply_ts)
     else:
         response = await client.chat_postMessage(
