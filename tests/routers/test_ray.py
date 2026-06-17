@@ -1279,26 +1279,22 @@ class TestRayEventsEndpoint:
                             new_callable=AsyncMock,
                         ):
                             with patch(
-                                "app.routers.ray.log_inline_mt_usage_by_client_id",
+                                "app.routers.ray.enqueue_inline_mt_billing",
                                 new_callable=AsyncMock,
-                            ) as mock_spend:
-                                mock_spend.return_value = str(uuid4())
-                                with patch(
-                                    "app.routers.ray.log_google_api_usage",
-                                    new_callable=AsyncMock,
-                                ):
-                                    auth = RayEventAuth()
-                                    await auth.initialize(event, "valid-token")
+                            ) as mock_bill:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
 
-                                    await ray_events(event, auth)
+                                await ray_events(event, auth)
 
-                                    mock_spend.assert_called_once()
-                                    assert (
-                                        mock_spend.call_args.kwargs["client_name"]
-                                        == "Deploy Bot"
-                                    )
-                                    assert mock_spend.call_args.kwargs["email"] is None
-                                    assert mock_spend.call_args.kwargs["is_bot"] is True
+                                # Billing is deferred to the durable SAQ job
+                                # (RAY-80258); bot identity must still be carried
+                                # on the billing payload (RAY-80133).
+                                mock_bill.assert_called_once()
+                                billing = mock_bill.call_args.kwargs["billing"]
+                                assert billing["client_name"] == "Deploy Bot"
+                                assert billing["email"] is None
+                                assert billing["is_bot"] is True
 
     @pytest.mark.asyncio
     async def test_ray_events_channel_translation_result_null_group_id(
