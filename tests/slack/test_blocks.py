@@ -1,3 +1,4 @@
+from datetime import datetime
 from unittest.mock import patch
 
 from app.auth.connector import RayConnection, RaySuperGroup
@@ -320,6 +321,50 @@ class TestVerifyQuoteBlocks:
             and block.get("block_id", "").startswith("verification_checkbox")
             for block in blocks
         )
+
+    @patch("app.slack.templates.blocks.datetime")
+    def test_verify_quote_blocks_uses_max_turnaround_across_targets(
+        self, mock_datetime
+    ):
+        """Estimated completion uses global max (Verify-aligned), not max × count."""
+        mock_datetime.now.return_value = datetime(2026, 6, 26)
+        mock_datetime.side_effect = lambda *args, **kwargs: datetime(*args, **kwargs)
+
+        job = {
+            "uuid": "job-123",
+            "workflow_uuid": "workflow-123",
+            "target_languages": [
+                {"uuid": f"lang-{i}", "name": f"Lang {i}"} for i in range(14)
+            ],
+            "source_files": [
+                {
+                    "file_uuid": "file-123",
+                    "filename": "test.txt",
+                    "target_files": [],
+                    "report": {"language_uuid": "source-uuid"},
+                }
+            ],
+        }
+        costs = [
+            {
+                "file_uuid": "file-123",
+                "language_uuid": f"lang-{i}",
+                "service_list": [
+                    {"estimated_cost": 10.50, "time_estimate_days": 2 if i else 5}
+                ],
+            }
+            for i in range(14)
+        ]
+
+        blocks = verify_quote_blocks(job, costs, selectable=False)
+        time_block = next(
+            block
+            for block in blocks
+            if block.get("block_id") == "total_estimated_time_block"
+        )
+
+        # Max is 5 days (slowest lang), not 5 × 14 = 70
+        assert "01 July 2026" in time_block["text"]["text"]
 
 
 class TestEvaluateSuccessBlocks:

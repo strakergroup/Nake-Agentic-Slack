@@ -37,6 +37,7 @@ from app.ray.utils import (
 )
 from app.saq_jobs import enqueue_document_mt_submission, enqueue_evaluation_submission
 from app.slack.buglog_notifier import notify_exception, notify_message
+from app.slack.utils import calculate_total_estimated_days
 from app.transcriber_tasks.tasks import get_asr_task
 from app.translate import _
 
@@ -2492,31 +2493,9 @@ async def handle_checkbox_action(ack, body, client, action):
                 for option in selected_options
             )
 
-            # Calculate total estimated time from selected options
-            grouped_times = {}
-            for option in selected_options:
-                file_uuid, language_uuid, estimated_time = option["value"].split(":")
-                if file_uuid not in grouped_times:
-                    grouped_times[file_uuid] = {
-                        "time_estimate": float(estimated_time),
-                        "count": 1,
-                    }
-                else:
-                    grouped_times[file_uuid]["count"] += 1
-                    if (
-                        float(estimated_time)
-                        > grouped_times[file_uuid]["time_estimate"]
-                    ):
-                        grouped_times[file_uuid]["time_estimate"] = float(
-                            estimated_time
-                        )
-
-            # Calculate total time by multiplying max time estimate by count for each file
-            total_estimated_days = math.ceil(
-                sum(
-                    group["time_estimate"] * group["count"]
-                    for group in grouped_times.values()
-                )
+            # Calculate total estimated time from selected options (Verify: global max)
+            total_estimated_days = calculate_total_estimated_days(
+                [float(option["value"].split(":")[2]) for option in selected_options]
             )
 
             # Calculate completion date

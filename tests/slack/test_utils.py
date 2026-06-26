@@ -1,5 +1,6 @@
 from app.slack.utils import (
     calculate_evaluation_percentages,
+    calculate_total_estimated_days,
     escape_slack_emoji,
     format_strings_display,
     is_channel_im,
@@ -642,3 +643,22 @@ class TestSplitTextIntoBlocks:
         assert all(len(chunk) <= 150 for chunk in result)
         # Verify all content is preserved (character-based splitting preserves all characters)
         assert "".join(result) == text
+
+
+class TestCalculateTotalEstimatedDays:
+    """Tests for HV estimated completion aggregation (Verify-aligned global max)."""
+
+    def test_empty_selection_returns_zero(self):
+        assert calculate_total_estimated_days([]) == 0
+
+    def test_single_target(self):
+        assert calculate_total_estimated_days([2.3]) == 3
+
+    def test_multiple_targets_uses_max_not_sum(self):
+        assert calculate_total_estimated_days([2.0] * 13 + [5.0]) == 5
+
+    def test_deselecting_slowest_target_recalculates_down(self):
+        all_targets = [2.0] * 13 + [5.0]
+        after_deselect = [2.0] * 13
+        assert calculate_total_estimated_days(all_targets) == 5
+        assert calculate_total_estimated_days(after_deselect) == 2
