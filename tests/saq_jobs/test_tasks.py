@@ -15,6 +15,7 @@ import httpx
 import pytest
 
 from app.saq_jobs.tasks import (
+    charge_document_mt,
     charge_inline_mt_usage,
     persist_log_notification,
     persist_mt_ts_edit,
@@ -567,3 +568,160 @@ async def test_charge_inline_mt_usage_reraises_without_alert_when_retryable():
             )
 
     mock_notify.assert_not_called()
+
+
+# --------------------------------------------------------------------------- #
+# charge_document_mt + deferred enqueue (RAY-80417)
+# --------------------------------------------------------------------------- #
+
+
+def _mt_charge() -> dict[str, Any]:
+    return {
+        "text_length": 100,
+        "word_count": 20,
+        "engine": "google",
+        "target_languages": ["fr"],
+        "source_language": "en",
+        "app_name": "slack",
+        "file_name": "out.docx",
+        "idempotency_key": "slack:task-1:document_translation:fr:characters",
+        "submission_group_uuid": "task-1",
+        "pdf_conversion_page_count": 3,
+        "pdf_idempotency_key": "slack:task-1:pdf_conversion_fee:pages",
+    }
+
+
+@pytest.mark.asyncio
+async def test_slack_upload_mt_result_enqueues_document_mt_charge(slack_user):
+    """After delivery, a Slack mt_charge payload is enqueued for billing."""
+    charge = _mt_charge()
+    success_data = {
+        "task_uuid": str(uuid4()),
+        "file_id": "file-1",
+        "tokens": 0,
+        "client_id": slack_user.ray_client_id,
+        "target_language": "fr",
+        "channel_id": "C123",
+        "mt_charge": charge,
+    }
+    with (
+        patch(
+            "app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=slack_user)
+        ),
+        patch("app.saq_jobs.tasks.update_slack_job", new=AsyncMock()),
+        patch(
+            "app.saq_jobs.tasks.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": "/tmp/foo", "file_name": "out.docx"}),
+        ),
+        patch("app.saq_jobs.tasks.delete_from_file_server", new=AsyncMock()),
+        patch(
+            "app.routers.ray._get_language_name", new=AsyncMock(return_value="French")
+        ),
+        patch("app.slack.web.upload_file_to_slack_memory_efficient", new=AsyncMock()),
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch(
+            "app.saq_jobs.dispatch.enqueue_document_mt_charge", new=AsyncMock()
+        ) as mock_enqueue,
+    ):
+        result = await slack_upload_mt_result(_ctx(), success_data=success_data)
+
+    assert result["status"] == "delivered"
+    mock_enqueue.assert_awaited_once()
+    kwargs = mock_enqueue.await_args.kwargs
+    assert kwargs["client_id"] == slack_user.ray_client_id
+    assert kwargs["idempotency_key"] == charge["idempotency_key"]
+    assert kwargs["charge"] == charge
+
+
+@pytest.mark.asyncio
+async def test_slack_upload_mt_result_no_charge_when_absent(slack_user):
+    """Teams (or no-conversion) deliveries carry no mt_charge, so nothing is billed."""
+    success_data = {
+        "task_uuid": str(uuid4()),
+        "file_id": "file-1",
+        "tokens": 0,
+        "client_id": slack_user.ray_client_id,
+        "target_language": "fr",
+        "channel_id": "C123",
+    }
+    with (
+        patch(
+            "app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=slack_user)
+        ),
+        patch("app.saq_jobs.tasks.update_slack_job", new=AsyncMock()),
+        patch(
+            "app.saq_jobs.tasks.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": "/tmp/foo", "file_name": "out.docx"}),
+        ),
+        patch("app.saq_jobs.tasks.delete_from_file_server", new=AsyncMock()),
+        patch(
+            "app.routers.ray._get_language_name", new=AsyncMock(return_value="French")
+        ),
+        patch("app.slack.web.upload_file_to_slack_memory_efficient", new=AsyncMock()),
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch(
+            "app.saq_jobs.dispatch.enqueue_document_mt_charge", new=AsyncMock()
+        ) as mock_enqueue,
+    ):
+        result = await slack_upload_mt_result(_ctx(), success_data=success_data)
+
+    assert result["status"] == "delivered"
+    mock_enqueue.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_charge_document_mt_happy_path():
+    """Relays the prepared charge to the gateway and surfaces both txn uuids."""
+    charge = _mt_charge()
+    relay = AsyncMock(
+        return_value={"transaction_uuid": "txn-1", "pdf_transaction_uuid": "txn-pdf"}
+    )
+    with patch("app.auth.connector.log_document_mt_by_client_id", new=relay):
+        result = await charge_document_mt(
+            _ctx(), client_id="client-1", charge=charge, task_uuid="task-1"
+        )
+
+    assert result == {
+        "status": "charged",
+        "transaction_uuid": "txn-1",
+        "pdf_transaction_uuid": "txn-pdf",
+    }
+    relay.assert_awaited_once_with("client-1", charge)
+
+
+@pytest.mark.asyncio
+async def test_charge_document_mt_retries_on_connect_timeout():
+    """A transient ConnectTimeout is retried inside the task."""
+    relay = AsyncMock(
+        side_effect=[httpx.ConnectTimeout("boom"), {"transaction_uuid": "txn-2"}]
+    )
+    with (
+        patch("app.auth.connector.log_document_mt_by_client_id", new=relay),
+        patch("app.api.http_client.asyncio.sleep", new=AsyncMock()),
+    ):
+        result = await charge_document_mt(
+            _ctx(), client_id="c", charge={"idempotency_key": "k"}, task_uuid="t"
+        )
+
+    assert result["transaction_uuid"] == "txn-2"
+    assert relay.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_charge_document_mt_notifies_on_final_attempt():
+    """On the final, non-retryable attempt the failure raises a BugLog alert."""
+    relay = AsyncMock(side_effect=RuntimeError("gateway 500"))
+    with (
+        patch("app.auth.connector.log_document_mt_by_client_id", new=relay),
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
+    ):
+        with pytest.raises(RuntimeError):
+            await charge_document_mt(
+                _ctx(retryable=False),
+                client_id="c",
+                charge={"idempotency_key": "key-doc"},
+                task_uuid="t",
+            )
+
+    mock_notify.assert_called_once()
+    assert mock_notify.call_args.kwargs["extra"]["idempotency_key"] == "key-doc"

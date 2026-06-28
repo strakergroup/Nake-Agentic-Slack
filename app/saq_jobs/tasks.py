@@ -179,6 +179,18 @@ async def slack_upload_mt_result(
                 e, "Failed to delete file from file server after MT upload"
             )
         logger.info("MT success upload delivered", extra=log_extra)
+
+        if data.mt_charge and data.task_uuid:
+            from app.saq_jobs.dispatch import enqueue_document_mt_charge
+
+            idempotency_key = data.mt_charge.get("idempotency_key") or data.task_uuid
+            await enqueue_document_mt_charge(
+                client_id=data.client_id,
+                task_uuid=data.task_uuid,
+                idempotency_key=idempotency_key,
+                charge=data.mt_charge,
+            )
+
         return {"status": "delivered", "task_uuid": data.task_uuid}
     except Exception:
         logger.exception("MT success upload failed; SAQ will retry", extra=log_extra)
@@ -792,6 +804,61 @@ async def charge_inline_mt_usage(
         raise
 
 
+async def charge_document_mt(
+    ctx: Context,
+    *,
+    client_id: str,
+    charge: dict[str, Any],
+    task_uuid: str,
+) -> dict[str, Any]:
+    """Durable document-MT billing after Slack delivery (RAY-80417).
+
+    Charges document MT and, when the source was a converted PDF, the combined
+    PDF conversion fee in one ``/mt/transaction`` call. Decoupled from
+    ``slack_upload_mt_result`` so a transient gateway timeout after the user
+    received their file does not lose the debit; idempotency is enforced by the
+    gateway keys in ``charge``.
+    """
+    from app.api.http_client import retry_on_timeout
+    from app.auth.connector import log_document_mt_by_client_id
+
+    job = ctx.get("job")
+    attempt = job.attempts if job is not None else 1
+    log_extra = {
+        "task_uuid": task_uuid,
+        "idempotency_key": charge.get("idempotency_key"),
+        "attempt": attempt,
+    }
+    logger.info("Document MT billing starting", extra=log_extra)
+
+    try:
+        result = await retry_on_timeout(
+            log_document_mt_by_client_id,
+            client_id,
+            charge,
+            max_retries=2,
+            notify_on_final_failure=False,
+        )
+        logger.info(
+            "Document MT billing charged",
+            extra={
+                **log_extra,
+                "transaction_uuid": (result or {}).get("transaction_uuid"),
+                "pdf_transaction_uuid": (result or {}).get("pdf_transaction_uuid"),
+            },
+        )
+        return {"status": "charged", **(result or {})}
+    except Exception:
+        logger.exception("Document MT billing failed; SAQ will retry", extra=log_extra)
+        if job is not None and not job.retryable:
+            notify_exception(
+                Exception("Document MT billing failed after retries"),
+                "Document MT billing failed (final attempt)",
+                extra=log_extra,
+            )
+        raise
+
+
 # --------------------------------------------------------------------------- #
 # Task registry
 # --------------------------------------------------------------------------- #
@@ -811,6 +878,7 @@ BACKGROUND_TASK_FUNCTIONS = [
     persist_log_notification,
     persist_mt_ts_edit,
     charge_inline_mt_usage,
+    charge_document_mt,
 ]
 
 #: Public task name -> callable map. Imported by the worker module to register

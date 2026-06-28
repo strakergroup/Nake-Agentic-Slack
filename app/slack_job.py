@@ -109,7 +109,8 @@ async def get_slack_job(task_uuid: str) -> Optional[dict]:
     async with async_engines["verify"].connect() as conn:
         sql = text("""
             SELECT status, client_uuid, grid_fs_id, file_name, app_source,
-                   selected_language, ai_engine, task_uuid, extra_data
+                   selected_language, ai_engine, task_uuid,
+                   extra_data
             FROM slack_job
             WHERE task_uuid = :task_uuid
         """)

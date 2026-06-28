@@ -310,6 +310,35 @@ async def enqueue_inline_mt_billing(
     )
 
 
+async def enqueue_document_mt_charge(
+    *,
+    client_id: str,
+    task_uuid: str,
+    idempotency_key: str,
+    charge: dict[str, Any],
+) -> None:
+    """Enqueue durable document-MT billing after Slack delivery (RAY-80417).
+
+    The charge (document MT + optional combined PDF conversion fee) is deferred
+    until ``slack_upload_mt_result`` confirms the translated file reached the
+    user, so a failed delivery is never billed. The SAQ ``key`` reuses the
+    per-target MT ``idempotency_key`` so a redelivered upload job collapses to one
+    in-flight billing task; the gateway key is the final double-charge backstop.
+    """
+    await enqueue(
+        "charge_document_mt",
+        queue_name=app_config.saq_background_queue_name,
+        key=f"charge_document_mt:{idempotency_key}",
+        retries=app_config.saq_logging_retries,
+        timeout=app_config.saq_logging_timeout_seconds,
+        retry_delay=2.0,
+        retry_backoff=True,
+        client_id=client_id,
+        charge=charge,
+        task_uuid=task_uuid,
+    )
+
+
 async def enqueue_mt_ts_edit(*, send_ts: str, reply_ts: str) -> None:
     """Enqueue a durable ``persist_mt_ts_edit`` SAQ job (RAY-79638).
 
