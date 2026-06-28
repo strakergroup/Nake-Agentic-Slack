@@ -1611,12 +1611,49 @@ def build_spend_idempotency_key(
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+async def _id_token_for_client(
+    client_id: str, *, allow_group_fallback: bool = False
+) -> str:
+    """Mint a LanguageCloud id-token for ``client_id`` (RAY-80000).
+
+    Looks up the ``obj_m_member`` row and signs a user id-token. When the poster
+    has no member row (channel auto-translate bills the org), ``allow_group_fallback``
+    signs a group token for the org uuid instead of raising.
+    """
+    sql = text(
+        """
+        SELECT m.obj_uuid, m.given_name, m.family_name, m.email_primary, m.active
+        FROM obj_m_member m
+        WHERE m.obj_uuid = :client_id
+        """
+    ).bindparams(client_id=client_id)
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    if result:
+        return create_languagecloud_id_token(
+            uuid=client_id,
+            given_name=result["given_name"] or "",
+            family_name=result["family_name"] or "",
+            email=result["email_primary"] or "",
+            is_active=bool(result["active"]),
+            aud="languagecloud-api",
+            secret=config.languagecloud_api_key.get_secret_value(),
+        )
+    if allow_group_fallback:
+        return create_languagecloud_group_token(
+            uuid=client_id,
+            aud="languagecloud-api",
+            secret=config.languagecloud_api_key.get_secret_value(),
+        )
+    raise Exception(f"Client {client_id} not found")
+
+
 async def log_transcribe_by_client_id(
     client_id: str,
     duration_ms: int,
     file_name: str,
     source_language: str | None = None,
     idempotency_key: str | None = None,
+    submission_group_uuid: str | None = None,
 ) -> tuple[int, str]:
     """
     Charge a transcription via the LanguageCloud API (``/mt/transcribe``) using
@@ -1639,27 +1676,7 @@ async def log_transcribe_by_client_id(
     if not tokens:
         raise Exception("Duration is 0")
 
-    # Fetch user info to create id_token
-    sql = text(
-        """
-        SELECT m.obj_uuid, m.given_name, m.family_name, m.email_primary, m.active
-        FROM obj_m_member m
-        WHERE m.obj_uuid = :client_id
-        """
-    ).bindparams(client_id=client_id)
-    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
-    if not result:
-        raise Exception(f"Client {client_id} not found")
-
-    id_token = create_languagecloud_id_token(
-        uuid=client_id,
-        given_name=result["given_name"] or "",
-        family_name=result["family_name"] or "",
-        email=result["email_primary"] or "",
-        is_active=bool(result["active"]),
-        aud="languagecloud-api",
-        secret=config.languagecloud_api_key.get_secret_value(),
-    )
+    id_token = await _id_token_for_client(client_id)
 
     url = f"{domains.languagecloud_api}/mt/transcribe"
     headers = {
@@ -1674,11 +1691,39 @@ async def log_transcribe_by_client_id(
         data["source_language"] = source_language
     if idempotency_key:
         data["idempotency_key"] = idempotency_key
+    # Media submission id so transcribe/translate/embed share a group (RAY-80417).
+    if submission_group_uuid:
+        data["submission_group_uuid"] = submission_group_uuid
     async with httpx.AsyncClient() as http:
         response = await http.post(url, headers=headers, json=data)
         response.raise_for_status()
         body = response.json() or {}
         return tokens, body.get("transaction_uuid", "")
+
+
+async def log_document_mt_by_client_id(
+    client_id: str,
+    charge: dict[str, Any],
+) -> dict[str, Any]:
+    """Charge document MT (+ optional combined PDF fee) via ``/mt/transaction``.
+
+    Called from ``charge_document_mt`` after the translated file is delivered to
+    Slack so both the document-MT and PDF conversion debits are absorbed when
+    translation or delivery fails (RAY-80417). ``charge`` is the prepared
+    ``DocumentTransaction`` payload built by the consumer and carried on the
+    delivery event; this only authenticates as the client and relays it.
+
+    Returns:
+        dict: the gateway response (``transaction_uuid``, ``pdf_transaction_uuid``).
+    """
+    id_token = await _id_token_for_client(client_id)
+
+    url = f"{domains.languagecloud_api}/mt/transaction"
+    headers = {"Authorization": f"Bearer {id_token}"}
+    async with httpx.AsyncClient() as http:
+        response = await http.post(url, headers=headers, json=charge)
+        response.raise_for_status()
+        return response.json() or {}
 
 
 async def log_inline_mt_usage_by_client_id(
@@ -1713,35 +1758,10 @@ async def log_inline_mt_usage_by_client_id(
     Returns:
         str: the gateway transaction UUID.
     """
-    sql = text(
-        """
-        SELECT m.obj_uuid, m.given_name, m.family_name, m.email_primary, m.active
-        FROM obj_m_member m
-        WHERE m.obj_uuid = :client_id
-        """
-    ).bindparams(client_id=client_id)
-    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
-    if result:
-        id_token = create_languagecloud_id_token(
-            uuid=client_id,
-            given_name=result["given_name"] or "",
-            family_name=result["family_name"] or "",
-            email=result["email_primary"] or "",
-            is_active=bool(result["active"]),
-            aud="languagecloud-api",
-            secret=config.languagecloud_api_key.get_secret_value(),
-        )
-    else:
-        # Channel auto-translate bills the org when the poster has not
-        # direct-logged-in (no obj_m_member row): client_id is the org uuid.
-        # Authenticate as the group/org with a group token (matching the Teams
-        # producer and /mt/translate) instead of failing; the gateway's
-        # /mt/inline-usage accepts a user-or-group principal (RAY-80000).
-        id_token = create_languagecloud_group_token(
-            uuid=client_id,
-            aud="languagecloud-api",
-            secret=config.languagecloud_api_key.get_secret_value(),
-        )
+    # Channel auto-translate bills the org when the poster has no obj_m_member
+    # row (client_id is the org uuid); the group fallback authenticates as the
+    # org instead of failing (RAY-80000).
+    id_token = await _id_token_for_client(client_id, allow_group_fallback=True)
 
     url = f"{domains.languagecloud_api}/mt/inline-usage"
     headers = {
@@ -1796,6 +1816,7 @@ async def log_embedding_by_client_id(
     file_name: str | None = None,
     app_name: str = "slack",
     idempotency_key: str | None = None,
+    submission_group_uuid: str | None = None,
 ) -> str:
     """
     Charge media subtitle embedding via the LanguageCloud API (``/mt/embed``)
@@ -1808,26 +1829,7 @@ async def log_embedding_by_client_id(
     Returns:
         str: the gateway transaction UUID.
     """
-    sql = text(
-        """
-        SELECT m.obj_uuid, m.given_name, m.family_name, m.email_primary, m.active
-        FROM obj_m_member m
-        WHERE m.obj_uuid = :client_id
-        """
-    ).bindparams(client_id=client_id)
-    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
-    if not result:
-        raise Exception(f"Client {client_id} not found")
-
-    id_token = create_languagecloud_id_token(
-        uuid=client_id,
-        given_name=result["given_name"] or "",
-        family_name=result["family_name"] or "",
-        email=result["email_primary"] or "",
-        is_active=bool(result["active"]),
-        aud="languagecloud-api",
-        secret=config.languagecloud_api_key.get_secret_value(),
-    )
+    id_token = await _id_token_for_client(client_id)
 
     url = f"{domains.languagecloud_api}/mt/embed"
     headers = {
@@ -1846,6 +1848,9 @@ async def log_embedding_by_client_id(
         data["file_name"] = file_name
     if idempotency_key:
         data["idempotency_key"] = idempotency_key
+    # Media submission id so transcribe/translate/embed share a group (RAY-80417).
+    if submission_group_uuid:
+        data["submission_group_uuid"] = submission_group_uuid
     async with httpx.AsyncClient() as http:
         response = await http.post(url, headers=headers, json=data)
         response.raise_for_status()

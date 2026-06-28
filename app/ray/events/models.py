@@ -193,6 +193,9 @@ class MtSuccessResponseSchema(BaseModel):
     target_language: str
     channel_id: str
     submission_id: int | None = None
+    # Deferred charge (RAY-80417): the prepared /mt/transaction payload (document
+    # MT + optional combined PDF fee) charged after successful Slack delivery.
+    mt_charge: Dict[str, Any] | None = None
 
 
 class Balance(BaseModel):

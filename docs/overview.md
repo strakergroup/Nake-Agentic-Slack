@@ -6,6 +6,7 @@ This folder contains documentation for the Slack Ray Translator application.
 
 - [Communication Boundaries](communication-boundaries.md) - Sequence diagram and route summary for all inbound/outbound service communication
 - [Internal Services & Redis Stream Events](internal-services.md) - Comprehensive catalogue of all internal service endpoints called and Redis stream events dispatched
+- [Document MT PDF Billing](document-mt-pdf-billing.md) - Deferred PDF conversion-fee billing after successful delivery (RAY-80417)
 - [VerifyLoop Integration](verifyloop.md) - Configuration, endpoints, modal form, and data flow for the VerifyLoop feature
 - [VerifyLoop Architecture Diagrams](verifyloop-architecture.md) - Visual diagrams of system architecture, auth flow, task pipeline, and component dependencies
 - [Channel Info Caching](channel-info-caching.md) - How channel names and privacy status are cached in the database

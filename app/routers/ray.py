@@ -340,6 +340,9 @@ async def _spend_transcription_credits(
                     service="transcription",
                     unit_type="milliseconds",
                 ),
+                # Media submission id: ties transcribe -> SRT translate -> embed
+                # into one transaction group for reporting (RAY-80417).
+                submission_group_uuid=task_info.task_uuid,
             )
 
             # Mark transcription as charged and store transaction UUID
@@ -521,6 +524,9 @@ async def _spend_embedding_credits(
                 source_language=_embedding_source_language(task_info),
                 file_name=task_info.file_name,
                 idempotency_key=embedding_idempotency_key,
+                # Media submission id: ties transcribe -> SRT translate -> embed
+                # into one transaction group for reporting (RAY-80417).
+                submission_group_uuid=task_info.task_uuid,
             )
 
             # Mark embedding as charged in the database
