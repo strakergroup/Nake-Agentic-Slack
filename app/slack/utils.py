@@ -329,3 +329,15 @@ def extract_language_codes_from_form(
     return [
         option.get("value") for option in selected_languages_data if option.get("value")
     ]
+
+
+def calculate_total_estimated_days(time_estimates: list[float]) -> int:
+    """Return the overall HV turnaround in days (Verify-aligned: global max).
+
+    Each estimate is per (file, target language). Verify stores and displays
+    turnaround independently per target and uses max when rolling up to a
+    single job due date.
+    """
+    if not time_estimates:
+        return 0
+    return math.ceil(max(time_estimates))

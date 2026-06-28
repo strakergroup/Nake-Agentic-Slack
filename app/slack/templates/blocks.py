@@ -1,6 +1,5 @@
 """Templates for individual Slack blocks."""
 
-import math
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -9,7 +8,11 @@ from ray_sdk.api.v3.models import Quote
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.ray.events.models import JobQuoteCreatedEvent
 from app.slack.select_options import get_languages_sync
-from app.slack.utils import calculate_evaluation_percentages, segment_quality_score
+from app.slack.utils import (
+    calculate_evaluation_percentages,
+    calculate_total_estimated_days,
+    segment_quality_score,
+)
 
 from ...auth.connector import (
     RayConnection,
@@ -481,21 +484,9 @@ def verify_quote_blocks(
                         }
                     )
         blocks.append({"type": "divider"})
-    # Group costs by file_uuid and multiply time_estimate_days by count for each group
-    grouped_times = {}
-    for cost_item in costs:
-        key = cost_item["file_uuid"]
-        time_estimate = cost_item["service_list"][0]["time_estimate_days"]
-        if key not in grouped_times:
-            grouped_times[key] = {"time_estimate": time_estimate, "count": 1}
-        else:
-            grouped_times[key]["count"] += 1
-            if time_estimate > grouped_times[key]["time_estimate"]:
-                grouped_times[key]["time_estimate"] = time_estimate
-
-    # Calculate total time by multiplying max time estimate by count for each file
-    total_estimated_days = math.ceil(
-        sum(group["time_estimate"] * group["count"] for group in grouped_times.values())
+    # Verify-aligned: max turnaround across all selected file/language pairs
+    total_estimated_days = calculate_total_estimated_days(
+        [cost_item["service_list"][0]["time_estimate_days"] for cost_item in costs]
     )
 
     # Calculate completion date
