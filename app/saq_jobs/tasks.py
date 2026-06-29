@@ -41,6 +41,7 @@ import logging
 import os
 from typing import Any, cast
 
+import httpx
 from saq.types import Context
 from slack_bolt.context.async_context import AsyncBoltContext
 
@@ -64,6 +65,46 @@ def _safe_unlink(path: str | None) -> None:
             os.unlink(path)
     except OSError:
         logger.warning("Failed to remove temp file", extra={"path_present": True})
+
+
+def _alert_gateway_billing_failure(
+    exc: BaseException,
+    label: str,
+    *,
+    job: Any,
+    attempt: int,
+    log_extra: dict[str, Any],
+) -> None:
+    """Raise a Google Chat alert for a failed LanguageCloud billing call.
+
+    Billing is deferred until after the user already has their file, so a failed
+    gateway charge never self-heals into a user-visible error — it must alert on
+    its own. Two triggers, deliberately bounded to avoid per-retry spam:
+
+    * A non-retryable client error (HTTP 4xx — e.g. a 422 schema/contract
+      mismatch from a partial deploy, or a 403) alerts immediately on the first
+      attempt, because retrying the same payload cannot fix a rejected contract.
+    * Any error alerts once on the final SAQ attempt, so a transient gateway
+      outage still surfaces after retries are exhausted.
+    """
+    status_code = (
+        exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+    )
+    is_client_error = status_code is not None and 400 <= status_code < 500
+    is_final_attempt = job is not None and not job.retryable
+
+    if is_client_error and attempt == 1:
+        notify_exception(
+            exc,
+            f"{label} rejected by gateway (HTTP {status_code}); debit not recorded",
+            extra={**log_extra, "status_code": status_code},
+        )
+    elif is_final_attempt:
+        notify_exception(
+            Exception(f"{label} failed after retries"),
+            f"{label} failed (final attempt)",
+            extra=log_extra,
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -793,14 +834,11 @@ async def charge_inline_mt_usage(
             extra={**log_extra, "transaction_uuid": transaction_uuid},
         )
         return {"status": "charged", "transaction_uuid": transaction_uuid}
-    except Exception:
+    except Exception as exc:
         logger.exception("Inline MT billing failed; SAQ will retry", extra=log_extra)
-        if job is not None and not job.retryable:
-            notify_exception(
-                Exception("Inline MT billing failed after retries"),
-                "Inline MT billing failed (final attempt)",
-                extra=log_extra,
-            )
+        _alert_gateway_billing_failure(
+            exc, "Inline MT billing", job=job, attempt=attempt, log_extra=log_extra
+        )
         raise
 
 
@@ -839,6 +877,17 @@ async def charge_document_mt(
             max_retries=2,
             notify_on_final_failure=False,
         )
+        # A first-attempt replay means the gateway already had this debit (a
+        # duplicate enqueue or a prior run whose ack was lost): no new debit was
+        # written, so surface it rather than reporting a clean charge.
+        if (result or {}).get("replayed") and attempt == 1:
+            logger.warning(
+                "Document MT billing replayed on first attempt; no new debit",
+                extra={
+                    **log_extra,
+                    "transaction_uuid": (result or {}).get("transaction_uuid"),
+                },
+            )
         logger.info(
             "Document MT billing charged",
             extra={
@@ -848,14 +897,11 @@ async def charge_document_mt(
             },
         )
         return {"status": "charged", **(result or {})}
-    except Exception:
+    except Exception as exc:
         logger.exception("Document MT billing failed; SAQ will retry", extra=log_extra)
-        if job is not None and not job.retryable:
-            notify_exception(
-                Exception("Document MT billing failed after retries"),
-                "Document MT billing failed (final attempt)",
-                extra=log_extra,
-            )
+        _alert_gateway_billing_failure(
+            exc, "Document MT billing", job=job, attempt=attempt, log_extra=log_extra
+        )
         raise
 
 

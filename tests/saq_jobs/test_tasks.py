@@ -725,3 +725,89 @@ async def test_charge_document_mt_notifies_on_final_attempt():
 
     mock_notify.assert_called_once()
     assert mock_notify.call_args.kwargs["extra"]["idempotency_key"] == "key-doc"
+
+
+def _http_status_error(status_code: int) -> httpx.HTTPStatusError:
+    """Build an httpx.HTTPStatusError for a given gateway status code."""
+    request = httpx.Request("POST", "https://gateway/mt/transaction")
+    response = httpx.Response(status_code, request=request)
+    return httpx.HTTPStatusError("rejected", request=request, response=response)
+
+
+@pytest.mark.asyncio
+async def test_charge_document_mt_alerts_immediately_on_client_error():
+    """A 4xx gateway rejection alerts on the first attempt (retry cannot fix it)."""
+    relay = AsyncMock(side_effect=_http_status_error(422))
+    with (
+        patch("app.auth.connector.log_document_mt_by_client_id", new=relay),
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
+    ):
+        with pytest.raises(httpx.HTTPStatusError):
+            await charge_document_mt(
+                _ctx(attempts=1, retryable=True),
+                client_id="c",
+                charge={"idempotency_key": "key-doc"},
+                task_uuid="t",
+            )
+
+    mock_notify.assert_called_once()
+    assert mock_notify.call_args.kwargs["extra"]["status_code"] == 422
+
+
+@pytest.mark.asyncio
+async def test_charge_document_mt_silent_on_retryable_transient_error():
+    """A non-4xx error on a retryable, non-final attempt does not alert (no spam)."""
+    relay = AsyncMock(side_effect=RuntimeError("gateway 500"))
+    with (
+        patch("app.auth.connector.log_document_mt_by_client_id", new=relay),
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
+    ):
+        with pytest.raises(RuntimeError):
+            await charge_document_mt(
+                _ctx(attempts=1, retryable=True),
+                client_id="c",
+                charge={"idempotency_key": "key-doc"},
+                task_uuid="t",
+            )
+
+    mock_notify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_charge_document_mt_warns_on_first_attempt_replay(caplog):
+    """A first-attempt replay (no new debit) is logged rather than reported clean."""
+    import logging
+
+    relay = AsyncMock(return_value={"transaction_uuid": "txn-1", "replayed": True})
+    with (
+        patch("app.auth.connector.log_document_mt_by_client_id", new=relay),
+        caplog.at_level(logging.WARNING),
+    ):
+        result = await charge_document_mt(
+            _ctx(attempts=1, retryable=True),
+            client_id="c",
+            charge={"idempotency_key": "key-doc"},
+            task_uuid="t",
+        )
+
+    assert result["status"] == "charged"
+    assert any("replayed on first attempt" in r.message for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_charge_inline_mt_usage_alerts_immediately_on_client_error():
+    """Inline billing also alerts immediately on a 4xx gateway rejection."""
+    relay = AsyncMock(side_effect=_http_status_error(403))
+    with (
+        patch("app.auth.connector.log_inline_mt_usage_by_client_id", new=relay),
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
+    ):
+        with pytest.raises(httpx.HTTPStatusError):
+            await charge_inline_mt_usage(
+                _ctx(attempts=1, retryable=True),
+                billing={"idempotency_key": "key-inline", "client_id": "c"},
+                usage_log={},
+            )
+
+    mock_notify.assert_called_once()
+    assert mock_notify.call_args.kwargs["extra"]["status_code"] == 403
