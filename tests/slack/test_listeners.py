@@ -4613,6 +4613,15 @@ class TestRespondToMessage:
 class TestAutoTranslateMessage:
     """Tests for auto_translate_message function - handles automatic message translation."""
 
+    @pytest.fixture(autouse=True)
+    def _patch_channel_mt_helpers(self):
+        with patch(
+            "app.slack.listener_actions.bump_channel_mt_generation",
+            new_callable=AsyncMock,
+            return_value=1,
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_auto_translate_message_no_text(self, user_id, team_id, ray_client):
         """Test auto_translate_message with no text."""
@@ -4697,7 +4706,9 @@ class TestAutoTranslateMessage:
 
             await auto_translate_message(mock_client, context, message)
 
-            mock_can_translate_bot_message.assert_called_once_with("C123", "B123")
+            mock_can_translate_bot_message.assert_called_once_with(
+                "C123", "B123", is_edit=False
+            )
             mock_send_mt.assert_not_called()
 
     @pytest.mark.asyncio
@@ -4757,6 +4768,10 @@ class TestAutoTranslateMessage:
                 new_callable=AsyncMock,
             ) as mock_group_id,
             patch(
+                "app.slack.listener_actions.bump_channel_mt_generation",
+                new_callable=AsyncMock,
+            ) as mock_bump_generation,
+            patch(
                 "app.slack.listener_actions.send_mt_translation_request",
                 new_callable=AsyncMock,
             ) as mock_send_mt,
@@ -4770,6 +4785,7 @@ class TestAutoTranslateMessage:
             mock_can_translate_bot_message.return_value = True
             mock_glossary.return_value = ""
             mock_group_id.return_value = "group-test-id"
+            mock_bump_generation.return_value = 1
 
             await auto_translate_message(mock_client, context, message)
 
@@ -4778,6 +4794,7 @@ class TestAutoTranslateMessage:
             assert extra_data.slack_user_id == "U_BOT_USER"
             assert extra_data.slack_user_name == "Deploy Bot"
             assert extra_data.is_bot is True
+            assert extra_data.edit_generation == 1
 
     @pytest.mark.asyncio
     async def test_auto_translate_message_5k_limit(self, user_id, team_id, ray_client):

@@ -17,7 +17,6 @@ from .dispatch import (
     enqueue_inline_mt_billing,
     enqueue_log_notification,
     enqueue_mt_success_upload,
-    enqueue_mt_ts_edit,
     enqueue_transcription_upload,
     enqueue_verify_complete_upload,
 )
@@ -28,7 +27,6 @@ __all__ = [
     "enqueue_inline_mt_billing",
     "enqueue_log_notification",
     "enqueue_mt_success_upload",
-    "enqueue_mt_ts_edit",
     "enqueue_document_mt_submission",
     "enqueue_document_mt_charge",
     "enqueue_evaluation_submission",

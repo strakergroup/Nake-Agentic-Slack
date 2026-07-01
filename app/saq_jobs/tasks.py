@@ -758,19 +758,6 @@ async def persist_log_notification(
     return {"status": "logged", "event": event}
 
 
-async def persist_mt_ts_edit(
-    ctx: Context,
-    *,
-    send_ts: str,
-    reply_ts: str,
-) -> dict[str, Any]:
-    """Durable wrapper around ``app.slack.web.set_mt_ts_edit`` (Redis cache)."""
-    from app.slack.web import set_mt_ts_edit
-
-    await set_mt_ts_edit(send_ts=send_ts, reply_ts=reply_ts)
-    return {"status": "cached", "send_ts": send_ts}
-
-
 async def charge_inline_mt_usage(
     ctx: Context,
     *,
@@ -922,7 +909,6 @@ FILE_SUBMISSION_TASK_FUNCTIONS = [
 
 BACKGROUND_TASK_FUNCTIONS = [
     persist_log_notification,
-    persist_mt_ts_edit,
     charge_inline_mt_usage,
     charge_document_mt,
 ]

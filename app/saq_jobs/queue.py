@@ -52,6 +52,7 @@ async def enqueue(
     timeout: int | None = None,
     retry_delay: float | None = None,
     retry_backoff: bool | None = None,
+    scheduled: int | None = None,
     **kwargs: Any,
 ) -> None:
     """Enqueue a job onto the SAQ queue.
@@ -70,6 +71,10 @@ async def enqueue(
         timeout: Override default per-attempt timeout in seconds.
         retry_delay: Initial retry delay in seconds (SAQ jitters by default).
         retry_backoff: Whether to apply exponential backoff between retries.
+        scheduled: Optional Unix timestamp (seconds) to defer execution until.
+            Combined with a unique ``key`` this collapses repeated enqueues in
+            the window into a single deferred job (used for bot-message
+            debouncing, RAY-80512).
         **kwargs: Keyword arguments forwarded to the task function. Must be
             JSON serialisable. NEVER pass secrets here (Slack bot tokens,
             access tokens, file contents). Pass identifiers and re-fetch
@@ -90,6 +95,8 @@ async def enqueue(
         job_kwargs["retry_delay"] = retry_delay
     if retry_backoff is not None:
         job_kwargs["retry_backoff"] = retry_backoff
+    if scheduled is not None:
+        job_kwargs["scheduled"] = scheduled
 
     job = await queue.enqueue(function, **job_kwargs, **kwargs)
     if job is None:
