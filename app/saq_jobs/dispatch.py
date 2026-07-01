@@ -339,21 +339,33 @@ async def enqueue_document_mt_charge(
     )
 
 
-async def enqueue_mt_ts_edit(*, send_ts: str, reply_ts: str) -> None:
-    """Enqueue a durable ``persist_mt_ts_edit`` SAQ job (RAY-79638).
+async def enqueue_debounced_bot_translation(
+    *,
+    channel_id: str,
+    bot_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    bot_user_id: str | None,
+    scheduled: int,
+) -> None:
+    """Enqueue a deferred, debounced bot-message translation (RAY-80512).
 
-    Keyed on ``send_ts`` because the Slack thread pivot timestamp is the
-    natural unique identifier — a duplicate enqueue with the same parent
-    timestamp is always the same logical operation.
+    Keyed on ``(channel_id, bot_id)`` so repeat enqueues within the debounce
+    window collapse to a single job via SAQ's unique-key dedup. ``scheduled``
+    is a Unix timestamp ``debounce`` seconds in the future; the job reads the
+    latest stored payload when it fires. No retries: a dropped translation is a
+    cosmetic loss, and a retry could translate a now-stale payload.
     """
     await enqueue(
-        "persist_mt_ts_edit",
+        "translate_debounced_bot_message",
         queue_name=app_config.saq_background_queue_name,
-        key=f"persist_mt_ts_edit:{send_ts}",
-        retries=app_config.saq_logging_retries,
+        key=f"translate_debounced_bot_message:{channel_id}:{bot_id}",
+        scheduled=scheduled,
+        retries=0,
         timeout=app_config.saq_logging_timeout_seconds,
-        retry_delay=1.0,
-        retry_backoff=True,
-        send_ts=send_ts,
-        reply_ts=reply_ts,
+        channel_id=channel_id,
+        bot_id=bot_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+        bot_user_id=bot_user_id,
     )

@@ -758,17 +758,31 @@ async def persist_log_notification(
     return {"status": "logged", "event": event}
 
 
-async def persist_mt_ts_edit(
+async def translate_debounced_bot_message(
     ctx: Context,
     *,
-    send_ts: str,
-    reply_ts: str,
+    channel_id: str,
+    bot_id: str,
+    team_id: str,
+    enterprise_id: str | None = None,
+    bot_user_id: str | None = None,
 ) -> dict[str, Any]:
-    """Durable wrapper around ``app.slack.web.set_mt_ts_edit`` (Redis cache)."""
-    from app.slack.web import set_mt_ts_edit
+    """Translate the latest debounced bot message for a channel/bot (RAY-80512).
 
-    await set_mt_ts_edit(send_ts=send_ts, reply_ts=reply_ts)
-    return {"status": "cached", "send_ts": send_ts}
+    Deferred by ``debounce`` seconds and collapsed to one job per
+    ``(channel_id, bot_id)`` via the unique SAQ key, so a burst of streaming bot
+    posts results in a single translation of the last payload in the window.
+    """
+    from app.slack.bot_translation import run_debounced_bot_translation
+
+    await run_debounced_bot_translation(
+        channel_id=channel_id,
+        bot_id=bot_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+        bot_user_id=bot_user_id,
+    )
+    return {"status": "translated", "channel_id": channel_id, "bot_id": bot_id}
 
 
 async def charge_inline_mt_usage(
@@ -922,7 +936,7 @@ FILE_SUBMISSION_TASK_FUNCTIONS = [
 
 BACKGROUND_TASK_FUNCTIONS = [
     persist_log_notification,
-    persist_mt_ts_edit,
+    translate_debounced_bot_message,
     charge_inline_mt_usage,
     charge_document_mt,
 ]

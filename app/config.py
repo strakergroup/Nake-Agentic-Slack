@@ -79,6 +79,7 @@ class StrakerConfig(BaseSettings):
     saq_file_upload_timeout_seconds: int = Field(default=900, ge=10, le=3600)
     saq_logging_retries: int = Field(default=3, ge=0, le=20)
     saq_logging_timeout_seconds: int = Field(default=30, ge=5, le=600)
+    bot_translation_debounce_seconds: float = Field(default=3.0, ge=0.5, le=30.0)
 
     @field_validator("google_mt_api_key", mode="after")
     def validate_google_mt_api_key(cls, v, info: ValidationInfo):

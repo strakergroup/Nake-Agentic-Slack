@@ -71,6 +71,11 @@ from ..ray.utils import (
 )
 from ..redis import redis_conn
 from ..watson import watson_message
+from .bot_translation import (
+    bump_channel_mt_generation,
+    is_slack_emoji_only,
+    schedule_bot_message_translation,
+)
 from .bot_translation_limits import can_translate_bot_message
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
@@ -121,7 +126,11 @@ AUDIO_ONLY_TYPES = ["mp3", "mpga", "m4a", "wav"]
 VIDEO_ONLY_TYPES = ["mp4", "mpeg", "webm"]
 
 MEDIA_ACTION_IDS = frozenset(
-    {"video_transcribe_only", "video_transcribe_translate", "video_embed_subtitles"}
+    {
+        "video_transcribe_only",
+        "video_transcribe_translate",
+        "video_embed_subtitles",
+    }
 )
 
 FR_CA_VARIANTS = frozenset({"fr-ca", "french-canada", "french-canadian"})
@@ -952,12 +961,23 @@ async def auto_translate_message(
     context: AsyncBoltContext,
     message: dict[str, Any],
     is_edit: bool = False,
+    *,
+    skip_bot_debounce: bool = False,
 ):
     text: str | None = message.get("text")
     ts: str = message["ts"]
     thread_ts: str | None = message.get("thread_ts")
     if not text:
         return
+    if is_slack_emoji_only(text):
+        return
+
+    bot_id = message.get("bot_id")
+    is_bot_message = isinstance(bot_id, str)
+    if is_bot_message and not is_edit and not skip_bot_debounce:
+        await schedule_bot_message_translation(client, context, message)
+        return
+
     # Check for 5K character limit
     if len(text) > 5000:
         error_msg = _("The message is over the 5K character limit")
@@ -998,18 +1018,20 @@ async def auto_translate_message(
         return
     source_lang = detected_source_lang_response.language
 
-    bot_id = message.get("bot_id")
-    is_bot_message = isinstance(bot_id, str)
     slack_user_id = context.user_id
     slack_user_name = None
     if isinstance(bot_id, str):
-        if not await can_translate_bot_message(context.channel_id, bot_id):
+        if not await can_translate_bot_message(
+            context.channel_id, bot_id, is_edit=is_edit
+        ):
             return
         slack_user_id = message.get("user") or bot_id
         bot_profile = message.get("bot_profile")
         if isinstance(bot_profile, dict):
             slack_user_name = bot_profile.get("name") or bot_profile.get("real_name")
         slack_user_name = slack_user_name or message.get("username")
+
+    edit_generation = await bump_channel_mt_generation(ts)
 
     try:
         org_uuid = ray_connection.super_group[0].verify_organization_uuid
@@ -1064,26 +1086,12 @@ async def auto_translate_message(
                 is_edit=is_edit,
                 display_format=display_format,
                 message_ts=ts,
+                edit_generation=edit_generation,
             ),
         )
     except Exception as e:
         notify_exception(e, "Slack channel MT failed")
         return
-    # if not source_lang:
-    #     return
-    # translations = [
-    #     (target_lang, translated)
-    #     for target_lang, translated in translations
-    #     if target_lang != source_lang
-    #     and langcodes.get(target_lang).language != langcodes.get(source_lang).language
-    # ]
-    # if not translations:
-    #     return
-    # msg = AutoTranslationMessage(
-    #     None,
-    #     source_lang,
-    #     translations=translations,
-    # )
 
 
 async def document_machine_translate(

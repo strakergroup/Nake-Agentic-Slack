@@ -1544,6 +1544,20 @@ async def ray_events(
                         response_url=mt_result_extra_data.response_url,
                     )
                 elif mt_result_extra_data.usage_type == "channel_translation":
+                    from app.slack.bot_translation import is_stale_channel_mt_generation
+
+                    if (
+                        mt_result_extra_data.message_ts
+                        and mt_result_extra_data.edit_generation is not None
+                        and await is_stale_channel_mt_generation(
+                            mt_result_extra_data.message_ts,
+                            mt_result_extra_data.edit_generation,
+                        )
+                    ):
+                        return {
+                            "message": "Stale channel translation skipped",
+                            "data": {"event": event.event},
+                        }
                     # For channel translation, pass the translations dict directly
                     # The AutoTranslationMessage expects {lang: [text1, text2, ...]} format
                     translations = _order_translations_by_target_language_order(

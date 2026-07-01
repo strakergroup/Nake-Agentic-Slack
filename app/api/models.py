@@ -73,3 +73,4 @@ class MtTranslationExtraData(BaseModel):
     is_bot: bool = False
     display_format: str | None = None
     message_ts: str | None = None
+    edit_generation: int | None = None

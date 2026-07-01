@@ -57,11 +57,11 @@ def _slack_api_error(error: str) -> SlackApiError:
 
 @pytest.mark.asyncio
 @patch("app.ray.events.logging.enqueue_log_notification", new_callable=AsyncMock)
-@patch("app.ray.events.logging.enqueue_mt_ts_edit", new_callable=AsyncMock)
+@patch("app.ray.events.logging.set_mt_ts_edit", new_callable=AsyncMock)
 @patch("app.ray.events.logging.get_mt_ts_cached", new_callable=AsyncMock)
 async def test_post_channel_translation_update_success(
     mock_get_cached,
-    mock_enqueue_mt_ts,
+    mock_set_mt_ts,
     mock_log_notification,
     slack_user,
     ray_event,
@@ -84,18 +84,18 @@ async def test_post_channel_translation_update_success(
 
     client.chat_update.assert_awaited_once()
     client.chat_postMessage.assert_not_awaited()
-    mock_enqueue_mt_ts.assert_not_awaited()
+    mock_set_mt_ts.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 @patch("app.ray.events.logging.enqueue_log_notification", new_callable=AsyncMock)
-@patch("app.ray.events.logging.enqueue_mt_ts_edit", new_callable=AsyncMock)
+@patch("app.ray.events.logging.set_mt_ts_edit", new_callable=AsyncMock)
 @patch("app.ray.events.logging.clear_mt_ts_cached", new_callable=AsyncMock)
 @patch("app.ray.events.logging.get_mt_ts_cached", new_callable=AsyncMock)
 async def test_post_channel_translation_falls_back_when_update_message_not_found(
     mock_get_cached,
     mock_clear_cached,
-    mock_enqueue_mt_ts,
+    mock_set_mt_ts,
     mock_log_notification,
     slack_user,
     ray_event,
@@ -125,7 +125,7 @@ async def test_post_channel_translation_falls_back_when_update_message_not_found
         blocks=translation_message.blocks,
         thread_ts="111.001",
     )
-    mock_enqueue_mt_ts.assert_awaited_once_with(send_ts="111.001", reply_ts="999.002")
+    mock_set_mt_ts.assert_awaited_once_with(send_ts="111.001", reply_ts="999.002")
 
 
 @pytest.mark.asyncio

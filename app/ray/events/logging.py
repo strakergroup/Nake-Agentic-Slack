@@ -9,14 +9,14 @@ from slack_sdk.webhook import WebhookResponse
 from sqlalchemy import text
 from straker_utils.sql.async_engine import execute
 
-from app.saq_jobs import enqueue_log_notification, enqueue_mt_ts_edit
+from app.saq_jobs import enqueue_log_notification
 from app.slack.buglog_notifier import notify_exception
 
 from ...auth.connector import SlackUser
 from ...database import async_engines
 from ...dependencies import RayEvent
 from ...slack.templates.messages import SlackMessage
-from ...slack.web import clear_mt_ts_cached, get_mt_ts_cached
+from ...slack.web import clear_mt_ts_cached, get_mt_ts_cached, set_mt_ts_edit
 
 
 async def log_notification(
@@ -111,7 +111,7 @@ async def post_notification(
                     reply_ts = response.get("ts")
                     if not isinstance(reply_ts, str):
                         raise ValueError("Slack response is missing a string timestamp")
-                    await enqueue_mt_ts_edit(send_ts=thread_ts, reply_ts=reply_ts)
+                    await set_mt_ts_edit(send_ts=thread_ts, reply_ts=reply_ts)
         elif display_format == "message":
             if timestamp:
                 response = await client.chat_update(
@@ -131,7 +131,7 @@ async def post_notification(
                     reply_ts = response.get("ts")
                     if not isinstance(reply_ts, str):
                         raise ValueError("Slack response is missing a string timestamp")
-                    await enqueue_mt_ts_edit(send_ts=thread_ts, reply_ts=reply_ts)
+                    await set_mt_ts_edit(send_ts=thread_ts, reply_ts=reply_ts)
     else:
         # Determine the appropriate response method based on parameters
         if response_url and not is_edit:
@@ -237,7 +237,7 @@ async def post_channel_translation_notification(
                     raise ValueError(
                         "Slack response is missing a string timestamp"
                     ) from exc
-                await enqueue_mt_ts_edit(send_ts=thread_timestamp, reply_ts=reply_ts)
+                await set_mt_ts_edit(send_ts=thread_timestamp, reply_ts=reply_ts)
     else:
         response = await client.chat_postMessage(
             channel=channel_id,
@@ -249,7 +249,7 @@ async def post_channel_translation_notification(
             reply_ts = response.get("ts")
             if not isinstance(reply_ts, str):
                 raise ValueError("Slack response is missing a string timestamp")
-            await enqueue_mt_ts_edit(send_ts=thread_timestamp, reply_ts=reply_ts)
+            await set_mt_ts_edit(send_ts=thread_timestamp, reply_ts=reply_ts)
 
     await enqueue_log_notification(
         event=event.event,

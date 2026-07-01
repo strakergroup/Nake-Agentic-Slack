@@ -11,13 +11,13 @@ top-level ``saq`` package import.
 """
 
 from .dispatch import (
+    enqueue_debounced_bot_translation,
     enqueue_document_mt_charge,
     enqueue_document_mt_submission,
     enqueue_evaluation_submission,
     enqueue_inline_mt_billing,
     enqueue_log_notification,
     enqueue_mt_success_upload,
-    enqueue_mt_ts_edit,
     enqueue_transcription_upload,
     enqueue_verify_complete_upload,
 )
@@ -25,10 +25,10 @@ from .queue import enqueue, get_queue, shutdown_queue
 
 __all__ = [
     "enqueue",
+    "enqueue_debounced_bot_translation",
     "enqueue_inline_mt_billing",
     "enqueue_log_notification",
     "enqueue_mt_success_upload",
-    "enqueue_mt_ts_edit",
     "enqueue_document_mt_submission",
     "enqueue_document_mt_charge",
     "enqueue_evaluation_submission",

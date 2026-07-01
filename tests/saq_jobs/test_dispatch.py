@@ -16,12 +16,12 @@ from app.ray.events.models import MtSuccessResponseSchema
 from app.saq_jobs.dispatch import (
     _mt_success_idempotency_key,
     _submission_queue_name,
+    enqueue_debounced_bot_translation,
     enqueue_document_mt_submission,
     enqueue_evaluation_submission,
     enqueue_inline_mt_billing,
     enqueue_log_notification,
     enqueue_mt_success_upload,
-    enqueue_mt_ts_edit,
     enqueue_transcription_upload,
     enqueue_verify_complete_upload,
 )
@@ -327,19 +327,28 @@ async def test_enqueue_inline_mt_billing_forwards_payload_with_idempotency_key()
 
 
 @pytest.mark.asyncio
-async def test_enqueue_mt_ts_edit_forwards_payload_with_send_ts_key():
+async def test_enqueue_debounced_bot_translation_uses_channel_bot_key_and_schedule():
     with (
         patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
         patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
     ):
         mock_cfg.saq_background_queue_name = "background-q"
-        mock_cfg.saq_logging_retries = 3
         mock_cfg.saq_logging_timeout_seconds = 30
-        await enqueue_mt_ts_edit(send_ts="1700000000.0001", reply_ts="1700000001.0001")
+        await enqueue_debounced_bot_translation(
+            channel_id="C123",
+            bot_id="B123",
+            team_id="T123",
+            enterprise_id=None,
+            bot_user_id="BAPP",
+            scheduled=1700000003,
+        )
 
     call_args = mock_enq.await_args
-    assert call_args.args == ("persist_mt_ts_edit",)
+    assert call_args.args == ("translate_debounced_bot_message",)
     assert call_args.kwargs["queue_name"] == "background-q"
-    assert call_args.kwargs["key"] == "persist_mt_ts_edit:1700000000.0001"
-    assert call_args.kwargs["send_ts"] == "1700000000.0001"
-    assert call_args.kwargs["reply_ts"] == "1700000001.0001"
+    assert call_args.kwargs["key"] == "translate_debounced_bot_message:C123:B123"
+    assert call_args.kwargs["scheduled"] == 1700000003
+    assert call_args.kwargs["retries"] == 0
+    assert call_args.kwargs["channel_id"] == "C123"
+    assert call_args.kwargs["bot_id"] == "B123"
+    assert call_args.kwargs["team_id"] == "T123"
