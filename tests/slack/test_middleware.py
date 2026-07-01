@@ -218,7 +218,7 @@ class TestRequireMtTokens:
         context["enterprise_id"] = None
         ray_client.id_token = "test_token"
 
-        # Mock sufficient tokens (value=1 means we need ceil(1*0.1)=1 token)
+        # Mock sufficient tokens (value=500 means we need ceil(500*0.002)=1 token)
         mock_get_client_tokens.return_value = GetCreditBalanceResponse(
             ai_token=10, mt_token=0
         )
@@ -396,7 +396,7 @@ class TestRequireMtTokens:
         context,
         ray_client,
     ):
-        """Test that require_mt_tokens scales the value correctly (value * 0.1)."""
+        """Test that require_mt_tokens scales the value correctly (value * 0.002)."""
         from app.auth.connector import GetCreditBalanceResponse
 
         ray_connection = RayConnection(super_group=[], client=ray_client)
@@ -408,15 +408,15 @@ class TestRequireMtTokens:
         mock_get_client_type.return_value = "Admin"
         mock_is_ibm.return_value = False
 
-        # value=10 should require ceil(10*0.1)=1 token
+        # value=500 should require ceil(500*0.002)=1 token
         mock_get_client_tokens.return_value = GetCreditBalanceResponse(
             ai_token=1, mt_token=0
         )
 
-        result = await require_mt_tokens(context, value=10)
+        result = await require_mt_tokens(context, value=500)
         assert result is True
 
-        # value=15 should require ceil(15*0.1)=2 tokens
+        # value=1000 should require ceil(1000*0.002)=2 tokens
         mock_get_client_tokens.return_value = GetCreditBalanceResponse(
             ai_token=1, mt_token=0
         )
@@ -426,6 +426,6 @@ class TestRequireMtTokens:
             new_callable=PropertyMock,
             return_value=mock_client,
         ):
-            result = await require_mt_tokens(context, value=15)
+            result = await require_mt_tokens(context, value=1000)
             assert result is False  # Only 1 token, need 2
             mock_client.chat_postEphemeral.assert_called_once()
