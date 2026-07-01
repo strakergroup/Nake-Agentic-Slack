@@ -73,8 +73,7 @@ from ..redis import redis_conn
 from ..watson import watson_message
 from .bot_translation import (
     bump_channel_mt_generation,
-    is_slack_emoji_only,
-    schedule_bot_message_translation,
+    is_untranslatable_placeholder,
 )
 from .bot_translation_limits import can_translate_bot_message
 from .middleware import require_mt_tokens, require_ray_client
@@ -961,22 +960,17 @@ async def auto_translate_message(
     context: AsyncBoltContext,
     message: dict[str, Any],
     is_edit: bool = False,
-    *,
-    skip_bot_debounce: bool = False,
 ):
     text: str | None = message.get("text")
     ts: str = message["ts"]
     thread_ts: str | None = message.get("thread_ts")
     if not text:
         return
-    if is_slack_emoji_only(text):
+    if is_untranslatable_placeholder(text):
         return
 
     bot_id = message.get("bot_id")
     is_bot_message = isinstance(bot_id, str)
-    if is_bot_message and not is_edit and not skip_bot_debounce:
-        await schedule_bot_message_translation(client, context, message)
-        return
 
     # Check for 5K character limit
     if len(text) > 5000:

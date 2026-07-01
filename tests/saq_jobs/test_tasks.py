@@ -23,7 +23,6 @@ from app.saq_jobs.tasks import (
     slack_upload_mt_result,
     slack_upload_transcription,
     slack_upload_verify_complete,
-    translate_debounced_bot_message,
 )
 
 
@@ -424,7 +423,7 @@ async def test_slack_upload_verify_complete_happy_path(slack_user):
 
 
 # --------------------------------------------------------------------------- #
-# persist_log_notification / translate_debounced_bot_message
+# persist_log_notification
 # --------------------------------------------------------------------------- #
 
 
@@ -445,29 +444,6 @@ async def test_persist_log_notification_delegates_to_log_notification():
     assert result["status"] == "logged"
     log.assert_awaited_once()
     assert log.await_args.kwargs["event"] == "ray:client:signup"
-
-
-@pytest.mark.asyncio
-async def test_translate_debounced_bot_message_delegates_to_runner():
-    runner = AsyncMock()
-    with patch("app.slack.bot_translation.run_debounced_bot_translation", new=runner):
-        result = await translate_debounced_bot_message(
-            _ctx(),
-            channel_id="C1",
-            bot_id="B1",
-            team_id="T1",
-            enterprise_id=None,
-            bot_user_id="BAPP",
-        )
-
-    assert result["status"] == "translated"
-    runner.assert_awaited_once_with(
-        channel_id="C1",
-        bot_id="B1",
-        team_id="T1",
-        enterprise_id=None,
-        bot_user_id="BAPP",
-    )
 
 
 # --------------------------------------------------------------------------- #

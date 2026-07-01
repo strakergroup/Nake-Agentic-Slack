@@ -2,7 +2,8 @@
 
 ## [Unreleased]
 
-- [Fixed]: RAY-80512 — bot channel auto-translate now skips emoji-only messages, debounces bursty bot posts, discards stale MT callbacks via edit generation, excludes edits from the bot rate limit, and writes the translation reply cache synchronously (Wade Norman, 2026-07-02)
+- [Changed]: RAY-80512 — removed new-post bot debounce; separate channel messages each translate; edit coalescing via generation counter on `message_changed` only (Wade Norman, 2026-07-02)
+- [Fixed]: RAY-80512 — bot channel auto-translate now skips placeholder-only messages (emoji tokens, bare ellipsis `...`/`…`, punctuation, Unicode emoji), debounces bursty bot posts, discards stale MT callbacks via edit generation, excludes edits from the bot rate limit, and writes the translation reply cache synchronously (Wade Norman, 2026-07-02)
 - [Changed]: RAY-80512 — bot-message debounce runs as a deferred unique-keyed SAQ job (`translate_debounced_bot_message`) instead of a fire-and-forget asyncio task; added `scheduled` support to the enqueue wrapper and removed the unused `persist_mt_ts_edit` task/`enqueue_mt_ts_edit` helper (Wade Norman, 2026-07-02)
 - [Changed]: Bot channel translation metadata now carries `is_bot`, a resolvable Slack bot user id, and the bot display name as the reporting `client_name` fallback for `/mt/inline-usage` (Wade Norman, 2026-06-15)
 - [Fixed]: Preserved the Slack `message_not_found` exception as the cause when the channel-translation edit fallback receives a post response without a timestamp, clearing Ruff B904 for the repo lint check (Wade Norman, 2026-06-15)

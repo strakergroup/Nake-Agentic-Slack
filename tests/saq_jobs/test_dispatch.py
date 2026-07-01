@@ -16,7 +16,6 @@ from app.ray.events.models import MtSuccessResponseSchema
 from app.saq_jobs.dispatch import (
     _mt_success_idempotency_key,
     _submission_queue_name,
-    enqueue_debounced_bot_translation,
     enqueue_document_mt_submission,
     enqueue_evaluation_submission,
     enqueue_inline_mt_billing,
@@ -324,31 +323,3 @@ async def test_enqueue_inline_mt_billing_forwards_payload_with_idempotency_key()
     assert kwargs["retry_backoff"] is True
     assert kwargs["billing"] == {"client_id": "rc1", "idempotency_key": "key-abc"}
     assert kwargs["usage_log"] == {"user_uuid": "rc1", "group_uuid": "g1"}
-
-
-@pytest.mark.asyncio
-async def test_enqueue_debounced_bot_translation_uses_channel_bot_key_and_schedule():
-    with (
-        patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
-        patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
-    ):
-        mock_cfg.saq_background_queue_name = "background-q"
-        mock_cfg.saq_logging_timeout_seconds = 30
-        await enqueue_debounced_bot_translation(
-            channel_id="C123",
-            bot_id="B123",
-            team_id="T123",
-            enterprise_id=None,
-            bot_user_id="BAPP",
-            scheduled=1700000003,
-        )
-
-    call_args = mock_enq.await_args
-    assert call_args.args == ("translate_debounced_bot_message",)
-    assert call_args.kwargs["queue_name"] == "background-q"
-    assert call_args.kwargs["key"] == "translate_debounced_bot_message:C123:B123"
-    assert call_args.kwargs["scheduled"] == 1700000003
-    assert call_args.kwargs["retries"] == 0
-    assert call_args.kwargs["channel_id"] == "C123"
-    assert call_args.kwargs["bot_id"] == "B123"
-    assert call_args.kwargs["team_id"] == "T123"

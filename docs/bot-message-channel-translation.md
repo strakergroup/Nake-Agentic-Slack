@@ -12,7 +12,7 @@ sequenceDiagram
     participant MT as MT translation stream
 
     Slack->>Listener: message (bot_id set)
-    Listener->>Listener: Skip emoji-only / debounce bursty bot posts
+    Listener->>Listener: Skip placeholder-only messages
     Listener->>Listener: Load channel translation settings
     Listener->>Listener: Detect source language and target languages
     Listener->>Redis: Bump edit generation + consume bot quota (creates only)
@@ -27,8 +27,8 @@ sequenceDiagram
 
 ## Guards (RAY-80512)
 
-- **Emoji-only messages** — text that is only Slack `:emoji:` tokens (for example `:3dotsloading:`) is not translated.
-- **Bot debounce** — new bot posts are debounced per `(channel_id, bot_id)` so streaming bots that emit several messages in quick succession only translate the last payload in the window. Configured via `BOT_TRANSLATION_DEBOUNCE_SECONDS` (default 3s). The debounce is implemented as a deferred SAQ job (`translate_debounced_bot_message`): each bot post overwrites the latest payload in Redis and enqueues a `scheduled` job keyed by `(channel_id, bot_id)`; SAQ's unique-key dedup collapses the burst to one durable job that translates the last stored payload when it fires.
+- **Placeholder-only messages** — text with no translatable content is not translated. This covers Slack `:emoji:` tokens (for example `:3dotsloading:`), bare ellipsis (`...` / `…`), other punctuation, and Unicode emoji. Detection strips `:emoji:` tokens then skips the message when no Unicode letter or digit remains (`is_untranslatable_placeholder`); anything with a real letter/digit still translates.
+- **Separate posts translate separately** — each distinct bot message in the channel gets its own translation (subject to rate limit and placeholder skip). Coalescing applies only to **edits** of the same message (`message_changed`), not to a burst of new posts.
 - **Edit generation** — each translate request bumps a Redis generation counter keyed by source `message_ts`. MT callbacks with an older generation are discarded so only the latest edit wins.
 - **Edit rate limit exemption** — `message_changed` re-translations do not consume the bot rolling quota.
 
@@ -36,7 +36,7 @@ sequenceDiagram
 
 Bot channel translations are limited to 10 **new** bot messages per bot, per channel, per 5-minute window. The Redis key is scoped by Slack channel ID and Slack `bot_id`.
 
-Edits (`message_changed`) are excluded from this quota. The quota is consumed once per debounced bot message, regardless of how many channel translation languages are configured. If Redis cannot record the quota, bot translation fails closed and no MT request is sent.
+Edits (`message_changed`) are excluded from this quota. The quota is consumed once per new bot message, regardless of how many channel translation languages are configured. If Redis cannot record the quota, bot translation fails closed and no MT request is sent.
 
 ## Translation reply cache (`mt_ts`)
 

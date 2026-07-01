@@ -337,35 +337,3 @@ async def enqueue_document_mt_charge(
         charge=charge,
         task_uuid=task_uuid,
     )
-
-
-async def enqueue_debounced_bot_translation(
-    *,
-    channel_id: str,
-    bot_id: str,
-    team_id: str,
-    enterprise_id: str | None,
-    bot_user_id: str | None,
-    scheduled: int,
-) -> None:
-    """Enqueue a deferred, debounced bot-message translation (RAY-80512).
-
-    Keyed on ``(channel_id, bot_id)`` so repeat enqueues within the debounce
-    window collapse to a single job via SAQ's unique-key dedup. ``scheduled``
-    is a Unix timestamp ``debounce`` seconds in the future; the job reads the
-    latest stored payload when it fires. No retries: a dropped translation is a
-    cosmetic loss, and a retry could translate a now-stale payload.
-    """
-    await enqueue(
-        "translate_debounced_bot_message",
-        queue_name=app_config.saq_background_queue_name,
-        key=f"translate_debounced_bot_message:{channel_id}:{bot_id}",
-        scheduled=scheduled,
-        retries=0,
-        timeout=app_config.saq_logging_timeout_seconds,
-        channel_id=channel_id,
-        bot_id=bot_id,
-        team_id=team_id,
-        enterprise_id=enterprise_id,
-        bot_user_id=bot_user_id,
-    )
