@@ -1741,6 +1741,7 @@ async def log_inline_mt_usage_by_client_id(
     client_name: str | None = None,
     is_bot: bool | None = None,
     group_uuid: str | None = None,
+    submission_group_uuid: str | None = None,
 ) -> str:
     """
     Charge inline/channel/shortcut MT via the LanguageCloud API
@@ -1751,9 +1752,9 @@ async def log_inline_mt_usage_by_client_id(
     idempotency (RAY-80000 §3.4) — replacing a direct credit-ledger write that
     left the usage row missing.
 
-    The gateway charge is ``ceil(text_length * len(target_languages) * 0.1)``,
-    so ``target_languages`` must contain one entry per billed (service, language)
-    pair to reproduce the prior amount exactly.
+    The gateway charge is ``ceil(text_length * len(target_languages) * 0.002)`` —
+    same ×-targets shape as the legacy ``0.1`` formula, SOW rate only (RAY-80492).
+    ``target_languages`` still lists one entry per billed (service, language) pair.
 
     Returns:
         str: the gateway transaction UUID.
@@ -1800,6 +1801,8 @@ async def log_inline_mt_usage_by_client_id(
     # before the gateway migration (RAY-80000 hotfix).
     if group_uuid:
         data["group_uuid"] = group_uuid
+    if submission_group_uuid:
+        data["submission_group_uuid"] = submission_group_uuid
     async with httpx.AsyncClient() as http:
         response = await http.post(url, headers=headers, json=data)
         response.raise_for_status()

@@ -110,6 +110,7 @@ async def test_inline_usage_sends_full_payload():
             client_name="Channel Poster",
             is_bot=True,
             group_uuid="billing-group-uuid",
+            submission_group_uuid="1717.001",
         )
 
     assert transaction_uuid == "txn-inline"
@@ -130,6 +131,7 @@ async def test_inline_usage_sends_full_payload():
     assert posted_json["is_bot"] is True
     # The resolved billing group is sent so the ledger group_uuid is not the org.
     assert posted_json["group_uuid"] == "billing-group-uuid"
+    assert posted_json["submission_group_uuid"] == "1717.001"
 
 
 @pytest.mark.asyncio

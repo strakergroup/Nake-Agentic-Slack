@@ -1719,6 +1719,11 @@ async def ray_events(
                 # with retry + idempotency, then writes the Google API usage row
                 # against the resulting transaction_uuid. User delivery above is
                 # now independent of billing durability.
+                submission_anchor = (
+                    mt_result_extra_data.message_ts
+                    if mt_result_extra_data.message_ts
+                    else f"{mt_result_extra_data.channel_id}:{content_fingerprint}"
+                )
                 billing_payload = {
                     "client_id": auth.slack_user.ray_client_id,
                     "text_length": mt_result_extra_data.text_length,
@@ -1737,6 +1742,9 @@ async def ray_events(
                     # instead of collapsing to the org uuid for org-billed
                     # channel/shortcut MT (RAY-80000 hotfix).
                     "group_uuid": auth.slack_user.ray_user_group_id,
+                    # Stable per-message anchor for IBM usage report grouping
+                    # (RAY-80492 Phase 2).
+                    "submission_group_uuid": submission_anchor,
                 }
                 usage_log_payload = {
                     "user_uuid": auth.slack_user.ray_client_id,
