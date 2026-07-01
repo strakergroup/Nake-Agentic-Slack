@@ -337,23 +337,3 @@ async def enqueue_document_mt_charge(
         charge=charge,
         task_uuid=task_uuid,
     )
-
-
-async def enqueue_mt_ts_edit(*, send_ts: str, reply_ts: str) -> None:
-    """Enqueue a durable ``persist_mt_ts_edit`` SAQ job (RAY-79638).
-
-    Keyed on ``send_ts`` because the Slack thread pivot timestamp is the
-    natural unique identifier — a duplicate enqueue with the same parent
-    timestamp is always the same logical operation.
-    """
-    await enqueue(
-        "persist_mt_ts_edit",
-        queue_name=app_config.saq_background_queue_name,
-        key=f"persist_mt_ts_edit:{send_ts}",
-        retries=app_config.saq_logging_retries,
-        timeout=app_config.saq_logging_timeout_seconds,
-        retry_delay=1.0,
-        retry_backoff=True,
-        send_ts=send_ts,
-        reply_ts=reply_ts,
-    )

@@ -18,7 +18,6 @@ from app.saq_jobs.tasks import (
     charge_document_mt,
     charge_inline_mt_usage,
     persist_log_notification,
-    persist_mt_ts_edit,
     process_document_mt_submission,
     process_evaluation_submission,
     slack_upload_mt_result,
@@ -424,7 +423,7 @@ async def test_slack_upload_verify_complete_happy_path(slack_user):
 
 
 # --------------------------------------------------------------------------- #
-# persist_log_notification / persist_mt_ts_edit
+# persist_log_notification
 # --------------------------------------------------------------------------- #
 
 
@@ -445,16 +444,6 @@ async def test_persist_log_notification_delegates_to_log_notification():
     assert result["status"] == "logged"
     log.assert_awaited_once()
     assert log.await_args.kwargs["event"] == "ray:client:signup"
-
-
-@pytest.mark.asyncio
-async def test_persist_mt_ts_edit_delegates_to_set_mt_ts_edit():
-    set_ts = AsyncMock()
-    with patch("app.slack.web.set_mt_ts_edit", new=set_ts):
-        result = await persist_mt_ts_edit(_ctx(), send_ts="100.0", reply_ts="200.0")
-
-    assert result["status"] == "cached"
-    set_ts.assert_awaited_once_with(send_ts="100.0", reply_ts="200.0")
 
 
 # --------------------------------------------------------------------------- #
