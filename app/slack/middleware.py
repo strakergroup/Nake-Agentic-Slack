@@ -189,8 +189,9 @@ async def require_ray_client(
 async def require_mt_tokens(context: AsyncBoltContext, value=1):
     """Check if the user has the required minimum translation credits to perform the operation"""
     ai_tokens = 0
-    mt_scale = 0.1
-    value = math.ceil(value * mt_scale)
+    # SOW MT rate — matches pt-languagecloud-api (RAY-80492).
+    sow_tokens_per_character = 0.002
+    value = math.ceil(value * sow_tokens_per_character)
     if context["ray"].client is not None:
         user_tokens = await get_client_tokens(context["ray"].client.id_token)
         if user_tokens is None:
