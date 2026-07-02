@@ -24,6 +24,11 @@ TRANSLATABLE_CHAR = re.compile(r"[^\W_]")
 CHANNEL_MT_GEN_PREFIX = "channel_mt_gen:"
 GENERATION_TTL_SECONDS = 3600
 
+# Marks a source deleted while its translation was in flight, so the late MT
+# callback skips delivery (streaming bots post -> delete -> repost each frame).
+DELETED_SOURCE_PREFIX = "channel_mt_deleted:"
+DELETED_SOURCE_TTL_SECONDS = 900
+
 
 def is_untranslatable_placeholder(text: str) -> bool:
     """Return True when *text* has no translatable content.
@@ -54,3 +59,20 @@ async def is_stale_channel_mt_generation(message_ts: str, generation: int) -> bo
     if not cached:
         return False
     return int(cached) != generation
+
+
+async def mark_channel_source_deleted(message_ts: str) -> None:
+    """Record that *message_ts* was deleted so an in-flight MT callback skips it."""
+    key = f"{DELETED_SOURCE_PREFIX}{message_ts}"
+    try:
+        await redis_conn.set(key, "1", ex=DELETED_SOURCE_TTL_SECONDS)
+    except Exception:  # pragma: no cover - best-effort marker
+        pass
+
+
+async def is_channel_source_deleted(message_ts: str) -> bool:
+    """Return True when *message_ts* was deleted while its translation was in flight."""
+    try:
+        return bool(await redis_conn.get(f"{DELETED_SOURCE_PREFIX}{message_ts}"))
+    except Exception:  # pragma: no cover - best-effort marker
+        return False

@@ -23,7 +23,7 @@ ifdef DEBOUNCE_SECONDS
 RUN_ARGS += --debounce-seconds $(DEBOUNCE_SECONDS)
 endif
 
-.PHONY: lookup dry-run placeholders burst edit all help
+.PHONY: lookup dry-run placeholders burst edit threaded-stream all help
 
 help:
 	@echo "Targets:"
@@ -32,6 +32,7 @@ help:
 	@echo "  make placeholders                   # post :3dotsloading:/... only"
 	@echo "  make burst                          # streaming burst -> one translation"
 	@echo "  make edit                           # post + chat.update"
+	@echo "  make threaded-stream                # IBM thread-root bug repro"
 	@echo "  make all                            # run all scenarios"
 	@echo ""
 	@echo "Required env: STREAM_BOT_TOKEN (optional — auto-loaded from local MySQL)"
@@ -51,6 +52,9 @@ burst:
 
 edit:
 	$(PYTHON) run_test.py $(RUN_ARGS) --scenario edit
+
+threaded-stream:
+	$(PYTHON) run_test.py $(RUN_ARGS) --scenario threaded-stream
 
 all:
 	$(PYTHON) run_test.py $(RUN_ARGS) --scenario all

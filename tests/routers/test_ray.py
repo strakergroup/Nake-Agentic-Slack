@@ -1222,6 +1222,79 @@ class TestRayEventsEndpoint:
                                 mock_bill.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_ray_events_channel_translation_skipped_when_source_deleted(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """An in-flight channel translation must not post if the source message
+        was deleted while the request was outstanding (RAY-80512)."""
+        extra_data = {
+            "client_id": str(uuid4()),
+            "service_language_mapping": {"google": {"fr": ""}},
+            "source_language": "en",
+            "organization_uuid": str(uuid4()),
+            "team_id": team_id,
+            "group_id": str(uuid4()),
+            "channel_id": "C123",
+            "text_length": 100,
+            "usage_type": "channel_translation",
+            "source_text": "Hello world",
+            "target_language_order": ["fr"],
+            "display_format": "thread",
+            "message_ts": "123456.789",
+        }
+        event = RayEvent(
+            event="slack:direct:mt:result",
+            data={
+                "client_id": mock_slack_user.ray_client_id,
+                "extra_data": extra_data,
+                "translations": {"fr": ["Bonjour"]},
+            },
+        )
+
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {
+                "id": user_id,
+                "locale": "en-US",
+                "tz": "America/New_York",
+                "profile": {"email": "test@example.com"},
+            }
+        }
+        mock_client.conversations_info.return_value = {
+            "channel": {"name": "test-channel"}
+        }
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray.post_channel_translation_notification",
+                            new_callable=AsyncMock,
+                        ) as mock_post:
+                            with patch(
+                                "app.slack.bot_translation.is_channel_source_deleted",
+                                new_callable=AsyncMock,
+                                return_value=True,
+                            ):
+                                with patch(
+                                    "app.routers.ray.enqueue_inline_mt_billing",
+                                    new_callable=AsyncMock,
+                                ):
+                                    auth = RayEventAuth()
+                                    await auth.initialize(event, "valid-token")
+
+                                    result = await ray_events(event, auth)
+
+                                    mock_post.assert_not_called()
+                                    assert (
+                                        result["message"]
+                                        == "Deleted source channel translation skipped"
+                                    )
+
+    @pytest.mark.asyncio
     async def test_ray_events_channel_translation_result_bot_reporting(self, team_id):
         """Bot channel translation reports bot name and is_bot metadata."""
         bot_slack_user = SlackUser(

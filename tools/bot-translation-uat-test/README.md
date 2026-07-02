@@ -79,6 +79,7 @@ sequenceDiagram
 | `placeholders` | `:3dotsloading:`, `...`, `…` each alone | **No** Straker translation reply |
 | `burst` | Placeholders (skipped) + draft + final as **separate posts** | **Draft and final** each get a thread translation |
 | `edit` | Final message → wait → `chat.update` | Same reply updated in place (not a duplicate channel message) |
+| `threaded-stream` | User question at root → bot `:3dotsloading:` + AskTECHNO progress block **in thread**, then the progress frame is **deleted** (post→delete→repost) | **Passes** only when delivery anchors on the thread root ts (not the bot reply ts) **and** the deleted frame produces no orphaned translation (deletion tombstone) |
 
 ## Commands
 
@@ -95,8 +96,9 @@ make dry-run
 make placeholders
 make burst WAIT_SECONDS=60
 make edit
+make threaded-stream WAIT_SECONDS=60
 
-# Full sequence — no export needed if local Percona has slack_bots row for U05G5Q168CX
+# Full sequence — stream bot token auto-loaded from local MySQL (U05G5Q168CX)
 make all WAIT_SECONDS=60
 ```
 
@@ -108,6 +110,7 @@ While/after the script runs, confirm in Slack `#test2332`:
 - [ ] Burst produces a thread translation under **both** draft and final bot messages
 - [ ] Translation is a **thread reply**, not a new top-level channel message
 - [ ] After `edit`, the existing translation updates instead of duplicating
+- [ ] `threaded-stream`: no orphaned translation is posted for the deleted streaming frame (not in-thread, not at channel root)
 
 Optional deeper checks:
 
@@ -122,3 +125,5 @@ Optional deeper checks:
 | Translation on placeholder | UAT not deployed with RAY-80512 placeholder guard |
 | Multiple translations after burst | Expected when draft and final are separate messages (one translation per post) |
 | New message instead of thread update on edit | `mt_ts` cache miss / stale generation discard mis-config |
+| Translation at channel root with thread display | Wrong `thread_ts` in `post_channel_translation_notification`; must anchor on the thread root (`thread_ts or message_ts`), not the bot reply ts; caught by `threaded-stream` delivery check |
+| Orphaned translation of a deleted streaming frame | Deletion tombstone (`channel_mt_deleted:{ts}`) not written on `message_deleted`/`tombstone` or not checked in the MT callback; caught by `threaded-stream` |

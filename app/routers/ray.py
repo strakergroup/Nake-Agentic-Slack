@@ -966,7 +966,7 @@ async def ray_events(
                     "VALIDATION",
                     "REFUNDED",
                 ):
-                    message: SlackMessage = JobStatusChangedEventMessage(
+                    message = JobStatusChangedEventMessage(
                         client_id=status_event.client_id,
                         job_uuid=status_event.uuid,
                         job_id=status_event.id,
@@ -974,7 +974,7 @@ async def ray_events(
                         is_ibm=is_ibm,
                     )
                 elif status_event.status == "COMPLETED":
-                    message: SlackMessage = JobCompletedEventMessage(
+                    message = JobCompletedEventMessage(
                         client_id=status_event.client_id,
                         job_uuid=status_event.uuid,
                         job_id=status_event.id,
@@ -982,7 +982,7 @@ async def ray_events(
                         is_ibm=is_ibm,
                     )
                 elif status_event.status == "CANCELLED":
-                    message: SlackMessage = JobCancelledEventMessage(
+                    message = JobCancelledEventMessage(
                         client_id=status_event.client_id,
                         job_uuid=status_event.uuid,
                         job_id=status_event.id,
@@ -1324,29 +1324,29 @@ async def ray_events(
                     if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
                         auth.slack_user.enterprise_id
                     ):
-                        document_message: SlackMessage = RequiresMtTokenMessage(
+                        document_message = RequiresMtTokenMessage(
                             balance.balance, balance.required
                         )
                     else:
-                        document_message: SlackMessage = RequiresMtTokenAdminMessage(
+                        document_message = RequiresMtTokenAdminMessage(
                             balance.balance, balance.required
                         )
                 elif document_translated_data.error_type == "conversion_error":
-                    document_message: SlackMessage = DocParseErrorMessage(
+                    document_message = DocParseErrorMessage(
                         document_translated_data.error_data.get("ext", ""),
                         document_translated_data.error_data.get("file_expected", ""),
                         document_translated_data.error_data.get("message", ""),
                     )
                 elif document_translated_data.error_type == "file_complexity_error":
-                    document_message: SlackMessage = DocComplexityErrorMessage(
+                    document_message = DocComplexityErrorMessage(
                         document_translated_data.error_data.get("ext", ""),
                     )
                 elif document_translated_data.error_type == "invalid_pdf":
-                    document_message: SlackMessage = DocInvalidPdfErrorMessage(
+                    document_message = DocInvalidPdfErrorMessage(
                         document_translated_data.error_data.get("message", ""),
                     )
                 else:
-                    document_message: SlackMessage = DocMtMessage()
+                    document_message = DocMtMessage()
                 if document_message is not None:
                     await post_notification_ephemeral(
                         client,
@@ -1382,33 +1382,33 @@ async def ray_events(
                         if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
                             auth.slack_user.enterprise_id
                         ):
-                            message: SlackMessage = RequiresMtTokenMessage(
+                            message = RequiresMtTokenMessage(
                                 balance.balance, balance.required
                             )
                         else:
-                            message: SlackMessage = RequiresMtTokenAdminMessage(
+                            message = RequiresMtTokenAdminMessage(
                                 balance.balance, balance.required
                             )
                     elif error_data.error_type == "conversion_error":
-                        message: SlackMessage = DocParseErrorMessage(
+                        message = DocParseErrorMessage(
                             error_data.error_data.get("ext", ""),
                             error_data.error_data.get("file_expected", ""),
                             error_data.error_data.get("message", ""),
                         )
                     elif error_data.error_type == "file_complexity_error":
-                        message: SlackMessage = DocComplexityErrorMessage(
+                        message = DocComplexityErrorMessage(
                             error_data.error_data.get("ext", ""),
                         )
                     elif error_data.error_type == "invalid_pdf":
-                        message: SlackMessage = DocInvalidPdfErrorMessage(
+                        message = DocInvalidPdfErrorMessage(
                             error_data.error_data.get("message", ""),
                         )
                     else:
                         # For "other" or any other error type, use generic error message
-                        message: SlackMessage = EvaluateErrorMessage()
+                        message = EvaluateErrorMessage()
                 except ValidationError:
                     # If validation fails, fall back to generic error message
-                    message: SlackMessage = EvaluateErrorMessage()
+                    message = EvaluateErrorMessage()
             else:
                 try:
                     job = await get_evaluation_job(
@@ -1429,11 +1429,9 @@ async def ray_events(
                             [file["file_uuid"] for file in job["data"]["source_files"]],
                             [lang["uuid"] for lang in job["data"]["target_languages"]],
                         )
-                        message: SlackMessage = HumanJobQuoteMessage(
-                            job["data"], costs["data"]
-                        )
+                        message = HumanJobQuoteMessage(job["data"], costs["data"])
                     else:
-                        message: SlackMessage = EvaluateSuccessMessage(
+                        message = EvaluateSuccessMessage(
                             job["data"], is_ibm, event.data["tokens"]
                         )
                 except Exception as e:
@@ -1470,8 +1468,9 @@ async def ray_events(
                     auth.slack_user,
                     verify_message,
                 )
+                response_data = getattr(response, "data", None)
                 upload_channel_id = (
-                    response.data["channel"] if isinstance(response.data, dict) else ""
+                    response_data["channel"] if isinstance(response_data, dict) else ""
                 )
                 if upload_channel_id and auth.slack_user is not None:
                     await enqueue_verify_complete_upload(
@@ -1544,7 +1543,10 @@ async def ray_events(
                         response_url=mt_result_extra_data.response_url,
                     )
                 elif mt_result_extra_data.usage_type == "channel_translation":
-                    from app.slack.bot_translation import is_stale_channel_mt_generation
+                    from app.slack.bot_translation import (
+                        is_channel_source_deleted,
+                        is_stale_channel_mt_generation,
+                    )
 
                     if (
                         mt_result_extra_data.message_ts
@@ -1556,6 +1558,19 @@ async def ray_events(
                     ):
                         return {
                             "message": "Stale channel translation skipped",
+                            "data": {"event": event.event},
+                        }
+
+                    # Skip if the source was deleted while the translation was in
+                    # flight; message_deleted cleanup runs before our reply exists.
+                    if (
+                        mt_result_extra_data.message_ts
+                        and await is_channel_source_deleted(
+                            mt_result_extra_data.message_ts
+                        )
+                    ):
+                        return {
+                            "message": "Deleted source channel translation skipped",
                             "data": {"event": event.event},
                         }
                     # For channel translation, pass the translations dict directly

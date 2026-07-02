@@ -85,6 +85,7 @@ async def post_notification(
     """
     client.token = slack_user.bot_token
     target_channel = channel_id or slack_user.user_id
+    response: Union[AsyncSlackResponse, WebhookResponse]
 
     # Handle display_format logic for channel_translation
     if display_format:
@@ -137,7 +138,7 @@ async def post_notification(
         if response_url and not is_edit:
             # Use AsyncRespond for webhook responses
             respond = AsyncRespond(response_url=response_url)
-            response: Union[AsyncSlackResponse, WebhookResponse] = await respond(
+            response = await respond(
                 text=message.text,
                 blocks=message.blocks,
                 thread_ts=thread_ts,
@@ -196,13 +197,16 @@ async def post_channel_translation_notification(
     """
     client.token = slack_user.bot_token
 
-    # Handle display_format logic for channel_translation
     timestamp = None
     if is_edit:
         timestamp = await get_mt_ts_cached(message_ts) if message_ts else None
 
-    # Use message_ts for thread creation if available, otherwise fall back to thread_ts
-    thread_timestamp = message_ts or thread_ts
+    # Anchor on the thread root, not the bot reply ts: a streaming bot may delete
+    # its own message before the MT callback lands, and Slack drops an invalid
+    # anchor and posts at channel root (RAY-80512).
+    thread_timestamp = thread_ts or message_ts
+    # Cache stays keyed on the source message ts so edits chat.update the reply.
+    cache_key = message_ts or thread_ts
 
     # Determine thread behavior based on display_format
     use_thread = False
@@ -231,13 +235,13 @@ async def post_channel_translation_notification(
                 blocks=message.blocks,
                 thread_ts=thread_timestamp if use_thread else None,
             )
-            if thread_timestamp:
+            if cache_key:
                 reply_ts = response.get("ts")
                 if not isinstance(reply_ts, str):
                     raise ValueError(
                         "Slack response is missing a string timestamp"
                     ) from exc
-                await set_mt_ts_edit(send_ts=thread_timestamp, reply_ts=reply_ts)
+                await set_mt_ts_edit(send_ts=cache_key, reply_ts=reply_ts)
     else:
         response = await client.chat_postMessage(
             channel=channel_id,
@@ -245,11 +249,11 @@ async def post_channel_translation_notification(
             blocks=message.blocks,
             thread_ts=thread_timestamp if use_thread else None,
         )
-        if thread_timestamp:
+        if cache_key:
             reply_ts = response.get("ts")
             if not isinstance(reply_ts, str):
                 raise ValueError("Slack response is missing a string timestamp")
-            await set_mt_ts_edit(send_ts=thread_timestamp, reply_ts=reply_ts)
+            await set_mt_ts_edit(send_ts=cache_key, reply_ts=reply_ts)
 
     await enqueue_log_notification(
         event=event.event,

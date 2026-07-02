@@ -4,8 +4,10 @@ import pytest
 
 from app.slack.bot_translation import (
     bump_channel_mt_generation,
+    is_channel_source_deleted,
     is_stale_channel_mt_generation,
     is_untranslatable_placeholder,
+    mark_channel_source_deleted,
 )
 
 
@@ -67,3 +69,28 @@ class TestChannelMtGeneration:
             mock_get.return_value = "2"
             assert await is_stale_channel_mt_generation("111.001", 1) is True
             assert await is_stale_channel_mt_generation("111.001", 2) is False
+
+
+class TestChannelSourceDeletedTombstone:
+    @pytest.mark.asyncio
+    async def test_mark_writes_tombstone_with_ttl(self):
+        with patch(
+            "app.slack.bot_translation.redis_conn.set", new_callable=AsyncMock
+        ) as mock_set:
+            await mark_channel_source_deleted("111.001")
+
+            mock_set.assert_awaited_once()
+            args, kwargs = mock_set.call_args
+            assert args[0] == "channel_mt_deleted:111.001"
+            assert kwargs.get("ex")
+
+    @pytest.mark.asyncio
+    async def test_is_deleted_reflects_tombstone(self):
+        with patch(
+            "app.slack.bot_translation.redis_conn.get", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.return_value = "1"
+            assert await is_channel_source_deleted("111.001") is True
+
+            mock_get.return_value = None
+            assert await is_channel_source_deleted("111.001") is False

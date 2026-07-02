@@ -130,6 +130,80 @@ async def test_post_channel_translation_falls_back_when_update_message_not_found
 
 @pytest.mark.asyncio
 @patch("app.ray.events.logging.enqueue_log_notification", new_callable=AsyncMock)
+@patch("app.ray.events.logging.set_mt_ts_edit", new_callable=AsyncMock)
+@patch("app.ray.events.logging.get_mt_ts_cached", new_callable=AsyncMock)
+async def test_post_channel_translation_anchors_on_thread_root_when_threaded(
+    mock_get_cached,
+    mock_set_mt_ts,
+    mock_log_notification,
+    slack_user,
+    ray_event,
+    translation_message,
+):
+    """A threaded source message must anchor on thread_ts, not the reply ts."""
+    mock_get_cached.return_value = None
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock(return_value=_slack_response("999.010"))
+
+    await post_channel_translation_notification(
+        client,
+        ray_event,
+        slack_user,
+        translation_message,
+        channel_id="C123",
+        display_format="thread",
+        thread_ts="100.000",
+        message_ts="111.001",
+    )
+
+    client.chat_postMessage.assert_awaited_once_with(
+        channel="C123",
+        text=translation_message.text,
+        blocks=translation_message.blocks,
+        thread_ts="100.000",
+    )
+    # Cache stays keyed on the source message ts so later edits resolve it.
+    mock_set_mt_ts.assert_awaited_once_with(send_ts="111.001", reply_ts="999.010")
+
+
+@pytest.mark.asyncio
+@patch("app.ray.events.logging.enqueue_log_notification", new_callable=AsyncMock)
+@patch("app.ray.events.logging.set_mt_ts_edit", new_callable=AsyncMock)
+@patch("app.ray.events.logging.get_mt_ts_cached", new_callable=AsyncMock)
+async def test_post_channel_translation_anchors_on_message_ts_when_root(
+    mock_get_cached,
+    mock_set_mt_ts,
+    mock_log_notification,
+    slack_user,
+    ray_event,
+    translation_message,
+):
+    """A top-level source message (no thread_ts) anchors on its own ts."""
+    mock_get_cached.return_value = None
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock(return_value=_slack_response("999.011"))
+
+    await post_channel_translation_notification(
+        client,
+        ray_event,
+        slack_user,
+        translation_message,
+        channel_id="C123",
+        display_format="thread",
+        message_ts="111.001",
+    )
+
+    client.chat_postMessage.assert_awaited_once_with(
+        channel="C123",
+        text=translation_message.text,
+        blocks=translation_message.blocks,
+        thread_ts="111.001",
+    )
+    mock_set_mt_ts.assert_awaited_once_with(send_ts="111.001", reply_ts="999.011")
+
+
+@pytest.mark.asyncio
+@patch("app.ray.events.logging.enqueue_log_notification", new_callable=AsyncMock)
 @patch("app.ray.events.logging.get_mt_ts_cached", new_callable=AsyncMock)
 async def test_post_channel_translation_reraises_non_message_not_found_update_errors(
     mock_get_cached,

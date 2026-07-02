@@ -2409,7 +2409,7 @@ async def submit_verification_job(
                 job["data"], costs["data"], actions=False
             )
         else:
-            updated_msg: SlackMessage = EvaluateSuccessMessage(
+            updated_msg = EvaluateSuccessMessage(
                 job["data"],
                 is_ibm_enterprise(
                     context.ray.client.slack_enterprise_id

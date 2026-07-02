@@ -4,7 +4,6 @@ commands, etc. from the Slack API.
 
 import asyncio
 import json
-import math
 import os
 import re
 from datetime import datetime, timedelta
@@ -65,6 +64,7 @@ from ..ray.settings import (
 )
 from ..redis import is_duplicate_event, redis_conn
 from .app import app
+from .bot_translation import mark_channel_source_deleted
 from .file_submissions import (
     slack_file_submission_payload,
     slack_file_submission_payload_from_option,
@@ -328,7 +328,7 @@ async def home_opened(
                     latest=str(datetime.now().timestamp()),
                 )
                 if not history_last_24_hours.get("messages"):
-                    message: SlackMessage = WelcomeBackMessage(
+                    message = WelcomeBackMessage(
                         context["user_id"], context["ray"], context.enterprise_id
                     )
                     await say(blocks=message.blocks, text=message.text)
@@ -775,7 +775,7 @@ async def login_sso_action(
                             blocks=sso_msg.blocks,
                         )
 
-                    msg = SuccessfulLoginMessage(
+                    msg: SlackMessage = SuccessfulLoginMessage(
                         context["user_id"],
                         user_info["profile"]["email"],
                         context["ray"],
@@ -791,13 +791,13 @@ async def login_sso_action(
             else:
                 await ack(response_action="clear")
                 if context["ray"].client.sso:
-                    msg: SlackMessage = SsoConnectionInfoMessage(
+                    msg = SsoConnectionInfoMessage(
                         context["ray"],
                         is_ibm=(is_ibm_enterprise(context.enterprise_id)),
                     )
                 # need else block if triggered from old message
                 else:
-                    msg: SlackMessage = ConnectionInfoMessage(
+                    msg = ConnectionInfoMessage(
                         context["ray"],
                         user_id=context["user_id"],
                         team_id=context["team_id"],
@@ -904,7 +904,7 @@ async def ray_command(
             if await require_ray_client(context):
                 assert context["ray"] is not None
                 assert context["ray"].client is not None
-                msg: SlackMessage = LogoutMessage(context["ray"].client)
+                msg = LogoutMessage(context["ray"].client)
                 await respond(text=msg.text, blocks=msg.blocks)
 
         case ["translate"]:
@@ -1410,9 +1410,7 @@ async def disconnect_account_action(
             context.user_id, context["ray"].client.sso, username
         )
     else:
-        msg: SlackMessage = SuccessfulLogoutMessage(
-            context.user_id, context["ray"].client.sso
-        )
+        msg = SuccessfulLogoutMessage(context.user_id, context["ray"].client.sso)
     await respond(text=msg.text, blocks=msg.blocks, replace_original=True)
 
 
@@ -1896,6 +1894,8 @@ async def message_deleted_event(
 ):
     if message.get("subtype") == "message_deleted":
         deleted_ts = body["event"]["deleted_ts"]
+        # Tombstone the source so an in-flight translation callback skips delivery.
+        await mark_channel_source_deleted(deleted_ts)
         timestamp = await get_mt_ts_cached(deleted_ts)
         if timestamp and context.channel_id:
             await client.chat_delete(ts=timestamp, channel=context.channel_id)
@@ -1925,6 +1925,8 @@ async def message_changed_event(
     if message.get("subtype") == "message_changed":
         if message.get("message", {}).get("subtype") == "tombstone":
             deleted_ts = body["event"]["previous_message"]["ts"]
+            # Tombstone the source so an in-flight translation callback skips delivery.
+            await mark_channel_source_deleted(deleted_ts)
             timestamp = await get_mt_ts_cached(deleted_ts)
             if timestamp and context.channel_id:
                 await client.chat_delete(ts=timestamp, channel=context.channel_id)

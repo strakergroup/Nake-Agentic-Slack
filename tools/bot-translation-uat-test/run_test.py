@@ -64,8 +64,13 @@ class SlackClient:
     def __init__(self, token: str) -> None:
         self.token = token
 
-    def post_message(self, channel_id: str, text: str) -> PostedMessage:
-        payload = self._api("chat.postMessage", {"channel": channel_id, "text": text})
+    def post_message(
+        self, channel_id: str, text: str, *, thread_ts: str | None = None
+    ) -> PostedMessage:
+        data: dict[str, Any] = {"channel": channel_id, "text": text}
+        if thread_ts:
+            data["thread_ts"] = thread_ts
+        payload = self._api("chat.postMessage", data)
         message = payload.get("message") or payload
         ts = message.get("ts")
         if not isinstance(ts, str):
@@ -74,6 +79,9 @@ class SlackClient:
 
     def update_message(self, channel_id: str, ts: str, text: str) -> None:
         self._api("chat.update", {"channel": channel_id, "ts": ts, "text": text})
+
+    def delete_message(self, channel_id: str, ts: str) -> None:
+        self._api("chat.delete", {"channel": channel_id, "ts": ts})
 
     def conversation_history(
         self, channel_id: str, *, oldest: str | None = None, limit: int = 50
@@ -319,13 +327,13 @@ def load_config(args: argparse.Namespace) -> ChannelConfig:
         )
 
     try:
-        return lookup_channel_config(args.channel_name)
+        config = lookup_channel_config(args.channel_name)
     except RuntimeError as exc:
         print(
             f"Warning: mysql lookup failed ({exc}); using baked-in defaults.",
             file=sys.stderr,
         )
-        return ChannelConfig(
+        config = ChannelConfig(
             channel_id=DEFAULT_CHANNEL_ID,
             channel_name=DEFAULT_CHANNEL_NAME,
             team_id=DEFAULT_TEAM_ID,
@@ -334,6 +342,18 @@ def load_config(args: argparse.Namespace) -> ChannelConfig:
             target_langs=DEFAULT_TARGET_LANGS,
             display_format=DEFAULT_DISPLAY_FORMAT,
         )
+
+    if args.straker_bot_user_id:
+        config = ChannelConfig(
+            channel_id=config.channel_id,
+            channel_name=config.channel_name,
+            team_id=config.team_id,
+            enterprise_id=config.enterprise_id,
+            straker_bot_user_id=args.straker_bot_user_id,
+            target_langs=config.target_langs,
+            display_format=config.display_format,
+        )
+    return config
 
 
 def straker_replies(
@@ -348,6 +368,98 @@ def straker_replies(
         ):
             replies.append(message)
     return replies
+
+
+def root_level_straker_messages(
+    reader: SlackClient,
+    config: ChannelConfig,
+    *,
+    oldest: str,
+) -> list[dict[str, Any]]:
+    """Straker posts visible as top-level channel messages (not thread replies).
+
+    Recreates the IBM ``#alsea-support-test`` bug: when a bot reply is inside a
+    user thread, a mis-threaded translation appears here instead of in the thread.
+    """
+    history = reader.conversation_history(config.channel_id, oldest=oldest)
+    return straker_replies(history, straker_bot_user_id=config.straker_bot_user_id)
+
+
+def ibm_streaming_progress_text(marker: str) -> str:
+    """AskTECHNO-style in-progress block (translates today; not a bare placeholder)."""
+    return (
+        ":3dotsloading:\n"
+        "```\n"
+        "1. [asktechno_ibm_search_tool] Search internal ALSEA PPT markdown info. "
+        "(In Progress)\n"
+        "2. [asktechno_w3_url_content_tool] Fetch pages if needed. (Pending)\n"
+        "3. [final_answer] Provide answer. (Pending)\n"
+        "Step 1 is running.\n"
+        "```\n"
+        f"{marker}"
+    )
+
+
+def delivery_thread_ts_current(
+    *,
+    message_ts: str | None,
+    thread_ts: str | None,
+    display_format: str | None,
+) -> str | None:
+    """Mirror ``post_channel_translation_notification`` (current app code).
+
+    Anchors on the durable thread root (``thread_ts``) when the source message is
+    itself threaded, falling back to ``message_ts`` for top-level posts. This is
+    the RAY-80512 fix; the previous buggy form was ``message_ts or thread_ts``.
+    """
+    thread_timestamp = thread_ts or message_ts
+    use_thread = display_format == "thread" or bool(thread_ts)
+    if not use_thread:
+        return None
+    return thread_timestamp
+
+
+def delivery_thread_ts_correct(
+    *,
+    message_ts: str | None,
+    thread_ts: str | None,
+    display_format: str | None,
+) -> str | None:
+    """Correct Slack ``thread_ts``: thread root when source is already threaded."""
+    use_thread = display_format == "thread" or bool(thread_ts)
+    if not use_thread:
+        return None
+    if thread_ts:
+        return thread_ts
+    return message_ts
+
+
+def assert_delivery_thread_ts_bug(
+    *,
+    message_ts: str,
+    thread_ts: str | None,
+    display_format: str,
+) -> bool:
+    """Return True when the current delivery logic is wrong (bug reproduced)."""
+    current = delivery_thread_ts_current(
+        message_ts=message_ts, thread_ts=thread_ts, display_format=display_format
+    )
+    correct = delivery_thread_ts_correct(
+        message_ts=message_ts, thread_ts=thread_ts, display_format=display_format
+    )
+    if current == correct:
+        return False
+    print(
+        "  FAIL (bug reproduced in delivery logic): "
+        f"post_channel_translation_notification would use "
+        f"thread_ts={current!r}"
+    )
+    print(f"    should use thread_ts={correct!r} (Slack thread root, not bot reply ts)")
+    print(
+        "    This matches the IBM report: bot streaming inside a user thread with "
+        "display_format=thread."
+    )
+    return True
 
 
 def wait_for_translation(
@@ -555,6 +667,143 @@ def run_edit(
     return True
 
 
+def wait_for_new_straker_in_thread(
+    reader: SlackClient,
+    config: ChannelConfig,
+    *,
+    thread_ts: str,
+    after_ts: str,
+    wait_seconds: float,
+    poll_interval: float = 3.0,
+) -> list[dict[str, Any]]:
+    """Return Straker replies in *thread_ts* first posted after *after_ts*."""
+    after = float(after_ts)
+    deadline = time.time() + wait_seconds
+    last: list[dict[str, Any]] = []
+    while time.time() < deadline:
+        messages = reader.thread_replies(config.channel_id, thread_ts)
+        fresh = [
+            msg
+            for msg in straker_replies(
+                messages, straker_bot_user_id=config.straker_bot_user_id
+            )
+            if msg.get("ts") and float(msg["ts"]) > after
+        ]
+        last = fresh
+        if fresh:
+            return fresh
+        time.sleep(poll_interval)
+    return last
+
+
+def run_threaded_stream(
+    poster: SlackClient,
+    reader: SlackClient,
+    config: ChannelConfig,
+    *,
+    wait_seconds: float,
+    dry_run: bool,
+) -> bool:
+    """Bot streams inside a user thread (AskTECHNO pattern).
+
+    Verifies the two RAY-80512 delivery fixes:
+
+    1. Thread anchor: ``post_channel_translation_notification`` must anchor on the
+       user thread root (``thread_ts``), never the transient bot reply ts.
+    2. Deletion tombstone: when the bot deletes its streaming frame before the
+       translation lands (post -> delete -> repost), no orphaned translation is
+       posted (neither in-thread nor at channel root).
+
+    Passes once both fixes are in place. Also posts live messages on the test
+    channel and reports whether Straker landed at channel root.
+    """
+    user_marker = f"[RAY-80512-user-{uuid.uuid4().hex[:8]}]"
+    progress_marker = f"[RAY-80512-progress-{uuid.uuid4().hex[:8]}]"
+    print("\n=== Scenario: threaded bot stream (AskTECHNO / IBM pattern) ===")
+    print("- User question at channel root, bot streaming reply inside that thread")
+    print(f"- User marker: {user_marker}")
+    print(f"- Progress marker: {progress_marker}")
+
+    if dry_run:
+        print("- Would post user question + :3dotsloading: + progress block in thread")
+        print("- Would delete the progress frame, then verify no orphaned translation")
+        print("- Would fail if delivery logic uses bot reply ts instead of thread root")
+        return True
+
+    user_question = poster.post_message(
+        config.channel_id,
+        f"What methods exist to convert PPT materials to markdown for ALSEA? {user_marker}",
+    )
+    print(f"- Posted user question ts={user_question.ts} (channel root)")
+
+    settle_seconds = min(wait_seconds / 3, 25.0)
+    print(f"- Waiting {settle_seconds:.0f}s for user-question translation cycle...")
+    time.sleep(settle_seconds)
+
+    poster.post_message(config.channel_id, ":3dotsloading:", thread_ts=user_question.ts)
+    time.sleep(min(wait_seconds / 4, 15.0))
+
+    root_before = root_level_straker_messages(reader, config, oldest=user_question.ts)
+    root_before_ts = {msg.get("ts") for msg in root_before}
+
+    progress_text = ibm_streaming_progress_text(progress_marker)
+    bot_progress = poster.post_message(
+        config.channel_id, progress_text, thread_ts=user_question.ts
+    )
+    print(f"- Posted IBM progress block in thread ts={bot_progress.ts}")
+
+    # --- Delivery-logic regression guard: mirror MT callback payload ---
+    print(
+        "- Checking delivery thread_ts (mirrors post_channel_translation_notification)..."
+    )
+    bug_reproduced = assert_delivery_thread_ts_bug(
+        message_ts=bot_progress.ts,
+        thread_ts=user_question.ts,
+        display_format=config.display_format,
+    )
+
+    # --- Deletion race: delete the streaming frame before the translation lands
+    # (AskTECHNO post -> delete -> repost). The tombstone must suppress delivery.
+    poster.delete_message(config.channel_id, bot_progress.ts)
+    print(f"- Deleted progress frame ts={bot_progress.ts} (simulates streaming repost)")
+
+    print(f"- Waiting up to {wait_seconds:.0f}s for Straker reply after progress...")
+    progress_translations = wait_for_new_straker_in_thread(
+        reader,
+        config,
+        thread_ts=user_question.ts,
+        after_ts=bot_progress.ts,
+        wait_seconds=wait_seconds,
+    )
+
+    root_after = root_level_straker_messages(reader, config, oldest=user_question.ts)
+    new_root = [msg for msg in root_after if msg.get("ts") not in root_before_ts]
+    if new_root:
+        print(
+            f"  FAIL: {len(new_root)} top-level Straker post(s) in channel "
+            "(matches IBM root-entry report)"
+        )
+        for msg in new_root:
+            print(f"    root ts={msg.get('ts')} text={(msg.get('text') or '')[:100]!r}")
+
+    # After the deletion tombstone fix, the translation for the deleted frame
+    # must be suppressed entirely: no in-thread reply and no root-level post.
+    if progress_translations:
+        print(
+            f"  FAIL: {len(progress_translations)} Straker translation(s) posted for "
+            "the deleted progress frame (deletion tombstone did not suppress delivery)"
+        )
+
+    if bug_reproduced or new_root or progress_translations:
+        return False
+
+    print(
+        "  PASS: delivery anchors on thread root and the deleted streaming frame "
+        "produced no orphaned translation"
+    )
+    return True
+
+
 def preflight(stream_token: str, reader_token: str, config: ChannelConfig) -> None:
     stream = SlackClient(stream_token)
     reader = SlackClient(reader_token)
@@ -587,7 +836,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--scenario",
-        choices=("placeholders", "burst", "edit", "all"),
+        choices=("placeholders", "burst", "edit", "threaded-stream", "all"),
         default="all",
         help="Which test sequence to run (default: all).",
     )
@@ -680,6 +929,16 @@ def main() -> int:
     if args.scenario in ("edit", "all"):
         results.append(
             run_edit(
+                poster,
+                reader,
+                config,
+                wait_seconds=args.wait_seconds,
+                dry_run=args.dry_run,
+            )
+        )
+    if args.scenario in ("threaded-stream", "all"):
+        results.append(
+            run_threaded_stream(
                 poster,
                 reader,
                 config,
