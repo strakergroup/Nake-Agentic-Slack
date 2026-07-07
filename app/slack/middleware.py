@@ -149,8 +149,8 @@ async def require_ray_client(
     By default (``allow_org_billing=False``) requires a connected LanguageCloud
     member — used for HT/QE, account actions, etc.
 
-    With ``allow_org_billing=True`` (Document MT) also allows a linked workspace
-    super group, matching channel/shortcut MT org-billing. Balance is still gated
+    With ``allow_org_billing=True`` (AI MT — channel, direct, document, DM file upload)
+    also allows a linked workspace super group, matching org-billed MT. Balance is still gated
     separately by ``require_mt_tokens``; group-token minting happens at charge
     time, not here.
 
@@ -176,18 +176,24 @@ async def require_ray_client(
             return False
 
         login_message = login_message.with_variation(variation)
-        # Send login prompt if no LanguageCloud account is connected.
-        if context.response_url and context.respond:
-            await context.respond(
-                text=login_message.text,
-                blocks=login_message.blocks,
-            )
-        else:
+        # HT/QE buttons sit on shared New Job messages — login must be ephemeral
+        # so the AI Translation / job chooser blocks are not replaced.
+        login_ephemeral_only = variation in (
+            LoginMessage.HUMAN_TRANSLATION,
+            LoginMessage.QUALITY_EVALUATION,
+        )
+        if login_ephemeral_only or not (context.response_url and context.respond):
             await context.client.chat_postEphemeral(
                 channel=context.get("channel_id") or context.get("user_id", ""),
                 user=context.get("user_id", ""),
                 text=login_message.text,
                 blocks=login_message.blocks,
+            )
+        else:
+            await context.respond(
+                text=login_message.text,
+                blocks=login_message.blocks,
+                replace_original=False,
             )
 
     return False

@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: RAY-80198 — Human Translation login uses the `HUMAN_TRANSLATION` prompt variant and posts ephemerally so the New Job chooser message is not replaced when login is required (Wade Norman, 2026-07-07)
+- [Changed]: RAY-80198 — DM/app-mention file uploads and `mt to` direct MT now use the same org-billed access as channel/document MT (`require_ray_client(allow_org_billing=True)`); unlinked workspaces still get login; file uploads no longer fall through to Watson when access is denied (Wade Norman, 2026-07-07)
 - [Changed]: RAY-80198 — Document MT no longer requires LanguageCloud login when the workspace has a connected super group; submissions bill the org wallet (same model as channel/shortcut MT) with group-token auth on balance checks and `/mt/transaction`, org delivery fallback via `resolve_slack_delivery_user`, and poster identity on deferred charges (Wade Norman, 2026-07-07)
 - [Changed]: `get_ray_event_auth` now uses one `resolve_slack_delivery_user` path for inline MT (`extra_data`) and Document MT (root fields), replacing the duplicated inline org fallback (Wade Norman, 2026-07-07)
 - [Changed]: Folded `require_document_mt_access` into `require_ray_client(allow_org_billing=True)`; org balance still gated by `require_mt_tokens`, group-token minting stays at charge time (Wade Norman, 2026-07-07)

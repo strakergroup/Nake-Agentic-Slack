@@ -2135,13 +2135,18 @@ async def evaluate_job_action(
 ):
     """Evaluate job. Triggered from the Evaluate Job button."""
     await ack()
-    if await require_ray_client(context):
+    action_data = json.loads(action.get("value", ""))
+    job_type = action_data.get("job_type", "evaluate")
+    login_variation = (
+        LoginMessage.HUMAN_TRANSLATION
+        if job_type == "human"
+        else LoginMessage.QUALITY_EVALUATION
+    )
+    if await require_ray_client(context, variation=login_variation):
         # Get file IDs and channel ID from the action value
-        action_data = json.loads(action.get("value", ""))
         files = action_data.get("files", [])
         channel_id = action_data.get("channel_id")
         if files:
-            job_type = action_data.get("job_type", "evaluate")
             if job_type != "human" and is_ibm_enterprise(context.enterprise_id):
                 await client.chat_postMessage(
                     channel=channel_id or context["user_id"],
