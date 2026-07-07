@@ -1107,11 +1107,18 @@ async def document_machine_translate(
     # Set channel_id if not present (same pattern as document_mt_job)
     if "channel_id" not in context:
         context["channel_id"] = context["user_id"]
-    if context["ray"].client is None:
-        user_group_id = context["ray"].super_group[0].id
+    ray_connection = context["ray"]
+    if not isinstance(ray_connection, RayConnection) or not ray_connection.super_group:
+        return
+    if ray_connection.client is None:
+        user_group_id = ray_connection.super_group[0].id
+        billing_client_id = ray_connection.super_group[0].verify_organization_uuid
+        billing_group_uuid = user_group_id
         is_gropid = True
     else:
-        user_group_id = context["ray"].client.user_group_id
+        user_group_id = ray_connection.client.user_group_id
+        billing_client_id = ray_connection.client.id
+        billing_group_uuid = user_group_id
     target_languages = _normalize_document_target_languages(selected_language)
     if not target_languages:
         return
@@ -1121,8 +1128,7 @@ async def document_machine_translate(
     if len(target_languages) == 1 and target_languages[0].lower() == "fr-ca":
         ai_engine = "microsoft"
 
-    client: RayClient | None = context["ray"].client
-    if not file_id or not client:
+    if not file_id:
         return
     try:
         # file_info = await client.files_info(file=slack_file_id)
@@ -1135,7 +1141,7 @@ async def document_machine_translate(
         task_data = MtFileRequestSchema.model_validate(
             {
                 "file_id": file_id,
-                "client_id": client.id,
+                "client_id": billing_client_id,
                 "channel_id": context["channel_id"],
                 "source_language": source_language,
                 "target_language": target_languages[0],
@@ -1144,6 +1150,9 @@ async def document_machine_translate(
                 "data_source": "slack",
                 "submission_id": submission_ids.get(target_languages[0]),
                 "submission_ids": submission_ids,
+                "team_id": context.get("team_id"),
+                "slack_user_id": context.get("user_id"),
+                "billing_group_uuid": billing_group_uuid,
             }
         )
         task_uuid = await create_slack_job(task_data, status="pending")

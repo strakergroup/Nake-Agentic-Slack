@@ -201,6 +201,52 @@ class TestRequireRayClient:
             assert result is False
 
 
+class TestRequireRayClientOrgBilling:
+    """Org-billed MT access via require_ray_client(allow_org_billing=True)."""
+
+    @pytest.mark.asyncio
+    async def test_allows_org_billed_workspace_without_member(self, context):
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=context["team_id"],
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+        )
+        context["ray"] = RayConnection(super_group=[super_group], client=None)
+
+        result = await require_ray_client(
+            context, prompt_login=False, allow_org_billing=True
+        )
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_blocks_unlinked_workspace_without_prompt(self, context):
+        context["ray"] = RayConnection(super_group=[], client=None)
+
+        result = await require_ray_client(
+            context, prompt_login=False, allow_org_billing=True
+        )
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_member_only_still_requires_client(self, context):
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=context["team_id"],
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+        )
+        context["ray"] = RayConnection(super_group=[super_group], client=None)
+
+        result = await require_ray_client(context, prompt_login=False)
+
+        assert result is False
+
+
 class TestRequireMtTokens:
     """Tests for require_mt_tokens middleware helper function."""
 

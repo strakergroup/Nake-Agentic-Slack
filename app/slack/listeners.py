@@ -98,7 +98,11 @@ from .listener_actions import (
     verify_help,
 )
 from .logging import slack_log_decorator
-from .middleware import ray_connection, require_mt_tokens, require_ray_client
+from .middleware import (
+    ray_connection,
+    require_mt_tokens,
+    require_ray_client,
+)
 from .select_options import (
     get_file_options_cached,
     get_language_options,
@@ -449,7 +453,7 @@ async def document_mt_job_action(
     client: AsyncWebClient,
 ):
     await ack()
-    if await require_ray_client(context):
+    if await require_ray_client(context, allow_org_billing=True):
         # Get file IDs and channel ID from the action value
         assert action is not None
         action_data = json.loads(action.get("value", ""))
@@ -481,7 +485,7 @@ async def document_mt_submit_action(
     client: AsyncWebClient,
 ):
     await ack()
-    if await require_ray_client(context):
+    if await require_ray_client(context, allow_org_billing=True):
         assert action is not None
         slack_file_ids = json.loads(action["value"])
         selected_language = await redis_conn.get(f"output_file_{action['value']}")
@@ -2556,7 +2560,7 @@ async def handle_document_mt_job(
     client: AsyncWebClient,
 ):
     """Handle document machine translation job submission."""
-    if await require_ray_client(context, prompt_login=False):
+    if await require_ray_client(context, prompt_login=False, allow_org_billing=True):
         acked = False
         try:
             form_data = view["state"]["values"] if view else {}

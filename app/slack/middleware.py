@@ -138,27 +138,34 @@ async def ray_connection(
 
 
 async def require_ray_client(
-    context: AsyncBoltContext, prompt_login: bool = True, variation: str | None = None
+    context: AsyncBoltContext,
+    prompt_login: bool = True,
+    variation: str | None = None,
+    *,
+    allow_org_billing: bool = False,
 ) -> bool:
-    """Checks if a Slack user is connected to a LanguageCloud account by checking
-    the context. If not connected, then optionally post a message prompting the
-    user to connect their LanguageCloud account. (Requires the `ray_connection` middleware.)
+    """Checks whether MT may proceed for this Slack user/workspace.
+
+    By default (``allow_org_billing=False``) requires a connected LanguageCloud
+    member — used for HT/QE, account actions, etc.
+
+    With ``allow_org_billing=True`` (Document MT) also allows a linked workspace
+    super group, matching channel/shortcut MT org-billing. Balance is still gated
+    separately by ``require_mt_tokens``; group-token minting happens at charge
+    time, not here.
 
     Args:
         context (AsyncBoltContext): The Slack listener context.
-        prompt_login (bool, optional): Post a login message if the Slack user does
-            not have a connected LanguageCloud account. Defaults to True.
-        variation (str | None, optional): The variation of the login message to use.
-            Defaults to None.
+        prompt_login (bool, optional): Post a login message when access is denied.
+        variation (str | None, optional): Login message variation.
+        allow_org_billing (bool): Accept org-billed workspace without member login.
 
     Returns:
-        bool: The Slack user has a connected LanguageCloud account.
+        bool: Access is allowed.
     """
-    if (
-        isinstance(context.get("ray"), RayConnection)
-        and context["ray"].client is not None
-    ):
-        return True
+    if isinstance(ray := context.get("ray"), RayConnection):
+        if ray.client is not None or (allow_org_billing and ray.super_group):
+            return True
 
     if prompt_login and context.client:
         if not isinstance(login_message := context.get("login_prompt"), LoginMessage):
