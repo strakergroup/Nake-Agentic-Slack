@@ -50,10 +50,18 @@ class TestDocumentMachineTranslate:
     async def test_emits_one_event_for_multiple_target_languages(
         self, context, ray_client
     ):
-        from app.auth.connector import RayConnection
+        from app.auth.connector import RayConnection, RaySuperGroup
 
         fake_http_client = _FakeAsyncClient()
-        context["ray"] = RayConnection(super_group=[], client=ray_client)
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=context.get("team_id"),
+            slack_enterprise_id=None,
+        )
+        context["ray"] = RayConnection(super_group=[super_group], client=ray_client)
 
         with (
             patch(
