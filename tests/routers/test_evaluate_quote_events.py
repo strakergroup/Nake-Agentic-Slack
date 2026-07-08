@@ -148,10 +148,12 @@ def test_combined_qe_complete_status_message_includes_savings_when_positive():
     )
 
     rendered = str(message.blocks)
-    assert message.text == "Human translation in progress"
-    assert "Human translation in progress" in rendered
-    assert "Final cost after evaluation: USD $80.12" in rendered
+    assert (
+        message.text == "Final cost after Arbitr evaluation: USD $80.12 (saved $11.88)"
+    )
+    assert "Final cost after Arbitr evaluation: USD $80.12" in rendered
     assert "saved $11.88" in rendered
+    assert "Human translation in progress" not in rendered
 
 
 def test_combined_qe_complete_status_message_hides_non_positive_savings():
@@ -163,8 +165,10 @@ def test_combined_qe_complete_status_message_hides_non_positive_savings():
     )
 
     rendered = str(message.blocks)
-    assert "Final cost after evaluation: USD $80.12" in rendered
+    assert message.text == "Final cost after Arbitr evaluation: USD $80.12"
+    assert "Final cost after Arbitr evaluation: USD $80.12" in rendered
     assert "saved $" not in rendered
+    assert "Human translation in progress" not in rendered
 
 
 def test_select_unsubmitted_languages_marks_unselected_targets_cancelled():
@@ -271,10 +275,13 @@ async def test_handle_combined_qe_complete_updates_quote_and_posts_final_quote(
     assert "download_ai_translations_action" in updated_blocks
     mock_post.assert_awaited_once()
     status_message = mock_post.await_args.args[3]
-    assert status_message.text == "Human translation in progress"
+    assert (
+        status_message.text
+        == "Final cost after Arbitr evaluation: USD $80.12 (saved $11.88)"
+    )
     status_blocks = str(status_message.blocks)
-    assert "Human translation in progress" in status_blocks
-    assert "Final cost after evaluation: USD $80.12" in status_blocks
+    assert "Final cost after Arbitr evaluation: USD $80.12" in status_blocks
+    assert "Human translation in progress" not in status_blocks
     assert "saved $11.88" in status_blocks
     assert "Final Quote" not in status_blocks
 
@@ -379,13 +386,17 @@ async def test_handle_combined_qe_complete_excludes_cancelled_targets(
     assert "Spanish" in updated_blocks
     assert "USD$60.08" not in updated_blocks
     assert "USD$80.08" in updated_blocks
-    assert "Total Cost*: USD $80.08" in updated_blocks
+    assert "Final Cost*: USD $80.08" in updated_blocks
     assert "saved $11.92" in updated_blocks
     assert "download_ai_translations_action" in updated_blocks
     status_message = mock_post.await_args.args[3]
-    assert status_message.text == "Human translation in progress"
+    assert (
+        status_message.text
+        == "Final cost after Arbitr evaluation: USD $80.08 (saved $11.92)"
+    )
     status_blocks = str(status_message.blocks)
-    assert "Final cost after evaluation: USD $80.08" in status_blocks
+    assert "Final cost after Arbitr evaluation: USD $80.08" in status_blocks
+    assert "Human translation in progress" not in status_blocks
     assert "saved $11.92" in status_blocks
     assert ">Cancelled" not in status_blocks
     assert "USD$80.08" not in status_blocks

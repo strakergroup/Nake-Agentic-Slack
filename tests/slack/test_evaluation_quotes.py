@@ -45,7 +45,9 @@ class TestEvaluationCreditsQuoteBlocks:
         assert "Token cost" not in rendered
         assert "Total tokens" not in rendered
         assert "Cost" in rendered
-        assert "PDF conversion cost" in rendered
+        assert "PDF conversion" in rendered
+        assert "PDF conversion cost" not in rendered
+        assert rendered.index("PDF conversion") < rendered.index("AI Translation")
         assert "US$2.40" in rendered
         assert "US$1.00" in rendered
         assert "US$3.40" in rendered
@@ -93,7 +95,9 @@ class TestEvaluationCreditsQuoteBlocks:
         rendered = str(message.blocks)
         assert "Estimated" not in rendered
         assert "AI Translation" in rendered
-        assert "PDF conversion cost" in rendered
+        assert "PDF conversion" in rendered
+        assert "PDF conversion cost" not in rendered
+        assert rendered.index("PDF conversion") < rendered.index("AI Translation")
 
     def test_pdf_evaluate_prequote_estimates_from_file_sizes_and_targets(self):
         tokens = estimate_pdf_evaluate_ai_tokens(
@@ -102,3 +106,77 @@ class TestEvaluationCreditsQuoteBlocks:
         )
 
         assert tokens == 6
+
+
+def test_human_job_quote_message_shows_accept_helper_on_pre_qe_estimate():
+    from app.slack.templates.messages import HumanJobQuoteMessage
+
+    job = {
+        "uuid": "job-123",
+        "workflow_uuid": "workflow-123",
+        "target_languages": [{"uuid": "lang-123", "name": "French"}],
+        "source_files": [
+            {
+                "file_uuid": "file-123",
+                "filename": "test.txt",
+                "target_files": [],
+                "report": {"language_uuid": "source-uuid"},
+            }
+        ],
+    }
+    costs = [
+        {
+            "file_uuid": "file-123",
+            "language_uuid": "lang-123",
+            "service_list": [{"estimated_cost": 10.50, "time_estimate_days": 2}],
+        }
+    ]
+    message = HumanJobQuoteMessage(
+        job,
+        costs,
+        actions=True,
+        show_savings=False,
+        show_quality_discount=False,
+    )
+    rendered = str(message.blocks)
+    assert "Maximum Total Cost" in rendered
+    assert "Click Accept Quote to send your translation to human review" in rendered
+
+
+def test_human_job_quote_message_hides_accept_helper_after_accept():
+    from app.slack.templates.messages import HumanJobQuoteMessage
+
+    job = {
+        "uuid": "job-123",
+        "workflow_uuid": "workflow-123",
+        "target_languages": [{"uuid": "lang-123", "name": "French"}],
+        "source_files": [
+            {
+                "file_uuid": "file-123",
+                "filename": "test.txt",
+                "target_files": [],
+                "report": {"language_uuid": "source-uuid"},
+            }
+        ],
+    }
+    costs = [
+        {
+            "file_uuid": "file-123",
+            "language_uuid": "lang-123",
+            "service_list": [{"estimated_cost": 10.50, "time_estimate_days": 2}],
+        }
+    ]
+    message = HumanJobQuoteMessage(
+        job,
+        costs,
+        actions=False,
+        status_message=(
+            "Quote accepted! Submitting for human translation and "
+            "calculating your final discount with Arbitr..."
+        ),
+        show_savings=False,
+        show_quality_discount=False,
+    )
+    rendered = str(message.blocks)
+    assert "Click Accept Quote to send your translation to human review" not in rendered
+    assert "calculating your final discount with Arbitr" in rendered

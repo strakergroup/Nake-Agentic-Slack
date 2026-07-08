@@ -931,7 +931,11 @@ def verify_job_modal(
     channel_id: str | None = None,
 ) -> dict[str, Any]:
     """Generate modal for job verification with total cost calculation."""
-    blocks = verify_quote_blocks(job, costs)
+    blocks = verify_quote_blocks(
+        job,
+        costs,
+        total_cost_label="Maximum Total Cost",
+    )
     return {
         "type": "modal",
         "callback_id": "verify_job",
@@ -974,6 +978,7 @@ def verify_quote_summary_modal(
     show_quality_discount: bool = True,
     show_savings: bool = True,
     embed_additional_costs_in_line_price: bool = False,
+    total_cost_label: str | None = None,
 ) -> dict[str, Any]:
     blocks = verify_quote_blocks(
         job,
@@ -982,6 +987,7 @@ def verify_quote_summary_modal(
         show_quality_discount=show_quality_discount,
         show_savings=show_savings,
         embed_additional_costs_in_line_price=embed_additional_costs_in_line_price,
+        total_cost_label=total_cost_label or "Maximum Total Cost",
     )
     private_metadata = {
         "job_uuid": job["uuid"],

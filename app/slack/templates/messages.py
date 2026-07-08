@@ -3898,6 +3898,7 @@ class HumanJobQuoteMessage(SlackMessage):
         show_quality_discount: bool = True,
         show_savings: bool = True,
         embed_additional_costs_in_line_price: bool = False,
+        total_cost_label: str | None = None,
         message_title: str | None = None,
     ) -> None:
         blocks = []
@@ -3909,12 +3910,28 @@ class HumanJobQuoteMessage(SlackMessage):
             show_quality_discount=show_quality_discount,
             show_savings=show_savings,
             embed_additional_costs_in_line_price=embed_additional_costs_in_line_price,
+            total_cost_label=total_cost_label,
         )
         if status_message:
             blocks.append(
                 {
                     "type": "section",
                     "text": {"type": "mrkdwn", "text": status_message},
+                }
+            )
+        # Pre-QE estimate (actions on, savings hidden): explain Accept Quote.
+        if actions and not show_savings:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "Click Accept Quote to send your translation to human "
+                            "review. Based on the AI's translation quality, a "
+                            "discount will be applied to the cost above."
+                        ),
+                    },
                 }
             )
         if actions or download_translations_job_uuid:

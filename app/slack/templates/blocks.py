@@ -409,6 +409,7 @@ def verify_quote_blocks(
     show_quality_discount: bool = True,
     show_savings: bool = True,
     embed_additional_costs_in_line_price: bool = False,
+    total_cost_label: str | None = None,
 ):
     source_files = job["source_files"]
     workflow_uuid = job["workflow_uuid"]
@@ -673,7 +674,14 @@ def verify_quote_blocks(
     completion_date = datetime.now() + timedelta(days=total_estimated_days)
     formatted_date = completion_date.strftime("%d %B %Y")
 
-    total_cost_text = f"*Total Cost*: USD ${total_cost:.2f}"
+    # Pre-QE / Adjust Request: Maximum Total Cost; post-QE: Final Cost.
+    if total_cost_label is None:
+        total_cost_label = (
+            _("Maximum Total Cost") if not show_savings else _("Total Cost")
+        )
+    else:
+        total_cost_label = _(total_cost_label)
+    total_cost_text = f"*{total_cost_label}*: USD ${total_cost:.2f}"
     if show_savings:
         displayed_savings = (
             combined_quote_net_savings(
@@ -903,7 +911,6 @@ def evaluation_credits_quote_blocks(
 ) -> list[dict[str, Any]]:
     """Build Slack blocks for a single-service evaluate credits quote."""
     cost_label = _("Cost")
-    pdf_cost_label = _("PDF conversion cost")
     total_label = _("Total cost")
     blocks: list[dict[str, Any]] = [
         {
@@ -920,6 +927,32 @@ def evaluation_credits_quote_blocks(
             },
         },
         {"type": "divider"},
+    ]
+    # PDF conversion runs first in the workflow, so list it above AI Translation.
+    total_tokens = token_cost
+    if pdf_tokens and pdf_page_count:
+        blocks.append(
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{_('PDF conversion')}:*\n{pdf_page_count} {_('pages')}"
+                        ),
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{cost_label}:*\n"
+                            f"{_format_evaluate_quote_cost(pdf_tokens, is_ibm=is_ibm)}"
+                        ),
+                    },
+                ],
+            }
+        )
+        total_tokens += pdf_tokens
+    blocks.append(
         {
             "type": "section",
             "fields": [
@@ -932,29 +965,8 @@ def evaluation_credits_quote_blocks(
                     ),
                 },
             ],
-        },
-    ]
-    total_tokens = token_cost
-    if pdf_tokens and pdf_page_count:
-        blocks.append(
-            {
-                "type": "section",
-                "fields": [
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*{_('PDF conversion')}:*\n{pdf_page_count} {_('pages')}",
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": (
-                            f"*{pdf_cost_label}:*\n"
-                            f"{_format_evaluate_quote_cost(pdf_tokens, is_ibm=is_ibm)}"
-                        ),
-                    },
-                ],
-            }
-        )
-        total_tokens += pdf_tokens
+        }
+    )
     blocks.extend(
         [
             {"type": "divider"},

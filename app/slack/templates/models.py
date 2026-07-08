@@ -12,7 +12,6 @@ from ray_sdk.api.v3.file import is_valid_file_ext
 
 from ...constants import (
     HUMAN_EVALUATION_WORKFLOW_UUID,
-    HUMAN_VERIFICATION_WORKFLOW_UUID,
 )
 from ...models import SlackGroupSettingsTranslation
 from ..file_submissions import parse_slack_file_option_value

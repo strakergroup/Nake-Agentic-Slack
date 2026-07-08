@@ -12,8 +12,8 @@ the full Adobe convert → re-extract → translate pipeline runs; character cou
 may differ slightly from the preflight quote.
 
 Slack renders Document MT quotes with the same **Service Quote** layout used for
-staged evaluate AI Translation quotes: AI Translation cost, optional PDF
-conversion cost (page count + fee), and total cost. Quotes no longer use
+staged evaluate AI Translation quotes: optional PDF conversion cost first
+(page count + fee), then AI Translation cost, and total cost. Quotes no longer use
 “estimated” wording or an aggregate-only total when PDF conversion applies.
 
 ## Flow

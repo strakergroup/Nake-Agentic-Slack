@@ -44,7 +44,6 @@ from app.ray.utils import (
 )
 from app.saq_jobs import (
     enqueue_document_mt_quote_preflight,
-    enqueue_document_mt_submission,
     enqueue_evaluation_submission,
 )
 from app.slack.buglog_notifier import notify_exception, notify_message
@@ -119,7 +118,6 @@ from .listener_actions import (
     cancel_job_process,
     document_machine_translate,
     document_mt_selected_languages,
-    evaluate_target_file_uuids,
     get_accessible_slack_files,
     get_groups,
     get_mt_translation,
@@ -170,7 +168,6 @@ from .templates.messages import (
     ClientAlreadyApprovedMessage,
     ClientApprovedMessage,
     ConnectionInfoMessage,
-    DocumentMtQuoteMessage,
     HelpMessage,
     HumanJobMessage,
     InfoMessage,
@@ -2807,7 +2804,8 @@ async def evaluation_qe_human_quote_accept_action(
         await _refresh_combined_quote(
             actions=False,
             status_message=_(
-                "Your quote has been accepted. Quality Evaluation will run first, then Human Translation will be submitted automatically."
+                "Quote accepted! Submitting for human translation and "
+                "calculating your final discount with Arbitr..."
             ),
         )
     except VerifyAPIError as e:
@@ -3078,7 +3076,8 @@ async def handle_verify_job_submission(
                 qe_token_cost=qe_token_cost,
                 actions=False,
                 status_message=_(
-                    "Your quote has been accepted. Quality Evaluation will run first, then Human Translation will be submitted automatically."
+                    "Quote accepted! Submitting for human translation and "
+                    "calculating your final discount with Arbitr..."
                 ),
                 allow_adjust=False,
                 download_translations_job_uuid=job_uuid,

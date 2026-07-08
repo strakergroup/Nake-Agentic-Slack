@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Changed]: HT process suggestion copy — Service Quote lists PDF conversion above AI Translation; pre-QE HT estimates and Adjust Request use Maximum Total Cost; post-QE quotes use Final Cost; Accept Quote helper line; accept/final status copy references Arbitr and consolidates the final cost onto one line (Wade Norman, 2026-07-09)
 - [Changed]: Combined QE + Human Translation quote refresh after QE no longer shows the “Quality Evaluation is complete. Human Translation will be submitted automatically.” status line on the original quote message (Wade Norman, 2026-07-08)
 - [Changed]: Human verification quote quality lines now show the tier (`Quality: good`, `Quality: best`, etc.) without percentage discount text (Wade Norman, 2026-07-08)
 - [Changed]: Document MT and evaluate AI Translation quotes now share the Service Quote layout with separate AI Translation and PDF conversion cost lines; PDF prequotes no longer label the service as “Estimated AI Translation” (Wade Norman, 2026-07-08)

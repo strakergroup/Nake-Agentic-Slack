@@ -29,11 +29,13 @@ PRE_QE_QUOTE_DISPLAY = {
     "show_quality_discount": False,
     "show_savings": False,
     "embed_additional_costs_in_line_price": True,
+    "total_cost_label": "Maximum Total Cost",
 }
 POST_QE_QUOTE_DISPLAY = {
     "show_quality_discount": True,
     "show_savings": True,
     "embed_additional_costs_in_line_price": True,
+    "total_cost_label": "Final Cost",
 }
 
 
@@ -100,6 +102,7 @@ def combined_human_job_quote_message(
     show_quality_discount: bool = True,
     show_savings: bool = True,
     embed_additional_costs_in_line_price: bool = False,
+    total_cost_label: str | None = None,
     message_title: str | None = None,
     pricing_costs: list[dict[str, Any]] | None = None,
 ) -> HumanJobQuoteMessage:
@@ -120,6 +123,7 @@ def combined_human_job_quote_message(
         show_quality_discount=show_quality_discount,
         show_savings=show_savings,
         embed_additional_costs_in_line_price=embed_additional_costs_in_line_price,
+        total_cost_label=total_cost_label,
         message_title=message_title,
     )
 
@@ -300,6 +304,7 @@ async def post_combined_qe_human_quote(
         embed_additional_costs_in_line_price=PRE_QE_QUOTE_DISPLAY[
             "embed_additional_costs_in_line_price"
         ],
+        total_cost_label=PRE_QE_QUOTE_DISPLAY["total_cost_label"],
     )
     session = await get_evaluate_quote_session(job_uuid)
     channel_id = resolve_evaluate_channel_id(event, job_data) or auth.slack_user.user_id
@@ -389,6 +394,7 @@ async def handle_combined_qe_complete(
         embed_additional_costs_in_line_price=POST_QE_QUOTE_DISPLAY[
             "embed_additional_costs_in_line_price"
         ],
+        total_cost_label=POST_QE_QUOTE_DISPLAY["total_cost_label"],
     )
     if channel_id and message_ts:
         await client.chat_update(
@@ -433,21 +439,15 @@ def combined_qe_complete_status_message(
     """Short follow-up after QE completes while Human Translation is submitted."""
     if net_savings > 0:
         final_cost_line = _(
-            "Final cost after evaluation: USD ${total_cost:.2f} (saved ${net_savings:.2f})"
+            "Final cost after Arbitr evaluation: USD ${total_cost:.2f} "
+            "(saved ${net_savings:.2f})"
         )
     else:
-        final_cost_line = _("Final cost after evaluation: USD ${total_cost:.2f}")
+        final_cost_line = _("Final cost after Arbitr evaluation: USD ${total_cost:.2f}")
 
     return SlackMessage(
-        _("Human translation in progress"),
+        final_cost_line,
         [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _("Human translation in progress"),
-                },
-            },
             {
                 "type": "section",
                 "text": {

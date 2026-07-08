@@ -29,11 +29,6 @@ from app.ray.utils import (
     set_user_language,
 )
 from app.slack.buglog_notifier import notify_exception, notify_message
-from app.slack.select_options import _get_languages_cached
-from app.slack.utils import (
-    format_callback_error,
-    order_translations_by_target_language_order,
-)
 from app.transcriber_tasks.tasks import get_transcription_task
 from app.translate import _
 
@@ -99,22 +94,6 @@ from ..slack.evaluation_combined_quotes import (
     job_file_uuids,
     job_target_language_uuids,
     post_combined_qe_human_quote,
-)
-from ..slack.evaluation_quotes import (
-    claim_evaluate_complete_notification,
-    post_evaluate_service_quote,
-)
-from ..slack.listener_actions import (
-    handle_transcribe_embed_pipeline,
-    handle_transcription_complete,
-    handle_translation_complete,
-    mark_stage_processed,
-    resolve_event_thread_ts,
-    spend_embedding_credits,
-    spend_transcription_credits,
-    spend_translation_credits,
-    update_submission_status,
-    update_tokens_consumed,
 )
 from ..slack.templates.messages import (
     AutoTranslationMessage,

@@ -140,7 +140,9 @@ class TestDocumentMtQuoteBlocks:
         rendered = str(blocks)
         assert "Service Quote" in rendered
         assert "AI Translation" in rendered
-        assert "PDF conversion cost" in rendered
+        assert "PDF conversion" in rendered
+        assert "PDF conversion cost" not in rendered
+        assert rendered.index("PDF conversion") < rendered.index("AI Translation")
         assert "US$8.00" in rendered
         assert "US$2.00" in rendered
         assert "US$10.00" in rendered
@@ -152,7 +154,7 @@ class TestDocumentMtQuoteBlocks:
             blocks = document_mt_quote_blocks(self._session(), actions=False)
 
         rendered = str(blocks)
-        assert "PDF conversion cost" not in rendered
+        assert "PDF conversion" not in rendered
         assert "US$2.50" in rendered
 
     def test_document_mt_quote_blocks_show_accept_action(self):
@@ -377,6 +379,7 @@ class TestVerifyQuoteBlocks:
             show_quality_discount=True,
             show_savings=True,
             embed_additional_costs_in_line_price=True,
+            total_cost_label="Final Cost",
         )
         rendered = str(blocks)
 
@@ -384,7 +387,7 @@ class TestVerifyQuoteBlocks:
         assert "Quality: good" in rendered
         assert "-30% off" not in rendered
         assert "submitted for this language" not in rendered
-        assert "Total Cost*: USD $80.08" in rendered
+        assert "Final Cost*: USD $80.08" in rendered
 
     def test_verify_quote_blocks_with_evaluation_report(self):
         """Test verify quote blocks with evaluation report."""
@@ -612,7 +615,7 @@ class TestVerifyQuoteBlocks:
         assert "*Quality Evaluation*: USD $1.60" not in rendered
         assert "Quality Evaluation: USD" not in rendered
         assert "USD$91.60" in rendered
-        assert "Total Cost*: USD $91.60" in rendered
+        assert "Maximum Total Cost*: USD $91.60" in rendered
         assert "saved $10.00" not in rendered
 
     def test_verify_quote_blocks_can_hide_quality_and_savings(self):
@@ -659,7 +662,7 @@ class TestVerifyQuoteBlocks:
 
         assert "Quality:" not in rendered
         assert "saved $" not in rendered
-        assert "Total Cost*: USD $10.50" in rendered
+        assert "Maximum Total Cost*: USD $10.50" in rendered
 
     def test_verify_quote_blocks_distributes_qe_cost_by_target(self):
         """Target-scoped QE costs can be embedded in each file/language quote row."""
