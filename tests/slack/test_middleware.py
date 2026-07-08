@@ -201,6 +201,96 @@ class TestRequireRayClient:
             assert result is False
 
 
+class TestRequireRayClientOrgBilling:
+    """Org-billed MT access via require_ray_client(allow_org_billing=True)."""
+
+    @pytest.mark.asyncio
+    async def test_allows_org_billed_workspace_without_member(self, context):
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=context["team_id"],
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+        )
+        context["ray"] = RayConnection(super_group=[super_group], client=None)
+
+        result = await require_ray_client(
+            context, prompt_login=False, allow_org_billing=True
+        )
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_blocks_unlinked_workspace_without_prompt(self, context):
+        context["ray"] = RayConnection(super_group=[], client=None)
+
+        result = await require_ray_client(
+            context, prompt_login=False, allow_org_billing=True
+        )
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_member_only_still_requires_client(self, context):
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=context["team_id"],
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+        )
+        context["ray"] = RayConnection(super_group=[super_group], client=None)
+
+        result = await require_ray_client(context, prompt_login=False)
+
+        assert result is False
+
+
+class TestRequireRayClientLoginPrompt:
+    """Login prompts for feature-specific actions."""
+
+    @pytest.mark.asyncio
+    async def test_human_translation_login_uses_ephemeral_not_respond(self, context):
+        """HT login on New Job buttons must not replace the chooser message."""
+        context["ray"] = RayConnection(super_group=[], client=None)
+        context["login_prompt"] = LoginMessage(
+            context["user_id"],
+            context["team_id"],
+            None,
+            context["channel_id"],
+        )
+        context["response_url"] = "https://hooks.slack.com/response"
+        mock_client = AsyncMock()
+        mock_respond = AsyncMock()
+        with (
+            patch.object(
+                context.__class__,
+                "respond",
+                new_callable=PropertyMock,
+                return_value=mock_respond,
+            ),
+            patch.object(
+                context.__class__,
+                "client",
+                new_callable=PropertyMock,
+                return_value=mock_client,
+            ),
+        ):
+            result = await require_ray_client(
+                context, variation=LoginMessage.HUMAN_TRANSLATION
+            )
+
+        assert result is False
+        mock_client.chat_postEphemeral.assert_awaited_once()
+        mock_respond.assert_not_awaited()
+        blocks = mock_client.chat_postEphemeral.await_args.kwargs["blocks"]
+        assert (
+            "Connect your account to perform human translation."
+            in blocks[0]["text"]["text"]
+        )
+
+
 class TestRequireMtTokens:
     """Tests for require_mt_tokens middleware helper function."""
 

@@ -152,6 +152,21 @@ class TestLoginMessage:
             in message.blocks[0]["text"]["text"]
         )
 
+    def test_human_translation_variation(
+        self, user_id: str, team_id: str, enterprise_id: str, channel_id: str
+    ):
+        message = LoginMessage(
+            user_id,
+            team_id,
+            enterprise_id,
+            channel_id,
+            variation=LoginMessage.HUMAN_TRANSLATION,
+        )
+        assert (
+            "Connect your account to perform human translation."
+            in message.blocks[0]["text"]["text"]
+        )
+
     def test_variation_overrides_connected_variation(
         self,
         user_id: str,

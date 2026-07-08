@@ -131,7 +131,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.get_ray_connection",
@@ -175,7 +178,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch("app.routers.ray.get_ray_connection", return_value=None):
                         with patch(
@@ -202,7 +208,10 @@ class TestRayEventsEndpoint:
         mock_client.users_info.return_value = {"user": {"id": "U123"}}
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -237,7 +246,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -273,7 +285,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -314,7 +329,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -362,7 +380,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -387,7 +408,9 @@ class TestRayEventsEndpoint:
         )
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=None):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user", return_value=None
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     auth = RayEventAuth()
                     await auth.initialize(event, "valid-token")
@@ -418,7 +441,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -456,7 +482,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -529,7 +558,10 @@ class TestRayEventsEndpoint:
         )
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -627,7 +659,10 @@ class TestRayEventsEndpoint:
         )
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -672,7 +707,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -733,7 +771,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -775,7 +816,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -812,7 +856,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -896,7 +943,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -947,7 +997,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -1036,7 +1089,10 @@ class TestRayEventsEndpoint:
         mock_response.data = {"channel": "C123"}
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -1104,7 +1160,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -1190,7 +1249,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -1265,7 +1327,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -1342,7 +1407,10 @@ class TestRayEventsEndpoint:
         }
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=bot_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=bot_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
@@ -1428,7 +1496,8 @@ class TestRayEventsEndpoint:
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
             with patch(
-                "app.dependencies.get_slack_user", return_value=slack_user_no_group
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=slack_user_no_group,
             ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
@@ -1469,7 +1538,10 @@ class TestRayEventsEndpoint:
         mock_client.users_info.return_value = {"user": {"id": "U123"}}
 
         with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch("app.dependencies.get_slack_user", return_value=mock_slack_user):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
                 with patch("app.dependencies.get_demo_link", return_value=[]):
                     with patch(
                         "app.routers.ray.AsyncWebClient", return_value=mock_client

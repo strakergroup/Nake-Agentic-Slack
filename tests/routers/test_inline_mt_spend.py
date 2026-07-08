@@ -209,3 +209,38 @@ async def test_inline_usage_uses_group_token_when_no_member():
     posted_json = mock_http.post.call_args.kwargs["json"]
     assert posted_json["usage_type"] == "channel_translation"
     assert posted_json["email"] == "poster@example.com"
+
+
+@pytest.mark.asyncio
+async def test_document_mt_transaction_uses_group_token_when_no_member():
+    """Org-billed Document MT authenticates with a group token when client_id is
+    the org uuid (RAY-80198)."""
+    cm, mock_http = _patch_async_client(
+        {"transaction_uuid": "txn-doc", "pdf_transaction_uuid": None}
+    )
+
+    with (
+        patch("app.auth.connector.fetch_one", new=AsyncMock(return_value=None)),
+        patch(
+            "app.auth.connector.create_languagecloud_group_token",
+            return_value="group-token",
+        ) as mock_group_token,
+        patch(
+            "app.auth.connector.create_languagecloud_id_token",
+            return_value="id-token",
+        ) as mock_id_token,
+        patch("app.auth.connector.httpx.AsyncClient", return_value=cm),
+    ):
+        from app.auth.connector import log_document_mt_by_client_id
+
+        result = await log_document_mt_by_client_id(
+            client_id="org-uuid",
+            charge={"idempotency_key": "k", "text_length": 100},
+        )
+
+    assert result["transaction_uuid"] == "txn-doc"
+    mock_id_token.assert_not_called()
+    mock_group_token.assert_called_once()
+    assert mock_http.post.call_args.kwargs["headers"]["Authorization"] == (
+        "Bearer group-token"
+    )

@@ -7,8 +7,7 @@ from pydantic import BaseModel
 from .auth.connector import (
     SlackUser,
     get_demo_link,
-    get_slack_org,
-    get_slack_user,
+    resolve_slack_delivery_user,
     validate_queue_proxy_secret,
 )
 
@@ -42,28 +41,19 @@ class RayEventAuth:
         is_token_valid = validate_queue_proxy_secret(token)
         if not is_token_valid:
             raise HTTPException(401)
-        # Get the Slack account connected to the RAY client ID.
-        if "client_id" in event.data:
-            self.slack_user = await get_slack_user(event.data["client_id"])
-            self.demo_slack_users = await get_demo_link(event.data["client_id"])
-        if "extra_data" in event.data:
-            if "client_id" in event.data["extra_data"]:
-                self.slack_user = await get_slack_user(
-                    event.data["extra_data"]["client_id"],
-                    event.data["extra_data"]["team_id"],
-                )
-                if not self.slack_user:
-                    self.slack_user = await get_slack_org(
-                        event.data["extra_data"]["client_id"],
-                        event.data["extra_data"]["team_id"],
-                    )
-                    if self.slack_user:
-                        self.slack_user.user_id = event.data["extra_data"][
-                            "slack_user_id"
-                        ]
-                self.demo_slack_users = await get_demo_link(
-                    event.data["extra_data"]["client_id"]
-                )
+
+        # Inline MT (channel/shortcut/DM) carries billing context in extra_data;
+        # Document MT puts it on the event root. One resolver handles both.
+        extra = event.data.get("extra_data") or {}
+        client_id = extra.get("client_id") or event.data.get("client_id")
+        if client_id:
+            self.slack_user = await resolve_slack_delivery_user(
+                client_id,
+                team_id=extra.get("team_id") or event.data.get("team_id"),
+                slack_user_id=extra.get("slack_user_id")
+                or event.data.get("slack_user_id"),
+            )
+            self.demo_slack_users = await get_demo_link(client_id)
 
 
 async def get_ray_event_auth(

@@ -2216,6 +2216,9 @@ class TestEvaluateJobAction:
                 ack=mock_ack,
             )
 
+        mock_require_ray_client.assert_awaited_with(
+            context_dict, variation=LoginMessage.HUMAN_TRANSLATION
+        )
         mock_ack.assert_called_once()
         mock_client.views_open.assert_called_once()
         mock_client.chat_postMessage.assert_not_called()
@@ -4290,6 +4293,9 @@ class TestRespondToMessage:
                         return_value=True,
                     ):
                         await respond_to_message(mock_client, context, message)
+                        mock_require.assert_awaited_with(
+                            context, allow_org_billing=True
+                        )
                         mock_files_list.assert_called_once()
                         context.say.assert_called_once()
 
@@ -4413,6 +4419,9 @@ class TestRespondToMessage:
                     new_callable=AsyncMock,
                 ) as mock_mt:
                     await respond_to_message(mock_client, context, message)
+                    mock_require_ray.assert_awaited_with(
+                        context, allow_org_billing=True
+                    )
                     mock_mt.assert_called_once()
                     # Should extract source lang, target lang, and text
                     call_args = mock_mt.call_args
@@ -4525,14 +4534,14 @@ class TestRespondToMessage:
 
     @pytest.mark.asyncio
     async def test_respond_to_message_no_ray_client_for_files(self, user_id, team_id):
-        """Test respond_to_message with files but no ray client."""
+        """Unlinked workspaces get login only; file uploads must not fall through to Watson."""
         from app.slack.listener_actions import respond_to_message
 
         mock_client = AsyncMock()
         message = {
             "ts": "123456.789",
             "files": [{"id": "F123", "name": "test.txt"}],
-            "text": "",  # Add empty text to avoid KeyError
+            "text": "This is a glossary test",
         }
         ray_connection = RayConnection(super_group=[], client=None)
         context = RayContext(
@@ -4550,17 +4559,79 @@ class TestRespondToMessage:
             "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
         ) as mock_require:
             mock_require.return_value = False
-            # When no ray client, files aren't processed but message text still is
-            # So Watson will be called and may call say
             with patch(
-                "app.slack.listener_actions.watson_message",
-                return_value=MagicMock(intent="Unknown"),
-            ):
+                "app.slack.listener_actions.watson_message", new_callable=AsyncMock
+            ) as mock_watson:
                 await respond_to_message(mock_client, context, message)
-                # Files won't be processed, but message text processing may still call say
-                # The key is that files_list_simple should not be called
-                # We can't easily assert that, but we know files weren't processed
-                # because require_ray_client returned False
+                mock_require.assert_awaited_with(context, allow_org_billing=True)
+                mock_watson.assert_not_awaited()
+                context.say.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_respond_to_message_org_billed_file_upload_without_member(
+        self, user_id, team_id
+    ):
+        """Linked workspace without member login still gets the New Job AI Translation UI."""
+        from uuid import uuid4
+
+        from app.slack.listener_actions import respond_to_message
+
+        mock_client = AsyncMock()
+        message = {
+            "ts": "123456.789",
+            "files": [
+                {
+                    "id": "F123",
+                    "name": "glsstest.txt",
+                    "title": "glsstest.txt",
+                    "filetype": "text",
+                }
+            ],
+        }
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=None)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+                "say": AsyncMock(),
+            }
+        )
+
+        with patch(
+            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+        ) as mock_require:
+            mock_require.return_value = True
+            with patch(
+                "app.slack.listener_actions.files_list_simple", new_callable=AsyncMock
+            ):
+                with patch(
+                    "app.slack.listener_actions.is_video_file", return_value=False
+                ):
+                    with patch(
+                        "app.slack.listener_actions.validate_file_type",
+                        return_value=True,
+                    ):
+                        await respond_to_message(mock_client, context, message)
+                        mock_require.assert_awaited_with(
+                            context, allow_org_billing=True
+                        )
+                        context.say.assert_called_once()
+                        assert (
+                            context.say.await_args.kwargs["blocks"][1]["accessory"][
+                                "action_id"
+                            ]
+                            == "document_mt_job"
+                        )
 
     @pytest.mark.asyncio
     async def test_respond_to_message_use_thread(self, user_id, team_id, ray_client):

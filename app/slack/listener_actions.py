@@ -544,103 +544,101 @@ async def respond_to_message(
     thread_ts = message.get("thread_ts", message.get("ts")) if use_thread else ""
     # If there is no text, show new job button or ignore the message.
     if message.get("files"):
-        if await require_ray_client(context):
-            # Trigger file list to enter into cache. So that new job button click does not timeout
-            asyncio.create_task(
-                files_list_simple(client, channel_id=context["channel_id"], count=120)
-            )
-            # Handle video files - collect all first, then show one message
-            files = []
-            unsupported_files = []
-            video_files = []
-            is_ibm = is_ibm_enterprise(context.enterprise_id)
-            for file in message["files"]:
-                if is_video_file(file):
-                    file_info = await client.files_info(file=file["id"])
-                    duration_ms = file_info["file"].get("duration_ms", 0)
-                    # Default to 1 minute if duration couldn't be detected
-                    if not duration_ms:
-                        duration_ms = 60000
-                    video_files.append(
-                        {
-                            "file_id": file["id"],
-                            "file_name": file_info["file"]["name"],
-                            "duration_ms": duration_ms,
-                        }
-                    )
-                else:
-                    if not validate_file_type(file["name"]):
-                        unsupported_files.append(file)
-                    else:
-                        files.append(file)
-
-            # Show video options message for all video files at once
-            if video_files and await require_ray_client(context, prompt_login=False):
-                # Get token balance for non-IBM workspaces.
-                tokens = None
-                if not is_ibm:
-                    if context["ray"].client is not None:
-                        user_tokens = await get_client_tokens(
-                            context["ray"].client.id_token
-                        )
-                        tokens = user_tokens.ai_token
-                    elif context["ray"].super_group is not None:
-                        group_tokens = await get_group_tokens(
-                            context["ray"].super_group[0].verify_organization_uuid
-                        )
-                        tokens = group_tokens.ai_token
-
-                # Check if any files are actual video (not audio-only)
-                # to determine if Embed Subtitles option should be shown
-                has_embeddable_video = has_video_files(video_files)
-
-                video_msg = VideoOptionsMessage(
-                    channel_id=context["channel_id"],
-                    files=video_files,
-                    thread_ts=thread_ts,
-                    is_ibm_enterprise=is_ibm,
-                    tokens=tokens,
-                    show_embed_option=has_embeddable_video,
-                )
-                await context.say(
-                    text=video_msg.text,
-                    blocks=video_msg.blocks,
-                    thread_ts=thread_ts,
-                )
-            if len(files) > 10:
-                await context.say(
-                    text=_(
-                        "Too many files selected. Please upload a maximum of 10 files."
-                    ),
-                    thread_ts=thread_ts,
-                )
-            elif files:
-                new_job_msg = NewJobMessage(
-                    context["channel_id"],
-                    message["ts"],
-                    files,
-                    context.ray.super_group[0].enable_verify_in_slack
-                    if context.ray
-                    else False,
-                    is_ibm,
-                )
-                await context.say(
-                    text=new_job_msg.text,
-                    blocks=new_job_msg.blocks,
-                    thread_ts=thread_ts,
-                )
-            if unsupported_files:
-                unsupported_files_str = ", ".join(
-                    [
-                        f"{file['name']} ({file['filetype']})"
-                        for file in unsupported_files
-                    ]
-                )
-                await context.say(
-                    text=_("Unsupported file type: {unsupported_files_str}."),
-                    thread_ts=thread_ts,
-                )
+        if not await require_ray_client(context, allow_org_billing=True):
             return
+        # Trigger file list to enter into cache. So that new job button click does not timeout
+        asyncio.create_task(
+            files_list_simple(client, channel_id=context["channel_id"], count=120)
+        )
+        # Handle video files - collect all first, then show one message
+        files = []
+        unsupported_files = []
+        video_files = []
+        is_ibm = is_ibm_enterprise(context.enterprise_id)
+        for file in message["files"]:
+            if is_video_file(file):
+                file_info = await client.files_info(file=file["id"])
+                duration_ms = file_info["file"].get("duration_ms", 0)
+                # Default to 1 minute if duration couldn't be detected
+                if not duration_ms:
+                    duration_ms = 60000
+                video_files.append(
+                    {
+                        "file_id": file["id"],
+                        "file_name": file_info["file"]["name"],
+                        "duration_ms": duration_ms,
+                    }
+                )
+            else:
+                if not validate_file_type(file["name"]):
+                    unsupported_files.append(file)
+                else:
+                    files.append(file)
+
+        # Show video options message for all video files at once
+        if video_files and await require_ray_client(
+            context, prompt_login=False, allow_org_billing=True
+        ):
+            # Get token balance for non-IBM workspaces.
+            tokens = None
+            if not is_ibm:
+                if context["ray"].client is not None:
+                    user_tokens = await get_client_tokens(
+                        context["ray"].client.id_token
+                    )
+                    tokens = user_tokens.ai_token
+                elif context["ray"].super_group is not None:
+                    group_tokens = await get_group_tokens(
+                        context["ray"].super_group[0].verify_organization_uuid
+                    )
+                    tokens = group_tokens.ai_token
+
+            # Check if any files are actual video (not audio-only)
+            # to determine if Embed Subtitles option should be shown
+            has_embeddable_video = has_video_files(video_files)
+
+            video_msg = VideoOptionsMessage(
+                channel_id=context["channel_id"],
+                files=video_files,
+                thread_ts=thread_ts,
+                is_ibm_enterprise=is_ibm,
+                tokens=tokens,
+                show_embed_option=has_embeddable_video,
+            )
+            await context.say(
+                text=video_msg.text,
+                blocks=video_msg.blocks,
+                thread_ts=thread_ts,
+            )
+        if len(files) > 10:
+            await context.say(
+                text=_("Too many files selected. Please upload a maximum of 10 files."),
+                thread_ts=thread_ts,
+            )
+        elif files:
+            new_job_msg = NewJobMessage(
+                context["channel_id"],
+                message["ts"],
+                files,
+                context.ray.super_group[0].enable_verify_in_slack
+                if context.ray
+                else False,
+                is_ibm,
+            )
+            await context.say(
+                text=new_job_msg.text,
+                blocks=new_job_msg.blocks,
+                thread_ts=thread_ts,
+            )
+        if unsupported_files:
+            unsupported_files_str = ", ".join(
+                [f"{file['name']} ({file['filetype']})" for file in unsupported_files]
+            )
+            await context.say(
+                text=_("Unsupported file type: {unsupported_files_str}."),
+                thread_ts=thread_ts,
+            )
+        return
     # process mt
     message_match = re.search(
         r"mt:?(?:\s+([\w-]+))?\s+to\s+([\w-]+):?\s+(.*)",
@@ -649,7 +647,7 @@ async def respond_to_message(
     )
 
     if message_match:
-        if await require_ray_client(context):
+        if await require_ray_client(context, allow_org_billing=True):
             mt_sl = message_match.group(1) or ""
             mt_tl = message_match.group(2) or context.get("locale") or "en"
             mt_text = message_match.group(3)
@@ -1107,11 +1105,18 @@ async def document_machine_translate(
     # Set channel_id if not present (same pattern as document_mt_job)
     if "channel_id" not in context:
         context["channel_id"] = context["user_id"]
-    if context["ray"].client is None:
-        user_group_id = context["ray"].super_group[0].id
+    ray_connection = context["ray"]
+    if not isinstance(ray_connection, RayConnection) or not ray_connection.super_group:
+        return
+    if ray_connection.client is None:
+        user_group_id = ray_connection.super_group[0].id
+        billing_client_id = ray_connection.super_group[0].verify_organization_uuid
+        billing_group_uuid = user_group_id
         is_gropid = True
     else:
-        user_group_id = context["ray"].client.user_group_id
+        user_group_id = ray_connection.client.user_group_id
+        billing_client_id = ray_connection.client.id
+        billing_group_uuid = user_group_id
     target_languages = _normalize_document_target_languages(selected_language)
     if not target_languages:
         return
@@ -1121,8 +1126,7 @@ async def document_machine_translate(
     if len(target_languages) == 1 and target_languages[0].lower() == "fr-ca":
         ai_engine = "microsoft"
 
-    client: RayClient | None = context["ray"].client
-    if not file_id or not client:
+    if not file_id:
         return
     try:
         # file_info = await client.files_info(file=slack_file_id)
@@ -1135,7 +1139,7 @@ async def document_machine_translate(
         task_data = MtFileRequestSchema.model_validate(
             {
                 "file_id": file_id,
-                "client_id": client.id,
+                "client_id": billing_client_id,
                 "channel_id": context["channel_id"],
                 "source_language": source_language,
                 "target_language": target_languages[0],
@@ -1144,6 +1148,9 @@ async def document_machine_translate(
                 "data_source": "slack",
                 "submission_id": submission_ids.get(target_languages[0]),
                 "submission_ids": submission_ids,
+                "team_id": context.get("team_id"),
+                "slack_user_id": context.get("user_id"),
+                "billing_group_uuid": billing_group_uuid,
             }
         )
         task_uuid = await create_slack_job(task_data, status="pending")

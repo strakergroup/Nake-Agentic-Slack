@@ -169,6 +169,11 @@ class MtFileRequestSchema(BaseModel):
     embed_subtitles: bool = False
     original_video_file_id: str | None = None
     original_video_file_name: str | None = None
+    # Org-billed Document MT (RAY-80198): delivery + reporting context when the
+    # poster has no LanguageCloud member link.
+    team_id: str | None = None
+    slack_user_id: str | None = None
+    billing_group_uuid: str | None = None
 
     @model_validator(mode="after")
     def normalize_target_languages(self) -> "MtFileRequestSchema":
@@ -196,6 +201,9 @@ class MtSuccessResponseSchema(BaseModel):
     # Deferred charge (RAY-80417): the prepared /mt/transaction payload (document
     # MT + optional combined PDF fee) charged after successful Slack delivery.
     mt_charge: Dict[str, Any] | None = None
+    # Org-billed Document MT delivery context (RAY-80198).
+    team_id: str | None = None
+    slack_user_id: str | None = None
 
 
 class Balance(BaseModel):
@@ -210,6 +218,8 @@ class MtErrorResponseSchema(BaseModel):
     error_type: MtErrorTypes
     error_data: Dict[str, Any]
     submission_id: int | None = None
+    team_id: str | None = None
+    slack_user_id: str | None = None
 
 
 class MtFileReponseSchema(RootModel):
