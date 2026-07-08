@@ -45,7 +45,7 @@ import httpx
 from saq.types import Context
 from slack_bolt.context.async_context import AsyncBoltContext
 
-from app.auth.connector import get_slack_user
+from app.auth.connector import get_slack_user, resolve_slack_delivery_user
 from app.ray.events.models import MtSuccessResponseSchema
 from app.ray.submissions import SubmissionStatus, updated_submission_status
 from app.ray.utils import delete_from_file_server, download_from_file_server_async
@@ -171,7 +171,11 @@ async def slack_upload_mt_result(
     except Exception as e:
         notify_exception(e, "Failed to mark slack_job slack_uploading")
 
-    slack_user = await get_slack_user(data.client_id)
+    slack_user = await resolve_slack_delivery_user(
+        data.client_id,
+        team_id=data.team_id,
+        slack_user_id=data.slack_user_id,
+    )
     if slack_user is None:
         logger.error(
             "Slack user disappeared before MT upload could complete",
@@ -224,12 +228,30 @@ async def slack_upload_mt_result(
         if data.mt_charge and data.task_uuid:
             from app.saq_jobs.dispatch import enqueue_document_mt_charge
 
-            idempotency_key = data.mt_charge.get("idempotency_key") or data.task_uuid
+            charge = dict(data.mt_charge)
+            if slack_user.ray_user_group_id:
+                charge["group_uuid"] = slack_user.ray_user_group_id
+            try:
+                user_info = await client.users_info(user=slack_user.user_id)
+                profile = (user_info.get("user") or {}).get("profile") or {}
+                if profile.get("email"):
+                    charge["email"] = profile["email"]
+                charge["client_name"] = (
+                    profile.get("real_name")
+                    or profile.get("real_name_normalized")
+                    or charge.get("client_name")
+                )
+            except Exception as e:
+                notify_exception(
+                    e, "Failed to resolve poster profile for document MT billing"
+                )
+
+            idempotency_key = charge.get("idempotency_key") or data.task_uuid
             await enqueue_document_mt_charge(
                 client_id=data.client_id,
                 task_uuid=data.task_uuid,
                 idempotency_key=idempotency_key,
-                charge=data.mt_charge,
+                charge=charge,
             )
 
         return {"status": "delivered", "task_uuid": data.task_uuid}
@@ -466,9 +488,11 @@ async def process_document_mt_submission(
         "file_count": len(files),
     }
     ray_connection = await get_ray_connection(user_id, team_id, enterprise_id)
-    if ray_connection is None or ray_connection.client is None:
-        logger.error("Document MT submission has no RAY client", extra=log_extra)
-        return {"status": "no_ray_client"}
+    if ray_connection is None or not ray_connection.super_group:
+        logger.error(
+            "Document MT submission has no connected workspace org", extra=log_extra
+        )
+        return {"status": "no_super_group"}
 
     bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
     if not bot_token:
@@ -476,12 +500,14 @@ async def process_document_mt_submission(
         return {"status": "no_bot_token"}
 
     ray_client = ray_connection.client
-    if ray_client.is_trial is None:
+    if ray_client is not None and ray_client.is_trial is None:
         ray_client.is_trial, ray_client.trial_remaining = await get_verify_trial_status(
             ray_client.id_token
         )
     max_pdf_size_bytes = (
-        config.document_mt_pdf_max_size_bytes if ray_client.is_trial else None
+        config.document_mt_pdf_max_size_bytes
+        if ray_client is not None and ray_client.is_trial
+        else None
     )
 
     client = AsyncWebClient(token=bot_token)

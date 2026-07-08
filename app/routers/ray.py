@@ -1313,10 +1313,17 @@ async def ray_events(
                 document_message: Optional[SlackMessage] = None
                 if document_translated_data.error_type == "insufficient_balance":
                     # Send message to user that they need to purchase tokens
-                    client_type = await get_client_type(
-                        auth.slack_user.ray_client_id,
-                        auth.slack_user.ray_user_group_id,
-                    )
+                    client_type = None
+                    if (
+                        auth.slack_user
+                        and auth.slack_user.ray_user_group_id
+                        and auth.slack_user.ray_client_id
+                        != auth.slack_user.ray_user_group_id
+                    ):
+                        client_type = await get_client_type(
+                            auth.slack_user.ray_client_id,
+                            auth.slack_user.ray_user_group_id,
+                        )
                     balance = Balance.model_validate(
                         document_translated_data.error_data
                     )
@@ -1347,7 +1354,7 @@ async def ray_events(
                     )
                 else:
                     document_message = DocMtMessage()
-                if document_message is not None:
+                if document_message is not None and auth.slack_user is not None:
                     await post_notification_ephemeral(
                         client,
                         document_translated_data.channel_id

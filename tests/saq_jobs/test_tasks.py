@@ -59,9 +59,11 @@ async def test_process_document_mt_submission_downloads_uploads_and_submits():
     ray_client = MagicMock()
     ray_client.is_trial = False
     ray_client.id_token = "id-token"
+    super_group = MagicMock()
+    super_group.verify_organization_uuid = "org-uuid"
     ray_connection = MagicMock()
     ray_connection.client = ray_client
-    ray_connection.super_group = []
+    ray_connection.super_group = [super_group]
     record = MagicMock(id=123)
     fake_slack = MagicMock()
     fake_slack.chat_postMessage = AsyncMock()
@@ -105,6 +107,57 @@ async def test_process_document_mt_submission_downloads_uploads_and_submits():
     mock_mt.assert_awaited_once()
     assert mock_mt.await_args.args[1:] == ("grid-1", "en", ["zh-CN"], {"zh-CN": 123})
     fake_slack.chat_postMessage.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_process_document_mt_submission_org_billed_without_member():
+    """Org-billed Document MT proceeds when the poster has no LC member link."""
+    super_group = MagicMock()
+    super_group.verify_organization_uuid = "org-uuid"
+    ray_connection = MagicMock()
+    ray_connection.client = None
+    ray_connection.super_group = [super_group]
+    record = MagicMock(id=456)
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+
+    with (
+        patch(
+            "app.auth.connector.get_ray_connection",
+            new=AsyncMock(return_value=ray_connection),
+        ),
+        patch(
+            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.pptx")),
+        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
+        patch(
+            "app.ray.utils.upload_to_file_server", new=AsyncMock(return_value="grid-2")
+        ),
+        patch(
+            "app.ray.submissions.check_and_record_submission_async",
+            new=AsyncMock(return_value=(False, record)),
+        ),
+        patch(
+            "app.slack.listener_actions.document_machine_translate", new=AsyncMock()
+        ) as mock_mt,
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("os.path.exists", return_value=False),
+    ):
+        result = await process_document_mt_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.pptx"}],
+            source_language="en",
+            target_languages=["fr"],
+        )
+
+    assert result["status"] == "processed"
+    mock_mt.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -216,7 +269,8 @@ async def test_slack_upload_mt_result_happy_path(slack_user):
 
     with (
         patch(
-            "app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=slack_user)
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
         ),
         patch(
             "app.saq_jobs.tasks.update_slack_job", new=AsyncMock()
@@ -257,7 +311,10 @@ async def test_slack_upload_mt_result_no_slack_user_returns_no_user_status():
     }
 
     with (
-        patch("app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=None)),
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=None),
+        ),
         patch("app.saq_jobs.tasks.update_slack_job", new=AsyncMock()),
     ):
         result = await slack_upload_mt_result(_ctx(), success_data=success_data)
@@ -279,7 +336,8 @@ async def test_slack_upload_mt_result_re_raises_for_saq_retry(slack_user):
 
     with (
         patch(
-            "app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=slack_user)
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
         ),
         patch("app.saq_jobs.tasks.update_slack_job", new=AsyncMock()),
         patch(
@@ -584,6 +642,8 @@ def _mt_charge() -> dict[str, Any]:
 async def test_slack_upload_mt_result_enqueues_document_mt_charge(slack_user):
     """After delivery, a Slack mt_charge payload is enqueued for billing."""
     charge = _mt_charge()
+    slack_user.user_id = "U123"
+    slack_user.ray_user_group_id = "billing-group-1"
     success_data = {
         "task_uuid": str(uuid4()),
         "file_id": "file-1",
@@ -593,10 +653,23 @@ async def test_slack_upload_mt_result_enqueues_document_mt_charge(slack_user):
         "channel_id": "C123",
         "mt_charge": charge,
     }
+    fake_slack = MagicMock()
+    fake_slack.users_info = AsyncMock(
+        return_value={
+            "user": {
+                "profile": {
+                    "email": "poster@example.com",
+                    "real_name": "Poster Name",
+                }
+            }
+        }
+    )
     with (
         patch(
-            "app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=slack_user)
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
         ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
         patch("app.saq_jobs.tasks.update_slack_job", new=AsyncMock()),
         patch(
             "app.saq_jobs.tasks.download_from_file_server_async",
@@ -619,7 +692,11 @@ async def test_slack_upload_mt_result_enqueues_document_mt_charge(slack_user):
     kwargs = mock_enqueue.await_args.kwargs
     assert kwargs["client_id"] == slack_user.ray_client_id
     assert kwargs["idempotency_key"] == charge["idempotency_key"]
-    assert kwargs["charge"] == charge
+    assert kwargs["charge"]["group_uuid"] == "billing-group-1"
+    assert kwargs["charge"]["email"] == "poster@example.com"
+    assert kwargs["charge"]["client_name"] == "Poster Name"
+    for key, value in charge.items():
+        assert kwargs["charge"][key] == value
 
 
 @pytest.mark.asyncio
@@ -635,7 +712,8 @@ async def test_slack_upload_mt_result_no_charge_when_absent(slack_user):
     }
     with (
         patch(
-            "app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=slack_user)
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
         ),
         patch("app.saq_jobs.tasks.update_slack_job", new=AsyncMock()),
         patch(

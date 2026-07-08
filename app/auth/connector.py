@@ -317,6 +317,30 @@ async def get_slack_org(org_uuid: str, team_id: str | None = None):
     )
 
 
+async def resolve_slack_delivery_user(
+    client_id: str,
+    *,
+    team_id: str | None = None,
+    slack_user_id: str | None = None,
+) -> SlackUser | None:
+    """Resolve Slack bot credentials for file delivery or event callbacks.
+
+    Member-linked jobs use ``get_slack_user``. Org-billed inline MT (channel,
+    shortcut, DM) and Document MT fall back to ``get_slack_org`` and
+    optionally override ``user_id`` with the poster's Slack id.
+    """
+    slack_user = await get_slack_user(client_id, team_id)
+    if slack_user is not None:
+        return slack_user
+
+    org_user = await get_slack_org(client_id, team_id)
+    if org_user is None:
+        return None
+    if slack_user_id:
+        org_user.user_id = slack_user_id
+    return org_user
+
+
 async def get_slack_user(ray_client_id: str, team_id: str | None = None):
     """Gets the Slack user connected to a RAY client.
 
@@ -1716,7 +1740,7 @@ async def log_document_mt_by_client_id(
     Returns:
         dict: the gateway response (``transaction_uuid``, ``pdf_transaction_uuid``).
     """
-    id_token = await _id_token_for_client(client_id)
+    id_token = await _id_token_for_client(client_id, allow_group_fallback=True)
 
     url = f"{domains.languagecloud_api}/mt/transaction"
     headers = {"Authorization": f"Bearer {id_token}"}
