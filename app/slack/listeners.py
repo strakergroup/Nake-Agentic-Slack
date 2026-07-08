@@ -142,7 +142,18 @@ from .listener_actions import (
     verify_job_submission_lock_key,
 )
 from .logging import slack_log_decorator
-from .middleware import ray_connection, require_mt_tokens, require_ray_client
+from .middleware import (
+    populate_ray_connection,
+    ray_connection,
+    require_mt_tokens,
+    require_ray_client,
+)
+from .modal_trigger import (
+    open_loading_modal,
+    request_error_modal,
+    safe_views_update,
+    status_modal,
+)
 from .pdf_evaluate_quotes import (
     PDF_EVALUATE_QUOTE_ACTION_ID,
     get_pdf_evaluate_quote_session,
@@ -200,7 +211,6 @@ from .templates.views import (
     home_view,
     human_job_modal,
     job_search_modal,
-    loading_modal,
     srt_translate_modal,
     translation_settings_view,
     verify_job_modal,
@@ -444,7 +454,7 @@ async def new_job_shortcut(
             )
 
 
-@app.action("show_srt_translate_form", middleware=[ray_connection])
+@app.action("show_srt_translate_form")
 @slack_log_decorator
 async def show_srt_translate_form(
     ack: AsyncAck,
@@ -454,18 +464,31 @@ async def show_srt_translate_form(
     client: AsyncWebClient,
 ):
     await ack()
-    if await require_ray_client(context):
-        assert action is not None
-        task_uuid = action["value"]
-        channel_id = context.get("channel_id") or context["user_id"]
-        view = srt_translate_modal(task_uuid, channel_id)
-        await client.views_open(
-            trigger_id=body["trigger_id"],
-            view=view,
+    assert action is not None
+    task_uuid = action["value"]
+    channel_id = context.get("channel_id") or context["user_id"]
+    view_id = await open_loading_modal(client, body["trigger_id"])
+    try:
+        await populate_ray_connection(context)
+        if not await require_ray_client(context):
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Sign in required"),
+                    _("Please sign in to LanguageCloud to continue."),
+                ),
+            )
+            return
+        await safe_views_update(
+            client, view_id, srt_translate_modal(task_uuid, channel_id)
         )
+    except Exception as e:
+        notify_exception(e)
+        await safe_views_update(client, view_id, request_error_modal())
 
 
-@app.action("document_mt_job", middleware=[ray_connection])
+@app.action("document_mt_job")
 @slack_log_decorator
 async def document_mt_job_action(
     ack: AsyncAck,
@@ -475,25 +498,37 @@ async def document_mt_job_action(
     client: AsyncWebClient,
 ):
     await ack()
-    if await require_ray_client(context, allow_org_billing=True):
-        # Get file IDs and channel ID from the action value
-        assert action is not None
-        action_data = json.loads(action.get("value", ""))
-        files = action_data.get("files", [])
-        channel_id = action_data.get("channel_id")
-        if files:
-            view = document_mt_job_modal(channel_id, files)
-            await client.views_open(
-                trigger_id=body["trigger_id"],
-                view=view,
-            )
-        else:
-            await client.chat_postMessage(
-                channel=context["user_id"],
-                text=_(
-                    "No files found in the message. Please upload files to translate."
+    assert action is not None
+    action_data = json.loads(action.get("value", ""))
+    files = action_data.get("files", [])
+    channel_id = action_data.get("channel_id")
+    if not files:
+        await populate_ray_connection(context)
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=_("No files found in the message. Please upload files to translate."),
+        )
+        return
+
+    view_id = await open_loading_modal(client, body["trigger_id"])
+    try:
+        await populate_ray_connection(context)
+        if not await require_ray_client(context, allow_org_billing=True):
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Sign in required"),
+                    _("Please sign in to LanguageCloud to continue."),
                 ),
             )
+            return
+        await safe_views_update(
+            client, view_id, document_mt_job_modal(channel_id, files)
+        )
+    except Exception as e:
+        notify_exception(e)
+        await safe_views_update(client, view_id, request_error_modal())
 
 
 @app.action("document_mt_submit", middleware=[ray_connection])
@@ -919,7 +954,7 @@ async def login_sso_action(
         )
 
 
-@app.block_action("job_search", middleware=[ray_connection])
+@app.block_action("job_search")
 @slack_log_decorator
 async def job_search_action(
     ack: AsyncAck,
@@ -928,15 +963,29 @@ async def job_search_action(
     body: Dict[str, Any],
 ):
     await ack()
-    if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+    view_id = await open_loading_modal(client, body["trigger_id"])
+    try:
+        await populate_ray_connection(context)
+        if not await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Sign in required"),
+                    _("Please sign in to LanguageCloud to continue."),
+                ),
+            )
+            return
         assert context["ray"] is not None
         assert context["ray"].client is not None
-        await client.views_open(
-            trigger_id=body["trigger_id"],
-            view=job_search_modal(
-                context["ray"].client.username,
-            ),
+        await safe_views_update(
+            client,
+            view_id,
+            job_search_modal(context["ray"].client.username),
         )
+    except Exception as e:
+        notify_exception(e)
+        await safe_views_update(client, view_id, request_error_modal())
 
 
 @app.command(re.compile(r"\/\w*(ray|straker|lc)\w*"), middleware=[ray_connection])
@@ -1008,26 +1057,32 @@ async def ray_command(
                 ) or (context["ray"] and context["ray"].client and is_straker_admin)
 
                 if translation_settings_enabled:
-                    settings = await get_auto_translate_settings_and_langs(
-                        context, context.channel_id
-                    )
-                    auto_translate_langs = [
-                        setting["target_lang"] for setting in settings
-                    ]
                     assert context.channel_id is not None
-                    await client.views_open(
-                        trigger_id=command["trigger_id"],
-                        view=translation_settings_view(
-                            [context.channel_id],
-                            auto_translate_langs,
-                            cast(
-                                SlackGroupSettingsTranslation.DisplayFormatType,
-                                settings[0].get("display_format", "thread")
-                                if settings
-                                else "thread",
+                    view_id = await open_loading_modal(client, command["trigger_id"])
+                    try:
+                        settings = await get_auto_translate_settings_and_langs(
+                            context, context.channel_id
+                        )
+                        auto_translate_langs = [
+                            setting["target_lang"] for setting in settings
+                        ]
+                        await safe_views_update(
+                            client,
+                            view_id,
+                            translation_settings_view(
+                                [context.channel_id],
+                                auto_translate_langs,
+                                cast(
+                                    SlackGroupSettingsTranslation.DisplayFormatType,
+                                    settings[0].get("display_format", "thread")
+                                    if settings
+                                    else "thread",
+                                ),
                             ),
-                        ),
-                    )
+                        )
+                    except Exception as e:
+                        notify_exception(e)
+                        await safe_views_update(client, view_id, request_error_modal())
                 else:
                     url_doc = "https://help.straker.ai/en/docs/how-to-use-channel-translations"
                     text_help = "help docs"
@@ -1100,7 +1155,7 @@ async def ray_command(
             await respond(text=InvalidCommandMessage().text)
 
 
-@app.block_action("settings_auto_translate", middleware=[ray_connection])
+@app.block_action("settings_auto_translate")
 @slack_log_decorator
 async def show_auto_translate_settings(
     ack: AsyncAck,
@@ -1113,20 +1168,31 @@ async def show_auto_translate_settings(
     channel_info = json.loads(payload["value"])
     channel_id = channel_info.get("channel_id")
     team_id = channel_info.get("team_id", "")
-    settings = await get_auto_translate_settings_and_langs(context, channel_id, team_id)
-    auto_translate_langs = [setting["target_lang"] for setting in settings]
-    await client.views_open(
-        trigger_id=body["trigger_id"],
-        view=translation_settings_view(
-            [channel_id] if channel_id else None,
-            auto_translate_langs,
-            cast(
-                SlackGroupSettingsTranslation.DisplayFormatType,
-                settings[0].get("display_format", "thread") if settings else "thread",
+    view_id = await open_loading_modal(client, body["trigger_id"])
+    try:
+        await populate_ray_connection(context)
+        settings = await get_auto_translate_settings_and_langs(
+            context, channel_id, team_id
+        )
+        auto_translate_langs = [setting["target_lang"] for setting in settings]
+        await safe_views_update(
+            client,
+            view_id,
+            translation_settings_view(
+                [channel_id] if channel_id else None,
+                auto_translate_langs,
+                cast(
+                    SlackGroupSettingsTranslation.DisplayFormatType,
+                    settings[0].get("display_format", "thread")
+                    if settings
+                    else "thread",
+                ),
+                team_id,
             ),
-            team_id,
-        ),
-    )
+        )
+    except Exception as e:
+        notify_exception(e)
+        await safe_views_update(client, view_id, request_error_modal())
 
 
 @app.block_action("settings_auto_translate_disable", middleware=[ray_connection])
@@ -1889,7 +1955,7 @@ async def file_list_action(
         )
 
 
-@app.block_action("cancel_job", middleware=[ray_connection])
+@app.block_action("cancel_job")
 @slack_log_decorator
 async def cancel_job_action(
     ack: AsyncAck,
@@ -1899,30 +1965,47 @@ async def cancel_job_action(
     body: Dict[str, Any],
 ):
     await ack()
-    if await require_ray_client(context, variation=LoginMessage.NEW_JOB):
-        assert context["ray"] is not None
-        assert context["ray"].client is not None
-        if "value" in payload:
-            job_info = json.loads(payload["value"])
+    # Non-modal cancel paths do not need trigger_id; load Ray first.
+    if "value" in payload:
+        job_info = json.loads(payload["value"])
+        if job_info.get("job_action") in {"list", "submit"}:
+            await populate_ray_connection(context)
+            if not await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+                return
+            assert context["ray"] is not None
+            assert context["ray"].client is not None
             if job_info.get("job_action") == "list":
                 job_id = job_info["job_id"].split("TJ")[1]
                 await cancel_job_process(
                     client, context, context["ray"].client, job_id=job_id
                 )
-            elif job_info.get("job_action") == "submit":
+            else:
                 await cancel_job_process(
                     client, context, context["ray"].client, job_uuid=job_info["job_id"]
                 )
-            else:
-                await client.views_open(
-                    trigger_id=body["trigger_id"],
-                    view=cancel_job_modal(context["ray"].client.username),
-                )
-        else:
-            await client.views_open(
-                trigger_id=body["trigger_id"],
-                view=cancel_job_modal(context["ray"].client.username),
+            return
+
+    view_id = await open_loading_modal(client, body["trigger_id"])
+    try:
+        await populate_ray_connection(context)
+        if not await require_ray_client(context, variation=LoginMessage.NEW_JOB):
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Sign in required"),
+                    _("Please sign in to LanguageCloud to continue."),
+                ),
             )
+            return
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
+        await safe_views_update(
+            client, view_id, cancel_job_modal(context["ray"].client.username)
+        )
+    except Exception as e:
+        notify_exception(e)
+        await safe_views_update(client, view_id, request_error_modal())
 
 
 @app.view("cancel_job", middleware=[ray_connection])
@@ -2215,7 +2298,7 @@ async def evaluate_job_submit(
             )
 
 
-@app.action("evaluate_job", middleware=[ray_connection])
+@app.action("evaluate_job")
 @slack_log_decorator
 async def evaluate_job_action(
     client: AsyncWebClient,
@@ -2233,40 +2316,61 @@ async def evaluate_job_action(
         if job_type == "human"
         else LoginMessage.QUALITY_EVALUATION
     )
-    if await require_ray_client(context, variation=login_variation):
-        # Get file IDs and channel ID from the action value
-        files = action_data.get("files", [])
-        channel_id = action_data.get("channel_id")
-        if files:
-            if job_type != "human" and is_ibm_enterprise(context.enterprise_id):
-                await client.chat_postMessage(
-                    channel=channel_id or context["user_id"],
-                    text=_(
+    files = action_data.get("files", [])
+    channel_id = action_data.get("channel_id")
+    if not files:
+        await populate_ray_connection(context)
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=_(
+                "No files found in the message. Please try reupload files to translate."
+            ),
+        )
+        return
+
+    # Open before Ray middleware I/O — same pattern as RAY-72999 quote modals.
+    view_id = await open_loading_modal(client, body["trigger_id"])
+    try:
+        await populate_ray_connection(context)
+        if not await require_ray_client(context, variation=login_variation):
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Sign in required"),
+                    _("Please sign in to LanguageCloud to continue."),
+                ),
+            )
+            return
+        if job_type != "human" and is_ibm_enterprise(context.enterprise_id):
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Quality Evaluation"),
+                    _(
                         "Quality Evaluation is now available through the Human Translation quote flow, not as a standalone Slack submission."
                     ),
-                )
-                return
-            view = human_job_modal(
+                ),
+            )
+            return
+        await safe_views_update(
+            client,
+            view_id,
+            human_job_modal(
                 channel_id,
                 files,
                 is_ibm_enterprise(context.enterprise_id),
                 job_type,
-            )
-            await client.views_open(
-                trigger_id=body["trigger_id"],
-                view=view,
-            )
-        else:
-            await client.chat_postMessage(
-                channel=context["user_id"],
-                text=_(
-                    "No files found in the message. Please try reupload files to translate."
-                ),
-            )
+            ),
+        )
+    except Exception as e:
+        notify_exception(e)
+        await safe_views_update(client, view_id, request_error_modal())
 
 
-@app.action("verify_job_modal_open", middleware=[ray_connection])
-@app.action("quote_summary_modal_open", middleware=[ray_connection])
+@app.action("verify_job_modal_open")
+@app.action("quote_summary_modal_open")
 @slack_log_decorator
 async def verify_job_modal_open_action(
     client: AsyncWebClient,
@@ -2278,133 +2382,98 @@ async def verify_job_modal_open_action(
     """Open modal for human translation. Triggered from the Send for human translation button."""
     await ack()
     job_uuid = action["value"]
-    # Get the message timestamp from the body
     message_ts = body.get("message", {}).get("ts")
     quote_channel_id = (
         body.get("channel", {}).get("id")
         or body.get("message", {}).get("channel")
         or context.get("channel_id")
     )
-    lock_key = verify_job_submission_lock_key(job_uuid)
-    if await redis_conn.get(lock_key):
-        return
-    # Open loading modal immediately
-    loading_view = loading_modal()
-    response = await client.views_open(trigger_id=body["trigger_id"], view=loading_view)
-    view_id = response["view"]["id"]
-
+    # Open before Redis/Ray I/O — RAY-72999 loading-modal pattern.
+    view_id = await open_loading_modal(client, body["trigger_id"])
     try:
+        await populate_ray_connection(context)
+        lock_key = verify_job_submission_lock_key(job_uuid)
+        if await redis_conn.get(lock_key):
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Request in progress"),
+                    _(
+                        "A request is already in progress. Please try again in a few seconds."
+                    ),
+                ),
+            )
+            return
+        if not await require_ray_client(context, prompt_login=True):
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Sign in required"),
+                    _("Please sign in to LanguageCloud to continue."),
+                ),
+            )
+            return
         assert context["ray"] is not None
         assert context["ray"].client is not None
-        if await require_ray_client(context, prompt_login=True):
-            job = await get_client_evaluation_job(context["ray"].client, job_uuid)
-            langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
-            session = await get_evaluate_quote_session(job_uuid)
-            quote_snapshot = (session or {}).get("quote_snapshot") or {}
-            is_combined_qe_human_quote = bool(
-                quote_snapshot.get("auto_submit_human_job")
-                and action["action_id"] == "quote_summary_modal_open"
-            )
-            qe_token_cost = int(quote_snapshot.get("token_cost") or 0)
-            costs = await get_job_pricing(
-                context["ray"].client,
-                job_uuid,
-                [file["file_uuid"] for file in job["data"]["source_files"]],
-                langs,
-                assumed_quality_tier=WORST_CASE_QE_QUALITY_TIER
+        job = await get_client_evaluation_job(context["ray"].client, job_uuid)
+        langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
+        session = await get_evaluate_quote_session(job_uuid)
+        quote_snapshot = (session or {}).get("quote_snapshot") or {}
+        is_combined_qe_human_quote = bool(
+            quote_snapshot.get("auto_submit_human_job")
+            and action["action_id"] == "quote_summary_modal_open"
+        )
+        qe_token_cost = int(quote_snapshot.get("token_cost") or 0)
+        costs = await get_job_pricing(
+            context["ray"].client,
+            job_uuid,
+            [file["file_uuid"] for file in job["data"]["source_files"]],
+            langs,
+            assumed_quality_tier=WORST_CASE_QE_QUALITY_TIER
+            if is_combined_qe_human_quote
+            else None,
+        )
+        final_view = (
+            verify_quote_summary_modal(
+                job["data"],
+                costs["data"],
+                message_ts,
+                quote_channel_id,
+                additional_costs=qe_additional_cost(qe_token_cost, costs["data"])
                 if is_combined_qe_human_quote
                 else None,
+                metadata={
+                    "combined_qe_human_quote": True,
+                    "qe_token_cost": qe_token_cost,
+                }
+                if is_combined_qe_human_quote
+                else None,
+                show_quality_discount=not is_combined_qe_human_quote,
+                show_savings=not is_combined_qe_human_quote,
+                embed_additional_costs_in_line_price=is_combined_qe_human_quote,
             )
-            # Update the view with the final content
-            final_view = (
-                verify_quote_summary_modal(
-                    job["data"],
-                    costs["data"],
-                    message_ts,
-                    quote_channel_id,
-                    additional_costs=qe_additional_cost(qe_token_cost, costs["data"])
-                    if is_combined_qe_human_quote
-                    else None,
-                    metadata={
-                        "combined_qe_human_quote": True,
-                        "qe_token_cost": qe_token_cost,
-                    }
-                    if is_combined_qe_human_quote
-                    else None,
-                    show_quality_discount=not is_combined_qe_human_quote,
-                    show_savings=not is_combined_qe_human_quote,
-                    embed_additional_costs_in_line_price=is_combined_qe_human_quote,
-                )
-                if action["action_id"] == "quote_summary_modal_open"
-                else verify_job_modal(
-                    job["data"], costs["data"], message_ts, quote_channel_id
-                )
+            if action["action_id"] == "quote_summary_modal_open"
+            else verify_job_modal(
+                job["data"], costs["data"], message_ts, quote_channel_id
             )
-            try:
-                await client.views_update(view_id=view_id, view=final_view)
-            except SlackApiError as slack_e:
-                if slack_e.response["error"] == "view_closed":
-                    # The modal was closed by the user, no need to do anything
-                    pass
-                else:
-                    raise
-    except VerifyAPIError as e:
-        try:
-            # Update the view with an unauthorized error message
-            error_view = {
-                "type": "modal",
-                "title": {
-                    "type": "plain_text",
-                    "text": _("Unauthorized"),
-                    "emoji": True,
-                },
-                "blocks": [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": _(
-                                "You do not have permission to access this verification job. Please contact your team administrator."
-                            ),
-                            "verbatim": True,
-                        },
-                    }
-                ],
-            }
-            await client.views_update(view_id=view_id, view=error_view)
-        except SlackApiError as slack_e:
-            if slack_e.response["error"] == "view_closed":
-                # The modal was closed by the user, no need to do anything
-                pass
-            else:
-                raise
+        )
+        await safe_views_update(client, view_id, final_view)
+    except VerifyAPIError:
+        await safe_views_update(
+            client,
+            view_id,
+            status_modal(
+                _("Unauthorized"),
+                _(
+                    "You do not have permission to access this verification job. Please contact your team administrator."
+                ),
+            ),
+        )
     except Exception as e:
         notify_exception(e)
-        try:
-            # Update the view with an error message
-            error_view = {
-                "type": "modal",
-                "title": {"type": "plain_text", "text": _("Error"), "emoji": True},
-                "blocks": [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": _(
-                                "There was an error processing your request. Please try again."
-                            ),
-                            "verbatim": True,
-                        },
-                    }
-                ],
-            }
-            await client.views_update(view_id=view_id, view=error_view)
-        except SlackApiError as e:
-            if e.response["error"] == "view_closed":
-                # The modal was closed by the user, no need to do anything
-                pass
-            else:
-                raise e
+        await safe_views_update(client, view_id, request_error_modal())
 
 
 async def _resolve_evaluate_quote_message_ts(
@@ -3588,7 +3657,7 @@ async def handle_video_transcribe_only(
         )
 
 
-@app.action("video_transcribe_translate", middleware=[ray_connection])
+@app.action("video_transcribe_translate")
 @slack_log_decorator
 async def handle_video_transcribe_translate(
     ack: AsyncAck,
@@ -3599,21 +3668,39 @@ async def handle_video_transcribe_translate(
 ):
     """Show the transcribe & translate modal for language selection."""
     await ack()
-    if await require_ray_client(context):
-        assert action is not None
-        from .templates.views import video_transcribe_translate_modal
+    assert action is not None
+    from .templates.views import video_transcribe_translate_modal
 
-        action_data = json.loads(action.get("value", "{}"))
-        thread_ts = resolve_media_thread_ts(action_data, body)
-        view = video_transcribe_translate_modal(
-            channel_id=action_data.get("channel_id", context.get("channel_id", "")),
-            files=action_data["files"],
-            thread_ts=thread_ts,
+    action_data = json.loads(action.get("value", "{}"))
+    thread_ts = resolve_media_thread_ts(action_data, body)
+    view_id = await open_loading_modal(client, body["trigger_id"])
+    try:
+        await populate_ray_connection(context)
+        if not await require_ray_client(context):
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Sign in required"),
+                    _("Please sign in to LanguageCloud to continue."),
+                ),
+            )
+            return
+        await safe_views_update(
+            client,
+            view_id,
+            video_transcribe_translate_modal(
+                channel_id=action_data.get("channel_id", context.get("channel_id", "")),
+                files=action_data["files"],
+                thread_ts=thread_ts,
+            ),
         )
-        await client.views_open(trigger_id=body["trigger_id"], view=view)
+    except Exception as e:
+        notify_exception(e)
+        await safe_views_update(client, view_id, request_error_modal())
 
 
-@app.action("video_embed_subtitles", middleware=[ray_connection])
+@app.action("video_embed_subtitles")
 @slack_log_decorator
 async def handle_video_embed_subtitles(
     ack: AsyncAck,
@@ -3624,42 +3711,58 @@ async def handle_video_embed_subtitles(
 ):
     """Handle subtitle embedding from either the modal flow or a thread-uploaded SRT."""
     await ack()
-    if await require_ray_client(context):
-        assert action is not None
-        from .listener_actions import is_audio_only_file
-        from .templates.views import video_embed_subtitles_modal
+    assert action is not None
+    from .listener_actions import is_audio_only_file
+    from .templates.views import video_embed_subtitles_modal
 
-        action_data = json.loads(action.get("value", "{}"))
-        thread_ts = resolve_media_thread_ts(action_data, body)
-        if action_data.get("subtitle_file"):
+    action_data = json.loads(action.get("value", "{}"))
+    thread_ts = resolve_media_thread_ts(action_data, body)
+    if action_data.get("subtitle_file"):
+        await populate_ray_connection(context)
+        if await require_ray_client(context):
             await submit_existing_srt_embed_task(
                 client, context, action_data, thread_ts
             )
-            return
+        return
 
-        all_files = action_data["files"]
+    all_files = action_data["files"]
+    video_files = [f for f in all_files if not is_audio_only_file(f)]
+    if not video_files:
+        await populate_ray_connection(context)
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=_(
+                "Subtitle embedding is only available for video files (MP4, MPEG, WEBM). "
+                "Audio files (MP3, WAV, M4A) cannot have subtitles embedded."
+            ),
+        )
+        return
 
-        # Filter to only include video files (exclude audio-only like MP3, WAV)
-        # Audio files cannot have subtitles embedded
-        video_files = [f for f in all_files if not is_audio_only_file(f)]
-
-        if not video_files:
-            # All files were audio-only, show error message
-            await client.chat_postMessage(
-                channel=context["user_id"],
-                text=_(
-                    "Subtitle embedding is only available for video files (MP4, MPEG, WEBM). "
-                    "Audio files (MP3, WAV, M4A) cannot have subtitles embedded."
+    view_id = await open_loading_modal(client, body["trigger_id"])
+    try:
+        await populate_ray_connection(context)
+        if not await require_ray_client(context):
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Sign in required"),
+                    _("Please sign in to LanguageCloud to continue."),
                 ),
             )
             return
-
-        view = video_embed_subtitles_modal(
-            channel_id=action_data.get("channel_id", context.get("channel_id", "")),
-            files=video_files,  # Only video files, not audio
-            thread_ts=thread_ts,
+        await safe_views_update(
+            client,
+            view_id,
+            video_embed_subtitles_modal(
+                channel_id=action_data.get("channel_id", context.get("channel_id", "")),
+                files=video_files,
+                thread_ts=thread_ts,
+            ),
         )
-        await client.views_open(trigger_id=body["trigger_id"], view=view)
+    except Exception as e:
+        notify_exception(e)
+        await safe_views_update(client, view_id, request_error_modal())
 
 
 @app.view("video_transcribe_translate_submit", middleware=[ray_connection])

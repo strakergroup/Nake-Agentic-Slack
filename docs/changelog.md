@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: Standardised Slack modal opens on the RAY-72999 loading-modal pattern (`open_loading_modal` → Ray/Redis I/O → `views_update`) for HT/QE, document MT, job search, settings, and video modals so `expired_trigger_id` no longer races `ray_connection` middleware (Wade Norman, 2026-07-09)
 - [Changed]: HT process suggestion copy — Service Quote lists PDF conversion above AI Translation; pre-QE HT estimates and Adjust Request use Maximum Total Cost; post-QE quotes use Final Cost; Accept Quote helper line; accept/final status copy references Arbitr and consolidates the final cost onto one line (Wade Norman, 2026-07-09)
 - [Changed]: Combined QE + Human Translation quote refresh after QE no longer shows the “Quality Evaluation is complete. Human Translation will be submitted automatically.” status line on the original quote message (Wade Norman, 2026-07-08)
 - [Changed]: Human verification quote quality lines now show the tier (`Quality: good`, `Quality: best`, etc.) without percentage discount text (Wade Norman, 2026-07-08)

@@ -754,16 +754,27 @@ class TestJobSearchAction:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch("app.slack.listeners.job_search_modal") as mock_modal:
+        mock_client.views_open.return_value = {"view": {"id": "V123"}}
+        with (
+            patch(
+                "app.slack.listeners.populate_ray_connection",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.slack.listeners.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("app.slack.listeners.job_search_modal") as mock_modal,
+        ):
             mock_modal.return_value = {"type": "modal", "title": {"text": "Search Job"}}
-            # The decorator passes context as first arg, then *args to the function
-            # Function signature is (ack, context, client, body), so we pass (context_dict, mock_ack, client=mock_client, body=body)
             await job_search_action(
                 context_dict, mock_ack, client=mock_client, body=body
             )
             mock_ack.assert_called_once()
             mock_client.views_open.assert_called_once()
             assert mock_client.views_open.call_args[1]["trigger_id"] == "trigger-123"
+            mock_client.views_update.assert_called_once()
 
 
 class TestHandleJobSearch:
@@ -950,11 +961,19 @@ class TestCancelJobAction:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch(
-            "app.slack.listeners.cancel_job_process", new_callable=AsyncMock
-        ) as mock_cancel:
-            # The decorator passes context as first arg, then *args to the function
-            # Function signature is (ack, payload, context, client, body), so we pass (context_dict, mock_ack, payload=payload, client=mock_client, body=body)
+        with (
+            patch(
+                "app.slack.listeners.populate_ray_connection", new_callable=AsyncMock
+            ),
+            patch(
+                "app.slack.listeners.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listeners.cancel_job_process", new_callable=AsyncMock
+            ) as mock_cancel,
+        ):
             await cancel_job_action(
                 context_dict, mock_ack, payload=payload, client=mock_client, body=body
             )
@@ -984,9 +1003,19 @@ class TestCancelJobAction:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch(
-            "app.slack.listeners.cancel_job_process", new_callable=AsyncMock
-        ) as mock_cancel:
+        with (
+            patch(
+                "app.slack.listeners.populate_ray_connection", new_callable=AsyncMock
+            ),
+            patch(
+                "app.slack.listeners.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listeners.cancel_job_process", new_callable=AsyncMock
+            ) as mock_cancel,
+        ):
             await cancel_job_action(
                 context_dict, mock_ack, payload=payload, client=mock_client, body=body
             )
@@ -1000,6 +1029,7 @@ class TestCancelJobAction:
 
         mock_ack = AsyncMock()
         mock_client = AsyncMock()
+        mock_client.views_open.return_value = {"view": {"id": "V123"}}
         payload = {}
         body = {"trigger_id": "trigger-123"}
         ray_connection = RayConnection(super_group=[], client=ray_client)
@@ -1010,13 +1040,26 @@ class TestCancelJobAction:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch("app.slack.listeners.cancel_job_modal") as mock_modal:
+        with (
+            patch(
+                "app.slack.listeners.populate_ray_connection", new_callable=AsyncMock
+            ),
+            patch(
+                "app.slack.listeners.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch("app.slack.listeners.cancel_job_modal") as mock_modal,
+        ):
             mock_modal.return_value = {"type": "modal"}
             await cancel_job_action(
                 context_dict, mock_ack, payload=payload, client=mock_client, body=body
             )
             mock_ack.assert_called_once()
             mock_client.views_open.assert_called_once()
+            mock_client.views_update.assert_called_once_with(
+                view_id="V123", view={"type": "modal"}
+            )
 
 
 class TestHandleCancelJob:
@@ -1346,6 +1389,7 @@ class TestRayCommand:
         mock_ack = AsyncMock()
         mock_respond = AsyncMock()
         mock_client = AsyncMock()
+        mock_client.views_open.return_value = {"view": {"id": "V123"}}
         command = {"text": "translate", "trigger_id": "trigger-123"}
         ray_connection = RayConnection(super_group=[], client=ray_client)
         context_dict = {
@@ -1356,27 +1400,35 @@ class TestRayCommand:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch("app.slack.listeners.is_ibm_enterprise", return_value=False):
-            with patch(
+        with (
+            patch("app.slack.listeners.is_ibm_enterprise", return_value=False),
+            patch(
+                "app.slack.listeners.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
                 "app.slack.listeners.get_auto_translate_settings_and_langs",
                 new_callable=AsyncMock,
-            ) as mock_get_settings:
-                mock_get_settings.return_value = [
-                    {"target_lang": "fr", "display_format": "thread"}
-                ]
-                with patch(
-                    "app.slack.listeners.translation_settings_view"
-                ) as mock_view:
-                    mock_view.return_value = {"type": "modal"}
-                    await ray_command(
-                        context_dict,
-                        mock_ack,
-                        respond=mock_respond,
-                        command=command,
-                        client=mock_client,
-                    )
-                    mock_ack.assert_called_once()
-                    mock_client.views_open.assert_called_once()
+            ) as mock_get_settings,
+            patch("app.slack.listeners.translation_settings_view") as mock_view,
+        ):
+            mock_get_settings.return_value = [
+                {"target_lang": "fr", "display_format": "thread"}
+            ]
+            mock_view.return_value = {"type": "modal"}
+            await ray_command(
+                context_dict,
+                mock_ack,
+                respond=mock_respond,
+                command=command,
+                client=mock_client,
+            )
+            mock_ack.assert_called_once()
+            mock_client.views_open.assert_called_once()
+            mock_client.views_update.assert_called_once_with(
+                view_id="V123", view={"type": "modal"}
+            )
 
     @pytest.mark.asyncio
     async def test_ray_command_translate_with_settings_disabled(
@@ -2297,7 +2349,12 @@ class TestEvaluateJobAction:
             "login_prompt": LoginMessage(user_id, team_id, "E123", "C123"),
         }
 
+        mock_client.views_open.return_value = {"view": {"id": "V123"}}
         with (
+            patch(
+                "app.slack.listeners.populate_ray_connection",
+                new_callable=AsyncMock,
+            ),
             patch(
                 "app.slack.listeners.require_ray_client", new_callable=AsyncMock
             ) as mock_require_ray_client,
@@ -2314,12 +2371,14 @@ class TestEvaluateJobAction:
             )
 
         mock_ack.assert_called_once()
-        mock_client.views_open.assert_not_called()
-        mock_client.chat_postMessage.assert_called_once()
+        mock_client.views_open.assert_called_once()
+        mock_client.views_update.assert_called_once()
+        updated_view = mock_client.views_update.call_args.kwargs["view"]
         assert (
             "not as a standalone Slack submission"
-            in mock_client.chat_postMessage.call_args.kwargs["text"]
+            in updated_view["blocks"][0]["text"]["text"]
         )
+        mock_client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_evaluate_job_action_allows_human_translation_for_ibm(
@@ -2349,7 +2408,12 @@ class TestEvaluateJobAction:
             "login_prompt": LoginMessage(user_id, team_id, "E123", "C123"),
         }
 
+        mock_client.views_open.return_value = {"view": {"id": "V123"}}
         with (
+            patch(
+                "app.slack.listeners.populate_ray_connection",
+                new_callable=AsyncMock,
+            ),
             patch(
                 "app.slack.listeners.require_ray_client", new_callable=AsyncMock
             ) as mock_require_ray_client,
@@ -2373,6 +2437,9 @@ class TestEvaluateJobAction:
         )
         mock_ack.assert_called_once()
         mock_client.views_open.assert_called_once()
+        mock_client.views_update.assert_called_once_with(
+            view_id="V123", view={"type": "modal"}
+        )
         mock_client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
@@ -2402,7 +2469,12 @@ class TestEvaluateJobAction:
             "login_prompt": LoginMessage(user_id, team_id, "E123", "C123"),
         }
 
+        mock_client.views_open.return_value = {"view": {"id": "V123"}}
         with (
+            patch(
+                "app.slack.listeners.populate_ray_connection",
+                new_callable=AsyncMock,
+            ),
             patch(
                 "app.slack.listeners.require_ray_client",
                 new_callable=AsyncMock,
@@ -2429,6 +2501,9 @@ class TestEvaluateJobAction:
             "evaluate",
         )
         mock_client.views_open.assert_called_once()
+        mock_client.views_update.assert_called_once_with(
+            view_id="V123", view={"type": "modal"}
+        )
         mock_client.chat_postMessage.assert_not_called()
 
 
@@ -3358,7 +3433,12 @@ class TestDocumentMtJobAction:
         }
         body = {"trigger_id": "trigger-123"}
 
+        mock_client.views_open.return_value = {"view": {"id": "V123"}}
         with (
+            patch(
+                "app.slack.listeners.populate_ray_connection",
+                new_callable=AsyncMock,
+            ),
             patch(
                 "app.slack.listeners.require_ray_client",
                 new_callable=AsyncMock,
@@ -3382,6 +3462,9 @@ class TestDocumentMtJobAction:
             "D123", [{"id": "F_MISSING", "title": "deleted.docx"}]
         )
         mock_client.views_open.assert_called_once()
+        mock_client.views_update.assert_called_once_with(
+            view_id="V123", view={"type": "modal"}
+        )
         mock_client.chat_postMessage.assert_not_called()
 
 
@@ -4563,9 +4646,18 @@ class TestMessageEvent:
             "enterprise_id": None,
             "channel_id": "C123",
             "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
         with (
+            patch(
+                "app.slack.listeners.populate_ray_connection", new_callable=AsyncMock
+            ),
+            patch(
+                "app.slack.listeners.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
             patch(
                 "app.ray.submissions.check_and_record_direct_embed_submission_async",
                 new_callable=AsyncMock,

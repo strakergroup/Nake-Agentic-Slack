@@ -9,6 +9,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [Document MT Quote Confirmation](document-mt-quote-confirmation.md) - AI Translate quote preflight, cached file state, and Accept/Cancel confirmation flow (RAY-79115)
 - [Document MT PDF Billing](document-mt-pdf-billing.md) - Deferred PDF conversion-fee billing after successful delivery (RAY-80417)
 - [Evaluate Quote Confirmation](evaluate-quote-confirmation.md) - Sequential AI → combined QE + Human Translation quote flow for Slack HV (RAY-79115)
+- [Slack Modal Trigger Safety](slack-modal-trigger-safety.md) - Standard loading-modal pattern for Slack `trigger_id` TTL (RAY-72999)
 - [VerifyLoop Integration](verifyloop.md) - Configuration, endpoints, modal form, and data flow for the VerifyLoop feature
 - [VerifyLoop Architecture Diagrams](verifyloop-architecture.md) - Visual diagrams of system architecture, auth flow, task pipeline, and component dependencies
 - [Channel Info Caching](channel-info-caching.md) - How channel names and privacy status are cached in the database
