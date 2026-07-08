@@ -128,26 +128,10 @@ async def post_evaluate_service_quote(
         "preaccepted_ai_translation_quote"
     ):
         total_token_cost = token_cost + (pdf_tokens or 0)
+        notify_channel_id = (
+            channel_id or auth.slack_user.channel_id or auth.slack_user.user_id
+        )
         try:
-            if prequote_message_ts:
-                await update_evaluate_quote_slack_message(
-                    client,
-                    channel_id=channel_id
-                    or auth.slack_user.channel_id
-                    or auth.slack_user.user_id,
-                    message_ts=str(prequote_message_ts),
-                    service_label=service_label,
-                    token_cost=token_cost,
-                    job_uuid=job_uuid,
-                    accept_action_id=accept_action_id,
-                    pdf_page_count=int(pdf_page_count) if pdf_page_count else None,
-                    pdf_tokens=pdf_tokens,
-                    actions=False,
-                    status_message=_(
-                        "Your AI Translation quote has been accepted. Processing will begin shortly."
-                    ),
-                    is_ibm=is_ibm,
-                )
             await proceed_evaluation_job(
                 ray_client,
                 job_uuid,
@@ -180,23 +164,7 @@ async def post_evaluate_service_quote(
                     "There was an error accepting your quote. Please try again or contact your administrator."
                 )
             )
-            if prequote_message_ts:
-                await update_evaluate_quote_slack_message(
-                    client,
-                    channel_id=channel_id
-                    or auth.slack_user.channel_id
-                    or auth.slack_user.user_id,
-                    message_ts=str(prequote_message_ts),
-                    service_label=service_label,
-                    token_cost=token_cost,
-                    job_uuid=job_uuid,
-                    accept_action_id=accept_action_id,
-                    pdf_page_count=int(pdf_page_count) if pdf_page_count else None,
-                    pdf_tokens=pdf_tokens,
-                    actions=False,
-                    status_message=status,
-                    is_ibm=is_ibm,
-                )
+            await client.chat_postMessage(channel=notify_channel_id, text=status)
         return
 
     message = EvaluationCreditsQuoteMessage(

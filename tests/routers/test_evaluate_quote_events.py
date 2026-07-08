@@ -609,8 +609,7 @@ async def test_post_preaccepted_ai_quote_auto_proceeds(mock_slack_user):
             include_pdf_fee=True,
         )
 
-    mock_update.assert_awaited_once()
-    assert mock_update.await_args.kwargs["message_ts"] == "111.222"
+    mock_update.assert_not_awaited()
     mock_proceed.assert_awaited_once_with(
         ray_client,
         job_uuid,
