@@ -5,6 +5,7 @@ Slack Bolt listener functions.
 
 import asyncio
 import json
+import logging
 import os
 import re
 from typing import Any, cast
@@ -14,6 +15,8 @@ from ray_sdk import RayResponse
 from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.language_cloud import detect_language
 from app.api.models import MtTranslationExtraData
@@ -23,9 +26,17 @@ from app.api.verify import (
     get_job_pricing,
 )
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+from app.database import async_engines
+from app.media.embed_spend import (
+    embedding_source_language,
+    embedding_target_language_codes,
+    is_embed_only_pipeline,
+)
 from app.models import (  # noqa: F401 - kept for potential future use
     ASRTask,
+    TranscriptionTask,
     TranscriptionTaskData,
+    TranscriptionTaskInfo,
 )
 from app.mt.service import (
     evaluate_get_glossary_resource,
@@ -34,11 +45,13 @@ from app.mt.service import (
     resolve_language,
 )
 from app.ray.events.models import MtFileRequestSchema
+from app.saq_jobs.dispatch import enqueue_transcription_upload
 from app.slack.buglog_notifier import notify_exception, notify_message
 from app.slack.utils import escape_slack_emoji
 from app.slack_job import create_slack_job
 from app.transcriber_tasks.tasks import (
     create_asr_task,  # noqa: F401 - kept for potential future use
+    get_transcription_task,
 )
 from app.translate import _
 
@@ -47,16 +60,21 @@ from ..auth.connector import (
     RayConnection,
     RayContext,
     approve_pending_groups,
+    build_spend_idempotency_key,
+    duration_to_subtitling_tokens,
     duration_to_tokens,  # noqa: F401 - kept for potential future use
     get_client_tokens,
     get_group_mt_engine,
     get_group_tokens,
+    log_embedding_by_client_id,
+    log_transcribe_by_client_id,
     log_transcribe_request,  # noqa: F401 - kept for potential future use
 )
 from ..config import domains
 from ..ray.service import RayService
 from ..ray.settings import (
     get_auto_translate_language_entries,
+    get_auto_translate_language_name,
     get_auto_translate_settings_and_langs,
 )
 from ..ray.submissions import (
@@ -65,6 +83,7 @@ from ..ray.submissions import (
     updated_submission_status,
 )
 from ..ray.utils import (
+    download_from_file_server_async,
     is_ibm_enterprise,
     upload_to_file_server,
     validate_file_type,
@@ -109,12 +128,16 @@ from .templates.messages import (
     VideoOptionsMessage,
 )
 from .templates.models import NewJobForm, build_human_translation_reference
+from .utils import format_strings_display
 from .web import (
     download_file,
     download_files,
     files_list_simple,
     get_bot_accessible_files,
+    upload_file_to_slack_memory_efficient,
 )
+
+logger = logging.getLogger(__name__)
 
 VIDEO_FILE_TYPES = ["mp4", "mp3", "mpeg", "mpga", "m4a", "wav", "webm"]
 
@@ -133,6 +156,41 @@ MEDIA_ACTION_IDS = frozenset(
 )
 
 FR_CA_VARIANTS = frozenset({"fr-ca", "french-canada", "french-canadian"})
+
+
+async def send_translation_success_message(
+    client: AsyncWebClient, channel_id: str, language_codes: list[str]
+) -> None:
+    """Send the Slack confirmation after document translation jobs are queued."""
+    if len(language_codes) == 1:
+        lang_name = get_auto_translate_language_name(language_codes[0])
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "The file is being translated to {lang_name}. You will be notified when it is ready."
+            ),
+        )
+        return
+
+    lang_names = [get_auto_translate_language_name(lang) for lang in language_codes]
+    langs_string = format_strings_display(lang_names, and_string="and")
+    await client.chat_postMessage(
+        channel=channel_id,
+        text=_(
+            "The file is being translated to {langs_string}. You will be notified when they are ready."
+        ),
+    )
+
+
+def evaluate_target_file_uuids(job: dict[str, Any]) -> list[str]:
+    """Return translated target file UUIDs from an evaluate job payload."""
+    file_uuids: list[str] = []
+    for source_file in job.get("source_files", []):
+        for target_file in source_file.get("target_files", []):
+            target_file_uuid = target_file.get("target_file_uuid")
+            if target_file_uuid:
+                file_uuids.append(target_file_uuid)
+    return file_uuids
 
 
 def _normalize_mt_language_code(language_code: str) -> str:
@@ -1092,6 +1150,8 @@ async def document_machine_translate(
     source_language: str | None,
     selected_language: str | list[str],
     submission_id: int | dict[str, int],
+    quote_id: str | None = None,
+    preflight_task_uuid: str | None = None,
 ):
     """Translate the Document using verify-task-consumer
 
@@ -1148,9 +1208,8 @@ async def document_machine_translate(
                 "data_source": "slack",
                 "submission_id": submission_ids.get(target_languages[0]),
                 "submission_ids": submission_ids,
-                "team_id": context.get("team_id"),
-                "slack_user_id": context.get("user_id"),
-                "billing_group_uuid": billing_group_uuid,
+                "quote_id": quote_id,
+                "preflight_task_uuid": preflight_task_uuid,
             }
         )
         task_uuid = await create_slack_job(task_data, status="pending")
@@ -1812,11 +1871,11 @@ async def post_batch_list(
         if jobs is not None:
             for job in jobs:
                 if not _job_has_batches(job):
-                    msg = JobFileListEmptyMessage(job.id, "in-progress")
+                    empty_msg = JobFileListEmptyMessage(job.id, "in-progress")
                     if context.response_url and context.respond:
                         return await context.respond(
-                            text=msg.text,
-                            blocks=msg.blocks,
+                            text=empty_msg.text,
+                            blocks=empty_msg.blocks,
                             replace_original=replace_original,
                         )
                     else:
@@ -1824,8 +1883,8 @@ async def post_batch_list(
                             raise AssertionError("No channel to post to")
                         return await client.chat_postMessage(
                             channel=channel_id,
-                            text=msg.text,
-                            blocks=msg.blocks,
+                            text=empty_msg.text,
+                            blocks=empty_msg.blocks,
                             thread_ts=thread_ts,
                         )
                 msg = BatchListMessage(job, ray_client.id)
@@ -1914,11 +1973,11 @@ async def post_file_list(
         if jobs is not None:
             for job in jobs:
                 if not job.translated_file:
-                    msg = JobFileListEmptyMessage(job.id, "completed")
+                    empty_msg = JobFileListEmptyMessage(job.id, "completed")
                     if context.response_url and context.respond:
                         return await context.respond(
-                            text=msg.text,
-                            blocks=msg.blocks,
+                            text=empty_msg.text,
+                            blocks=empty_msg.blocks,
                             replace_original=replace_original,
                         )
                     else:
@@ -1926,8 +1985,8 @@ async def post_file_list(
                             raise AssertionError("No channel to post to")
                         return await client.chat_postMessage(
                             channel=channel_id,
-                            text=msg.text,
-                            blocks=msg.blocks,
+                            text=empty_msg.text,
+                            blocks=empty_msg.blocks,
                             thread_ts=thread_ts,
                         )
                 msg = FileListMessage(job, ray_client.id)
@@ -2368,14 +2427,524 @@ async def job_tj_cancel(
             )
 
 
+VERIFY_JOB_SUBMISSION_LOCK_TTL_SECONDS = 300
+
+
+def verify_job_submission_lock_key(job_uuid: str) -> str:
+    return f"verify_job_submission_{job_uuid}"
+
+
+def resolve_event_thread_ts(
+    extra_data: dict[str, Any] | None, event_data: dict[str, Any]
+) -> str | None:
+    """Resolve the best thread timestamp from task extra_data and raw event data."""
+    return (
+        (extra_data.get("slack_thread_ts") if extra_data else None)
+        or event_data.get("thread_ts")
+        or event_data.get("message_ts")
+    )
+
+
+async def update_tokens_consumed(task_uuid: str, additional_tokens: int) -> int:
+    """Update tokens_consumed in the database and return the new total."""
+    try:
+        task_info = await get_transcription_task(task_uuid)
+        if not task_info:
+            return additional_tokens
+
+        total_tokens = task_info.tokens_consumed + additional_tokens
+        async with AsyncSession(async_engines["sitecommons"]) as session:
+            await session.execute(
+                update(TranscriptionTask)
+                .where(TranscriptionTask.task_uuid == task_uuid)
+                .values(tokens_consumed=total_tokens)
+            )
+            await session.commit()
+
+        return total_tokens
+    except Exception as e:
+        notify_exception(e, "Failed to update tokens_consumed")
+        logger.error("Error updating tokens_consumed: %s", e)
+        return additional_tokens
+
+
+async def show_tokens_message(
+    client: AsyncWebClient,
+    task_uuid: str,
+    channel_id: str,
+    thread_ts: str | None,
+    is_ibm: bool = False,
+) -> None:
+    """Show token consumption at the end of a media pipeline."""
+    if is_ibm:
+        return
+
+    try:
+        task_info = await get_transcription_task(task_uuid)
+        if task_info and task_info.tokens_consumed > 0:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=_(f"You have used {task_info.tokens_consumed} AI tokens."),
+                thread_ts=thread_ts,
+            )
+    except Exception as e:
+        notify_exception(e, "Failed to show tokens message")
+        logger.error("Error showing tokens message: %s", e)
+
+
+async def get_language_name(lang_code: str) -> str:
+    """Get a full language name from a language code."""
+    try:
+        from app.slack.select_options import _get_languages_cached
+
+        languages = await _get_languages_cached()
+        for lang in languages:
+            if lang.get("code") == lang_code.lower():
+                return lang.get("name", lang_code)
+        return lang_code
+    except Exception:
+        return lang_code
+
+
+async def spend_transcription_credits(
+    task_info: TranscriptionTaskInfo, auth: Any
+) -> int:
+    """Spend credits for transcription stage."""
+    try:
+        extra_data = task_info.extra_data or {}
+        charged_stages = extra_data.get("_charged_stages", [])
+        if "transcription" in charged_stages:
+            return 0
+
+        if not auth.slack_user or not auth.slack_user.ray_user_group_id:
+            return 0
+        if not task_info.duration_ms:
+            return 0
+
+        amount = duration_to_tokens(task_info.duration_ms)
+        if amount <= 0:
+            return 0
+
+        _tokens, transaction_uuid = await log_transcribe_by_client_id(
+            client_id=auth.slack_user.ray_client_id,
+            duration_ms=task_info.duration_ms,
+            file_name=task_info.file_name or "",
+            source_language=task_info.detected_language,
+            idempotency_key=build_spend_idempotency_key(
+                app_source="slack",
+                submission_id=task_info.task_uuid,
+                service="transcription",
+                unit_type="milliseconds",
+            ),
+            submission_group_uuid=task_info.task_uuid,
+        )
+
+        charged_stages.append("transcription")
+        extra_data["_charged_stages"] = charged_stages
+        async with AsyncSession(async_engines["sitecommons"]) as session:
+            await session.execute(
+                update(TranscriptionTask)
+                .where(TranscriptionTask.task_uuid == task_info.task_uuid)
+                .values(
+                    extra_data=extra_data,
+                    credit_transaction_uuid=transaction_uuid,
+                )
+            )
+            await session.commit()
+
+        return amount
+    except Exception as e:
+        notify_exception(e, "Failed to spend credits for transcription stage")
+        logger.error("Error spending credits for transcription: %s", e)
+        return 0
+
+
+async def spend_translation_credits(task_info: TranscriptionTaskInfo, auth: Any) -> int:
+    """Mark translation stage as charged; document/SRT MT spend happens elsewhere."""
+    try:
+        extra_data = task_info.extra_data or {}
+        charged_stages = extra_data.get("_charged_stages", [])
+        if "translation" in charged_stages:
+            return 0
+
+        if not auth.slack_user or not auth.slack_user.ray_user_group_id:
+            return 0
+        if not task_info.source_text_length or not task_info.num_target_languages:
+            return 0
+
+        charged_stages.append("translation")
+        extra_data["_charged_stages"] = charged_stages
+        async with AsyncSession(async_engines["sitecommons"]) as session:
+            await session.execute(
+                update(TranscriptionTask)
+                .where(TranscriptionTask.task_uuid == task_info.task_uuid)
+                .values(extra_data=extra_data)
+            )
+            await session.commit()
+
+        logger.info(
+            "Marked translation as charged for task %s "
+            "(credits spent by cloud-verify-consumer)",
+            task_info.task_uuid,
+        )
+        return 0
+    except Exception as e:
+        notify_exception(e, "Failed to mark translation stage as charged")
+        logger.error("Error marking translation as charged: %s", e)
+        return 0
+
+
+async def spend_embedding_credits(task_info: TranscriptionTaskInfo, auth: Any) -> int:
+    """Spend credits for media embedding."""
+    try:
+        reloaded_task_info = await get_transcription_task(task_info.task_uuid)
+        if reloaded_task_info:
+            task_info = reloaded_task_info
+
+        extra_data = task_info.extra_data or {}
+        charged_stages = extra_data.get("_charged_stages", [])
+        if "embedding" in charged_stages:
+            return 0
+        if not auth.slack_user or not auth.slack_user.ray_user_group_id:
+            return 0
+        if not task_info.duration_ms:
+            return 0
+
+        duration_ms = task_info.duration_ms
+        if not is_embed_only_pipeline(task_info):
+            if "transcription" not in charged_stages:
+                await spend_transcription_credits(task_info, auth)
+                reloaded_task_info = await get_transcription_task(task_info.task_uuid)
+                if not reloaded_task_info:
+                    return 0
+                task_info = reloaded_task_info
+                extra_data = task_info.extra_data or {}
+                charged_stages = extra_data.get("_charged_stages", [])
+
+            if (
+                "translation" not in charged_stages
+                and task_info.source_text_length
+                and task_info.num_target_languages
+            ):
+                await spend_translation_credits(task_info, auth)
+                reloaded_task_info = await get_transcription_task(task_info.task_uuid)
+                if not reloaded_task_info:
+                    return 0
+                task_info = reloaded_task_info
+                extra_data = task_info.extra_data or {}
+                charged_stages = extra_data.get("_charged_stages", [])
+
+        num_target_languages = task_info.num_target_languages or 1
+        tokens_per_language = duration_to_subtitling_tokens(duration_ms)
+        amount = tokens_per_language * num_target_languages
+        if amount <= 0:
+            return 0
+
+        embedding_idempotency_key = build_spend_idempotency_key(
+            app_source="slack",
+            submission_id=task_info.task_uuid,
+            service="media_embedding",
+            unit_type="milliseconds",
+        )
+        await log_embedding_by_client_id(
+            client_id=auth.slack_user.ray_client_id,
+            duration_ms=duration_ms,
+            num_target_languages=num_target_languages,
+            target_languages=embedding_target_language_codes(task_info) or None,
+            source_language=embedding_source_language(task_info),
+            file_name=task_info.file_name,
+            idempotency_key=embedding_idempotency_key,
+            submission_group_uuid=task_info.task_uuid,
+        )
+
+        charged_stages.append("embedding")
+        extra_data["_charged_stages"] = charged_stages
+        async with AsyncSession(async_engines["sitecommons"]) as session:
+            await session.execute(
+                update(TranscriptionTask)
+                .where(TranscriptionTask.task_uuid == task_info.task_uuid)
+                .values(extra_data=extra_data)
+            )
+            await session.commit()
+
+        return amount
+    except Exception as e:
+        notify_exception(e, "Failed to spend credits for embedding stage")
+        logger.error("Error spending credits for embedding: %s", e)
+        return 0
+
+
+async def mark_stage_processed(
+    task_uuid: str, stage: str, extra_data_to_merge: dict | None = None
+) -> None:
+    """Mark a processing stage as processed in the database."""
+    try:
+        async with AsyncSession(async_engines["sitecommons"]) as session:
+            task = await session.get(TranscriptionTask, task_uuid)
+            if task:
+                extra_data = (task.extra_data or {}).copy()
+                if extra_data_to_merge:
+                    extra_data.update(extra_data_to_merge)
+                processed_stages = extra_data.get("_processed_stages", [])
+                if stage not in processed_stages:
+                    processed_stages.append(stage)
+                    extra_data["_processed_stages"] = processed_stages
+                    await session.execute(
+                        update(TranscriptionTask)
+                        .where(TranscriptionTask.task_uuid == task_uuid)
+                        .values(extra_data=extra_data)
+                    )
+                    await session.commit()
+                elif extra_data_to_merge:
+                    await session.execute(
+                        update(TranscriptionTask)
+                        .where(TranscriptionTask.task_uuid == task_uuid)
+                        .values(extra_data=extra_data)
+                    )
+                    await session.commit()
+    except Exception as e:
+        notify_exception(e, f"Failed to mark stage {stage} as processed")
+
+
+async def update_submission_status(extra_data: dict) -> None:
+    """Update the Ray submission status to completed."""
+    try:
+        submission_id = extra_data.get("submission_id") if extra_data else None
+        submission_ids = extra_data.get("submission_ids") if extra_data else None
+
+        if submission_id is not None:
+            updated_submission_status(
+                submission_id=int(submission_id),
+                processing_status=SubmissionStatus.COMPLETED,
+            )
+        elif submission_ids:
+            for sid in submission_ids:
+                if sid is not None:
+                    updated_submission_status(
+                        submission_id=int(sid),
+                        processing_status=SubmissionStatus.COMPLETED,
+                    )
+    except Exception as e:
+        notify_exception(e, "Failed to update submission status")
+
+
+async def handle_transcription_complete(
+    client: AsyncWebClient,
+    result_file_id: str | None,
+    result_file_name: str | None,
+    task_info: TranscriptionTaskInfo,
+    is_ibm: bool,
+    channel_id: str,
+    thread_ts: str | None,
+    event: Any,
+    auth: Any,
+    auth_slack_user: Any,
+) -> None:
+    """Handle transcription completion notification and file upload."""
+    from app.ray.events.logging import post_notification
+    from app.slack.templates.messages import JobTranscribedEventMessage
+
+    transcribed_message = JobTranscribedEventMessage(
+        source_file_name=task_info.file_name or "",
+        is_ibm_enterprise=is_ibm,
+    )
+    response = await post_notification(
+        client,
+        event,
+        auth_slack_user,
+        transcribed_message,
+        channel_id=channel_id,
+        thread_ts=thread_ts,
+    )
+    effective_thread_ts = thread_ts
+    if response_data := getattr(response, "data", None):
+        if not effective_thread_ts and isinstance(response_data, dict):
+            effective_thread_ts = response_data.get("ts")
+
+    if result_file_id and result_file_name:
+        upload_channel_id: str | None = channel_id or (
+            auth_slack_user.channel_id if auth_slack_user else None
+        )
+
+        if upload_channel_id and auth.slack_user is not None:
+            await enqueue_transcription_upload(
+                file_id=result_file_id,
+                file_name=result_file_name,
+                task_uuid=task_info.task_uuid,
+                pipeline_type=task_info.pipeline_type,
+                client_id=auth.slack_user.ray_client_id,
+                channel_id=upload_channel_id,
+                thread_ts=effective_thread_ts,
+                follow_up_message=_(
+                    "Download the AI translations provided above, make your edits, "
+                    "and reupload the edited files back to the same thread."
+                ),
+            )
+
+
+async def handle_translation_complete(
+    client: AsyncWebClient,
+    channel_id: str,
+    thread_ts: str | None,
+    task_info: Any,
+    auth: Any,
+) -> None:
+    """Handle translation completion and upload translated files."""
+    translated_file_ids = task_info.translated_file_ids or {}
+
+    status_response = await client.chat_postMessage(
+        channel=channel_id,
+        text=_("Your file is AI translated and can be downloaded below."),
+        thread_ts=thread_ts,
+    )
+    effective_thread_ts = thread_ts or status_response.get("ts")
+    original_file_name = task_info.file_name or "transcription.srt"
+    original_stem = os.path.splitext(os.path.basename(original_file_name))[0]
+
+    for target_lang, file_id in translated_file_ids.items():
+        try:
+            output_file = await download_from_file_server_async(file_id)
+            file_path = output_file.get("file")
+            lang_name = get_auto_translate_language_name(target_lang)
+            title = f"{original_stem}_{lang_name}.srt"
+            if not file_path:
+                continue
+
+            temp_dir = os.path.dirname(file_path)
+            renamed_file_path = os.path.join(temp_dir, title)
+            if file_path != renamed_file_path:
+                os.rename(file_path, renamed_file_path)
+                file_path = renamed_file_path
+
+            await upload_file_to_slack_memory_efficient(
+                client=client,
+                file_path=file_path,
+                channel_id=channel_id,
+                title=title,
+                filename=title,
+                thread_ts=effective_thread_ts,
+            )
+
+            if file_path and os.path.exists(file_path):
+                os.unlink(file_path)
+        except Exception as e:
+            notify_exception(e, "Error handling translation complete")
+            logger.error("Error handling translation complete: %s", e)
+
+    if task_info.pipeline_type == "transcribe_translate":
+        is_ibm = (
+            is_ibm_enterprise(auth.slack_user.enterprise_id)
+            if auth.slack_user
+            else False
+        )
+        await show_tokens_message(
+            client,
+            task_info.task_uuid,
+            channel_id,
+            effective_thread_ts,
+            is_ibm=is_ibm,
+        )
+
+
+async def handle_transcribe_embed_pipeline(
+    client: AsyncWebClient,
+    result_file_id: str | None,
+    result_file_name: str | None,
+    task_info: TranscriptionTaskInfo,
+    channel_id: str,
+    thread_ts: str | None,
+    auth: Any = None,
+) -> None:
+    """Handle transcription + translation + embed pipeline result."""
+    if not result_file_id:
+        return
+
+    effective_thread_ts = thread_ts
+    try:
+        if not effective_thread_ts:
+            anchor_response = await client.chat_postMessage(
+                channel=channel_id,
+                text=_("Your embedded media file is ready. Uploading now..."),
+            )
+            effective_thread_ts = anchor_response.get("ts")
+
+        output_file = await download_from_file_server_async(result_file_id)
+        file_path = output_file.get("file")
+        if file_path and os.path.exists(file_path):
+            output_filename = result_file_name or task_info.file_name
+            await upload_file_to_slack_memory_efficient(
+                client=client,
+                file_path=file_path,
+                channel_id=channel_id,
+                thread_ts=effective_thread_ts,
+                title=output_filename,
+                filename=output_filename,
+                initial_comment=_(
+                    "Your video with embedded subtitles is ready! "
+                    "Please download the media file(s) to view the embedded subtitles."
+                ),
+            )
+            os.unlink(file_path)
+
+            if task_info.pipeline_type == "transcribe_translate_embed":
+                is_ibm = (
+                    is_ibm_enterprise(auth.slack_user.enterprise_id)
+                    if auth and auth.slack_user
+                    else False
+                )
+                await show_tokens_message(
+                    client,
+                    task_info.task_uuid,
+                    channel_id,
+                    effective_thread_ts,
+                    is_ibm=is_ibm,
+                )
+    except Exception as e:
+        notify_exception(e, "Error handling embedded video")
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "An error occurred while processing your embedded video. Please try again."
+            ),
+            thread_ts=effective_thread_ts,
+        )
+
+
+async def update_human_job_quote_message(
+    client: AsyncWebClient,
+    *,
+    channel_id: str,
+    message_ts: str,
+    job: dict[str, Any],
+    costs: list[dict[str, Any]],
+    actions: bool = False,
+    status_message: str | None = None,
+) -> None:
+    """Update the original human translation quote message in place."""
+    message = HumanJobQuoteMessage(
+        job,
+        costs,
+        actions=actions,
+        status_message=status_message,
+    )
+    await client.chat_update(
+        channel=channel_id,
+        ts=message_ts,
+        text=message.text,
+        blocks=message.blocks,
+    )
+
+
 async def submit_verification_job(
     client: AsyncWebClient,
     context: RayContext,
     job_uuid: str,
     selected_languages: list[str],
     user_id: str,
-    timestamp: str,
+    timestamp: str | None,
     job: dict[str, Any],
+    *,
+    channel_id: str | None = None,
 ):
     """Submit a verification job with selected languages.
 
@@ -2386,9 +2955,10 @@ async def submit_verification_job(
         selected_languages (list[str]): List of selected language and file UUIDs.
         user_id (str): The user ID to send the response to.
         timestamp (str | None): Optional timestamp of the message to update.
-        channel_id (str | None): Optional channel ID where the message is posted.
+        channel_id (str | None): Channel where the quote message was posted.
     """
-    # Send initial message based on whether languages were selected.
+    lock_key = verify_job_submission_lock_key(job_uuid)
+    quote_channel_id = channel_id or context.get("channel_id")
     msg = (
         _(
             "Thank you for sending your document(s) for human translation! We will notify you as soon as the translation is complete."
@@ -2426,10 +2996,10 @@ async def submit_verification_job(
                 actions=False,
             )
 
-        # Update the original message if timestamp and channel_id are provided
-        if timestamp and response["channel"]:
+        # Update the original quote message when timestamp and channel are known.
+        if timestamp and quote_channel_id:
             await client.chat_update(
-                channel=response["channel"],
+                channel=quote_channel_id,
                 text=updated_msg.text,
                 blocks=updated_msg.blocks,
                 ts=timestamp,
@@ -2454,5 +3024,4 @@ async def submit_verification_job(
             )
     except Exception as e:
         notify_exception(e)
-    finally:
-        await redis_conn.delete(f"verify_job_submission_{job_uuid}")
+        await redis_conn.delete(lock_key)

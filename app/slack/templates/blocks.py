@@ -27,6 +27,12 @@ from ...ray.utils import (
 )
 from ...translate import _
 
+AI_TOKEN_USD_RATE = 0.02
+
+
+def _format_evaluate_quote_cost(token_count: int, *, is_ibm: bool = True) -> str:
+    return format_currency(token_count * AI_TOKEN_USD_RATE, "USD")
+
 
 def home_auth_blocks(
     user_id: str,
@@ -71,65 +77,38 @@ def home_auth_blocks(
                 },
             },
         ]
-    if is_ibm:
-        blocks: list[dict[str, Any]] = [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "Connect your account to get details about your translation jobs."
-                    ),
-                },
-            },
-            {
-                "type": "actions",
-                "elements": [],
-            },
-        ]
-        blocks[1]["elements"].insert(
-            0,
-            {
-                "type": "button",
-                "text": {
-                    "type": "plain_text",
-                    "text": _("Direct Login"),
-                },
-                "style": "primary",
-                "action_id": "login_sso",
-            },
-        )
-    else:
-        blocks: list[dict[str, Any]] = [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "\n\nVerify (Quality Evaluation) allows you to:\n\n    • Translate content using AI translation.\n    • Assess the quality of the translation to determine the reliability of the AI-translated content along with any existing translation memory you may have with Straker.\n    • Determine whether the translated content is suitable for use or requires further human verification."
-                    ),
-                },
-            },
-            {
-                "type": "actions",
-                "elements": [],
-            },
-        ]
-        blocks[1]["elements"].insert(
-            0,
-            {
-                "type": "button",
-                "text": {
-                    "type": "plain_text",
-                    "text": _("Connect to Verify"),
-                },
-                "style": "primary",
-                "url": get_language_cloud_connect_url(
-                    user_id, team_id, enterprise_id, channel_id or user_id
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _(
+                    "Connect your account to get details about your translation jobs."
                 ),
-                "action_id": "login",
             },
+        },
+        {
+            "type": "actions",
+            "elements": [],
+        },
+    ]
+    action_element = {
+        "type": "button",
+        "text": {
+            "type": "plain_text",
+            "text": _("Direct Login") if is_ibm else _("Connect to Verify"),
+        },
+        "style": "primary",
+        "action_id": "login_sso" if is_ibm else "login",
+    }
+    if not is_ibm:
+        action_element["url"] = get_language_cloud_connect_url(
+            user_id, team_id, enterprise_id, channel_id or user_id
         )
+    blocks[1]["elements"].insert(
+        0,
+        action_element,
+    )
 
     return blocks
 
@@ -309,15 +288,133 @@ def quote_message_block(
     ]
 
 
+def _format_quality_discount_text(discount: dict[str, Any] | None) -> str | None:
+    if not discount:
+        return None
+    try:
+        discount_rate = float(discount.get("word_discount_rate") or 0)
+    except (TypeError, ValueError):
+        return None
+    if discount_rate <= 0:
+        return None
+
+    tier = str(discount.get("tier") or "quality").replace("_", " ").lower()
+    if discount.get("is_estimate"):
+        percentage = round(discount_rate * 100)
+        return f"Worst-case QE discount: -{percentage}% off"
+    return f"Quality: {tier}"
+
+
+def _quality_discount_savings(discount: dict[str, Any] | None) -> float:
+    if not discount or discount.get("pricing_cap_applied"):
+        return 0.0
+    try:
+        savings = float(discount.get("savings") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(savings, 0.0)
+
+
+def _target_additional_costs(
+    additional_costs: list[dict[str, Any]] | None,
+    *,
+    file_uuid: str,
+    language_uuid: str,
+) -> list[dict[str, Any]]:
+    return [
+        additional_cost
+        for additional_cost in additional_costs or []
+        if additional_cost.get("file_uuid") == file_uuid
+        and additional_cost.get("language_uuid") == language_uuid
+    ]
+
+
+def _global_additional_costs(
+    additional_costs: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    return [
+        additional_cost
+        for additional_cost in additional_costs or []
+        if not additional_cost.get("file_uuid")
+        and not additional_cost.get("language_uuid")
+    ]
+
+
+def _target_qe_cost_total(
+    additional_costs: list[dict[str, Any]] | None,
+    costs: list[dict[str, Any]],
+) -> float:
+    """Sum per-target QE shares distributed across priced file/language rows."""
+    total = 0.0
+    for cost_item in costs:
+        target_costs = _target_additional_costs(
+            additional_costs,
+            file_uuid=cost_item["file_uuid"],
+            language_uuid=cost_item["language_uuid"],
+        )
+        total += sum(
+            float(additional_cost.get("cost", 0.0) or 0.0)
+            for additional_cost in target_costs
+        )
+    return total
+
+
+def _active_quote_cost_items(
+    costs: list[dict[str, Any]], job: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Pricing rows that remain billable after Adjust Request deselection."""
+    active: list[dict[str, Any]] = []
+    for item in costs:
+        target_file = None
+        for source_file in job.get("source_files", []):
+            if source_file.get("file_uuid") != item.get("file_uuid"):
+                continue
+            target_file = next(
+                (
+                    target
+                    for target in source_file.get("target_files", [])
+                    if target.get("language_uuid") == item.get("language_uuid")
+                ),
+                None,
+            )
+            break
+        if (target_file or {}).get("human_job_status") == "Cancelled":
+            continue
+        active.append(item)
+    return active
+
+
+def combined_quote_net_savings(
+    costs: list[dict[str, Any]],
+    additional_costs: list[dict[str, Any]] | None,
+    *,
+    show_savings: bool,
+) -> float:
+    """HT savings minus aggregate QE cost; zero when the bundle net benefit is non-positive."""
+    if not show_savings:
+        return 0.0
+    total_savings = 0.0
+    for item in costs:
+        service = item["service_list"][0]
+        total_savings += _quality_discount_savings(service.get("quality_discount"))
+    return max(total_savings - _target_qe_cost_total(additional_costs, costs), 0.0)
+
+
 def verify_quote_blocks(
     job: dict[str, Any],
     costs: list[dict[str, Any]],
     selectable: bool = True,
+    additional_costs: list[dict[str, Any]] | None = None,
+    *,
+    show_quality_discount: bool = True,
+    show_savings: bool = True,
+    embed_additional_costs_in_line_price: bool = False,
 ):
     source_files = job["source_files"]
     workflow_uuid = job["workflow_uuid"]
     blocks: list[dict[str, Any]] = []
     total_cost = 0.0
+    total_savings = 0.0
     for file in source_files:
         blocks.append(
             {
@@ -339,43 +436,82 @@ def verify_quote_blocks(
             )
             cost = 0.00
             estimated_time = 0
+            quality_discount_text = None
+            quality_discount_savings = 0.0
+            target_additional_costs = _target_additional_costs(
+                additional_costs,
+                file_uuid=file["file_uuid"],
+                language_uuid=lang["uuid"],
+            )
+            target_additional_cost_total = sum(
+                float(additional_cost.get("cost", 0.0) or 0.0)
+                for additional_cost in target_additional_costs
+            )
             for item in costs:
                 if (
                     item["language_uuid"] == lang["uuid"]
                     and item["file_uuid"] == file["file_uuid"]
                 ):
-                    cost = item["service_list"][0]["estimated_cost"]
-                    estimated_time = item["service_list"][0]["time_estimate_days"]
+                    service = item["service_list"][0]
+                    cost = service["estimated_cost"]
+                    estimated_time = service["time_estimate_days"]
+                    if show_quality_discount:
+                        quality_discount_text = _format_quality_discount_text(
+                            service.get("quality_discount")
+                        )
+                    if show_savings:
+                        quality_discount_savings = _quality_discount_savings(
+                            service.get("quality_discount")
+                        )
                     break
             if target_file and target_file.get("human_job_status", ""):
                 if target_file["human_job_status"] == "Submitted":
-                    lang_label = f"*{lang['name']}*\n"
-                    cost_block = {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": _(
-                                "{lang_label} Human translation has been submitted for this language."
-                            ),
-                        },
-                    }
-                    if not selectable:
-                        total_cost += cost
-                    blocks.append(cost_block)
+                    if not selectable and show_quality_discount:
+                        line_cost = cost + target_additional_cost_total
+                        total_cost += line_cost
+                        total_savings += quality_discount_savings
+                        quote_text = f"*{lang['name']}*\n>USD${line_cost:.2f}"
+                        if quality_discount_text:
+                            quote_text += f"\n>{quality_discount_text}"
+                        blocks.append(
+                            {
+                                "type": "section",
+                                "text": {
+                                    "type": "mrkdwn",
+                                    "text": quote_text,
+                                },
+                            }
+                        )
+                    else:
+                        lang_label = f"*{lang['name']}*"
+                        cost_block = {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _(
+                                    "{lang_label} Human translation has been submitted for this language."
+                                ),
+                            },
+                        }
+                        if not selectable:
+                            total_cost += cost + target_additional_cost_total
+                            total_savings += quality_discount_savings
+                        blocks.append(cost_block)
                 elif target_file["human_job_status"] == "Cancelled":
-                    lang_label = f"*{lang['name']}*\n"
-                    cost_block = {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": _(
-                                "{lang_label} Human translation has been cancelled for this language."
-                            ),
-                        },
-                    }
-                    blocks.append(cost_block)
+                    lang_label = f"*{lang['name']}*"
+                    blocks.append(
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": _("{lang_label}\n>Cancelled"),
+                            },
+                        }
+                    )
             else:
-                total_cost += cost
+                line_cost = cost + target_additional_cost_total
+                total_cost += line_cost
+                total_savings += quality_discount_savings
                 report = None
                 if workflow_uuid != HUMAN_EVALUATION_WORKFLOW_UUID:
                     if "report" in file and "evaluation_reports" in file["report"]:
@@ -389,6 +525,24 @@ def verify_quote_blocks(
                         )
 
                 if selectable:
+                    option_text = f"*{lang['name']}*: USD${line_cost:.2f}"
+                    if quality_discount_text:
+                        option_text += f"\n{quality_discount_text}"
+                    if not embed_additional_costs_in_line_price:
+                        for additional_cost in target_additional_costs:
+                            label = additional_cost.get("label", "")
+                            amount = float(additional_cost.get("cost", 0.0) or 0.0)
+                            option_text += f"\n{label}: USD ${amount:.2f}"
+                    embedded_qe_value = (
+                        0.0
+                        if embed_additional_costs_in_line_price
+                        else target_additional_cost_total
+                    )
+                    option_value = (
+                        f"{file['file_uuid']}:{lang['uuid']}:{estimated_time}:"
+                        f"{quality_discount_savings:.2f}:"
+                        f"{embedded_qe_value:.2f}"
+                    )
                     blocks.append(
                         {
                             "type": "actions",
@@ -400,18 +554,18 @@ def verify_quote_blocks(
                                         {
                                             "text": {
                                                 "type": "mrkdwn",
-                                                "text": f"*{lang['name']}*: USD${cost:.2f}",
+                                                "text": option_text,
                                             },
-                                            "value": f"{file['file_uuid']}:{lang['uuid']}:{str(estimated_time)}",
+                                            "value": option_value,
                                         },
                                     ],
                                     "initial_options": [
                                         {
                                             "text": {
                                                 "type": "mrkdwn",
-                                                "text": f"*{lang['name']}*: USD${cost:.2f}",
+                                                "text": option_text,
                                             },
-                                            "value": f"{file['file_uuid']}:{lang['uuid']}:{str(estimated_time)}",
+                                            "value": option_value,
                                         },
                                     ],
                                     "action_id": "verification_checkbox_action",
@@ -474,24 +628,64 @@ def verify_quote_blocks(
                             }
                         )
                 else:
+                    quote_text = f"*{lang['name']}*\n>USD${line_cost:.2f}"
+                    if quality_discount_text:
+                        quote_text += f"\n>{quality_discount_text}"
+                    if not embed_additional_costs_in_line_price:
+                        for additional_cost in target_additional_costs:
+                            label = additional_cost.get("label", "")
+                            amount = float(additional_cost.get("cost", 0.0) or 0.0)
+                            quote_text += f"\n>{label}: USD ${amount:.2f}"
                     blocks.append(
                         {
                             "type": "section",
                             "text": {
                                 "type": "mrkdwn",
-                                "text": f"*{lang['name']}*\n>USD ${cost:.2f}",
+                                "text": quote_text,
                             },
                         }
                     )
         blocks.append({"type": "divider"})
-    # Verify-aligned: max turnaround across all selected file/language pairs
+    active_cost_items = _active_quote_cost_items(costs, job)
+    for additional_cost in _global_additional_costs(additional_costs):
+        label = additional_cost.get("label", "")
+        amount = float(additional_cost.get("cost", 0.0) or 0.0)
+        total_cost += amount
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*{label}*: USD ${amount:.2f}",
+                },
+            }
+        )
+        blocks.append({"type": "divider"})
+    # Verify-aligned: max turnaround across selected file/language pairs
     total_estimated_days = calculate_total_estimated_days(
-        [cost_item["service_list"][0]["time_estimate_days"] for cost_item in costs]
+        [
+            cost_item["service_list"][0]["time_estimate_days"]
+            for cost_item in active_cost_items
+        ]
     )
 
     # Calculate completion date
     completion_date = datetime.now() + timedelta(days=total_estimated_days)
     formatted_date = completion_date.strftime("%d %B %Y")
+
+    total_cost_text = f"*Total Cost*: USD ${total_cost:.2f}"
+    if show_savings:
+        displayed_savings = (
+            combined_quote_net_savings(
+                active_cost_items,
+                additional_costs,
+                show_savings=True,
+            )
+            if embed_additional_costs_in_line_price
+            else total_savings
+        )
+        if displayed_savings > 0:
+            total_cost_text += f" (saved ${displayed_savings:.2f})"
 
     blocks.append(
         {
@@ -499,7 +693,7 @@ def verify_quote_blocks(
             "block_id": "total_cost_block",
             "text": {
                 "type": "mrkdwn",
-                "text": _("*Total Cost*: USD ${total_cost:.2f}"),
+                "text": _(total_cost_text),
             },
         }
     )
@@ -514,6 +708,35 @@ def verify_quote_blocks(
         }
     )
     return blocks
+
+
+def document_mt_quote_blocks(
+    session: dict[str, Any],
+    *,
+    actions: bool = True,
+    status_message: str | None = None,
+) -> list[dict[str, Any]]:
+    """Build document MT quote blocks using the shared evaluate service quote layout."""
+    quote = session.get("quote") or {}
+    pdf_tokens = int(quote.get("pdf_conversion_tokens") or 0)
+    total_tokens = int(quote.get("total_tokens") or 0)
+    translation_tokens = max(total_tokens - pdf_tokens, 0)
+    pdf_page_count = sum(
+        int(file.get("pdf_conversion_page_count") or 0)
+        for file in quote.get("files") or []
+    )
+
+    return evaluation_credits_quote_blocks(
+        _("AI Translation"),
+        translation_tokens,
+        pdf_page_count=pdf_page_count or None,
+        pdf_tokens=pdf_tokens or None,
+        accept_action_id="document_mt_quote_accept",
+        job_uuid=str(session["quote_id"]),
+        actions=actions,
+        status_message=status_message,
+        is_ibm=is_ibm_enterprise(session.get("enterprise_id")),
+    )
 
 
 def evaluate_success_blocks(
@@ -663,3 +886,186 @@ def job_summary_no_score(lang: dict[str, Any], file: dict[str, Any]):
     formatted_target_lang = lang["name"]
     file_name = file["filename"]
     return _("Translate to: {formatted_target_lang}\nFile Uploaded: {file_name}\n")
+
+
+def evaluation_credits_quote_blocks(
+    service_label: str,
+    token_cost: int,
+    *,
+    pdf_page_count: int | None = None,
+    pdf_tokens: int | None = None,
+    accept_action_id: str,
+    job_uuid: str,
+    actions: bool = True,
+    status_message: str | None = None,
+    download_translations_job_uuid: str | None = None,
+    is_ibm: bool = False,
+) -> list[dict[str, Any]]:
+    """Build Slack blocks for a single-service evaluate credits quote."""
+    cost_label = _("Cost")
+    pdf_cost_label = _("PDF conversion cost")
+    total_label = _("Total cost")
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": _("Service Quote"), "emoji": True},
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _(
+                    "Review the quote below and click *Accept Quote* to continue."
+                ),
+            },
+        },
+        {"type": "divider"},
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*{_('Service')}:*\n{service_label}"},
+                {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*{cost_label}:*\n"
+                        f"{_format_evaluate_quote_cost(token_cost, is_ibm=is_ibm)}"
+                    ),
+                },
+            ],
+        },
+    ]
+    total_tokens = token_cost
+    if pdf_tokens and pdf_page_count:
+        blocks.append(
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*{_('PDF conversion')}:*\n{pdf_page_count} {_('pages')}",
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{pdf_cost_label}:*\n"
+                            f"{_format_evaluate_quote_cost(pdf_tokens, is_ibm=is_ibm)}"
+                        ),
+                    },
+                ],
+            }
+        )
+        total_tokens += pdf_tokens
+    blocks.extend(
+        [
+            {"type": "divider"},
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*{total_label}:* "
+                        f"{_format_evaluate_quote_cost(total_tokens, is_ibm=is_ibm)}"
+                    ),
+                },
+            },
+        ]
+    )
+    if status_message:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": status_message},
+            }
+        )
+    if actions or download_translations_job_uuid:
+        elements: list[dict[str, Any]] = []
+        if actions:
+            elements.append(
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": _("Accept Quote"),
+                    },
+                    "style": "primary",
+                    "value": job_uuid,
+                    "action_id": accept_action_id,
+                }
+            )
+        if download_translations_job_uuid:
+            elements.append(
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": _("Download AI Translations"),
+                    },
+                    "value": download_translations_job_uuid,
+                    "action_id": "download_ai_translations_action",
+                }
+            )
+        blocks.append({"type": "actions", "elements": elements})
+    return blocks
+
+
+def evaluate_ai_only_download_blocks(job: dict[str, Any]) -> list[dict[str, Any]]:
+    """Download-only blocks for AI translation without quality evaluation."""
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _(
+                    "Your AI translation is ready. Download the translated file(s) below. "
+                    "You can still accept the Quality Evaluation quote above if you want scoring."
+                ),
+            },
+        }
+    ]
+    all_langs = get_languages_sync()
+    for file in job.get("source_files", []):
+        for lang in job.get("target_languages", []):
+            lang_data = next(
+                (
+                    language
+                    for language in all_langs
+                    if language["uuid"] == lang["uuid"]
+                ),
+                None,
+            )
+            if not lang_data:
+                continue
+            target_file_uuid = ""
+            for target_file in file.get("target_files", []):
+                if target_file["language_uuid"] == lang["uuid"]:
+                    target_file_uuid = target_file.get("target_file_uuid", "")
+                    break
+            if not target_file_uuid:
+                continue
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{_('File')}:* {file.get('filename', '')}\n"
+                        f"*{_('Target language')}:* {lang_data['name']}",
+                    },
+                }
+            )
+            blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Download AI Translation"),
+                            },
+                            "value": target_file_uuid,
+                            "action_id": "download_ai_translation_action",
+                        },
+                    ],
+                }
+            )
+    return blocks

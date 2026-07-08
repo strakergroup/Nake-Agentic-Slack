@@ -7,7 +7,7 @@ import json
 import os
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, cast
+from typing import Any, Awaitable, Callable, Dict, Optional, cast
 
 import httpx
 from pydantic import ValidationError
@@ -22,9 +22,17 @@ from app.api.verify import (
     VerifyAPIError,
     download_verify_file,
     get_client_evaluation_job,
+    get_evaluation_job_quote,
     get_job_pricing,
+    proceed_evaluation_job,
+    proceed_quality_evaluation,
 )
-from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+from app.constants import (
+    EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE,
+    EVALUATE_SERVICE_AI_TRANSLATION,
+    EVALUATE_SERVICE_QUALITY_EVALUATION,
+    HUMAN_EVALUATION_WORKFLOW_UUID,
+)
 from app.models import SlackGroupSettingsTranslation
 from app.ray.submissions import (
     check_and_record_submission_async,
@@ -34,7 +42,11 @@ from app.ray.utils import (
     is_ibm_enterprise,
     upload_to_file_server,
 )
-from app.saq_jobs import enqueue_document_mt_submission, enqueue_evaluation_submission
+from app.saq_jobs import (
+    enqueue_document_mt_quote_preflight,
+    enqueue_document_mt_submission,
+    enqueue_evaluation_submission,
+)
 from app.slack.buglog_notifier import notify_exception, notify_message
 from app.slack.utils import calculate_total_estimated_days
 from app.transcriber_tasks.tasks import get_asr_task
@@ -57,7 +69,6 @@ from ..config import domains
 from ..ray.settings import (
     delete_channel_id,
     disable_auto_translate_group_settings,
-    get_auto_translate_language_name,
     get_auto_translate_settings_and_langs,
     update_auto_translate_group_settings,
     update_channel_id,
@@ -65,18 +76,50 @@ from ..ray.settings import (
 from ..redis import is_duplicate_event, redis_conn
 from .app import app
 from .bot_translation import mark_channel_source_deleted
+from .document_mt_quote_actions import (
+    accept_document_mt_quote,
+    cancel_document_mt_quote,
+)
+from .document_mt_quotes import new_document_mt_quote_id
+from .evaluation_combined_quotes import (
+    COMBINED_QE_HUMAN_QUOTE_ACCEPT_ACTION_ID,
+    PRE_QE_QUOTE_DISPLAY,
+    WORST_CASE_QE_QUALITY_TIER,
+    ai_translation_target_file_uuids,
+    combined_human_job_quote_message,
+    job_file_uuids,
+    job_target_language_uuids,
+    qe_additional_cost,
+    unsubmitted_human_translation_targets,
+)
+from .evaluation_quotes import (
+    AI_TERMINAL_STAGES,
+    QE_TERMINAL_STAGES,
+    STAGE_ACCEPTED_AI,
+    STAGE_ACCEPTED_QE,
+    STAGE_AWAITING_AI,
+    STAGE_AWAITING_QE,
+    STAGE_PROCESSING_AI,
+    STAGE_PROCESSING_QE,
+    get_evaluate_quote_session,
+    save_evaluate_quote_session,
+    update_evaluate_quote_slack_message,
+    update_evaluate_quote_stage,
+)
 from .file_submissions import (
     slack_file_submission_payload,
     slack_file_submission_payload_from_option,
 )
 from .language_validation import get_conflicting_target_language_labels
 from .listener_actions import (
+    VERIFY_JOB_SUBMISSION_LOCK_TTL_SECONDS,
     ai_translate_help,
     approve_pending_client,
     auto_translate_message,
     cancel_job_process,
     document_machine_translate,
     document_mt_selected_languages,
+    evaluate_target_file_uuids,
     get_accessible_slack_files,
     get_groups,
     get_mt_translation,
@@ -92,16 +135,30 @@ from .listener_actions import (
     post_job_summary,
     resolve_media_thread_ts,
     respond_to_message,
+    send_translation_success_message,
     submit_existing_srt_embed_task,
     submit_job,
     submit_verification_job,
+    update_human_job_quote_message,
     verify_help,
+    verify_job_submission_lock_key,
 )
 from .logging import slack_log_decorator
-from .middleware import (
-    ray_connection,
-    require_mt_tokens,
-    require_ray_client,
+from .middleware import ray_connection, require_mt_tokens, require_ray_client
+from .pdf_evaluate_quotes import (
+    PDF_EVALUATE_QUOTE_ACTION_ID,
+    get_pdf_evaluate_quote_session,
+    update_pdf_evaluate_quote_message,
+    update_pdf_evaluate_quote_session,
+)
+from .pdf_evaluate_quotes import (
+    STAGE_ACCEPTED as PDF_PREQUOTE_STAGE_ACCEPTED,
+)
+from .pdf_evaluate_quotes import (
+    STAGE_AWAITING_ACCEPT as PDF_PREQUOTE_STAGE_AWAITING_ACCEPT,
+)
+from .pdf_evaluate_quotes import (
+    STAGE_PROCESSING_ACCEPT as PDF_PREQUOTE_STAGE_PROCESSING_ACCEPT,
 )
 from .select_options import (
     get_file_options_cached,
@@ -113,6 +170,7 @@ from .templates.messages import (
     ClientAlreadyApprovedMessage,
     ClientApprovedMessage,
     ConnectionInfoMessage,
+    DocumentMtQuoteMessage,
     HelpMessage,
     HumanJobMessage,
     InfoMessage,
@@ -153,7 +211,6 @@ from .templates.views import (
 )
 from .utils import (
     extract_language_codes_from_form,
-    format_strings_display,
     is_channel_im,
 )
 from .web import (
@@ -162,38 +219,6 @@ from .web import (
     get_mt_ts_cached,
     upload_file_to_slack_memory_efficient,
 )
-
-
-async def _send_translation_success_message(
-    client: AsyncWebClient, channel_id: str, language_codes: list[str]
-) -> None:
-    """Send a success message after submitting translation jobs.
-
-    Args:
-        client: The Slack web client.
-        channel_id: The channel ID to send the message to.
-        language_codes: List of language codes that were selected for translation.
-    """
-    if len(language_codes) == 1:
-        # Use language name instead of code
-        lang_name = get_auto_translate_language_name(language_codes[0])
-        await client.chat_postMessage(
-            channel=channel_id,
-            text=_(
-                "The file is being translated to {lang_name}. You will be notified when it is ready."
-            ),
-        )
-    else:
-        # Format language names nicely
-        lang_names = [get_auto_translate_language_name(lang) for lang in language_codes]
-        langs_string = format_strings_display(lang_names, and_string="and")
-        await client.chat_postMessage(
-            channel=channel_id,
-            text=_(
-                "The file is being translated to {langs_string}. You will be notified when they are ready."
-            ),
-        )
-
 
 # ---------------------------------------------------------
 # Set up Slack listeners here.
@@ -616,6 +641,63 @@ async def download_ai_translation_action(
                 os.unlink(file["file"])
 
 
+@app.block_action("download_ai_translations_action", middleware=[ray_connection])
+@slack_log_decorator
+async def download_ai_translations_action(
+    ack: AsyncAck,
+    action: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+):
+    await ack()
+    if not await require_ray_client(context):
+        return
+
+    assert action is not None
+    assert context["ray"] is not None
+    assert context["ray"].client is not None
+
+    job_uuid = action["value"]
+    job = await get_client_evaluation_job(context["ray"].client, job_uuid)
+    target_file_uuids = ai_translation_target_file_uuids(job["data"])
+    channel_id = context.get("channel_id") or body.get("channel", {}).get("id")
+    if not channel_id:
+        raise AssertionError("No channel to upload AI translations to")
+    thread_ts = body.get("message", {}).get("thread_ts") or body.get("message", {}).get(
+        "ts"
+    )
+
+    if not target_file_uuids:
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_("No AI translation files are available to download yet."),
+            thread_ts=thread_ts,
+        )
+        return
+
+    await client.chat_postMessage(
+        channel=channel_id,
+        text=_("Uploading your AI translation files to this thread."),
+        thread_ts=thread_ts,
+    )
+
+    for file_uuid in target_file_uuids:
+        file = await download_verify_file(context["ray"].client, file_uuid)
+        try:
+            await upload_file_to_slack_memory_efficient(
+                client=client,
+                file_path=file["file"],
+                channel_id=channel_id,
+                title=file["file_name"],
+                filename=file["file_name"],
+                thread_ts=thread_ts,
+            )
+        finally:
+            if os.path.exists(file["file"]):
+                os.unlink(file["file"])
+
+
 @app.shortcut("shortcut_translate", middleware=[ray_connection])
 @slack_log_decorator
 async def handle_translate_shortcut(
@@ -718,7 +800,7 @@ async def srt_translate_action(
                 )
 
             # Send success message
-            await _send_translation_success_message(
+            await send_translation_success_message(
                 client, context["user_id"], selected_languages
             )
     except Exception as exc:
@@ -1960,6 +2042,8 @@ async def _publish_pdf_evaluate_convert(
     job_notes: str = "",
     workflow_version: float = 3.0,
     docconverter_version: str = "m48",
+    preaccepted_ai_translation_quote: bool = False,
+    prequote_message_ts: str | None = None,
 ) -> None:
     """Upload files to GridFS and publish to the PDF conversion stream.
 
@@ -1984,7 +2068,11 @@ async def _publish_pdf_evaluate_convert(
         "docconverter_version": docconverter_version,
         "channel_id": channel_id,
         "app_source": "slack",
+        "confirmation_required": True,
+        "preaccepted_ai_translation_quote": preaccepted_ai_translation_quote,
     }
+    if prequote_message_ts:
+        payload["prequote_message_ts"] = prequote_message_ts
 
     async with httpx.AsyncClient() as http:
         await http.post(
@@ -2019,7 +2107,9 @@ async def evaluate_job_submit(
         await ack(response_action="clear")
         await client.chat_postMessage(
             channel=channel_id,
-            text=_("Quality Evaluation is not available in Slack for your workspace."),
+            text=_(
+                "Quality Evaluation is now available through the Human Translation quote flow, not as a standalone Slack submission."
+            ),
         )
         return
 
@@ -2050,7 +2140,11 @@ async def evaluate_job_submit(
 
     await ack(response_action="clear")
     if await require_ray_client(context, prompt_login=True):
-        if form.workflow_options:
+        if view["callback_id"] == "evaluate_job":
+            msg = _(
+                "Analyzing your content. You will receive an AI Translation quote shortly."
+            )
+        elif form.workflow_options:
             msg = _(
                 "Your request is being processed. You will receive a summary to review before you finalise the order."
             )
@@ -2151,7 +2245,7 @@ async def evaluate_job_action(
                 await client.chat_postMessage(
                     channel=channel_id or context["user_id"],
                     text=_(
-                        "Quality Evaluation is not available in Slack for your workspace."
+                        "Quality Evaluation is now available through the Human Translation quote flow, not as a standalone Slack submission."
                     ),
                 )
                 return
@@ -2189,14 +2283,13 @@ async def verify_job_modal_open_action(
     job_uuid = action["value"]
     # Get the message timestamp from the body
     message_ts = body.get("message", {}).get("ts")
-    redis_key = f"verify_job_submission_{job_uuid}"
-    if await redis_conn.get(redis_key):
-        await client.chat_postMessage(
-            channel=context["channel_id"],
-            text=_(
-                "A request is already in progress. Please try again in a few seconds."
-            ),
-        )
+    quote_channel_id = (
+        body.get("channel", {}).get("id")
+        or body.get("message", {}).get("channel")
+        or context.get("channel_id")
+    )
+    lock_key = verify_job_submission_lock_key(job_uuid)
+    if await redis_conn.get(lock_key):
         return
     # Open loading modal immediately
     loading_view = loading_modal()
@@ -2209,17 +2302,46 @@ async def verify_job_modal_open_action(
         if await require_ray_client(context, prompt_login=True):
             job = await get_client_evaluation_job(context["ray"].client, job_uuid)
             langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
+            session = await get_evaluate_quote_session(job_uuid)
+            quote_snapshot = (session or {}).get("quote_snapshot") or {}
+            is_combined_qe_human_quote = bool(
+                quote_snapshot.get("auto_submit_human_job")
+                and action["action_id"] == "quote_summary_modal_open"
+            )
+            qe_token_cost = int(quote_snapshot.get("token_cost") or 0)
             costs = await get_job_pricing(
                 context["ray"].client,
                 job_uuid,
                 [file["file_uuid"] for file in job["data"]["source_files"]],
                 langs,
+                assumed_quality_tier=WORST_CASE_QE_QUALITY_TIER
+                if is_combined_qe_human_quote
+                else None,
             )
             # Update the view with the final content
             final_view = (
-                verify_quote_summary_modal(job["data"], costs["data"], message_ts)
+                verify_quote_summary_modal(
+                    job["data"],
+                    costs["data"],
+                    message_ts,
+                    quote_channel_id,
+                    additional_costs=qe_additional_cost(qe_token_cost, costs["data"])
+                    if is_combined_qe_human_quote
+                    else None,
+                    metadata={
+                        "combined_qe_human_quote": True,
+                        "qe_token_cost": qe_token_cost,
+                    }
+                    if is_combined_qe_human_quote
+                    else None,
+                    show_quality_discount=not is_combined_qe_human_quote,
+                    show_savings=not is_combined_qe_human_quote,
+                    embed_additional_costs_in_line_price=is_combined_qe_human_quote,
+                )
                 if action["action_id"] == "quote_summary_modal_open"
-                else verify_job_modal(job["data"], costs["data"], message_ts)
+                else verify_job_modal(
+                    job["data"], costs["data"], message_ts, quote_channel_id
+                )
             )
             try:
                 await client.views_update(view_id=view_id, view=final_view)
@@ -2288,6 +2410,433 @@ async def verify_job_modal_open_action(
                 raise e
 
 
+async def _resolve_evaluate_quote_message_ts(
+    body: Dict[str, Any], job_uuid: str
+) -> str | None:
+    message_ts = body.get("message", {}).get("ts")
+    if message_ts:
+        return message_ts
+    session = await get_evaluate_quote_session(job_uuid)
+    if session:
+        stored_ts = session.get("message_ts")
+        if isinstance(stored_ts, str):
+            return stored_ts
+    return None
+
+
+async def _accept_evaluation_service_quote(
+    *,
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+    context: RayContext,
+    lock_key_prefix: str,
+    service: str,
+    service_label: str,
+    accept_action_id: str,
+    terminal_stages: frozenset[str],
+    awaiting_stage: str,
+    processing_stage: str,
+    accepted_stage: str,
+    include_pdf_fee: bool,
+    accepted_message: str,
+    insufficient_balance_message: str,
+    generic_error_message: str,
+    proceed: Callable[..., Awaitable[None]],
+) -> None:
+    """Accept a staged evaluate quote, updating the original Slack message in place."""
+    job_uuid = action["value"]
+    channel_id = context["channel_id"]
+    message_ts = await _resolve_evaluate_quote_message_ts(body, job_uuid)
+    context_enterprise_id = (
+        context.get("enterprise_id") if hasattr(context, "get") else None
+    ) or getattr(context, "enterprise_id", None)
+    is_ibm = is_ibm_enterprise(context_enterprise_id)
+
+    session = await get_evaluate_quote_session(job_uuid)
+    if session and session.get("stage") in terminal_stages:
+        return
+
+    lock_key = f"{lock_key_prefix}_{job_uuid}"
+    lock_acquired = await redis_conn.set(lock_key, "1", ex=300, nx=True)
+    if not lock_acquired:
+        if message_ts:
+            quote_snapshot = (session or {}).get("quote_snapshot") or {}
+            await update_evaluate_quote_slack_message(
+                client,
+                channel_id=channel_id,
+                message_ts=message_ts,
+                service_label=quote_snapshot.get("service_label", service_label),
+                token_cost=int(quote_snapshot.get("token_cost", 0)),
+                job_uuid=job_uuid,
+                accept_action_id=accept_action_id,
+                pdf_page_count=(session or {}).get("pdf_page_count"),
+                pdf_tokens=quote_snapshot.get("pdf_tokens"),
+                actions=False,
+                status_message=_(
+                    "A request is already in progress. Please wait a moment."
+                ),
+                is_ibm=is_ibm,
+            )
+        return
+
+    base_token_cost = 0
+    pdf_page_count: int | None = None
+    pdf_tokens: int | None = None
+
+    async def _refresh_quote_message(
+        *,
+        actions: bool,
+        status_message: str | None,
+    ) -> None:
+        if not message_ts:
+            return
+        await update_evaluate_quote_slack_message(
+            client,
+            channel_id=channel_id,
+            message_ts=message_ts,
+            service_label=service_label,
+            token_cost=base_token_cost,
+            job_uuid=job_uuid,
+            accept_action_id=accept_action_id,
+            pdf_page_count=int(pdf_page_count) if pdf_page_count else None,
+            pdf_tokens=pdf_tokens,
+            actions=actions,
+            status_message=status_message,
+            is_ibm=is_ibm,
+        )
+
+    try:
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
+
+        quote = await get_evaluation_job_quote(
+            context["ray"].client,
+            job_uuid,
+            [service],
+        )
+        services_costs = quote.get("services_costs") or {}
+        base_token_cost = int(services_costs.get(service, quote.get("token", 0)))
+        total_token_cost = base_token_cost
+
+        if include_pdf_fee:
+            job = await get_client_evaluation_job(context["ray"].client, job_uuid)
+            extra_info = job["data"].get("extra_info") or {}
+            pdf_page_count = extra_info.get("pdf_page_count")
+            if pdf_page_count:
+                pdf_tokens = (
+                    int(pdf_page_count) * EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE
+                )
+                total_token_cost += pdf_tokens
+
+        await update_evaluate_quote_stage(job_uuid, processing_stage)
+        await _refresh_quote_message(
+            actions=False,
+            status_message=_("Accepting quote..."),
+        )
+
+        await proceed(context["ray"].client, job_uuid, total_token_cost)
+
+        await update_evaluate_quote_stage(job_uuid, accepted_stage)
+        await _refresh_quote_message(
+            actions=False,
+            status_message=accepted_message,
+        )
+    except VerifyAPIError as e:
+        await update_evaluate_quote_stage(job_uuid, awaiting_stage)
+        if e.status_code == 402:
+            await _refresh_quote_message(
+                actions=False,
+                status_message=insufficient_balance_message,
+            )
+        else:
+            await _refresh_quote_message(
+                actions=True,
+                status_message=generic_error_message,
+            )
+        await redis_conn.delete(lock_key)
+    except Exception as e:
+        notify_exception(e)
+        await update_evaluate_quote_stage(job_uuid, awaiting_stage)
+        await _refresh_quote_message(
+            actions=True,
+            status_message=_(
+                "There was an error processing your request. Please try again."
+            ),
+        )
+        await redis_conn.delete(lock_key)
+
+
+@app.action(PDF_EVALUATE_QUOTE_ACTION_ID, middleware=[ray_connection])
+@slack_log_decorator
+async def evaluation_pdf_prequote_accept_action(
+    ack: AsyncAck,
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+    context: RayContext,
+):
+    """Accept a pre-job PDF evaluate quote and start real processing."""
+    await ack()
+    quote_id = action["value"]
+    session = await get_pdf_evaluate_quote_session(quote_id)
+    if not session:
+        return
+    if session.get("stage") in {
+        PDF_PREQUOTE_STAGE_PROCESSING_ACCEPT,
+        PDF_PREQUOTE_STAGE_ACCEPTED,
+    }:
+        return
+
+    lock_key = f"evaluate_pdf_prequote_accept_{quote_id}"
+    lock_acquired = await redis_conn.set(lock_key, "1", ex=300, nx=True)
+    if not lock_acquired:
+        return
+
+    channel_id = str(session.get("channel_id") or context.get("channel_id") or "")
+    message_ts = session.get("message_ts") or body.get("message", {}).get("ts")
+    ai_token_estimate = int(session.get("ai_token_estimate") or 0)
+    pdf_page_count = int(session.get("pdf_page_count") or 0)
+    context_enterprise_id = (
+        context.get("enterprise_id") if hasattr(context, "get") else None
+    ) or getattr(context, "enterprise_id", None)
+    is_ibm = is_ibm_enterprise(session.get("enterprise_id") or context_enterprise_id)
+
+    try:
+        await update_pdf_evaluate_quote_session(
+            quote_id,
+            stage=PDF_PREQUOTE_STAGE_PROCESSING_ACCEPT,
+        )
+        if channel_id and message_ts:
+            await update_pdf_evaluate_quote_message(
+                client,
+                channel_id=channel_id,
+                message_ts=message_ts,
+                quote_id=quote_id,
+                ai_token_estimate=ai_token_estimate,
+                pdf_page_count=pdf_page_count,
+                actions=False,
+                status_message=_(
+                    "Quote accepted. Converting your PDF and preparing the AI Translation job..."
+                ),
+                is_ibm=is_ibm,
+            )
+
+        await enqueue_evaluation_submission(
+            user_id=str(session["user_id"]),
+            team_id=str(session["team_id"]),
+            enterprise_id=session.get("enterprise_id"),
+            channel_id=channel_id,
+            files=session["files"],
+            target_langs_uuid=session["target_langs_uuid"],
+            reference=str(session["reference"]),
+            source_lang_uuid=str(session["source_lang_uuid"]),
+            workflow_uuid=session.get("workflow_uuid"),
+            job_notes=str(session.get("job_notes") or ""),
+            preaccepted_ai_translation_quote=True,
+            prequote_message_ts=str(message_ts) if message_ts else None,
+        )
+        await update_pdf_evaluate_quote_session(
+            quote_id,
+            stage=PDF_PREQUOTE_STAGE_ACCEPTED,
+        )
+    except Exception as e:
+        notify_exception(e)
+        await update_pdf_evaluate_quote_session(
+            quote_id,
+            stage=PDF_PREQUOTE_STAGE_AWAITING_ACCEPT,
+        )
+        if channel_id and message_ts:
+            await update_pdf_evaluate_quote_message(
+                client,
+                channel_id=channel_id,
+                message_ts=message_ts,
+                quote_id=quote_id,
+                ai_token_estimate=ai_token_estimate,
+                pdf_page_count=pdf_page_count,
+                actions=True,
+                status_message=_(
+                    "There was an error accepting your quote. Please try again."
+                ),
+                is_ibm=is_ibm,
+            )
+        await redis_conn.delete(lock_key)
+
+
+@app.action("evaluation_ai_quote_accept", middleware=[ray_connection])
+@slack_log_decorator
+async def evaluation_ai_quote_accept_action(
+    ack: AsyncAck,
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+    context: RayContext,
+):
+    """Accept the AI Translation quote for a staged evaluate submission."""
+    await ack()
+
+    async def proceed(ray_client, job_uuid: str, token_cost: int) -> None:
+        await proceed_evaluation_job(
+            ray_client,
+            job_uuid,
+            token_cost=token_cost,
+            skip_quality_evaluation=True,
+        )
+
+    await _accept_evaluation_service_quote(
+        client=client,
+        body=body,
+        action=action,
+        context=context,
+        lock_key_prefix="evaluate_quote_accept",
+        service=EVALUATE_SERVICE_AI_TRANSLATION,
+        service_label=_("AI Translation"),
+        accept_action_id="evaluation_ai_quote_accept",
+        terminal_stages=AI_TERMINAL_STAGES,
+        awaiting_stage=STAGE_AWAITING_AI,
+        processing_stage=STAGE_PROCESSING_AI,
+        accepted_stage=STAGE_ACCEPTED_AI,
+        include_pdf_fee=True,
+        accepted_message=_(
+            "Your AI Translation quote has been accepted. Processing will begin shortly."
+        ),
+        insufficient_balance_message=_(
+            "Insufficient AI token balance to accept this quote."
+        ),
+        generic_error_message=_(
+            "There was an error accepting your quote. Please try again or contact your administrator."
+        ),
+        proceed=proceed,
+    )
+
+
+@app.action(COMBINED_QE_HUMAN_QUOTE_ACCEPT_ACTION_ID, middleware=[ray_connection])
+@slack_log_decorator
+async def evaluation_qe_human_quote_accept_action(
+    ack: AsyncAck,
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+    context: RayContext,
+):
+    """Accept the combined Quality Evaluation + Human Translation quote."""
+    await ack()
+
+    job_uuid = action["value"]
+    channel_id = context["channel_id"]
+    message_ts = await _resolve_evaluate_quote_message_ts(body, job_uuid)
+    session = await get_evaluate_quote_session(job_uuid)
+    if session and session.get("stage") in QE_TERMINAL_STAGES:
+        return
+
+    lock_key = f"evaluate_qe_human_quote_accept_{job_uuid}"
+    lock_acquired = await redis_conn.set(lock_key, "1", ex=300, nx=True)
+    if not lock_acquired:
+        return
+
+    qe_token_cost = 0
+    job_data: dict[str, Any] | None = None
+    costs: list[dict[str, Any]] = []
+
+    async def _refresh_combined_quote(
+        *,
+        actions: bool,
+        status_message: str | None,
+    ) -> None:
+        if not message_ts or job_data is None:
+            return
+        message = combined_human_job_quote_message(
+            job_data,
+            costs,
+            qe_token_cost=qe_token_cost,
+            actions=actions,
+            status_message=status_message,
+            allow_adjust=actions,
+            download_translations_job_uuid=job_data["uuid"],
+            **PRE_QE_QUOTE_DISPLAY,
+        )
+        await client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text=message.text,
+            blocks=message.blocks,
+        )
+
+    try:
+        assert context["ray"] is not None
+        assert context["ray"].client is not None
+
+        quote = await get_evaluation_job_quote(
+            context["ray"].client,
+            job_uuid,
+            [EVALUATE_SERVICE_QUALITY_EVALUATION],
+        )
+        services_costs = quote.get("services_costs") or {}
+        qe_token_cost = int(
+            services_costs.get(
+                EVALUATE_SERVICE_QUALITY_EVALUATION, quote.get("token", 0)
+            )
+        )
+        job = await get_client_evaluation_job(context["ray"].client, job_uuid)
+        job_data = job["data"]
+        pricing = await get_job_pricing(
+            context["ray"].client,
+            job_uuid,
+            job_file_uuids(job_data),
+            job_target_language_uuids(job_data),
+            assumed_quality_tier=WORST_CASE_QE_QUALITY_TIER,
+        )
+        costs = pricing["data"]
+
+        await update_evaluate_quote_stage(job_uuid, STAGE_PROCESSING_QE)
+        await _refresh_combined_quote(
+            actions=False,
+            status_message=_("Accepting quote..."),
+        )
+
+        await proceed_quality_evaluation(
+            context["ray"].client,
+            job_uuid,
+            token_cost=qe_token_cost,
+            human_translation_file_and_languages=unsubmitted_human_translation_targets(
+                job_data
+            ),
+        )
+
+        await update_evaluate_quote_stage(job_uuid, STAGE_ACCEPTED_QE)
+        await _refresh_combined_quote(
+            actions=False,
+            status_message=_(
+                "Your quote has been accepted. Quality Evaluation will run first, then Human Translation will be submitted automatically."
+            ),
+        )
+    except VerifyAPIError as e:
+        await update_evaluate_quote_stage(job_uuid, STAGE_AWAITING_QE)
+        if e.status_code == 402:
+            await _refresh_combined_quote(
+                actions=False,
+                status_message=_("Insufficient AI token balance to accept this quote."),
+            )
+        else:
+            await _refresh_combined_quote(
+                actions=True,
+                status_message=_(
+                    "There was an error accepting your quote. Please try again or contact your administrator."
+                ),
+            )
+        await redis_conn.delete(lock_key)
+    except Exception as e:
+        notify_exception(e)
+        await update_evaluate_quote_stage(job_uuid, STAGE_AWAITING_QE)
+        await _refresh_combined_quote(
+            actions=True,
+            status_message=_(
+                "There was an error processing your request. Please try again."
+            ),
+        )
+        await redis_conn.delete(lock_key)
+
+
 @app.action("quote_accept_all", middleware=[ray_connection])
 @slack_log_decorator
 async def quote_accept_all_action(
@@ -2301,25 +2850,26 @@ async def quote_accept_all_action(
     await ack()
     timestamp = body.get("message", {}).get("ts")
     job_uuid = action["value"]
+    channel_id = context["channel_id"]
+    lock_key = verify_job_submission_lock_key(job_uuid)
 
-    redis_key = f"verify_job_submission_{job_uuid}"
-    if await redis_conn.get(redis_key):
-        await client.chat_postMessage(
-            channel=context["channel_id"],
-            text=_(
-                "A request is already in progress. Please try again in a few seconds."
-            ),
-        )
+    lock_acquired = await redis_conn.set(
+        lock_key,
+        "1",
+        ex=VERIFY_JOB_SUBMISSION_LOCK_TTL_SECONDS,
+        nx=True,
+    )
+    if not lock_acquired:
         return
-    await redis_conn.set(redis_key, "1", ex=60)
 
     try:
         assert context["ray"] is not None
         assert context["ray"].client is not None
         job = await get_client_evaluation_job(context["ray"].client, job_uuid)
     except VerifyAPIError as e:
+        await redis_conn.delete(lock_key)
         await client.chat_postMessage(
-            channel=context["channel_id"],
+            channel=channel_id,
             text=_(
                 "You do not have permission to access this verification job. You do not have permission to perform this action. Please contact your team administrator."
             ),
@@ -2327,8 +2877,9 @@ async def quote_accept_all_action(
         return
     except Exception as e:
         notify_exception(e)
+        await redis_conn.delete(lock_key)
         await client.chat_postMessage(
-            channel=context["channel_id"],
+            channel=channel_id,
             text=_("There was an error processing your request. Please try again."),
         )
         return
@@ -2345,6 +2896,23 @@ async def quote_accept_all_action(
             if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
                 target_file["human_job_status"] = "Submitted"
 
+    if timestamp and job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+        costs = await get_job_pricing(
+            context["ray"].client,
+            job_uuid,
+            [file["file_uuid"] for file in job["data"]["source_files"]],
+            [lang["uuid"] for lang in job["data"]["target_languages"]],
+        )
+        await update_human_job_quote_message(
+            client,
+            channel_id=channel_id,
+            message_ts=timestamp,
+            job=job["data"],
+            costs=costs["data"],
+            actions=False,
+            status_message=_("Submitting quote..."),
+        )
+
     await submit_verification_job(
         client=client,
         context=context,
@@ -2353,6 +2921,7 @@ async def quote_accept_all_action(
         user_id=body["user"]["id"],
         timestamp=timestamp,
         job=job,
+        channel_id=channel_id,
     )
 
 
@@ -2367,9 +2936,15 @@ async def handle_verify_job_submission(
     private_metadata = json.loads(body["view"]["private_metadata"])
     job_uuid = private_metadata.get("job_uuid")
     message_ts = private_metadata.get("timestamp", None)
+    quote_channel_id = private_metadata.get("channel_id") or context.get("channel_id")
     # lock so that if submission is in progress, it will not be submitted again
-    lock_key = f"verify_job_submission_{job_uuid}"
-    lock_acquired = await redis_conn.set(lock_key, "1", ex=60, nx=True)
+    lock_key = verify_job_submission_lock_key(job_uuid)
+    lock_acquired = await redis_conn.set(
+        lock_key,
+        "1",
+        ex=VERIFY_JOB_SUBMISSION_LOCK_TTL_SECONDS,
+        nx=True,
+    )
     if not lock_acquired:
         await client.chat_postMessage(
             channel=body["user"]["id"],
@@ -2397,11 +2972,7 @@ async def handle_verify_job_submission(
                 ]["selected_options"]
                 selected_languages.extend(
                     [
-                        (
-                            option["value"].rsplit(":", 1)[0]
-                            if ":" in option["value"]
-                            else option["value"]
-                        )
+                        ":".join(option["value"].split(":")[:2])
                         for option in selected_options
                     ]
                 )
@@ -2415,6 +2986,111 @@ async def handle_verify_job_submission(
                                 if target_file["language_uuid"] == lang_uuid:
                                     target_file["human_job_status"] = "Submitted"
                                     break
+
+    if private_metadata.get("combined_qe_human_quote"):
+        if not selected_languages:
+            await redis_conn.delete(lock_key)
+            await client.chat_postMessage(
+                channel=body["user"]["id"],
+                text=_("Please select at least one file and target language."),
+            )
+            return
+
+        session = await get_evaluate_quote_session(job_uuid)
+        if session and session.get("stage") in QE_TERMINAL_STAGES:
+            await redis_conn.delete(lock_key)
+            return
+
+        quote = await get_evaluation_job_quote(
+            context["ray"].client,
+            job_uuid,
+            [EVALUATE_SERVICE_QUALITY_EVALUATION],
+        )
+        services_costs = quote.get("services_costs") or {}
+        qe_token_cost = int(
+            services_costs.get(
+                EVALUATE_SERVICE_QUALITY_EVALUATION, quote.get("token", 0)
+            )
+        )
+        costs = await get_job_pricing(
+            context["ray"].client,
+            job_uuid,
+            job_file_uuids(job["data"]),
+            job_target_language_uuids(job["data"]),
+            assumed_quality_tier=WORST_CASE_QE_QUALITY_TIER,
+        )
+        quote_snapshot = dict((session or {}).get("quote_snapshot") or {})
+        quote_snapshot.update(
+            {
+                "service": EVALUATE_SERVICE_QUALITY_EVALUATION,
+                "token_cost": qe_token_cost,
+                "service_label": _("Quality Evaluation + Human Translation"),
+                "accept_action_id": COMBINED_QE_HUMAN_QUOTE_ACCEPT_ACTION_ID,
+                "assumed_quality_tier": WORST_CASE_QE_QUALITY_TIER,
+                "auto_submit_human_job": True,
+                "selected_languages": selected_languages,
+            }
+        )
+        await save_evaluate_quote_session(
+            job_uuid,
+            channel_id=quote_channel_id or context["channel_id"],
+            user_id=body["user"]["id"],
+            team_id=context["team_id"],
+            stage=STAGE_PROCESSING_QE,
+            quote_snapshot=quote_snapshot,
+            message_ts=message_ts,
+        )
+        if message_ts and quote_channel_id:
+            message = combined_human_job_quote_message(
+                job["data"],
+                costs["data"],
+                qe_token_cost=qe_token_cost,
+                actions=False,
+                status_message=_("Accepting quote..."),
+                allow_adjust=False,
+                download_translations_job_uuid=job_uuid,
+                **PRE_QE_QUOTE_DISPLAY,
+            )
+            await client.chat_update(
+                channel=quote_channel_id,
+                ts=message_ts,
+                text=message.text,
+                blocks=message.blocks,
+            )
+
+        try:
+            await proceed_quality_evaluation(
+                context["ray"].client,
+                job_uuid,
+                token_cost=qe_token_cost,
+                human_translation_file_and_languages=selected_languages,
+            )
+        except Exception:
+            await update_evaluate_quote_stage(job_uuid, STAGE_AWAITING_QE)
+            await redis_conn.delete(lock_key)
+            raise
+
+        await update_evaluate_quote_stage(job_uuid, STAGE_ACCEPTED_QE)
+        if message_ts and quote_channel_id:
+            message = combined_human_job_quote_message(
+                job["data"],
+                costs["data"],
+                qe_token_cost=qe_token_cost,
+                actions=False,
+                status_message=_(
+                    "Your quote has been accepted. Quality Evaluation will run first, then Human Translation will be submitted automatically."
+                ),
+                allow_adjust=False,
+                download_translations_job_uuid=job_uuid,
+                **PRE_QE_QUOTE_DISPLAY,
+            )
+            await client.chat_update(
+                channel=quote_channel_id,
+                ts=message_ts,
+                text=message.text,
+                blocks=message.blocks,
+            )
+        return
 
     if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
         for source_file in job["data"]["source_files"]:
@@ -2432,6 +3108,7 @@ async def handle_verify_job_submission(
         user_id=body["user"]["id"],
         timestamp=message_ts,
         job=job,
+        channel_id=quote_channel_id,
     )
 
 
@@ -2498,11 +3175,42 @@ async def handle_checkbox_action(ack, body, client, action):
                             checkbox_data.get("selected_options", [])
                         )
 
-            # Calculate total cost from selected options
-            total_cost = sum(
-                float(re.search(r"USD\$([\d.]+)", option["text"]["text"]).group(1))
+            # Calculate total cost from selected options. The optional fifth value
+            # is a displayed per-target extra such as the distributed QE fee.
+            total_cost = 0.0
+            for option in selected_options:
+                match = re.search(r"USD\$([\d.]+)", option["text"]["text"])
+                if match:
+                    total_cost += float(match.group(1))
+                parts = option["value"].split(":")
+                if len(parts) > 4:
+                    total_cost += float(parts[4])
+            total_savings = sum(
+                float(option["value"].split(":")[3])
                 for option in selected_options
+                if len(option["value"].split(":")) > 3
             )
+            total_savings = sum(
+                float(option["value"].split(":")[3])
+                for option in selected_options
+                if len(option["value"].split(":")) > 3
+            )
+
+            private_metadata_raw = body["view"].get("private_metadata") or "{}"
+            try:
+                private_metadata = json.loads(private_metadata_raw)
+            except json.JSONDecodeError:
+                private_metadata = {}
+            if not isinstance(private_metadata, dict):
+                private_metadata = {}
+            if private_metadata.get("combined_qe_human_quote"):
+                from app.slack.evaluation_combined_quotes import qe_total_usd
+
+                qe_token_cost = int(private_metadata.get("qe_token_cost") or 0)
+                total_savings = max(
+                    total_savings - qe_total_usd(qe_token_cost),
+                    0.0,
+                )
 
             # Calculate total estimated time from selected options (Verify: global max)
             total_estimated_days = calculate_total_estimated_days(
@@ -2522,7 +3230,10 @@ async def handle_checkbox_action(ack, body, client, action):
                 if block.get("block_id") == "total_cost_block":
                     existing_text = block["text"]["text"]
                     localized_prefix = existing_text.split("USD")[0]
-                    block["text"]["text"] = f"{localized_prefix}USD ${total_cost:.2f}"
+                    total_text = f"{localized_prefix}USD ${total_cost:.2f}"
+                    if total_savings > 0:
+                        total_text += f" (saved ${total_savings:.2f})"
+                    block["text"]["text"] = total_text
                     break
 
             # Find and update the total estimated time block
@@ -2554,6 +3265,44 @@ async def handle_checkbox_action(ack, body, client, action):
     except Exception as e:
         notify_exception(e)
         raise e
+
+
+@app.action("document_mt_quote_accept", middleware=[ray_connection])
+@slack_log_decorator
+async def document_mt_quote_accept_action(
+    ack: AsyncAck,
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+    context: RayContext,
+):
+    """Accept a cached document MT quote and enqueue the actual translation."""
+    await ack()
+    await accept_document_mt_quote(
+        client=client,
+        body=body,
+        action=action,
+        context=context,
+    )
+
+
+@app.action("document_mt_quote_cancel", middleware=[ray_connection])
+@slack_log_decorator
+async def document_mt_quote_cancel_action(
+    ack: AsyncAck,
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+    context: RayContext,
+):
+    """Cancel a cached document MT quote."""
+    await ack()
+    await cancel_document_mt_quote(
+        client=client,
+        body=body,
+        action=action,
+        context=context,
+    )
 
 
 @app.view("document_mt_job", middleware=[ray_connection])
@@ -2656,7 +3405,9 @@ async def handle_document_mt_job(
                 return
 
             selected_file_titles = [str(file["title"]) for file in file_payloads]
-            await enqueue_document_mt_submission(
+            quote_id = new_document_mt_quote_id()
+            await enqueue_document_mt_quote_preflight(
+                quote_id=quote_id,
                 user_id=context["user_id"],
                 team_id=context["team_id"],
                 enterprise_id=context.enterprise_id,
@@ -2668,7 +3419,7 @@ async def handle_document_mt_job(
             await client.chat_postMessage(
                 channel=context["channel_id"],
                 text=_(
-                    f"Your document(s) *({', '.join(selected_file_titles)})* are being translated. You will be notified when they are ready."
+                    f"Preparing an AI Translate quote for document(s) *({', '.join(selected_file_titles)})*. Please review the quote before translation starts."
                 ),
             )
 

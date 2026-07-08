@@ -169,11 +169,8 @@ class MtFileRequestSchema(BaseModel):
     embed_subtitles: bool = False
     original_video_file_id: str | None = None
     original_video_file_name: str | None = None
-    # Org-billed Document MT (RAY-80198): delivery + reporting context when the
-    # poster has no LanguageCloud member link.
-    team_id: str | None = None
-    slack_user_id: str | None = None
-    billing_group_uuid: str | None = None
+    quote_id: str | None = None
+    preflight_task_uuid: str | None = None
 
     @model_validator(mode="after")
     def normalize_target_languages(self) -> "MtFileRequestSchema":
@@ -204,6 +201,36 @@ class MtSuccessResponseSchema(BaseModel):
     # Org-billed Document MT delivery context (RAY-80198).
     team_id: str | None = None
     slack_user_id: str | None = None
+
+
+class DocumentMtQuoteTargetSchema(BaseModel):
+    target_language: str
+    tokens: int = 0
+    cost_usd: float = 0.0
+
+
+class DocumentMtQuoteFileSchema(BaseModel):
+    file_id: str
+    file_name: str
+    character_count: int = 0
+    pdf_conversion_page_count: int | None = None
+    pdf_conversion_tokens: int = 0
+    target_languages: list[DocumentMtQuoteTargetSchema] = Field(default_factory=list)
+
+
+class DocumentMtQuoteResponseSchema(BaseModel):
+    quote_id: str
+    client_id: str
+    channel_id: str
+    error: bool = False
+    error_type: MtErrorTypes | None = None
+    error_data: Dict[str, Any] = Field(default_factory=dict)
+    currency: str = "USD"
+    total_tokens: int = 0
+    pdf_conversion_tokens: int = 0
+    total_cost_usd: float = 0.0
+    preflight_task_uuid: str | None = None
+    files: list[DocumentMtQuoteFileSchema] = Field(default_factory=list)
 
 
 class Balance(BaseModel):

@@ -14,6 +14,152 @@ from app.auth.connector import RayConnection, RayContext, RaySuperGroup
 from app.slack.templates.messages import LoginMessage
 
 
+class TestVerificationCheckboxAction:
+    """Tests for human verification quote modal checkbox recalculation."""
+
+    @pytest.mark.asyncio
+    async def test_handle_checkbox_action_recalculates_total_savings(self):
+        from app.slack.listeners import handle_checkbox_action
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        redis_mock = AsyncMock()
+        redis_mock.get.return_value = None
+        redis_mock.set.return_value = True
+        body = {
+            "view": {
+                "id": "view-123",
+                "title": {"type": "plain_text", "text": "Adjust Request"},
+                "close": {"type": "plain_text", "text": "Cancel"},
+                "submit": {"type": "plain_text", "text": "Submit"},
+                "private_metadata": "123.456",
+                "callback_id": "verify_job",
+                "state": {
+                    "values": {
+                        "verification_checkbox_lang-1_file-1": {
+                            "verification_checkbox_action": {
+                                "type": "checkboxes",
+                                "selected_options": [
+                                    {
+                                        "text": {
+                                            "type": "mrkdwn",
+                                            "text": "*French*: USD$10.00\nQuality: best",
+                                        },
+                                        "value": "file-1:lang-1:2:5.00",
+                                    }
+                                ],
+                            }
+                        },
+                        "verification_checkbox_lang-2_file-1": {
+                            "verification_checkbox_action": {
+                                "type": "checkboxes",
+                                "selected_options": [],
+                            }
+                        },
+                    }
+                },
+                "blocks": [
+                    {
+                        "type": "section",
+                        "block_id": "total_cost_block",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "*Total Cost*: USD $18.00 (saved $8.00)",
+                        },
+                    },
+                    {
+                        "type": "section",
+                        "block_id": "total_estimated_time_block",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "*Estimated Completion*: 07 July 2026",
+                        },
+                    },
+                ],
+            }
+        }
+
+        with patch("app.slack.listeners.redis_conn", redis_mock):
+            await handle_checkbox_action(
+                {}, mock_ack, body=body, client=mock_client, action={"action_ts": "1"}
+            )
+
+        mock_ack.assert_awaited_once()
+        updated_view = mock_client.views_update.await_args.kwargs["view"]
+        total_block = next(
+            block
+            for block in updated_view["blocks"]
+            if block.get("block_id") == "total_cost_block"
+        )
+        assert total_block["text"]["text"] == "*Total Cost*: USD $10.00 (saved $5.00)"
+
+    @pytest.mark.asyncio
+    async def test_handle_checkbox_action_includes_target_additional_costs(self):
+        from app.slack.listeners import handle_checkbox_action
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        redis_mock = AsyncMock()
+        redis_mock.get.return_value = None
+        redis_mock.set.return_value = True
+        body = {
+            "view": {
+                "id": "view-123",
+                "title": {"type": "plain_text", "text": "Adjust Request"},
+                "close": {"type": "plain_text", "text": "Cancel"},
+                "submit": {"type": "plain_text", "text": "Submit"},
+                "private_metadata": "123.456",
+                "callback_id": "verify_job",
+                "state": {
+                    "values": {
+                        "verification_checkbox_lang-1_file-1": {
+                            "verification_checkbox_action": {
+                                "type": "checkboxes",
+                                "selected_options": [
+                                    {
+                                        "text": {
+                                            "type": "mrkdwn",
+                                            "text": "*French*: USD$10.00\nQuality Evaluation: USD $0.80",
+                                        },
+                                        "value": "file-1:lang-1:2:0.00:0.80",
+                                    }
+                                ],
+                            }
+                        }
+                    }
+                },
+                "blocks": [
+                    {
+                        "type": "section",
+                        "block_id": "total_cost_block",
+                        "text": {"type": "mrkdwn", "text": "*Total Cost*: USD $10.80"},
+                    },
+                    {
+                        "type": "section",
+                        "block_id": "total_estimated_time_block",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "*Estimated Completion*: 07 July 2026",
+                        },
+                    },
+                ],
+            }
+        }
+
+        with patch("app.slack.listeners.redis_conn", redis_mock):
+            await handle_checkbox_action(
+                {}, mock_ack, body=body, client=mock_client, action={"action_ts": "1"}
+            )
+
+        updated_view = mock_client.views_update.await_args.kwargs["view"]
+        total_block = next(
+            block
+            for block in updated_view["blocks"]
+            if block.get("block_id") == "total_cost_block"
+        )
+        assert total_block["text"]["text"] == "*Total Cost*: USD $10.80"
+
+
 class TestChannelDeletedEvent:
     """Tests for channel_deleted_event function."""
 
@@ -2119,10 +2265,10 @@ class TestEvaluateJobAction:
     """Tests for evaluate_job_action safeguards and modal routing."""
 
     @pytest.mark.asyncio
-    async def test_evaluate_job_action_blocks_quality_evaluation_for_ibm(
+    async def test_evaluate_job_action_blocks_standalone_quality_evaluation(
         self, user_id, team_id, ray_client
     ):
-        """IBM workspaces should not be able to open the QE modal."""
+        """Workspaces should not be able to open the standalone QE modal."""
         from app.slack.listeners import evaluate_job_action
 
         mock_ack = AsyncMock()
@@ -2165,7 +2311,7 @@ class TestEvaluateJobAction:
         mock_client.views_open.assert_not_called()
         mock_client.chat_postMessage.assert_called_once()
         assert (
-            "Quality Evaluation is not available"
+            "not as a standalone Slack submission"
             in mock_client.chat_postMessage.call_args.kwargs["text"]
         )
 
@@ -2280,6 +2426,152 @@ class TestEvaluateJobAction:
         mock_client.chat_postMessage.assert_not_called()
 
 
+class TestDownloadAiTranslationsAction:
+    """Tests for bulk AI translation download from the combined quote."""
+
+    def test_ai_translation_target_file_uuids_extracts_target_files(self):
+        from app.slack.evaluation_combined_quotes import (
+            ai_translation_target_file_uuids,
+        )
+
+        job = {
+            "source_files": [
+                {
+                    "target_files": [
+                        {"target_file_uuid": "file-1"},
+                        {"target_file_uuid": ""},
+                    ]
+                },
+                {
+                    "target_files": [
+                        {"target_file_uuid": "file-2"},
+                    ]
+                },
+            ]
+        }
+
+        assert ai_translation_target_file_uuids(job) == ["file-1", "file-2"]
+
+    @pytest.mark.asyncio
+    async def test_download_ai_translations_action_uploads_all_targets(
+        self, user_id, team_id, ray_client
+    ):
+        from app.slack.listeners import download_ai_translations_action
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": "C123",
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+        body = {"message": {"ts": "111.222"}}
+        job = {
+            "data": {
+                "source_files": [
+                    {
+                        "target_files": [
+                            {"target_file_uuid": "file-1"},
+                            {"target_file_uuid": "file-2"},
+                        ]
+                    }
+                ]
+            }
+        }
+
+        with (
+            patch(
+                "app.slack.listeners.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listeners.get_client_evaluation_job",
+                new_callable=AsyncMock,
+                return_value=job,
+            ) as mock_get_job,
+            patch(
+                "app.slack.listeners.download_verify_file",
+                new_callable=AsyncMock,
+                side_effect=[
+                    {"file": "/tmp/file-1.txt", "file_name": "file-1.txt"},
+                    {"file": "/tmp/file-2.txt", "file_name": "file-2.txt"},
+                ],
+            ) as mock_download,
+            patch(
+                "app.slack.listeners.upload_file_to_slack_memory_efficient",
+                new_callable=AsyncMock,
+            ) as mock_upload,
+            patch("app.slack.listeners.os.path.exists", return_value=False),
+        ):
+            await download_ai_translations_action(
+                context_dict,
+                mock_ack,
+                action={"value": "job-123"},
+                client=mock_client,
+                body=body,
+            )
+
+        mock_ack.assert_called_once()
+        mock_get_job.assert_awaited_once_with(ray_client, "job-123")
+        assert mock_download.await_count == 2
+        assert mock_upload.await_count == 2
+        assert mock_upload.await_args_list[0].kwargs["thread_ts"] == "111.222"
+        assert mock_upload.await_args_list[1].kwargs["filename"] == "file-2.txt"
+
+    @pytest.mark.asyncio
+    async def test_download_ai_translations_action_empty_state(
+        self, user_id, team_id, ray_client
+    ):
+        from app.slack.listeners import download_ai_translations_action
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": "C123",
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        with (
+            patch(
+                "app.slack.listeners.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listeners.get_client_evaluation_job",
+                new_callable=AsyncMock,
+                return_value={"data": {"source_files": []}},
+            ),
+            patch(
+                "app.slack.listeners.upload_file_to_slack_memory_efficient",
+                new_callable=AsyncMock,
+            ) as mock_upload,
+        ):
+            await download_ai_translations_action(
+                context_dict,
+                mock_ack,
+                action={"value": "job-123"},
+                client=mock_client,
+                body={"message": {"ts": "111.222"}},
+            )
+
+        mock_ack.assert_called_once()
+        mock_upload.assert_not_called()
+        mock_client.chat_postMessage.assert_called_once()
+        assert (
+            "No AI translation files"
+            in mock_client.chat_postMessage.call_args.kwargs["text"]
+        )
+
+
 class TestEvaluateJobSubmit:
     """Tests for evaluate_job_submit function - quality evaluation job handler."""
 
@@ -2305,10 +2597,10 @@ class TestEvaluateJobSubmit:
         mock_client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_evaluate_job_submit_blocks_quality_evaluation_for_ibm(
+    async def test_evaluate_job_submit_blocks_standalone_quality_evaluation(
         self, user_id, team_id, ray_client
     ):
-        """IBM workspaces should not be able to submit QE forms."""
+        """Workspaces should not be able to submit standalone QE forms."""
         from app.slack.listeners import evaluate_job_submit
 
         mock_ack = AsyncMock()
@@ -2335,7 +2627,7 @@ class TestEvaluateJobSubmit:
         mock_ack.assert_called_once_with(response_action="clear")
         mock_client.chat_postMessage.assert_called_once()
         assert (
-            "Quality Evaluation is not available"
+            "not as a standalone Slack submission"
             in mock_client.chat_postMessage.call_args.kwargs["text"]
         )
 
@@ -2374,7 +2666,7 @@ class TestEvaluateJobSubmit:
         mock_client = AsyncMock()
         # Source language cannot also be a target (Pydantic validation on EvaluateJobForm)
         view = {
-            "callback_id": "evaluate_job_human",
+            "callback_id": "evaluate_job",
             "private_metadata": "C123",
             "state": {
                 "values": {
@@ -2476,7 +2768,7 @@ class TestEvaluateJobSubmit:
         mock_ack = AsyncMock()
         mock_client = AsyncMock()
         view = {
-            "callback_id": "evaluate_job",
+            "callback_id": "evaluate_job_human",
             "private_metadata": "C123",
             "state": {
                 "values": {
@@ -2681,7 +2973,7 @@ class TestEvaluateJobSubmit:
             for call in mock_client.chat_postMessage.call_args_list
         ]
         assert any("no longer available" in text for text in posted_texts)
-        assert any("successfully submitted" in text for text in posted_texts)
+        assert any("ai translation quote shortly" in text for text in posted_texts)
 
     @pytest.mark.asyncio
     async def test_evaluate_job_submit_success(self, user_id, team_id, ray_client):
@@ -2712,6 +3004,7 @@ class TestEvaluateJobSubmit:
                             ]
                         }
                     },
+                    "reference": {"reference": {"value": "QE Project"}},
                 }
             },
         }
@@ -2748,6 +3041,13 @@ class TestEvaluateJobSubmit:
         assert mock_enqueue.await_args.kwargs["files"] == [
             {"id": "F123", "title": "file.txt", "size": 1234}
         ]
+        assert mock_enqueue.await_args.kwargs["reference"] == "QE Project"
+        assert mock_enqueue.await_args.kwargs["workflow_uuid"] is None
+        posted_texts = [
+            call.kwargs["text"].lower()
+            for call in mock_client.chat_postMessage.call_args_list
+        ]
+        assert any("ai translation quote shortly" in text for text in posted_texts)
         assert mock_client.chat_postMessage.call_count >= 1
 
     @pytest.mark.asyncio
@@ -2895,7 +3195,7 @@ class TestEvaluateJobSubmit:
         mock_ack = AsyncMock()
         mock_client = AsyncMock()
         view = {
-            "callback_id": "evaluate_job",
+            "callback_id": "evaluate_job_human",
             "private_metadata": "C123",
             "state": {
                 "values": {
@@ -2964,7 +3264,7 @@ class TestEvaluateJobSubmit:
         mock_ack = AsyncMock()
         mock_client = AsyncMock()
         view = {
-            "callback_id": "evaluate_job",
+            "callback_id": "evaluate_job_human",
             "private_metadata": "C123",
             "state": {
                 "values": {
@@ -3240,7 +3540,7 @@ class TestHandleDocumentMtJob:
                 return_value=([{"id": "F123"}], []),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_submission",
+                "app.slack.listeners.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
         ):
@@ -3414,7 +3714,7 @@ class TestHandleDocumentMtJob:
                 ),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_submission",
+                "app.slack.listeners.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
             patch("app.slack.listeners.notify_exception") as mock_notify,
@@ -3430,6 +3730,136 @@ class TestHandleDocumentMtJob:
         message_text = mock_client.chat_postMessage.call_args[1]["text"].lower()
         assert "no longer available" in message_text
         assert "deleted.docx" in message_text
+
+
+class TestDocumentMtQuoteActions:
+    """Tests for accepting and cancelling document MT quotes."""
+
+    @staticmethod
+    def _quote_session(**overrides):
+        session = {
+            "quote_id": "quote-123",
+            "status": "quoted",
+            "user_id": "U_SUBMITTER",
+            "team_id": "T_MODAL",
+            "enterprise_id": "E_GRID",
+            "channel_id": "D_SUBMITTER",
+            "source_language": "en",
+            "target_languages": ["es"],
+            "files": [
+                {
+                    "slack_file_id": "F123",
+                    "title": "file.txt",
+                    "file_id": "gridfs-123",
+                    "file_name": "file.txt",
+                    "file_size": 65,
+                }
+            ],
+            "quote": {
+                "quote_id": "quote-123",
+                "currency": "USD",
+                "total_tokens": 1,
+                "total_cost_usd": 0.02,
+                "files": [],
+            },
+        }
+        session.update(overrides)
+        return session
+
+    @pytest.mark.asyncio
+    async def test_document_mt_quote_accept_allows_same_user_with_different_click_team(
+        self,
+    ):
+        """Slack interaction team can differ from the modal/DM team on Grid."""
+        from app.slack.listeners import document_mt_quote_accept_action
+
+        session = self._quote_session()
+        accepted_session = {**session, "status": "accepted"}
+        context = RayContext(
+            {
+                "user_id": "U_SUBMITTER",
+                "team_id": "T_CLICK",
+                "enterprise_id": "E_GRID",
+            }
+        )
+        client = AsyncMock()
+
+        with (
+            patch(
+                "app.slack.document_mt_quote_actions.get_document_mt_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+            patch(
+                "app.slack.document_mt_quote_actions.mark_document_mt_quote_accepted",
+                new_callable=AsyncMock,
+                return_value=accepted_session,
+            ),
+            patch(
+                "app.slack.document_mt_quote_actions.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+            ) as mock_enqueue,
+            patch(
+                "app.slack.document_mt_quote_actions.redis_conn.set",
+                new_callable=AsyncMock,
+            ) as lock,
+        ):
+            lock.return_value = True
+            await document_mt_quote_accept_action(
+                ack=AsyncMock(),
+                client=client,
+                body={"channel": {"id": "D_SUBMITTER"}, "message": {"ts": "123.456"}},
+                action={"value": "quote-123"},
+                context=context,
+            )
+
+        mock_enqueue.assert_awaited_once()
+        assert mock_enqueue.await_args.kwargs["user_id"] == "U_SUBMITTER"
+        assert mock_enqueue.await_args.kwargs["team_id"] == "T_MODAL"
+        assert mock_enqueue.await_args.kwargs["enterprise_id"] == "E_GRID"
+        client.chat_postMessage.assert_awaited_once()
+        assert (
+            "permission"
+            not in client.chat_postMessage.await_args.kwargs["text"].lower()
+        )
+
+    @pytest.mark.asyncio
+    async def test_document_mt_quote_cancel_allows_same_user_with_different_click_team(
+        self,
+    ):
+        """Cancel is also owned by user, not exact interaction team id."""
+        from app.slack.listeners import document_mt_quote_cancel_action
+
+        context = RayContext(
+            {
+                "user_id": "U_SUBMITTER",
+                "team_id": "T_CLICK",
+                "enterprise_id": "E_GRID",
+            }
+        )
+        client = AsyncMock()
+
+        with (
+            patch(
+                "app.slack.document_mt_quote_actions.get_document_mt_quote_session",
+                new_callable=AsyncMock,
+                return_value=self._quote_session(),
+            ),
+            patch(
+                "app.slack.document_mt_quote_actions.delete_document_mt_quote_session",
+                new_callable=AsyncMock,
+            ) as mock_delete,
+        ):
+            await document_mt_quote_cancel_action(
+                ack=AsyncMock(),
+                client=client,
+                body={"channel": {"id": "D_SUBMITTER"}, "message": {"ts": "123.456"}},
+                action={"value": "quote-123"},
+                context=context,
+            )
+
+        mock_delete.assert_awaited_once_with("quote-123")
+        client.chat_update.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_handle_document_mt_job_unexpected_slack_error_notifies_exception(
@@ -3559,7 +3989,7 @@ class TestHandleDocumentMtJob:
                 ),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_submission",
+                "app.slack.listeners.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
             patch("app.slack.listeners.notify_exception") as mock_notify,
@@ -3577,7 +4007,7 @@ class TestHandleDocumentMtJob:
             call.kwargs["text"].lower()
             for call in mock_client.chat_postMessage.call_args_list
         ]
-        assert any("being translated" in text for text in posted_texts)
+        assert any("preparing an ai translate quote" in text for text in posted_texts)
         assert any("no longer available" in text for text in posted_texts)
 
     @pytest.mark.asyncio
@@ -3632,7 +4062,7 @@ class TestHandleDocumentMtJob:
                 return_value=([{"id": "F123"}], []),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_submission",
+                "app.slack.listeners.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
         ):
@@ -3699,7 +4129,7 @@ class TestHandleDocumentMtJob:
                 return_value=([{"id": "F123"}], []),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_submission",
+                "app.slack.listeners.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
         ):
@@ -3763,7 +4193,7 @@ class TestHandleDocumentMtJob:
                 return_value=([{"id": "F123"}], []),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_submission",
+                "app.slack.listeners.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
         ):
@@ -3837,7 +4267,7 @@ class TestHandleDocumentMtJob:
                 return_value=([{"id": "F123"}], []),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_submission",
+                "app.slack.listeners.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
         ):
@@ -5612,7 +6042,11 @@ class TestHandleVerifyJobSubmission:
         body = {
             "view": {
                 "private_metadata": json.dumps(
-                    {"job_uuid": job_uuid, "timestamp": "123456.789"}
+                    {
+                        "job_uuid": job_uuid,
+                        "timestamp": "123456.789",
+                        "channel_id": "C123",
+                    }
                 ),
                 "state": {
                     "values": {
@@ -5696,7 +6130,11 @@ class TestHandleVerifyJobSubmission:
         body = {
             "view": {
                 "private_metadata": json.dumps(
-                    {"job_uuid": job_uuid, "timestamp": "123456.789"}
+                    {
+                        "job_uuid": job_uuid,
+                        "timestamp": "123456.789",
+                        "channel_id": "C123",
+                    }
                 ),
                 "state": {
                     "values": {
@@ -5767,6 +6205,8 @@ class TestHandleVerifyJobSubmission:
                         == "Submitted"
                     )
                     mock_submit.assert_called_once()
+                    assert mock_submit.call_args.kwargs["timestamp"] == "123456.789"
+                    assert mock_submit.call_args.kwargs["channel_id"] == "C123"
 
     @pytest.mark.asyncio
     async def test_handle_verify_job_submission_human_evaluation_cancels_unselected(

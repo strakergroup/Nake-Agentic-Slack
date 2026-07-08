@@ -150,3 +150,46 @@ async def send_srt_translation_request(
                 "source": "Straker Translate for Slack",
             },
         )
+
+
+async def send_document_mt_quote_request(
+    *,
+    quote_id: str,
+    files: list[dict[str, str | int | None]],
+    client_id: str,
+    channel_id: str,
+    source_language: str | None,
+    target_languages: list[str],
+    ai_engine: str,
+) -> None:
+    """Request a document MT quote from int-slack-verify-consumer.
+
+    The consumer owns document extraction and exact character counting, so this
+    app publishes a preflight event instead of estimating quoteable content
+    locally.
+    """
+    request_data = {
+        "data": {
+            "quote_id": quote_id,
+            "files": files,
+            "client_id": client_id,
+            "channel_id": channel_id,
+            "source_language": source_language,
+            "target_languages": target_languages,
+            "ai_engine": ai_engine,
+            "data_source": "slack",
+            "output_stream": "verify:slack:document:quote",
+        },
+        "source": "Straker Translate for Slack",
+    }
+
+    async def _post_request():
+        client = await get_shared_client()
+        response = await client.post(
+            f"{domains.stream_proxy}/events/slack:job:machine:translate:quote",
+            json=request_data,
+        )
+        response.raise_for_status()
+        return response
+
+    await retry_on_timeout(_post_request)

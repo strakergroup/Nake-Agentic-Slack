@@ -17,6 +17,30 @@ parse_languages = MODULE.parse_languages
 _requested_translation_source = MODULE._requested_translation_source
 _mock_translate = MODULE._mock_translate
 
+QUOTE_FLOW_SPEC = importlib.util.spec_from_file_location(
+    "ui_export_generate_quote_flow",
+    Path(__file__).resolve().parents[2]
+    / "tools"
+    / "ui-export"
+    / "generate_quote_flow.py",
+)
+assert QUOTE_FLOW_SPEC is not None
+assert QUOTE_FLOW_SPEC.loader is not None
+QUOTE_FLOW_MODULE = importlib.util.module_from_spec(QUOTE_FLOW_SPEC)
+QUOTE_FLOW_SPEC.loader.exec_module(QUOTE_FLOW_MODULE)
+
+AI_TRANSLATE_FLOW_SPEC = importlib.util.spec_from_file_location(
+    "ui_export_generate_ai_translate_quote_flow",
+    Path(__file__).resolve().parents[2]
+    / "tools"
+    / "ui-export"
+    / "generate_ai_translate_quote_flow.py",
+)
+assert AI_TRANSLATE_FLOW_SPEC is not None
+assert AI_TRANSLATE_FLOW_SPEC.loader is not None
+AI_TRANSLATE_FLOW_MODULE = importlib.util.module_from_spec(AI_TRANSLATE_FLOW_SPEC)
+AI_TRANSLATE_FLOW_SPEC.loader.exec_module(AI_TRANSLATE_FLOW_MODULE)
+
 
 def test_build_all_messages_includes_ibm_new_job_variants():
     entries = build_all_messages()
@@ -39,6 +63,85 @@ def test_build_all_messages_includes_other_ibm_sensitive_variants():
     assert "WelcomeBackMessage (IBM)" not in names
     assert "SuccessfulLoginMessage (IBM)" not in names
     assert "HelpMessage (IBM)" not in names
+
+
+def test_build_all_messages_includes_staged_evaluate_quote_variants():
+    entries = build_all_messages()
+    names = {entry["name"] for entry in entries}
+
+    assert "DocumentMtQuoteMessage (IBM AI Translate direct quote)" in names
+    assert "DocumentMtQuoteMessage (IBM AI Translate accepted)" in names
+    assert "EvaluationCreditsQuoteMessage (IBM HT AI quote with PDF)" in names
+    assert "EvaluationCreditsQuoteMessage (IBM HT PDF prequote estimate)" in names
+
+
+def test_ibm_quote_catalog_entry_uses_dollar_display():
+    entries = build_all_messages()
+    entry = next(
+        item
+        for item in entries
+        if item["name"] == "EvaluationCreditsQuoteMessage (IBM HT AI quote with PDF)"
+    )
+    rendered = str(entry["blocks"])
+
+    assert "Token cost" not in rendered
+    assert "Total tokens" not in rendered
+    assert "US$25.00" in rendered
+    assert "US$2.00" in rendered
+    assert "US$27.00" in rendered
+
+
+def test_human_job_quote_catalog_entry_shows_quality_discount():
+    entries = build_all_messages()
+    entry = next(item for item in entries if item["name"] == "HumanJobQuoteMessage")
+    rendered = str(entry["blocks"])
+
+    assert "USD$53.75" in rendered
+    assert "Quality Evaluation: USD $8.00" in rendered
+    assert "Quality: good" in rendered
+    assert "-30% off" not in rendered
+    assert "USD$46.50" in rendered
+    assert "Quality: acceptable" in rendered
+    assert "-20% off" not in rendered
+    assert "Total Cost*: USD $100.25" in rendered
+    assert "saved $29.24" in rendered
+
+
+def test_quote_flow_html_contains_only_new_quote_steps():
+    entries = QUOTE_FLOW_MODULE.build_flow_entries()
+
+    assert len(entries) == 3
+    assert [entry["entry_name"] for entry in entries] == [
+        "EvaluationCreditsQuoteMessage (IBM HT PDF prequote estimate)",
+        "EvaluationCreditsQuoteMessage (IBM HT AI quote with PDF)",
+        "HumanJobQuoteMessage",
+    ]
+    payload = QUOTE_FLOW_MODULE.build_flow_payload()
+    rendered = str(payload)
+    assert "US$27.00" in rendered
+    assert "Quality: good" in rendered
+    assert "-30% off" not in rendered
+    assert "Quality: acceptable" in rendered
+    assert "-20% off" not in rendered
+    assert "saved $29.24" in rendered
+    assert "JobStatusMessage" not in rendered
+
+
+def test_ai_translate_quote_flow_contains_direct_quote_states():
+    entries = AI_TRANSLATE_FLOW_MODULE.build_flow_entries()
+
+    assert len(entries) == 2
+    assert [entry["entry_name"] for entry in entries] == [
+        "DocumentMtQuoteMessage (IBM AI Translate direct quote)",
+        "DocumentMtQuoteMessage (IBM AI Translate accepted)",
+    ]
+    payload = AI_TRANSLATE_FLOW_MODULE.build_flow_payload()
+    rendered = str(payload)
+    assert "Direct AI Translate Quote Flow" in rendered
+    assert "Service Quote" in rendered
+    assert "US$28.40" in rendered
+    assert "Total AI Tokens" not in rendered
+    assert "EvaluationCreditsQuoteMessage" not in rendered
 
 
 def test_build_all_views_includes_ibm_connected_home_variants():

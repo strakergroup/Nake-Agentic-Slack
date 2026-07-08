@@ -1,0 +1,22 @@
+---
+description: Keep route and Slack handler modules thin
+globs: app/routers/**/*.py,app/slack/listeners.py
+alwaysApply: false
+---
+
+# Thin Route Boundaries
+
+Routes and Slack action handlers should stay focused on request/event dispatch:
+
+- Validate or extract request/event fields.
+- Call a relevant service/helper module.
+- Translate service errors into HTTP or Slack responses.
+
+Do not add new route-local private helper functions for business logic, pricing, workflow orchestration, persistence, or Slack message composition. Move that logic into a relevant module such as:
+
+- `app/slack/*_quotes.py` for Slack quote orchestration and message state.
+- `app/api/*.py` for external API client wrappers.
+- `app/saq_jobs/*.py` for queued/background work.
+- Domain-specific service modules near the feature owner.
+
+Small local helpers are acceptable only when they are pure request-shaping glue and unlikely to be reused. If a helper needs tests, multiple dependencies, Redis/session access, pricing rules, or external API calls, it belongs outside the route/handler file.

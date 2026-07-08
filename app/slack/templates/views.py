@@ -540,7 +540,9 @@ def human_job_modal(
     if initial_options:
         files_block_element["initial_options"] = initial_options
 
-    # Determine title, submit text, and description based on job type
+    # Determine title, submit text, and description based on job type.
+    # IBM workspaces are blocked before this modal opens; non-IBM workspaces
+    # keep the standalone QE request surface with staged quote confirmation.
     if job_type == "human":
         title = _("Human Translation", 23)[:24]
         submit_text = _("Request Quote", 23)[:24]
@@ -551,7 +553,7 @@ def human_job_modal(
         include_job_notes = True
     else:
         title = _("Quality Evaluation", 23)[:24]
-        submit_text = _("Submit", 23)[:24]
+        submit_text = _("Request Quote", 23)[:24]
         description = _(
             "AI translate your content and receive translation quality scores, then opt for human verification if needed."
         )
@@ -926,6 +928,7 @@ def verify_job_modal(
     job: dict[str, Any],
     costs: list[dict[str, Any]],
     timestamp: str,
+    channel_id: str | None = None,
 ) -> dict[str, Any]:
     """Generate modal for job verification with total cost calculation."""
     blocks = verify_quote_blocks(job, costs)
@@ -939,6 +942,7 @@ def verify_job_modal(
             {
                 "job_uuid": job["uuid"],
                 "timestamp": timestamp,
+                "channel_id": channel_id,
             }
         ),
         "blocks": [
@@ -963,8 +967,29 @@ def verify_quote_summary_modal(
     job: dict[str, Any],
     costs: list[dict[str, Any]],
     timestamp: str,
+    channel_id: str | None = None,
+    additional_costs: list[dict[str, Any]] | None = None,
+    metadata: dict[str, Any] | None = None,
+    *,
+    show_quality_discount: bool = True,
+    show_savings: bool = True,
+    embed_additional_costs_in_line_price: bool = False,
 ) -> dict[str, Any]:
-    blocks = verify_quote_blocks(job, costs)
+    blocks = verify_quote_blocks(
+        job,
+        costs,
+        additional_costs=additional_costs,
+        show_quality_discount=show_quality_discount,
+        show_savings=show_savings,
+        embed_additional_costs_in_line_price=embed_additional_costs_in_line_price,
+    )
+    private_metadata = {
+        "job_uuid": job["uuid"],
+        "timestamp": timestamp,
+        "channel_id": channel_id,
+    }
+    if metadata:
+        private_metadata.update(metadata)
 
     return {
         "type": "modal",
@@ -972,12 +997,7 @@ def verify_quote_summary_modal(
         "title": {"type": "plain_text", "text": _("Adjust Request", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Submit")},
         "close": {"type": "plain_text", "text": _("Cancel")},
-        "private_metadata": json.dumps(
-            {
-                "job_uuid": job["uuid"],
-                "timestamp": timestamp,
-            }
-        ),
+        "private_metadata": json.dumps(private_metadata),
         "blocks": [
             {
                 "type": "section",

@@ -1,7 +1,7 @@
 import json
 import os
 import tempfile
-from typing import List
+from typing import Any, List
 
 import httpx
 
@@ -33,19 +33,27 @@ async def submit_evaluation_job(
     job_notes: str = "",
     workflow_version: float = 3.0,
     docconverter_version: str = "m48",
+    *,
+    slack_channel_id: str = "",
+    pdf_page_count: int | None = None,
 ):
+    confirmation_required = True
     target_languages_data = {
         "target_languages": target_languages_uuid,
         "title": reference,
         "source": "slack",
         "workflow_version": workflow_version,
         "docconverter_version": docconverter_version,
-        "confirmation_required": False,
+        "confirmation_required": confirmation_required,
     }
     if source_language_uuid:
         target_languages_data["sl"] = source_language_uuid
     if job_notes:
         target_languages_data["client_notes"] = job_notes
+    if slack_channel_id:
+        target_languages_data["slack_channel_id"] = slack_channel_id
+    if pdf_page_count is not None and pdf_page_count > 0:
+        target_languages_data["pdf_page_count"] = str(pdf_page_count)
     target_languages_data["workflow"] = workflow_uuid or ""
 
     max_file_size = max((os.path.getsize(file) for file in file_path), default=None)
@@ -286,6 +294,8 @@ async def get_job_pricing(
     job_uuid: str,
     file_uuids: list[str],
     language_uuids: list[str],
+    *,
+    assumed_quality_tier: str | None = None,
 ):
     url = f"{domains.verify_api}/automation/service/pricing"
     headers = {"Authorization": f"Bearer {ray_client.id_token}"}
@@ -294,6 +304,8 @@ async def get_job_pricing(
         f"{file_uuid}:{lang}" for lang in language_uuids for file_uuid in file_uuids
     ]
     data = {"job_uuid": job_uuid, "file_and_languages": file_and_languages}
+    if assumed_quality_tier:
+        data["assumed_quality_tier"] = assumed_quality_tier
     async with httpx.AsyncClient(timeout=30) as client:
         response = await client.post(url, headers=headers, data=data)
 
@@ -310,3 +322,101 @@ async def get_job_pricing(
 
     response.raise_for_status()
     return response.json()
+
+
+async def get_evaluation_job_quote(
+    ray_client: RayClient,
+    job_uuid: str,
+    services: list[str],
+) -> dict:
+    """Fetch post-extract token quote for selected evaluate services."""
+    params = httpx.QueryParams([("services", service) for service in services])
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(
+            f"{domains.verify_api}/evaluate/{job_uuid}/quote/credits",
+            params=params,
+            headers={"Authorization": f"Bearer {ray_client.id_token}"},
+        )
+        if response.status_code == 401:
+            raise VerifyAPIError(
+                "Unauthorized: Your authentication token is invalid or expired. Please reconnect your account.",
+                401,
+            )
+        if response.status_code == 403:
+            raise VerifyAPIError(
+                "Forbidden: You don't have permission to access this resource.", 403
+            )
+        response.raise_for_status()
+        return response.json()
+
+
+async def proceed_evaluation_job(
+    ray_client: RayClient,
+    job_uuid: str,
+    *,
+    token_cost: int,
+    skip_quality_evaluation: bool = False,
+) -> dict:
+    """Proceed with an evaluate job after the user accepts a service quote."""
+    data = {
+        "uuid": job_uuid,
+        "tokenCost": str(token_cost),
+        "source": "slack",
+        "skip_quality_evaluation": "true" if skip_quality_evaluation else "false",
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            f"{domains.verify_api}/evaluate/proceed",
+            data=data,
+            headers={"Authorization": f"Bearer {ray_client.id_token}"},
+        )
+        if response.status_code == 401:
+            raise VerifyAPIError(
+                "Unauthorized: Your authentication token is invalid or expired. Please reconnect your account.",
+                401,
+            )
+        if response.status_code == 403:
+            raise VerifyAPIError(
+                "Forbidden: You don't have permission to access this resource.", 403
+            )
+        if response.status_code == 402:
+            raise VerifyAPIError("Insufficient AI token balance.", 402)
+        response.raise_for_status()
+        return response.json()
+
+
+async def proceed_quality_evaluation(
+    ray_client: RayClient,
+    job_uuid: str,
+    *,
+    token_cost: int,
+    human_translation_file_and_languages: list[str] | None = None,
+) -> dict:
+    """Proceed with quality evaluation after AI translation has completed."""
+    data: dict[str, Any] = {
+        "tokenCost": str(token_cost),
+        "source": "slack",
+    }
+    if human_translation_file_and_languages:
+        data["human_translation_file_and_languages"] = (
+            human_translation_file_and_languages
+        )
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            f"{domains.verify_api}/evaluate/{job_uuid}/proceed-quality-evaluation",
+            data=data,
+            headers={"Authorization": f"Bearer {ray_client.id_token}"},
+        )
+        if response.status_code == 401:
+            raise VerifyAPIError(
+                "Unauthorized: Your authentication token is invalid or expired. Please reconnect your account.",
+                401,
+            )
+        if response.status_code == 403:
+            raise VerifyAPIError(
+                "Forbidden: You don't have permission to access this resource.", 403
+            )
+        if response.status_code == 402:
+            raise VerifyAPIError("Insufficient AI token balance.", 402)
+        response.raise_for_status()
+        return response.json()

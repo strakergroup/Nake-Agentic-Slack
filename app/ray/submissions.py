@@ -5,9 +5,10 @@ from enum import Enum
 from typing import Optional, Tuple
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.database import engines
+from app.database import async_engines, engines
 from app.models import SlackFileTranslationSubmission
 
 
@@ -165,6 +166,66 @@ async def check_and_record_submission_async(
             file_id=file_id,
             processing_status=SubmissionStatus.CREATED,
         )
+        return False, created
+
+
+async def check_and_record_submission_metadata_async(
+    *,
+    file_hash: str,
+    file_name: str,
+    file_size: int,
+    file_id: str,
+    user_id: str,
+    team_id: str,
+    channel_id: str,
+    source_language: str = "",
+    target_language: str,
+) -> Tuple[bool, SlackFileTranslationSubmission]:
+    """
+    Same duplicate check as ``check_and_record_submission_async`` but uses file
+    metadata captured during a prior preflight pass, avoiding a second file read.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    async with AsyncSession(
+        async_engines["ray_integration"],
+        expire_on_commit=False,
+    ) as session:
+        existing_result = await session.scalars(
+            select(SlackFileTranslationSubmission)
+            .where(SlackFileTranslationSubmission.user_id == user_id)
+            .where(SlackFileTranslationSubmission.team_id == team_id)
+            .where(SlackFileTranslationSubmission.file_hash == file_hash)
+            .where(SlackFileTranslationSubmission.file_name == file_name)
+            .where(SlackFileTranslationSubmission.source_language == source_language)
+            .where(SlackFileTranslationSubmission.target_language == target_language)
+            .where(SlackFileTranslationSubmission.created_at >= cutoff)
+            .where(
+                SlackFileTranslationSubmission.processing_status
+                != SubmissionStatus.FAILED.value
+            )
+            .limit(1)
+        )
+        existing = existing_result.first()
+
+        if existing is not None:
+            return True, existing
+
+        created = SlackFileTranslationSubmission(
+            user_id=user_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            file_hash=file_hash,
+            file_name=file_name,
+            file_size=file_size,
+            source_language=source_language,
+            target_language=target_language,
+            file_id=file_id,
+            processing_status=SubmissionStatus.CREATED.value,
+        )
+        session.add(created)
+        await session.commit()
+        await session.refresh(created)
         return False, created
 
 

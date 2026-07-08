@@ -2,7 +2,6 @@ import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from redis.asyncio import Redis
 
 from app.slack.select_options import (
     _get_languages_cached,
@@ -15,10 +14,7 @@ from app.slack.select_options import (
 
 
 @pytest.mark.asyncio
-async def test_get_languages_cached(redis: Redis):
-    key = "slack-ray-translator:languages:v1"
-    await redis.delete(key)
-
+async def test_get_languages_cached():
     # Mock the get_languages API call
     # Create proper mock language objects with attributes
     mock_lang_en = MagicMock()
