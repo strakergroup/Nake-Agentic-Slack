@@ -20,6 +20,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [Pyright Workflow](pyright-workflow.md) - Local type checking and ignored-module backlog during the Pyright rollout
 - [Google Chat notifications](google-chat-notifications.md) - Standalone webhook alerts and mirroring from `buglog_notifier`
 - [SAQ Durable File Handling](saq-durable-file-handling.md) - Durable Slack file uploads and side-effect background work via SAQ + Redis
+- [Container Build Speed](container-build-speed.md) - Jenkins/Buildah image build caching and slim ffmpeg install
 - [Changelog](changelog.md) - Record of all changes to the codebase
 
 ## Unreleased

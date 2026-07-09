@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Changed]: Faster container builds — slim ffmpeg apt install (`--no-install-recommends`, clear apt lists) and drop default `buildah --no-cache` (opt-in via `NO_CACHE=true`) (Wade Norman, 2026-07-09)
 - [Changed]: Thread SRT upload now posts the embed-only Service Quote immediately (no intermediate Embed Subtitles CTA); Quote1 pricing uses Slack `duration_ms` with a 1-minute fallback (Wade Norman, 2026-07-09)
 - [Fixed]: Standardised Slack modal opens on the RAY-72999 loading-modal pattern (`open_loading_modal` → Ray/Redis I/O → `views_update`) for HT/QE, document MT, job search, settings, and video modals so `expired_trigger_id` no longer races `ray_connection` middleware (Wade Norman, 2026-07-09)
 - [Changed]: HT process suggestion copy — Service Quote lists PDF conversion above AI Translation; pre-QE HT estimates and Adjust Request use Maximum Total Cost; post-QE quotes use Final Cost; Accept Quote helper line; accept/final status copy references Arbitr and consolidates the final cost onto one line (Wade Norman, 2026-07-09)
