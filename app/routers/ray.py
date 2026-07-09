@@ -54,13 +54,13 @@ from ..ray.events.logging import (
     post_notification_ephemeral,
 )
 from ..ray.events.media_pipeline_events import (
-    format_callback_error,
     get_language_name_by_uuid,
     handle_transcribe_embed_pipeline,
     handle_transcription_complete,
     handle_translation_complete,
+    mark_media_quote_done,
     mark_stage_processed,
-    order_translations_by_target_language_order,
+    maybe_post_media_translation_quote,
     resolve_event_thread_ts,
     spend_embedding_credits,
     spend_transcription_credits,
@@ -122,6 +122,10 @@ from ..slack.templates.messages import (
     SlackMessage,
     SuccessfulLoginMessage,
     VerifyCompleteMessage,
+)
+from ..slack.utils import (
+    format_callback_error,
+    order_translations_by_target_language_order,
 )
 
 router = APIRouter()
@@ -454,6 +458,13 @@ async def ray_events(
                         await update_tokens_consumed(
                             task_info.task_uuid, transcription_tokens
                         )
+                    # Quote2 for AI translation when the media quote session expects it
+                    await maybe_post_media_translation_quote(
+                        client,
+                        task_info,
+                        str(channel_id),
+                        thread_ts,
+                    )
 
             except ValidationError as e:
                 raise HTTPException(
@@ -529,6 +540,11 @@ async def ray_events(
                         await update_tokens_consumed(
                             transcribed_event.task_uuid, translation_tokens
                         )
+                    if task_info.pipeline_type in (
+                        "translate_only",
+                        "transcribe_translate",
+                    ):
+                        await mark_media_quote_done(extra_data)
 
             except ValidationError as e:
                 raise HTTPException(
@@ -600,6 +616,7 @@ async def ray_events(
                             transcribed_event.task_uuid, embedding_tokens
                         )
                     await update_submission_status(extra_data)
+                    await mark_media_quote_done(extra_data)
 
             except ValidationError as e:
                 raise HTTPException(

@@ -274,7 +274,7 @@ class TestThreadMediaEmbedOption:
 
     @pytest.mark.asyncio
     async def test_maybe_show_thread_media_embed_option_uses_thread_root_message(self):
-        """Test SRT uploads use the root thread message instead of thread replies."""
+        """Test SRT uploads quote embed-only from the root thread video."""
         client = AsyncMock()
         client.conversations_history.return_value = {
             "messages": [
@@ -293,10 +293,17 @@ class TestThreadMediaEmbedOption:
             "files": [{"id": "F123", "name": "captions.srt", "filetype": "srt"}],
         }
 
-        with patch(
-            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
-        ) as mock_require:
+        with (
+            patch(
+                "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+            ) as mock_require,
+            patch(
+                "app.slack.listener_actions.quote_existing_srt_embed_task",
+                new_callable=AsyncMock,
+            ) as mock_quote,
+        ):
             mock_require.return_value = True
+            mock_quote.return_value = True
             handled = await maybe_show_thread_media_embed_option(
                 client, context, message
             )
@@ -309,16 +316,13 @@ class TestThreadMediaEmbedOption:
             inclusive=True,
             limit=1,
         )
-        assert context.say.call_count == 1
-        assert context.say.call_args.kwargs["thread_ts"] == "123456.789"
-        assert context.say.call_args.kwargs["blocks"][0]["accessory"]["action_id"] == (
-            "video_embed_subtitles"
-        )
-        updated_action_data = json.loads(
-            context.say.call_args.kwargs["blocks"][0]["accessory"]["value"]
-        )
-        assert updated_action_data["files"][0]["file_id"] == "V123"
-        assert updated_action_data["subtitle_file"]["file_id"] == "F123"
+        assert context.say.call_count == 0
+        mock_quote.assert_awaited_once()
+        quote_args = mock_quote.await_args.args
+        assert quote_args[3] == "123456.789"
+        action_data = quote_args[2]
+        assert action_data["files"][0]["file_id"] == "V123"
+        assert action_data["subtitle_file"]["file_id"] == "F123"
 
     @pytest.mark.asyncio
     async def test_maybe_show_thread_media_embed_option_returns_false_for_non_media_root(

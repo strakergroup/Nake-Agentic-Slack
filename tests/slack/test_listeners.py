@@ -4609,14 +4609,18 @@ class TestMessageEvent:
     async def test_handle_video_embed_subtitles_submits_existing_srt_embed(
         self, user_id, team_id, ray_client
     ):
-        """Test thread SRT embed action bypasses the modal and submits directly."""
+        """Test thread SRT embed action bypasses the modal and posts Quote1."""
         from app.slack.listeners import handle_video_embed_subtitles
 
         mock_ack = AsyncMock()
         mock_client = AsyncMock()
         mock_client.token = "xoxb-test-token"
         mock_client.files_info.return_value = {
-            "file": {"url_private_download": "https://example.com/video.mp4"}
+            "file": {
+                "url_private_download": "https://example.com/video.mp4",
+                "duration_ms": 120000,
+                "name": "video.mp4",
+            }
         }
         action = {
             "value": json.dumps(
@@ -4672,10 +4676,19 @@ class TestMessageEvent:
             patch(
                 "app.slack.listener_actions.create_asr_task", new_callable=AsyncMock
             ) as mock_create_task,
+            patch(
+                "app.slack.media_quote_actions.post_media_quote_message",
+                new_callable=AsyncMock,
+            ) as mock_post_quote,
+            patch(
+                "app.slack.media_quotes.save_media_quote_session",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_check_record.return_value = (False, MagicMock(id=99))
             mock_download_file.return_value = "/tmp/captions.srt"
             mock_upload_to_file_server.return_value = "gridfs-srt-123"
+            mock_post_quote.return_value = "111.222"
             await handle_video_embed_subtitles(
                 context_dict,
                 mock_ack,
@@ -4690,13 +4703,14 @@ class TestMessageEvent:
                 client=mock_client, file_id="S123", http=None
             )
             mock_upload_to_file_server.assert_called_once_with("/tmp/captions.srt")
-            mock_create_task.assert_called_once()
-            asr_task = mock_create_task.call_args.args[0]
-            assert asr_task.extra_data["pipeline_type"] == "embed"
-            assert asr_task.extra_data["srt_file_ids"] == ["gridfs-srt-123"]
-            assert asr_task.extra_data["language_codes"] == ["und"]
-            assert asr_task.extra_data["original_video_file_id"] == "V123"
-            assert asr_task.extra_data["slack_thread_ts"] == "123456.789"
+            mock_create_task.assert_not_called()
+            mock_post_quote.assert_awaited_once()
+            session = mock_post_quote.await_args.args[1]
+            assert session["pipeline_kind"] == "embed"
+            assert session["duration_ms"] == 60000
+            assert session["srt_file_ids"] == ["gridfs-srt-123"]
+            assert session["language_codes"] == ["und"]
+            assert session["original_video_file_id"] == "V123"
 
     @pytest.mark.asyncio
     async def test_message_event_bot_mentioned_no_auto_translate(

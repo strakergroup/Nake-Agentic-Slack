@@ -15,11 +15,11 @@ from app.ray.events.evaluate_quote_events import (
     RAY_EVENT_DEDUPE_TTL_SECONDS,
     claim_evaluate_complete_notification,
 )
-from app.ray.events.media_pipeline_events import format_callback_error
 from app.ray.events.models import (
     ClientGroup,
 )
 from app.routers.ray import RayCallback, api_job_callback, ray_events, router
+from app.slack.utils import format_callback_error
 
 
 @pytest.fixture

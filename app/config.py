@@ -40,6 +40,8 @@ class StrakerConfig(BaseSettings):
     google_mt_api_key: SecretStr = SecretStr("")
     document_mt_pdf_max_size_mb: int = Field(default=25, ge=1)
     document_mt_quote_ttl_seconds: int = Field(default=43200, ge=60, le=86400)
+    # Media transcription / embedding / translation quote session TTL (default 12h).
+    media_quote_ttl_seconds: int = Field(default=43200, ge=60, le=86400)
     # taus_api_key: SecretStr = Field(min_length=1)
     elastic_apm_server_url: str | None = None
     # Derived settings.

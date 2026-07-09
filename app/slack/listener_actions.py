@@ -119,7 +119,6 @@ from .templates.messages import (
     JobTargetsNoIdMessage,
     LoginMessage,
     LogoutMessage,
-    MediaEmbedOptionMessage,
     MissingSlackFilesMessage,
     NewJobMessage,
     SlackMessage,
@@ -556,7 +555,7 @@ async def maybe_show_thread_media_embed_option(
     context: RayContext,
     message: dict[str, Any],
 ) -> bool:
-    """Reply with the original video embed option when an SRT lands in that thread."""
+    """Post an embed-only Service Quote when an SRT lands in a media thread."""
     thread_ts = message.get("thread_ts")
     if not thread_ts or not any(is_srt_file(file) for file in message.get("files", [])):
         return False
@@ -575,13 +574,8 @@ async def maybe_show_thread_media_embed_option(
     if not action_value:
         return False
 
-    embed_msg = MediaEmbedOptionMessage(action_value)
-    await context.say(
-        text=embed_msg.text,
-        blocks=embed_msg.blocks,
-        thread_ts=thread_ts,
-    )
-    return True
+    action_data = json.loads(action_value)
+    return await quote_existing_srt_embed_task(client, context, action_data, thread_ts)
 
 
 async def respond_to_message(
@@ -858,13 +852,22 @@ async def respond_to_message(
                 await context.say(reply, thread_ts=thread_ts)
 
 
-async def submit_existing_srt_embed_task(
+async def quote_existing_srt_embed_task(
     client: AsyncWebClient,
     context: RayContext,
     action_data: dict[str, Any],
     thread_ts: str | None,
 ) -> bool:
-    """Create an embed-only task using an uploaded SRT and the original video."""
+    """Post Quote1 (embedding only) for an uploaded SRT + original video."""
+    from .media_quote_actions import post_media_quote_message
+    from .media_quotes import (
+        ACTION_MEDIA_QUOTE_ACCEPT,
+        ACTION_MEDIA_QUOTE_CANCEL,
+        PIPELINE_EMBED,
+        STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
+        create_media_quote_session,
+    )
+
     ray_conn = context.get("ray")
     if not ray_conn or not ray_conn.client:
         await client.chat_postMessage(
@@ -935,56 +938,60 @@ async def submit_existing_srt_embed_task(
         )
         return False
 
+    # Prefer Slack media duration for Quote1 pricing; fall back like VideoOptions.
+    duration_ms = int(
+        video_file.get("duration_ms") or slack_file_data.get("duration_ms") or 0
+    )
+    if not duration_ms:
+        duration_ms = 60000
+    video_file = {
+        **video_file,
+        "file_name": video_file.get("file_name")
+        or slack_file_data.get("name")
+        or "video",
+        "duration_ms": duration_ms,
+    }
+
     try:
         subtitle_file_path = await download_file(
             client=client, file_id=subtitle_file_id, http=None
         )
         uploaded_srt_file_id = await upload_to_file_server(subtitle_file_path)
 
-        task_data = TranscriptionTaskData(
-            client_id=ray_conn.client.id,
-            file_name=video_file["file_name"],
-            download_url=download_url,
-            app_token=client.token or "",
-            out_stream_name=f"{domains.stream_proxy}/events/transcription:slack:media:results",
-            service="azure",
-            model="whisper-1",
-            embed_subtitles=True,
-            sandbox=False,
-        )
         embed_target_languages = (
             [subtitle_language_code]
             if subtitle_language_code and subtitle_language_code != "und"
             else []
         )
-        extra_data_dict = {
-            "slack_user_id": context["user_id"],
-            "slack_team_id": context["team_id"],
-            "slack_enterprise_id": context.enterprise_id,
-            "slack_channel_id": channel_id,
-            "slack_thread_ts": thread_ts,
-            "pipeline_type": "embed",
-            "original_video_file_id": video_file["file_id"],
-            "original_video_download_url": download_url,
-            "original_video_file_name": video_file["file_name"],
-            "srt_file_ids": [uploaded_srt_file_id],
-            "language_codes": [subtitle_language_code],
-            "target_languages": embed_target_languages,
-            "submission_ids": [submission_record.id],
-        }
-        asr_task = ASRTask(
-            member_uuid=ray_conn.client.id,
-            event_name="sup-subtitle-ai:media:asr",
-            app_source="slack",
-            service="azure",
-            model="whisper-1",
-            extra_data=extra_data_dict,
-            task_data=task_data,
+        session = await create_media_quote_session(
+            pipeline_kind=PIPELINE_EMBED,
+            stage=STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
+            user_id=context["user_id"],
+            team_id=context["team_id"],
+            enterprise_id=context.enterprise_id,
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+            file_info=video_file,
+            download_url=download_url,
+            target_languages=embed_target_languages or ["und"],
+            submission_id=submission_record.id,
+            submission_ids=[submission_record.id],
+            extra={
+                "original_video_file_id": video_file["file_id"],
+                "original_video_download_url": download_url,
+                "original_video_file_name": video_file["file_name"],
+                "srt_file_ids": [uploaded_srt_file_id],
+                "language_codes": [subtitle_language_code],
+            },
         )
-
-        await create_asr_task(asr_task)
+        await post_media_quote_message(
+            client,
+            session,
+            accept_action_id=ACTION_MEDIA_QUOTE_ACCEPT,
+            cancel_action_id=ACTION_MEDIA_QUOTE_CANCEL,
+        )
     except Exception as e:
-        notify_exception(e, "Failed to create direct embed task")
+        notify_exception(e, "Failed to prepare direct embed quote")
         updated_submission_status(
             submission_id=submission_record.id,
             processing_status=SubmissionStatus.FAILED,
@@ -1001,14 +1008,17 @@ async def submit_existing_srt_embed_task(
         if subtitle_file_path and os.path.exists(subtitle_file_path):
             os.unlink(subtitle_file_path)
 
-    await client.chat_postMessage(
-        channel=channel_id,
-        text=_(
-            ":stopwatch: Please wait a moment while we embed the uploaded subtitles into your video."
-        ),
-        thread_ts=thread_ts,
-    )
     return True
+
+
+async def submit_existing_srt_embed_task(
+    client: AsyncWebClient,
+    context: RayContext,
+    action_data: dict[str, Any],
+    thread_ts: str | None,
+) -> bool:
+    """Backward-compatible alias — posts Quote1 before embed."""
+    return await quote_existing_srt_embed_task(client, context, action_data, thread_ts)
 
 
 async def auto_translate_message(

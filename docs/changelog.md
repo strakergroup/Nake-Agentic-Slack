@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Thread SRT upload now posts the embed-only Service Quote immediately (no intermediate Embed Subtitles CTA); Quote1 pricing uses Slack `duration_ms` with a 1-minute fallback (Wade Norman, 2026-07-09)
+- [Added]: Media quote confirmation — Quote1 (transcription/embedding) before ASR and Quote2 (AI translation from `source_text_length`) after transcription; Redis session TTL via `MEDIA_QUOTE_TTL_SECONDS`; Accept/Cancel Service Quote actions; consumer resumes via `translate_only` / `translate_embed` (Wade Norman, 2026-07-09)
 - [Fixed]: Standardised Slack modal opens on the RAY-72999 loading-modal pattern (`open_loading_modal` → Ray/Redis I/O → `views_update`) for HT/QE, document MT, job search, settings, and video modals so `expired_trigger_id` no longer races `ray_connection` middleware (Wade Norman, 2026-07-09)
 - [Changed]: HT process suggestion copy — Service Quote lists PDF conversion above AI Translation; pre-QE HT estimates and Adjust Request use Maximum Total Cost; post-QE quotes use Final Cost; Accept Quote helper line; accept/final status copy references Arbitr and consolidates the final cost onto one line (Wade Norman, 2026-07-09)
 - [Changed]: Combined QE + Human Translation quote refresh after QE no longer shows the “Quality Evaluation is complete. Human Translation will be submitted automatically.” status line on the original quote message (Wade Norman, 2026-07-08)

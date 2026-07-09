@@ -28,6 +28,19 @@ from app.ray.events.logging import post_notification
 from app.ray.utils import download_from_file_server_async, is_ibm_enterprise
 from app.saq_jobs.dispatch import enqueue_transcription_upload
 from app.slack.buglog_notifier import notify_exception
+from app.slack.media_quote_actions import post_media_quote_message
+from app.slack.media_quotes import (
+    ACTION_MEDIA_TRANSLATION_QUOTE_ACCEPT,
+    ACTION_MEDIA_TRANSLATION_QUOTE_CANCEL,
+    PIPELINE_TRANSCRIBE_TRANSLATE,
+    PIPELINE_TRANSCRIBE_TRANSLATE_EMBED,
+    STAGE_AWAITING_TRANSLATION_ACCEPT,
+    STAGE_DONE,
+    STAGE_TRANSCRIBING,
+    get_media_quote_session,
+    media_translation_tokens,
+    update_media_quote_session,
+)
 from app.slack.select_options import _get_languages_cached
 from app.slack.templates.messages import JobTranscribedEventMessage
 from app.slack.web import upload_file_to_slack_memory_efficient
@@ -38,49 +51,6 @@ from ...dependencies import RayEvent
 from ..submissions import SubmissionStatus, updated_submission_status
 
 logger = logging.getLogger(__name__)
-
-CALLBACK_ERROR_DETAIL_MAX_LENGTH = 500
-
-
-def safe_callback_error_detail(payload_error: Any) -> str:
-    error_detail = " ".join(str(payload_error or "").split())
-    if not error_detail:
-        return _("Unknown error")
-    return error_detail[:CALLBACK_ERROR_DETAIL_MAX_LENGTH]
-
-
-def format_callback_error(stage: str, payload_error: Any) -> str:
-    error_detail = safe_callback_error_detail(payload_error)
-    if stage == "transcription":
-        return _("Transcription failed: {error_detail}")
-    if stage == "translation":
-        return _("Translation failed: {error_detail}")
-    if stage == "embedding":
-        return _("Embedding failed: {error_detail}")
-    raise ValueError(f"Unsupported callback error stage: {stage}")
-
-
-def order_translations_by_target_language_order(
-    translations: dict[str, Any],
-    target_language_order: list[str] | None,
-) -> dict[str, Any]:
-    """Order translations by caller-requested target order, keeping leftovers."""
-    if not target_language_order:
-        return translations
-
-    ordered_translations: dict[str, Any] = {}
-    for target_language in target_language_order:
-        if (
-            target_language in translations
-            and target_language not in ordered_translations
-        ):
-            ordered_translations[target_language] = translations[target_language]
-
-    for target_language, translated_text in translations.items():
-        if target_language not in ordered_translations:
-            ordered_translations[target_language] = translated_text
-
-    return ordered_translations
 
 
 def resolve_event_thread_ts(
@@ -408,6 +378,80 @@ async def update_submission_status(extra_data: dict) -> None:
         notify_exception(e, "Failed to update submission status")
 
 
+async def maybe_post_media_translation_quote(
+    client: AsyncWebClient,
+    task_info: TranscriptionTaskInfo,
+    channel_id: str,
+    thread_ts: str | None,
+) -> bool:
+    """Post Quote2 when a media quote session expects AI translation after ASR.
+
+    Returns True if Quote2 was posted (caller should not treat the job as fully done).
+    """
+    extra_data = task_info.extra_data or {}
+    quote_id = extra_data.get("media_quote_id")
+    if not quote_id:
+        return False
+
+    session = await get_media_quote_session(str(quote_id))
+    if session is None:
+        return False
+
+    pipeline_kind = session.get("pipeline_kind") or extra_data.get("pipeline_kind")
+    if pipeline_kind not in (
+        PIPELINE_TRANSCRIBE_TRANSLATE,
+        PIPELINE_TRANSCRIBE_TRANSLATE_EMBED,
+    ):
+        if session.get("stage") == STAGE_TRANSCRIBING:
+            await update_media_quote_session(str(quote_id), {"stage": STAGE_DONE})
+        return False
+
+    target_languages = (
+        session.get("target_languages") or extra_data.get("target_languages") or []
+    )
+    source_text_length = int(task_info.source_text_length or 0)
+    translation_tokens = media_translation_tokens(
+        source_text_length, len(target_languages) or 1
+    )
+    line_items = [
+        {
+            "label": _("AI Translation"),
+            "tokens": translation_tokens,
+        }
+    ]
+    updated = await update_media_quote_session(
+        str(quote_id),
+        {
+            "stage": STAGE_AWAITING_TRANSLATION_ACCEPT,
+            "task_uuid": task_info.task_uuid,
+            "source_text_length": source_text_length,
+            "line_items": line_items,
+            "total_tokens": translation_tokens,
+            "target_languages": target_languages,
+            "duration_ms": task_info.duration_ms or session.get("duration_ms"),
+        },
+    )
+    if updated is None:
+        return False
+
+    await post_media_quote_message(
+        client,
+        updated,
+        accept_action_id=ACTION_MEDIA_TRANSLATION_QUOTE_ACCEPT,
+        cancel_action_id=ACTION_MEDIA_TRANSLATION_QUOTE_CANCEL,
+    )
+    return True
+
+
+async def mark_media_quote_done(extra_data: dict[str, Any] | None) -> None:
+    """Mark the media quote session complete when a terminal stage finishes."""
+    if not extra_data:
+        return
+    quote_id = extra_data.get("media_quote_id")
+    if quote_id:
+        await update_media_quote_session(str(quote_id), {"stage": STAGE_DONE})
+
+
 async def handle_transcription_complete(
     client: AsyncWebClient,
     result_file_id: str | None,
@@ -515,7 +559,8 @@ async def handle_translation_complete(
             notify_exception(e, "Error handling translation complete")
             logger.error(f"Error handling translation complete: {e}")
 
-    if task_info.pipeline_type == "transcribe_translate":
+    # Show token message at the end for translate pipelines
+    if task_info.pipeline_type in ("transcribe_translate", "translate_only"):
         is_ibm = (
             is_ibm_enterprise(auth.slack_user.enterprise_id)
             if auth.slack_user
@@ -576,7 +621,10 @@ async def handle_transcribe_embed_pipeline(
             )
             os.unlink(file_path)
 
-            if task_info.pipeline_type == "transcribe_translate_embed":
+            if task_info.pipeline_type in (
+                "transcribe_translate_embed",
+                "translate_embed",
+            ):
                 is_ibm = (
                     is_ibm_enterprise(auth.slack_user.enterprise_id)
                     if auth and auth.slack_user
