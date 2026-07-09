@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from app.auth.connector import duration_to_subtitling_tokens, duration_to_tokens
 from app.config import config
-from app.ray.utils import format_currency, is_ibm_enterprise
+from app.ray.utils import format_currency
 from app.redis import redis_conn
 from app.translate import _
 
@@ -118,9 +118,8 @@ def total_tokens_from_line_items(line_items: list[dict[str, Any]]) -> int:
     return sum(int(item.get("tokens") or 0) for item in line_items)
 
 
-def _format_quote_cost(token_count: int, *, is_ibm: bool) -> str:
-    if is_ibm:
-        return f"{token_count:,} {_('tokens')}"
+def _format_quote_cost(token_count: int) -> str:
+    """Always display media quote costs in USD ($0.02 per AI token)."""
     return format_currency(token_count * AI_TOKEN_USD_RATE, "USD")
 
 
@@ -137,7 +136,6 @@ def media_quote_blocks(
     total_tokens = int(
         session.get("total_tokens") or total_tokens_from_line_items(line_items)
     )
-    is_ibm = is_ibm_enterprise(session.get("enterprise_id"))
     cost_label = _("Cost")
     total_label = _("Total cost")
 
@@ -180,10 +178,7 @@ def media_quote_blocks(
                     {"type": "mrkdwn", "text": f"*{_('Service')}:*\n{label}"},
                     {
                         "type": "mrkdwn",
-                        "text": (
-                            f"*{cost_label}:*\n"
-                            f"{_format_quote_cost(tokens, is_ibm=is_ibm)}"
-                        ),
+                        "text": f"*{cost_label}:*\n{_format_quote_cost(tokens)}",
                     },
                 ],
             }
@@ -196,10 +191,7 @@ def media_quote_blocks(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": (
-                        f"*{total_label}:* "
-                        f"{_format_quote_cost(total_tokens, is_ibm=is_ibm)}"
-                    ),
+                    "text": f"*{total_label}:* {_format_quote_cost(total_tokens)}",
                 },
             },
         ]

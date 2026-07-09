@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- [Changed]: Media Service Quotes always display costs in USD (including IBM); token counts are no longer shown on Quote1 / Quote2 (Wade Norman, 2026-07-09)
+- [Fixed]: Transcription-only no longer posts AI-translation / reupload follow-up after the source SRT upload; that guidance now appears after translation completes (Wade Norman, 2026-07-09)
 - [Changed]: Faster container builds — slim ffmpeg apt install (`--no-install-recommends`, clear apt lists) and drop default `buildah --no-cache` (opt-in via `NO_CACHE=true`) (Wade Norman, 2026-07-09)
 - [Changed]: Thread SRT upload now posts the embed-only Service Quote immediately (no intermediate Embed Subtitles CTA); Quote1 pricing uses Slack `duration_ms` with a 1-minute fallback (Wade Norman, 2026-07-09)
 - [Fixed]: Standardised Slack modal opens on the RAY-72999 loading-modal pattern (`open_loading_modal` → Ray/Redis I/O → `views_update`) for HT/QE, document MT, job search, settings, and video modals so `expired_trigger_id` no longer races `ray_connection` middleware (Wade Norman, 2026-07-09)

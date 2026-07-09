@@ -491,6 +491,8 @@ async def handle_transcription_complete(
         )
 
         if upload_channel_id and auth.slack_user is not None:
+            # Transcription-only (and pre-Quote2) uploads the source SRT only —
+            # do not post AI-translation / reupload copy here.
             await enqueue_transcription_upload(
                 file_id=result_file_id,
                 file_name=result_file_name,
@@ -499,10 +501,6 @@ async def handle_transcription_complete(
                 client_id=auth.slack_user.ray_client_id,
                 channel_id=upload_channel_id,
                 thread_ts=effective_thread_ts,
-                follow_up_message=_(
-                    "Download the AI translations provided above, make your edits, "
-                    "and reupload the edited files back to the same thread."
-                ),
             )
 
 
@@ -558,6 +556,16 @@ async def handle_translation_complete(
         except Exception as e:
             notify_exception(e, "Error handling translation complete")
             logger.error(f"Error handling translation complete: {e}")
+
+    if translated_file_ids:
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "Download the AI translations provided above, make your edits, "
+                "and reupload the edited files back to the same thread."
+            ),
+            thread_ts=effective_thread_ts,
+        )
 
     # Show token message at the end for translate pipelines
     if task_info.pipeline_type in ("transcribe_translate", "translate_only"):

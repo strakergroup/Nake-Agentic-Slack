@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Media Service Quotes always display costs in USD (including IBM); token counts are no longer shown on Quote1 / Quote2 (Wade Norman, 2026-07-09)
+- [Fixed]: Transcription-only no longer posts AI-translation / reupload follow-up after the source SRT upload; that guidance now appears after translation completes (Wade Norman, 2026-07-09)
 - [Changed]: Faster container builds — slim ffmpeg apt install (`--no-install-recommends`, clear apt lists) and drop default `buildah --no-cache` (opt-in via `NO_CACHE=true`) (Wade Norman, 2026-07-09)
 - [Changed]: Thread SRT upload now posts the embed-only Service Quote immediately (no intermediate Embed Subtitles CTA); Quote1 pricing uses Slack `duration_ms` with a 1-minute fallback (Wade Norman, 2026-07-09)
 - [Added]: Media quote confirmation — Quote1 (transcription/embedding) before ASR and Quote2 (AI translation from `source_text_length`) after transcription; Redis session TTL via `MEDIA_QUOTE_TTL_SECONDS`; Accept/Cancel Service Quote actions; consumer resumes via `translate_only` / `translate_embed` (Wade Norman, 2026-07-09)

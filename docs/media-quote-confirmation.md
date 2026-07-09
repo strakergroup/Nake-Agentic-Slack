@@ -24,6 +24,10 @@ When a user posts an edited SRT into a media thread, SRT posts the embed-only
 Service Quote immediately (no intermediate “Embed Subtitles” CTA). Accept still
 gates balance and starts the embed job.
 
+After transcription completes, the source SRT is uploaded without AI-translation
+or reupload copy. That guidance is posted only after AI translation files are
+delivered.
+
 ## Flow
 
 ```mermaid
@@ -76,6 +80,11 @@ After Quote2 accept, SRT updates the DB row and re-triggers
 
 - `translate_only` — MT from existing `result_file_id`
 - `translate_embed` — MT then embed (embedding already accepted in Quote1)
+
+## Display
+
+Service Quote line items and totals always show **USD** (`tokens × $0.02`),
+including IBM workspaces (no token-count display on media quotes).
 
 ## Balance gate
 

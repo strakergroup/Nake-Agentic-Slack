@@ -109,6 +109,39 @@ def test_media_quote_blocks_include_accept_cancel():
     assert action_ids == ["media_quote_accept", "media_quote_cancel"]
 
 
+def test_media_quote_blocks_always_show_usd():
+    """Media quotes display USD for all workspaces, including IBM."""
+    session = {
+        "quote_id": "q-ibm",
+        "file_name": "clip.mp4",
+        "enterprise_id": "EIBM",
+        "line_items": [{"label": "Transcription", "tokens": 100}],
+        "total_tokens": 100,
+    }
+    with patch(
+        "app.slack.media_quotes.format_currency",
+        return_value="US$2.00",
+    ) as mock_format:
+        blocks = media_quote_blocks(
+            session,
+            accept_action_id="media_quote_accept",
+            cancel_action_id="media_quote_cancel",
+            actions=False,
+        )
+
+    mock_format.assert_called()
+    assert all(call.args[1] == "USD" for call in mock_format.call_args_list)
+    # 100 tokens × $0.02
+    assert mock_format.call_args_list[0].args[0] == pytest.approx(2.0)
+    block_text = " ".join(
+        str(block.get("text", {}).get("text", ""))
+        + " ".join(field.get("text", "") for field in block.get("fields", []) or [])
+        for block in blocks
+    )
+    assert "US$2.00" in block_text
+    assert "tokens" not in block_text.lower()
+
+
 @pytest.mark.asyncio
 async def test_create_media_quote_session_persists():
     from app.slack.media_quotes import create_media_quote_session
