@@ -3899,6 +3899,8 @@ class HumanJobQuoteMessage(SlackMessage):
         show_savings: bool = True,
         embed_additional_costs_in_line_price: bool = False,
         total_cost_label: str | None = None,
+        show_submitted_costs: bool | None = None,
+        show_total_cost: bool = True,
         message_title: str | None = None,
     ) -> None:
         blocks = []
@@ -3911,6 +3913,8 @@ class HumanJobQuoteMessage(SlackMessage):
             show_savings=show_savings,
             embed_additional_costs_in_line_price=embed_additional_costs_in_line_price,
             total_cost_label=total_cost_label,
+            show_submitted_costs=show_submitted_costs,
+            show_total_cost=show_total_cost,
         )
         if status_message:
             blocks.append(

@@ -29,6 +29,8 @@ class TestEvaluationCreditsQuoteBlocks:
         assert "US$2.40" in rendered
         assert "US$1.00" in rendered
         assert "US$3.40" in rendered
+        assert "Running the AI translation will incur the following cost:" in rendered
+        assert "Review the quote below" not in rendered
 
     def test_evaluation_quote_blocks_display_dollar_cost(self):
         blocks = evaluation_credits_quote_blocks(

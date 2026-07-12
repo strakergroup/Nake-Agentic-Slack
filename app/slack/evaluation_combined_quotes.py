@@ -32,10 +32,12 @@ PRE_QE_QUOTE_DISPLAY = {
     "total_cost_label": "Maximum Total Cost",
 }
 POST_QE_QUOTE_DISPLAY = {
-    "show_quality_discount": True,
+    "show_quality_discount": False,
     "show_savings": True,
     "embed_additional_costs_in_line_price": True,
     "total_cost_label": "Final Cost",
+    "show_submitted_costs": True,
+    "show_total_cost": False,
 }
 
 
@@ -103,6 +105,8 @@ def combined_human_job_quote_message(
     show_savings: bool = True,
     embed_additional_costs_in_line_price: bool = False,
     total_cost_label: str | None = None,
+    show_submitted_costs: bool | None = None,
+    show_total_cost: bool = True,
     message_title: str | None = None,
     pricing_costs: list[dict[str, Any]] | None = None,
 ) -> HumanJobQuoteMessage:
@@ -124,6 +128,8 @@ def combined_human_job_quote_message(
         show_savings=show_savings,
         embed_additional_costs_in_line_price=embed_additional_costs_in_line_price,
         total_cost_label=total_cost_label,
+        show_submitted_costs=show_submitted_costs,
+        show_total_cost=show_total_cost,
         message_title=message_title,
     )
 
@@ -387,7 +393,6 @@ async def handle_combined_qe_complete(
         pricing_costs=pricing_costs,
         actions=False,
         allow_adjust=False,
-        download_translations_job_uuid=job_data["uuid"],
         message_title=_("Quote"),
         show_quality_discount=POST_QE_QUOTE_DISPLAY["show_quality_discount"],
         show_savings=POST_QE_QUOTE_DISPLAY["show_savings"],
@@ -395,6 +400,8 @@ async def handle_combined_qe_complete(
             "embed_additional_costs_in_line_price"
         ],
         total_cost_label=POST_QE_QUOTE_DISPLAY["total_cost_label"],
+        show_submitted_costs=POST_QE_QUOTE_DISPLAY["show_submitted_costs"],
+        show_total_cost=POST_QE_QUOTE_DISPLAY["show_total_cost"],
     )
     if channel_id and message_ts:
         await client.chat_update(
@@ -444,15 +451,21 @@ def combined_qe_complete_status_message(
         )
     else:
         final_cost_line = _("Final cost after Arbitr evaluation: USD ${total_cost:.2f}")
+    submission_line = _(
+        "Your AI translation has been submitted to our network of native-speaking "
+        "specialist linguists for review. Please refer to the estimated completion "
+        "date above."
+    )
+    message_text = f"{final_cost_line}\n{submission_line}"
 
     return SlackMessage(
-        final_cost_line,
+        message_text,
         [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": final_cost_line,
+                    "text": f"{final_cost_line}\n\n{submission_line}",
                 },
             },
         ],

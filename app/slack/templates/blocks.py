@@ -410,9 +410,13 @@ def verify_quote_blocks(
     show_savings: bool = True,
     embed_additional_costs_in_line_price: bool = False,
     total_cost_label: str | None = None,
+    show_submitted_costs: bool | None = None,
+    show_total_cost: bool = True,
 ):
     source_files = job["source_files"]
     workflow_uuid = job["workflow_uuid"]
+    if show_submitted_costs is None:
+        show_submitted_costs = show_quality_discount
     blocks: list[dict[str, Any]] = []
     total_cost = 0.0
     total_savings = 0.0
@@ -467,7 +471,7 @@ def verify_quote_blocks(
                     break
             if target_file and target_file.get("human_job_status", ""):
                 if target_file["human_job_status"] == "Submitted":
-                    if not selectable and show_quality_discount:
+                    if not selectable and show_submitted_costs:
                         line_cost = cost + target_additional_cost_total
                         total_cost += line_cost
                         total_savings += quality_discount_savings
@@ -695,16 +699,17 @@ def verify_quote_blocks(
         if displayed_savings > 0:
             total_cost_text += f" (saved ${displayed_savings:.2f})"
 
-    blocks.append(
-        {
-            "type": "section",
-            "block_id": "total_cost_block",
-            "text": {
-                "type": "mrkdwn",
-                "text": _(total_cost_text),
-            },
-        }
-    )
+    if show_total_cost:
+        blocks.append(
+            {
+                "type": "section",
+                "block_id": "total_cost_block",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _(total_cost_text),
+                },
+            }
+        )
     blocks.append(
         {
             "type": "section",
@@ -921,9 +926,7 @@ def evaluation_credits_quote_blocks(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": _(
-                    "Review the quote below and click *Accept Quote* to continue."
-                ),
+                "text": _("Running the AI translation will incur the following cost:"),
             },
         },
         {"type": "divider"},

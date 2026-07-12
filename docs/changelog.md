@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Updated AI translation quote guidance and simplified the post-Arbitr Human Translation panel by removing quality tiers, the duplicate total, and the completed-stage download action; the final cost notification now confirms submission to specialist linguists (Wade Norman, 2026-07-13)
 - [Changed]: Media Service Quotes always display costs in USD (including IBM); token counts are no longer shown on Quote1 / Quote2 (Wade Norman, 2026-07-09)
 - [Fixed]: Transcription-only no longer posts AI-translation / reupload follow-up after the source SRT upload; that guidance now appears after translation completes (Wade Norman, 2026-07-09)
 - [Changed]: Faster container builds — slim ffmpeg apt install (`--no-install-recommends`, clear apt lists) and drop default `buildah --no-cache` (opt-in via `NO_CACHE=true`) (Wade Norman, 2026-07-09)
