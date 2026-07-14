@@ -439,7 +439,6 @@ async def post_combined_qe_human_quote(
                 "AI translation is complete. Review the Quality Evaluation + "
                 "Human Translation quote below."
             ),
-            download_translations_job_uuid=job_uuid,
             is_ibm=is_ibm_enterprise(auth.slack_user.enterprise_id),
             language_costs=language_costs,
         )

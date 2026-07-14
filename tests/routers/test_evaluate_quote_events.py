@@ -685,7 +685,7 @@ async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
     assert mock_client.chat_update.await_args.kwargs["ts"] == "111.222"
     ai_updated = str(mock_client.chat_update.await_args.kwargs["blocks"])
     assert "AI translation is complete" in ai_updated
-    assert "download_ai_translations_action" in ai_updated
+    assert "download_ai_translations_action" not in ai_updated
     mock_post.assert_awaited_once()
     ht_blocks = str(mock_post.await_args.args[3].blocks)
     assert "Quality Evaluation: USD" not in ht_blocks

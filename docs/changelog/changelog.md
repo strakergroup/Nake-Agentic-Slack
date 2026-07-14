@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Changed]: Download AI Translations appears only on the combined QE + Human Translation quote; the AI Translation quote (including AI-complete) no longer shows the download action (Wade Norman, 2026-07-15)
 - [Changed]: After MT completes, SRT updates the AI Translation quote in place to an AI-complete state and posts the combined QE + Human Translation quote as a new Slack message instead of replacing the AI quote (Wade Norman, 2026-07-15)
 - [Changed]: AI Translation quote guidance now says Adjust Request edits languages and/or source files; the Adjust Request modal drops the redundant AI Translation cost line and keeps Total cost (Wade Norman, 2026-07-15)
 - [Fixed]: Combined QE/HT Adjust Request no longer shows out-of-scope languages as USD$0.00 checkboxes when AI scope is split per file (Wade Norman, 2026-07-15)
