@@ -412,6 +412,7 @@ def verify_quote_blocks(
     total_cost_label: str | None = None,
     show_submitted_costs: bool | None = None,
     show_total_cost: bool = True,
+    show_estimated_completion: bool = True,
 ):
     source_files = job["source_files"]
     workflow_uuid = job["workflow_uuid"]
@@ -710,16 +711,17 @@ def verify_quote_blocks(
                 },
             }
         )
-    blocks.append(
-        {
-            "type": "section",
-            "block_id": "total_estimated_time_block",
-            "text": {
-                "type": "mrkdwn",
-                "text": _("*Estimated Completion*: {formatted_date}"),
-            },
-        }
-    )
+    if show_estimated_completion:
+        blocks.append(
+            {
+                "type": "section",
+                "block_id": "total_estimated_time_block",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": _("*Estimated Completion*: {formatted_date}"),
+                },
+            }
+        )
     return blocks
 
 
@@ -908,11 +910,13 @@ def evaluation_credits_quote_blocks(
     pdf_page_count: int | None = None,
     pdf_tokens: int | None = None,
     accept_action_id: str,
+    adjust_action_id: str | None = None,
     job_uuid: str,
     actions: bool = True,
     status_message: str | None = None,
     download_translations_job_uuid: str | None = None,
     is_ibm: bool = False,
+    language_costs: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Build Slack blocks for a single-service evaluate credits quote."""
     cost_label = _("Cost")
@@ -955,24 +959,80 @@ def evaluation_credits_quote_blocks(
             }
         )
         total_tokens += pdf_tokens
-    blocks.append(
-        {
-            "type": "section",
-            "fields": [
-                {"type": "mrkdwn", "text": f"*{_('Service')}:*\n{service_label}"},
+    if language_costs:
+        has_file_groups = any(row.get("file_label") for row in language_costs)
+        current_file: str | None = None
+        if not has_file_groups:
+            blocks.append(
                 {
-                    "type": "mrkdwn",
-                    "text": (
-                        f"*{cost_label}:*\n"
-                        f"{_format_evaluate_quote_cost(token_cost, is_ibm=is_ibm)}"
-                    ),
-                },
-            ],
-        }
-    )
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"*{service_label}*"},
+                }
+            )
+        for language_cost in language_costs:
+            file_label = str(language_cost.get("file_label") or "")
+            if file_label and file_label != current_file:
+                blocks.append(
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": f":paperclip: *{file_label}*",
+                        },
+                    }
+                )
+                current_file = file_label
+            if language_cost.get("cancelled"):
+                line_text = f"*{language_cost['label']}*\n>{_('Cancelled')}"
+            else:
+                line_text = (
+                    f"*{language_cost['label']}*\n>"
+                    f"{_format_evaluate_quote_cost(int(language_cost['token']), is_ibm=is_ibm)}"
+                )
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": line_text,
+                    },
+                }
+            )
+    else:
+        blocks.append(
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*{_('Service')}:*\n{service_label}"},
+                    {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{cost_label}:*\n"
+                            f"{_format_evaluate_quote_cost(token_cost, is_ibm=is_ibm)}"
+                        ),
+                    },
+                ],
+            }
+        )
     blocks.extend(
         [
             {"type": "divider"},
+            *(
+                [
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": _(
+                                "Review the cost below and click *Accept Quote* to "
+                                "continue, or *Adjust Request* to edit target languages."
+                            ),
+                        },
+                    }
+                ]
+                if actions and adjust_action_id
+                else []
+            ),
             {
                 "type": "section",
                 "text": {
@@ -995,6 +1055,18 @@ def evaluation_credits_quote_blocks(
     if actions or download_translations_job_uuid:
         elements: list[dict[str, Any]] = []
         if actions:
+            if adjust_action_id:
+                elements.append(
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Adjust Request"),
+                        },
+                        "value": job_uuid,
+                        "action_id": adjust_action_id,
+                    }
+                )
             elements.append(
                 {
                     "type": "button",

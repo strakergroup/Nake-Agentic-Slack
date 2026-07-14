@@ -36,9 +36,12 @@ async def submit_evaluation_job(
     *,
     slack_channel_id: str = "",
     pdf_page_count: int | None = None,
+    preaccepted_ai_translation_quote: bool = False,
+    prequote_message_ts: str | None = None,
+    ai_translation_filename_and_languages: list[str] | None = None,
 ):
     confirmation_required = True
-    target_languages_data = {
+    target_languages_data: dict[str, Any] = {
         "target_languages": target_languages_uuid,
         "title": reference,
         "source": "slack",
@@ -54,6 +57,14 @@ async def submit_evaluation_job(
         target_languages_data["slack_channel_id"] = slack_channel_id
     if pdf_page_count is not None and pdf_page_count > 0:
         target_languages_data["pdf_page_count"] = str(pdf_page_count)
+    if preaccepted_ai_translation_quote:
+        target_languages_data["preaccepted_ai_translation_quote"] = "true"
+    if prequote_message_ts:
+        target_languages_data["prequote_message_ts"] = prequote_message_ts
+    if ai_translation_filename_and_languages:
+        target_languages_data["ai_translation_filename_and_languages"] = (
+            ai_translation_filename_and_languages
+        )
     target_languages_data["workflow"] = workflow_uuid or ""
 
     max_file_size = max((os.path.getsize(file) for file in file_path), default=None)
@@ -328,9 +339,14 @@ async def get_evaluation_job_quote(
     ray_client: RayClient,
     job_uuid: str,
     services: list[str],
+    *,
+    file_and_languages: list[str] | None = None,
 ) -> dict:
     """Fetch post-extract token quote for selected evaluate services."""
-    params = httpx.QueryParams([("services", service) for service in services])
+    query_params: dict[str, str | list[str]] = {"services": services}
+    if file_and_languages:
+        query_params["file_and_languages"] = file_and_languages
+    params = httpx.QueryParams(query_params)
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.get(
             f"{domains.verify_api}/evaluate/{job_uuid}/quote/credits",
@@ -356,14 +372,17 @@ async def proceed_evaluation_job(
     *,
     token_cost: int,
     skip_quality_evaluation: bool = False,
+    ai_translation_file_and_languages: list[str] | None = None,
 ) -> dict:
     """Proceed with an evaluate job after the user accepts a service quote."""
-    data = {
+    data: dict[str, str | list[str]] = {
         "uuid": job_uuid,
         "tokenCost": str(token_cost),
         "source": "slack",
         "skip_quality_evaluation": "true" if skip_quality_evaluation else "false",
     }
+    if ai_translation_file_and_languages:
+        data["ai_translation_file_and_languages"] = ai_translation_file_and_languages
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(
             f"{domains.verify_api}/evaluate/proceed",
@@ -391,6 +410,7 @@ async def proceed_quality_evaluation(
     *,
     token_cost: int,
     human_translation_file_and_languages: list[str] | None = None,
+    quality_evaluation_file_and_languages: list[str] | None = None,
 ) -> dict:
     """Proceed with quality evaluation after AI translation has completed."""
     data: dict[str, Any] = {
@@ -400,6 +420,10 @@ async def proceed_quality_evaluation(
     if human_translation_file_and_languages:
         data["human_translation_file_and_languages"] = (
             human_translation_file_and_languages
+        )
+    if quality_evaluation_file_and_languages:
+        data["quality_evaluation_file_and_languages"] = (
+            quality_evaluation_file_and_languages
         )
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(

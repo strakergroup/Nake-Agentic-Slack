@@ -23,6 +23,7 @@ from app.translate import _
 
 PDF_EVALUATE_QUOTE_KEY_PREFIX = "slack-ray-translator:pdf-evaluate-quote:"
 PDF_EVALUATE_QUOTE_ACTION_ID = "evaluation_pdf_prequote_accept"
+PDF_EVALUATE_QUOTE_ADJUST_ACTION_ID = "evaluation_pdf_prequote_adjust"
 
 STAGE_AWAITING_ACCEPT = "awaiting_accept"
 STAGE_PROCESSING_ACCEPT = "processing_accept"
@@ -46,16 +47,12 @@ def estimate_pdf_evaluate_ai_tokens(
     files: list[dict[str, Any]],
     target_language_count: int,
 ) -> int:
-    total_size = sum(
-        int(file.get("size") or 0)
+    tokens_per_language = sum(
+        math.ceil(int(file.get("size") or 0) * ESTIMATED_AI_TRANSLATION_TOKENS_PER_BYTE)
         for file in files
         if isinstance(file.get("size"), int) or str(file.get("size") or "").isdigit()
     )
-    return math.ceil(
-        total_size
-        * max(target_language_count, 1)
-        * ESTIMATED_AI_TRANSLATION_TOKENS_PER_BYTE
-    )
+    return tokens_per_language * max(target_language_count, 1)
 
 
 async def save_pdf_evaluate_quote_session(
@@ -72,6 +69,7 @@ async def save_pdf_evaluate_quote_session(
     job_notes: str,
     ai_token_estimate: int,
     pdf_page_count: int,
+    language_costs: list[dict[str, Any]] | None = None,
     message_ts: str | None = None,
     stage: str = STAGE_AWAITING_ACCEPT,
 ) -> str:
@@ -84,6 +82,8 @@ async def save_pdf_evaluate_quote_session(
         "enterprise_id": enterprise_id,
         "files": files,
         "target_langs_uuid": target_langs_uuid,
+        "selected_file_ids": [str(file_data["id"]) for file_data in files],
+        "selected_target_langs_uuid": list(target_langs_uuid),
         "reference": reference,
         "source_lang_uuid": source_lang_uuid,
         "workflow_uuid": workflow_uuid,
@@ -91,6 +91,7 @@ async def save_pdf_evaluate_quote_session(
         "ai_token_estimate": ai_token_estimate,
         "pdf_page_count": pdf_page_count,
         "pdf_tokens": pdf_page_count * EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE,
+        "language_costs": language_costs or [],
         "message_ts": message_ts,
         "stage": stage,
     }
@@ -140,16 +141,44 @@ async def update_pdf_evaluate_quote_message(
     actions: bool,
     is_ibm: bool = False,
 ) -> None:
+    session = await get_pdf_evaluate_quote_session(quote_id)
+    selected_pairs = {
+        str(value) for value in (session or {}).get("selected_pairs") or [] if value
+    }
+    selected_languages = {
+        str(value) for value in (session or {}).get("selected_target_langs_uuid") or []
+    }
+    language_costs = []
+    for language_cost in (session or {}).get("language_costs") or []:
+        row = dict(language_cost)
+        pair = (
+            f"{row.get('file_uuid')}:{row.get('value')}"
+            if row.get("file_uuid")
+            else None
+        )
+        if actions:
+            if selected_pairs:
+                if pair not in selected_pairs:
+                    continue
+            elif selected_languages and str(row.get("value")) not in selected_languages:
+                continue
+        elif selected_pairs:
+            row["cancelled"] = bool(pair) and pair not in selected_pairs
+        elif selected_languages:
+            row["cancelled"] = str(row.get("value")) not in selected_languages
+        language_costs.append(row)
     message = EvaluationCreditsQuoteMessage(
         service_label=_("AI Translation"),
         token_cost=ai_token_estimate,
         job_uuid=quote_id,
         accept_action_id=PDF_EVALUATE_QUOTE_ACTION_ID,
+        adjust_action_id=PDF_EVALUATE_QUOTE_ADJUST_ACTION_ID,
         pdf_page_count=pdf_page_count,
         pdf_tokens=pdf_page_count * EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE,
         actions=actions,
         status_message=status_message,
         is_ibm=is_ibm,
+        language_costs=language_costs,
     )
     await client.chat_update(
         channel=channel_id,

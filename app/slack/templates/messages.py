@@ -3851,12 +3851,14 @@ class EvaluationCreditsQuoteMessage(SlackMessage):
         token_cost: int,
         job_uuid: str,
         accept_action_id: str,
+        adjust_action_id: str | None = None,
         pdf_page_count: int | None = None,
         pdf_tokens: int | None = None,
         actions: bool = True,
         status_message: str | None = None,
         download_translations_job_uuid: str | None = None,
         is_ibm: bool = False,
+        language_costs: list[dict[str, Any]] | None = None,
     ) -> None:
         blocks = evaluation_credits_quote_blocks(
             service_label,
@@ -3864,11 +3866,13 @@ class EvaluationCreditsQuoteMessage(SlackMessage):
             pdf_page_count=pdf_page_count,
             pdf_tokens=pdf_tokens,
             accept_action_id=accept_action_id,
+            adjust_action_id=adjust_action_id,
             job_uuid=job_uuid,
             actions=actions,
             status_message=status_message,
             download_translations_job_uuid=download_translations_job_uuid,
             is_ibm=is_ibm,
+            language_costs=language_costs,
         )
         super().__init__(_("Service Quote"), blocks)
 
@@ -3901,6 +3905,7 @@ class HumanJobQuoteMessage(SlackMessage):
         total_cost_label: str | None = None,
         show_submitted_costs: bool | None = None,
         show_total_cost: bool = True,
+        show_estimated_completion: bool = True,
         message_title: str | None = None,
     ) -> None:
         blocks = []
@@ -3915,6 +3920,7 @@ class HumanJobQuoteMessage(SlackMessage):
             total_cost_label=total_cost_label,
             show_submitted_costs=show_submitted_costs,
             show_total_cost=show_total_cost,
+            show_estimated_completion=show_estimated_completion,
         )
         if status_message:
             blocks.append(

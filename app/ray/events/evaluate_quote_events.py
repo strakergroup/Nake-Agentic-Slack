@@ -10,6 +10,7 @@ from app.api.verify import (
     VerifyAPIError,
     get_evaluation_job,
     get_evaluation_job_quote,
+    get_verify_languages,
     proceed_evaluation_job,
 )
 from app.auth.connector import get_ray_client
@@ -21,6 +22,10 @@ from app.dependencies import RayEvent, RayEventAuth
 from app.ray.events.logging import post_notification
 from app.ray.utils import is_ibm_enterprise
 from app.redis import redis_conn
+from app.slack.evaluation_ai_adjustment import (
+    AI_QUOTE_ADJUST_ACTION_ID,
+    quote_file_language_costs,
+)
 from app.slack.evaluation_quotes import (
     STAGE_ACCEPTED_AI,
     get_evaluate_quote_session,
@@ -111,9 +116,25 @@ async def post_evaluate_service_quote(
     quote = await get_evaluation_job_quote(ray_client, job_uuid, [service])
     services_costs = quote.get("services_costs") or {}
     token_cost = int(services_costs.get(service, quote.get("token", 0)))
+    ai_translation_file_and_languages = sorted(
+        {
+            f"{detail['file_uuid']}:{detail['target_language_uuid']}"
+            for detail in quote.get("details") or []
+            if detail.get("file_uuid") and detail.get("target_language_uuid")
+        }
+    )
 
     job = await get_evaluation_job(auth.slack_user, job_uuid)
     job_data = job["data"]
+    language_names = {
+        str(language["uuid"]): str(language.get("name") or language["uuid"])
+        for language in await get_verify_languages()
+    }
+    language_costs = (
+        quote_file_language_costs(quote, job_data, language_names)
+        if service == EVALUATE_SERVICE_AI_TRANSLATION
+        else None
+    )
     extra_info = job_data.get("extra_info") or {}
     pdf_page_count = extra_info.get("pdf_page_count")
     pdf_tokens = None
@@ -132,11 +153,18 @@ async def post_evaluate_service_quote(
             channel_id or auth.slack_user.channel_id or auth.slack_user.user_id
         )
         try:
+            persisted_ai_pairs = extra_info.get("ai_translation_file_and_languages")
+            selected_ai_pairs = (
+                [str(value) for value in persisted_ai_pairs if value]
+                if isinstance(persisted_ai_pairs, list) and persisted_ai_pairs
+                else ai_translation_file_and_languages
+            )
             await proceed_evaluation_job(
                 ray_client,
                 job_uuid,
                 token_cost=total_token_cost,
                 skip_quality_evaluation=True,
+                ai_translation_file_and_languages=selected_ai_pairs or None,
             )
             await save_evaluate_quote_session(
                 job_uuid,
@@ -153,6 +181,7 @@ async def post_evaluate_service_quote(
                     "pdf_tokens": pdf_tokens,
                     "service_label": service_label,
                     "accept_action_id": accept_action_id,
+                    "ai_translation_file_and_languages": selected_ai_pairs,
                 },
                 message_ts=str(prequote_message_ts) if prequote_message_ts else None,
             )
@@ -172,10 +201,14 @@ async def post_evaluate_service_quote(
         token_cost=token_cost,
         job_uuid=job_uuid,
         accept_action_id=accept_action_id,
+        adjust_action_id=AI_QUOTE_ADJUST_ACTION_ID
+        if service == EVALUATE_SERVICE_AI_TRANSLATION
+        else None,
         pdf_page_count=int(pdf_page_count) if pdf_page_count else None,
         pdf_tokens=pdf_tokens,
         download_translations_job_uuid=job_uuid if is_qe_quote else None,
         is_ibm=is_ibm,
+        language_costs=language_costs,
     )
     session = await get_evaluate_quote_session(job_uuid) if is_qe_quote else None
     session_channel_id = session.get("channel_id") if session else None
@@ -219,6 +252,15 @@ async def post_evaluate_service_quote(
             "pdf_tokens": pdf_tokens,
             "service_label": service_label,
             "accept_action_id": accept_action_id,
+            "ai_translation_file_and_languages": ai_translation_file_and_languages,
+            "ai_quote_details": quote.get("details") or [],
+            "all_language_costs": language_costs,
+            "language_costs": language_costs,
+            "file_uuids": [
+                str(source_file["file_uuid"])
+                for source_file in job_data.get("source_files") or []
+                if source_file.get("file_uuid")
+            ],
         },
         message_ts=message_ts,
     )

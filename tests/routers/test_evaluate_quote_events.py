@@ -85,6 +85,39 @@ def test_qe_additional_cost_honors_pricing_cost_subset():
     ]
 
 
+def test_qe_additional_costs_from_quote_preserves_exact_pair_costs():
+    from app.slack.evaluation_combined_quotes import (
+        qe_additional_costs_from_quote,
+    )
+
+    additional_costs = qe_additional_costs_from_quote(
+        {
+            "details": [
+                {
+                    "file_uuid": "file-1",
+                    "target_language_uuid": "lang-fr",
+                    "token": 10,
+                },
+                {
+                    "file_uuid": "file-1",
+                    "target_language_uuid": "lang-es",
+                    "token": 25,
+                },
+            ]
+        },
+        selected_pairs=["file-1:lang-es"],
+    )
+
+    assert additional_costs == [
+        {
+            "label": "Quality Evaluation",
+            "cost": 0.5,
+            "file_uuid": "file-1",
+            "language_uuid": "lang-es",
+        }
+    ]
+
+
 def test_combined_quote_net_savings_subtracts_qe_cost():
     from app.slack.evaluation_combined_quotes import (
         qe_additional_cost,
@@ -276,6 +309,7 @@ async def test_handle_combined_qe_complete_updates_quote_and_posts_final_quote(
     assert "Quality:" not in updated_blocks
     assert "-30% off" not in updated_blocks
     assert "Final Cost" not in updated_blocks
+    assert "Estimated Completion" not in updated_blocks
     assert "Quality Evaluation: USD" not in updated_blocks
     assert "Quality Evaluation is complete" not in updated_blocks
     assert "download_ai_translations_action" not in updated_blocks
@@ -388,11 +422,12 @@ async def test_handle_combined_qe_complete_excludes_cancelled_targets(
     updated_blocks = str(mock_client.chat_update.await_args.kwargs["blocks"])
     assert "Quality:" not in updated_blocks
     assert "-30% off" not in updated_blocks
-    assert ">Cancelled" in updated_blocks
     assert "Spanish" in updated_blocks
+    assert ">Cancelled" in updated_blocks
     assert "USD$60.08" not in updated_blocks
     assert "USD$80.08" in updated_blocks
     assert "Final Cost" not in updated_blocks
+    assert "Estimated Completion" not in updated_blocks
     assert "download_ai_translations_action" not in updated_blocks
     status_message = mock_post.await_args.args[3]
     assert status_message.text.startswith(
@@ -403,7 +438,6 @@ async def test_handle_combined_qe_complete_excludes_cancelled_targets(
     assert "Human translation in progress" not in status_blocks
     assert "saved $11.92" in status_blocks
     assert "specialist linguists for review" in status_blocks
-    assert ">Cancelled" not in status_blocks
     assert "USD$80.08" not in status_blocks
 
 
@@ -441,6 +475,95 @@ async def test_ray_events_ready_for_ai_quote(mock_slack_user, user_id, team_id):
                             mock_quote.await_args.kwargs["accept_action_id"]
                             == "evaluation_ai_quote_accept"
                         )
+
+
+@pytest.mark.asyncio
+async def test_ai_quote_event_waits_for_adjustable_acceptance(mock_slack_user):
+    job_uuid = str(uuid4())
+    event = RayEvent(
+        event="verify:slack:evaluate:ready_for_ai_quote",
+        data={"client_id": mock_slack_user.ray_client_id, "job_uuid": job_uuid},
+    )
+    auth = RayEventAuth()
+    auth.slack_user = mock_slack_user
+
+    with (
+        patch(
+            "app.ray.events.evaluate_quote_events.get_verify_languages",
+            new_callable=AsyncMock,
+            return_value=[{"uuid": "lang-1", "name": "French"}],
+        ),
+        patch(
+            "app.ray.events.evaluate_quote_events.get_ray_client",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        ),
+        patch(
+            "app.ray.events.evaluate_quote_events.get_evaluation_job_quote",
+            new_callable=AsyncMock,
+            return_value={
+                "services_costs": {"ai_translation": 100},
+                "details": [
+                    {
+                        "file_uuid": "file-1",
+                        "target_language_uuid": "lang-1",
+                        "token": 100,
+                    }
+                ],
+            },
+        ),
+        patch(
+            "app.ray.events.evaluate_quote_events.get_evaluation_job",
+            new_callable=AsyncMock,
+            return_value={
+                "data": {
+                    "uuid": job_uuid,
+                    "extra_info": {"slack_channel_id": "C123"},
+                    "target_languages": [{"uuid": "lang-1"}],
+                    "source_files": [
+                        {"file_uuid": "file-1", "filename": "source.docx"}
+                    ],
+                }
+            },
+        ),
+        patch(
+            "app.ray.events.evaluate_quote_events.post_notification",
+            new_callable=AsyncMock,
+            return_value={"ts": "111.222"},
+        ) as mock_post,
+        patch(
+            "app.ray.events.evaluate_quote_events.proceed_evaluation_job",
+            new_callable=AsyncMock,
+        ) as mock_proceed,
+        patch(
+            "app.ray.events.evaluate_quote_events.save_evaluate_quote_session",
+            new_callable=AsyncMock,
+        ) as mock_save,
+    ):
+        from app.ray.events.evaluate_quote_events import post_evaluate_service_quote
+
+        await post_evaluate_service_quote(
+            AsyncMock(),
+            event,
+            auth,
+            job_uuid=job_uuid,
+            service="ai_translation",
+            service_label="AI Translation",
+            accept_action_id="evaluation_ai_quote_accept",
+            include_pdf_fee=True,
+        )
+
+    message = mock_post.await_args.args[3]
+    rendered = str(message.blocks)
+    assert "*Total cost:* US$2.00" in rendered
+    assert ":paperclip: *source.docx*" in rendered
+    assert "*French*\\n>US$2.00" in rendered
+    assert "Adjust Request" in rendered
+    assert "Accept Quote" in rendered
+    assert "Estimated Completion" not in rendered
+    assert "Due" not in rendered
+    mock_proceed.assert_not_awaited()
+    assert mock_save.await_args.kwargs["stage"] == "awaiting_ai"
 
 
 @pytest.mark.asyncio
@@ -581,6 +704,11 @@ async def test_post_preaccepted_ai_quote_auto_proceeds(mock_slack_user):
 
     with (
         patch(
+            "app.slack.evaluation_quotes.get_verify_languages",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch(
             "app.slack.evaluation_quotes.get_ray_client",
             new_callable=AsyncMock,
         ) as mock_ray,
@@ -631,6 +759,7 @@ async def test_post_preaccepted_ai_quote_auto_proceeds(mock_slack_user):
         job_uuid,
         token_cost=150,
         skip_quality_evaluation=True,
+        ai_translation_file_and_languages=None,
     )
     mock_save.assert_awaited_once()
     assert mock_save.await_args.kwargs["stage"] == "accepted_ai"

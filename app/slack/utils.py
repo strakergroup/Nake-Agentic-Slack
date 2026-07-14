@@ -376,6 +376,18 @@ def extract_language_codes_from_form(
     ]
 
 
+def strip_command_formatting(text: str) -> str:
+    """Strip a single layer of Slack markdown wrapping from a slash-command arg.
+
+    Slack wraps bold/italic/strike/code text in ``*``, ``_``, ``~`` or ``` ` ```.
+    This removes one matching wrapper so command parsing sees the raw argument.
+    Not perfect, but sufficient for the short tokens used in slash commands.
+    """
+    if re.match(r"(\*.+\*)|(~.+~)|(_.+_)|(`.+`)", text):
+        return text[1:-1]
+    return text
+
+
 def calculate_total_estimated_days(time_estimates: list[float]) -> int:
     """Return the overall HV turnaround in days (Verify-aligned: global max).
 

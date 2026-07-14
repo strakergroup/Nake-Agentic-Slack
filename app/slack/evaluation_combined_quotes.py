@@ -13,6 +13,10 @@ from app.auth.connector import get_ray_client
 from app.constants import EVALUATE_SERVICE_QUALITY_EVALUATION
 from app.dependencies import RayEvent, RayEventAuth
 from app.ray.events.logging import post_notification
+from app.slack.evaluation_ai_adjustment import (
+    ai_scope_from_job,
+    filter_job_to_pairs,
+)
 from app.slack.evaluation_quotes import (
     STAGE_AWAITING_QE,
     get_evaluate_quote_session,
@@ -38,6 +42,17 @@ POST_QE_QUOTE_DISPLAY = {
     "total_cost_label": "Final Cost",
     "show_submitted_costs": True,
     "show_total_cost": False,
+    "show_estimated_completion": False,
+}
+# Accept-time update for the combined quote (before QE finishes).
+HT_SUBMITTED_QUOTE_DISPLAY = {
+    "show_quality_discount": False,
+    "show_savings": False,
+    "embed_additional_costs_in_line_price": True,
+    "total_cost_label": "Maximum Total Cost",
+    "show_total_cost": False,
+    "show_estimated_completion": False,
+    "show_submitted_costs": True,
 }
 
 
@@ -51,6 +66,7 @@ def validate_combined_quote_includes_qe_cost(
     *,
     show_savings: bool,
     pricing_costs: list[dict[str, Any]] | None = None,
+    additional_costs: list[dict[str, Any]] | None = None,
 ) -> dict[str, float]:
     """Ensure combined quote totals include the aggregate QE charge."""
     from app.slack.templates.blocks import (
@@ -60,11 +76,12 @@ def validate_combined_quote_includes_qe_cost(
     )
 
     priced_costs = pricing_costs if pricing_costs is not None else costs
-    additional_costs = qe_additional_cost(
-        qe_token_cost,
-        costs,
-        pricing_costs=priced_costs,
-    )
+    if additional_costs is None:
+        additional_costs = qe_additional_cost(
+            qe_token_cost,
+            costs,
+            pricing_costs=priced_costs,
+        )
     qe_total = _target_qe_cost_total(additional_costs, priced_costs)
     ht_total = sum(
         float(item["service_list"][0]["estimated_cost"]) for item in priced_costs
@@ -97,6 +114,7 @@ def combined_human_job_quote_message(
     costs: list[dict[str, Any]],
     *,
     qe_token_cost: int,
+    qe_additional_costs: list[dict[str, Any]] | None = None,
     actions: bool = True,
     status_message: str | None = None,
     allow_adjust: bool = True,
@@ -107,6 +125,7 @@ def combined_human_job_quote_message(
     total_cost_label: str | None = None,
     show_submitted_costs: bool | None = None,
     show_total_cost: bool = True,
+    show_estimated_completion: bool = True,
     message_title: str | None = None,
     pricing_costs: list[dict[str, Any]] | None = None,
 ) -> HumanJobQuoteMessage:
@@ -116,7 +135,9 @@ def combined_human_job_quote_message(
         costs,
         actions=actions,
         status_message=status_message,
-        additional_costs=qe_additional_cost(
+        additional_costs=qe_additional_costs
+        if qe_additional_costs is not None
+        else qe_additional_cost(
             qe_token_cost,
             costs,
             pricing_costs=priced_costs,
@@ -130,6 +151,7 @@ def combined_human_job_quote_message(
         total_cost_label=total_cost_label,
         show_submitted_costs=show_submitted_costs,
         show_total_cost=show_total_cost,
+        show_estimated_completion=show_estimated_completion,
         message_title=message_title,
     )
 
@@ -162,6 +184,30 @@ def qe_additional_cost(
             "language_uuid": cost["language_uuid"],
         }
         for cost in distribution_costs
+    ]
+
+
+def qe_additional_costs_from_quote(
+    quote: dict[str, Any],
+    *,
+    selected_pairs: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Build exact per-pair QE costs from CVA quote details."""
+    selected = set(selected_pairs or [])
+    return [
+        {
+            "label": _("Quality Evaluation"),
+            "cost": float(detail.get("token") or 0) * QE_TOKEN_USD_RATE,
+            "file_uuid": str(detail["file_uuid"]),
+            "language_uuid": str(detail["target_language_uuid"]),
+        }
+        for detail in quote.get("details") or []
+        if detail.get("file_uuid")
+        and detail.get("target_language_uuid")
+        and (
+            not selected
+            or (f"{detail['file_uuid']}:{detail['target_language_uuid']}" in selected)
+        )
     ]
 
 
@@ -281,17 +327,21 @@ async def post_combined_qe_human_quote(
     if ray_client is None:
         raise ValueError("Could not get ray client for combined evaluate quote")
 
+    job = await get_evaluation_job(auth.slack_user, job_uuid)
+    job_data = job["data"]
+    ai_scope = ai_scope_from_job(job_data)
+    job_data = filter_job_to_pairs(job_data, ai_scope)
     quote = await get_evaluation_job_quote(
         ray_client,
         job_uuid,
         [EVALUATE_SERVICE_QUALITY_EVALUATION],
+        file_and_languages=ai_scope,
     )
     services_costs = quote.get("services_costs") or {}
     qe_token_cost = int(
         services_costs.get(EVALUATE_SERVICE_QUALITY_EVALUATION, quote.get("token", 0))
     )
-    job = await get_evaluation_job(auth.slack_user, job_uuid)
-    job_data = job["data"]
+    qe_costs = qe_additional_costs_from_quote(quote, selected_pairs=ai_scope)
     costs = await get_job_pricing(
         ray_client,
         job_uuid,
@@ -299,11 +349,14 @@ async def post_combined_qe_human_quote(
         job_target_language_uuids(job_data),
         assumed_quality_tier=WORST_CASE_QE_QUALITY_TIER,
     )
+    if not qe_costs:
+        qe_costs = qe_additional_cost(qe_token_cost, costs["data"])
 
     message = combined_human_job_quote_message(
         job_data,
         costs["data"],
         qe_token_cost=qe_token_cost,
+        qe_additional_costs=qe_costs,
         download_translations_job_uuid=job_uuid,
         show_quality_discount=PRE_QE_QUOTE_DISPLAY["show_quality_discount"],
         show_savings=PRE_QE_QUOTE_DISPLAY["show_savings"],
@@ -348,6 +401,9 @@ async def post_combined_qe_human_quote(
             "accept_action_id": COMBINED_QE_HUMAN_QUOTE_ACCEPT_ACTION_ID,
             "assumed_quality_tier": WORST_CASE_QE_QUALITY_TIER,
             "auto_submit_human_job": True,
+            "ai_translation_file_and_languages": ai_scope,
+            "quality_evaluation_file_and_languages": ai_scope,
+            "qe_additional_costs": qe_costs,
         },
         message_ts=message_ts,
     )
@@ -372,24 +428,42 @@ async def handle_combined_qe_complete(
         event, job_data
     )
     message_ts = (session or {}).get("message_ts")
-    selected_languages = quote_snapshot.get("selected_languages")
+    selected_languages = quote_snapshot.get(
+        "quality_evaluation_file_and_languages"
+    ) or quote_snapshot.get("selected_languages")
+    ai_scope = quote_snapshot.get(
+        "ai_translation_file_and_languages"
+    ) or ai_scope_from_job(job_data)
+    display_job_data = filter_job_to_pairs(job_data, ai_scope)
     selected_targets = resolve_selected_human_translation_targets(
-        job_data,
+        display_job_data,
         selected_languages=selected_languages,
     )
     pricing_costs = active_quote_cost_rows(costs, selected_targets)
+    stored_qe_costs = quote_snapshot.get("qe_additional_costs") or []
+    selected_qe_costs = active_quote_cost_rows(
+        stored_qe_costs,
+        selected_targets,
+    )
+    if not selected_qe_costs:
+        selected_qe_costs = qe_additional_cost(
+            qe_token_cost,
+            pricing_costs,
+        )
 
     quote_summary = validate_combined_quote_includes_qe_cost(
         costs,
         qe_token_cost,
         show_savings=True,
         pricing_costs=pricing_costs,
+        additional_costs=selected_qe_costs,
     )
 
     refreshed_message = combined_human_job_quote_message(
-        job_data,
+        display_job_data,
         costs,
         qe_token_cost=qe_token_cost,
+        qe_additional_costs=selected_qe_costs,
         pricing_costs=pricing_costs,
         actions=False,
         allow_adjust=False,
@@ -402,6 +476,7 @@ async def handle_combined_qe_complete(
         total_cost_label=POST_QE_QUOTE_DISPLAY["total_cost_label"],
         show_submitted_costs=POST_QE_QUOTE_DISPLAY["show_submitted_costs"],
         show_total_cost=POST_QE_QUOTE_DISPLAY["show_total_cost"],
+        show_estimated_completion=POST_QE_QUOTE_DISPLAY["show_estimated_completion"],
     )
     if channel_id and message_ts:
         await client.chat_update(

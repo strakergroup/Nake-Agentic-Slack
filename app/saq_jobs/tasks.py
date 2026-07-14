@@ -863,17 +863,26 @@ async def process_evaluation_submission(
     job_notes: str,
     preaccepted_ai_translation_quote: bool = False,
     prequote_message_ts: str | None = None,
+    ai_translation_filename_and_languages: list[str] | None = None,
 ) -> dict[str, Any]:
     """Durable quality-evaluation / human-translation submission processing."""
     from slack_sdk.web.async_client import AsyncWebClient
 
-    from app.api.verify import VerifyAPIError, submit_evaluation_job
+    from app.api.verify import (
+        VerifyAPIError,
+        get_verify_languages,
+        submit_evaluation_job,
+    )
     from app.auth.connector import get_bot_token_async, get_ray_client
     from app.constants import EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE
     from app.ray.utils import is_ibm_enterprise, validate_file
-    from app.slack.listeners import _publish_pdf_evaluate_convert
+    from app.slack.evaluation_ai_adjustment import (
+        estimated_pdf_file_language_costs,
+    )
+    from app.slack.evaluation_submissions import publish_pdf_evaluate_convert
     from app.slack.pdf_evaluate_quotes import (
         PDF_EVALUATE_QUOTE_ACTION_ID,
+        PDF_EVALUATE_QUOTE_ADJUST_ACTION_ID,
         estimate_pdf_evaluate_ai_tokens,
         pdf_page_count_from_file,
         save_pdf_evaluate_quote_session,
@@ -905,6 +914,7 @@ async def process_evaluation_submission(
     downloaded_files: list[str] = []
     input_files: list[str] = []
     file_titles: list[str] = []
+    valid_files: list[dict[str, Any]] = []
 
     try:
         for file_data in files:
@@ -923,27 +933,46 @@ async def process_evaluation_submission(
                 file_data["size"] = os.path.getsize(input_file)
             input_files.append(input_file)
             file_titles.append(file_data["title"])
+            valid_files.append(file_data)
 
         if not input_files:
             return {"status": "no_valid_files"}
 
         has_pdf = any(title.lower().endswith(".pdf") for title in file_titles)
         if has_pdf and not preaccepted_ai_translation_quote:
-            pdf_page_count = sum(
-                pdf_page_count_from_file(file_path)
-                for file_path, title in zip(input_files, file_titles, strict=True)
-                if title.lower().endswith(".pdf")
-            )
+            pdf_page_count = 0
+            for file_path, file_data in zip(input_files, valid_files, strict=True):
+                page_count = (
+                    pdf_page_count_from_file(file_path)
+                    if str(file_data["title"]).lower().endswith(".pdf")
+                    else 0
+                )
+                file_data["pdf_page_count"] = page_count
+                pdf_page_count += page_count
             ai_token_estimate = estimate_pdf_evaluate_ai_tokens(
-                files,
+                valid_files,
                 len(target_langs_uuid),
+            )
+            language_names = {
+                str(language["uuid"]): str(language.get("name") or language["uuid"])
+                for language in await get_verify_languages()
+            }
+            language_costs = estimated_pdf_file_language_costs(
+                valid_files,
+                [
+                    {
+                        "value": language_uuid,
+                        "label": language_names.get(language_uuid, language_uuid),
+                    }
+                    for language_uuid in target_langs_uuid
+                ],
             )
             quote_id = await save_pdf_evaluate_quote_session(
                 channel_id=channel_id,
                 user_id=user_id,
                 team_id=team_id,
                 enterprise_id=enterprise_id,
-                files=files,
+                files=valid_files,
                 target_langs_uuid=target_langs_uuid,
                 reference=reference,
                 source_lang_uuid=source_lang_uuid,
@@ -951,22 +980,25 @@ async def process_evaluation_submission(
                 job_notes=job_notes,
                 ai_token_estimate=ai_token_estimate,
                 pdf_page_count=pdf_page_count,
+                language_costs=language_costs,
             )
             message = EvaluationCreditsQuoteMessage(
                 service_label=_("AI Translation"),
                 token_cost=ai_token_estimate,
                 job_uuid=quote_id,
                 accept_action_id=PDF_EVALUATE_QUOTE_ACTION_ID,
+                adjust_action_id=PDF_EVALUATE_QUOTE_ADJUST_ACTION_ID,
                 pdf_page_count=pdf_page_count,
                 pdf_tokens=pdf_page_count * EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE,
                 is_ibm=is_ibm_enterprise(enterprise_id),
+                language_costs=language_costs,
             )
             response = await client.chat_postMessage(
                 channel=channel_id,
                 text=message.text,
                 blocks=message.blocks,
             )
-            message_ts = response.get("ts") if isinstance(response, dict) else None
+            message_ts = response.get("ts")
             if message_ts:
                 await update_pdf_evaluate_quote_session(
                     quote_id,
@@ -975,7 +1007,7 @@ async def process_evaluation_submission(
             return {"status": "quoted", "quote_id": quote_id}
 
         if has_pdf:
-            await _publish_pdf_evaluate_convert(
+            await publish_pdf_evaluate_convert(
                 ray_client=ray_client,
                 input_files=input_files,
                 file_titles=file_titles,
@@ -987,6 +1019,9 @@ async def process_evaluation_submission(
                 job_notes=job_notes,
                 preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
                 prequote_message_ts=prequote_message_ts,
+                ai_translation_filename_and_languages=(
+                    ai_translation_filename_and_languages
+                ),
             )
         else:
             await submit_evaluation_job(
@@ -998,6 +1033,11 @@ async def process_evaluation_submission(
                 workflow_uuid=workflow_uuid,
                 job_notes=job_notes,
                 slack_channel_id=channel_id,
+                preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
+                prequote_message_ts=prequote_message_ts,
+                ai_translation_filename_and_languages=(
+                    ai_translation_filename_and_languages
+                ),
             )
         return {"status": "submitted", "file_count": len(input_files)}
     except VerifyAPIError:

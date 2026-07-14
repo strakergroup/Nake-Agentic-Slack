@@ -13,7 +13,22 @@ class TestEvaluationCreditsQuoteBlocks:
             pdf_page_count=2,
             pdf_tokens=50,
             accept_action_id="evaluation_ai_quote_accept",
+            adjust_action_id="evaluation_ai_quote_adjust",
             job_uuid="job-1",
+            language_costs=[
+                {
+                    "file_label": "source.docx",
+                    "value": "lang-1",
+                    "label": "French",
+                    "token": 40,
+                },
+                {
+                    "file_label": "source.docx",
+                    "value": "lang-2",
+                    "label": "German",
+                    "token": 80,
+                },
+            ],
         )
 
         action_ids = [
@@ -23,14 +38,51 @@ class TestEvaluationCreditsQuoteBlocks:
             for element in block.get("elements", [])
         ]
         assert "evaluation_ai_quote_accept" in action_ids
+        assert "evaluation_ai_quote_adjust" in action_ids
         rendered = str(blocks)
         assert "Token cost" not in rendered
         assert "Total tokens" not in rendered
-        assert "US$2.40" in rendered
         assert "US$1.00" in rendered
         assert "US$3.40" in rendered
+        assert ":paperclip: *source.docx*" in rendered
+        assert "*French*\\n>US$0.80" in rendered
+        assert "*German*\\n>US$1.60" in rendered
         assert "Running the AI translation will incur the following cost:" in rendered
         assert "Review the quote below" not in rendered
+        assert "Adjust Request" in rendered
+        assert "edit target languages" in rendered
+        assert "source files" not in rendered
+        assert "Estimated Completion" not in rendered
+        assert "Due" not in rendered
+
+    def test_ai_translation_quote_blocks_show_cancelled_rows(self):
+        blocks = evaluation_credits_quote_blocks(
+            "AI Translation",
+            40,
+            accept_action_id="evaluation_ai_quote_accept",
+            job_uuid="job-1",
+            actions=False,
+            language_costs=[
+                {
+                    "file_label": "source.docx",
+                    "value": "lang-1",
+                    "label": "French",
+                    "token": 40,
+                },
+                {
+                    "file_label": "source.docx",
+                    "value": "lang-2",
+                    "label": "German",
+                    "token": 80,
+                    "cancelled": True,
+                },
+            ],
+        )
+        rendered = str(blocks)
+        assert "*French*\\n>US$0.80" in rendered
+        assert "*German*\\n>Cancelled" in rendered
+        assert "*Total cost:* US$0.80" in rendered
+        assert "Estimated Completion" not in rendered
 
     def test_evaluation_quote_blocks_display_dollar_cost(self):
         blocks = evaluation_credits_quote_blocks(

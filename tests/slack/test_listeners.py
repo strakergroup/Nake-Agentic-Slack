@@ -79,7 +79,7 @@ class TestVerificationCheckboxAction:
             }
         }
 
-        with patch("app.slack.listeners.redis_conn", redis_mock):
+        with patch("app.slack.handlers.evaluate_verify.redis_conn", redis_mock):
             await handle_checkbox_action(
                 {}, mock_ack, body=body, client=mock_client, action={"action_ts": "1"}
             )
@@ -152,7 +152,7 @@ class TestVerificationCheckboxAction:
             }
         }
 
-        with patch("app.slack.listeners.redis_conn", redis_mock):
+        with patch("app.slack.handlers.evaluate_verify.redis_conn", redis_mock):
             await handle_checkbox_action(
                 {}, mock_ack, body=body, client=mock_client, action={"action_ts": "1"}
             )
@@ -181,7 +181,7 @@ class TestChannelDeletedEvent:
         # The decorator passes context as first arg, then *args to the function
         # Function signature is (client, context, event), so we pass (context_dict, mock_client, event=event)
         with patch(
-            "app.slack.listeners.delete_channel_id", new_callable=AsyncMock
+            "app.slack.handlers.messages.delete_channel_id", new_callable=AsyncMock
         ) as mock_delete:
             await channel_deleted_event(context_dict, mock_client, event=event)
             mock_delete.assert_called_once_with("C123456")
@@ -198,7 +198,7 @@ class TestAppUninstalled:
         context_dict = {"user_id": user_id, "team_id": team_id}
 
         with patch(
-            "app.slack.listeners.disconnect_ray_super_group_and_users"
+            "app.slack.handlers.lifecycle.disconnect_ray_super_group_and_users"
         ) as mock_disconnect:
             await app_uninstalled(context_dict)
             mock_disconnect.assert_called_once_with(team_id, None)
@@ -219,7 +219,7 @@ class TestChannelIdChanged:
         # But since context is not in the function signature, the decorator injects it as first arg
         context_dict = {}
         with patch(
-            "app.slack.listeners.update_channel_id", new_callable=AsyncMock
+            "app.slack.handlers.lifecycle.update_channel_id", new_callable=AsyncMock
         ) as mock_update:
             await channel_id_changed(context_dict, event=event)
             mock_update.assert_called_once_with("C123", "C456")
@@ -398,7 +398,7 @@ class TestDailySummary:
         # The decorator passes context as first arg, then *args to the function
         # Function signature is (ack, context, client), so we pass (context_dict, mock_ack, client=mock_client)
         with patch(
-            "app.slack.listeners.post_job_summary", new_callable=AsyncMock
+            "app.slack.handlers.jobs.post_job_summary", new_callable=AsyncMock
         ) as mock_post:
             await daily_summary(context_dict, mock_ack, client=mock_client)
             mock_ack.assert_called_once()
@@ -428,7 +428,7 @@ class TestAllSummary:
         # The decorator passes context as first arg, then *args to the function
         # Function signature is (ack, context, client), so we pass (context_dict, mock_ack, client=mock_client)
         with patch(
-            "app.slack.listeners.post_job_summary", new_callable=AsyncMock
+            "app.slack.handlers.jobs.post_job_summary", new_callable=AsyncMock
         ) as mock_post:
             await all_summary(context_dict, mock_ack, client=mock_client)
             mock_ack.assert_called_once()
@@ -459,7 +459,7 @@ class TestHandleAiTranslateHelpAction:
         # The decorator passes context as first arg, then *args to the function
         # Function signature is (ack, context, client), so we pass (context_dict, mock_ack, client=mock_client)
         with patch(
-            "app.slack.listeners.ai_translate_help", new_callable=AsyncMock
+            "app.slack.handlers.help.ai_translate_help", new_callable=AsyncMock
         ) as mock_help:
             await handle_ai_translate_help_action(
                 context_dict, mock_ack, client=mock_client
@@ -491,7 +491,7 @@ class TestHandleVerifyHelpAction:
         # The decorator passes context as first arg, then *args to the function
         # Function signature is (ack, context, client), so we pass (context_dict, mock_ack, client=mock_client)
         with patch(
-            "app.slack.listeners.verify_help", new_callable=AsyncMock
+            "app.slack.handlers.help.verify_help", new_callable=AsyncMock
         ) as mock_help:
             await handle_verify_help_action(context_dict, mock_ack, client=mock_client)
             mock_ack.assert_called_once()
@@ -548,7 +548,7 @@ class TestLanguageMtOptionsSelected:
         }
 
         with patch(
-            "app.slack.listeners.redis_conn.set", new_callable=AsyncMock
+            "app.slack.handlers.options.redis_conn.set", new_callable=AsyncMock
         ) as mock_set:
             await language_mt_options_selected(mock_ack, body)
             mock_ack.assert_called_once()
@@ -567,7 +567,7 @@ class TestLanguageOptions:
         payload = {"value": "test"}
 
         with patch(
-            "app.slack.listeners.get_language_options", new_callable=AsyncMock
+            "app.slack.handlers.options.get_language_options", new_callable=AsyncMock
         ) as mock_get_options:
             mock_get_options.return_value = [
                 {"text": {"text": "English"}, "value": "en"}
@@ -589,7 +589,7 @@ class TestLanguageOptionsUuid:
         payload = {"value": "test"}
 
         with patch(
-            "app.slack.listeners.get_language_options", new_callable=AsyncMock
+            "app.slack.handlers.options.get_language_options", new_callable=AsyncMock
         ) as mock_get_options:
             mock_get_options.return_value = [
                 {"text": {"text": "English"}, "value": "uuid-123"}
@@ -620,7 +620,7 @@ class TestGroupOptions:
         )
 
         with patch(
-            "app.slack.listeners.get_groups", new_callable=AsyncMock
+            "app.slack.handlers.options.get_groups", new_callable=AsyncMock
         ) as mock_get_groups:
             mock_get_groups.return_value = [
                 {"text": {"text": "Group 1"}, "value": "group-1"}
@@ -644,13 +644,13 @@ class TestFileOptions:
         payload = {"action_id": "file_options_C123", "value": ""}
 
         with patch(
-            "app.slack.listeners.get_file_options_cached", new_callable=AsyncMock
+            "app.slack.handlers.options.get_file_options_cached", new_callable=AsyncMock
         ) as mock_get_cached:
             mock_get_cached.return_value = [
                 {"text": {"text": "file.txt"}, "value": "F123"}
             ]
             with patch(
-                "app.slack.listeners.files_list_simple", new_callable=AsyncMock
+                "app.slack.handlers.options.files_list_simple", new_callable=AsyncMock
             ) as mock_files_list:
                 await file_options(mock_ack, payload, mock_client)
                 mock_ack.assert_called_once()
@@ -685,7 +685,7 @@ class TestBatchListAction:
         }
 
         with patch(
-            "app.slack.listeners.post_batch_list", new_callable=AsyncMock
+            "app.slack.handlers.jobs.post_batch_list", new_callable=AsyncMock
         ) as mock_post:
             # The decorator passes context as first arg, then *args to the function
             # Function signature is (ack, payload, context, client), so we pass (context_dict, mock_ack, payload=payload, client=mock_client)
@@ -724,7 +724,7 @@ class TestFileListAction:
         }
 
         with patch(
-            "app.slack.listeners.post_file_list", new_callable=AsyncMock
+            "app.slack.handlers.jobs.post_file_list", new_callable=AsyncMock
         ) as mock_post:
             # The decorator passes context as first arg, then *args to the function
             # Function signature is (ack, payload, context, client), so we pass (context_dict, mock_ack, payload=payload, client=mock_client)
@@ -757,15 +757,15 @@ class TestJobSearchAction:
         mock_client.views_open.return_value = {"view": {"id": "V123"}}
         with (
             patch(
-                "app.slack.listeners.populate_ray_connection",
+                "app.slack.handlers.jobs.populate_ray_connection",
                 new_callable=AsyncMock,
             ),
             patch(
-                "app.slack.listeners.require_ray_client",
+                "app.slack.handlers.jobs.require_ray_client",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
-            patch("app.slack.listeners.job_search_modal") as mock_modal,
+            patch("app.slack.handlers.jobs.job_search_modal") as mock_modal,
         ):
             mock_modal.return_value = {"type": "modal", "title": {"text": "Search Job"}}
             await job_search_action(
@@ -803,7 +803,7 @@ class TestHandleJobSearch:
         }
 
         with patch(
-            "app.slack.listeners.post_job_status", new_callable=AsyncMock
+            "app.slack.handlers.jobs.post_job_status", new_callable=AsyncMock
         ) as mock_post:
             # The decorator passes context as first arg, then *args to the function
             # Function signature is (ack, view, context, client), so we pass (context_dict, mock_ack, view=view, client=mock_client)
@@ -838,7 +838,7 @@ class TestHandleJobSearch:
         }
 
         with patch(
-            "app.slack.listeners.post_job_status", new_callable=AsyncMock
+            "app.slack.handlers.jobs.post_job_status", new_callable=AsyncMock
         ) as mock_post:
             await handle_job_search(
                 context_dict, mock_ack, view=view, client=mock_client
@@ -900,7 +900,7 @@ class TestDisconnectAccountAction:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch("app.slack.listeners.disconnect_ray_account") as mock_disconnect:
+        with patch("app.slack.handlers.auth.disconnect_ray_account") as mock_disconnect:
             # The decorator passes context as first arg, then *args to the function
             # Function signature is (ack, action, context, respond), so we pass (context_dict, mock_ack, action=action, respond=mock_respond)
             await disconnect_account_action(
@@ -928,7 +928,7 @@ class TestDisconnectAccountAction:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch("app.slack.listeners.disconnect_ray_account") as mock_disconnect:
+        with patch("app.slack.handlers.auth.disconnect_ray_account") as mock_disconnect:
             await disconnect_account_action(
                 context_dict, mock_ack, action=action, respond=mock_respond
             )
@@ -963,15 +963,16 @@ class TestCancelJobAction:
 
         with (
             patch(
-                "app.slack.listeners.populate_ray_connection", new_callable=AsyncMock
+                "app.slack.handlers.jobs.populate_ray_connection",
+                new_callable=AsyncMock,
             ),
             patch(
-                "app.slack.listeners.require_ray_client",
+                "app.slack.handlers.jobs.require_ray_client",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
             patch(
-                "app.slack.listeners.cancel_job_process", new_callable=AsyncMock
+                "app.slack.handlers.jobs.cancel_job_process", new_callable=AsyncMock
             ) as mock_cancel,
         ):
             await cancel_job_action(
@@ -1005,15 +1006,16 @@ class TestCancelJobAction:
 
         with (
             patch(
-                "app.slack.listeners.populate_ray_connection", new_callable=AsyncMock
+                "app.slack.handlers.jobs.populate_ray_connection",
+                new_callable=AsyncMock,
             ),
             patch(
-                "app.slack.listeners.require_ray_client",
+                "app.slack.handlers.jobs.require_ray_client",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
             patch(
-                "app.slack.listeners.cancel_job_process", new_callable=AsyncMock
+                "app.slack.handlers.jobs.cancel_job_process", new_callable=AsyncMock
             ) as mock_cancel,
         ):
             await cancel_job_action(
@@ -1042,14 +1044,15 @@ class TestCancelJobAction:
 
         with (
             patch(
-                "app.slack.listeners.populate_ray_connection", new_callable=AsyncMock
+                "app.slack.handlers.jobs.populate_ray_connection",
+                new_callable=AsyncMock,
             ),
             patch(
-                "app.slack.listeners.require_ray_client",
+                "app.slack.handlers.jobs.require_ray_client",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
-            patch("app.slack.listeners.cancel_job_modal") as mock_modal,
+            patch("app.slack.handlers.jobs.cancel_job_modal") as mock_modal,
         ):
             mock_modal.return_value = {"type": "modal"}
             await cancel_job_action(
@@ -1088,7 +1091,7 @@ class TestHandleCancelJob:
         }
 
         with patch(
-            "app.slack.listeners.cancel_job_process", new_callable=AsyncMock
+            "app.slack.handlers.jobs.cancel_job_process", new_callable=AsyncMock
         ) as mock_cancel:
             # The decorator passes context as first arg, then *args to the function
             # Function signature is (ack, view, context, client), so we pass (context_dict, mock_ack, view=view, client=mock_client)
@@ -1153,7 +1156,7 @@ class TestJobListAction:
         }
 
         with patch(
-            "app.slack.listeners.post_job_list", new_callable=AsyncMock
+            "app.slack.handlers.jobs.post_job_list", new_callable=AsyncMock
         ) as mock_post:
             # The decorator passes context as first arg, then *args to the function
             # Function signature is (ack, payload, context, client), so we pass (context_dict, mock_ack, payload=payload, client=mock_client)
@@ -1180,7 +1183,7 @@ class TestJobListAction:
         }
 
         with patch(
-            "app.slack.listeners.post_job_list", new_callable=AsyncMock
+            "app.slack.handlers.jobs.post_job_list", new_callable=AsyncMock
         ) as mock_post:
             await job_list_action(
                 context_dict, mock_ack, payload=payload, client=mock_client
@@ -1217,7 +1220,7 @@ class TestJobListPaginatedAction:
         }
 
         with patch(
-            "app.slack.listeners.post_job_list", new_callable=AsyncMock
+            "app.slack.handlers.jobs.post_job_list", new_callable=AsyncMock
         ) as mock_post:
             # The decorator passes context as first arg, then *args to the function
             # Function signature is (ack, payload, context, client), so we pass (context_dict, mock_ack, payload=payload, client=mock_client)
@@ -1246,7 +1249,7 @@ class TestJobListPaginatedAction:
         }
 
         with patch(
-            "app.slack.listeners.post_job_list", new_callable=AsyncMock
+            "app.slack.handlers.jobs.post_job_list", new_callable=AsyncMock
         ) as mock_post:
             await job_list_paginated_action(
                 context_dict, mock_ack, payload=payload, client=mock_client
@@ -1401,17 +1404,17 @@ class TestRayCommand:
         }
 
         with (
-            patch("app.slack.listeners.is_ibm_enterprise", return_value=False),
+            patch("app.slack.handlers.commands.is_ibm_enterprise", return_value=False),
             patch(
-                "app.slack.listeners.require_ray_client",
+                "app.slack.handlers.commands.require_ray_client",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
             patch(
-                "app.slack.listeners.get_auto_translate_settings_and_langs",
+                "app.slack.handlers.commands.get_auto_translate_settings_and_langs",
                 new_callable=AsyncMock,
             ) as mock_get_settings,
-            patch("app.slack.listeners.translation_settings_view") as mock_view,
+            patch("app.slack.handlers.commands.translation_settings_view") as mock_view,
         ):
             mock_get_settings.return_value = [
                 {"target_lang": "fr", "display_format": "thread"}
@@ -1450,9 +1453,10 @@ class TestRayCommand:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch("app.slack.listeners.is_ibm_enterprise", return_value=True):
+        with patch("app.slack.handlers.commands.is_ibm_enterprise", return_value=True):
             with patch(
-                "app.slack.listeners.is_slack_team_admin", new_callable=AsyncMock
+                "app.slack.handlers.commands.is_slack_team_admin",
+                new_callable=AsyncMock,
             ) as mock_admin:
                 mock_admin.return_value = False
                 await ray_command(
@@ -1487,7 +1491,7 @@ class TestRayCommand:
         }
 
         with patch(
-            "app.slack.listeners.post_job_status", new_callable=AsyncMock
+            "app.slack.handlers.commands.post_job_status", new_callable=AsyncMock
         ) as mock_post_status:
             await ray_command(
                 context_dict,
@@ -1520,7 +1524,7 @@ class TestRayCommand:
         }
 
         with patch(
-            "app.slack.listeners.post_job_list", new_callable=AsyncMock
+            "app.slack.handlers.commands.post_job_list", new_callable=AsyncMock
         ) as mock_post_list:
             await ray_command(
                 context_dict,
@@ -1551,7 +1555,7 @@ class TestRayCommand:
         }
 
         with patch(
-            "app.slack.listeners.post_job_summary", new_callable=AsyncMock
+            "app.slack.handlers.commands.post_job_summary", new_callable=AsyncMock
         ) as mock_summary:
             await ray_command(
                 context_dict,
@@ -1582,7 +1586,7 @@ class TestRayCommand:
         }
 
         with patch(
-            "app.slack.listeners.post_job_summary", new_callable=AsyncMock
+            "app.slack.handlers.commands.post_job_summary", new_callable=AsyncMock
         ) as mock_summary:
             await ray_command(
                 context_dict,
@@ -1745,7 +1749,7 @@ class TestRayCommand:
         }
 
         with patch(
-            "app.slack.listeners.post_job_status", new_callable=AsyncMock
+            "app.slack.handlers.commands.post_job_status", new_callable=AsyncMock
         ) as mock_post_status:
             await ray_command(
                 context_dict,
@@ -1964,10 +1968,10 @@ class TestHandleNewJob:
         mock_ray_response = RayResponse(response=mock_response, data=None)
 
         with patch(
-            "app.slack.listeners.submit_job", new_callable=AsyncMock
+            "app.slack.handlers.jobs.submit_job", new_callable=AsyncMock
         ) as mock_submit:
             mock_submit.return_value = [mock_ray_response]
-            with patch("app.slack.listeners.is_ibm_enterprise", return_value=False):
+            with patch("app.slack.handlers.jobs.is_ibm_enterprise", return_value=False):
                 await handle_new_job(
                     context_dict, mock_ack, view=view, client=mock_client
                 )
@@ -2038,10 +2042,10 @@ class TestHandleNewJob:
         )
 
         with patch(
-            "app.slack.listeners.submit_job", new_callable=AsyncMock
+            "app.slack.handlers.jobs.submit_job", new_callable=AsyncMock
         ) as mock_submit:
             mock_submit.side_effect = api_error
-            with patch("app.slack.listeners.notify_exception") as mock_notify:
+            with patch("app.slack.handlers.jobs.notify_exception") as mock_notify:
                 await handle_new_job(
                     context_dict, mock_ack, view=view, client=mock_client
                 )
@@ -2104,10 +2108,10 @@ class TestHandleNewJob:
         }
 
         with patch(
-            "app.slack.listeners.submit_job", new_callable=AsyncMock
+            "app.slack.handlers.jobs.submit_job", new_callable=AsyncMock
         ) as mock_submit:
             mock_submit.side_effect = Exception("General error")
-            with patch("app.slack.listeners.notify_exception") as mock_notify:
+            with patch("app.slack.handlers.jobs.notify_exception") as mock_notify:
                 await handle_new_job(
                     context_dict, mock_ack, view=view, client=mock_client
                 )
@@ -2177,17 +2181,18 @@ class TestLoginSsoAction:
         ) as mock_users_info:
             mock_users_info.return_value = user_info_response
             with patch(
-                "app.slack.listeners.connect_ray_account_sso", new_callable=AsyncMock
+                "app.slack.handlers.auth.connect_ray_account_sso",
+                new_callable=AsyncMock,
             ) as mock_connect:
                 with patch(
-                    "app.slack.listeners.get_ray_connection", new_callable=AsyncMock
+                    "app.slack.handlers.auth.get_ray_connection", new_callable=AsyncMock
                 ) as mock_get_connection:
                     new_ray_connection = RayConnection(
                         super_group=[], client=MagicMock()
                     )
                     mock_get_connection.return_value = new_ray_connection
                     with patch(
-                        "app.slack.listeners.is_ibm_enterprise", return_value=False
+                        "app.slack.handlers.auth.is_ibm_enterprise", return_value=False
                     ):
                         await login_sso_action(
                             context_dict,
@@ -2271,7 +2276,7 @@ class TestLoginSsoAction:
             mock_client, "users_info", new_callable=AsyncMock
         ) as mock_users_info:
             mock_users_info.side_effect = slack_error
-            with patch("app.slack.listeners.notify_exception") as mock_notify:
+            with patch("app.slack.handlers.auth.notify_exception") as mock_notify:
                 await login_sso_action(
                     context_dict,
                     mock_ack,
@@ -2306,7 +2311,7 @@ class TestLoginSsoAction:
             mock_client, "users_info", new_callable=AsyncMock
         ) as mock_users_info:
             mock_users_info.side_effect = Exception("General error")
-            with patch("app.slack.listeners.notify_exception") as mock_notify:
+            with patch("app.slack.handlers.auth.notify_exception") as mock_notify:
                 await login_sso_action(
                     context_dict,
                     mock_ack,
@@ -2352,13 +2357,13 @@ class TestEvaluateJobAction:
         mock_client.views_open.return_value = {"view": {"id": "V123"}}
         with (
             patch(
-                "app.slack.listeners.populate_ray_connection",
+                "app.slack.handlers.evaluate.populate_ray_connection",
                 new_callable=AsyncMock,
             ),
             patch(
-                "app.slack.listeners.require_ray_client", new_callable=AsyncMock
+                "app.slack.handlers.evaluate.require_ray_client", new_callable=AsyncMock
             ) as mock_require_ray_client,
-            patch("app.slack.listeners.is_ibm_enterprise", return_value=True),
+            patch("app.slack.handlers.evaluate.is_ibm_enterprise", return_value=True),
         ):
             mock_require_ray_client.return_value = True
 
@@ -2411,15 +2416,16 @@ class TestEvaluateJobAction:
         mock_client.views_open.return_value = {"view": {"id": "V123"}}
         with (
             patch(
-                "app.slack.listeners.populate_ray_connection",
+                "app.slack.handlers.evaluate.populate_ray_connection",
                 new_callable=AsyncMock,
             ),
             patch(
-                "app.slack.listeners.require_ray_client", new_callable=AsyncMock
+                "app.slack.handlers.evaluate.require_ray_client", new_callable=AsyncMock
             ) as mock_require_ray_client,
-            patch("app.slack.listeners.is_ibm_enterprise", return_value=True),
+            patch("app.slack.handlers.evaluate.is_ibm_enterprise", return_value=True),
             patch(
-                "app.slack.listeners.human_job_modal", return_value={"type": "modal"}
+                "app.slack.handlers.evaluate.human_job_modal",
+                return_value={"type": "modal"},
             ),
         ):
             mock_require_ray_client.return_value = True
@@ -2472,17 +2478,18 @@ class TestEvaluateJobAction:
         mock_client.views_open.return_value = {"view": {"id": "V123"}}
         with (
             patch(
-                "app.slack.listeners.populate_ray_connection",
+                "app.slack.handlers.evaluate.populate_ray_connection",
                 new_callable=AsyncMock,
             ),
             patch(
-                "app.slack.listeners.require_ray_client",
+                "app.slack.handlers.evaluate.require_ray_client",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
-            patch("app.slack.listeners.is_ibm_enterprise", return_value=False),
+            patch("app.slack.handlers.evaluate.is_ibm_enterprise", return_value=False),
             patch(
-                "app.slack.listeners.human_job_modal", return_value={"type": "modal"}
+                "app.slack.handlers.evaluate.human_job_modal",
+                return_value={"type": "modal"},
             ) as mock_human_job_modal,
         ):
             await evaluate_job_action(
@@ -2565,17 +2572,17 @@ class TestDownloadAiTranslationsAction:
 
         with (
             patch(
-                "app.slack.listeners.require_ray_client",
+                "app.slack.handlers.downloads.require_ray_client",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
             patch(
-                "app.slack.listeners.get_client_evaluation_job",
+                "app.slack.handlers.downloads.get_client_evaluation_job",
                 new_callable=AsyncMock,
                 return_value=job,
             ) as mock_get_job,
             patch(
-                "app.slack.listeners.download_verify_file",
+                "app.slack.handlers.downloads.download_verify_file",
                 new_callable=AsyncMock,
                 side_effect=[
                     {"file": "/tmp/file-1.txt", "file_name": "file-1.txt"},
@@ -2583,10 +2590,10 @@ class TestDownloadAiTranslationsAction:
                 ],
             ) as mock_download,
             patch(
-                "app.slack.listeners.upload_file_to_slack_memory_efficient",
+                "app.slack.handlers.downloads.upload_file_to_slack_memory_efficient",
                 new_callable=AsyncMock,
             ) as mock_upload,
-            patch("app.slack.listeners.os.path.exists", return_value=False),
+            patch("app.slack.handlers.downloads.os.path.exists", return_value=False),
         ):
             await download_ai_translations_action(
                 context_dict,
@@ -2622,17 +2629,17 @@ class TestDownloadAiTranslationsAction:
 
         with (
             patch(
-                "app.slack.listeners.require_ray_client",
+                "app.slack.handlers.downloads.require_ray_client",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
             patch(
-                "app.slack.listeners.get_client_evaluation_job",
+                "app.slack.handlers.downloads.get_client_evaluation_job",
                 new_callable=AsyncMock,
                 return_value={"data": {"source_files": []}},
             ),
             patch(
-                "app.slack.listeners.upload_file_to_slack_memory_efficient",
+                "app.slack.handlers.downloads.upload_file_to_slack_memory_efficient",
                 new_callable=AsyncMock,
             ) as mock_upload,
         ):
@@ -2700,7 +2707,7 @@ class TestEvaluateJobSubmit:
             "login_prompt": LoginMessage(user_id, team_id, "E123", "C123"),
         }
 
-        with patch("app.slack.listeners.is_ibm_enterprise", return_value=True):
+        with patch("app.slack.handlers.evaluate.is_ibm_enterprise", return_value=True):
             await evaluate_job_submit(
                 context_dict, view=view, client=mock_client, ack=mock_ack
             )
@@ -2882,7 +2889,7 @@ class TestEvaluateJobSubmit:
         }
 
         with patch(
-            "app.slack.listeners.get_conflicting_target_language_labels",
+            "app.slack.handlers.evaluate.get_conflicting_target_language_labels",
             new_callable=AsyncMock,
         ) as mock_conflicts:
             mock_conflicts.return_value = ["French Canadian"]
@@ -2944,12 +2951,12 @@ class TestEvaluateJobSubmit:
         }
         with (
             patch(
-                "app.slack.listeners.get_conflicting_target_language_labels",
+                "app.slack.handlers.evaluate.get_conflicting_target_language_labels",
                 new_callable=AsyncMock,
                 return_value=[],
             ),
             patch(
-                "app.slack.listeners.get_accessible_slack_files",
+                "app.slack.handlers.evaluate.get_accessible_slack_files",
                 new_callable=AsyncMock,
                 return_value=(
                     [],
@@ -2957,10 +2964,10 @@ class TestEvaluateJobSubmit:
                 ),
             ),
             patch(
-                "app.slack.listeners.enqueue_evaluation_submission",
+                "app.slack.handlers.evaluate.enqueue_evaluation_submission",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
-            patch("app.slack.listeners.notify_exception") as mock_notify,
+            patch("app.slack.handlers.evaluate.notify_exception") as mock_notify,
         ):
             await evaluate_job_submit(
                 context_dict, view=view, client=mock_client, ack=mock_ack
@@ -3021,12 +3028,12 @@ class TestEvaluateJobSubmit:
         }
         with (
             patch(
-                "app.slack.listeners.get_conflicting_target_language_labels",
+                "app.slack.handlers.evaluate.get_conflicting_target_language_labels",
                 new_callable=AsyncMock,
                 return_value=[],
             ),
             patch(
-                "app.slack.listeners.get_accessible_slack_files",
+                "app.slack.handlers.evaluate.get_accessible_slack_files",
                 new_callable=AsyncMock,
                 return_value=(
                     [{"id": "F_VALID"}],
@@ -3034,10 +3041,10 @@ class TestEvaluateJobSubmit:
                 ),
             ),
             patch(
-                "app.slack.listeners.enqueue_evaluation_submission",
+                "app.slack.handlers.evaluate.enqueue_evaluation_submission",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
-            patch("app.slack.listeners.notify_exception") as mock_notify,
+            patch("app.slack.handlers.evaluate.notify_exception") as mock_notify,
         ):
             await evaluate_job_submit(
                 context_dict, view=view, client=mock_client, ack=mock_ack
@@ -3098,18 +3105,18 @@ class TestEvaluateJobSubmit:
         }
 
         with patch(
-            "app.slack.listeners.get_conflicting_target_language_labels",
+            "app.slack.handlers.evaluate.get_conflicting_target_language_labels",
             new_callable=AsyncMock,
         ) as mock_conflicts:
             mock_conflicts.return_value = []
             with (
                 patch(
-                    "app.slack.listeners.get_accessible_slack_files",
+                    "app.slack.handlers.evaluate.get_accessible_slack_files",
                     new_callable=AsyncMock,
                     return_value=([{"id": "F123"}], []),
                 ),
                 patch(
-                    "app.slack.listeners.enqueue_evaluation_submission",
+                    "app.slack.handlers.evaluate.enqueue_evaluation_submission",
                     new_callable=AsyncMock,
                 ) as mock_enqueue,
             ):
@@ -3175,18 +3182,18 @@ class TestEvaluateJobSubmit:
         }
 
         with patch(
-            "app.slack.listeners.get_conflicting_target_language_labels",
+            "app.slack.handlers.evaluate.get_conflicting_target_language_labels",
             new_callable=AsyncMock,
         ) as mock_conflicts:
             mock_conflicts.return_value = []
             with (
                 patch(
-                    "app.slack.listeners.get_accessible_slack_files",
+                    "app.slack.handlers.evaluate.get_accessible_slack_files",
                     new_callable=AsyncMock,
                     return_value=([{"id": "F123"}, {"id": "F456"}], []),
                 ),
                 patch(
-                    "app.slack.listeners.enqueue_evaluation_submission",
+                    "app.slack.handlers.evaluate.enqueue_evaluation_submission",
                     new_callable=AsyncMock,
                 ) as mock_enqueue,
             ):
@@ -3242,18 +3249,18 @@ class TestEvaluateJobSubmit:
         }
 
         with patch(
-            "app.slack.listeners.get_conflicting_target_language_labels",
+            "app.slack.handlers.evaluate.get_conflicting_target_language_labels",
             new_callable=AsyncMock,
         ) as mock_conflicts:
             mock_conflicts.return_value = []
             with (
                 patch(
-                    "app.slack.listeners.get_accessible_slack_files",
+                    "app.slack.handlers.evaluate.get_accessible_slack_files",
                     new_callable=AsyncMock,
                     return_value=([{"id": "F123"}, {"id": "F456"}], []),
                 ),
                 patch(
-                    "app.slack.listeners.enqueue_evaluation_submission",
+                    "app.slack.handlers.evaluate.enqueue_evaluation_submission",
                     new_callable=AsyncMock,
                 ) as mock_enqueue,
             ):
@@ -3309,18 +3316,18 @@ class TestEvaluateJobSubmit:
         }
 
         with patch(
-            "app.slack.listeners.get_conflicting_target_language_labels",
+            "app.slack.handlers.evaluate.get_conflicting_target_language_labels",
             new_callable=AsyncMock,
         ) as mock_conflicts:
             mock_conflicts.return_value = []
             with (
                 patch(
-                    "app.slack.listeners.get_accessible_slack_files",
+                    "app.slack.handlers.evaluate.get_accessible_slack_files",
                     new_callable=AsyncMock,
                     return_value=([{"id": "F123"}], []),
                 ),
                 patch(
-                    "app.slack.listeners.enqueue_evaluation_submission",
+                    "app.slack.handlers.evaluate.enqueue_evaluation_submission",
                     new_callable=AsyncMock,
                 ) as mock_enqueue,
             ):
@@ -3378,23 +3385,25 @@ class TestEvaluateJobSubmit:
         }
 
         with patch(
-            "app.slack.listeners.get_conflicting_target_language_labels",
+            "app.slack.handlers.evaluate.get_conflicting_target_language_labels",
             new_callable=AsyncMock,
         ) as mock_conflicts:
             mock_conflicts.return_value = []
             with (
                 patch(
-                    "app.slack.listeners.get_accessible_slack_files",
+                    "app.slack.handlers.evaluate.get_accessible_slack_files",
                     new_callable=AsyncMock,
                     return_value=([{"id": "F123"}], []),
                 ),
                 patch(
-                    "app.slack.listeners.enqueue_evaluation_submission",
+                    "app.slack.handlers.evaluate.enqueue_evaluation_submission",
                     new_callable=AsyncMock,
                 ) as mock_enqueue,
             ):
                 mock_enqueue.side_effect = Exception("General error")
-                with patch("app.slack.listeners.notify_exception") as mock_notify:
+                with patch(
+                    "app.slack.handlers.evaluate.notify_exception"
+                ) as mock_notify:
                     await evaluate_job_submit(
                         context_dict,
                         view=view,
@@ -3436,16 +3445,16 @@ class TestDocumentMtJobAction:
         mock_client.views_open.return_value = {"view": {"id": "V123"}}
         with (
             patch(
-                "app.slack.listeners.populate_ray_connection",
+                "app.slack.handlers.document_mt.populate_ray_connection",
                 new_callable=AsyncMock,
             ),
             patch(
-                "app.slack.listeners.require_ray_client",
+                "app.slack.handlers.document_mt.require_ray_client",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
             patch(
-                "app.slack.listeners.document_mt_job_modal",
+                "app.slack.handlers.document_mt.document_mt_job_modal",
                 return_value={"type": "modal"},
             ) as mock_document_mt_job_modal,
         ):
@@ -3624,12 +3633,12 @@ class TestHandleDocumentMtJob:
 
         with (
             patch(
-                "app.slack.listeners.get_accessible_slack_files",
+                "app.slack.handlers.document_mt.get_accessible_slack_files",
                 new_callable=AsyncMock,
                 return_value=([{"id": "F123"}], []),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_quote_preflight",
+                "app.slack.handlers.document_mt.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
         ):
@@ -3795,7 +3804,7 @@ class TestHandleDocumentMtJob:
         }
         with (
             patch(
-                "app.slack.listeners.get_accessible_slack_files",
+                "app.slack.handlers.document_mt.get_accessible_slack_files",
                 new_callable=AsyncMock,
                 return_value=(
                     [],
@@ -3803,10 +3812,10 @@ class TestHandleDocumentMtJob:
                 ),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_quote_preflight",
+                "app.slack.handlers.document_mt.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
-            patch("app.slack.listeners.notify_exception") as mock_notify,
+            patch("app.slack.handlers.document_mt.notify_exception") as mock_notify,
         ):
             await handle_document_mt_job(
                 context_dict, mock_ack, view=view, client=mock_client
@@ -4003,11 +4012,11 @@ class TestDocumentMtQuoteActions:
 
         with (
             patch(
-                "app.slack.listeners.get_accessible_slack_files",
+                "app.slack.handlers.document_mt.get_accessible_slack_files",
                 new_callable=AsyncMock,
                 side_effect=slack_error,
             ),
-            patch("app.slack.listeners.notify_exception") as mock_notify,
+            patch("app.slack.handlers.document_mt.notify_exception") as mock_notify,
         ):
             await handle_document_mt_job(
                 context_dict, mock_ack, view=view, client=mock_client
@@ -4070,7 +4079,7 @@ class TestDocumentMtQuoteActions:
         }
         with (
             patch(
-                "app.slack.listeners.get_accessible_slack_files",
+                "app.slack.handlers.document_mt.get_accessible_slack_files",
                 new_callable=AsyncMock,
                 return_value=(
                     [{"id": "F_VALID"}],
@@ -4078,10 +4087,10 @@ class TestDocumentMtQuoteActions:
                 ),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_quote_preflight",
+                "app.slack.handlers.document_mt.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
-            patch("app.slack.listeners.notify_exception") as mock_notify,
+            patch("app.slack.handlers.document_mt.notify_exception") as mock_notify,
         ):
             await handle_document_mt_job(
                 context_dict, mock_ack, view=view, client=mock_client
@@ -4146,12 +4155,12 @@ class TestDocumentMtQuoteActions:
 
         with (
             patch(
-                "app.slack.listeners.get_accessible_slack_files",
+                "app.slack.handlers.document_mt.get_accessible_slack_files",
                 new_callable=AsyncMock,
                 return_value=([{"id": "F123"}], []),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_quote_preflight",
+                "app.slack.handlers.document_mt.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
         ):
@@ -4213,12 +4222,12 @@ class TestDocumentMtQuoteActions:
 
         with (
             patch(
-                "app.slack.listeners.get_accessible_slack_files",
+                "app.slack.handlers.document_mt.get_accessible_slack_files",
                 new_callable=AsyncMock,
                 return_value=([{"id": "F123"}], []),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_quote_preflight",
+                "app.slack.handlers.document_mt.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
         ):
@@ -4277,17 +4286,19 @@ class TestDocumentMtQuoteActions:
 
         with (
             patch(
-                "app.slack.listeners.get_accessible_slack_files",
+                "app.slack.handlers.document_mt.get_accessible_slack_files",
                 new_callable=AsyncMock,
                 return_value=([{"id": "F123"}], []),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_quote_preflight",
+                "app.slack.handlers.document_mt.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
         ):
             mock_enqueue.side_effect = RuntimeError("enqueue failed")
-            with patch("app.slack.listeners.notify_exception") as mock_notify:
+            with patch(
+                "app.slack.handlers.document_mt.notify_exception"
+            ) as mock_notify:
                 await handle_document_mt_job(
                     context_dict,
                     mock_ack,
@@ -4351,12 +4362,12 @@ class TestDocumentMtQuoteActions:
 
         with (
             patch(
-                "app.slack.listeners.get_accessible_slack_files",
+                "app.slack.handlers.document_mt.get_accessible_slack_files",
                 new_callable=AsyncMock,
                 return_value=([{"id": "F123"}], []),
             ),
             patch(
-                "app.slack.listeners.enqueue_document_mt_quote_preflight",
+                "app.slack.handlers.document_mt.enqueue_document_mt_quote_preflight",
                 new_callable=AsyncMock,
             ) as mock_enqueue,
         ):
@@ -4393,7 +4404,7 @@ class TestMessageEvent:
         }
 
         with patch(
-            "app.slack.listeners.is_duplicate_event", new_callable=AsyncMock
+            "app.slack.handlers.messages.is_duplicate_event", new_callable=AsyncMock
         ) as mock_duplicate:
             mock_duplicate.return_value = True
             # The decorator passes context as first arg, then *args to the function
@@ -4420,12 +4431,13 @@ class TestMessageEvent:
         }
 
         with (
-            patch("app.slack.listeners.is_channel_im", return_value=False),
+            patch("app.slack.handlers.messages.is_channel_im", return_value=False),
             patch(
-                "app.slack.listeners.auto_translate_message", new_callable=AsyncMock
+                "app.slack.handlers.messages.auto_translate_message",
+                new_callable=AsyncMock,
             ) as mock_auto_translate,
             patch(
-                "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+                "app.slack.handlers.messages.respond_to_message", new_callable=AsyncMock
             ) as mock_respond,
         ):
             await message_event(context_dict, mock_client, message=message, body=body)
@@ -4458,7 +4470,7 @@ class TestMessageEvent:
         }
 
         with patch(
-            "app.slack.listeners.auto_translate_message", new_callable=AsyncMock
+            "app.slack.handlers.messages.auto_translate_message", new_callable=AsyncMock
         ) as mock_auto_translate:
             await message_event(context_dict, mock_client, message=message, body=body)
             mock_auto_translate.assert_not_called()
@@ -4485,11 +4497,11 @@ class TestMessageEvent:
         }
 
         with patch(
-            "app.slack.listeners.get_bot_token_async", new_callable=AsyncMock
+            "app.slack.handlers.messages.get_bot_token_async", new_callable=AsyncMock
         ) as mock_get_token:
             mock_get_token.return_value = None
             with patch(
-                "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+                "app.slack.handlers.messages.respond_to_message", new_callable=AsyncMock
             ) as mock_respond:
                 await message_event(
                     context_dict, mock_client, message=message, body=body
@@ -4518,10 +4530,11 @@ class TestMessageEvent:
         }
 
         with patch(
-            "app.slack.listeners.is_channel_im", return_value=False
+            "app.slack.handlers.messages.is_channel_im", return_value=False
         ) as mock_is_im:
             with patch(
-                "app.slack.listeners.auto_translate_message", new_callable=AsyncMock
+                "app.slack.handlers.messages.auto_translate_message",
+                new_callable=AsyncMock,
             ) as mock_auto_translate:
                 await message_event(
                     context_dict, mock_client, message=message, body=body
@@ -4554,9 +4567,9 @@ class TestMessageEvent:
         }
 
         with (
-            patch("app.slack.listeners.is_channel_im", return_value=False),
+            patch("app.slack.handlers.messages.is_channel_im", return_value=False),
             patch(
-                "app.slack.listeners.maybe_show_thread_media_embed_option",
+                "app.slack.handlers.messages.maybe_show_thread_media_embed_option",
                 new_callable=AsyncMock,
             ) as mock_maybe_embed,
         ):
@@ -4592,11 +4605,11 @@ class TestMessageEvent:
 
         with (
             patch(
-                "app.slack.listeners.maybe_show_thread_media_embed_option",
+                "app.slack.handlers.messages.maybe_show_thread_media_embed_option",
                 new_callable=AsyncMock,
             ) as mock_maybe_embed,
             patch(
-                "app.slack.listeners.respond_to_message",
+                "app.slack.handlers.messages.respond_to_message",
                 new_callable=AsyncMock,
             ) as mock_respond,
         ):
@@ -4655,10 +4668,11 @@ class TestMessageEvent:
 
         with (
             patch(
-                "app.slack.listeners.populate_ray_connection", new_callable=AsyncMock
+                "app.slack.handlers.media.populate_ray_connection",
+                new_callable=AsyncMock,
             ),
             patch(
-                "app.slack.listeners.require_ray_client",
+                "app.slack.handlers.media.require_ray_client",
                 new_callable=AsyncMock,
                 return_value=True,
             ),
@@ -4734,10 +4748,11 @@ class TestMessageEvent:
         }
 
         with patch(
-            "app.slack.listeners.is_channel_im", return_value=False
+            "app.slack.handlers.messages.is_channel_im", return_value=False
         ) as mock_is_im:
             with patch(
-                "app.slack.listeners.auto_translate_message", new_callable=AsyncMock
+                "app.slack.handlers.messages.auto_translate_message",
+                new_callable=AsyncMock,
             ) as mock_auto_translate:
                 await message_event(
                     context_dict, mock_client, message=message, body=body
@@ -4766,11 +4781,11 @@ class TestMessageEvent:
         }
 
         with patch(
-            "app.slack.listeners.get_bot_token_async", new_callable=AsyncMock
+            "app.slack.handlers.messages.get_bot_token_async", new_callable=AsyncMock
         ) as mock_get_token:
             mock_get_token.return_value = "new-token"
             with patch(
-                "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+                "app.slack.handlers.messages.respond_to_message", new_callable=AsyncMock
             ) as mock_respond:
                 await message_event(
                     context_dict, mock_client, message=message, body=body
@@ -5997,7 +6012,7 @@ class TestAppMentionEvent:
         }
 
         with patch(
-            "app.slack.listeners.is_duplicate_event", new_callable=AsyncMock
+            "app.slack.handlers.messages.is_duplicate_event", new_callable=AsyncMock
         ) as mock_duplicate:
             mock_duplicate.return_value = True
             await app_mention_event(context_dict, mock_client, event=event)
@@ -6018,7 +6033,7 @@ class TestAppMentionEvent:
         }
 
         with patch(
-            "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+            "app.slack.handlers.messages.respond_to_message", new_callable=AsyncMock
         ) as mock_respond:
             await app_mention_event(context_dict, mock_client, event=event)
             mock_respond.assert_not_called()
@@ -6040,7 +6055,7 @@ class TestAppMentionEvent:
         }
 
         with patch(
-            "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+            "app.slack.handlers.messages.respond_to_message", new_callable=AsyncMock
         ) as mock_respond:
             await app_mention_event(context_dict, mock_client, event=event)
             mock_respond.assert_called_once_with(
@@ -6064,7 +6079,7 @@ class TestAppMentionEvent:
         }
 
         with patch(
-            "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+            "app.slack.handlers.messages.respond_to_message", new_callable=AsyncMock
         ) as mock_respond:
             await app_mention_event(context_dict, mock_client, event=event)
             mock_respond.assert_called_once_with(
@@ -6090,7 +6105,7 @@ class TestAppMentionEvent:
         }
 
         with patch(
-            "app.slack.listeners.respond_to_message", new_callable=AsyncMock
+            "app.slack.handlers.messages.respond_to_message", new_callable=AsyncMock
         ) as mock_respond:
             await app_mention_event(context_dict, mock_client, event=event)
             # Should not call respond_to_message when no text and no files
@@ -6126,7 +6141,7 @@ class TestHandleVerifyJobSubmission:
         }
 
         with patch(
-            "app.slack.listeners.redis_conn.set", new_callable=AsyncMock
+            "app.slack.handlers.evaluate_verify.redis_conn.set", new_callable=AsyncMock
         ) as mock_redis_set:
             mock_redis_set.return_value = False  # Lock not acquired
             await handle_verify_job_submission(
@@ -6204,15 +6219,16 @@ class TestHandleVerifyJobSubmission:
         }
 
         with patch(
-            "app.slack.listeners.redis_conn.set", new_callable=AsyncMock
+            "app.slack.handlers.evaluate_verify.redis_conn.set", new_callable=AsyncMock
         ) as mock_redis_set:
             mock_redis_set.return_value = True  # Lock acquired
             with patch(
-                "app.slack.listeners.get_client_evaluation_job", new_callable=AsyncMock
+                "app.slack.handlers.evaluate_verify.get_client_evaluation_job",
+                new_callable=AsyncMock,
             ) as mock_get_job:
                 mock_get_job.return_value = mock_job
                 with patch(
-                    "app.slack.listeners.submit_verification_job",
+                    "app.slack.handlers.evaluate_verify.submit_verification_job",
                     new_callable=AsyncMock,
                 ) as mock_submit:
                     await handle_verify_job_submission(
@@ -6294,15 +6310,16 @@ class TestHandleVerifyJobSubmission:
         }
 
         with patch(
-            "app.slack.listeners.redis_conn.set", new_callable=AsyncMock
+            "app.slack.handlers.evaluate_verify.redis_conn.set", new_callable=AsyncMock
         ) as mock_redis_set:
             mock_redis_set.return_value = True
             with patch(
-                "app.slack.listeners.get_client_evaluation_job", new_callable=AsyncMock
+                "app.slack.handlers.evaluate_verify.get_client_evaluation_job",
+                new_callable=AsyncMock,
             ) as mock_get_job:
                 mock_get_job.return_value = mock_job
                 with patch(
-                    "app.slack.listeners.submit_verification_job",
+                    "app.slack.handlers.evaluate_verify.submit_verification_job",
                     new_callable=AsyncMock,
                 ) as mock_submit:
                     await handle_verify_job_submission(
@@ -6392,15 +6409,16 @@ class TestHandleVerifyJobSubmission:
         }
 
         with patch(
-            "app.slack.listeners.redis_conn.set", new_callable=AsyncMock
+            "app.slack.handlers.evaluate_verify.redis_conn.set", new_callable=AsyncMock
         ) as mock_redis_set:
             mock_redis_set.return_value = True
             with patch(
-                "app.slack.listeners.get_client_evaluation_job", new_callable=AsyncMock
+                "app.slack.handlers.evaluate_verify.get_client_evaluation_job",
+                new_callable=AsyncMock,
             ) as mock_get_job:
                 mock_get_job.return_value = mock_job
                 with patch(
-                    "app.slack.listeners.submit_verification_job",
+                    "app.slack.handlers.evaluate_verify.submit_verification_job",
                     new_callable=AsyncMock,
                 ) as mock_submit:
                     await handle_verify_job_submission(
@@ -6471,15 +6489,16 @@ class TestHandleVerifyJobSubmission:
         }
 
         with patch(
-            "app.slack.listeners.redis_conn.set", new_callable=AsyncMock
+            "app.slack.handlers.evaluate_verify.redis_conn.set", new_callable=AsyncMock
         ) as mock_redis_set:
             mock_redis_set.return_value = True
             with patch(
-                "app.slack.listeners.get_client_evaluation_job", new_callable=AsyncMock
+                "app.slack.handlers.evaluate_verify.get_client_evaluation_job",
+                new_callable=AsyncMock,
             ) as mock_get_job:
                 mock_get_job.return_value = mock_job
                 with patch(
-                    "app.slack.listeners.submit_verification_job",
+                    "app.slack.handlers.evaluate_verify.submit_verification_job",
                     new_callable=AsyncMock,
                 ) as mock_submit:
                     await handle_verify_job_submission(
@@ -6528,7 +6547,7 @@ class TestViewUpdateAutoTranslateSettings:
         }
 
         with patch(
-            "app.slack.listeners.AutoTranslationSettingsForm.parse_slack",
+            "app.slack.handlers.auto_translate.AutoTranslationSettingsForm.parse_slack",
             side_effect=ValidationError.from_exception_data("TestForm", []),
         ):
             await view_update_auto_translate_settings(
@@ -6576,7 +6595,7 @@ class TestViewUpdateAutoTranslateSettings:
         }
 
         with patch(
-            "app.slack.listeners.resolve_channels_to_team",
+            "app.slack.handlers.auto_translate.resolve_channels_to_team",
             new_callable=AsyncMock,
         ) as mock_resolve:
             mock_resolve.return_value = {
@@ -6584,16 +6603,17 @@ class TestViewUpdateAutoTranslateSettings:
                 "team_id": team_id,
             }
             with patch(
-                "app.slack.listeners.disable_auto_translate_group_settings",
+                "app.slack.handlers.auto_translate.disable_auto_translate_group_settings",
                 new_callable=AsyncMock,
             ) as mock_disable:
                 with patch(
-                    "app.slack.listeners.get_token_for_team",
+                    "app.slack.handlers.auto_translate.get_token_for_team",
                     new_callable=AsyncMock,
                 ) as mock_get_token:
                     mock_get_token.return_value = None
                     with patch(
-                        "app.slack.listeners.home_view", new_callable=AsyncMock
+                        "app.slack.handlers.auto_translate.home_view",
+                        new_callable=AsyncMock,
                     ) as mock_home_view:
                         mock_home_view.return_value = {"type": "home"}
                         await view_update_auto_translate_settings(
@@ -6649,7 +6669,7 @@ class TestViewUpdateAutoTranslateSettings:
         }
 
         with patch(
-            "app.slack.listeners.resolve_channels_to_team",
+            "app.slack.handlers.auto_translate.resolve_channels_to_team",
             new_callable=AsyncMock,
         ) as mock_resolve:
             mock_resolve.return_value = {
@@ -6657,16 +6677,17 @@ class TestViewUpdateAutoTranslateSettings:
                 "team_id": team_id,
             }
             with patch(
-                "app.slack.listeners.update_auto_translate_group_settings",
+                "app.slack.handlers.auto_translate.update_auto_translate_group_settings",
                 new_callable=AsyncMock,
             ) as mock_update:
                 with patch(
-                    "app.slack.listeners.get_token_for_team",
+                    "app.slack.handlers.auto_translate.get_token_for_team",
                     new_callable=AsyncMock,
                 ) as mock_get_token:
                     mock_get_token.return_value = None
                     with patch(
-                        "app.slack.listeners.home_view", new_callable=AsyncMock
+                        "app.slack.handlers.auto_translate.home_view",
+                        new_callable=AsyncMock,
                     ) as mock_home_view:
                         mock_home_view.return_value = {"type": "home"}
                         await view_update_auto_translate_settings(
@@ -6730,7 +6751,7 @@ class TestViewUpdateAutoTranslateSettings:
         )
 
         with patch(
-            "app.slack.listeners.resolve_channels_to_team",
+            "app.slack.handlers.auto_translate.resolve_channels_to_team",
             new_callable=AsyncMock,
         ) as mock_resolve:
             mock_resolve.side_effect = slack_error
@@ -6781,7 +6802,7 @@ class TestHomeOpened:
         mock_client.conversations_history.return_value = {"messages": []}
 
         with patch(
-            "app.slack.listeners.home_view", new_callable=AsyncMock
+            "app.slack.handlers.home.home_view", new_callable=AsyncMock
         ) as mock_home_view:
             mock_home_view.return_value = {"type": "home"}
             await home_opened(
@@ -6831,7 +6852,7 @@ class TestHomeOpened:
         ]
 
         with patch(
-            "app.slack.listeners.home_view", new_callable=AsyncMock
+            "app.slack.handlers.home.home_view", new_callable=AsyncMock
         ) as mock_home_view:
             mock_home_view.return_value = {"type": "home"}
             await home_opened(
@@ -6881,7 +6902,7 @@ class TestHomeOpened:
         ]
 
         with patch(
-            "app.slack.listeners.home_view", new_callable=AsyncMock
+            "app.slack.handlers.home.home_view", new_callable=AsyncMock
         ) as mock_home_view:
             mock_home_view.return_value = {"type": "home"}
             await home_opened(
@@ -6924,7 +6945,7 @@ class TestHomeOpened:
         }
 
         with patch(
-            "app.slack.listeners.home_view", new_callable=AsyncMock
+            "app.slack.handlers.home.home_view", new_callable=AsyncMock
         ) as mock_home_view:
             mock_home_view.return_value = {"type": "home"}
             await home_opened(
@@ -6975,7 +6996,7 @@ class TestHomeOpened:
         )
 
         with patch(
-            "app.slack.listeners.home_view", new_callable=AsyncMock
+            "app.slack.handlers.home.home_view", new_callable=AsyncMock
         ) as mock_home_view:
             mock_home_view.return_value = {"type": "home"}
             await home_opened(
@@ -7020,11 +7041,12 @@ class TestHandleTranslateShortcut:
         )
 
         with patch(
-            "app.slack.listeners.detect_language", new_callable=AsyncMock
+            "app.slack.handlers.shortcuts.detect_language", new_callable=AsyncMock
         ) as mock_detect:
             mock_detect.return_value = MagicMock(language="en")
             with patch(
-                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+                "app.slack.handlers.shortcuts.get_mt_translation",
+                new_callable=AsyncMock,
             ) as mock_mt:
                 # The decorator passes context as first arg, then *args to the function
                 # Function signature is (ack, body, client, context), so we pass (context_dict, mock_ack, body=body, client=mock_client)
@@ -7074,11 +7096,12 @@ class TestHandleTranslateShortcut:
         )
 
         with patch(
-            "app.slack.listeners.detect_language", new_callable=AsyncMock
+            "app.slack.handlers.shortcuts.detect_language", new_callable=AsyncMock
         ) as mock_detect:
             mock_detect.return_value = MagicMock(language="en")
             with patch(
-                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+                "app.slack.handlers.shortcuts.get_mt_translation",
+                new_callable=AsyncMock,
             ) as mock_mt:
                 # The decorator passes context as first arg, then *args to the function
                 # Function signature is (ack, body, client, context), so we pass (context_dict, mock_ack, body=body, client=mock_client)
@@ -7126,11 +7149,12 @@ class TestHandleTranslateShortcut:
         )
 
         with patch(
-            "app.slack.listeners.detect_language", new_callable=AsyncMock
+            "app.slack.handlers.shortcuts.detect_language", new_callable=AsyncMock
         ) as mock_detect:
             mock_detect.return_value = MagicMock(language="en")
             with patch(
-                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+                "app.slack.handlers.shortcuts.get_mt_translation",
+                new_callable=AsyncMock,
             ) as mock_mt:
                 # The decorator passes context as first arg, then *args to the function
                 # Function signature is (ack, body, client, context), so we pass (context_dict, mock_ack, body=body, client=mock_client)
@@ -7174,11 +7198,12 @@ class TestHandleTranslateShortcut:
         )
 
         with patch(
-            "app.slack.listeners.detect_language", new_callable=AsyncMock
+            "app.slack.handlers.shortcuts.detect_language", new_callable=AsyncMock
         ) as mock_detect:
             mock_detect.return_value = MagicMock(language="fr")
             with patch(
-                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+                "app.slack.handlers.shortcuts.get_mt_translation",
+                new_callable=AsyncMock,
             ) as mock_mt:
                 # The decorator passes context as first arg, then *args to the function
                 # Function signature is (ack, body, client, context), so we pass (context_dict, mock_ack, body=body, client=mock_client)
@@ -7216,10 +7241,11 @@ class TestHandleTranslateShortcut:
         )
 
         with patch(
-            "app.slack.listeners.detect_language", new_callable=AsyncMock
+            "app.slack.handlers.shortcuts.detect_language", new_callable=AsyncMock
         ) as mock_detect:
             with patch(
-                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+                "app.slack.handlers.shortcuts.get_mt_translation",
+                new_callable=AsyncMock,
             ) as mock_mt:
                 await handle_translate_shortcut(
                     context_dict, mock_ack, body=body, client=mock_client
@@ -7257,10 +7283,11 @@ class TestHandleTranslateShortcut:
         )
 
         with patch(
-            "app.slack.listeners.detect_language", new_callable=AsyncMock
+            "app.slack.handlers.shortcuts.detect_language", new_callable=AsyncMock
         ) as mock_detect:
             with patch(
-                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+                "app.slack.handlers.shortcuts.get_mt_translation",
+                new_callable=AsyncMock,
             ) as mock_mt:
                 await handle_translate_shortcut(
                     context_dict, mock_ack, body=body, client=mock_client
@@ -7297,10 +7324,11 @@ class TestHandleTranslateShortcut:
         )
 
         with patch(
-            "app.slack.listeners.detect_language", new_callable=AsyncMock
+            "app.slack.handlers.shortcuts.detect_language", new_callable=AsyncMock
         ) as mock_detect:
             with patch(
-                "app.slack.listeners.get_mt_translation", new_callable=AsyncMock
+                "app.slack.handlers.shortcuts.get_mt_translation",
+                new_callable=AsyncMock,
             ) as mock_mt:
                 await handle_translate_shortcut(
                     context_dict, mock_ack, body=body, client=mock_client
@@ -7347,7 +7375,7 @@ class TestHandleTranslateShortcut:
 
         with (
             patch(
-                "app.slack.listeners.detect_language", new_callable=AsyncMock
+                "app.slack.handlers.shortcuts.detect_language", new_callable=AsyncMock
             ) as mock_detect,
             patch(
                 "app.slack.listener_actions.resolve_language",

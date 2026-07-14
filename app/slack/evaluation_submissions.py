@@ -21,6 +21,7 @@ async def publish_pdf_evaluate_convert(
     docconverter_version: str = "m48",
     preaccepted_ai_translation_quote: bool = False,
     prequote_message_ts: str | None = None,
+    ai_translation_filename_and_languages: list[str] | None = None,
 ) -> None:
     """Upload files to GridFS and publish to the PDF evaluate conversion stream."""
     file_ids = []
@@ -46,6 +47,10 @@ async def publish_pdf_evaluate_convert(
     }
     if prequote_message_ts:
         payload["prequote_message_ts"] = prequote_message_ts
+    if ai_translation_filename_and_languages:
+        payload["ai_translation_filename_and_languages"] = (
+            ai_translation_filename_and_languages
+        )
 
     async with httpx.AsyncClient() as http:
         await http.post(

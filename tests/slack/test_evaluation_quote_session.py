@@ -8,7 +8,12 @@ import pytest
 from app.slack.evaluation_quotes import (
     get_evaluate_quote_session,
     save_evaluate_quote_session,
+    update_evaluate_quote_session,
     update_evaluate_quote_stage,
+)
+from app.slack.pdf_evaluate_quotes import (
+    get_pdf_evaluate_quote_session,
+    save_pdf_evaluate_quote_session,
 )
 
 
@@ -70,3 +75,83 @@ async def test_update_evaluate_quote_stage():
         session = await get_evaluate_quote_session("job-2")
         assert session is not None
         assert session["stage"] == "awaiting_qe"
+
+
+@pytest.mark.asyncio
+async def test_update_evaluate_quote_session_preserves_existing_fields():
+    stored = {
+        "slack-ray-translator:evaluate-quote:job-3": json.dumps(
+            {
+                "channel_id": "C1",
+                "stage": "awaiting_ai",
+                "quote_snapshot": {"token_cost": 100},
+            }
+        )
+    }
+
+    async def fake_get(key):
+        return stored.get(key)
+
+    async def fake_set(key, value, ex=None):
+        stored[key] = value
+
+    with patch("app.slack.evaluation_quotes.redis_conn") as mock_redis:
+        mock_redis.get = AsyncMock(side_effect=fake_get)
+        mock_redis.set = AsyncMock(side_effect=fake_set)
+
+        await update_evaluate_quote_session(
+            "job-3",
+            {
+                "quote_snapshot": {
+                    "token_cost": 25,
+                    "ai_translation_file_and_languages": ["file-1:lang-1"],
+                }
+            },
+        )
+
+        session = await get_evaluate_quote_session("job-3")
+        assert session is not None
+        assert session["channel_id"] == "C1"
+        assert session["stage"] == "awaiting_ai"
+        assert session["quote_snapshot"]["token_cost"] == 25
+
+
+@pytest.mark.asyncio
+async def test_pdf_quote_session_initially_selects_all_files_and_languages():
+    stored = {}
+
+    async def fake_set(key, value, ex=None):
+        stored[key] = value
+
+    async def fake_get(key):
+        return stored.get(key)
+
+    with patch("app.slack.pdf_evaluate_quotes.redis_conn") as mock_redis:
+        mock_redis.set = AsyncMock(side_effect=fake_set)
+        mock_redis.get = AsyncMock(side_effect=fake_get)
+
+        quote_id = await save_pdf_evaluate_quote_session(
+            channel_id="C1",
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            files=[
+                {
+                    "id": "file-1",
+                    "title": "source.pdf",
+                    "pdf_page_count": 3,
+                }
+            ],
+            target_langs_uuid=["lang-1"],
+            reference="reference",
+            source_lang_uuid="source-lang",
+            workflow_uuid=None,
+            job_notes="",
+            ai_token_estimate=20,
+            pdf_page_count=3,
+        )
+        session = await get_pdf_evaluate_quote_session(quote_id)
+
+    assert session is not None
+    assert session["selected_file_ids"] == ["file-1"]
+    assert session["selected_target_langs_uuid"] == ["lang-1"]

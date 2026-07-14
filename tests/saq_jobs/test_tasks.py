@@ -289,6 +289,9 @@ async def test_process_evaluation_submission_direct_verify_upload():
             source_lang_uuid="src",
             workflow_uuid=None,
             job_notes="",
+            preaccepted_ai_translation_quote=True,
+            prequote_message_ts="123.456",
+            ai_translation_filename_and_languages=["a.docx:lang-1"],
         )
 
     assert result == {"status": "submitted", "file_count": 1}
@@ -299,13 +302,20 @@ async def test_process_evaluation_submission_direct_verify_upload():
         ["lang-1"],
         "ref",
     )
+    assert mock_submit.await_args.kwargs["preaccepted_ai_translation_quote"] is True
+    assert mock_submit.await_args.kwargs["prequote_message_ts"] == "123.456"
+    assert mock_submit.await_args.kwargs["ai_translation_filename_and_languages"] == [
+        "a.docx:lang-1"
+    ]
 
 
 @pytest.mark.asyncio
 async def test_process_evaluation_submission_pdf_posts_prequote_before_conversion():
     ray_client = MagicMock()
     fake_slack = MagicMock()
-    fake_slack.chat_postMessage = AsyncMock(return_value={"ts": "123.456"})
+    slack_response = MagicMock()
+    slack_response.get.return_value = "123.456"
+    fake_slack.chat_postMessage = AsyncMock(return_value=slack_response)
 
     with (
         patch(
@@ -317,6 +327,15 @@ async def test_process_evaluation_submission_pdf_posts_prequote_before_conversio
         patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
         patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.pdf")),
         patch("app.ray.utils.validate_file", return_value=(True, True, "")),
+        patch(
+            "app.api.verify.get_verify_languages",
+            new=AsyncMock(
+                return_value=[
+                    {"uuid": "lang-1", "name": "French"},
+                    {"uuid": "lang-2", "name": "German"},
+                ]
+            ),
+        ),
         patch(
             "app.slack.pdf_evaluate_quotes.pdf_page_count_from_file",
             return_value=3,
@@ -330,7 +349,7 @@ async def test_process_evaluation_submission_pdf_posts_prequote_before_conversio
             new=AsyncMock(),
         ) as mock_update,
         patch(
-            "app.slack.listeners._publish_pdf_evaluate_convert",
+            "app.slack.evaluation_submissions.publish_pdf_evaluate_convert",
             new=AsyncMock(),
         ) as mock_publish,
         patch("app.saq_jobs.tasks._safe_unlink"),
