@@ -430,4 +430,5 @@ async def test_ai_quote_adjust_submit_persists_and_accepts_quote():
         body=body,
         action={"value": "job-1"},
         context=context,
+        selected_pairs_override=["file-1:lang-1"],
     )

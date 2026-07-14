@@ -1053,31 +1053,18 @@ def evaluation_ai_quote_adjust_modal(
             }
         )
     total_tokens = ai_tokens + pdf_tokens
-    blocks.extend(
-        [
-            {
-                "type": "section",
-                "block_id": "ai_quote_translation_cost_block",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": (
-                        f"*{_('AI Translation')}:* "
-                        f"{_format_evaluate_quote_cost(ai_tokens)}"
-                    ),
-                },
+    blocks.append(
+        {
+            "type": "section",
+            "block_id": "total_cost_block",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"*{_('Total cost')}:* "
+                    f"{_format_evaluate_quote_cost(total_tokens)}"
+                ),
             },
-            {
-                "type": "section",
-                "block_id": "total_cost_block",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": (
-                        f"*{_('Total cost')}:* "
-                        f"{_format_evaluate_quote_cost(total_tokens)}"
-                    ),
-                },
-            },
-        ]
+        }
     )
     metadata = {"quote_id": quote_id, "quote_kind": quote_kind}
     if channel_id:

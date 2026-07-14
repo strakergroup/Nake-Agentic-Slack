@@ -13,15 +13,19 @@ from app.auth.connector import get_ray_client
 from app.constants import EVALUATE_SERVICE_QUALITY_EVALUATION
 from app.dependencies import RayEvent, RayEventAuth
 from app.ray.events.logging import post_notification
+from app.ray.utils import is_ibm_enterprise
 from app.slack.evaluation_ai_adjustment import (
     ai_scope_from_job,
     filter_job_to_pairs,
+    language_costs_with_cancelled_status,
+    mark_out_of_scope_pairs_cancelled,
 )
 from app.slack.evaluation_quotes import (
     STAGE_AWAITING_QE,
     get_evaluate_quote_session,
     resolve_evaluate_channel_id,
     save_evaluate_quote_session,
+    update_evaluate_quote_slack_message,
 )
 from app.slack.templates.messages import HumanJobQuoteMessage, SlackMessage
 from app.translate import _
@@ -330,7 +334,9 @@ async def post_combined_qe_human_quote(
     job = await get_evaluation_job(auth.slack_user, job_uuid)
     job_data = job["data"]
     ai_scope = ai_scope_from_job(job_data)
-    job_data = filter_job_to_pairs(job_data, ai_scope)
+    # Keep full language list for Cancelled rows; pricing uses active pairs only.
+    display_job = mark_out_of_scope_pairs_cancelled(job_data, ai_scope)
+    scoped_job = filter_job_to_pairs(job_data, ai_scope)
     quote = await get_evaluation_job_quote(
         ray_client,
         job_uuid,
@@ -345,18 +351,24 @@ async def post_combined_qe_human_quote(
     costs = await get_job_pricing(
         ray_client,
         job_uuid,
-        job_file_uuids(job_data),
-        job_target_language_uuids(job_data),
+        job_file_uuids(scoped_job),
+        job_target_language_uuids(scoped_job),
         assumed_quality_tier=WORST_CASE_QE_QUALITY_TIER,
     )
+    priced_costs = active_quote_cost_rows(costs["data"], ai_scope)
     if not qe_costs:
-        qe_costs = qe_additional_cost(qe_token_cost, costs["data"])
+        qe_costs = qe_additional_cost(
+            qe_token_cost,
+            priced_costs,
+            pricing_costs=priced_costs,
+        )
 
     message = combined_human_job_quote_message(
-        job_data,
-        costs["data"],
+        display_job,
+        priced_costs,
         qe_token_cost=qe_token_cost,
         qe_additional_costs=qe_costs,
+        pricing_costs=priced_costs,
         download_translations_job_uuid=job_uuid,
         show_quality_discount=PRE_QE_QUOTE_DISPLAY["show_quality_discount"],
         show_savings=PRE_QE_QUOTE_DISPLAY["show_savings"],
@@ -367,17 +379,79 @@ async def post_combined_qe_human_quote(
     )
     session = await get_evaluate_quote_session(job_uuid)
     channel_id = resolve_evaluate_channel_id(event, job_data) or auth.slack_user.user_id
-    message_ts = session.get("message_ts") if session else None
-
+    stored_message_ts = session.get("message_ts") if session else None
+    stored_ai_message_ts = session.get("ai_message_ts") if session else None
     if session and session.get("channel_id"):
         channel_id = session["channel_id"]
-    if message_ts:
+
+    # Prefer the preserved AI message timestamp once the HT/QE quote has been
+    # posted; until then session.message_ts still points at the AI quote.
+    if stored_ai_message_ts:
+        ai_message_ts = str(stored_ai_message_ts)
+        existing_ht_message_ts = (
+            str(stored_message_ts)
+            if stored_message_ts and str(stored_message_ts) != ai_message_ts
+            else None
+        )
+    else:
+        ai_message_ts = str(stored_message_ts) if stored_message_ts else None
+        existing_ht_message_ts = None
+
+    # Keep the AI Translation quote in place (completed), then post HT/QE as a
+    # new message so both quotes remain visible in the channel. Only refresh the
+    # AI message on first HT/QE post — session.quote_snapshot becomes the HT
+    # snapshot afterwards.
+    if ai_message_ts and session and not existing_ht_message_ts:
+        quote_snapshot = session.get("quote_snapshot") or {}
+        selected_pairs = [
+            str(value)
+            for value in (
+                quote_snapshot.get("ai_translation_file_and_languages") or ai_scope
+            )
+            if value
+        ]
+        all_language_costs = (
+            quote_snapshot.get("all_language_costs")
+            or quote_snapshot.get("language_costs")
+            or []
+        )
+        language_costs = (
+            language_costs_with_cancelled_status(all_language_costs, selected_pairs)
+            if all_language_costs
+            else None
+        )
+        await update_evaluate_quote_slack_message(
+            client,
+            channel_id=channel_id,
+            message_ts=ai_message_ts,
+            service_label=str(
+                quote_snapshot.get("service_label") or _("AI Translation")
+            ),
+            token_cost=int(quote_snapshot.get("token_cost") or 0),
+            job_uuid=job_uuid,
+            accept_action_id=str(
+                quote_snapshot.get("accept_action_id") or "evaluation_ai_quote_accept"
+            ),
+            pdf_page_count=session.get("pdf_page_count"),
+            pdf_tokens=quote_snapshot.get("pdf_tokens"),
+            actions=False,
+            status_message=_(
+                "AI translation is complete. Review the Quality Evaluation + "
+                "Human Translation quote below."
+            ),
+            download_translations_job_uuid=job_uuid,
+            is_ibm=is_ibm_enterprise(auth.slack_user.enterprise_id),
+            language_costs=language_costs,
+        )
+
+    if existing_ht_message_ts:
         await client.chat_update(
             channel=channel_id,
-            ts=message_ts,
+            ts=existing_ht_message_ts,
             text=message.text,
             blocks=message.blocks,
         )
+        message_ts = existing_ht_message_ts
     else:
         response = await post_notification(
             client,
@@ -394,6 +468,7 @@ async def post_combined_qe_human_quote(
         user_id=auth.slack_user.user_id,
         team_id=auth.slack_user.team_id,
         stage=STAGE_AWAITING_QE,
+        pdf_page_count=(session or {}).get("pdf_page_count"),
         quote_snapshot={
             "service": EVALUATE_SERVICE_QUALITY_EVALUATION,
             "token_cost": qe_token_cost,
@@ -406,6 +481,7 @@ async def post_combined_qe_human_quote(
             "qe_additional_costs": qe_costs,
         },
         message_ts=message_ts,
+        ai_message_ts=ai_message_ts,
     )
 
 
@@ -434,10 +510,10 @@ async def handle_combined_qe_complete(
     ai_scope = quote_snapshot.get(
         "ai_translation_file_and_languages"
     ) or ai_scope_from_job(job_data)
-    display_job_data = filter_job_to_pairs(job_data, ai_scope)
+    display_job_data = mark_out_of_scope_pairs_cancelled(job_data, ai_scope)
     selected_targets = resolve_selected_human_translation_targets(
         display_job_data,
-        selected_languages=selected_languages,
+        selected_languages=selected_languages or ai_scope,
     )
     pricing_costs = active_quote_cost_rows(costs, selected_targets)
     stored_qe_costs = quote_snapshot.get("qe_additional_costs") or []

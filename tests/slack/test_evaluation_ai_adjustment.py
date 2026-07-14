@@ -246,6 +246,54 @@ def test_filter_job_to_pairs_removes_unselected_rows_without_mutating_job():
     assert len(job["source_files"][0]["target_files"]) == 2
 
 
+def test_mark_out_of_scope_pairs_cancelled_keeps_languages_and_marks_rows():
+    from app.slack.evaluation_ai_adjustment import mark_out_of_scope_pairs_cancelled
+
+    job = {
+        "source_files": [
+            {
+                "file_uuid": "file-1",
+                "target_files": [
+                    {"language_uuid": "lang-hi"},
+                    {"language_uuid": "lang-ko"},
+                ],
+            },
+            {
+                "file_uuid": "file-2",
+                "target_files": [
+                    {"language_uuid": "lang-hi"},
+                    {"language_uuid": "lang-ko"},
+                ],
+            },
+        ],
+        "target_languages": [
+            {"uuid": "lang-hi", "name": "Hindi"},
+            {"uuid": "lang-ko", "name": "Korean"},
+            {"uuid": "lang-lo", "name": "Lao"},
+        ],
+    }
+
+    marked = mark_out_of_scope_pairs_cancelled(
+        job,
+        ["file-1:lang-hi", "file-2:lang-ko"],
+    )
+
+    assert [lang["uuid"] for lang in marked["target_languages"]] == [
+        "lang-hi",
+        "lang-ko",
+        "lang-lo",
+    ]
+    file_1 = marked["source_files"][0]["target_files"]
+    file_2 = marked["source_files"][1]["target_files"]
+    assert file_1[0] == {"language_uuid": "lang-hi"}
+    assert file_1[1]["human_job_status"] == "Cancelled"
+    assert file_1[2]["human_job_status"] == "Cancelled"
+    assert file_2[0]["human_job_status"] == "Cancelled"
+    assert file_2[1] == {"language_uuid": "lang-ko"}
+    assert file_2[2]["human_job_status"] == "Cancelled"
+    assert "human_job_status" not in job["source_files"][0]["target_files"][0]
+
+
 def test_ai_quote_blocks_show_adjust_button_and_exact_guidance():
     blocks = evaluation_credits_quote_blocks(
         "AI Translation",
@@ -259,7 +307,7 @@ def test_ai_quote_blocks_show_adjust_button_and_exact_guidance():
     assert "Adjust Request" in rendered
     assert (
         "Review the cost below and click *Accept Quote* to continue, or "
-        "*Adjust Request* to edit target languages."
+        "*Adjust Request* to edit languages and/or source files"
     ) in rendered
 
 
@@ -301,6 +349,8 @@ def test_ai_adjust_modal_uses_independent_file_language_checkboxes():
     assert ":paperclip: *second.docx*" in str(view["blocks"])
     assert "independent per file" in str(view["blocks"])
     assert "*Total cost:* US$0.50" in str(view["blocks"])
+    assert "AI Translation" not in str(view["blocks"])
+    assert "ai_quote_translation_cost_block" not in str(view["blocks"])
     assert view["submit"]["text"] == "Accept Quote"
     assert '"message_ts": "111.222"' in view["private_metadata"]
     assert '"channel_id": "C1"' in view["private_metadata"]
@@ -399,11 +449,6 @@ def test_update_modal_cost_blocks_keeps_deselected_checkboxes_unchecked():
             },
             {
                 "type": "section",
-                "block_id": "ai_quote_translation_cost_block",
-                "text": {"type": "mrkdwn", "text": "*AI Translation*: US$0.50"},
-            },
-            {
-                "type": "section",
                 "block_id": "total_cost_block",
                 "text": {"type": "mrkdwn", "text": "*Total cost*: US$0.50"},
             },
@@ -428,5 +473,5 @@ def test_update_modal_cost_blocks_keeps_deselected_checkboxes_unchecked():
 
     assert first["initial_options"] == [option_one]
     assert "initial_options" not in second
-    assert "*AI Translation:* US$0.20" in updated["blocks"][2]["text"]["text"]
-    assert "*Total cost:* US$0.20" in updated["blocks"][3]["text"]["text"]
+    assert "*Total cost:* US$0.20" in updated["blocks"][2]["text"]["text"]
+    assert "ai_quote_translation_cost_block" not in str(updated["blocks"])

@@ -480,4 +480,5 @@ async def handle_ai_quote_adjust_submit(
             body=body,
             action={"value": quote_id},
             context=context,
+            selected_pairs_override=selected_pairs,
         )

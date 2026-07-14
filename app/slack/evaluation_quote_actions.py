@@ -27,6 +27,7 @@ from app.slack.evaluation_ai_adjustment import (
     ai_scope_from_job,
     filter_job_to_pairs,
     language_costs_with_cancelled_status,
+    selected_pairs_from_values,
 )
 from app.slack.evaluation_combined_quotes import (
     HT_SUBMITTED_QUOTE_DISPLAY,
@@ -174,6 +175,7 @@ async def _accept_evaluation_service_quote(
     insufficient_balance_message: str,
     generic_error_message: str,
     proceed: Callable[..., Awaitable[None]],
+    selected_pairs_override: list[str] | None = None,
 ) -> None:
     """Accept a staged evaluate quote, updating the original Slack message in place."""
     job_uuid = action["value"]
@@ -196,14 +198,13 @@ async def _accept_evaluation_service_quote(
     is_ibm = is_ibm_enterprise(context_enterprise_id)
 
     quote_snapshot = (session or {}).get("quote_snapshot") or {}
-    selected_pairs = (
-        [
+    if service == EVALUATE_SERVICE_AI_TRANSLATION:
+        selected_pairs = selected_pairs_from_values(selected_pairs_override or []) or [
             str(value)
             for value in quote_snapshot.get("ai_translation_file_and_languages") or []
         ]
-        if service == EVALUATE_SERVICE_AI_TRANSLATION
-        else []
-    )
+    else:
+        selected_pairs = []
     if session and session.get("stage") in terminal_stages:
         return
 
@@ -374,6 +375,7 @@ async def accept_ai_translation_quote(
     body: dict[str, Any],
     action: dict[str, Any],
     context: RayContext,
+    selected_pairs_override: list[str] | None = None,
 ) -> None:
     """Accept the AI Translation quote for a staged evaluate submission."""
     await _accept_evaluation_service_quote(
@@ -400,6 +402,7 @@ async def accept_ai_translation_quote(
             "There was an error accepting your quote. Please try again or contact your administrator."
         ),
         proceed=_proceed_ai_translation,
+        selected_pairs_override=selected_pairs_override,
     )
 
 

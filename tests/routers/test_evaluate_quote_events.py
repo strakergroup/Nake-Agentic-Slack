@@ -567,7 +567,9 @@ async def test_ai_quote_event_waits_for_adjustable_acceptance(mock_slack_user):
 
 
 @pytest.mark.asyncio
-async def test_post_combined_qe_human_quote_updates_original_message(mock_slack_user):
+async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
+    mock_slack_user,
+):
     job_uuid = str(uuid4())
     event = RayEvent(
         event="verify:slack:evaluate:ready_for_qe_quote",
@@ -578,7 +580,10 @@ async def test_post_combined_qe_human_quote_updates_original_message(mock_slack_
     job = {
         "data": {
             "uuid": job_uuid,
-            "extra_info": {"slack_channel_id": "C123"},
+            "extra_info": {
+                "slack_channel_id": "C123",
+                "ai_translation_file_and_languages": ["f1:l1"],
+            },
             "workflow_uuid": HUMAN_VERIFICATION_WORKFLOW_UUID,
             "source_files": [
                 {"file_uuid": "f1", "filename": "file.docx", "target_files": []}
@@ -586,7 +591,25 @@ async def test_post_combined_qe_human_quote_updates_original_message(mock_slack_
             "target_languages": [{"uuid": "l1", "name": "French"}],
         }
     }
-    session = {"channel_id": "C123", "message_ts": "111.222"}
+    session = {
+        "channel_id": "C123",
+        "message_ts": "111.222",
+        "quote_snapshot": {
+            "service_label": "AI Translation",
+            "token_cost": 100,
+            "accept_action_id": "evaluation_ai_quote_accept",
+            "ai_translation_file_and_languages": ["f1:l1"],
+            "language_costs": [
+                {
+                    "file_uuid": "f1",
+                    "file_label": "file.docx",
+                    "value": "l1",
+                    "label": "French",
+                    "token": 100,
+                }
+            ],
+        },
+    }
 
     auth = RayEventAuth()
     auth.slack_user = mock_slack_user
@@ -642,6 +665,7 @@ async def test_post_combined_qe_human_quote_updates_original_message(mock_slack_
         patch(
             "app.slack.evaluation_combined_quotes.post_notification",
             new_callable=AsyncMock,
+            return_value={"ts": "333.444"},
         ) as mock_post,
     ):
         mock_ray.return_value = ray_client
@@ -658,23 +682,161 @@ async def test_post_combined_qe_human_quote_updates_original_message(mock_slack_
     assert mock_pricing.await_args.kwargs["assumed_quality_tier"] == "bad"
     mock_client.chat_update.assert_awaited_once()
     assert mock_client.chat_update.await_args.kwargs["channel"] == "C123"
-    assert "Quality Evaluation: USD" not in str(
-        mock_client.chat_update.await_args.kwargs["blocks"]
-    )
-    assert "USD$91.60" in str(mock_client.chat_update.await_args.kwargs["blocks"])
-    assert "Quality: bad" not in str(
-        mock_client.chat_update.await_args.kwargs["blocks"]
-    )
-    assert "saved $" not in str(mock_client.chat_update.await_args.kwargs["blocks"])
-    assert "download_ai_translations_action" in str(
-        mock_client.chat_update.await_args.kwargs["blocks"]
-    )
-    mock_post.assert_not_awaited()
+    assert mock_client.chat_update.await_args.kwargs["ts"] == "111.222"
+    ai_updated = str(mock_client.chat_update.await_args.kwargs["blocks"])
+    assert "AI translation is complete" in ai_updated
+    assert "download_ai_translations_action" in ai_updated
+    mock_post.assert_awaited_once()
+    ht_blocks = str(mock_post.await_args.args[3].blocks)
+    assert "Quality Evaluation: USD" not in ht_blocks
+    assert "USD$91.60" in ht_blocks
+    assert "Quality: bad" not in ht_blocks
+    assert "saved $" not in ht_blocks
+    assert "download_ai_translations_action" in ht_blocks
     mock_save.assert_awaited_once()
     assert mock_save.await_args.kwargs["stage"] == "awaiting_qe"
+    assert mock_save.await_args.kwargs["message_ts"] == "333.444"
+    assert mock_save.await_args.kwargs["ai_message_ts"] == "111.222"
     assert (
         mock_save.await_args.kwargs["quote_snapshot"]["auto_submit_human_job"] is True
     )
+
+
+@pytest.mark.asyncio
+async def test_post_combined_qe_human_quote_keeps_asymmetric_ai_scope(mock_slack_user):
+    """Deselected AI pairs must stay Cancelled, not re-expand into a file×lang grid."""
+    job_uuid = str(uuid4())
+    event = RayEvent(
+        event="verify:slack:evaluate:ready_for_qe_quote",
+        data={"client_id": mock_slack_user.ray_client_id, "job_uuid": job_uuid},
+    )
+    mock_client = AsyncMock()
+    auth = RayEventAuth()
+    auth.slack_user = mock_slack_user
+    job = {
+        "data": {
+            "uuid": job_uuid,
+            "extra_info": {
+                "slack_channel_id": "C123",
+                "ai_translation_file_and_languages": [
+                    "f1:lang-hi",
+                    "f2:lang-ko",
+                ],
+            },
+            "workflow_uuid": HUMAN_VERIFICATION_WORKFLOW_UUID,
+            "source_files": [
+                {
+                    "file_uuid": "f1",
+                    "filename": "a.txt",
+                    "target_files": [
+                        {"language_uuid": "lang-hi"},
+                        {"language_uuid": "lang-ko"},
+                    ],
+                },
+                {
+                    "file_uuid": "f2",
+                    "filename": "b.docx",
+                    "target_files": [
+                        {"language_uuid": "lang-hi"},
+                        {"language_uuid": "lang-ko"},
+                    ],
+                },
+            ],
+            "target_languages": [
+                {"uuid": "lang-hi", "name": "Hindi"},
+                {"uuid": "lang-ko", "name": "Korean"},
+            ],
+        }
+    }
+    pricing_rows = [
+        {
+            "file_uuid": file_uuid,
+            "language_uuid": language_uuid,
+            "service_list": [
+                {
+                    "estimated_cost": cost,
+                    "time_estimate_days": 1,
+                    "quality_discount": {
+                        "tier": "bad",
+                        "word_discount_rate": 0.1,
+                        "savings": 1.0,
+                        "is_estimate": True,
+                    },
+                }
+            ],
+        }
+        for file_uuid, language_uuid, cost in (
+            ("f1", "lang-hi", 2.0),
+            ("f1", "lang-ko", 99.0),
+            ("f2", "lang-hi", 99.0),
+            ("f2", "lang-ko", 40.0),
+        )
+    ]
+
+    with (
+        patch(
+            "app.slack.evaluation_combined_quotes.get_ray_client",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.get_evaluation_job_quote",
+            new_callable=AsyncMock,
+            return_value={"services_costs": {"quality_evaluation": 10}, "token": 10},
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.get_evaluation_job",
+            new_callable=AsyncMock,
+            return_value=job,
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.get_job_pricing",
+            new_callable=AsyncMock,
+            return_value={"data": pricing_rows},
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.get_evaluate_quote_session",
+            new_callable=AsyncMock,
+            return_value={
+                "channel_id": "C123",
+                "message_ts": "111.222",
+                "quote_snapshot": {
+                    "service_label": "AI Translation",
+                    "token_cost": 50,
+                    "accept_action_id": "evaluation_ai_quote_accept",
+                    "ai_translation_file_and_languages": [
+                        "f1:lang-hi",
+                        "f2:lang-ko",
+                    ],
+                },
+            },
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.save_evaluate_quote_session",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.post_notification",
+            new_callable=AsyncMock,
+            return_value={"ts": "333.444"},
+        ) as mock_post,
+    ):
+        from app.slack.evaluation_combined_quotes import post_combined_qe_human_quote
+
+        await post_combined_qe_human_quote(
+            mock_client,
+            event,
+            auth,
+            job_uuid=job_uuid,
+        )
+
+    rendered = str(mock_post.await_args.args[3].blocks)
+    assert "*Hindi*\\n>USD$2.10" in rendered or "*Hindi*\n>USD$2.10" in rendered
+    assert "*Korean*\\n>USD$40.10" in rendered or "*Korean*\n>USD$40.10" in rendered
+    assert "USD$99" not in rendered
+    assert rendered.count("Cancelled") == 2
+    assert "Maximum Total Cost*: USD $42.20" in rendered
+    assert mock_client.chat_update.await_args.kwargs["ts"] == "111.222"
 
 
 @pytest.mark.asyncio

@@ -62,6 +62,7 @@ async def save_evaluate_quote_session(
     pdf_page_count: int | None = None,
     quote_snapshot: dict[str, Any] | None = None,
     message_ts: str | None = None,
+    ai_message_ts: str | None = None,
 ) -> None:
     payload = {
         "channel_id": channel_id,
@@ -72,6 +73,8 @@ async def save_evaluate_quote_session(
         "quote_snapshot": quote_snapshot or {},
         "message_ts": message_ts,
     }
+    if ai_message_ts:
+        payload["ai_message_ts"] = ai_message_ts
     await redis_conn.set(
         _quote_key(job_uuid),
         json.dumps(payload),

@@ -325,6 +325,46 @@ def filter_job_to_pairs(
     return filtered
 
 
+def mark_out_of_scope_pairs_cancelled(
+    job_data: dict[str, Any],
+    selected_pairs: Iterable[str],
+    *,
+    cancelled_status: str = "Cancelled",
+) -> dict[str, Any]:
+    """Copy a job and mark file/language pairs outside the scope as Cancelled.
+
+    Unlike ``filter_job_to_pairs``, keeps the full target-language list so quote
+    blocks can show Cancelled rows instead of re-expanding a file×language grid.
+    """
+    selected = {str(pair) for pair in selected_pairs if pair}
+    marked = deepcopy(job_data)
+    language_uuids = [
+        str(language.get("uuid"))
+        for language in marked.get("target_languages") or []
+        if language.get("uuid")
+    ]
+    for source_file in marked.get("source_files") or []:
+        file_uuid = str(source_file.get("file_uuid") or "")
+        if not file_uuid:
+            continue
+        by_language = {
+            str(target.get("language_uuid")): dict(target)
+            for target in source_file.get("target_files") or []
+            if target.get("language_uuid")
+        }
+        target_files: list[dict[str, Any]] = []
+        for language_uuid in language_uuids:
+            target = by_language.get(language_uuid, {"language_uuid": language_uuid})
+            pair = f"{file_uuid}:{language_uuid}"
+            if pair in selected:
+                target.pop("human_job_status", None)
+            else:
+                target["human_job_status"] = cancelled_status
+            target_files.append(target)
+        source_file["target_files"] = target_files
+    return marked
+
+
 def pdf_adjusted_costs(
     session: dict[str, Any],
     selected_file_ids: Iterable[str],
@@ -470,10 +510,6 @@ def update_modal_cost_blocks(
         if block_id == "ai_quote_pdf_cost_block":
             block["text"]["text"] = (
                 f"*{_('PDF conversion')}:* {_format_evaluate_quote_cost(pdf_tokens)}"
-            )
-        elif block_id == "ai_quote_translation_cost_block":
-            block["text"]["text"] = (
-                f"*{_('AI Translation')}:* {_format_evaluate_quote_cost(ai_tokens)}"
             )
         elif block_id == "total_cost_block":
             block["text"]["text"] = (

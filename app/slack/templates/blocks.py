@@ -444,6 +444,7 @@ def verify_quote_blocks(
             estimated_time = 0
             quality_discount_text = None
             quality_discount_savings = 0.0
+            matched_cost_item = False
             target_additional_costs = _target_additional_costs(
                 additional_costs,
                 file_uuid=file["file_uuid"],
@@ -461,6 +462,7 @@ def verify_quote_blocks(
                     service = item["service_list"][0]
                     cost = service["estimated_cost"]
                     estimated_time = service["time_estimate_days"]
+                    matched_cost_item = True
                     if show_quality_discount:
                         quality_discount_text = _format_quality_discount_text(
                             service.get("quality_discount")
@@ -470,6 +472,14 @@ def verify_quote_blocks(
                             service.get("quality_discount")
                         )
                     break
+            # Adjust Request: hide file/language pairs outside the active scope
+            # (they would otherwise appear as USD$0.00 checkboxes).
+            if (
+                selectable
+                and not matched_cost_item
+                and not (target_file and target_file.get("human_job_status"))
+            ):
+                continue
             if target_file and target_file.get("human_job_status", ""):
                 if target_file["human_job_status"] == "Submitted":
                     if not selectable and show_submitted_costs:
@@ -1025,7 +1035,8 @@ def evaluation_credits_quote_blocks(
                             "type": "mrkdwn",
                             "text": _(
                                 "Review the cost below and click *Accept Quote* to "
-                                "continue, or *Adjust Request* to edit target languages."
+                                "continue, or *Adjust Request* to edit languages "
+                                "and/or source files"
                             ),
                         },
                     }

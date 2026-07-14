@@ -50,8 +50,7 @@ class TestEvaluationCreditsQuoteBlocks:
         assert "Running the AI translation will incur the following cost:" in rendered
         assert "Review the quote below" not in rendered
         assert "Adjust Request" in rendered
-        assert "edit target languages" in rendered
-        assert "source files" not in rendered
+        assert "edit languages and/or source files" in rendered
         assert "Estimated Completion" not in rendered
         assert "Due" not in rendered
 
