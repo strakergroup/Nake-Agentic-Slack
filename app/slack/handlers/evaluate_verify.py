@@ -305,7 +305,7 @@ async def handle_verify_job_submission(
                 actions=False,
                 status_message=_(
                     "Quote accepted! Submitting for human translation and "
-                    "calculating your final discount with Arbitr..."
+                    "calculating your final discount based on AI quality..."
                 ),
                 allow_adjust=False,
                 download_translations_job_uuid=job_uuid,

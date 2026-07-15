@@ -44,13 +44,21 @@ class TestEvaluationCreditsQuoteBlocks:
         assert "Total tokens" not in rendered
         assert "US$1.00" in rendered
         assert "US$3.40" in rendered
+        assert "*AI Translation:*" in rendered
+        assert rendered.index("PDF conversion") < rendered.index("AI Translation")
+        assert rendered.index("AI Translation") < rendered.index(
+            ":paperclip: *source.docx*"
+        )
         assert ":paperclip: *source.docx*" in rendered
         assert "*French*\\n>US$0.80" in rendered
         assert "*German*\\n>US$1.60" in rendered
-        assert "Running the AI translation will incur the following cost:" in rendered
+        assert (
+            "AI pre-translation before human review will incur the following cost:"
+            in rendered
+        )
         assert "Review the quote below" not in rendered
         assert "Adjust Request" in rendered
-        assert "edit languages and/or source files" in rendered
+        assert "remove languages and/or source files" in rendered
         assert "Estimated Completion" not in rendered
         assert "Due" not in rendered
 
@@ -193,7 +201,11 @@ def test_human_job_quote_message_shows_accept_helper_on_pre_qe_estimate():
     )
     rendered = str(message.blocks)
     assert "Maximum Total Cost" in rendered
-    assert "Click Accept Quote to send your translation to human review" in rendered
+    assert "Click Accept Quote to send your translation for human review" in rendered
+    assert (
+        "A discount will be applied to the quote above based on the quality of "
+        "the AI translation."
+    ) in rendered
 
 
 def test_human_job_quote_message_hides_accept_helper_after_accept():
@@ -225,11 +237,13 @@ def test_human_job_quote_message_hides_accept_helper_after_accept():
         actions=False,
         status_message=(
             "Quote accepted! Submitting for human translation and "
-            "calculating your final discount with Arbitr..."
+            "calculating your final discount based on AI quality..."
         ),
         show_savings=False,
         show_quality_discount=False,
     )
     rendered = str(message.blocks)
-    assert "Click Accept Quote to send your translation to human review" not in rendered
-    assert "calculating your final discount with Arbitr" in rendered
+    assert (
+        "Click Accept Quote to send your translation for human review" not in rendered
+    )
+    assert "calculating your final discount based on AI quality" in rendered

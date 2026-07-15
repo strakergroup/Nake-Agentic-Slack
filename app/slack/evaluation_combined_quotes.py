@@ -46,7 +46,7 @@ POST_QE_QUOTE_DISPLAY = {
     "total_cost_label": "Final Cost",
     "show_submitted_costs": True,
     "show_total_cost": False,
-    "show_estimated_completion": False,
+    "show_estimated_completion": True,
 }
 # Accept-time update for the combined quote (before QE finishes).
 HT_SUBMITTED_QUOTE_DISPLAY = {
@@ -55,7 +55,7 @@ HT_SUBMITTED_QUOTE_DISPLAY = {
     "embed_additional_costs_in_line_price": True,
     "total_cost_label": "Maximum Total Cost",
     "show_total_cost": False,
-    "show_estimated_completion": False,
+    "show_estimated_completion": True,
     "show_submitted_costs": True,
 }
 
@@ -436,8 +436,7 @@ async def post_combined_qe_human_quote(
             pdf_tokens=quote_snapshot.get("pdf_tokens"),
             actions=False,
             status_message=_(
-                "AI translation is complete. Review the Quality Evaluation + "
-                "Human Translation quote below."
+                "AI translation is complete. Review the human translation quote below."
             ),
             is_ibm=is_ibm_enterprise(auth.slack_user.enterprise_id),
             language_costs=language_costs,
@@ -596,11 +595,13 @@ def combined_qe_complete_status_message(
     """Short follow-up after QE completes while Human Translation is submitted."""
     if net_savings > 0:
         final_cost_line = _(
-            "Final cost after Arbitr evaluation: USD ${total_cost:.2f} "
+            "Final cost after AI quality evaluation: USD ${total_cost:.2f} "
             "(saved ${net_savings:.2f})"
         )
     else:
-        final_cost_line = _("Final cost after Arbitr evaluation: USD ${total_cost:.2f}")
+        final_cost_line = _(
+            "Final cost after AI quality evaluation: USD ${total_cost:.2f}"
+        )
     submission_line = _(
         "Your AI translation has been submitted to our network of native-speaking "
         "specialist linguists for review. Please refer to the estimated completion "

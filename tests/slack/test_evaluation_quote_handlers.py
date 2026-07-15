@@ -178,7 +178,9 @@ async def test_evaluation_qe_human_quote_accept_runs_quality_evaluation():
     )
     final_update = client.chat_update.await_args_list[-1].kwargs
     assert final_update["channel"] == "C1"
-    assert "calculating your final discount with Arbitr" in str(final_update["blocks"])
+    assert "calculating your final discount based on AI quality" in str(
+        final_update["blocks"]
+    )
 
 
 @pytest.mark.asyncio

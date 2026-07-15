@@ -931,6 +931,12 @@ def evaluation_credits_quote_blocks(
     """Build Slack blocks for a single-service evaluate credits quote."""
     cost_label = _("Cost")
     total_label = _("Total cost")
+    # Staged evaluate (HT) quotes expose Adjust Request; Document MT does not.
+    intro_text = (
+        _("AI pre-translation before human review will incur the following cost:")
+        if adjust_action_id
+        else _("Running the AI translation will incur the following cost:")
+    )
     blocks: list[dict[str, Any]] = [
         {
             "type": "header",
@@ -940,7 +946,7 @@ def evaluation_credits_quote_blocks(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": _("Running the AI translation will incur the following cost:"),
+                "text": intro_text,
             },
         },
         {"type": "divider"},
@@ -970,15 +976,14 @@ def evaluation_credits_quote_blocks(
         )
         total_tokens += pdf_tokens
     if language_costs:
-        has_file_groups = any(row.get("file_label") for row in language_costs)
         current_file: str | None = None
-        if not has_file_groups:
-            blocks.append(
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": f"*{service_label}*"},
-                }
-            )
+        # Always label the AI Translation section (matches PDF conversion header).
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*{service_label}:*"},
+            }
+        )
         for language_cost in language_costs:
             file_label = str(language_cost.get("file_label") or "")
             if file_label and file_label != current_file:
@@ -1035,7 +1040,7 @@ def evaluation_credits_quote_blocks(
                             "type": "mrkdwn",
                             "text": _(
                                 "Review the cost below and click *Accept Quote* to "
-                                "continue, or *Adjust Request* to edit languages "
+                                "continue, or *Adjust Request* to remove languages "
                                 "and/or source files"
                             ),
                         },

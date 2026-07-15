@@ -183,12 +183,12 @@ def test_combined_qe_complete_status_message_includes_savings_when_positive():
     rendered = str(message.blocks)
     assert (
         message.text
-        == "Final cost after Arbitr evaluation: USD $80.12 (saved $11.88)\n"
+        == "Final cost after AI quality evaluation: USD $80.12 (saved $11.88)\n"
         "Your AI translation has been submitted to our network of native-speaking "
         "specialist linguists for review. Please refer to the estimated completion "
         "date above."
     )
-    assert "Final cost after Arbitr evaluation: USD $80.12" in rendered
+    assert "Final cost after AI quality evaluation: USD $80.12" in rendered
     assert "saved $11.88" in rendered
     assert "specialist linguists for review" in rendered
     assert "Human translation in progress" not in rendered
@@ -203,8 +203,10 @@ def test_combined_qe_complete_status_message_hides_non_positive_savings():
     )
 
     rendered = str(message.blocks)
-    assert message.text.startswith("Final cost after Arbitr evaluation: USD $80.12\n")
-    assert "Final cost after Arbitr evaluation: USD $80.12" in rendered
+    assert message.text.startswith(
+        "Final cost after AI quality evaluation: USD $80.12\n"
+    )
+    assert "Final cost after AI quality evaluation: USD $80.12" in rendered
     assert "saved $" not in rendered
     assert "specialist linguists for review" in rendered
     assert "Human translation in progress" not in rendered
@@ -309,17 +311,17 @@ async def test_handle_combined_qe_complete_updates_quote_and_posts_final_quote(
     assert "Quality:" not in updated_blocks
     assert "-30% off" not in updated_blocks
     assert "Final Cost" not in updated_blocks
-    assert "Estimated Completion" not in updated_blocks
+    assert "Estimated Completion" in updated_blocks
     assert "Quality Evaluation: USD" not in updated_blocks
     assert "Quality Evaluation is complete" not in updated_blocks
     assert "download_ai_translations_action" not in updated_blocks
     mock_post.assert_awaited_once()
     status_message = mock_post.await_args.args[3]
     assert status_message.text.startswith(
-        "Final cost after Arbitr evaluation: USD $80.12 (saved $11.88)\n"
+        "Final cost after AI quality evaluation: USD $80.12 (saved $11.88)\n"
     )
     status_blocks = str(status_message.blocks)
-    assert "Final cost after Arbitr evaluation: USD $80.12" in status_blocks
+    assert "Final cost after AI quality evaluation: USD $80.12" in status_blocks
     assert "Human translation in progress" not in status_blocks
     assert "saved $11.88" in status_blocks
     assert "specialist linguists for review" in status_blocks
@@ -427,14 +429,14 @@ async def test_handle_combined_qe_complete_excludes_cancelled_targets(
     assert "USD$60.08" not in updated_blocks
     assert "USD$80.08" in updated_blocks
     assert "Final Cost" not in updated_blocks
-    assert "Estimated Completion" not in updated_blocks
+    assert "Estimated Completion" in updated_blocks
     assert "download_ai_translations_action" not in updated_blocks
     status_message = mock_post.await_args.args[3]
     assert status_message.text.startswith(
-        "Final cost after Arbitr evaluation: USD $80.08 (saved $11.92)\n"
+        "Final cost after AI quality evaluation: USD $80.08 (saved $11.92)\n"
     )
     status_blocks = str(status_message.blocks)
-    assert "Final cost after Arbitr evaluation: USD $80.08" in status_blocks
+    assert "Final cost after AI quality evaluation: USD $80.08" in status_blocks
     assert "Human translation in progress" not in status_blocks
     assert "saved $11.92" in status_blocks
     assert "specialist linguists for review" in status_blocks
@@ -685,6 +687,7 @@ async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
     assert mock_client.chat_update.await_args.kwargs["ts"] == "111.222"
     ai_updated = str(mock_client.chat_update.await_args.kwargs["blocks"])
     assert "AI translation is complete" in ai_updated
+    assert "Review the human translation quote below." in ai_updated
     assert "download_ai_translations_action" not in ai_updated
     mock_post.assert_awaited_once()
     ht_blocks = str(mock_post.await_args.args[3].blocks)

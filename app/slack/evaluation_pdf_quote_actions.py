@@ -116,7 +116,7 @@ async def accept_pdf_evaluate_quote(
                 pdf_page_count=pdf_page_count,
                 actions=False,
                 status_message=_(
-                    "Quote accepted. Converting your PDF and preparing the AI Translation job..."
+                    "Quote accepted. Converting PDF and running AI translation..."
                 ),
                 is_ibm=is_ibm,
             )

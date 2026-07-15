@@ -552,7 +552,7 @@ async def accept_combined_qe_human_quote(
             actions=False,
             status_message=_(
                 "Quote accepted! Submitting for human translation and "
-                "calculating your final discount with Arbitr..."
+                "calculating your final discount based on AI quality..."
             ),
             submitted=True,
         )
