@@ -3188,10 +3188,10 @@ class TestHandleDocumentMtJob:
         mock_client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_handle_document_mt_job_allows_regional_variant_targets(
+    async def test_handle_document_mt_job_rejects_same_family_regional_targets(
         self, user_id, team_id, ray_client
     ):
-        """Test handle_document_mt_job allows fr source with fr-ca target."""
+        """Reject same-family regional pairs (fr→fr-ca, es→es-419) — RAY-80734."""
         from app.slack.listeners import handle_document_mt_job
 
         mock_ack = AsyncMock()
@@ -3203,15 +3203,18 @@ class TestHandleDocumentMtJob:
                     "source_lang": {
                         "language_mt_options": {
                             "selected_option": {
-                                "value": "fr",
-                                "text": {"text": "French"},
+                                "value": "es",
+                                "text": {"text": "Spanish"},
                             }
                         }
                     },
                     "target_langs": {
                         "language_mt_options": {
                             "selected_options": [
-                                {"value": "fr-ca", "text": {"text": "French (Canada)"}}
+                                {
+                                    "value": "es-419",
+                                    "text": {"text": "Spanish (Latin America)"},
+                                }
                             ]
                         }
                     },
@@ -3233,25 +3236,21 @@ class TestHandleDocumentMtJob:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with (
-            patch(
-                "app.slack.listeners.get_accessible_slack_files",
-                new_callable=AsyncMock,
-                return_value=([{"id": "F123"}], []),
-            ),
-            patch(
-                "app.slack.listeners.enqueue_document_mt_submission",
-                new_callable=AsyncMock,
-            ) as mock_enqueue,
-        ):
-            await handle_document_mt_job(
-                context_dict, mock_ack, view=view, client=mock_client
-            )
+        await handle_document_mt_job(
+            context_dict, mock_ack, view=view, client=mock_client
+        )
 
-        mock_ack.assert_called_once_with(response_action="clear")
-        mock_enqueue.assert_awaited_once()
-        assert mock_enqueue.await_args.kwargs["source_language"] == "fr"
-        assert mock_enqueue.await_args.kwargs["target_languages"] == ["fr-ca"]
+        mock_ack.assert_called_once_with(
+            response_action="errors",
+            errors={
+                "target_langs": (
+                    "The source language cannot be the same language or "
+                    "regional variant as a target language. Please choose "
+                    "a different target language."
+                )
+            },
+        )
+        mock_client.chat_postMessage.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_handle_document_mt_job_no_languages(

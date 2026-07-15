@@ -8,6 +8,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [Internal Services & Redis Stream Events](internal-services.md) - Comprehensive catalogue of all internal service endpoints called and Redis stream events dispatched
 - [Document MT PDF Billing](document-mt-pdf-billing.md) - Deferred PDF conversion-fee billing after successful delivery (RAY-80417)
 - [Document MT without user login](document-mt-without-login.md) - Org-billed Document MT vs channel/shortcut MT; login gates, gaps, and implications (not HT/QE)
+- [Changelog](changelog.md) - Includes RAY-80734 Document MT same-language-family submit rejection (`es`↔`es-419`)
 - [VerifyLoop Integration](verifyloop.md) - Configuration, endpoints, modal form, and data flow for the VerifyLoop feature
 - [VerifyLoop Architecture Diagrams](verifyloop-architecture.md) - Visual diagrams of system architecture, auth flow, task pipeline, and component dependencies
 - [Channel Info Caching](channel-info-caching.md) - How channel names and privacy status are cached in the database
