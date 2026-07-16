@@ -656,7 +656,16 @@ async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
         patch(
             "app.slack.evaluation_combined_quotes.post_notification",
             new_callable=AsyncMock,
-            return_value={"ts": "333.444"},
+            # AsyncSlackResponse is not a dict; ts must still be captured.
+            return_value=type(
+                "SlackResponse",
+                (),
+                {
+                    "get": lambda self, key, default=None: {"ts": "333.444"}.get(
+                        key, default
+                    )
+                },
+            )(),
         ) as mock_post,
     ):
         mock_ray.return_value = ray_client

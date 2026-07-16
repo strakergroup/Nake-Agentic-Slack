@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: Post-QE final cost updates the original HT/QE Slack message instead of reposting; HT `message_ts` is now read from AsyncSlackResponse (not only dict) and preserved across Redis session saves (Wade Norman, 2026-07-16)
 - [Changed]: After QE, the original HT/QE quote is updated in place with post-QE amounts, one Estimated Completion, and final-cost status (no separate follow-up; no duplicate completion date) (Wade Norman, 2026-07-16)
 - [Changed]: AI-complete quote keeps per-language costs (including Cancelled from Adjust Request); PDF preaccept now persists language cost rows; after QE, the HT quote message is replaced in place with final-cost status only (no separate follow-up) (Wade Norman, 2026-07-16)
 - [Changed]: HT design-review copy — staged AI quote intro/header/Adjust Request wording; PDF accept and AI-complete status; Accept Quote helper; Arbitr renamed to AI quality; estimated completion restored on HT submit/post-QE panels (Wade Norman, 2026-07-16)

@@ -16,7 +16,7 @@ from app.constants import (
     EVALUATE_SERVICE_QUALITY_EVALUATION,
 )
 from app.dependencies import RayEvent, RayEventAuth
-from app.ray.events.logging import post_notification
+from app.ray.events.logging import post_notification, slack_response_message_ts
 from app.ray.utils import is_ibm_enterprise
 from app.slack.evaluation_ai_adjustment import (
     AI_QUOTE_ADJUST_ACTION_ID,
@@ -480,7 +480,7 @@ async def post_combined_qe_human_quote(
             message,
             channel_id=channel_id,
         )
-        message_ts = response.get("ts") if isinstance(response, dict) else None
+        message_ts = slack_response_message_ts(response)
 
     await save_evaluate_quote_session(
         job_uuid,

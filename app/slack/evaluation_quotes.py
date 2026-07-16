@@ -22,7 +22,7 @@ from app.constants import (
     EVALUATE_SERVICE_AI_TRANSLATION,
 )
 from app.dependencies import RayEvent, RayEventAuth
-from app.ray.events.logging import post_notification
+from app.ray.events.logging import post_notification, slack_response_message_ts
 from app.ray.utils import is_ibm_enterprise
 from app.redis import redis_conn
 from app.slack.evaluation_ai_adjustment import (
@@ -65,6 +65,25 @@ async def save_evaluate_quote_session(
     message_ts: str | None = None,
     ai_message_ts: str | None = None,
 ) -> None:
+    existing = await get_evaluate_quote_session(job_uuid)
+    # Preserve Slack timestamps when callers omit them so a later save cannot
+    # wipe the HT quote ts needed for in-place post-QE updates. Only keep
+    # message_ts when it is already distinct from ai_message_ts (the HT quote).
+    if existing:
+        existing_ai_message_ts = existing.get("ai_message_ts")
+        existing_message_ts = existing.get("message_ts")
+        if ai_message_ts is None and isinstance(existing_ai_message_ts, str):
+            if existing_ai_message_ts:
+                ai_message_ts = existing_ai_message_ts
+        if (
+            message_ts is None
+            and isinstance(existing_message_ts, str)
+            and existing_message_ts
+            and isinstance(existing_ai_message_ts, str)
+            and existing_ai_message_ts
+            and existing_message_ts != existing_ai_message_ts
+        ):
+            message_ts = existing_message_ts
     payload = {
         "channel_id": channel_id,
         "user_id": user_id,
@@ -343,7 +362,7 @@ async def post_evaluate_service_quote(
         message,
         channel_id=channel_id,
     )
-    message_ts = response.get("ts") if isinstance(response, dict) else None
+    message_ts = slack_response_message_ts(response)
     await save_evaluate_quote_session(
         job_uuid,
         channel_id=channel_id or auth.slack_user.channel_id or auth.slack_user.user_id,

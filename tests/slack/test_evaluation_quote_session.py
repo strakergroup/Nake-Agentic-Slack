@@ -78,6 +78,50 @@ async def test_update_evaluate_quote_stage():
 
 
 @pytest.mark.asyncio
+async def test_save_evaluate_quote_session_preserves_distinct_ht_message_ts():
+    stored = {
+        "slack-ray-translator:evaluate-quote:job-preserve": json.dumps(
+            {
+                "channel_id": "C1",
+                "user_id": "U1",
+                "team_id": "T1",
+                "stage": "awaiting_qe",
+                "message_ts": "333.444",
+                "ai_message_ts": "111.222",
+                "quote_snapshot": {"auto_submit_human_job": True},
+            }
+        )
+    }
+
+    async def fake_get(key):
+        return stored.get(key)
+
+    async def fake_set(key, value, ex=None):
+        stored[key] = value
+
+    with patch("app.slack.evaluation_quotes.redis_conn") as mock_redis:
+        mock_redis.get = AsyncMock(side_effect=fake_get)
+        mock_redis.set = AsyncMock(side_effect=fake_set)
+
+        await save_evaluate_quote_session(
+            "job-preserve",
+            channel_id="C1",
+            user_id="U1",
+            team_id="T1",
+            stage="processing_qe",
+            quote_snapshot={"auto_submit_human_job": True, "token_cost": 6},
+            message_ts=None,
+            ai_message_ts=None,
+        )
+
+        session = await get_evaluate_quote_session("job-preserve")
+        assert session is not None
+        assert session["message_ts"] == "333.444"
+        assert session["ai_message_ts"] == "111.222"
+        assert session["stage"] == "processing_qe"
+
+
+@pytest.mark.asyncio
 async def test_update_evaluate_quote_session_preserves_existing_fields():
     stored = {
         "slack-ray-translator:evaluate-quote:job-3": json.dumps(

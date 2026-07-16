@@ -19,7 +19,7 @@ from app.constants import (
     EVALUATE_SERVICE_AI_TRANSLATION,
 )
 from app.dependencies import RayEvent, RayEventAuth
-from app.ray.events.logging import post_notification
+from app.ray.events.logging import post_notification, slack_response_message_ts
 from app.ray.utils import is_ibm_enterprise
 from app.redis import redis_conn
 from app.slack.evaluation_ai_adjustment import (
@@ -237,7 +237,7 @@ async def post_evaluate_service_quote(
             message,
             channel_id=channel_id,
         )
-        message_ts = response.get("ts") if isinstance(response, dict) else None
+        message_ts = slack_response_message_ts(response)
     stage = "awaiting_ai" if not is_qe_quote else "awaiting_qe"
     await save_evaluate_quote_session(
         job_uuid,
