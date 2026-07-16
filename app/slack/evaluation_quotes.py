@@ -27,6 +27,7 @@ from app.ray.utils import is_ibm_enterprise
 from app.redis import redis_conn
 from app.slack.evaluation_ai_adjustment import (
     AI_QUOTE_ADJUST_ACTION_ID,
+    filter_language_costs_by_pairs,
     quote_file_language_costs,
 )
 from app.slack.templates.messages import EvaluationCreditsQuoteMessage
@@ -279,6 +280,11 @@ async def post_evaluate_service_quote(
                 skip_quality_evaluation=True,
                 ai_translation_file_and_languages=selected_ai_pairs or None,
             )
+            selected_language_costs = (
+                filter_language_costs_by_pairs(language_costs, selected_ai_pairs)
+                if language_costs
+                else None
+            )
             await save_evaluate_quote_session(
                 job_uuid,
                 channel_id=channel_id
@@ -295,6 +301,14 @@ async def post_evaluate_service_quote(
                     "service_label": service_label,
                     "accept_action_id": accept_action_id,
                     "ai_translation_file_and_languages": selected_ai_pairs,
+                    "ai_quote_details": quote.get("details") or [],
+                    "all_language_costs": language_costs,
+                    "language_costs": selected_language_costs or language_costs,
+                    "file_uuids": [
+                        str(source_file["file_uuid"])
+                        for source_file in job_data.get("source_files") or []
+                        if source_file.get("file_uuid")
+                    ],
                 },
                 message_ts=str(prequote_message_ts) if prequote_message_ts else None,
             )

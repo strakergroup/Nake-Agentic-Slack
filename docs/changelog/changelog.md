@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Changed]: AI-complete quote keeps per-language costs (including Cancelled from Adjust Request); PDF preaccept now persists language cost rows; after QE, the HT quote message is replaced in place with final-cost status only (no separate follow-up) (Wade Norman, 2026-07-16)
 - [Changed]: HT design-review copy — staged AI quote intro/header/Adjust Request wording; PDF accept and AI-complete status; Accept Quote helper; Arbitr renamed to AI quality; estimated completion restored on HT submit/post-QE panels (Wade Norman, 2026-07-16)
 - [Changed]: Download AI Translations appears only on the combined QE + Human Translation quote; the AI Translation quote (including AI-complete) no longer shows the download action (Wade Norman, 2026-07-15)
 - [Changed]: After MT completes, SRT updates the AI Translation quote in place to an AI-complete state and posts the combined QE + Human Translation quote as a new Slack message instead of replacing the AI quote (Wade Norman, 2026-07-15)

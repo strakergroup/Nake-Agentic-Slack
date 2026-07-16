@@ -178,6 +178,7 @@ def test_combined_qe_complete_status_message_includes_savings_when_positive():
     message = combined_qe_complete_status_message(
         total_cost=80.12,
         net_savings=11.88,
+        estimated_completion="18 July 2026",
     )
 
     rendered = str(message.blocks)
@@ -190,6 +191,7 @@ def test_combined_qe_complete_status_message_includes_savings_when_positive():
     )
     assert "Final cost after AI quality evaluation: USD $80.12" in rendered
     assert "saved $11.88" in rendered
+    assert "*Estimated Completion*: 18 July 2026" in rendered
     assert "specialist linguists for review" in rendered
     assert "Human translation in progress" not in rendered
 
@@ -208,6 +210,7 @@ def test_combined_qe_complete_status_message_hides_non_positive_savings():
     )
     assert "Final cost after AI quality evaluation: USD $80.12" in rendered
     assert "saved $" not in rendered
+    assert "Estimated Completion" not in rendered
     assert "specialist linguists for review" in rendered
     assert "Human translation in progress" not in rendered
 
@@ -308,24 +311,14 @@ async def test_handle_combined_qe_complete_updates_quote_and_posts_final_quote(
     assert result is True
     mock_client.chat_update.assert_awaited_once()
     updated_blocks = str(mock_client.chat_update.await_args.kwargs["blocks"])
-    assert "Quality:" not in updated_blocks
-    assert "-30% off" not in updated_blocks
-    assert "Final Cost" not in updated_blocks
+    assert "Final cost after AI quality evaluation: USD $80.12" in updated_blocks
+    assert "saved $11.88" in updated_blocks
     assert "Estimated Completion" in updated_blocks
-    assert "Quality Evaluation: USD" not in updated_blocks
-    assert "Quality Evaluation is complete" not in updated_blocks
+    assert "specialist linguists for review" in updated_blocks
+    assert "Quality:" not in updated_blocks
     assert "download_ai_translations_action" not in updated_blocks
-    mock_post.assert_awaited_once()
-    status_message = mock_post.await_args.args[3]
-    assert status_message.text.startswith(
-        "Final cost after AI quality evaluation: USD $80.12 (saved $11.88)\n"
-    )
-    status_blocks = str(status_message.blocks)
-    assert "Final cost after AI quality evaluation: USD $80.12" in status_blocks
-    assert "Human translation in progress" not in status_blocks
-    assert "saved $11.88" in status_blocks
-    assert "specialist linguists for review" in status_blocks
-    assert "Final Quote" not in status_blocks
+    assert "Accept Quote" not in updated_blocks
+    mock_post.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -422,25 +415,15 @@ async def test_handle_combined_qe_complete_excludes_cancelled_targets(
 
     assert result is True
     updated_blocks = str(mock_client.chat_update.await_args.kwargs["blocks"])
-    assert "Quality:" not in updated_blocks
-    assert "-30% off" not in updated_blocks
-    assert "Spanish" in updated_blocks
-    assert ">Cancelled" in updated_blocks
-    assert "USD$60.08" not in updated_blocks
-    assert "USD$80.08" in updated_blocks
-    assert "Final Cost" not in updated_blocks
+    # Final status replaces the HT quote; only selected-pair pricing remains.
+    assert "Final cost after AI quality evaluation: USD $80.08" in updated_blocks
+    assert "saved $11.92" in updated_blocks
     assert "Estimated Completion" in updated_blocks
+    assert "specialist linguists for review" in updated_blocks
+    assert "Spanish" not in updated_blocks
+    assert "Cancelled" not in updated_blocks
     assert "download_ai_translations_action" not in updated_blocks
-    status_message = mock_post.await_args.args[3]
-    assert status_message.text.startswith(
-        "Final cost after AI quality evaluation: USD $80.08 (saved $11.92)\n"
-    )
-    status_blocks = str(status_message.blocks)
-    assert "Final cost after AI quality evaluation: USD $80.08" in status_blocks
-    assert "Human translation in progress" not in status_blocks
-    assert "saved $11.92" in status_blocks
-    assert "specialist linguists for review" in status_blocks
-    assert "USD$80.08" not in status_blocks
+    mock_post.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -688,6 +671,9 @@ async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
     ai_updated = str(mock_client.chat_update.await_args.kwargs["blocks"])
     assert "AI translation is complete" in ai_updated
     assert "Review the human translation quote below." in ai_updated
+    assert "*AI Translation:*" in ai_updated
+    assert "*French*" in ai_updated
+    assert "*Service:*" not in ai_updated
     assert "download_ai_translations_action" not in ai_updated
     mock_post.assert_awaited_once()
     ht_blocks = str(mock_post.await_args.args[3].blocks)
@@ -811,6 +797,36 @@ async def test_post_combined_qe_human_quote_keeps_asymmetric_ai_scope(mock_slack
                         "f1:lang-hi",
                         "f2:lang-ko",
                     ],
+                    "all_language_costs": [
+                        {
+                            "file_uuid": "f1",
+                            "file_label": "a.txt",
+                            "value": "lang-hi",
+                            "label": "Hindi",
+                            "token": 25,
+                        },
+                        {
+                            "file_uuid": "f1",
+                            "file_label": "a.txt",
+                            "value": "lang-ko",
+                            "label": "Korean",
+                            "token": 25,
+                        },
+                        {
+                            "file_uuid": "f2",
+                            "file_label": "b.docx",
+                            "value": "lang-hi",
+                            "label": "Hindi",
+                            "token": 25,
+                        },
+                        {
+                            "file_uuid": "f2",
+                            "file_label": "b.docx",
+                            "value": "lang-ko",
+                            "label": "Korean",
+                            "token": 25,
+                        },
+                    ],
                 },
             },
         ),
@@ -833,6 +849,10 @@ async def test_post_combined_qe_human_quote_keeps_asymmetric_ai_scope(mock_slack
             job_uuid=job_uuid,
         )
 
+    ai_updated = str(mock_client.chat_update.await_args.kwargs["blocks"])
+    assert "*AI Translation:*" in ai_updated
+    assert ai_updated.count("Cancelled") == 2
+    assert "*Service:*" not in ai_updated
     rendered = str(mock_post.await_args.args[3].blocks)
     assert "*Hindi*\\n>USD$2.10" in rendered or "*Hindi*\n>USD$2.10" in rendered
     assert "*Korean*\\n>USD$40.10" in rendered or "*Korean*\n>USD$40.10" in rendered
