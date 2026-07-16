@@ -1,6 +1,5 @@
 """Combined Quality Evaluation + Human Translation quote orchestration."""
 
-from datetime import datetime, timedelta
 from typing import Any
 
 from slack_sdk.web.async_client import AsyncWebClient
@@ -35,7 +34,6 @@ from app.slack.evaluation_quotes import (
     update_evaluate_quote_slack_message,
 )
 from app.slack.templates.messages import HumanJobQuoteMessage, SlackMessage
-from app.slack.utils import calculate_total_estimated_days
 from app.translate import _
 
 COMBINED_QE_HUMAN_QUOTE_ACCEPT_ACTION_ID = "evaluation_qe_human_quote_accept"
@@ -46,6 +44,15 @@ PRE_QE_QUOTE_DISPLAY = {
     "show_savings": False,
     "embed_additional_costs_in_line_price": True,
     "total_cost_label": "Maximum Total Cost",
+}
+POST_QE_QUOTE_DISPLAY = {
+    "show_quality_discount": False,
+    "show_savings": True,
+    "embed_additional_costs_in_line_price": True,
+    "total_cost_label": "Final Cost",
+    "show_submitted_costs": True,
+    "show_total_cost": False,
+    "show_estimated_completion": True,
 }
 # Accept-time update for the combined quote (before QE finishes).
 HT_SUBMITTED_QUOTE_DISPLAY = {
@@ -506,7 +513,7 @@ async def handle_combined_qe_complete(
     job_data: dict[str, Any],
     costs: list[dict[str, Any]],
 ) -> bool:
-    """After QE scoring completes, replace the HT quote with the final-cost status."""
+    """After QE scoring completes, refresh HT quote amounts and final-cost status in place."""
     session = await get_evaluate_quote_session(job_data["uuid"])
     quote_snapshot = (session or {}).get("quote_snapshot") or {}
     if not quote_snapshot.get("auto_submit_human_job"):
@@ -547,19 +554,39 @@ async def handle_combined_qe_complete(
         pricing_costs=pricing_costs,
         additional_costs=selected_qe_costs,
     )
-    estimated_completion = _estimated_completion_date(pricing_costs)
     status_message = combined_qe_complete_status_message(
         total_cost=quote_summary["total_cost"],
         net_savings=quote_summary["net_savings"],
-        estimated_completion=estimated_completion,
+    )
+    # Keep post-QE line amounts on the original HT quote; append final-cost status
+    # on the same message (no separate follow-up post).
+    refreshed_message = combined_human_job_quote_message(
+        display_job_data,
+        costs,
+        qe_token_cost=qe_token_cost,
+        qe_additional_costs=selected_qe_costs,
+        pricing_costs=pricing_costs,
+        actions=False,
+        allow_adjust=False,
+        status_message=status_message.blocks[0]["text"]["text"],
+        message_title=status_message.text,
+        show_quality_discount=POST_QE_QUOTE_DISPLAY["show_quality_discount"],
+        show_savings=POST_QE_QUOTE_DISPLAY["show_savings"],
+        embed_additional_costs_in_line_price=POST_QE_QUOTE_DISPLAY[
+            "embed_additional_costs_in_line_price"
+        ],
+        total_cost_label=POST_QE_QUOTE_DISPLAY["total_cost_label"],
+        show_submitted_costs=POST_QE_QUOTE_DISPLAY["show_submitted_costs"],
+        show_total_cost=POST_QE_QUOTE_DISPLAY["show_total_cost"],
+        show_estimated_completion=POST_QE_QUOTE_DISPLAY["show_estimated_completion"],
     )
 
     if channel_id and message_ts:
         await client.chat_update(
             channel=channel_id,
             ts=message_ts,
-            text=status_message.text,
-            blocks=status_message.blocks,
+            text=refreshed_message.text,
+            blocks=refreshed_message.blocks,
         )
         return True
 
@@ -570,32 +597,18 @@ async def handle_combined_qe_complete(
         client,
         event,
         auth.slack_user,
-        status_message,
+        refreshed_message,
         channel_id=channel_id,
     )
     return True
-
-
-def _estimated_completion_date(costs: list[dict[str, Any]]) -> str | None:
-    day_estimates = [
-        float(item["service_list"][0]["time_estimate_days"])
-        for item in costs
-        if item.get("service_list")
-        and item["service_list"][0].get("time_estimate_days") is not None
-    ]
-    if not day_estimates:
-        return None
-    total_days = calculate_total_estimated_days(day_estimates)
-    return (datetime.now() + timedelta(days=total_days)).strftime("%d %B %Y")
 
 
 def combined_qe_complete_status_message(
     *,
     total_cost: float,
     net_savings: float,
-    estimated_completion: str | None = None,
 ) -> SlackMessage:
-    """Final HT quote replacement after QE completes and Human Translation is submitted."""
+    """Final-cost status appended to the post-QE HT quote (same Slack message)."""
     if net_savings > 0:
         final_cost_line = _(
             "Final cost after AI quality evaluation: USD ${total_cost:.2f} "
@@ -610,28 +623,17 @@ def combined_qe_complete_status_message(
         "specialist linguists for review. Please refer to the estimated completion "
         "date above."
     )
-    blocks: list[dict[str, Any]] = [
-        {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": final_cost_line},
-        },
-    ]
-    if estimated_completion:
-        blocks.append(
+    message_text = f"{final_cost_line}\n{submission_line}"
+
+    return SlackMessage(
+        message_text,
+        [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": _("*Estimated Completion*: {estimated_completion}"),
+                    "text": f"{final_cost_line}\n\n{submission_line}",
                 },
-            }
-        )
-    blocks.append(
-        {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": submission_line},
-        }
+            },
+        ],
     )
-    message_text = f"{final_cost_line}\n{submission_line}"
-
-    return SlackMessage(message_text, blocks)

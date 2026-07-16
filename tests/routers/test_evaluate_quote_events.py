@@ -178,7 +178,6 @@ def test_combined_qe_complete_status_message_includes_savings_when_positive():
     message = combined_qe_complete_status_message(
         total_cost=80.12,
         net_savings=11.88,
-        estimated_completion="18 July 2026",
     )
 
     rendered = str(message.blocks)
@@ -191,7 +190,7 @@ def test_combined_qe_complete_status_message_includes_savings_when_positive():
     )
     assert "Final cost after AI quality evaluation: USD $80.12" in rendered
     assert "saved $11.88" in rendered
-    assert "*Estimated Completion*: 18 July 2026" in rendered
+    assert "*Estimated Completion*" not in rendered
     assert "specialist linguists for review" in rendered
     assert "Human translation in progress" not in rendered
 
@@ -210,7 +209,6 @@ def test_combined_qe_complete_status_message_hides_non_positive_savings():
     )
     assert "Final cost after AI quality evaluation: USD $80.12" in rendered
     assert "saved $" not in rendered
-    assert "Estimated Completion" not in rendered
     assert "specialist linguists for review" in rendered
     assert "Human translation in progress" not in rendered
 
@@ -311,9 +309,14 @@ async def test_handle_combined_qe_complete_updates_quote_and_posts_final_quote(
     assert result is True
     mock_client.chat_update.assert_awaited_once()
     updated_blocks = str(mock_client.chat_update.await_args.kwargs["blocks"])
+    # Post-QE line amounts stay on the original HT quote...
+    assert "USD$80.12" in updated_blocks
+    assert "French" in updated_blocks
+    # ...with a single Estimated Completion from the quote panel...
+    assert updated_blocks.count("Estimated Completion") == 1
+    # ...and final-cost status on the same message (no separate post).
     assert "Final cost after AI quality evaluation: USD $80.12" in updated_blocks
     assert "saved $11.88" in updated_blocks
-    assert "Estimated Completion" in updated_blocks
     assert "specialist linguists for review" in updated_blocks
     assert "Quality:" not in updated_blocks
     assert "download_ai_translations_action" not in updated_blocks
@@ -415,13 +418,16 @@ async def test_handle_combined_qe_complete_excludes_cancelled_targets(
 
     assert result is True
     updated_blocks = str(mock_client.chat_update.await_args.kwargs["blocks"])
-    # Final status replaces the HT quote; only selected-pair pricing remains.
+    # Selected-pair post-QE amounts remain; deselected stay Cancelled.
+    assert "French" in updated_blocks
+    assert "Spanish" in updated_blocks
+    assert "Cancelled" in updated_blocks
+    assert "USD$80.08" in updated_blocks
+    assert "USD$60.08" not in updated_blocks
+    assert updated_blocks.count("Estimated Completion") == 1
     assert "Final cost after AI quality evaluation: USD $80.08" in updated_blocks
     assert "saved $11.92" in updated_blocks
-    assert "Estimated Completion" in updated_blocks
     assert "specialist linguists for review" in updated_blocks
-    assert "Spanish" not in updated_blocks
-    assert "Cancelled" not in updated_blocks
     assert "download_ai_translations_action" not in updated_blocks
     mock_post.assert_not_awaited()
 
