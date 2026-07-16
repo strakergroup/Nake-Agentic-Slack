@@ -43,7 +43,7 @@ class TestVerificationCheckboxAction:
                                     {
                                         "text": {
                                             "type": "mrkdwn",
-                                            "text": "*French*: USD$10.00\nQuality: best",
+                                            "text": "*French*: USD 10.00\nQuality: best",
                                         },
                                         "value": "file-1:lang-1:2:5.00",
                                     }
@@ -64,7 +64,7 @@ class TestVerificationCheckboxAction:
                         "block_id": "total_cost_block",
                         "text": {
                             "type": "mrkdwn",
-                            "text": "*Maximum Total Cost*: USD $18.00 (saved $8.00)",
+                            "text": "*Maximum Total Cost*: USD 18.00 (saved USD 8.00)",
                         },
                     },
                     {
@@ -93,7 +93,7 @@ class TestVerificationCheckboxAction:
         )
         assert (
             total_block["text"]["text"]
-            == "*Maximum Total Cost*: USD $10.00 (saved $5.00)"
+            == "*Maximum Total Cost*: USD 10.00 (saved USD 5.00)"
         )
 
     @pytest.mark.asyncio
@@ -122,7 +122,7 @@ class TestVerificationCheckboxAction:
                                     {
                                         "text": {
                                             "type": "mrkdwn",
-                                            "text": "*French*: USD$10.00\nQuality Evaluation: USD $0.80",
+                                            "text": "*French*: USD 10.00\nQuality Evaluation: USD 0.80",
                                         },
                                         "value": "file-1:lang-1:2:0.00:0.80",
                                     }
@@ -137,7 +137,7 @@ class TestVerificationCheckboxAction:
                         "block_id": "total_cost_block",
                         "text": {
                             "type": "mrkdwn",
-                            "text": "*Maximum Total Cost*: USD $10.80",
+                            "text": "*Maximum Total Cost*: USD 10.80",
                         },
                     },
                     {
@@ -163,7 +163,7 @@ class TestVerificationCheckboxAction:
             for block in updated_view["blocks"]
             if block.get("block_id") == "total_cost_block"
         )
-        assert total_block["text"]["text"] == "*Maximum Total Cost*: USD $10.80"
+        assert total_block["text"]["text"] == "*Maximum Total Cost*: USD 10.80"
 
 
 class TestChannelDeletedEvent:

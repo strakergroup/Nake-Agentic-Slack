@@ -183,13 +183,13 @@ def test_combined_qe_complete_status_message_includes_savings_when_positive():
     rendered = str(message.blocks)
     assert (
         message.text
-        == "Final cost after AI quality evaluation: USD $80.12 (saved $11.88)\n"
+        == "Final cost after AI quality evaluation: USD 80.12 (saved USD 11.88)\n"
         "Your AI translation has been submitted to our network of native-speaking "
         "specialist linguists for review. Please refer to the estimated completion "
         "date above."
     )
-    assert "Final cost after AI quality evaluation: USD $80.12" in rendered
-    assert "saved $11.88" in rendered
+    assert "Final cost after AI quality evaluation: USD 80.12" in rendered
+    assert "saved USD 11.88" in rendered
     assert "*Estimated Completion*" not in rendered
     assert "specialist linguists for review" in rendered
     assert "Human translation in progress" not in rendered
@@ -205,10 +205,10 @@ def test_combined_qe_complete_status_message_hides_non_positive_savings():
 
     rendered = str(message.blocks)
     assert message.text.startswith(
-        "Final cost after AI quality evaluation: USD $80.12\n"
+        "Final cost after AI quality evaluation: USD 80.12\n"
     )
-    assert "Final cost after AI quality evaluation: USD $80.12" in rendered
-    assert "saved $" not in rendered
+    assert "Final cost after AI quality evaluation: USD 80.12" in rendered
+    assert "saved USD " not in rendered
     assert "specialist linguists for review" in rendered
     assert "Human translation in progress" not in rendered
 
@@ -310,13 +310,13 @@ async def test_handle_combined_qe_complete_updates_quote_and_posts_final_quote(
     mock_client.chat_update.assert_awaited_once()
     updated_blocks = str(mock_client.chat_update.await_args.kwargs["blocks"])
     # Post-QE line amounts stay on the original HT quote...
-    assert "USD$80.12" in updated_blocks
+    assert "USD 80.12" in updated_blocks
     assert "French" in updated_blocks
     # ...with a single Estimated Completion from the quote panel...
     assert updated_blocks.count("Estimated Completion") == 1
     # ...and final-cost status on the same message (no separate post).
-    assert "Final cost after AI quality evaluation: USD $80.12" in updated_blocks
-    assert "saved $11.88" in updated_blocks
+    assert "Final cost after AI quality evaluation: USD 80.12" in updated_blocks
+    assert "saved USD 11.88" in updated_blocks
     assert "specialist linguists for review" in updated_blocks
     assert "Quality:" not in updated_blocks
     assert "download_ai_translations_action" not in updated_blocks
@@ -422,11 +422,11 @@ async def test_handle_combined_qe_complete_excludes_cancelled_targets(
     assert "French" in updated_blocks
     assert "Spanish" in updated_blocks
     assert "Cancelled" in updated_blocks
-    assert "USD$80.08" in updated_blocks
-    assert "USD$60.08" not in updated_blocks
+    assert "USD 80.08" in updated_blocks
+    assert "USD 60.08" not in updated_blocks
     assert updated_blocks.count("Estimated Completion") == 1
-    assert "Final cost after AI quality evaluation: USD $80.08" in updated_blocks
-    assert "saved $11.92" in updated_blocks
+    assert "Final cost after AI quality evaluation: USD 80.08" in updated_blocks
+    assert "saved USD 11.92" in updated_blocks
     assert "specialist linguists for review" in updated_blocks
     assert "download_ai_translations_action" not in updated_blocks
     mock_post.assert_not_awaited()
@@ -546,9 +546,9 @@ async def test_ai_quote_event_waits_for_adjustable_acceptance(mock_slack_user):
 
     message = mock_post.await_args.args[3]
     rendered = str(message.blocks)
-    assert "*Total cost:* US$2.00" in rendered
+    assert "*Total cost:* USD 2.00" in rendered
     assert ":paperclip: *source.docx*" in rendered
-    assert "*French*\\n>US$2.00" in rendered
+    assert "*French*\\n>USD 2.00" in rendered
     assert "Adjust Request" in rendered
     assert "Accept Quote" in rendered
     assert "Estimated Completion" not in rendered
@@ -693,9 +693,9 @@ async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
     mock_post.assert_awaited_once()
     ht_blocks = str(mock_post.await_args.args[3].blocks)
     assert "Quality Evaluation: USD" not in ht_blocks
-    assert "USD$91.60" in ht_blocks
+    assert "USD 91.60" in ht_blocks
     assert "Quality: bad" not in ht_blocks
-    assert "saved $" not in ht_blocks
+    assert "saved USD " not in ht_blocks
     assert "download_ai_translations_action" in ht_blocks
     mock_save.assert_awaited_once()
     assert mock_save.await_args.kwargs["stage"] == "awaiting_qe"
@@ -869,11 +869,11 @@ async def test_post_combined_qe_human_quote_keeps_asymmetric_ai_scope(mock_slack
     assert ai_updated.count("Cancelled") == 2
     assert "*Service:*" not in ai_updated
     rendered = str(mock_post.await_args.args[3].blocks)
-    assert "*Hindi*\\n>USD$2.10" in rendered or "*Hindi*\n>USD$2.10" in rendered
-    assert "*Korean*\\n>USD$40.10" in rendered or "*Korean*\n>USD$40.10" in rendered
-    assert "USD$99" not in rendered
+    assert "*Hindi*\\n>USD 2.10" in rendered or "*Hindi*\n>USD 2.10" in rendered
+    assert "*Korean*\\n>USD 40.10" in rendered or "*Korean*\n>USD 40.10" in rendered
+    assert "USD 99" not in rendered
     assert rendered.count("Cancelled") == 2
-    assert "Maximum Total Cost*: USD $42.20" in rendered
+    assert "Maximum Total Cost*: USD 42.20" in rendered
     assert mock_client.chat_update.await_args.kwargs["ts"] == "111.222"
 
 

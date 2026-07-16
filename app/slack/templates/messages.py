@@ -3937,8 +3937,8 @@ class HumanJobQuoteMessage(SlackMessage):
                     "text": {
                         "type": "mrkdwn",
                         "text": _(
-                            "Click Accept Quote to send your translation for human "
-                            "review. A discount will be applied to the quote above "
+                            "Click *Accept Quote* to send your translation for human "
+                            "review. A *discount* will be applied to the quote above "
                             "based on the quality of the AI translation."
                         ),
                     },

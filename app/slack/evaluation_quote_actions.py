@@ -488,7 +488,7 @@ async def accept_combined_qe_human_quote(
         ]
         scoped_job = filter_job_to_pairs(job_data, ai_scope)
         # Display must keep Cancelled placeholders for asymmetric file×language
-        # scope; filter_job_to_pairs drops those rows and yields USD$0.00 ghosts.
+        # scope; filter_job_to_pairs drops those rows and yields USD 0.00 ghosts.
         display_job_data = mark_out_of_scope_pairs_cancelled(
             job_data,
             selected_targets,

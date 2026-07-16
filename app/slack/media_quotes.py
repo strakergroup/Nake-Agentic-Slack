@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from app.auth.connector import duration_to_subtitling_tokens, duration_to_tokens
 from app.config import config
-from app.ray.utils import format_currency
+from app.ray.utils import format_slack_usd
 from app.redis import redis_conn
 from app.translate import _
 
@@ -120,7 +120,7 @@ def total_tokens_from_line_items(line_items: list[dict[str, Any]]) -> int:
 
 def _format_quote_cost(token_count: int) -> str:
     """Always display media quote costs in USD ($0.02 per AI token)."""
-    return format_currency(token_count * AI_TOKEN_USD_RATE, "USD")
+    return format_slack_usd(token_count * AI_TOKEN_USD_RATE)
 
 
 def media_quote_blocks(

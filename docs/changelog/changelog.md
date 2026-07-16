@@ -2,7 +2,8 @@
 
 ## [Unreleased]
 
-- [Fixed]: Combined HT/QE Adjust Request submit no longer flashes USD$0.00 ghost rows when each file keeps a different language — display uses Cancelled placeholders and skips unmatched pairs (Wade Norman, 2026-07-16)
+- [Changed]: Slack quote costs now display consistently as `USD 40.00` (space, no `$` / `US$` / `USD$` variants); HT/QE Accept Quote helper bolds *Accept Quote* and *discount* (Wade Norman, 2026-07-17)
+- [Fixed]: Combined HT/QE Adjust Request submit no longer flashes USD 0.00 ghost rows when each file keeps a different language — display uses Cancelled placeholders and skips unmatched pairs (Wade Norman, 2026-07-16)
 - [Fixed]: Post-QE final cost updates the original HT/QE Slack message instead of reposting; HT `message_ts` is now read from AsyncSlackResponse (not only dict) and preserved across Redis session saves (Wade Norman, 2026-07-16)
 - [Changed]: After QE, the original HT/QE quote is updated in place with post-QE amounts, one Estimated Completion, and final-cost status (no separate follow-up; no duplicate completion date) (Wade Norman, 2026-07-16)
 - [Changed]: AI-complete quote keeps per-language costs (including Cancelled from Adjust Request); PDF preaccept now persists language cost rows; after QE, the HT quote message is replaced in place with final-cost status only (no separate follow-up) (Wade Norman, 2026-07-16)
@@ -10,7 +11,7 @@
 - [Changed]: Download AI Translations appears only on the combined QE + Human Translation quote; the AI Translation quote (including AI-complete) no longer shows the download action (Wade Norman, 2026-07-15)
 - [Changed]: After MT completes, SRT updates the AI Translation quote in place to an AI-complete state and posts the combined QE + Human Translation quote as a new Slack message instead of replacing the AI quote (Wade Norman, 2026-07-15)
 - [Changed]: AI Translation quote guidance now says Adjust Request edits languages and/or source files; the Adjust Request modal drops the redundant AI Translation cost line and keeps Total cost (Wade Norman, 2026-07-15)
-- [Fixed]: Combined QE/HT Adjust Request no longer shows out-of-scope languages as USD$0.00 checkboxes when AI scope is split per file (Wade Norman, 2026-07-15)
+- [Fixed]: Combined QE/HT Adjust Request no longer shows out-of-scope languages as USD 0.00 checkboxes when AI scope is split per file (Wade Norman, 2026-07-15)
 - [Fixed]: Combined QE/HT quotes now mark file/language pairs outside the persisted AI scope as Cancelled and price only the selected pairs, instead of re-expanding a file×language grid after Adjust Request (Wade Norman, 2026-07-14)
 - [Fixed]: AI Translation Adjust Request Accept Quote now forwards `selected_pairs_override` into accept so the modal selection is not lost if the Redis snapshot lags (Wade Norman, 2026-07-14)
 - [Changed]: Extracted all Slack Bolt listener business logic out of `app/slack/listeners.py` into focused handler modules under `app/slack/handlers/` (`messages`, `home`, `lifecycle`, `shortcuts`, `document_mt`, `downloads`, `auth`, `commands`, `auto_translate`, `jobs`, `help`, `options`, `evaluate`, `evaluate_verify`, `media`, `media_submissions`); `listeners.py` now contains only route registrations plus thin `ack`/delegate wrappers, with public behaviour unchanged (Wade Norman, 2026-07-14)

@@ -295,7 +295,7 @@ def test_mark_out_of_scope_pairs_cancelled_keeps_languages_and_marks_rows():
 
 
 def test_combined_quote_asymmetric_selection_shows_cancelled_not_zero():
-    """Adjust/submit intermediary HT quote must not flash USD$0.00 ghost rows."""
+    """Adjust/submit intermediary HT quote must not flash USD 0.00 ghost rows."""
     from app.slack.evaluation_ai_adjustment import mark_out_of_scope_pairs_cancelled
     from app.slack.evaluation_combined_quotes import (
         PRE_QE_QUOTE_DISPLAY,
@@ -354,10 +354,10 @@ def test_combined_quote_asymmetric_selection_shows_cancelled_not_zero():
         **PRE_QE_QUOTE_DISPLAY,
     )
     rendered = str(message.blocks)
-    assert "USD$12.00" in rendered
-    assert "USD$15.00" in rendered
+    assert "USD 12.00" in rendered
+    assert "USD 15.00" in rendered
     assert rendered.count(">Cancelled") == 2
-    assert "USD$0.00" not in rendered
+    assert "USD 0.00" not in rendered
 
 
 def test_ai_quote_blocks_show_adjust_button_and_exact_guidance():
@@ -414,7 +414,7 @@ def test_ai_adjust_modal_uses_independent_file_language_checkboxes():
     assert ":paperclip: *first.docx*" in str(view["blocks"])
     assert ":paperclip: *second.docx*" in str(view["blocks"])
     assert "independent per file" in str(view["blocks"])
-    assert "*Total cost:* US$0.50" in str(view["blocks"])
+    assert "*Total cost:* USD 0.50" in str(view["blocks"])
     assert "AI Translation" not in str(view["blocks"])
     assert "ai_quote_translation_cost_block" not in str(view["blocks"])
     assert view["submit"]["text"] == "Accept Quote"
@@ -473,11 +473,11 @@ def test_filename_language_pairs_from_selection_uses_post_convert_names():
 
 def test_update_modal_cost_blocks_keeps_deselected_checkboxes_unchecked():
     option_one = {
-        "text": {"type": "mrkdwn", "text": "*French*: US$0.20"},
+        "text": {"type": "mrkdwn", "text": "*French*: USD 0.20"},
         "value": "file-1:lang-1",
     }
     option_two = {
-        "text": {"type": "mrkdwn", "text": "*German*: US$0.30"},
+        "text": {"type": "mrkdwn", "text": "*German*: USD 0.30"},
         "value": "file-2:lang-2",
     }
     view = {
@@ -516,7 +516,7 @@ def test_update_modal_cost_blocks_keeps_deselected_checkboxes_unchecked():
             {
                 "type": "section",
                 "block_id": "total_cost_block",
-                "text": {"type": "mrkdwn", "text": "*Total cost*: US$0.50"},
+                "text": {"type": "mrkdwn", "text": "*Total cost*: USD 0.50"},
             },
         ],
         "state": {
@@ -539,5 +539,5 @@ def test_update_modal_cost_blocks_keeps_deselected_checkboxes_unchecked():
 
     assert first["initial_options"] == [option_one]
     assert "initial_options" not in second
-    assert "*Total cost:* US$0.20" in updated["blocks"][2]["text"]["text"]
+    assert "*Total cost:* USD 0.20" in updated["blocks"][2]["text"]["text"]
     assert "ai_quote_translation_cost_block" not in str(updated["blocks"])

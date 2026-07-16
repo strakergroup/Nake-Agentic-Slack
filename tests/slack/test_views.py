@@ -109,7 +109,7 @@ def test_verify_job_modal_cost_update_individual_checkboxes():
 
     # Validate the total cost text dynamically
     assert (
-        f"*Maximum Total Cost*: USD ${expected_total_cost:.2f}"
+        f"*Maximum Total Cost*: USD {expected_total_cost:.2f}"
         in total_cost_block["text"]["text"]
     )
 
@@ -142,7 +142,7 @@ def test_verify_job_modal_cost_update_individual_checkboxes():
 
     # Validate the updated total cost text dynamically
     assert (
-        f"*Maximum Total Cost*: USD ${expected_total_cost:.2f}"
+        f"*Maximum Total Cost*: USD {expected_total_cost:.2f}"
         in total_cost_block["text"]["text"]
     )
 

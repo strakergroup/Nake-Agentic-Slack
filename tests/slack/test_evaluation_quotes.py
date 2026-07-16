@@ -42,16 +42,16 @@ class TestEvaluationCreditsQuoteBlocks:
         rendered = str(blocks)
         assert "Token cost" not in rendered
         assert "Total tokens" not in rendered
-        assert "US$1.00" in rendered
-        assert "US$3.40" in rendered
+        assert "USD 1.00" in rendered
+        assert "USD 3.40" in rendered
         assert "*AI Translation:*" in rendered
         assert rendered.index("PDF conversion") < rendered.index("AI Translation")
         assert rendered.index("AI Translation") < rendered.index(
             ":paperclip: *source.docx*"
         )
         assert ":paperclip: *source.docx*" in rendered
-        assert "*French*\\n>US$0.80" in rendered
-        assert "*German*\\n>US$1.60" in rendered
+        assert "*French*\\n>USD 0.80" in rendered
+        assert "*German*\\n>USD 1.60" in rendered
         assert (
             "AI pre-translation before human review will incur the following cost:"
             in rendered
@@ -86,9 +86,9 @@ class TestEvaluationCreditsQuoteBlocks:
             ],
         )
         rendered = str(blocks)
-        assert "*French*\\n>US$0.80" in rendered
+        assert "*French*\\n>USD 0.80" in rendered
         assert "*German*\\n>Cancelled" in rendered
-        assert "*Total cost:* US$0.80" in rendered
+        assert "*Total cost:* USD 0.80" in rendered
         assert "Estimated Completion" not in rendered
 
     def test_evaluation_quote_blocks_display_dollar_cost(self):
@@ -109,9 +109,9 @@ class TestEvaluationCreditsQuoteBlocks:
         assert "PDF conversion" in rendered
         assert "PDF conversion cost" not in rendered
         assert rendered.index("PDF conversion") < rendered.index("AI Translation")
-        assert "US$2.40" in rendered
-        assert "US$1.00" in rendered
-        assert "US$3.40" in rendered
+        assert "USD 2.40" in rendered
+        assert "USD 1.00" in rendered
+        assert "USD 3.40" in rendered
 
     def test_evaluation_credits_quote_message(self):
         message = EvaluationCreditsQuoteMessage(
@@ -201,9 +201,9 @@ def test_human_job_quote_message_shows_accept_helper_on_pre_qe_estimate():
     )
     rendered = str(message.blocks)
     assert "Maximum Total Cost" in rendered
-    assert "Click Accept Quote to send your translation for human review" in rendered
+    assert "Click *Accept Quote* to send your translation for human review" in rendered
     assert (
-        "A discount will be applied to the quote above based on the quality of "
+        "A *discount* will be applied to the quote above based on the quality of "
         "the AI translation."
     ) in rendered
 
@@ -243,6 +243,9 @@ def test_human_job_quote_message_hides_accept_helper_after_accept():
         show_quality_discount=False,
     )
     rendered = str(message.blocks)
+    assert (
+        "Click *Accept Quote* to send your translation for human review" not in rendered
+    )
     assert (
         "Click Accept Quote to send your translation for human review" not in rendered
     )

@@ -17,7 +17,7 @@ from app.constants import (
 )
 from app.dependencies import RayEvent, RayEventAuth
 from app.ray.events.logging import post_notification, slack_response_message_ts
-from app.ray.utils import is_ibm_enterprise
+from app.ray.utils import format_slack_usd, is_ibm_enterprise
 from app.slack.evaluation_ai_adjustment import (
     AI_QUOTE_ADJUST_ACTION_ID,
     ai_scope_from_job,
@@ -609,15 +609,16 @@ def combined_qe_complete_status_message(
     net_savings: float,
 ) -> SlackMessage:
     """Final-cost status appended to the post-QE HT quote (same Slack message)."""
+    # Placeholders must match local names so Translator._ auto-format works.
+    formatted_total = format_slack_usd(total_cost)
+    formatted_savings = format_slack_usd(net_savings)
     if net_savings > 0:
         final_cost_line = _(
-            "Final cost after AI quality evaluation: USD ${total_cost:.2f} "
-            "(saved ${net_savings:.2f})"
+            "Final cost after AI quality evaluation: {formatted_total} "
+            "(saved {formatted_savings})"
         )
     else:
-        final_cost_line = _(
-            "Final cost after AI quality evaluation: USD ${total_cost:.2f}"
-        )
+        final_cost_line = _("Final cost after AI quality evaluation: {formatted_total}")
     submission_line = _(
         "Your AI translation has been submitted to our network of native-speaking "
         "specialist linguists for review. Please refer to the estimated completion "

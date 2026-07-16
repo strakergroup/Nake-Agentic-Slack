@@ -86,9 +86,9 @@ def test_ibm_quote_catalog_entry_uses_dollar_display():
 
     assert "Token cost" not in rendered
     assert "Total tokens" not in rendered
-    assert "US$25.00" in rendered
-    assert "US$2.00" in rendered
-    assert "US$27.00" in rendered
+    assert "USD 25.00" in rendered
+    assert "USD 2.00" in rendered
+    assert "USD 27.00" in rendered
 
 
 def test_human_job_quote_catalog_entry_shows_quality_discount():
@@ -96,15 +96,15 @@ def test_human_job_quote_catalog_entry_shows_quality_discount():
     entry = next(item for item in entries if item["name"] == "HumanJobQuoteMessage")
     rendered = str(entry["blocks"])
 
-    assert "USD$53.75" in rendered
-    assert "Quality Evaluation: USD $8.00" in rendered
+    assert "USD 53.75" in rendered
+    assert "Quality Evaluation: USD 8.00" in rendered
     assert "Quality: good" in rendered
     assert "-30% off" not in rendered
-    assert "USD$46.50" in rendered
+    assert "USD 46.50" in rendered
     assert "Quality: acceptable" in rendered
     assert "-20% off" not in rendered
-    assert "Total Cost*: USD $100.25" in rendered
-    assert "saved $29.24" in rendered
+    assert "Total Cost*: USD 100.25" in rendered
+    assert "saved USD 29.24" in rendered
 
 
 def test_quote_flow_html_contains_only_new_quote_steps():
@@ -118,12 +118,12 @@ def test_quote_flow_html_contains_only_new_quote_steps():
     ]
     payload = QUOTE_FLOW_MODULE.build_flow_payload()
     rendered = str(payload)
-    assert "US$27.00" in rendered
+    assert "USD 27.00" in rendered
     assert "Quality: good" in rendered
     assert "-30% off" not in rendered
     assert "Quality: acceptable" in rendered
     assert "-20% off" not in rendered
-    assert "saved $29.24" in rendered
+    assert "saved USD 29.24" in rendered
     assert "JobStatusMessage" not in rendered
 
 
@@ -139,7 +139,7 @@ def test_ai_translate_quote_flow_contains_direct_quote_states():
     rendered = str(payload)
     assert "Direct AI Translate Quote Flow" in rendered
     assert "Service Quote" in rendered
-    assert "US$28.40" in rendered
+    assert "USD 28.40" in rendered
     assert "Total AI Tokens" not in rendered
     assert "EvaluationCreditsQuoteMessage" not in rendered
 

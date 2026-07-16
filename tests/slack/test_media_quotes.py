@@ -119,8 +119,8 @@ def test_media_quote_blocks_always_show_usd():
         "total_tokens": 100,
     }
     with patch(
-        "app.slack.media_quotes.format_currency",
-        return_value="US$2.00",
+        "app.slack.media_quotes.format_slack_usd",
+        return_value="USD 2.00",
     ) as mock_format:
         blocks = media_quote_blocks(
             session,
@@ -130,7 +130,6 @@ def test_media_quote_blocks_always_show_usd():
         )
 
     mock_format.assert_called()
-    assert all(call.args[1] == "USD" for call in mock_format.call_args_list)
     # 100 tokens × $0.02
     assert mock_format.call_args_list[0].args[0] == pytest.approx(2.0)
     block_text = " ".join(
@@ -138,7 +137,7 @@ def test_media_quote_blocks_always_show_usd():
         + " ".join(field.get("text", "") for field in block.get("fields", []) or [])
         for block in blocks
     )
-    assert "US$2.00" in block_text
+    assert "USD 2.00" in block_text
     assert "tokens" not in block_text.lower()
 
 

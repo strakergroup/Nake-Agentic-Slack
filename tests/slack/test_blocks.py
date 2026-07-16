@@ -143,9 +143,9 @@ class TestDocumentMtQuoteBlocks:
         assert "PDF conversion" in rendered
         assert "PDF conversion cost" not in rendered
         assert rendered.index("PDF conversion") < rendered.index("AI Translation")
-        assert "US$8.00" in rendered
-        assert "US$2.00" in rendered
-        assert "US$10.00" in rendered
+        assert "USD 8.00" in rendered
+        assert "USD 2.00" in rendered
+        assert "USD 10.00" in rendered
         assert "estimated" not in rendered.lower()
         assert "Total AI Tokens" not in rendered
 
@@ -155,7 +155,7 @@ class TestDocumentMtQuoteBlocks:
 
         rendered = str(blocks)
         assert "PDF conversion" not in rendered
-        assert "US$2.50" in rendered
+        assert "USD 2.50" in rendered
 
     def test_document_mt_quote_blocks_show_accept_action(self):
         blocks = document_mt_quote_blocks(self._session(), actions=True)
@@ -324,7 +324,8 @@ class TestVerifyQuoteBlocks:
 
         assert len(blocks) > 0
         assert any(">Cancelled" in str(block) for block in blocks)
-        assert "USD$" not in str(blocks)
+        # Cancelled rows omit line prices (total may still show USD 0.00).
+        assert "USD 10.50" not in str(blocks)
 
     def test_verify_quote_blocks_selectable_hides_out_of_scope_languages(self):
         """Adjust Request omits file/language pairs with no active cost row."""
@@ -370,10 +371,10 @@ class TestVerifyQuoteBlocks:
         assert "file-b:lang-de:" in rendered
         assert "file-a:lang-de:" not in rendered
         assert "file-b:lang-fr:" not in rendered
-        assert "USD$0.00" not in rendered
+        assert "USD 0.00" not in rendered
 
     def test_verify_quote_blocks_non_selectable_hides_asymmetric_ghost_zero_rows(self):
-        """Submitted HT/QE quotes must not show USD$0.00 for cross-file gaps."""
+        """Submitted HT/QE quotes must not show USD 0.00 for cross-file gaps."""
         job = {
             "uuid": "job-123",
             "workflow_uuid": "workflow-123",
@@ -412,9 +413,9 @@ class TestVerifyQuoteBlocks:
         blocks = verify_quote_blocks(job, costs, selectable=False)
         rendered = str(blocks)
 
-        assert "USD$12.00" in rendered
-        assert "USD$15.00" in rendered
-        assert "USD$0.00" not in rendered
+        assert "USD 12.00" in rendered
+        assert "USD 15.00" in rendered
+        assert "USD 0.00" not in rendered
 
     def test_verify_quote_blocks_post_qe_shows_pricing_for_submitted_target(self):
         job = {
@@ -473,11 +474,11 @@ class TestVerifyQuoteBlocks:
         )
         rendered = str(blocks)
 
-        assert "USD$80.08" in rendered
+        assert "USD 80.08" in rendered
         assert "Quality: good" in rendered
         assert "-30% off" not in rendered
         assert "submitted for this language" not in rendered
-        assert "Final Cost*: USD $80.08" in rendered
+        assert "Final Cost*: USD 80.08" in rendered
 
     def test_verify_quote_blocks_with_evaluation_report(self):
         """Test verify quote blocks with evaluation report."""
@@ -603,11 +604,11 @@ class TestVerifyQuoteBlocks:
         blocks = verify_quote_blocks(job, costs, selectable=False)
         rendered = str(blocks)
 
-        assert "USD$10.50" in rendered
+        assert "USD 10.50" in rendered
         assert "Quality: best" in rendered
         assert "-50% off" not in rendered
-        assert "Total Cost*: USD $10.50" in rendered
-        assert "saved $10.50" in rendered
+        assert "Total Cost*: USD 10.50" in rendered
+        assert "saved USD 10.50" in rendered
 
     def test_verify_quote_blocks_hides_zero_quality_discount(self):
         """Test zero discount metadata is not shown."""
@@ -702,11 +703,11 @@ class TestVerifyQuoteBlocks:
 
         assert "Worst-case QE discount: -10% off" not in rendered
         assert "Quality:" not in rendered
-        assert "*Quality Evaluation*: USD $1.60" not in rendered
+        assert "*Quality Evaluation*: USD 1.60" not in rendered
         assert "Quality Evaluation: USD" not in rendered
-        assert "USD$91.60" in rendered
-        assert "Maximum Total Cost*: USD $91.60" in rendered
-        assert "saved $10.00" not in rendered
+        assert "USD 91.60" in rendered
+        assert "Maximum Total Cost*: USD 91.60" in rendered
+        assert "saved USD 10.00" not in rendered
 
     def test_verify_quote_blocks_can_hide_quality_and_savings(self):
         job = {
@@ -751,8 +752,8 @@ class TestVerifyQuoteBlocks:
         rendered = str(blocks)
 
         assert "Quality:" not in rendered
-        assert "saved $" not in rendered
-        assert "Maximum Total Cost*: USD $10.50" in rendered
+        assert "saved USD " not in rendered
+        assert "Maximum Total Cost*: USD 10.50" in rendered
 
     def test_verify_quote_blocks_distributes_qe_cost_by_target(self):
         """Target-scoped QE costs can be embedded in each file/language quote row."""
@@ -807,11 +808,11 @@ class TestVerifyQuoteBlocks:
         )
         rendered = str(blocks)
 
-        assert rendered.count("Quality Evaluation: USD $0.80") == 0
-        assert "USD$90.80" in rendered
-        assert "USD$80.80" in rendered
-        assert "*Quality Evaluation*: USD $1.60" not in rendered
-        assert "Total Cost*: USD $171.60" in rendered
+        assert rendered.count("Quality Evaluation: USD 0.80") == 0
+        assert "USD 90.80" in rendered
+        assert "USD 80.80" in rendered
+        assert "*Quality Evaluation*: USD 1.60" not in rendered
+        assert "Total Cost*: USD 171.60" in rendered
 
     def test_verify_quote_blocks_shows_quality_discount_in_selectable_label(self):
         """Test adjust-request checkbox includes QE discount metadata."""
@@ -850,8 +851,8 @@ class TestVerifyQuoteBlocks:
         blocks = verify_quote_blocks(job, costs, selectable=True)
         rendered = str(blocks)
 
-        assert "USD$10.50" in rendered
-        assert "saved $4.00" not in rendered
+        assert "USD 10.50" in rendered
+        assert "saved USD 4.00" not in rendered
         assert "Quality: good" in rendered
         assert "-30% off" not in rendered
         assert "file-123:lang-123:2:0.00:0.00" in rendered
@@ -893,7 +894,7 @@ class TestVerifyQuoteBlocks:
         )
         rendered = str(blocks)
 
-        assert "Quality Evaluation: USD $0.80" in rendered
+        assert "Quality Evaluation: USD 0.80" in rendered
         assert "file-123:lang-123:2:0.00:0.80" in rendered
 
     def test_verify_quote_blocks_embeds_qe_cost_in_selectable_value(self):
@@ -934,8 +935,8 @@ class TestVerifyQuoteBlocks:
         )
         rendered = str(blocks)
 
-        assert "Quality Evaluation: USD $0.80" not in rendered
-        assert "USD$11.30" in rendered
+        assert "Quality Evaluation: USD 0.80" not in rendered
+        assert "USD 11.30" in rendered
         assert "file-123:lang-123:2:0.00:0.00" in rendered
 
     @patch("app.slack.templates.blocks.datetime")

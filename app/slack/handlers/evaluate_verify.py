@@ -20,6 +20,7 @@ from app.constants import (
     EVALUATE_SERVICE_QUALITY_EVALUATION,
     HUMAN_EVALUATION_WORKFLOW_UUID,
 )
+from app.ray.utils import format_slack_usd
 from app.redis import redis_conn
 from app.slack.buglog_notifier import notify_exception
 from app.slack.evaluation_ai_adjustment import mark_out_of_scope_pairs_cancelled
@@ -236,7 +237,7 @@ async def handle_verify_job_submission(
         if not qe_costs:
             qe_costs = qe_additional_cost(qe_token_cost, selected_costs)
         # Keep full language grid with Cancelled rows. Filtering pairs out here
-        # leaves union target_languages and produces phantom USD$0.00 lines when
+        # leaves union target_languages and produces phantom USD 0.00 lines when
         # each file keeps a different language.
         selected_job_data = mark_out_of_scope_pairs_cancelled(
             job["data"],
@@ -405,17 +406,12 @@ async def handle_verification_checkbox(body, client, action):
             # is a displayed per-target extra such as the distributed QE fee.
             total_cost = 0.0
             for option in selected_options:
-                match = re.search(r"USD\$([\d.]+)", option["text"]["text"])
+                match = re.search(r"USD ([\d.]+)", option["text"]["text"])
                 if match:
                     total_cost += float(match.group(1))
                 parts = option["value"].split(":")
                 if len(parts) > 4:
                     total_cost += float(parts[4])
-            total_savings = sum(
-                float(option["value"].split(":")[3])
-                for option in selected_options
-                if len(option["value"].split(":")) > 3
-            )
             total_savings = sum(
                 float(option["value"].split(":")[3])
                 for option in selected_options
@@ -456,9 +452,9 @@ async def handle_verification_checkbox(body, client, action):
                 if block.get("block_id") == "total_cost_block":
                     existing_text = block["text"]["text"]
                     localized_prefix = existing_text.split("USD")[0]
-                    total_text = f"{localized_prefix}USD ${total_cost:.2f}"
+                    total_text = f"{localized_prefix}{format_slack_usd(total_cost)}"
                     if total_savings > 0:
-                        total_text += f" (saved ${total_savings:.2f})"
+                        total_text += f" (saved {format_slack_usd(total_savings)})"
                     block["text"]["text"] = total_text
                     break
 

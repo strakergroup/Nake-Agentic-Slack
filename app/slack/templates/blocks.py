@@ -22,6 +22,7 @@ from ...config import domains
 from ...ray.utils import (
     format_currency,
     format_currency_symbol,
+    format_slack_usd,
     get_job_url,
     is_ibm_enterprise,
 )
@@ -31,7 +32,7 @@ AI_TOKEN_USD_RATE = 0.02
 
 
 def _format_evaluate_quote_cost(token_count: int, *, is_ibm: bool = True) -> str:
-    return format_currency(token_count * AI_TOKEN_USD_RATE, "USD")
+    return format_slack_usd(token_count * AI_TOKEN_USD_RATE)
 
 
 def home_auth_blocks(
@@ -474,7 +475,7 @@ def verify_quote_blocks(
                     break
             # Hide file/language pairs outside the active scope (no cost row and
             # no Cancelled/Submitted status). Without this, asymmetric per-file
-            # selections render as phantom USD$0.00 lines on non-selectable quotes.
+            # selections render as phantom USD 0.00 lines on non-selectable quotes.
             if not matched_cost_item and not (
                 target_file and target_file.get("human_job_status")
             ):
@@ -485,7 +486,7 @@ def verify_quote_blocks(
                         line_cost = cost + target_additional_cost_total
                         total_cost += line_cost
                         total_savings += quality_discount_savings
-                        quote_text = f"*{lang['name']}*\n>USD${line_cost:.2f}"
+                        quote_text = f"*{lang['name']}*\n>{format_slack_usd(line_cost)}"
                         if quality_discount_text:
                             quote_text += f"\n>{quality_discount_text}"
                         blocks.append(
@@ -540,14 +541,14 @@ def verify_quote_blocks(
                         )
 
                 if selectable:
-                    option_text = f"*{lang['name']}*: USD${line_cost:.2f}"
+                    option_text = f"*{lang['name']}*: {format_slack_usd(line_cost)}"
                     if quality_discount_text:
                         option_text += f"\n{quality_discount_text}"
                     if not embed_additional_costs_in_line_price:
                         for additional_cost in target_additional_costs:
                             label = additional_cost.get("label", "")
                             amount = float(additional_cost.get("cost", 0.0) or 0.0)
-                            option_text += f"\n{label}: USD ${amount:.2f}"
+                            option_text += f"\n{label}: {format_slack_usd(amount)}"
                     embedded_qe_value = (
                         0.0
                         if embed_additional_costs_in_line_price
@@ -643,14 +644,14 @@ def verify_quote_blocks(
                             }
                         )
                 else:
-                    quote_text = f"*{lang['name']}*\n>USD${line_cost:.2f}"
+                    quote_text = f"*{lang['name']}*\n>{format_slack_usd(line_cost)}"
                     if quality_discount_text:
                         quote_text += f"\n>{quality_discount_text}"
                     if not embed_additional_costs_in_line_price:
                         for additional_cost in target_additional_costs:
                             label = additional_cost.get("label", "")
                             amount = float(additional_cost.get("cost", 0.0) or 0.0)
-                            quote_text += f"\n>{label}: USD ${amount:.2f}"
+                            quote_text += f"\n>{label}: {format_slack_usd(amount)}"
                     blocks.append(
                         {
                             "type": "section",
@@ -671,7 +672,7 @@ def verify_quote_blocks(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*{label}*: USD ${amount:.2f}",
+                    "text": f"*{label}*: {format_slack_usd(amount)}",
                 },
             }
         )
@@ -695,7 +696,7 @@ def verify_quote_blocks(
         )
     else:
         total_cost_label = _(total_cost_label)
-    total_cost_text = f"*{total_cost_label}*: USD ${total_cost:.2f}"
+    total_cost_text = f"*{total_cost_label}*: {format_slack_usd(total_cost)}"
     if show_savings:
         displayed_savings = (
             combined_quote_net_savings(
@@ -707,7 +708,7 @@ def verify_quote_blocks(
             else total_savings
         )
         if displayed_savings > 0:
-            total_cost_text += f" (saved ${displayed_savings:.2f})"
+            total_cost_text += f" (saved {format_slack_usd(displayed_savings)})"
 
     if show_total_cost:
         blocks.append(

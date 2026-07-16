@@ -699,7 +699,7 @@ def mock_format_currency(value: float, currency: str) -> str:
     """Mirror the runtime USD display shape without depending on Babel in catalog tests."""
     normalized_currency = currency.split("_", 1)[0]
     if normalized_currency == "USD":
-        return f"US${value:,.2f}"
+        return f"USD {value:,.2f}"
     return f"{normalized_currency} {value:,.2f}"
 
 
