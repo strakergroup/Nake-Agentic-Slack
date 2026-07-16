@@ -372,6 +372,50 @@ class TestVerifyQuoteBlocks:
         assert "file-b:lang-fr:" not in rendered
         assert "USD$0.00" not in rendered
 
+    def test_verify_quote_blocks_non_selectable_hides_asymmetric_ghost_zero_rows(self):
+        """Submitted HT/QE quotes must not show USD$0.00 for cross-file gaps."""
+        job = {
+            "uuid": "job-123",
+            "workflow_uuid": "workflow-123",
+            "target_languages": [
+                {"uuid": "lang-fr", "name": "French"},
+                {"uuid": "lang-de", "name": "German"},
+            ],
+            "source_files": [
+                {
+                    "file_uuid": "file-a",
+                    "filename": "a.docx",
+                    "target_files": [{"language_uuid": "lang-fr"}],
+                    "report": {"language_uuid": "source-uuid"},
+                },
+                {
+                    "file_uuid": "file-b",
+                    "filename": "b.docx",
+                    "target_files": [{"language_uuid": "lang-de"}],
+                    "report": {"language_uuid": "source-uuid"},
+                },
+            ],
+        }
+        costs = [
+            {
+                "file_uuid": "file-a",
+                "language_uuid": "lang-fr",
+                "service_list": [{"estimated_cost": 12.0, "time_estimate_days": 2}],
+            },
+            {
+                "file_uuid": "file-b",
+                "language_uuid": "lang-de",
+                "service_list": [{"estimated_cost": 15.0, "time_estimate_days": 3}],
+            },
+        ]
+
+        blocks = verify_quote_blocks(job, costs, selectable=False)
+        rendered = str(blocks)
+
+        assert "USD$12.00" in rendered
+        assert "USD$15.00" in rendered
+        assert "USD$0.00" not in rendered
+
     def test_verify_quote_blocks_post_qe_shows_pricing_for_submitted_target(self):
         job = {
             "uuid": "job-123",

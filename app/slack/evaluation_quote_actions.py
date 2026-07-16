@@ -27,6 +27,7 @@ from app.slack.evaluation_ai_adjustment import (
     ai_scope_from_job,
     filter_job_to_pairs,
     language_costs_with_cancelled_status,
+    mark_out_of_scope_pairs_cancelled,
     selected_pairs_from_values,
 )
 from app.slack.evaluation_combined_quotes import (
@@ -486,7 +487,12 @@ async def accept_combined_qe_human_quote(
             or ai_scope
         ]
         scoped_job = filter_job_to_pairs(job_data, ai_scope)
-        display_job_data = filter_job_to_pairs(job_data, ai_scope)
+        # Display must keep Cancelled placeholders for asymmetric file×language
+        # scope; filter_job_to_pairs drops those rows and yields USD$0.00 ghosts.
+        display_job_data = mark_out_of_scope_pairs_cancelled(
+            job_data,
+            selected_targets,
+        )
         resolve_selected_human_translation_targets(
             display_job_data,
             selected_languages=selected_targets,

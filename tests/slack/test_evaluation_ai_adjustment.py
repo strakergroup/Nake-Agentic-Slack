@@ -294,6 +294,72 @@ def test_mark_out_of_scope_pairs_cancelled_keeps_languages_and_marks_rows():
     assert "human_job_status" not in job["source_files"][0]["target_files"][0]
 
 
+def test_combined_quote_asymmetric_selection_shows_cancelled_not_zero():
+    """Adjust/submit intermediary HT quote must not flash USD$0.00 ghost rows."""
+    from app.slack.evaluation_ai_adjustment import mark_out_of_scope_pairs_cancelled
+    from app.slack.evaluation_combined_quotes import (
+        PRE_QE_QUOTE_DISPLAY,
+        combined_human_job_quote_message,
+    )
+
+    job = {
+        "uuid": "job-123",
+        "workflow_uuid": "workflow-123",
+        "target_languages": [
+            {"uuid": "lang-fr", "name": "French"},
+            {"uuid": "lang-de", "name": "German"},
+        ],
+        "source_files": [
+            {
+                "file_uuid": "file-a",
+                "filename": "a.docx",
+                "target_files": [
+                    {"language_uuid": "lang-fr"},
+                    {"language_uuid": "lang-de"},
+                ],
+                "report": {"language_uuid": "source-uuid"},
+            },
+            {
+                "file_uuid": "file-b",
+                "filename": "b.docx",
+                "target_files": [
+                    {"language_uuid": "lang-fr"},
+                    {"language_uuid": "lang-de"},
+                ],
+                "report": {"language_uuid": "source-uuid"},
+            },
+        ],
+    }
+    selected = ["file-a:lang-fr", "file-b:lang-de"]
+    costs = [
+        {
+            "file_uuid": "file-a",
+            "language_uuid": "lang-fr",
+            "service_list": [{"estimated_cost": 12.0, "time_estimate_days": 2}],
+        },
+        {
+            "file_uuid": "file-b",
+            "language_uuid": "lang-de",
+            "service_list": [{"estimated_cost": 15.0, "time_estimate_days": 3}],
+        },
+    ]
+    message = combined_human_job_quote_message(
+        mark_out_of_scope_pairs_cancelled(job, selected),
+        costs,
+        qe_token_cost=0,
+        qe_additional_costs=[],
+        actions=False,
+        status_message="Accepting quote...",
+        allow_adjust=False,
+        **PRE_QE_QUOTE_DISPLAY,
+    )
+    rendered = str(message.blocks)
+    assert "USD$12.00" in rendered
+    assert "USD$15.00" in rendered
+    assert rendered.count(">Cancelled") == 2
+    assert "USD$0.00" not in rendered
+
+
 def test_ai_quote_blocks_show_adjust_button_and_exact_guidance():
     blocks = evaluation_credits_quote_blocks(
         "AI Translation",

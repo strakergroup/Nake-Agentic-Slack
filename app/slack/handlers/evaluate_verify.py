@@ -22,7 +22,7 @@ from app.constants import (
 )
 from app.redis import redis_conn
 from app.slack.buglog_notifier import notify_exception
-from app.slack.evaluation_ai_adjustment import filter_job_to_pairs
+from app.slack.evaluation_ai_adjustment import mark_out_of_scope_pairs_cancelled
 from app.slack.evaluation_combined_quotes import (
     COMBINED_QE_HUMAN_QUOTE_ACCEPT_ACTION_ID,
     PRE_QE_QUOTE_DISPLAY,
@@ -235,7 +235,10 @@ async def handle_verify_job_submission(
         )
         if not qe_costs:
             qe_costs = qe_additional_cost(qe_token_cost, selected_costs)
-        selected_job_data = filter_job_to_pairs(
+        # Keep full language grid with Cancelled rows. Filtering pairs out here
+        # leaves union target_languages and produces phantom USD$0.00 lines when
+        # each file keeps a different language.
+        selected_job_data = mark_out_of_scope_pairs_cancelled(
             job["data"],
             selected_languages,
         )

@@ -472,12 +472,11 @@ def verify_quote_blocks(
                             service.get("quality_discount")
                         )
                     break
-            # Adjust Request: hide file/language pairs outside the active scope
-            # (they would otherwise appear as USD$0.00 checkboxes).
-            if (
-                selectable
-                and not matched_cost_item
-                and not (target_file and target_file.get("human_job_status"))
+            # Hide file/language pairs outside the active scope (no cost row and
+            # no Cancelled/Submitted status). Without this, asymmetric per-file
+            # selections render as phantom USD$0.00 lines on non-selectable quotes.
+            if not matched_cost_item and not (
+                target_file and target_file.get("human_job_status")
             ):
                 continue
             if target_file and target_file.get("human_job_status", ""):
