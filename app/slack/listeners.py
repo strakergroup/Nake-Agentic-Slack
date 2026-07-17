@@ -2796,6 +2796,7 @@ async def handle_video_transcribe_only(
                 "slack_enterprise_id": context.enterprise_id,
                 "slack_channel_id": channel_id,
                 "slack_thread_ts": thread_ts,
+                "slack_file_id": file_info["file_id"],
                 "submission_id": file_info["submission_id"],
             }
 
@@ -3047,6 +3048,7 @@ async def handle_video_transcribe_translate_submit(
                 "slack_enterprise_id": context.enterprise_id,
                 "slack_channel_id": channel_id,
                 "slack_thread_ts": thread_ts,
+                "slack_file_id": file_info["file_id"],
                 # Include translation info for post-transcription processing
                 "pipeline_type": "transcribe_translate",
                 "target_languages": valid_language_codes,
@@ -3241,6 +3243,7 @@ async def handle_video_embed_subtitles_submit(
                 "slack_enterprise_id": context.enterprise_id,
                 "slack_channel_id": channel_id,
                 "slack_thread_ts": thread_ts,
+                "slack_file_id": file_info["file_id"],
                 # Include translation and embedding info for post-transcription processing
                 "pipeline_type": "transcribe_translate_embed",
                 "target_languages": valid_language_codes,
