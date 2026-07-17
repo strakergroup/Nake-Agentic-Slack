@@ -38,6 +38,7 @@ from app.media.embed_spend import (
 from app.models import TranscriptionTask, TranscriptionTaskInfo
 from app.ray.settings import get_auto_translate_language_name
 from app.ray.submissions import SubmissionStatus, updated_submission_status
+from app.ray.transcription_billing import transcription_billing_submission_id
 from app.ray.utils import (
     download_from_file_server_async,
     is_ibm_enterprise,
@@ -329,6 +330,13 @@ async def _spend_transcription_credits(
             # self-describing credit_transaction_usage row (source language +
             # idempotency) atomically with the debit (RAY-80000 §3.2). This
             # replaces the direct credit-ledger write, which left no usage row.
+            # Prefer Slack file_id + duration so quote/confirm twin tasks
+            # (same file, two task_uuids) collapse to one debit (RAY-80734).
+            billing_submission_id = transcription_billing_submission_id(
+                task_uuid=task_info.task_uuid,
+                duration_ms=task_info.duration_ms,
+                extra_data=extra_data,
+            )
             _tokens, transaction_uuid = await log_transcribe_by_client_id(
                 client_id=auth.slack_user.ray_client_id,
                 duration_ms=task_info.duration_ms,
@@ -336,13 +344,13 @@ async def _spend_transcription_credits(
                 source_language=task_info.detected_language,
                 idempotency_key=build_spend_idempotency_key(
                     app_source="slack",
-                    submission_id=task_info.task_uuid,
+                    submission_id=billing_submission_id,
                     service="transcription",
                     unit_type="milliseconds",
                 ),
                 # Media submission id: ties transcribe -> SRT translate -> embed
                 # into one transaction group for reporting (RAY-80417).
-                submission_group_uuid=task_info.task_uuid,
+                submission_group_uuid=billing_submission_id,
             )
 
             # Mark transcription as charged and store transaction UUID
