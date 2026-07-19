@@ -18,6 +18,11 @@ class SubmissionStatus(Enum):
     COMPLETED = "completed"
 
 
+# Namespace evaluate (QE/HT) rows in slack_file_translation_submissions so they
+# do not collide with Document MT content hashes (same table, isolated keys).
+EVALUATE_SUBMISSION_HASH_PREFIX = "evaluate:"
+
+
 def _hash_file_content_sha256_hex(path: str, read_chunk_size: int = 1024 * 1024) -> str:
     """Exact SHA-256 of file content (no language prefix), streamed from disk."""
     h = hashlib.sha256()
@@ -35,6 +40,35 @@ def _get_file_size(path: str) -> int:
         return os.path.getsize(path)
     except Exception:
         return 0
+
+
+def _evaluate_namespaced_file_hash(
+    content_sha256: str,
+    *,
+    source_language: str,
+    target_languages: list[str],
+) -> str:
+    """
+    SHA-256 of ``evaluate:{content}:{source}:{sorted_targets}``.
+
+    Target set is part of the hash so a submission is only a duplicate when the
+    exact same source + target languages are requested again (not per-language).
+    """
+    normalized_source = (source_language or "").strip()
+    normalized_targets = ",".join(
+        sorted(
+            {(code or "").strip() for code in target_languages if (code or "").strip()}
+        )
+    )
+    material = (
+        f"{EVALUATE_SUBMISSION_HASH_PREFIX}{content_sha256}:"
+        f"{normalized_source}:{normalized_targets}"
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+# Sentinel in target_language column: evaluate identity lives in file_hash (set).
+EVALUATE_SUBMISSION_TARGET_SENTINEL = ""
 
 
 def _find_existing(
@@ -163,6 +197,80 @@ async def check_and_record_submission_async(
             file_size=file_size,
             source_language=source_language,
             target_language=target_language,
+            file_id=file_id,
+            processing_status=SubmissionStatus.CREATED,
+        )
+        return False, created
+
+
+async def check_and_record_evaluate_submission_async(
+    *,
+    path: str,
+    file_name: str,
+    file_id: str,
+    user_id: str,
+    team_id: str,
+    channel_id: str,
+    source_language: str = "",
+    target_languages: list[str],
+) -> Tuple[bool, SlackFileTranslationSubmission]:
+    """
+    24h dedupe for Quality Evaluation / Human Translation submissions.
+
+    A submit is a duplicate only when the same user/team/file content/name is
+    requested again with the **same source and exact same target-language set**
+    (order-independent). Overlapping-but-different target sets are allowed.
+
+    Uses a namespaced hash so evaluate rows do not cross-block Document MT.
+    QE and HT share this namespace. Returns (is_duplicate, record).
+    """
+    content_hash = _hash_file_content_sha256_hex(path)
+    # Column is String(10); Verify codes fit, but truncate defensively.
+    source_language = (source_language or "")[:10]
+    normalized_targets = [
+        (code or "")[:10] for code in target_languages if (code or "").strip()
+    ]
+    file_hash = _evaluate_namespaced_file_hash(
+        content_hash,
+        source_language=source_language,
+        target_languages=normalized_targets,
+    )
+    file_size = _get_file_size(path)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    with Session(engines["ray_integration"]) as session:
+        existing = session.scalars(
+            select(SlackFileTranslationSubmission)
+            .where(SlackFileTranslationSubmission.user_id == user_id)
+            .where(SlackFileTranslationSubmission.team_id == team_id)
+            .where(SlackFileTranslationSubmission.file_hash == file_hash)
+            .where(SlackFileTranslationSubmission.file_name == file_name)
+            .where(SlackFileTranslationSubmission.source_language == source_language)
+            .where(
+                SlackFileTranslationSubmission.target_language
+                == EVALUATE_SUBMISSION_TARGET_SENTINEL
+            )
+            .where(SlackFileTranslationSubmission.created_at >= cutoff)
+            .where(
+                SlackFileTranslationSubmission.processing_status
+                != SubmissionStatus.FAILED.value
+            )
+            .limit(1)
+        ).first()
+
+        if existing is not None:
+            return True, existing
+
+        created = _insert_submission(
+            session,
+            user_id=user_id,
+            team_id=team_id,
+            channel_id=channel_id,
+            file_hash=file_hash,
+            file_name=file_name,
+            file_size=file_size,
+            source_language=source_language,
+            target_language=EVALUATE_SUBMISSION_TARGET_SENTINEL,
             file_id=file_id,
             processing_status=SubmissionStatus.CREATED,
         )

@@ -875,6 +875,11 @@ async def process_evaluation_submission(
     )
     from app.auth.connector import get_bot_token_async, get_ray_client
     from app.constants import EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE
+    from app.ray.submissions import (
+        SubmissionStatus,
+        check_and_record_evaluate_submission_async,
+        updated_submission_status,
+    )
     from app.ray.utils import is_ibm_enterprise, validate_file
     from app.slack.evaluation_ai_adjustment import (
         estimated_pdf_file_language_costs,
@@ -915,6 +920,20 @@ async def process_evaluation_submission(
     input_files: list[str] = []
     file_titles: list[str] = []
     valid_files: list[dict[str, Any]] = []
+    new_submission_ids: list[int] = []
+
+    def _mark_new_submissions_failed() -> None:
+        for submission_id in new_submission_ids:
+            try:
+                updated_submission_status(
+                    submission_id=submission_id,
+                    processing_status=SubmissionStatus.FAILED,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to mark evaluate submission as failed",
+                    extra={**log_extra, "submission_id": submission_id},
+                )
 
     try:
         for file_data in files:
@@ -940,6 +959,7 @@ async def process_evaluation_submission(
 
         has_pdf = any(title.lower().endswith(".pdf") for title in file_titles)
         if has_pdf and not preaccepted_ai_translation_quote:
+            # PDF pre-quote: do not record submissions (accept re-enqueues this task).
             pdf_page_count = 0
             for file_path, file_data in zip(input_files, valid_files, strict=True):
                 page_count = (
@@ -1006,12 +1026,122 @@ async def process_evaluation_submission(
                 )
             return {"status": "quoted", "quote_id": quote_id}
 
+        verify_languages = await get_verify_languages()
+        uuid_to_code = {
+            str(language["uuid"]): str(language.get("code") or language["uuid"])[:10]
+            for language in verify_languages
+        }
+        source_language_code = uuid_to_code.get(
+            source_lang_uuid, (source_lang_uuid or "")[:10]
+        )
+
+        requested_pair_keys: set[str] | None = None
+        if ai_translation_filename_and_languages:
+            requested_pair_keys = {
+                str(pair).strip()
+                for pair in ai_translation_filename_and_languages
+                if str(pair).strip()
+            }
+
+        duplicate_submissions: list[str] = []
+        allowed_file_indexes: set[int] = set()
+        allowed_pairs: list[str] = []
+        # Union of target UUIDs across allowed files (preserve modal order).
+        allowed_lang_uuids: list[str] = []
+        seen_lang_uuids: set[str] = set()
+
+        for file_index, (input_file, file_data, file_title) in enumerate(
+            zip(input_files, valid_files, file_titles, strict=True)
+        ):
+            file_target_uuids: list[str] = []
+            for target_lang_uuid in target_langs_uuid:
+                pair_key = f"{file_title}:{target_lang_uuid}"
+                if (
+                    requested_pair_keys is not None
+                    and pair_key not in requested_pair_keys
+                ):
+                    continue
+                file_target_uuids.append(target_lang_uuid)
+            if not file_target_uuids:
+                continue
+
+            file_target_codes = [
+                uuid_to_code.get(lang_uuid, (lang_uuid or "")[:10])
+                for lang_uuid in file_target_uuids
+            ]
+            is_dup, record = await check_and_record_evaluate_submission_async(
+                path=input_file,
+                file_name=os.path.basename(input_file),
+                file_id=str(file_data.get("id") or ""),
+                user_id=user_id,
+                team_id=team_id,
+                channel_id=channel_id,
+                source_language=source_language_code,
+                target_languages=file_target_codes,
+            )
+            targets_label = ", ".join(file_target_codes)
+            if is_dup:
+                duplicate_submissions.append(
+                    f"{file_title} ({source_language_code or 'auto'} -> "
+                    f"{targets_label})"
+                )
+                continue
+
+            new_submission_ids.append(record.id)
+            allowed_file_indexes.add(file_index)
+            for target_lang_uuid in file_target_uuids:
+                allowed_pairs.append(f"{file_title}:{target_lang_uuid}")
+                if target_lang_uuid not in seen_lang_uuids:
+                    seen_lang_uuids.add(target_lang_uuid)
+                    allowed_lang_uuids.append(target_lang_uuid)
+
+        if duplicate_submissions and not allowed_file_indexes:
+            await client.chat_postMessage(
+                channel=user_id,
+                text=_(
+                    "Please allow the system to complete the ongoing quality "
+                    "evaluation / human translation request(s) "
+                    f"*({', '.join(duplicate_submissions)})* to prevent "
+                    "duplicate submissions."
+                ),
+            )
+            return {
+                "status": "duplicate",
+                "duplicate_count": len(duplicate_submissions),
+            }
+
+        if duplicate_submissions:
+            await client.chat_postMessage(
+                channel=user_id,
+                text=_(
+                    "Please allow the system to complete the ongoing quality "
+                    "evaluation / human translation request(s) "
+                    f"*({', '.join(duplicate_submissions)})* to prevent "
+                    "duplicate submissions."
+                ),
+            )
+
+        submit_input_files = [
+            path
+            for index, path in enumerate(input_files)
+            if index in allowed_file_indexes
+        ]
+        submit_file_titles = [
+            title
+            for index, title in enumerate(file_titles)
+            if index in allowed_file_indexes
+        ]
+        submit_target_langs = allowed_lang_uuids
+        # Always pass explicit pairs when any file was filtered by Adjust or
+        # per-file dedupe so remaining files keep their intended target sets.
+        submit_ai_pairs = allowed_pairs or None
+
         if has_pdf:
             await publish_pdf_evaluate_convert(
                 ray_client=ray_client,
-                input_files=input_files,
-                file_titles=file_titles,
-                target_langs_uuid=target_langs_uuid,
+                input_files=submit_input_files,
+                file_titles=submit_file_titles,
+                target_langs_uuid=submit_target_langs,
                 reference=reference,
                 channel_id=channel_id,
                 source_lang_uuid=source_lang_uuid,
@@ -1019,15 +1149,13 @@ async def process_evaluation_submission(
                 job_notes=job_notes,
                 preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
                 prequote_message_ts=prequote_message_ts,
-                ai_translation_filename_and_languages=(
-                    ai_translation_filename_and_languages
-                ),
+                ai_translation_filename_and_languages=submit_ai_pairs,
             )
         else:
             await submit_evaluation_job(
                 ray_client,
-                input_files,
-                target_langs_uuid,
+                submit_input_files,
+                submit_target_langs,
                 reference,
                 source_language_uuid=source_lang_uuid,
                 workflow_uuid=workflow_uuid,
@@ -1035,12 +1163,15 @@ async def process_evaluation_submission(
                 slack_channel_id=channel_id,
                 preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
                 prequote_message_ts=prequote_message_ts,
-                ai_translation_filename_and_languages=(
-                    ai_translation_filename_and_languages
-                ),
+                ai_translation_filename_and_languages=submit_ai_pairs,
             )
-        return {"status": "submitted", "file_count": len(input_files)}
+        return {
+            "status": "submitted",
+            "file_count": len(submit_input_files),
+            "duplicate_count": len(duplicate_submissions),
+        }
     except VerifyAPIError:
+        _mark_new_submissions_failed()
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
@@ -1053,6 +1184,7 @@ async def process_evaluation_submission(
             "Evaluation submission failed; SAQ will retry", extra=log_extra
         )
         if job is not None and not job.retryable:
+            _mark_new_submissions_failed()
             notify_exception(
                 Exception("Queued evaluation submission failed"),
                 "Queued evaluation submission failed (final attempt)",

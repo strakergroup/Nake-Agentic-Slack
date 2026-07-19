@@ -11,6 +11,35 @@ Human Translation (`evaluate_job_human`) submissions:
 - Handle staged Slack events and quote accept actions
 - Treat `ready_for_qe_quote` as the combined Quality Evaluation + Human Translation quote, not as a standalone QE view
 
+## Resubmission prevention
+
+QE and HT modal submits use a 24h dedupe gate in `process_evaluation_submission` (`check_and_record_evaluate_submission_async`). Unlike Document MT (per target language), evaluate treats the **full target set** as one unit for simpler grouping:
+
+- Duplicate only when the same user/team/file content/name is submitted again with the **same source and exact same target-language set** (order-independent)
+- Overlapping-but-different sets are allowed (e.g. prior `fr+de`, new `fr+es` proceeds as a full new job)
+- Hash: `sha256("evaluate:{content}:{source}:{sorted_targets}")` so evaluate rows in `slack_file_translation_submissions` do **not** cross-block Document MT
+- QE and HT share that evaluate namespace
+- `failed` unlocks retry; `created` / `completed` continue to block within 24h
+- Recording runs only on the path that creates work (non-PDF submit, or PDF **after** quote accept). The PDF pre-quote display does not insert rows, so Accept can re-enqueue safely
+- All files duplicate: DM the user and skip `/evaluate/create` / PDF convert. Multi-file partial: DM for blocked files and submit only remaining files
+
+```mermaid
+flowchart TD
+    modal[QE_or_HT_modal_submit]
+    saq[process_evaluation_submission]
+    dl[Download_and_validate]
+    pdfGate{PDF_and_not_preaccepted}
+    quote[Show_PDF_AI_quote]
+    dedupe[check_and_record_evaluate_submission_per_file_target_set]
+    block[DM_duplicate_message]
+    submit[submit_evaluation_job_or_PDF_convert]
+    modal --> saq --> dl --> pdfGate
+    pdfGate -->|yes| quote
+    pdfGate -->|no| dedupe
+    dedupe -->|all_files_dup| block
+    dedupe -->|some_files_new| submit
+```
+
 ## Flow
 
 ```mermaid

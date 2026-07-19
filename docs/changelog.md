@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Added]: QE/HT resubmission prevention — 24h dedupe for evaluate submits keyed on exact source + target-language set (namespaced `evaluate:` hash; isolated from Document MT; QE and HT share namespace; PDF pre-quote does not record; failed unlocks retry) (Wade Norman, 2026-07-20)
 - [Changed]: After QE, the original HT/QE quote is updated in place with post-QE amounts, one Estimated Completion, and final-cost status (no separate follow-up; no duplicate completion date) (Wade Norman, 2026-07-16)
 - [Changed]: AI-complete quote keeps per-language costs (including Cancelled from Adjust Request); PDF preaccept now persists language cost rows; after QE, the HT quote message is replaced in place with final-cost status only (no separate follow-up) (Wade Norman, 2026-07-16)
 - [Changed]: HT design-review copy — staged AI quote intro/header/Adjust Request wording; PDF accept and AI-complete status; Accept Quote helper; Arbitr renamed to AI quality; estimated completion restored on HT submit/post-QE panels (Wade Norman, 2026-07-16)
