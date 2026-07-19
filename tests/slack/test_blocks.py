@@ -60,15 +60,16 @@ class TestHomeAuthBlocks:
         assert "connected" in blocks[1]["text"]["text"].lower()
 
     def test_home_auth_blocks_ibm_enterprise(self, user_id, team_id):
-        """Test home auth blocks for IBM enterprise."""
+        """IBM home tab has no Direct Login button when disconnected."""
         with patch("app.slack.templates.blocks.is_ibm_enterprise", return_value=True):
             blocks = home_auth_blocks(user_id, team_id, "E123", "C123", None)
 
-            assert len(blocks) == 2
-            assert blocks[1]["type"] == "actions"
-            assert len(blocks[1]["elements"]) == 1
-            assert blocks[1]["elements"][0]["action_id"] == "login_sso"
+            assert len(blocks) == 1
+            assert blocks[0]["type"] == "section"
             assert "Quality Evaluation" not in blocks[0]["text"]["text"]
+            assert all(block.get("type") != "actions" for block in blocks)
+            assert "login_sso" not in str(blocks)
+            assert "Direct Login" not in str(blocks)
 
     def test_home_auth_blocks_no_connection(self, user_id, team_id):
         """Test home auth blocks when not connected."""

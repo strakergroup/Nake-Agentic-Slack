@@ -88,27 +88,29 @@ def home_auth_blocks(
                 ),
             },
         },
+    ]
+    # IBM Direct Login is not offered on the home tab; channel login prompts keep SSO.
+    if is_ibm:
+        return blocks
+
+    blocks.append(
         {
             "type": "actions",
-            "elements": [],
-        },
-    ]
-    action_element = {
-        "type": "button",
-        "text": {
-            "type": "plain_text",
-            "text": _("Direct Login") if is_ibm else _("Connect to Verify"),
-        },
-        "style": "primary",
-        "action_id": "login_sso" if is_ibm else "login",
-    }
-    if not is_ibm:
-        action_element["url"] = get_language_cloud_connect_url(
-            user_id, team_id, enterprise_id, channel_id or user_id
-        )
-    blocks[1]["elements"].insert(
-        0,
-        action_element,
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": _("Connect to Verify"),
+                    },
+                    "style": "primary",
+                    "action_id": "login",
+                    "url": get_language_cloud_connect_url(
+                        user_id, team_id, enterprise_id, channel_id or user_id
+                    ),
+                }
+            ],
+        }
     )
 
     return blocks
