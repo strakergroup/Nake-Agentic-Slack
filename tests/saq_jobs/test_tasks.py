@@ -522,7 +522,10 @@ async def test_process_evaluation_submission_all_duplicates_skips_verify():
     mock_submit.assert_not_awaited()
     fake_slack.chat_postMessage.assert_awaited_once()
     assert fake_slack.chat_postMessage.await_args.kwargs["channel"] == "U1"
-    assert "duplicate" in fake_slack.chat_postMessage.await_args.kwargs["text"].lower()
+    message_text = fake_slack.chat_postMessage.await_args.kwargs["text"].lower()
+    assert "duplicate" in message_text
+    assert "human translation request" in message_text
+    assert "quality evaluation" not in message_text
 
 
 @pytest.mark.asyncio

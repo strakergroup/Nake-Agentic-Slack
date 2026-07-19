@@ -1099,8 +1099,8 @@ async def process_evaluation_submission(
             await client.chat_postMessage(
                 channel=user_id,
                 text=_(
-                    "Please allow the system to complete the ongoing quality "
-                    "evaluation / human translation request(s) "
+                    "Please allow the system to complete the ongoing human "
+                    "translation request(s) "
                     f"*({', '.join(duplicate_submissions)})* to prevent "
                     "duplicate submissions."
                 ),
@@ -1114,8 +1114,8 @@ async def process_evaluation_submission(
             await client.chat_postMessage(
                 channel=user_id,
                 text=_(
-                    "Please allow the system to complete the ongoing quality "
-                    "evaluation / human translation request(s) "
+                    "Please allow the system to complete the ongoing human "
+                    "translation request(s) "
                     f"*({', '.join(duplicate_submissions)})* to prevent "
                     "duplicate submissions."
                 ),

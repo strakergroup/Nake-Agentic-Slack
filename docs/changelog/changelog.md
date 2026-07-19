@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Changed]: Evaluate duplicate-submission DM copy now refers only to ongoing human translation request(s), not quality evaluation (Wade Norman, 2026-07-20)
 - [Changed]: Slack quote costs now display consistently as `USD 40.00` (space, no `$` / `US$` / `USD$` variants); HT/QE Accept Quote helper bolds *Accept Quote* and *discount* (Wade Norman, 2026-07-17)
 - [Fixed]: Combined HT/QE Adjust Request submit no longer flashes USD 0.00 ghost rows when each file keeps a different language — display uses Cancelled placeholders and skips unmatched pairs (Wade Norman, 2026-07-16)
 - [Fixed]: Post-QE final cost updates the original HT/QE Slack message instead of reposting; HT `message_ts` is now read from AsyncSlackResponse (not only dict) and preserved across Redis session saves (Wade Norman, 2026-07-16)
