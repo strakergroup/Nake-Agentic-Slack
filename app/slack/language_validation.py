@@ -16,7 +16,34 @@ def get_language_base_code(language_code: str | None) -> str:
 
 def is_same_language_family(source_code: str | None, target_code: str | None) -> bool:
     """Match Cloud Verify language-family validation semantics."""
-    return get_language_base_code(source_code) == get_language_base_code(target_code)
+    source_base = get_language_base_code(source_code)
+    target_base = get_language_base_code(target_code)
+    if not source_base or not target_base:
+        return False
+    return source_base == target_base
+
+
+def get_same_family_target_codes(
+    source_code: str | None, target_codes: Sequence[str]
+) -> list[str]:
+    """Return target option values in the same language family as ``source_code``.
+
+    Used by Document MT modal submit to reject pairs such as ``es``→``es-419``
+    or ``fr``→``fr-CA`` before a job is queued (RAY-80734).
+    """
+    if not source_code or not target_codes:
+        return []
+    conflicts: list[str] = []
+    seen: set[str] = set()
+    for raw in target_codes:
+        code = str(raw or "").strip()
+        if not code or code in seen:
+            continue
+        if not is_same_language_family(source_code, code):
+            continue
+        seen.add(code)
+        conflicts.append(code)
+    return conflicts
 
 
 def get_conflicting_target_language_labels_from_rows(

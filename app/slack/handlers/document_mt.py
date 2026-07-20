@@ -198,6 +198,27 @@ async def handle_document_mt_job(
                 )
                 return
 
+            # Reject same-language-family pairs (es→es-419, fr→fr-CA, …)
+            # so regional dialects of one language cannot be billed as MT
+            # (RAY-80734). Exact match is handled above; this covers variants.
+            from app.slack.language_validation import get_same_family_target_codes
+
+            if get_same_family_target_codes(
+                selected_source_language,
+                [str(lang.get("value", "")) for lang in selected_languages],
+            ):
+                await ack(
+                    response_action="errors",
+                    errors={
+                        "target_langs": _(
+                            "The source language cannot be the same language or "
+                            "regional variant as a target language. Please choose "
+                            "a different target language."
+                        )
+                    },
+                )
+                return
+
             await ack(response_action="clear")
             acked = True
 

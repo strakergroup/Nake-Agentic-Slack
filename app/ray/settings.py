@@ -90,7 +90,11 @@ def get_auto_translate_languages() -> list[tuple[str, str]]:
         ("ps", "Pashto"),
         ("fa", "Persian"),
         ("pl", "Polish"),
-        ("pt", "Portuguese"),
+        # Bare ``pt`` aliases to Brazilian in LanguageCloud / the consumer
+        # (``_LEGACY_LANGUAGE_ALIASES``). Offer Portugal explicitly so selecting
+        # both Portuguese options cannot collapse to a duplicate ``pt-br`` bill
+        # (RAY-80734).
+        ("pt-pt", "Portuguese (Portugal)"),
         ("pt-BR", "Portuguese (Brazil)"),
         ("pa", "Punjabi"),
         ("ro", "Romanian"),
