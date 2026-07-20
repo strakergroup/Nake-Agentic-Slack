@@ -359,6 +359,10 @@ async def accept_media_quote(
         )
     except Exception as e:
         notify_exception(e)
+        # Lazy import avoids circular dependency with media_pipeline_events.
+        from app.ray.events.media_pipeline_events import fail_media_submissions
+
+        await fail_media_submissions(session)
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("There was an error accepting your quote, please try again."),
@@ -451,6 +455,10 @@ async def accept_media_translation_quote(
         )
     except Exception as e:
         notify_exception(e)
+        # Lazy import avoids circular dependency with media_pipeline_events.
+        from app.ray.events.media_pipeline_events import fail_media_submissions
+
+        await fail_media_submissions(session)
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("There was an error accepting your quote, please try again."),
@@ -479,6 +487,10 @@ async def cancel_media_quote(
 
     if session is not None:
         await update_media_quote_session(quote_id, {"stage": STAGE_CANCELLED})
+        # Unlock 24h dedupe so the user can resubmit after cancel.
+        from app.ray.events.media_pipeline_events import fail_media_submissions
+
+        await fail_media_submissions(session)
     await delete_media_quote_session(quote_id)
 
     channel_id = body.get("channel", {}).get("id")

@@ -21,6 +21,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [Google Chat notifications](google-chat-notifications.md) - Standalone webhook alerts and mirroring from `buglog_notifier`
 - [SAQ Durable File Handling](saq-durable-file-handling.md) - Durable Slack file uploads and side-effect background work via SAQ + Redis
 - [Media translation empty upload](media-translation-empty-upload.md) - RAY-79115 — do not claim success when Slack upload fails / file is empty
+- [Media submission status](media-submission-status.md) - RAY-79115 — fail/complete `slack_file_translation_submissions` on media pipeline outcomes
 - [Container Build Speed](container-build-speed.md) - Jenkins/Buildah image build caching and slim ffmpeg install
 - [Changelog](changelog.md) - Record of all changes to the codebase
 

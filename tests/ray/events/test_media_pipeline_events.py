@@ -162,9 +162,12 @@ async def test_handle_translation_complete_posts_failure_when_undelivered():
         "app.ray.events.media_pipeline_events.show_tokens_message",
         new=AsyncMock(),
     ):
-        await handle_translation_complete(client, "C1", "123.456", task_info, auth)
+        uploaded = await handle_translation_complete(
+            client, "C1", "123.456", task_info, auth
+        )
 
     # No translated files and an existing thread → no status spam
+    assert uploaded == 0
     assert client.chat_postMessage.await_count == 0
 
     task_info.translated_file_ids = {"es": "file-es"}
@@ -178,8 +181,11 @@ async def test_handle_translation_complete_posts_failure_when_undelivered():
             new=AsyncMock(),
         ),
     ):
-        await handle_translation_complete(client, "C1", "123.456", task_info, auth)
+        uploaded = await handle_translation_complete(
+            client, "C1", "123.456", task_info, auth
+        )
 
+    assert uploaded == 0
     texts = [
         call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
     ]
@@ -223,11 +229,107 @@ async def test_handle_translation_complete_posts_success_after_upload(tmp_path):
             new=AsyncMock(),
         ) as mock_tokens,
     ):
-        await handle_translation_complete(client, "C1", "123.456", task_info, auth)
+        uploaded = await handle_translation_complete(
+            client, "C1", "123.456", task_info, auth
+        )
 
+    assert uploaded == 1
     texts = [
         call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
     ]
     assert any("downloaded above" in text for text in texts)
     assert any("reupload the edited files" in text for text in texts)
     mock_tokens.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_fail_media_submissions_list_and_dict_ids():
+    from app.ray.events.media_pipeline_events import fail_media_submissions
+    from app.ray.submissions import SubmissionStatus
+
+    with patch(
+        "app.ray.events.media_pipeline_events.updated_submission_status"
+    ) as mock_update:
+        await fail_media_submissions(
+            {
+                "submission_id": 10,
+                "submission_ids": [11, "12", 10],
+            }
+        )
+        await fail_media_submissions(
+            {"submission_ids": {"es": 21, "fr": 22, "dup": 21}}
+        )
+
+    statuses = [c.kwargs["processing_status"] for c in mock_update.call_args_list]
+    assert all(s == SubmissionStatus.FAILED for s in statuses)
+    ids = [c.kwargs["submission_id"] for c in mock_update.call_args_list]
+    assert ids == [10, 11, 12, 21, 22]
+
+
+@pytest.mark.asyncio
+async def test_update_submission_status_defaults_to_completed():
+    from app.ray.events.media_pipeline_events import update_submission_status
+    from app.ray.submissions import SubmissionStatus
+
+    with patch(
+        "app.ray.events.media_pipeline_events.updated_submission_status"
+    ) as mock_update:
+        await update_submission_status({"submission_id": 7})
+
+    mock_update.assert_called_once_with(
+        submission_id=7,
+        processing_status=SubmissionStatus.COMPLETED,
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_transcribe_embed_pipeline_missing_file_returns_false():
+    from app.ray.events.media_pipeline_events import handle_transcribe_embed_pipeline
+
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock(return_value={"ts": "1.1"})
+    task_info = SimpleNamespace(
+        task_uuid="task-embed",
+        file_name="clip.mp4",
+        pipeline_type="translate_embed",
+    )
+
+    ok = await handle_transcribe_embed_pipeline(
+        client, None, None, task_info, "C1", "123.456", auth=None
+    )
+
+    assert ok is False
+    assert client.chat_postMessage.await_count == 1
+    assert "no output file" in client.chat_postMessage.await_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_handle_transcribe_embed_pipeline_upload_success(tmp_path):
+    from app.ray.events.media_pipeline_events import handle_transcribe_embed_pipeline
+
+    media = tmp_path / "out.mp4"
+    media.write_bytes(b"fake-video")
+
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock(return_value={"ts": "1.1"})
+    task_info = SimpleNamespace(
+        task_uuid="task-embed",
+        file_name="clip.mp4",
+        pipeline_type="embed",
+    )
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": str(media)}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.upload_file_to_slack_memory_efficient",
+            new=AsyncMock(return_value={"ok": True}),
+        ),
+    ):
+        ok = await handle_transcribe_embed_pipeline(
+            client, "file-1", "out.mp4", task_info, "C1", "123.456", auth=None
+        )
+
+    assert ok is True

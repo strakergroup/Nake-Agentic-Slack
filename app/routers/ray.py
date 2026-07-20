@@ -54,6 +54,7 @@ from ..ray.events.logging import (
     post_notification_ephemeral,
 )
 from ..ray.events.media_pipeline_events import (
+    fail_media_submissions,
     get_language_name_by_uuid,
     handle_transcribe_embed_pipeline,
     handle_transcription_complete,
@@ -420,6 +421,7 @@ async def ray_events(
                         text=format_callback_error("transcription", error_msg),
                         thread_ts=thread_ts,
                     )
+                    await fail_media_submissions(extra_data)
                     return
 
                 # Get channel and thread info
@@ -459,12 +461,16 @@ async def ray_events(
                             task_info.task_uuid, transcription_tokens
                         )
                     # Quote2 for AI translation when the media quote session expects it
-                    await maybe_post_media_translation_quote(
+                    quote2_posted = await maybe_post_media_translation_quote(
                         client,
                         task_info,
                         str(channel_id),
                         thread_ts,
                     )
+                    # Terminal for plain transcribe (no Quote2 follow-up)
+                    if not quote2_posted and task_info.pipeline_type == "transcribe":
+                        await update_submission_status(extra_data)
+                        await mark_media_quote_done(extra_data)
 
             except ValidationError as e:
                 raise HTTPException(
@@ -504,6 +510,7 @@ async def ray_events(
                         text=format_callback_error("translation", error_msg),
                         thread_ts=thread_ts,
                     )
+                    await fail_media_submissions(extra_data)
                     return
 
                 # Get channel and thread info
@@ -514,23 +521,36 @@ async def ray_events(
                 )
                 thread_ts = resolve_event_thread_ts(extra_data, event.data)
 
+                if not task_info.translated_file_ids:
+                    await client.chat_postEphemeral(
+                        channel=auth.slack_user.channel_id,
+                        user=auth.slack_user.user_id,
+                        text=_(
+                            "AI translation finished with no output files. "
+                            "Please try again or contact support."
+                        ),
+                        thread_ts=thread_ts,
+                    )
+                    await fail_media_submissions(extra_data)
+                    return
+
                 # Track processed stages for reference
                 processed_stages = extra_data.get("_processed_stages", [])
-                if (
-                    "translation" not in processed_stages
-                    and task_info.translated_file_ids
-                ):
+                if "translation" not in processed_stages:
                     # Mark as processed FIRST to prevent race condition
                     await mark_stage_processed(
                         transcribed_event.task_uuid, "translation"
                     )
-                    await handle_translation_complete(
+                    uploaded_count = await handle_translation_complete(
                         client,
                         str(channel_id),
                         thread_ts,
                         task_info,
                         auth,
                     )
+                    if uploaded_count == 0:
+                        await fail_media_submissions(extra_data)
+                        return
                     # Spend credits for translation
                     translation_tokens = await spend_translation_credits(
                         task_info, auth
@@ -544,6 +564,7 @@ async def ray_events(
                         "translate_only",
                         "transcribe_translate",
                     ):
+                        await update_submission_status(extra_data)
                         await mark_media_quote_done(extra_data)
 
             except ValidationError as e:
@@ -584,6 +605,7 @@ async def ray_events(
                         text=format_callback_error("embedding", error_msg),
                         thread_ts=thread_ts,
                     )
+                    await fail_media_submissions(extra_data)
                     return
 
                 # Get channel and thread info
@@ -599,7 +621,7 @@ async def ray_events(
                 if "embedding" not in processed_stages:
                     # Mark as processed FIRST to prevent race condition
                     await mark_stage_processed(transcribed_event.task_uuid, "embedding")
-                    await handle_transcribe_embed_pipeline(
+                    delivered = await handle_transcribe_embed_pipeline(
                         client,
                         task_info.result_file_id,
                         task_info.result_file_name,
@@ -608,6 +630,9 @@ async def ray_events(
                         thread_ts,
                         auth,
                     )
+                    if not delivered:
+                        await fail_media_submissions(extra_data)
+                        return
                     # Spend credits for embedding
                     embedding_tokens = await spend_embedding_credits(task_info, auth)
                     # Track total tokens (message will be shown after file upload completes)

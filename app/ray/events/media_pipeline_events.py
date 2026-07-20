@@ -356,26 +356,57 @@ async def mark_stage_processed(
         notify_exception(e, f"Failed to mark stage {stage} as processed")
 
 
-async def update_submission_status(extra_data: dict) -> None:
-    """Update submission status to completed."""
-    try:
-        submission_id = extra_data.get("submission_id") if extra_data else None
-        submission_ids = extra_data.get("submission_ids") if extra_data else None
+def _iter_media_submission_ids(extra_data: dict | None) -> list[int]:
+    """Collect unique submission ids from ``submission_id`` and/or ``submission_ids``."""
+    if not extra_data:
+        return []
+    ids: list[int] = []
+    seen: set[int] = set()
 
-        if submission_id is not None:
+    def _add(raw: Any) -> None:
+        if raw is None:
+            return
+        try:
+            sid = int(raw)
+        except (TypeError, ValueError):
+            return
+        if sid in seen:
+            return
+        seen.add(sid)
+        ids.append(sid)
+
+    _add(extra_data.get("submission_id"))
+    submission_ids = extra_data.get("submission_ids")
+    if isinstance(submission_ids, dict):
+        for value in submission_ids.values():
+            _add(value)
+    elif isinstance(submission_ids, (list, tuple, set)):
+        for value in submission_ids:
+            _add(value)
+    return ids
+
+
+async def update_submission_status(
+    extra_data: dict | None,
+    *,
+    processing_status: SubmissionStatus = SubmissionStatus.COMPLETED,
+) -> None:
+    """Update media submission row(s) to the given status (default completed)."""
+    try:
+        for sid in _iter_media_submission_ids(extra_data):
             updated_submission_status(
-                submission_id=int(submission_id),
-                processing_status=SubmissionStatus.COMPLETED,
+                submission_id=sid,
+                processing_status=processing_status,
             )
-        elif submission_ids:
-            for sid in submission_ids:
-                if sid is not None:
-                    updated_submission_status(
-                        submission_id=int(sid),
-                        processing_status=SubmissionStatus.COMPLETED,
-                    )
     except Exception as e:
         notify_exception(e, "Failed to update submission status")
+
+
+async def fail_media_submissions(extra_data: dict | None) -> None:
+    """Mark media submission row(s) failed so 24h dedupe allows retry."""
+    await update_submission_status(
+        extra_data, processing_status=SubmissionStatus.FAILED
+    )
 
 
 async def maybe_post_media_translation_quote(
@@ -510,8 +541,11 @@ async def handle_translation_complete(
     thread_ts: str | None,
     task_info: Any,
     auth: Any,
-) -> None:
-    """Handle translation completion - upload translated files."""
+) -> int:
+    """Upload translated files to Slack.
+
+    Returns the number of files successfully uploaded (0 means delivery failed).
+    """
     translated_file_ids = task_info.translated_file_ids or {}
 
     # Anchor a thread before upload when callers have no thread_ts, but do not
@@ -605,6 +639,7 @@ async def handle_translation_complete(
             effective_thread_ts,
             is_ibm=is_ibm,
         )
+    return uploaded_count
 
 
 def get_auto_translate_language_name(target_lang: str) -> str:
@@ -621,10 +656,21 @@ async def handle_transcribe_embed_pipeline(
     channel_id: str,
     thread_ts: str | None,
     auth: Any = None,
-) -> None:
-    """Handle transcription + translation + embed pipeline result."""
+) -> bool:
+    """Upload embedded media result to Slack.
+
+    Returns True when the file was delivered; False on missing file or upload error.
+    """
     if not result_file_id:
-        return
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "Embedding finished, but no output file was available. "
+                "Please try again or contact support."
+            ),
+            thread_ts=thread_ts,
+        )
+        return False
 
     effective_thread_ts = thread_ts
     try:
@@ -637,38 +683,49 @@ async def handle_transcribe_embed_pipeline(
 
         output_file = await download_from_file_server_async(result_file_id)
         file_path = output_file.get("file")
-        if file_path and os.path.exists(file_path):
-            output_filename = result_file_name or task_info.file_name
-            await upload_file_to_slack_memory_efficient(
-                client=client,
-                file_path=file_path,
-                channel_id=channel_id,
-                thread_ts=effective_thread_ts,
-                title=output_filename,
-                filename=output_filename,
-                initial_comment=_(
-                    "Your video with embedded subtitles is ready! "
-                    "Please download the media file(s) to view the embedded subtitles."
+        if not file_path or not os.path.exists(file_path):
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=_(
+                    "An error occurred while processing your embedded video. "
+                    "Please try again."
                 ),
+                thread_ts=effective_thread_ts,
             )
-            os.unlink(file_path)
+            return False
 
-            if task_info.pipeline_type in (
-                "transcribe_translate_embed",
-                "translate_embed",
-            ):
-                is_ibm = (
-                    is_ibm_enterprise(auth.slack_user.enterprise_id)
-                    if auth and auth.slack_user
-                    else False
-                )
-                await show_tokens_message(
-                    client,
-                    task_info.task_uuid,
-                    channel_id,
-                    effective_thread_ts,
-                    is_ibm=is_ibm,
-                )
+        output_filename = result_file_name or task_info.file_name
+        await upload_file_to_slack_memory_efficient(
+            client=client,
+            file_path=file_path,
+            channel_id=channel_id,
+            thread_ts=effective_thread_ts,
+            title=output_filename,
+            filename=output_filename,
+            initial_comment=_(
+                "Your video with embedded subtitles is ready! "
+                "Please download the media file(s) to view the embedded subtitles."
+            ),
+        )
+        os.unlink(file_path)
+
+        if task_info.pipeline_type in (
+            "transcribe_translate_embed",
+            "translate_embed",
+        ):
+            is_ibm = (
+                is_ibm_enterprise(auth.slack_user.enterprise_id)
+                if auth and auth.slack_user
+                else False
+            )
+            await show_tokens_message(
+                client,
+                task_info.task_uuid,
+                channel_id,
+                effective_thread_ts,
+                is_ibm=is_ibm,
+            )
+        return True
 
     except Exception as e:
         notify_exception(e, "Error handling embedded video")
@@ -679,3 +736,4 @@ async def handle_transcribe_embed_pipeline(
             ),
             thread_ts=effective_thread_ts,
         )
+        return False

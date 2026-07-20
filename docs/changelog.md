@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: RAY-79115 — media pipeline errors, empty translation output, failed Slack delivery, and quote cancel now mark submissions `failed`; `completed` only after successful delivery (Wade Norman, 2026-07-20)
 - [Fixed]: RAY-79115 — media AI-translate no longer posts “download below/above” when Slack upload fails; refuse empty/near-empty files (length ≤ 1) before `files.getUploadURLExternal` (Wade Norman, 2026-07-20)
 - [Changed]: IBM home tab no longer shows the Direct Login button when disconnected; channel SSO login prompts are unchanged (Wade Norman, 2026-07-20)
 - [Changed]: Evaluate duplicate-submission DM copy now refers only to ongoing human translation request(s), not quality evaluation (Wade Norman, 2026-07-20)

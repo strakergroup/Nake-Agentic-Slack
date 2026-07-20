@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-79115 — media pipeline errors, empty translation output, failed Slack delivery, and quote cancel now mark submissions `failed`; `completed` only after successful delivery (Wade Norman, 2026-07-20)
 - [Fixed]: RAY-79115 — media AI-translate no longer posts success when Slack upload fails; refuse empty/near-empty files before upload (Wade Norman, 2026-07-20)
 - [Changed]: IBM home tab no longer shows the Direct Login button when disconnected; channel SSO login prompts are unchanged (Wade Norman, 2026-07-20)
 - [Changed]: Evaluate duplicate-submission DM copy now refers only to ongoing human translation request(s), not quality evaluation (Wade Norman, 2026-07-20)

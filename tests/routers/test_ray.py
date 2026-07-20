@@ -661,16 +661,176 @@ class TestRayEventsEndpoint:
                             new_callable=AsyncMock,
                             return_value=mock_task_info,
                         ):
-                            auth = RayEventAuth()
-                            await auth.initialize(event, "valid-token")
+                            with patch(
+                                "app.routers.ray.fail_media_submissions",
+                                new_callable=AsyncMock,
+                            ) as mock_fail:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
 
-                            await ray_events(event, auth)
+                                await ray_events(event, auth)
 
-                            mock_client.chat_postEphemeral.assert_called_once()
-                            assert (
-                                mock_client.chat_postEphemeral.call_args.kwargs["text"]
-                                == "Transcription failed: No sound"
-                            )
+                                mock_client.chat_postEphemeral.assert_called_once()
+                                assert (
+                                    mock_client.chat_postEphemeral.call_args.kwargs[
+                                        "text"
+                                    ]
+                                    == "Transcription failed: No sound"
+                                )
+                                mock_fail.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_ray_events_translation_error_fails_submissions(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """Translation callback errors mark media submissions failed."""
+        task_uuid = str(uuid4())
+        event = RayEvent(
+            event="transcription:slack:media:translation:results",
+            data={
+                "client_id": mock_slack_user.ray_client_id,
+                "task_uuid": task_uuid,
+                "error": "MT failed",
+            },
+        )
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+        }
+        mock_client.chat_postEphemeral = AsyncMock()
+        mock_task_info = TranscriptionTaskInfo(
+            task_uuid=task_uuid,
+            client_id=mock_slack_user.ray_client_id,
+            file_name="clip.srt",
+            download_url="https://example.com/clip.srt",
+            bot_token="xoxb-test-token",
+            pipeline_type="translate_only",
+            status="failed",
+            stage=None,
+            error_message="MT failed",
+            result_file_id=None,
+            result_file_name=None,
+            detected_language=None,
+            translated_file_ids=None,
+            extra_data={"submission_id": 99},
+            started_at=None,
+            finished_at=None,
+            duration_ms=None,
+            source_text_length=None,
+            num_target_languages=None,
+            tokens_consumed=0,
+            credit_transaction_uuid=None,
+            model=None,
+            service=None,
+            app_source=None,
+            created_at=datetime.datetime.now(),
+            updated_at=datetime.datetime.now(),
+        )
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray.get_transcription_task",
+                            new_callable=AsyncMock,
+                            return_value=mock_task_info,
+                        ):
+                            with patch(
+                                "app.routers.ray.fail_media_submissions",
+                                new_callable=AsyncMock,
+                            ) as mock_fail:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
+                                await ray_events(event, auth)
+                                mock_fail.assert_awaited_once_with(
+                                    {"submission_id": 99}
+                                )
+
+    @pytest.mark.asyncio
+    async def test_ray_events_translation_empty_ids_fails_submissions(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """Empty translated_file_ids fails submissions instead of silent skip."""
+        task_uuid = str(uuid4())
+        event = RayEvent(
+            event="transcription:slack:media:translation:results",
+            data={
+                "client_id": mock_slack_user.ray_client_id,
+                "task_uuid": task_uuid,
+                "error": None,
+            },
+        )
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+        }
+        mock_client.chat_postEphemeral = AsyncMock()
+        mock_task_info = TranscriptionTaskInfo(
+            task_uuid=task_uuid,
+            client_id=mock_slack_user.ray_client_id,
+            file_name="clip.srt",
+            download_url="https://example.com/clip.srt",
+            bot_token="xoxb-test-token",
+            pipeline_type="translate_only",
+            status="completed",
+            stage=None,
+            error_message=None,
+            result_file_id=None,
+            result_file_name=None,
+            detected_language=None,
+            translated_file_ids={},
+            extra_data={"submission_ids": [42, 43]},
+            started_at=None,
+            finished_at=None,
+            duration_ms=None,
+            source_text_length=None,
+            num_target_languages=None,
+            tokens_consumed=0,
+            credit_transaction_uuid=None,
+            model=None,
+            service=None,
+            app_source=None,
+            created_at=datetime.datetime.now(),
+            updated_at=datetime.datetime.now(),
+        )
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray.get_transcription_task",
+                            new_callable=AsyncMock,
+                            return_value=mock_task_info,
+                        ):
+                            with patch(
+                                "app.routers.ray.fail_media_submissions",
+                                new_callable=AsyncMock,
+                            ) as mock_fail:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
+                                await ray_events(event, auth)
+                                mock_client.chat_postEphemeral.assert_called_once()
+                                assert (
+                                    "no output files"
+                                    in (
+                                        mock_client.chat_postEphemeral.call_args.kwargs[
+                                            "text"
+                                        ]
+                                    )
+                                )
+                                mock_fail.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_document_translated_error(
