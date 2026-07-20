@@ -24,7 +24,6 @@ from app.constants import (
     HUMAN_VERIFICATION_WORKFLOW_UUID,
 )
 from app.ray.submissions import SubmissionStatus, updated_submission_status
-from app.ray.transcription_billing import transcription_billing_submission_id
 from app.ray.utils import (
     is_ibm_enterprise,
     set_user_language,
