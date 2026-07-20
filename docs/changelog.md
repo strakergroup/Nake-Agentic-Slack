@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: RAY-79115 — media AI-translate no longer posts “download below/above” when Slack upload fails; refuse empty/near-empty files (length ≤ 1) before `files.getUploadURLExternal` (Wade Norman, 2026-07-20)
 - [Changed]: IBM home tab no longer shows the Direct Login button when disconnected; channel SSO login prompts are unchanged (Wade Norman, 2026-07-20)
 - [Changed]: Evaluate duplicate-submission DM copy now refers only to ongoing human translation request(s), not quality evaluation (Wade Norman, 2026-07-20)
 - [Added]: QE/HT resubmission prevention — 24h dedupe for evaluate submits keyed on exact source + target-language set (namespaced `evaluate:` hash; isolated from Document MT; QE and HT share namespace; PDF pre-quote does not record; failed unlocks retry) (Wade Norman, 2026-07-20)

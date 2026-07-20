@@ -145,7 +145,7 @@ async def test_maybe_post_media_translation_quote_posts_for_translate_pipeline()
 
 
 @pytest.mark.asyncio
-async def test_handle_translation_complete_posts_reupload_guidance():
+async def test_handle_translation_complete_posts_failure_when_undelivered():
     from app.ray.events.media_pipeline_events import handle_translation_complete
 
     client = AsyncMock()
@@ -164,8 +164,8 @@ async def test_handle_translation_complete_posts_reupload_guidance():
     ):
         await handle_translation_complete(client, "C1", "123.456", task_info, auth)
 
-    # No translated files → status only, no reupload guidance
-    assert client.chat_postMessage.await_count == 1
+    # No translated files and an existing thread → no status spam
+    assert client.chat_postMessage.await_count == 0
 
     task_info.translated_file_ids = {"es": "file-es"}
     with (
@@ -183,4 +183,51 @@ async def test_handle_translation_complete_posts_reupload_guidance():
     texts = [
         call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
     ]
+    assert any("could not be delivered" in text for text in texts)
+    assert not any("reupload the edited files" in text for text in texts)
+    assert not any("downloaded above" in text for text in texts)
+
+
+@pytest.mark.asyncio
+async def test_handle_translation_complete_posts_success_after_upload(tmp_path):
+    from app.ray.events.media_pipeline_events import handle_translation_complete
+
+    srt = tmp_path / "es.srt"
+    srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nhola\n")
+
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock(return_value={"ts": "999.001"})
+    task_info = SimpleNamespace(
+        task_uuid="task-2",
+        file_name="clip.mp4",
+        pipeline_type="translate_only",
+        translated_file_ids={"es": "file-es"},
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(enterprise_id=None))
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": str(srt)}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.get_auto_translate_language_name",
+            return_value="Spanish",
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.upload_file_to_slack_memory_efficient",
+            new=AsyncMock(return_value={"ok": True}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.show_tokens_message",
+            new=AsyncMock(),
+        ) as mock_tokens,
+    ):
+        await handle_translation_complete(client, "C1", "123.456", task_info, auth)
+
+    texts = [
+        call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
+    ]
+    assert any("downloaded above" in text for text in texts)
     assert any("reupload the edited files" in text for text in texts)
+    mock_tokens.assert_awaited_once()

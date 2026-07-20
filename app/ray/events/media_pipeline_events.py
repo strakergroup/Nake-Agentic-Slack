@@ -514,16 +514,22 @@ async def handle_translation_complete(
     """Handle translation completion - upload translated files."""
     translated_file_ids = task_info.translated_file_ids or {}
 
-    status_response = await client.chat_postMessage(
-        channel=channel_id,
-        text=_("Your file is AI translated and can be downloaded below."),
-        thread_ts=thread_ts,
-    )
-    effective_thread_ts = thread_ts or status_response.get("ts")
+    # Anchor a thread before upload when callers have no thread_ts, but do not
+    # claim success until at least one file is delivered (empty SRTs fail Slack
+    # upload with length <= 1).
+    if thread_ts:
+        effective_thread_ts = thread_ts
+    else:
+        anchor_response = await client.chat_postMessage(
+            channel=channel_id,
+            text=_("Preparing your AI translation…"),
+        )
+        effective_thread_ts = anchor_response.get("ts")
 
     original_file_name = task_info.file_name or "transcription.srt"
     original_path = Path(original_file_name)
     original_stem = original_path.stem
+    uploaded_count = 0
 
     for target_lang, file_id in translated_file_ids.items():
         try:
@@ -549,6 +555,7 @@ async def handle_translation_complete(
                 filename=title,
                 thread_ts=effective_thread_ts,
             )
+            uploaded_count += 1
 
             if file_path and os.path.exists(file_path):
                 os.unlink(file_path)
@@ -557,7 +564,12 @@ async def handle_translation_complete(
             notify_exception(e, "Error handling translation complete")
             logger.error(f"Error handling translation complete: {e}")
 
-    if translated_file_ids:
+    if uploaded_count:
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_("Your file is AI translated and can be downloaded above."),
+            thread_ts=effective_thread_ts,
+        )
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
@@ -566,9 +578,21 @@ async def handle_translation_complete(
             ),
             thread_ts=effective_thread_ts,
         )
+    elif translated_file_ids:
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "AI translation finished, but the translated file could not be "
+                "delivered to Slack. Please try again or contact support."
+            ),
+            thread_ts=effective_thread_ts,
+        )
 
     # Show token message at the end for translate pipelines
-    if task_info.pipeline_type in ("transcribe_translate", "translate_only"):
+    if (
+        task_info.pipeline_type in ("transcribe_translate", "translate_only")
+        and uploaded_count
+    ):
         is_ibm = (
             is_ibm_enterprise(auth.slack_user.enterprise_id)
             if auth.slack_user

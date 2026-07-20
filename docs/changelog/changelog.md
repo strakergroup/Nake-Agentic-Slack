@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-79115 — media AI-translate no longer posts success when Slack upload fails; refuse empty/near-empty files before upload (Wade Norman, 2026-07-20)
 - [Changed]: IBM home tab no longer shows the Direct Login button when disconnected; channel SSO login prompts are unchanged (Wade Norman, 2026-07-20)
 - [Changed]: Evaluate duplicate-submission DM copy now refers only to ongoing human translation request(s), not quality evaluation (Wade Norman, 2026-07-20)
 - [Changed]: Slack quote costs now display consistently as `USD 40.00` (space, no `$` / `US$` / `USD$` variants); HT/QE Accept Quote helper bolds *Accept Quote* and *discount* (Wade Norman, 2026-07-17)
