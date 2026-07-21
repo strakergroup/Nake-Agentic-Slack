@@ -102,8 +102,7 @@ def build_google_chat_text(
         lines.append(_truncate_text(tb, max_length=2800))
     else:
         lines.append(
-            f"{_line_prefix_message_only(severity)}"
-            f"{_notice_or_alert_heading(severity)}"
+            f"{_line_prefix_message_only(severity)}{_notice_or_alert_heading(severity)}"
         )
         lines.append("")
         lines.append(f"Environment: {env_display}")

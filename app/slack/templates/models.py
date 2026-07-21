@@ -10,7 +10,9 @@ from pydantic import (
 )
 from ray_sdk.api.v3.file import is_valid_file_ext
 
-from ...constants import HUMAN_EVALUATION_WORKFLOW_UUID
+from ...constants import (
+    HUMAN_EVALUATION_WORKFLOW_UUID,
+)
 from ...models import SlackGroupSettingsTranslation
 from ..file_submissions import parse_slack_file_option_value
 
@@ -318,7 +320,6 @@ class EvaluateJobForm(BaseModel):
         ]
         job_notes = values.get("job_notes", {}).get("job_notes", {}).get("value", "")
 
-        # Set workflow_options based on callback_id
         if callback_id == "evaluate_job":
             selected_option = (
                 values.get("workflow_options", {})

@@ -56,6 +56,21 @@ async def log_notification(
         notify_exception(e)
 
 
+def slack_response_message_ts(response: Any) -> str | None:
+    """Extract a Slack message timestamp from an SDK or dict-like response.
+
+    ``AsyncSlackResponse`` supports ``.get("ts")`` but is not a ``dict``, so
+    callers must not gate extraction on ``isinstance(response, dict)``.
+    """
+    if response is None:
+        return None
+    getter = getattr(response, "get", None)
+    if not callable(getter):
+        return None
+    ts = getter("ts")
+    return ts if isinstance(ts, str) and ts else None
+
+
 async def post_notification(
     client: AsyncWebClient,
     event: RayEvent,
