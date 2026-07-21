@@ -18,7 +18,6 @@ from app.saq_jobs.tasks import (
     charge_document_mt,
     charge_inline_mt_usage,
     persist_log_notification,
-    process_document_mt_quote_preflight,
     process_document_mt_submission,
     process_evaluation_submission,
     slack_upload_mt_result,
@@ -111,105 +110,16 @@ async def test_process_document_mt_submission_downloads_uploads_and_submits():
 
 
 @pytest.mark.asyncio
-async def test_process_document_mt_quote_preflight_uploads_and_requests_quote():
-    ray_client = MagicMock()
-    ray_client.is_trial = False
-    ray_client.id_token = "id-token"
-    ray_client.id = "client-1"
-    ray_client.user_group_id = "group-1"
+async def test_process_document_mt_submission_org_billed_without_member():
+    """Org-billed Document MT proceeds when the poster has no LC member link."""
+    super_group = MagicMock()
+    super_group.verify_organization_uuid = "org-uuid"
     ray_connection = MagicMock()
-    ray_connection.client = ray_client
-    ray_connection.super_group = []
+    ray_connection.client = None
+    ray_connection.super_group = [super_group]
+    record = MagicMock(id=456)
     fake_slack = MagicMock()
     fake_slack.chat_postMessage = AsyncMock()
-
-    with (
-        patch(
-            "app.auth.connector.get_ray_connection",
-            new=AsyncMock(return_value=ray_connection),
-        ),
-        patch(
-            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
-        ),
-        patch(
-            "app.auth.connector.get_group_mt_engine",
-            new=AsyncMock(return_value="google"),
-        ),
-        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
-        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.pptx")),
-        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
-        patch(
-            "app.ray.utils.upload_to_file_server", new=AsyncMock(return_value="grid-1")
-        ),
-        patch(
-            "app.ray.submissions._hash_file_content_sha256_hex",
-            return_value="hash-1",
-        ),
-        patch("os.path.getsize", return_value=1234),
-        patch(
-            "app.slack.document_mt_quotes.save_document_mt_quote_session",
-            new=AsyncMock(),
-        ) as mock_save,
-        patch(
-            "app.api.stream_proxy.send_document_mt_quote_request",
-            new=AsyncMock(),
-        ) as mock_quote,
-        patch("app.saq_jobs.tasks._safe_unlink"),
-        patch("os.path.exists", return_value=False),
-    ):
-        result = await process_document_mt_quote_preflight(
-            _ctx(),
-            quote_id="quote-1",
-            user_id="U1",
-            team_id="T1",
-            enterprise_id=None,
-            channel_id="C1",
-            files=[{"id": "F1", "title": "a.pptx", "size": 1234}],
-            source_language="en",
-            target_languages=["zh-CN"],
-        )
-
-    assert result == {"status": "quote_requested", "file_count": 1}
-    mock_save.assert_awaited_once()
-    saved_session = mock_save.await_args.args[0]
-    assert saved_session["quote_id"] == "quote-1"
-    assert saved_session["files"][0]["file_id"] == "grid-1"
-    assert saved_session["files"][0]["file_hash"] == "hash-1"
-    mock_quote.assert_awaited_once()
-    assert mock_quote.await_args.kwargs["quote_id"] == "quote-1"
-    assert mock_quote.await_args.kwargs["files"][0]["file_id"] == "grid-1"
-
-
-@pytest.mark.asyncio
-async def test_process_document_mt_submission_uses_cached_quote_file_state():
-    ray_client = MagicMock()
-    ray_client.is_trial = False
-    ray_client.id_token = "id-token"
-    ray_connection = MagicMock()
-    ray_connection.client = ray_client
-    ray_connection.super_group = []
-    record = MagicMock(id=123)
-    fake_slack = MagicMock()
-    fake_slack.chat_postMessage = AsyncMock()
-    session = {
-        "quote_id": "quote-1",
-        "user_id": "U1",
-        "team_id": "T1",
-        "channel_id": "C1",
-        "source_language": "en",
-        "target_languages": ["zh-CN"],
-        "preflight_task_uuid": "preflight-1",
-        "files": [
-            {
-                "slack_file_id": "F1",
-                "title": "a.pptx",
-                "file_id": "grid-1",
-                "file_name": "a.pptx",
-                "file_hash": "hash-1",
-                "file_size": 1234,
-            }
-        ],
-    }
 
     with (
         patch(
@@ -220,18 +130,20 @@ async def test_process_document_mt_submission_uses_cached_quote_file_state():
             "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
         ),
         patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.pptx")),
+        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
         patch(
-            "app.slack.document_mt_quotes.get_document_mt_quote_session",
-            new=AsyncMock(return_value=session),
+            "app.ray.utils.upload_to_file_server", new=AsyncMock(return_value="grid-2")
         ),
-        patch("app.slack.web.download_file", new=AsyncMock()) as mock_download,
         patch(
-            "app.ray.submissions.check_and_record_submission_metadata_async",
+            "app.ray.submissions.check_and_record_submission_async",
             new=AsyncMock(return_value=(False, record)),
-        ) as mock_record,
+        ),
         patch(
             "app.slack.listener_actions.document_machine_translate", new=AsyncMock()
         ) as mock_mt,
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("os.path.exists", return_value=False),
     ):
         result = await process_document_mt_submission(
             _ctx(),
@@ -239,22 +151,13 @@ async def test_process_document_mt_submission_uses_cached_quote_file_state():
             team_id="T1",
             enterprise_id=None,
             channel_id="C1",
-            files=[],
+            files=[{"id": "F1", "title": "a.pptx"}],
             source_language="en",
-            target_languages=["zh-CN"],
-            quote_id="quote-1",
+            target_languages=["fr"],
         )
 
     assert result["status"] == "processed"
-    mock_download.assert_not_awaited()
-    mock_record.assert_awaited_once()
-    assert mock_record.await_args.kwargs["file_hash"] == "hash-1"
     mock_mt.assert_awaited_once()
-    assert mock_mt.await_args.args[1:] == ("grid-1", "en", ["zh-CN"], {"zh-CN": 123})
-    assert mock_mt.await_args.kwargs == {
-        "quote_id": "quote-1",
-        "preflight_task_uuid": "preflight-1",
-    }
 
 
 @pytest.mark.asyncio
@@ -262,7 +165,6 @@ async def test_process_evaluation_submission_direct_verify_upload():
     ray_client = MagicMock()
     fake_slack = MagicMock()
     fake_slack.chat_postMessage = AsyncMock()
-    record = MagicMock(id=42)
 
     with (
         patch(
@@ -274,19 +176,6 @@ async def test_process_evaluation_submission_direct_verify_upload():
         patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
         patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.docx")),
         patch("app.ray.utils.validate_file", return_value=(True, True, "")),
-        patch(
-            "app.api.verify.get_verify_languages",
-            new=AsyncMock(
-                return_value=[
-                    {"uuid": "src", "code": "en", "name": "English"},
-                    {"uuid": "lang-1", "code": "fr", "name": "French"},
-                ]
-            ),
-        ),
-        patch(
-            "app.ray.submissions.check_and_record_evaluate_submission_async",
-            new=AsyncMock(return_value=(False, record)),
-        ) as mock_dedupe,
         patch("app.api.verify.submit_evaluation_job", new=AsyncMock()) as mock_submit,
         patch("app.saq_jobs.tasks._safe_unlink"),
         patch("os.path.exists", return_value=False),
@@ -303,19 +192,9 @@ async def test_process_evaluation_submission_direct_verify_upload():
             source_lang_uuid="src",
             workflow_uuid=None,
             job_notes="",
-            preaccepted_ai_translation_quote=True,
-            prequote_message_ts="123.456",
-            ai_translation_filename_and_languages=["a.docx:lang-1"],
         )
 
-    assert result == {
-        "status": "submitted",
-        "file_count": 1,
-        "duplicate_count": 0,
-    }
-    mock_dedupe.assert_awaited_once()
-    assert mock_dedupe.await_args.kwargs["source_language"] == "en"
-    assert mock_dedupe.await_args.kwargs["target_languages"] == ["fr"]
+    assert result == {"status": "submitted", "file_count": 1}
     mock_submit.assert_awaited_once()
     assert mock_submit.await_args.args[:4] == (
         ray_client,
@@ -323,84 +202,6 @@ async def test_process_evaluation_submission_direct_verify_upload():
         ["lang-1"],
         "ref",
     )
-    assert mock_submit.await_args.kwargs["preaccepted_ai_translation_quote"] is True
-    assert mock_submit.await_args.kwargs["prequote_message_ts"] == "123.456"
-    assert mock_submit.await_args.kwargs["ai_translation_filename_and_languages"] == [
-        "a.docx:lang-1"
-    ]
-
-
-@pytest.mark.asyncio
-async def test_process_evaluation_submission_pdf_posts_prequote_before_conversion():
-    ray_client = MagicMock()
-    fake_slack = MagicMock()
-    slack_response = MagicMock()
-    slack_response.get.return_value = "123.456"
-    fake_slack.chat_postMessage = AsyncMock(return_value=slack_response)
-
-    with (
-        patch(
-            "app.auth.connector.get_ray_client", new=AsyncMock(return_value=ray_client)
-        ),
-        patch(
-            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
-        ),
-        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
-        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.pdf")),
-        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
-        patch(
-            "app.api.verify.get_verify_languages",
-            new=AsyncMock(
-                return_value=[
-                    {"uuid": "lang-1", "name": "French"},
-                    {"uuid": "lang-2", "name": "German"},
-                ]
-            ),
-        ),
-        patch(
-            "app.slack.pdf_evaluate_quotes.pdf_page_count_from_file",
-            return_value=3,
-        ),
-        patch(
-            "app.slack.pdf_evaluate_quotes.save_pdf_evaluate_quote_session",
-            new=AsyncMock(return_value="quote-1"),
-        ) as mock_save,
-        patch(
-            "app.slack.pdf_evaluate_quotes.update_pdf_evaluate_quote_session",
-            new=AsyncMock(),
-        ) as mock_update,
-        patch(
-            "app.slack.evaluation_submissions.publish_pdf_evaluate_convert",
-            new=AsyncMock(),
-        ) as mock_publish,
-        patch(
-            "app.ray.submissions.check_and_record_evaluate_submission_async",
-            new=AsyncMock(),
-        ) as mock_dedupe,
-        patch("app.saq_jobs.tasks._safe_unlink"),
-        patch("os.path.exists", return_value=False),
-    ):
-        result = await process_evaluation_submission(
-            _ctx(),
-            user_id="U1",
-            team_id="T1",
-            enterprise_id=None,
-            channel_id="C1",
-            files=[{"id": "F1", "title": "a.pdf", "size": 1000}],
-            target_langs_uuid=["lang-1", "lang-2"],
-            reference="ref",
-            source_lang_uuid="src",
-            workflow_uuid=None,
-            job_notes="notes",
-        )
-
-    assert result == {"status": "quoted", "quote_id": "quote-1"}
-    mock_publish.assert_not_awaited()
-    mock_dedupe.assert_not_awaited()
-    mock_save.assert_awaited_once()
-    assert mock_save.await_args.kwargs["pdf_page_count"] == 3
-    assert mock_save.await_args.kwargs["ai_token_estimate"] == 4
-    mock_update.assert_awaited_once_with("quote-1", message_ts="123.456")
 
 
 @pytest.mark.asyncio
@@ -410,7 +211,6 @@ async def test_process_evaluation_submission_verify_api_error_posts_permission_m
     ray_client = MagicMock()
     fake_slack = MagicMock()
     fake_slack.chat_postMessage = AsyncMock()
-    record = MagicMock(id=99)
 
     with (
         patch(
@@ -422,23 +222,6 @@ async def test_process_evaluation_submission_verify_api_error_posts_permission_m
         patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
         patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.docx")),
         patch("app.ray.utils.validate_file", return_value=(True, True, "")),
-        patch(
-            "app.api.verify.get_verify_languages",
-            new=AsyncMock(
-                return_value=[
-                    {"uuid": "src", "code": "en", "name": "English"},
-                    {"uuid": "lang-1", "code": "fr", "name": "French"},
-                ]
-            ),
-        ),
-        patch(
-            "app.ray.submissions.check_and_record_evaluate_submission_async",
-            new=AsyncMock(return_value=(False, record)),
-        ),
-        patch(
-            "app.ray.submissions.updated_submission_status",
-            return_value=True,
-        ) as mock_fail_status,
         patch(
             "app.api.verify.submit_evaluation_job",
             new=AsyncMock(side_effect=VerifyAPIError("Permission denied")),
@@ -466,129 +249,6 @@ async def test_process_evaluation_submission_verify_api_error_posts_permission_m
     assert (
         "administrator" in fake_slack.chat_postMessage.await_args.kwargs["text"].lower()
     )
-    mock_fail_status.assert_called_once()
-    assert mock_fail_status.call_args.kwargs["submission_id"] == 99
-
-
-@pytest.mark.asyncio
-async def test_process_evaluation_submission_all_duplicates_skips_verify():
-    ray_client = MagicMock()
-    fake_slack = MagicMock()
-    fake_slack.chat_postMessage = AsyncMock()
-    existing = MagicMock(id=7)
-
-    with (
-        patch(
-            "app.auth.connector.get_ray_client", new=AsyncMock(return_value=ray_client)
-        ),
-        patch(
-            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
-        ),
-        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
-        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.docx")),
-        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
-        patch(
-            "app.api.verify.get_verify_languages",
-            new=AsyncMock(
-                return_value=[
-                    {"uuid": "src", "code": "en", "name": "English"},
-                    {"uuid": "lang-1", "code": "fr", "name": "French"},
-                ]
-            ),
-        ),
-        patch(
-            "app.ray.submissions.check_and_record_evaluate_submission_async",
-            new=AsyncMock(return_value=(True, existing)),
-        ),
-        patch("app.api.verify.submit_evaluation_job", new=AsyncMock()) as mock_submit,
-        patch("app.saq_jobs.tasks._safe_unlink"),
-        patch("os.path.exists", return_value=False),
-    ):
-        result = await process_evaluation_submission(
-            _ctx(),
-            user_id="U1",
-            team_id="T1",
-            enterprise_id=None,
-            channel_id="C1",
-            files=[{"id": "F1", "title": "a.docx"}],
-            target_langs_uuid=["lang-1"],
-            reference="ref",
-            source_lang_uuid="src",
-            workflow_uuid=None,
-            job_notes="",
-        )
-
-    assert result == {"status": "duplicate", "duplicate_count": 1}
-    mock_submit.assert_not_awaited()
-    fake_slack.chat_postMessage.assert_awaited_once()
-    assert fake_slack.chat_postMessage.await_args.kwargs["channel"] == "U1"
-    message_text = fake_slack.chat_postMessage.await_args.kwargs["text"].lower()
-    assert "duplicate" in message_text
-    assert "human translation request" in message_text
-    assert "quality evaluation" not in message_text
-
-
-@pytest.mark.asyncio
-async def test_process_evaluation_submission_different_target_set_not_duplicate():
-    """Overlapping-but-different target sets are submitted in full (set-based dedupe)."""
-    ray_client = MagicMock()
-    fake_slack = MagicMock()
-    fake_slack.chat_postMessage = AsyncMock()
-    new_record = MagicMock(id=2)
-
-    with (
-        patch(
-            "app.auth.connector.get_ray_client", new=AsyncMock(return_value=ray_client)
-        ),
-        patch(
-            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
-        ),
-        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
-        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.docx")),
-        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
-        patch(
-            "app.api.verify.get_verify_languages",
-            new=AsyncMock(
-                return_value=[
-                    {"uuid": "src", "code": "en", "name": "English"},
-                    {"uuid": "lang-fr", "code": "fr", "name": "French"},
-                    {"uuid": "lang-de", "code": "de", "name": "German"},
-                    {"uuid": "lang-es", "code": "es", "name": "Spanish"},
-                ]
-            ),
-        ),
-        patch(
-            "app.ray.submissions.check_and_record_evaluate_submission_async",
-            new=AsyncMock(return_value=(False, new_record)),
-        ) as mock_dedupe,
-        patch("app.api.verify.submit_evaluation_job", new=AsyncMock()) as mock_submit,
-        patch("app.saq_jobs.tasks._safe_unlink"),
-        patch("os.path.exists", return_value=False),
-    ):
-        result = await process_evaluation_submission(
-            _ctx(),
-            user_id="U1",
-            team_id="T1",
-            enterprise_id=None,
-            channel_id="C1",
-            files=[{"id": "F1", "title": "a.docx"}],
-            target_langs_uuid=["lang-fr", "lang-es"],
-            reference="ref",
-            source_lang_uuid="src",
-            workflow_uuid=None,
-            job_notes="",
-        )
-
-    assert result == {
-        "status": "submitted",
-        "file_count": 1,
-        "duplicate_count": 0,
-    }
-    mock_dedupe.assert_awaited_once()
-    assert mock_dedupe.await_args.kwargs["target_languages"] == ["fr", "es"]
-    mock_submit.assert_awaited_once()
-    assert mock_submit.await_args.args[2] == ["lang-fr", "lang-es"]
-    fake_slack.chat_postMessage.assert_not_awaited()
 
 
 # --------------------------------------------------------------------------- #
@@ -623,8 +283,7 @@ async def test_slack_upload_mt_result_happy_path(slack_user):
             "app.saq_jobs.tasks.delete_from_file_server", new=AsyncMock()
         ) as mock_delete,
         patch(
-            "app.slack.listener_actions.get_language_name",
-            new=AsyncMock(return_value="French"),
+            "app.routers.ray._get_language_name", new=AsyncMock(return_value="French")
         ),
         patch(
             "app.slack.web.upload_file_to_slack_memory_efficient", new=AsyncMock()
@@ -686,8 +345,7 @@ async def test_slack_upload_mt_result_re_raises_for_saq_retry(slack_user):
             new=AsyncMock(return_value={"file": "/tmp/foo", "file_name": "out.docx"}),
         ),
         patch(
-            "app.slack.listener_actions.get_language_name",
-            new=AsyncMock(return_value="French"),
+            "app.routers.ray._get_language_name", new=AsyncMock(return_value="French")
         ),
         patch(
             "app.slack.web.upload_file_to_slack_memory_efficient",
@@ -1019,8 +677,7 @@ async def test_slack_upload_mt_result_enqueues_document_mt_charge(slack_user):
         ),
         patch("app.saq_jobs.tasks.delete_from_file_server", new=AsyncMock()),
         patch(
-            "app.slack.listener_actions.get_language_name",
-            new=AsyncMock(return_value="French"),
+            "app.routers.ray._get_language_name", new=AsyncMock(return_value="French")
         ),
         patch("app.slack.web.upload_file_to_slack_memory_efficient", new=AsyncMock()),
         patch("app.saq_jobs.tasks._safe_unlink"),
@@ -1065,8 +722,7 @@ async def test_slack_upload_mt_result_no_charge_when_absent(slack_user):
         ),
         patch("app.saq_jobs.tasks.delete_from_file_server", new=AsyncMock()),
         patch(
-            "app.slack.listener_actions.get_language_name",
-            new=AsyncMock(return_value="French"),
+            "app.routers.ray._get_language_name", new=AsyncMock(return_value="French")
         ),
         patch("app.slack.web.upload_file_to_slack_memory_efficient", new=AsyncMock()),
         patch("app.saq_jobs.tasks._safe_unlink"),

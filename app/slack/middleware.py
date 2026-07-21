@@ -52,15 +52,20 @@ async def ray_log(context, body, next):
 # -----------------------------------------------------------------------------
 
 
-async def populate_ray_connection(context: AsyncBoltContext) -> None:
-    """Populate LanguageCloud connection fields on a Slack listener context.
+async def ray_connection(
+    context: AsyncBoltContext,
+    next: Callable[[], Awaitable[None]],
+) -> None:
+    """Gets and saves the LanguageCloud super group and client information of the
+    Slack user to the context. The `RayConnection` object is stored as `ray` in
+    the context if the Slack workspace has a connected super group.
 
-    Used by ``ray_connection`` middleware and by modal-open handlers that must
-    call ``views.open`` before this I/O (Slack ``trigger_id`` TTL).
+    Also add a `login_prompt` message to the context containing the message to
+    be sent to the user asking them to connect their LanguageCloud account.
     """
     if "team_id" not in context:
         context["ray"] = None
-        return
+        return await next()
 
     # Bot message events may not include a Slack user. Match the not-logged-in
     # user path by loading the connected workspace org with no client attached.
@@ -70,7 +75,7 @@ async def populate_ray_connection(context: AsyncBoltContext) -> None:
         )
         context["ray"] = RayConnection(super_group=super_group or [], client=None)
         context["is_bot"] = True
-        return
+        return await next()
 
     context["ray"] = await get_ray_connection(
         context["user_id"], context["team_id"], context.enterprise_id
@@ -81,7 +86,6 @@ async def populate_ray_connection(context: AsyncBoltContext) -> None:
         )
         if demo_connection is not None:
             context["ray"] = demo_connection
-    user: dict | None = None
     try:
         context["is_bot"] = False
         if context.client:
@@ -125,19 +129,6 @@ async def populate_ray_connection(context: AsyncBoltContext) -> None:
                 print(e)
                 notify_exception(e)
 
-
-async def ray_connection(
-    context: AsyncBoltContext,
-    next: Callable[[], Awaitable[None]],
-) -> None:
-    """Gets and saves the LanguageCloud super group and client information of the
-    Slack user to the context. The `RayConnection` object is stored as `ray` in
-    the context if the Slack workspace has a connected super group.
-
-    Also add a `login_prompt` message to the context containing the message to
-    be sent to the user asking them to connect their LanguageCloud account.
-    """
-    await populate_ray_connection(context)
     await next()
 
 

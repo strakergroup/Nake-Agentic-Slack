@@ -1031,8 +1031,8 @@ class TestEvaluateSuccessMessage:
             )
             assert len(message.blocks) > 0
 
-    def test_evaluate_success_message_hides_tokens(self):
-        """Test evaluate success message no longer displays token usage."""
+    def test_evaluate_success_message_with_tokens(self):
+        """Test evaluate success message with tokens."""
         from unittest.mock import patch
 
         job = {
@@ -1052,9 +1052,11 @@ class TestEvaluateSuccessMessage:
                 "evaluated" in message.text.lower()
                 or "evaluation" in message.text.lower()
             )
-            rendered = str(message.blocks).lower()
-            assert "100" not in rendered
-            assert "tokens" not in rendered
+            # Check that tokens are mentioned in the blocks (not in text title)
+            assert any(
+                "100" in str(block) or "tokens" in str(block).lower()
+                for block in message.blocks
+            )
             assert len(message.blocks) > 0
 
     def test_evaluate_success_message_without_actions(self):

@@ -16,7 +16,6 @@ from app.ray.events.models import MtSuccessResponseSchema
 from app.saq_jobs.dispatch import (
     _mt_success_idempotency_key,
     _submission_queue_name,
-    enqueue_document_mt_quote_preflight,
     enqueue_document_mt_submission,
     enqueue_evaluation_submission,
     enqueue_inline_mt_billing,
@@ -212,38 +211,6 @@ async def test_enqueue_document_mt_submission_uses_small_file_timeout():
     kwargs = mock_enq.await_args.kwargs
     assert kwargs["queue_name"] == "small-submissions-q"
     assert kwargs["timeout"] == 300
-
-
-@pytest.mark.asyncio
-async def test_enqueue_document_mt_quote_preflight_forwards_payload():
-    with (
-        patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
-        patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
-    ):
-        mock_cfg.saq_file_submission_queue_name = "submissions-q"
-        mock_cfg.saq_small_file_submission_queue_name = "small-submissions-q"
-        mock_cfg.saq_file_upload_retries = 5
-        mock_cfg.saq_file_upload_timeout_seconds = 900
-        mock_cfg.saq_small_file_upload_timeout_seconds = 300
-        await enqueue_document_mt_quote_preflight(
-            quote_id="quote-1",
-            user_id="U1",
-            team_id="T1",
-            enterprise_id=None,
-            channel_id="C1",
-            files=[{"id": "F1", "title": "a.pptx"}],
-            source_language="en",
-            target_languages=["zh-CN"],
-        )
-
-    call_args = mock_enq.await_args
-    assert call_args.args == ("process_document_mt_quote_preflight",)
-    kwargs = call_args.kwargs
-    assert kwargs["queue_name"] == "submissions-q"
-    assert kwargs["quote_id"] == "quote-1"
-    assert kwargs["files"] == [{"id": "F1", "title": "a.pptx"}]
-    assert kwargs["target_languages"] == ["zh-CN"]
-    assert kwargs["key"].startswith("process_document_mt_quote_preflight:")
 
 
 @pytest.mark.asyncio

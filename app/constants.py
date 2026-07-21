@@ -34,11 +34,3 @@ DEFAULT_UPLOAD_EXPIRY_DAYS = 30
 
 # Workflow UUIDs
 HUMAN_EVALUATION_WORKFLOW_UUID = "069cfa54-609b-46d3-830b-575168f4ef19"
-HUMAN_VERIFICATION_WORKFLOW_UUID = "06294ecf-85a8-453a-b98e-20ee4ac629b5"
-
-# Evaluate quote confirmation services (Verify API /quote/credits)
-EVALUATE_SERVICE_AI_TRANSLATION = "ai_translation"
-EVALUATE_SERVICE_QUALITY_EVALUATION = "quality_evaluation"
-
-# PDF conversion fee aligned with Document MT (tokens per page)
-EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE = 25

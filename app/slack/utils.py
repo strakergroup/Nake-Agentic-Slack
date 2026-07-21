@@ -7,8 +7,6 @@ from app.translate import _
 
 logger = logging.getLogger(__name__)
 
-CALLBACK_ERROR_DETAIL_MAX_LENGTH = 500
-
 
 def is_channel_im(channel_id: str | None) -> bool:
     """Check if a channel is an IM (direct message between the bot and a user)
@@ -53,49 +51,6 @@ def format_strings_display(strings: list[str], *, and_string: str = "&") -> str:
     if len(strings) == 2:
         return f"{strings[0]} {and_string} {strings[1]}"
     return f"{', '.join(strings[:-1])}, {and_string} {strings[-1]}"
-
-
-def safe_callback_error_detail(payload_error: Any) -> str:
-    error_detail = " ".join(str(payload_error or "").split())
-    if not error_detail:
-        return _("Unknown error")
-    return error_detail[:CALLBACK_ERROR_DETAIL_MAX_LENGTH]
-
-
-def format_callback_error(stage: str, payload_error: Any) -> str:
-    error_detail = safe_callback_error_detail(payload_error)
-    if stage == "transcription":
-        return _("Transcription failed: {error_detail}").format(
-            error_detail=error_detail
-        )
-    if stage == "translation":
-        return _("Translation failed: {error_detail}").format(error_detail=error_detail)
-    if stage == "embedding":
-        return _("Embedding failed: {error_detail}").format(error_detail=error_detail)
-    raise ValueError(f"Unsupported callback error stage: {stage}")
-
-
-def order_translations_by_target_language_order(
-    translations: dict[str, Any],
-    target_language_order: list[str] | None,
-) -> dict[str, Any]:
-    """Order translations by caller-requested target order, keeping leftovers."""
-    if not target_language_order:
-        return translations
-
-    ordered_translations: dict[str, Any] = {}
-    for target_language in target_language_order:
-        if (
-            target_language in translations
-            and target_language not in ordered_translations
-        ):
-            ordered_translations[target_language] = translations[target_language]
-
-    for target_language, translated_text in translations.items():
-        if target_language not in ordered_translations:
-            ordered_translations[target_language] = translated_text
-
-    return ordered_translations
 
 
 def strip_slack_formatting(text: str) -> str:
@@ -374,18 +329,6 @@ def extract_language_codes_from_form(
     return [
         option.get("value") for option in selected_languages_data if option.get("value")
     ]
-
-
-def strip_command_formatting(text: str) -> str:
-    """Strip a single layer of Slack markdown wrapping from a slash-command arg.
-
-    Slack wraps bold/italic/strike/code text in ``*``, ``_``, ``~`` or ``` ` ```.
-    This removes one matching wrapper so command parsing sees the raw argument.
-    Not perfect, but sufficient for the short tokens used in slash commands.
-    """
-    if re.match(r"(\*.+\*)|(~.+~)|(_.+_)|(`.+`)", text):
-        return text[1:-1]
-    return text
 
 
 def calculate_total_estimated_days(time_estimates: list[float]) -> int:

@@ -50,11 +50,17 @@ class TestDocumentMachineTranslate:
     async def test_emits_one_event_for_multiple_target_languages(
         self, context, ray_client
     ):
-        from app.auth.connector import RayConnection
+        from app.auth.connector import RayConnection, RaySuperGroup
 
         fake_http_client = _FakeAsyncClient()
-        super_group = MagicMock()
-        super_group.id = ray_client.user_group_id
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=context.get("team_id"),
+            slack_enterprise_id=None,
+        )
         context["ray"] = RayConnection(super_group=[super_group], client=ray_client)
 
         with (
@@ -221,13 +227,15 @@ class TestIsVideoFile:
         for video_type in VIDEO_FILE_TYPES:
             # Test by filetype
             file_details = {"filetype": video_type, "name": "test"}
-            message = f"Failed for filetype: {video_type}"
-            assert is_video_file(file_details) is True, message
+            assert (
+                is_video_file(file_details) is True
+            ), f"Failed for filetype: {video_type}"
 
             # Test by extension
             file_details = {"filetype": "", "name": f"test.{video_type}"}
-            message = f"Failed for extension: {video_type}"
-            assert is_video_file(file_details) is True, message
+            assert (
+                is_video_file(file_details) is True
+            ), f"Failed for extension: {video_type}"
 
 
 class TestThreadMediaEmbedOption:
@@ -274,7 +282,7 @@ class TestThreadMediaEmbedOption:
 
     @pytest.mark.asyncio
     async def test_maybe_show_thread_media_embed_option_uses_thread_root_message(self):
-        """Test SRT uploads quote embed-only from the root thread video."""
+        """Test SRT uploads use the root thread message instead of thread replies."""
         client = AsyncMock()
         client.conversations_history.return_value = {
             "messages": [
@@ -293,17 +301,10 @@ class TestThreadMediaEmbedOption:
             "files": [{"id": "F123", "name": "captions.srt", "filetype": "srt"}],
         }
 
-        with (
-            patch(
-                "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
-            ) as mock_require,
-            patch(
-                "app.slack.listener_actions.quote_existing_srt_embed_task",
-                new_callable=AsyncMock,
-            ) as mock_quote,
-        ):
+        with patch(
+            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+        ) as mock_require:
             mock_require.return_value = True
-            mock_quote.return_value = True
             handled = await maybe_show_thread_media_embed_option(
                 client, context, message
             )
@@ -316,13 +317,16 @@ class TestThreadMediaEmbedOption:
             inclusive=True,
             limit=1,
         )
-        assert context.say.call_count == 0
-        mock_quote.assert_awaited_once()
-        quote_args = mock_quote.await_args.args
-        assert quote_args[3] == "123456.789"
-        action_data = quote_args[2]
-        assert action_data["files"][0]["file_id"] == "V123"
-        assert action_data["subtitle_file"]["file_id"] == "F123"
+        assert context.say.call_count == 1
+        assert context.say.call_args.kwargs["thread_ts"] == "123456.789"
+        assert context.say.call_args.kwargs["blocks"][0]["accessory"]["action_id"] == (
+            "video_embed_subtitles"
+        )
+        updated_action_data = json.loads(
+            context.say.call_args.kwargs["blocks"][0]["accessory"]["value"]
+        )
+        assert updated_action_data["files"][0]["file_id"] == "V123"
+        assert updated_action_data["subtitle_file"]["file_id"] == "F123"
 
     @pytest.mark.asyncio
     async def test_maybe_show_thread_media_embed_option_returns_false_for_non_media_root(
@@ -1180,7 +1184,6 @@ class TestSubmitVerificationJob:
                 "ray": RayConnection(super_group=[], client=ray_client),
                 "response_url": None,
                 "respond": None,
-                "channel_id": "C123",
             }
         )
         job = {
@@ -1218,7 +1221,7 @@ class TestSubmitVerificationJob:
             patch(
                 "app.slack.listener_actions.redis_conn.delete",
                 new_callable=AsyncMock,
-            ) as mock_delete_lock,
+            ),
         ):
             quote_message.return_value.text = "Quote summary"
             quote_message.return_value.blocks = []
@@ -1231,7 +1234,6 @@ class TestSubmitVerificationJob:
                 user_id="U123",
                 timestamp="1710000000.000000",
                 job=job,
-                channel_id="C123",
             )
 
         create_human_job.assert_awaited_once_with(
@@ -1240,10 +1242,3 @@ class TestSubmitVerificationJob:
             ["file-uuid:lang-uuid"],
             purchase_order_number="alpha.xlf",
         )
-        mock_client.chat_update.assert_awaited_once_with(
-            channel="C123",
-            text="Quote summary",
-            blocks=[],
-            ts="1710000000.000000",
-        )
-        mock_delete_lock.assert_not_called()

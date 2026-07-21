@@ -261,12 +261,6 @@ async def upload_file_to_slack_memory_efficient(
         filename = os.path.basename(file_path)
 
     file_size = os.path.getsize(file_path)
-    # Slack files.getUploadURLExternal rejects length <= 1 ("invalid_arguments").
-    if file_size <= 1:
-        raise ValueError(
-            f"Refusing Slack upload of empty/near-empty file "
-            f"{filename!r} ({file_size} bytes)"
-        )
     mimetype = _get_mimetype_for_file(filename)
 
     # Step 1: Get upload URL from Slack
