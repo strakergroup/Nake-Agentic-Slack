@@ -482,6 +482,55 @@ class TestEvaluateJobForm:
         assert form.workflow_options is None
         assert form.source_lang_uuid == "src-lang-001"
 
+    def test_evaluate_job_form_uses_selected_workflow_when_present(self):
+        """Quality Evaluation keeps explicit workflow selections when present."""
+        values = {
+            "reference": {"reference": {"value": "REF-123"}},
+            "source_lang": {
+                "source_language_option_uuid": {
+                    "selected_option": {"value": "src-lang-001"}
+                }
+            },
+            "target_langs": {
+                "language_options_uuid": {"selected_options": [{"value": "lang-123"}]}
+            },
+            "files": {
+                "files": {
+                    "selected_options": [
+                        {"value": "file-123", "text": {"text": "test.txt"}}
+                    ]
+                }
+            },
+            "workflow_options": {
+                "workflow_options": {"selected_option": {"value": "ignored-workflow"}}
+            },
+        }
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job")
+        assert form.workflow_options == "ignored-workflow"
+
+    def test_evaluate_job_form_defaults_to_no_workflow(self):
+        """Quality Evaluation uses CVC's synthetic MT/QE workflow by default."""
+        values = {
+            "reference": {"reference": {"value": "REF-123"}},
+            "source_lang": {
+                "source_language_option_uuid": {
+                    "selected_option": {"value": "src-lang-001"}
+                }
+            },
+            "target_langs": {
+                "language_options_uuid": {"selected_options": [{"value": "lang-123"}]}
+            },
+            "files": {
+                "files": {
+                    "selected_options": [
+                        {"value": "file-123", "text": {"text": "test.txt"}}
+                    ]
+                }
+            },
+        }
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job")
+        assert form.workflow_options is None
+
     def test_evaluate_job_form_rejects_source_in_targets(self):
         """Test that source language cannot be a target language."""
         values = {

@@ -14,7 +14,9 @@ The settings dict below is the public entry point for that mode.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+import signal
 from typing import Any
 
 from saq.worker import Worker
@@ -269,3 +271,46 @@ def _get_settings() -> dict[str, Any]:
     )
     background_settings["queue"] = get_queue(config.saq_background_queue_name)
     return settings
+
+
+async def run_workers_forever() -> None:
+    """Run every configured SAQ queue worker in a dedicated process.
+
+    This is the entry point for running the worker out-of-process (local dev
+    or an optional sidecar), reusing the same queue/worker layout as the
+    in-process worker. It is never invoked by the FastAPI app or the Docker
+    deployment: production keeps the in-process worker managed by the app
+    lifespan. Run locally with ``python -m app.saq_jobs.worker`` alongside a
+    ``SAQ_WORKER_ENABLED=false`` uvicorn ``--reload`` web process so hot reload
+    and background job processing do not share (and fight over) one process.
+    """
+    if not config.saq_worker_enabled:
+        logger.info("SAQ worker disabled via SAQ_WORKER_ENABLED=false; nothing to run")
+        return
+
+    loop = asyncio.get_running_loop()
+    stop_event = asyncio.Event()
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        with contextlib.suppress(NotImplementedError):
+            loop.add_signal_handler(signum, stop_event.set)
+
+    await start_worker()
+    logger.info("SAQ standalone worker started; waiting for jobs")
+    try:
+        await stop_event.wait()
+    finally:
+        logger.info("SAQ standalone worker stopping")
+        await stop_worker()
+
+
+def main() -> None:
+    """CLI entry point: ``python -m app.saq_jobs.worker``."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    asyncio.run(run_workers_forever())
+
+
+if __name__ == "__main__":
+    main()

@@ -48,7 +48,10 @@ from ...ray.utils import (
 )
 from ..utils import format_strings_display, split_text_into_blocks, unescape_slack_emoji
 from .blocks import (
+    document_mt_quote_blocks,
+    evaluate_ai_only_download_blocks,
     evaluate_success_blocks,
+    evaluation_credits_quote_blocks,
     job_link_block,
     quote_message_block,
     verify_quote_blocks,
@@ -3718,28 +3721,15 @@ class EvaluateSuccessMessage(SlackMessage):
         info_text = _(
             'The AI translation quality of your document(s) has been evaluated. Download the AI translation if you\'re satisfied, or click "Send for Human Verification" to request human verification.'
         )
-        if not is_ibm_enterprise and tokens:
-            blocks.append(
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": info_text
-                        + "\n"
-                        + _("You have used {tokens} AI tokens."),
-                    },
-                }
-            )
-        else:
-            blocks.append(
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": info_text,
-                    },
-                }
-            )
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": info_text,
+                },
+            }
+        )
 
         blocks.extend(evaluate_success_blocks(job))
         if actions:
@@ -3851,44 +3841,173 @@ class DocInvalidPdfErrorMessage(SlackMessage):
         )
 
 
+class EvaluationCreditsQuoteMessage(SlackMessage):
+    """Single-service evaluate credits quote before AI Translation starts."""
+
+    def __init__(
+        self,
+        *,
+        service_label: str,
+        token_cost: int,
+        job_uuid: str,
+        accept_action_id: str,
+        adjust_action_id: str | None = None,
+        pdf_page_count: int | None = None,
+        pdf_tokens: int | None = None,
+        actions: bool = True,
+        status_message: str | None = None,
+        download_translations_job_uuid: str | None = None,
+        is_ibm: bool = False,
+        language_costs: list[dict[str, Any]] | None = None,
+    ) -> None:
+        blocks = evaluation_credits_quote_blocks(
+            service_label,
+            token_cost,
+            pdf_page_count=pdf_page_count,
+            pdf_tokens=pdf_tokens,
+            accept_action_id=accept_action_id,
+            adjust_action_id=adjust_action_id,
+            job_uuid=job_uuid,
+            actions=actions,
+            status_message=status_message,
+            download_translations_job_uuid=download_translations_job_uuid,
+            is_ibm=is_ibm,
+            language_costs=language_costs,
+        )
+        super().__init__(_("Service Quote"), blocks)
+
+
+class EvaluateAiOnlyCompleteMessage(SlackMessage):
+    """AI translation complete without quality evaluation."""
+
+    def __init__(self, job: dict[str, Any]) -> None:
+        super().__init__(
+            _("AI Translation Ready"),
+            evaluate_ai_only_download_blocks(job),
+        )
+
+
 class HumanJobQuoteMessage(SlackMessage):
     def __init__(
         self,
         job: dict[str, Any],
         costs: list[dict[str, Any]],
         actions: bool = True,
+        status_message: str | None = None,
+        additional_costs: list[dict[str, Any]] | None = None,
+        accept_action_id: str = "quote_accept_all",
+        allow_adjust: bool = True,
+        download_translations_job_uuid: str | None = None,
+        *,
+        show_quality_discount: bool = True,
+        show_savings: bool = True,
+        embed_additional_costs_in_line_price: bool = False,
+        total_cost_label: str | None = None,
+        show_submitted_costs: bool | None = None,
+        show_total_cost: bool = True,
+        show_estimated_completion: bool = True,
+        message_title: str | None = None,
     ) -> None:
         blocks = []
-        blocks = verify_quote_blocks(job, costs, False)
-        if actions:
+        blocks = verify_quote_blocks(
+            job,
+            costs,
+            False,
+            additional_costs,
+            show_quality_discount=show_quality_discount,
+            show_savings=show_savings,
+            embed_additional_costs_in_line_price=embed_additional_costs_in_line_price,
+            total_cost_label=total_cost_label,
+            show_submitted_costs=show_submitted_costs,
+            show_total_cost=show_total_cost,
+            show_estimated_completion=show_estimated_completion,
+        )
+        if status_message:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": status_message},
+                }
+            )
+        # Pre-QE estimate (actions on, savings hidden): explain Accept Quote.
+        if actions and not show_savings:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": _(
+                            "Click *Accept Quote* to send your translation for human "
+                            "review. A *discount* will be applied to the quote above "
+                            "based on the quality of the AI translation."
+                        ),
+                    },
+                }
+            )
+        if actions or download_translations_job_uuid:
+            elements = []
+            if allow_adjust:
+                elements.append(
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Adjust Request"),
+                        },
+                        "value": job["uuid"],
+                        "action_id": "quote_summary_modal_open",
+                    }
+                )
+            if actions:
+                elements.append(
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Accept Quote"),
+                        },
+                        "style": "primary",
+                        "value": job["uuid"],
+                        "action_id": accept_action_id,
+                    }
+                )
+            if download_translations_job_uuid:
+                elements.append(
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": _("Download AI Translations"),
+                        },
+                        "value": download_translations_job_uuid,
+                        "action_id": "download_ai_translations_action",
+                    }
+                )
             blocks.insert(0, {"type": "divider"})
             blocks.append(
                 {
                     "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Adjust Request"),
-                            },
-                            "value": job["uuid"],
-                            "action_id": "quote_summary_modal_open",
-                        },
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": _("Accept Quote"),
-                            },
-                            "style": "primary",
-                            "value": job["uuid"],
-                            "action_id": "quote_accept_all",
-                        },
-                    ],
+                    "elements": elements,
                 },
             )
-        super().__init__(_("Adjust Request"), blocks)
+        super().__init__(message_title or _("Adjust Request"), blocks)
+
+
+class DocumentMtQuoteMessage(SlackMessage):
+    def __init__(
+        self,
+        session: dict[str, Any],
+        actions: bool = True,
+        status_message: str | None = None,
+    ) -> None:
+        super().__init__(
+            _("Service Quote"),
+            document_mt_quote_blocks(
+                session,
+                actions=actions,
+                status_message=status_message,
+            ),
+        )
 
 
 class FileTooLargeMessage(SlackMessage):

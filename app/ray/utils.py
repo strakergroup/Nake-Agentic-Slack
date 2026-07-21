@@ -52,9 +52,16 @@ def format_currency_symbol(currency: str) -> str:
     return currency
 
 
+def format_slack_usd(amount: float | int | str) -> str:
+    """Format a USD amount for Slack quotes as ``USD 40.00`` (space, no $)."""
+    return f"USD {float(amount):.2f}"
+
+
 def format_currency(number: str | float, currency: str):
     """Format a currency value to display to users."""
     currency = format_currency_symbol(currency)
+    if currency == "USD":
+        return format_slack_usd(number)
     return babel_format_currency(number, currency, locale="en_GB")
 
 

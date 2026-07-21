@@ -10,7 +10,11 @@ from sqlalchemy.orm import Session
 from app.database import engines
 from app.models import SlackFileTranslationSubmission
 from app.ray.submissions import (
+    EVALUATE_SUBMISSION_TARGET_SENTINEL,
     SubmissionStatus,
+    _evaluate_namespaced_file_hash,
+    _hash_file_content_sha256_hex,
+    check_and_record_evaluate_submission_async,
     check_and_record_submission_async,
     check_and_record_transcription_only_submission_async,
     check_and_record_transcription_submission_async,
@@ -666,3 +670,233 @@ async def test_transcription_only_vs_transcription_with_translation(
     assert is_dup_2 is False
     assert record_2.id != record_1.id
     assert record_2.target_language == target_language
+
+
+# =============================================================================
+# Tests for check_and_record_evaluate_submission_async (QE / HT)
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_evaluate_submission_new_file(temp_file, cleanup_submissions):
+    """New evaluate submission is recorded with a set-keyed namespaced hash."""
+    user_id = "test_user_eval_1"
+    team_id = "test_team_eval_1"
+    channel_id = "test_channel_eval_1"
+    file_name = "eval.txt"
+    file_id = "eval_file_1"
+
+    is_dup, record = await check_and_record_evaluate_submission_async(
+        path=temp_file,
+        file_name=file_name,
+        file_id=file_id,
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        source_language="en",
+        target_languages=["fr", "de"],
+    )
+
+    assert is_dup is False
+    assert record.processing_status == SubmissionStatus.CREATED.value
+    content_hash = _hash_file_content_sha256_hex(temp_file)
+    assert record.file_hash == _evaluate_namespaced_file_hash(
+        content_hash,
+        source_language="en",
+        target_languages=["fr", "de"],
+    )
+    # Order-independent: de,fr hashes the same as fr,de
+    assert record.file_hash == _evaluate_namespaced_file_hash(
+        content_hash,
+        source_language="en",
+        target_languages=["de", "fr"],
+    )
+    assert record.file_hash != content_hash
+    assert len(record.file_hash) == 64
+    assert record.source_language == "en"
+    assert record.target_language == EVALUATE_SUBMISSION_TARGET_SENTINEL
+
+
+@pytest.mark.asyncio
+async def test_evaluate_submission_duplicate_same_target_set(
+    temp_file, cleanup_submissions
+):
+    """Second submit with the same source + exact target set is a duplicate."""
+    user_id = "test_user_eval_2"
+    team_id = "test_team_eval_2"
+    channel_id = "test_channel_eval_2"
+    file_name = "eval.txt"
+
+    is_dup_1, record_1 = await check_and_record_evaluate_submission_async(
+        path=temp_file,
+        file_name=file_name,
+        file_id="eval_file_2a",
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        source_language="en",
+        target_languages=["fr", "de"],
+    )
+    is_dup_2, record_2 = await check_and_record_evaluate_submission_async(
+        path=temp_file,
+        file_name=file_name,
+        file_id="eval_file_2b",
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        source_language="en",
+        target_languages=["de", "fr"],  # order does not matter
+    )
+
+    assert is_dup_1 is False
+    assert is_dup_2 is True
+    assert record_2.id == record_1.id
+
+
+@pytest.mark.asyncio
+async def test_evaluate_submission_isolated_from_document_mt(
+    temp_file, cleanup_submissions
+):
+    """Document MT and evaluate do not cross-block the same file content."""
+    user_id = "test_user_eval_3"
+    team_id = "test_team_eval_3"
+    channel_id = "test_channel_eval_3"
+    file_name = "eval.txt"
+
+    is_dup_mt, record_mt = await check_and_record_submission_async(
+        path=temp_file,
+        file_name=file_name,
+        file_id="mt_file_3",
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        source_language="en",
+        target_language="fr",
+    )
+    is_dup_eval, record_eval = await check_and_record_evaluate_submission_async(
+        path=temp_file,
+        file_name=file_name,
+        file_id="eval_file_3",
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        source_language="en",
+        target_languages=["fr"],
+    )
+
+    assert is_dup_mt is False
+    assert is_dup_eval is False
+    assert record_eval.id != record_mt.id
+    assert record_eval.file_hash != record_mt.file_hash
+
+
+@pytest.mark.asyncio
+async def test_evaluate_submission_qe_and_ht_share_namespace(
+    temp_file, cleanup_submissions
+):
+    """QE and HT share the evaluate namespace (second call is duplicate)."""
+    user_id = "test_user_eval_4"
+    team_id = "test_team_eval_4"
+    channel_id = "test_channel_eval_4"
+    file_name = "eval.txt"
+
+    # Simulate QE then HT with the same helper (shared namespace).
+    is_dup_qe, record_qe = await check_and_record_evaluate_submission_async(
+        path=temp_file,
+        file_name=file_name,
+        file_id="eval_file_4a",
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        source_language="en",
+        target_languages=["de"],
+    )
+    is_dup_ht, record_ht = await check_and_record_evaluate_submission_async(
+        path=temp_file,
+        file_name=file_name,
+        file_id="eval_file_4b",
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        source_language="en",
+        target_languages=["de"],
+    )
+
+    assert is_dup_qe is False
+    assert is_dup_ht is True
+    assert record_ht.id == record_qe.id
+
+
+@pytest.mark.asyncio
+async def test_evaluate_submission_failed_allows_retry(temp_file, cleanup_submissions):
+    """FAILED evaluate submissions unlock resubmit within 24h."""
+    user_id = "test_user_eval_5"
+    team_id = "test_team_eval_5"
+    channel_id = "test_channel_eval_5"
+    file_name = "eval.txt"
+
+    is_dup_1, record_1 = await check_and_record_evaluate_submission_async(
+        path=temp_file,
+        file_name=file_name,
+        file_id="eval_file_5a",
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        source_language="en",
+        target_languages=["fr"],
+    )
+    updated_submission_status(
+        submission_id=record_1.id,
+        processing_status=SubmissionStatus.FAILED,
+    )
+    is_dup_2, record_2 = await check_and_record_evaluate_submission_async(
+        path=temp_file,
+        file_name=file_name,
+        file_id="eval_file_5b",
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        source_language="en",
+        target_languages=["fr"],
+    )
+
+    assert is_dup_1 is False
+    assert is_dup_2 is False
+    assert record_2.id != record_1.id
+
+
+@pytest.mark.asyncio
+async def test_evaluate_submission_different_target_set_allowed(
+    temp_file, cleanup_submissions
+):
+    """Different or overlapping-but-not-equal target sets are not duplicates."""
+    user_id = "test_user_eval_6"
+    team_id = "test_team_eval_6"
+    channel_id = "test_channel_eval_6"
+    file_name = "eval.txt"
+
+    is_dup_1, record_1 = await check_and_record_evaluate_submission_async(
+        path=temp_file,
+        file_name=file_name,
+        file_id="eval_file_6a",
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        source_language="en",
+        target_languages=["fr", "de"],
+    )
+    # Overlaps fr but adds es / drops de — different set, allowed.
+    is_dup_2, record_2 = await check_and_record_evaluate_submission_async(
+        path=temp_file,
+        file_name=file_name,
+        file_id="eval_file_6b",
+        user_id=user_id,
+        team_id=team_id,
+        channel_id=channel_id,
+        source_language="en",
+        target_languages=["fr", "es"],
+    )
+
+    assert is_dup_1 is False
+    assert is_dup_2 is False
+    assert record_2.id != record_1.id

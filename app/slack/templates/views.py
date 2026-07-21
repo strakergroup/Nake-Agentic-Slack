@@ -34,6 +34,10 @@ from ...ray.settings import (
 )
 from ...ray.utils import is_ibm_enterprise
 from ...slack.utils import format_strings_display
+from ..evaluation_ai_adjustment import (
+    AI_QUOTE_ADJUST_CALLBACK_ID,
+    AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID,
+)
 from ..select_options import (
     filter_auto_translate_language_options,
     get_auto_translate_language_options,
@@ -42,6 +46,7 @@ from ..select_options import (
     translation_display_format_options,
 )
 from .blocks import (
+    _format_evaluate_quote_cost,
     home_auth_blocks,
     verify_quote_blocks,
 )
@@ -540,7 +545,9 @@ def human_job_modal(
     if initial_options:
         files_block_element["initial_options"] = initial_options
 
-    # Determine title, submit text, and description based on job type
+    # Determine title, submit text, and description based on job type.
+    # IBM workspaces are blocked before this modal opens; non-IBM workspaces
+    # keep the standalone QE request surface with staged quote confirmation.
     if job_type == "human":
         title = _("Human Translation", 23)[:24]
         submit_text = _("Request Quote", 23)[:24]
@@ -551,7 +558,7 @@ def human_job_modal(
         include_job_notes = True
     else:
         title = _("Quality Evaluation", 23)[:24]
-        submit_text = _("Submit", 23)[:24]
+        submit_text = _("Request Quote", 23)[:24]
         description = _(
             "AI translate your content and receive translation quality scores, then opt for human verification if needed."
         )
@@ -926,9 +933,14 @@ def verify_job_modal(
     job: dict[str, Any],
     costs: list[dict[str, Any]],
     timestamp: str,
+    channel_id: str | None = None,
 ) -> dict[str, Any]:
     """Generate modal for job verification with total cost calculation."""
-    blocks = verify_quote_blocks(job, costs)
+    blocks = verify_quote_blocks(
+        job,
+        costs,
+        total_cost_label="Maximum Total Cost",
+    )
     return {
         "type": "modal",
         "callback_id": "verify_job",
@@ -939,6 +951,7 @@ def verify_job_modal(
             {
                 "job_uuid": job["uuid"],
                 "timestamp": timestamp,
+                "channel_id": channel_id,
             }
         ),
         "blocks": [
@@ -959,12 +972,145 @@ def verify_job_modal(
     }
 
 
+def evaluation_ai_quote_adjust_modal(
+    *,
+    quote_id: str,
+    quote_kind: str,
+    language_costs: list[dict[str, Any]],
+    selected_pairs: list[str],
+    ai_tokens: int,
+    pdf_tokens: int = 0,
+    channel_id: str | None = None,
+    message_ts: str | None = None,
+) -> dict[str, Any]:
+    """Build a staged AI quote modal with per-file language selection."""
+    selected = set(selected_pairs)
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": _(
+                    "Deselect any file and language combinations you do not want "
+                    "translated. Selections are independent per file. At least one "
+                    "selection is required."
+                ),
+            },
+        },
+    ]
+    current_file: str | None = None
+    for language in language_costs:
+        file_uuid = str(language.get("file_uuid") or "")
+        language_uuid = str(language["value"])
+        option_value = f"{file_uuid}:{language_uuid}" if file_uuid else language_uuid
+        file_label = str(language.get("file_label") or "")
+        if file_label and file_label != current_file:
+            blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f":paperclip: *{file_label}*",
+                    },
+                }
+            )
+            current_file = file_label
+        option_text = (
+            f"*{language['label']}*: "
+            f"{_format_evaluate_quote_cost(int(language.get('token') or 0))}"
+        )
+        option = {
+            "text": {"type": "mrkdwn", "text": option_text},
+            "value": option_value,
+        }
+        element = {
+            "type": "checkboxes",
+            "options": [option],
+            "action_id": AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID,
+        }
+        if option_value in selected:
+            element["initial_options"] = [option]
+        blocks.append(
+            {
+                "type": "actions",
+                "block_id": f"ai_quote_language_{file_uuid or 'all'}_{language_uuid}",
+                "elements": [element],
+            }
+        )
+    blocks.append({"type": "divider"})
+    if pdf_tokens:
+        blocks.append(
+            {
+                "type": "section",
+                "block_id": "ai_quote_pdf_cost_block",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*{_('PDF conversion')}:* "
+                        f"{_format_evaluate_quote_cost(pdf_tokens)}"
+                    ),
+                },
+            }
+        )
+    total_tokens = ai_tokens + pdf_tokens
+    blocks.append(
+        {
+            "type": "section",
+            "block_id": "total_cost_block",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"*{_('Total cost')}:* "
+                    f"{_format_evaluate_quote_cost(total_tokens)}"
+                ),
+            },
+        }
+    )
+    metadata = {"quote_id": quote_id, "quote_kind": quote_kind}
+    if channel_id:
+        metadata["channel_id"] = channel_id
+    if message_ts:
+        metadata["message_ts"] = message_ts
+    return {
+        "type": "modal",
+        "callback_id": AI_QUOTE_ADJUST_CALLBACK_ID,
+        "title": {"type": "plain_text", "text": _("Adjust Request", 23)[:24]},
+        "submit": {"type": "plain_text", "text": _("Accept Quote")},
+        "close": {"type": "plain_text", "text": _("Cancel")},
+        "private_metadata": json.dumps(metadata),
+        "blocks": blocks,
+    }
+
+
 def verify_quote_summary_modal(
     job: dict[str, Any],
     costs: list[dict[str, Any]],
     timestamp: str,
+    channel_id: str | None = None,
+    additional_costs: list[dict[str, Any]] | None = None,
+    metadata: dict[str, Any] | None = None,
+    *,
+    show_quality_discount: bool = True,
+    show_savings: bool = True,
+    embed_additional_costs_in_line_price: bool = False,
+    total_cost_label: str | None = None,
 ) -> dict[str, Any]:
-    blocks = verify_quote_blocks(job, costs)
+    blocks = verify_quote_blocks(
+        job,
+        costs,
+        additional_costs=additional_costs,
+        show_quality_discount=show_quality_discount,
+        show_savings=show_savings,
+        embed_additional_costs_in_line_price=embed_additional_costs_in_line_price,
+        total_cost_label=total_cost_label or "Maximum Total Cost",
+    )
+    private_metadata = {
+        "job_uuid": job["uuid"],
+        "timestamp": timestamp,
+        "channel_id": channel_id,
+    }
+    if metadata:
+        private_metadata.update(metadata)
 
     return {
         "type": "modal",
@@ -972,12 +1118,7 @@ def verify_quote_summary_modal(
         "title": {"type": "plain_text", "text": _("Adjust Request", 23)[:24]},
         "submit": {"type": "plain_text", "text": _("Submit")},
         "close": {"type": "plain_text", "text": _("Cancel")},
-        "private_metadata": json.dumps(
-            {
-                "job_uuid": job["uuid"],
-                "timestamp": timestamp,
-            }
-        ),
+        "private_metadata": json.dumps(private_metadata),
         "blocks": [
             {
                 "type": "section",
