@@ -6,31 +6,25 @@ alwaysApply: false
 
 # Slack Modal Trigger Safety
 
-Slack `trigger_id` values expire in a few seconds. Handlers that open modals must
-call `views.open` before awaited Ray/DB/Redis/Slack I/O.
+Slack `trigger_id` values are time-sensitive. In handlers that open modals with
+`client.views_open(...)`, do not perform external API calls, Slack API calls,
+DB/cache queries, Redis calls, file downloads, or other awaited I/O before the
+modal opens.
 
-## Standard pattern (RAY-72999)
+Open or respond immediately, then do slow work after:
 
-Use the helpers in `app/slack/modal_trigger.py`:
+- Open a lightweight/loading modal first, then call `views_update(...)`.
+- Or respond/post a message immediately and continue work later.
+- Keep deleted/inaccessible Slack file checks in submit/download paths, not
+  modal-open triggers.
 
-1. `ack()`
-2. `view_id = await open_loading_modal(client, body["trigger_id"])`
-3. `await populate_ray_connection(context)` (do **not** use `middleware=[ray_connection]` on these handlers — that I/O runs before the listener)
-4. slow work (`require_ray_client`, pricing, settings, …)
-5. `await safe_views_update(client, view_id, final_or_error_view)`
+Avoid before `views_open(...)`:
 
-`status_modal(...)` / `request_error_modal()` cover login/error outcomes after the
-loading modal is already open.
-
-## Avoid before `views_open(...)`
-
-- `client.files_info(...)` / `get_accessible_slack_files(...)` / `download_file(...)`
+- `client.files_info(...)`
+- `get_accessible_slack_files(...)`
+- `download_file(...)`
 - Ray, Verify, or LanguageCloud API calls
-- Redis/database/settings lookups
-- `middleware=[ray_connection]` on the modal-open action itself
-
-Keep deleted/inaccessible Slack file checks in submit/download paths, not
-modal-open triggers.
+- Redis/database/settings lookups unless already cached in context
 
 When reviewing modal-trigger changes, audit every `await` between `ack()` and
 `views_open(...)`.

@@ -37,13 +37,7 @@ GIT_SSH_COMMAND="ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no
           sh(script: '''
 cd /root/container-build/${APPLICATION}
 GITTAG=$(git rev-parse --short=7 HEAD)
-# Allow layer reuse when the build agent has warm buildah storage.
-# Pass NO_CACHE=true to force a full rebuild.
-if [ "${NO_CACHE:-false}" = "true" ]; then
-  buildah build --no-cache -t strakertech/${APPLICATION}:$TAG-latest -t strakertech/${APPLICATION}:$TAG-$GITTAG .
-else
-  buildah build -t strakertech/${APPLICATION}:$TAG-latest -t strakertech/${APPLICATION}:$TAG-$GITTAG .
-fi
+buildah build --no-cache -t strakertech/${APPLICATION}:$TAG-latest -t strakertech/${APPLICATION}:$TAG-$GITTAG .
           ''')
         }
       }

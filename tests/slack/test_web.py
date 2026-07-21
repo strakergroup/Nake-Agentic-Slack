@@ -345,20 +345,6 @@ class TestUploadFileToSlackMemoryEfficient:
             )
 
     @pytest.mark.asyncio
-    async def test_upload_rejects_empty_file(self, tmp_path):
-        """Slack rejects length <= 1; fail before calling the API."""
-        empty_file = tmp_path / "empty.srt"
-        empty_file.write_text("")
-        mock_client = AsyncMock()
-
-        with pytest.raises(ValueError, match="empty/near-empty"):
-            await upload_file_to_slack_memory_efficient(
-                mock_client, str(empty_file), "C123"
-            )
-
-        mock_client.files_getUploadURLExternal.assert_not_called()
-
-    @pytest.mark.asyncio
     async def test_upload_file_uses_basename(self, tmp_path):
         """Test that filename defaults to basename."""
         test_file = tmp_path / "test.txt"

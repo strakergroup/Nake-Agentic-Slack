@@ -118,7 +118,7 @@ def test_collect_string_entries_extracts_literal_calls(tmp_path):
 
 
 def test_ray_callback_error_templates_are_exportable_literals():
-    strings = _literal_translation_strings(APP_ROOT / "app" / "slack" / "utils.py")
+    strings = _literal_translation_strings(APP_ROOT / "app" / "routers" / "ray.py")
 
     assert "Transcription failed: {error_detail}" in strings
     assert "Translation failed: {error_detail}" in strings
