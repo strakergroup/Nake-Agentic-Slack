@@ -141,6 +141,21 @@ For errors, the same event may carry:
 }
 ```
 
+## Org-billed quotes (no LanguageCloud member)
+
+Quote preflight matches Document MT submit auth (`RAY-80198`):
+
+- Requires a connected workspace **super group**, not a LanguageCloud member.
+- When `ray_connection.client` is missing, `client_id` on
+  `slack:job:machine:translate:quote` is the org
+  `verify_organization_uuid`.
+- PDF trial size limits apply only when a member client is present and marked
+  trial; org-billed posters skip the trial PDF cap.
+
+If the SAQ worker still gated on a member (`no_ray_client`), Slack would post
+“Preparing an AI Translate quote…” and never publish the quote request —
+org-billed users stayed stuck on that message.
+
 ## Accepted Translation
 
 When the user accepts the quote, SRT publishes the existing

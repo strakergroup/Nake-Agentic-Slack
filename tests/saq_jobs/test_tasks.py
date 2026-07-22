@@ -117,9 +117,12 @@ async def test_process_document_mt_quote_preflight_uploads_and_requests_quote():
     ray_client.id_token = "id-token"
     ray_client.id = "client-1"
     ray_client.user_group_id = "group-1"
+    super_group = MagicMock()
+    super_group.id = "group-1"
+    super_group.verify_organization_uuid = "org-uuid"
     ray_connection = MagicMock()
     ray_connection.client = ray_client
-    ray_connection.super_group = []
+    ray_connection.super_group = [super_group]
     fake_slack = MagicMock()
     fake_slack.chat_postMessage = AsyncMock()
 
@@ -178,6 +181,151 @@ async def test_process_document_mt_quote_preflight_uploads_and_requests_quote():
     mock_quote.assert_awaited_once()
     assert mock_quote.await_args.kwargs["quote_id"] == "quote-1"
     assert mock_quote.await_args.kwargs["files"][0]["file_id"] == "grid-1"
+    assert mock_quote.await_args.kwargs["client_id"] == "client-1"
+
+
+@pytest.mark.asyncio
+async def test_process_document_mt_quote_preflight_org_billed_without_member():
+    """Org-billed Document MT quote proceeds when the poster has no LC member link.
+
+    Regression: member-only ``no_ray_client`` left Slack stuck on
+    "Preparing an AI Translate quote..." for org-billed workspaces.
+    """
+    super_group = MagicMock()
+    super_group.id = "group-1"
+    super_group.verify_organization_uuid = "org-uuid"
+    ray_connection = MagicMock()
+    ray_connection.client = None
+    ray_connection.super_group = [super_group]
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+
+    with (
+        patch(
+            "app.auth.connector.get_ray_connection",
+            new=AsyncMock(return_value=ray_connection),
+        ),
+        patch(
+            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
+        ),
+        patch(
+            "app.auth.connector.get_group_mt_engine",
+            new=AsyncMock(return_value="google"),
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.pptx")),
+        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
+        patch(
+            "app.ray.utils.upload_to_file_server", new=AsyncMock(return_value="grid-1")
+        ),
+        patch(
+            "app.ray.submissions._hash_file_content_sha256_hex",
+            return_value="hash-1",
+        ),
+        patch("os.path.getsize", return_value=1234),
+        patch(
+            "app.slack.document_mt_quotes.save_document_mt_quote_session",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.api.stream_proxy.send_document_mt_quote_request",
+            new=AsyncMock(),
+        ) as mock_quote,
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("os.path.exists", return_value=False),
+    ):
+        result = await process_document_mt_quote_preflight(
+            _ctx(),
+            quote_id="quote-1",
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.pptx", "size": 1234}],
+            source_language="en",
+            target_languages=["zh-CN"],
+        )
+
+    assert result == {"status": "quote_requested", "file_count": 1}
+    mock_quote.assert_awaited_once()
+    assert mock_quote.await_args.kwargs["client_id"] == "org-uuid"
+
+
+@pytest.mark.asyncio
+async def test_process_document_mt_quote_preflight_requires_super_group():
+    """Unlinked workspaces must not request a Document MT quote."""
+    ray_connection = MagicMock()
+    ray_connection.client = None
+    ray_connection.super_group = []
+
+    with patch(
+        "app.auth.connector.get_ray_connection",
+        new=AsyncMock(return_value=ray_connection),
+    ):
+        result = await process_document_mt_quote_preflight(
+            _ctx(),
+            quote_id="quote-1",
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.pptx", "size": 1234}],
+            source_language="en",
+            target_languages=["zh-CN"],
+        )
+
+    assert result == {"status": "no_super_group"}
+
+
+@pytest.mark.asyncio
+async def test_process_document_mt_submission_org_billed_without_member():
+    """Org-billed Document MT proceeds when the poster has no LC member link."""
+    super_group = MagicMock()
+    super_group.verify_organization_uuid = "org-uuid"
+    ray_connection = MagicMock()
+    ray_connection.client = None
+    ray_connection.super_group = [super_group]
+    record = MagicMock(id=456)
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+
+    with (
+        patch(
+            "app.auth.connector.get_ray_connection",
+            new=AsyncMock(return_value=ray_connection),
+        ),
+        patch(
+            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.pptx")),
+        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
+        patch(
+            "app.ray.utils.upload_to_file_server", new=AsyncMock(return_value="grid-2")
+        ),
+        patch(
+            "app.ray.submissions.check_and_record_submission_async",
+            new=AsyncMock(return_value=(False, record)),
+        ),
+        patch(
+            "app.slack.listener_actions.document_machine_translate", new=AsyncMock()
+        ) as mock_mt,
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("os.path.exists", return_value=False),
+    ):
+        result = await process_document_mt_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.pptx"}],
+            source_language="en",
+            target_languages=["fr"],
+        )
+
+    assert result["status"] == "processed"
+    mock_mt.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -185,9 +333,11 @@ async def test_process_document_mt_submission_uses_cached_quote_file_state():
     ray_client = MagicMock()
     ray_client.is_trial = False
     ray_client.id_token = "id-token"
+    super_group = MagicMock()
+    super_group.verify_organization_uuid = "org-uuid"
     ray_connection = MagicMock()
     ray_connection.client = ray_client
-    ray_connection.super_group = []
+    ray_connection.super_group = [super_group]
     record = MagicMock(id=123)
     fake_slack = MagicMock()
     fake_slack.chat_postMessage = AsyncMock()

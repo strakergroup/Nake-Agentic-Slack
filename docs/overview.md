@@ -11,7 +11,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [Evaluate Quote Confirmation](evaluate-quote-confirmation.md) - Sequential AI → combined QE + Human Translation quote flow for Slack HV, including QE/HT resubmission prevention (RAY-79115)
 - [Media Quote Confirmation](media-quote-confirmation.md) - Quote1 (transcription/embedding) and Quote2 (AI translation after ASR) before media spend
 - [Slack Modal Trigger Safety](slack-modal-trigger-safety.md) - Standard loading-modal pattern for Slack `trigger_id` TTL (RAY-72999)
-- [Document MT without user login](document-mt-without-login.md) - Org-billed Document MT vs channel/shortcut MT; login gates, gaps, and implications (not HT/QE)
+- [Document MT / AI Translate org billing](document-mt-without-login.md) - **Required:** AI Translate (Document MT) supports org/group billing without LC member login; HT/QE must still require login
 - [Changelog](changelog.md) - Includes RAY-80734 Document MT same-language-family submit rejection (`es`↔`es-419`)
 - [VerifyLoop Integration](verifyloop.md) - Configuration, endpoints, modal form, and data flow for the VerifyLoop feature
 - [VerifyLoop Architecture Diagrams](verifyloop-architecture.md) - Visual diagrams of system architecture, auth flow, task pipeline, and component dependencies

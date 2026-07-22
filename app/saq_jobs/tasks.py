@@ -491,9 +491,12 @@ async def process_document_mt_quote_preflight(
         "file_count": len(files),
     }
     ray_connection = await get_ray_connection(user_id, team_id, enterprise_id)
-    if ray_connection is None or ray_connection.client is None:
-        logger.error("Document MT quote preflight has no RAY client", extra=log_extra)
-        return {"status": "no_ray_client"}
+    if ray_connection is None or not ray_connection.super_group:
+        logger.error(
+            "Document MT quote preflight has no connected workspace org",
+            extra=log_extra,
+        )
+        return {"status": "no_super_group"}
 
     bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
     if not bot_token:
@@ -503,12 +506,14 @@ async def process_document_mt_quote_preflight(
         return {"status": "no_bot_token"}
 
     ray_client = ray_connection.client
-    if ray_client.is_trial is None:
+    if ray_client is not None and ray_client.is_trial is None:
         ray_client.is_trial, ray_client.trial_remaining = await get_verify_trial_status(
             ray_client.id_token
         )
     max_pdf_size_bytes = (
-        config.document_mt_pdf_max_size_bytes if ray_client.is_trial else None
+        config.document_mt_pdf_max_size_bytes
+        if ray_client is not None and ray_client.is_trial
+        else None
     )
 
     client = AsyncWebClient(token=bot_token)
@@ -563,12 +568,14 @@ async def process_document_mt_quote_preflight(
             )
             return {"status": "no_valid_files"}
 
-        is_group_id = ray_connection.client is None
-        user_group_id = (
-            ray_connection.super_group[0].id
-            if is_group_id
-            else ray_connection.client.user_group_id
-        )
+        if ray_connection.client is None:
+            user_group_id = ray_connection.super_group[0].id
+            billing_client_id = ray_connection.super_group[0].verify_organization_uuid
+            is_group_id = True
+        else:
+            user_group_id = ray_connection.client.user_group_id
+            billing_client_id = ray_connection.client.id
+            is_group_id = False
         ai_engine = await get_group_mt_engine(user_group_id, is_group_id)
         if len(target_languages) == 1 and target_languages[0].lower() == "fr-ca":
             ai_engine = "microsoft"
@@ -596,7 +603,7 @@ async def process_document_mt_quote_preflight(
                 }
                 for file in uploaded_files
             ],
-            client_id=ray_client.id,
+            client_id=billing_client_id,
             channel_id=channel_id,
             source_language=source_language,
             target_languages=target_languages,
@@ -668,9 +675,11 @@ async def process_document_mt_submission(
         "file_count": len(files),
     }
     ray_connection = await get_ray_connection(user_id, team_id, enterprise_id)
-    if ray_connection is None or ray_connection.client is None:
-        logger.error("Document MT submission has no RAY client", extra=log_extra)
-        return {"status": "no_ray_client"}
+    if ray_connection is None or not ray_connection.super_group:
+        logger.error(
+            "Document MT submission has no connected workspace org", extra=log_extra
+        )
+        return {"status": "no_super_group"}
 
     bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
     if not bot_token:
@@ -678,12 +687,14 @@ async def process_document_mt_submission(
         return {"status": "no_bot_token"}
 
     ray_client = ray_connection.client
-    if ray_client.is_trial is None:
+    if ray_client is not None and ray_client.is_trial is None:
         ray_client.is_trial, ray_client.trial_remaining = await get_verify_trial_status(
             ray_client.id_token
         )
     max_pdf_size_bytes = (
-        config.document_mt_pdf_max_size_bytes if ray_client.is_trial else None
+        config.document_mt_pdf_max_size_bytes
+        if ray_client is not None and ray_client.is_trial
+        else None
     )
 
     client = AsyncWebClient(token=bot_token)
