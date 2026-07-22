@@ -2061,7 +2061,14 @@ async def test_charge_document_mt_happy_path():
     relay = AsyncMock(
         return_value={"transaction_uuid": "txn-1", "pdf_transaction_uuid": "txn-pdf"}
     )
-    with patch("app.auth.connector.log_document_mt_by_client_id", new=relay):
+    link_job = AsyncMock()
+    with (
+        patch("app.auth.connector.log_document_mt_by_client_id", new=relay),
+        patch(
+            "app.saq_jobs.tasks.update_slack_job_transaction_uuid",
+            new=link_job,
+        ),
+    ):
         result = await charge_document_mt(
             _ctx(), client_id="client-1", charge=charge, task_uuid="task-1"
         )
@@ -2072,6 +2079,8 @@ async def test_charge_document_mt_happy_path():
         "pdf_transaction_uuid": "txn-pdf",
     }
     relay.assert_awaited_once_with("client-1", charge)
+    # RAY-80941: document-MT txn is written onto slack_job for report linking.
+    link_job.assert_awaited_once_with("task-1", "txn-1")
 
 
 @pytest.mark.asyncio
