@@ -28,15 +28,15 @@ sequenceDiagram
 
     User->>SRT: Submit Document MT (PDF)
     SRT->>SRT: Upload to GridFS, create slack_job
-    SRT->>Consumer: slack:job:machine:translate:v2
+    SRT->>Consumer: slack:job:machine:translate:v2<br/>(team_id + slack_user_id for org-billed)
     Consumer->>Adobe: PDF → DOCX
     Note over Consumer: Track pdf_conversion_page_count<br/>on the task state (no charge yet)
     Consumer->>Consumer: Extract → MT → merge
     Note over Consumer: Build DocumentTransaction (+ PDF fields);<br/>NO charge — payload rides on the event
-    Consumer->>SRT: verify:slack:document:translated<br/>(carries mt_charge payload)
+    Consumer->>SRT: verify:slack:document:translated<br/>(mt_charge + poster delivery context)
     SRT->>SAQ: slack_upload_mt_result
     SAQ->>User: Upload translated file to Slack
-    SAQ->>SAQ: charge_document_mt (background)
+    SAQ->>SAQ: users.info(poster) then charge_document_mt
     SAQ->>LC: POST /mt/transaction<br/>document MT + combined PDF fee
 ```
 

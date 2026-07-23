@@ -171,6 +171,10 @@ class MtFileRequestSchema(BaseModel):
     original_video_file_name: str | None = None
     quote_id: str | None = None
     preflight_task_uuid: str | None = None
+    # Org-billed Document MT (RAY-80198): poster/workspace for delivery + billing.
+    team_id: str | None = None
+    slack_user_id: str | None = None
+    billing_group_uuid: str | None = None
 
     @model_validator(mode="after")
     def normalize_target_languages(self) -> "MtFileRequestSchema":

@@ -67,6 +67,13 @@ def _safe_unlink(path: str | None) -> None:
         logger.warning("Failed to remove temp file", extra={"path_present": True})
 
 
+def _is_slack_user_id(user_id: str | None) -> bool:
+    """True for Slack member ids (``U…``), not Verify org/member UUIDs."""
+    if not user_id:
+        return False
+    return user_id.startswith("U") and user_id.isalnum()
+
+
 def _alert_gateway_billing_failure(
     exc: BaseException,
     label: str,
@@ -233,19 +240,30 @@ async def slack_upload_mt_result(
             charge = dict(data.mt_charge)
             if slack_user.ray_user_group_id:
                 charge["group_uuid"] = slack_user.ray_user_group_id
-            try:
-                user_info = await client.users_info(user=slack_user.user_id)
-                profile = (user_info.get("user") or {}).get("profile") or {}
-                if profile.get("email"):
-                    charge["email"] = profile["email"]
-                charge["client_name"] = (
-                    profile.get("real_name")
-                    or profile.get("real_name_normalized")
-                    or charge.get("client_name")
-                )
-            except Exception as e:
-                notify_exception(
-                    e, "Failed to resolve poster profile for document MT billing"
+            poster_user_id = data.slack_user_id or slack_user.user_id
+            if _is_slack_user_id(poster_user_id):
+                try:
+                    user_info = await client.users_info(user=poster_user_id)
+                    profile = (user_info.get("user") or {}).get("profile") or {}
+                    if profile.get("email"):
+                        charge["email"] = profile["email"]
+                    charge["client_name"] = (
+                        profile.get("real_name")
+                        or profile.get("real_name_normalized")
+                        or charge.get("client_name")
+                    )
+                except Exception as e:
+                    # Best-effort enrichment for usage reports; do not page on
+                    # deleted/deactivated posters (user_not_found).
+                    logger.warning(
+                        "Failed to resolve poster profile for document MT billing",
+                        extra={**log_extra, "poster_user_id": poster_user_id},
+                        exc_info=e,
+                    )
+            else:
+                logger.info(
+                    "Skipping poster profile lookup; no Slack user id on org-billed MT",
+                    extra={**log_extra, "poster_user_id": poster_user_id},
                 )
 
             idempotency_key = charge.get("idempotency_key") or data.task_uuid

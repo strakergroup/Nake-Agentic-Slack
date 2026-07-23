@@ -1231,6 +1231,119 @@ async def test_slack_upload_mt_result_no_charge_when_absent(slack_user):
 
 
 @pytest.mark.asyncio
+async def test_slack_upload_mt_result_uses_event_poster_id_for_billing(slack_user):
+    """Org fallback may leave user_id as org uuid; prefer event slack_user_id."""
+    charge = _mt_charge()
+    org_uuid = str(uuid4())
+    slack_user.user_id = org_uuid
+    slack_user.ray_user_group_id = "billing-group-1"
+    success_data = {
+        "task_uuid": str(uuid4()),
+        "file_id": "file-1",
+        "tokens": 0,
+        "client_id": slack_user.ray_client_id,
+        "target_language": "et",
+        "channel_id": "D123",
+        "mt_charge": charge,
+        "team_id": "T123",
+        "slack_user_id": "UPOSTER1",
+    }
+    fake_slack = MagicMock()
+    fake_slack.users_info = AsyncMock(
+        return_value={
+            "user": {
+                "profile": {
+                    "email": "poster@example.com",
+                    "real_name": "Poster Name",
+                }
+            }
+        }
+    )
+    with (
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
+        ) as mock_resolve,
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch("app.saq_jobs.tasks.update_slack_job", new=AsyncMock()),
+        patch(
+            "app.saq_jobs.tasks.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": "/tmp/foo", "file_name": "out.docx"}),
+        ),
+        patch("app.saq_jobs.tasks.delete_from_file_server", new=AsyncMock()),
+        patch(
+            "app.slack.listener_actions.get_language_name",
+            new=AsyncMock(return_value="Estonian"),
+        ),
+        patch("app.slack.web.upload_file_to_slack_memory_efficient", new=AsyncMock()),
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch(
+            "app.saq_jobs.dispatch.enqueue_document_mt_charge", new=AsyncMock()
+        ) as mock_enqueue,
+    ):
+        result = await slack_upload_mt_result(_ctx(), success_data=success_data)
+
+    assert result["status"] == "delivered"
+    mock_resolve.assert_awaited_once_with(
+        slack_user.ray_client_id,
+        team_id="T123",
+        slack_user_id="UPOSTER1",
+    )
+    fake_slack.users_info.assert_awaited_once_with(user="UPOSTER1")
+    assert mock_enqueue.await_args.kwargs["charge"]["email"] == "poster@example.com"
+
+
+@pytest.mark.asyncio
+async def test_slack_upload_mt_result_skips_profile_lookup_for_org_uuid(slack_user):
+    """Org uuid is not a Slack user id — skip users_info and still charge."""
+    charge = _mt_charge()
+    org_uuid = str(uuid4())
+    slack_user.user_id = org_uuid
+    slack_user.ray_user_group_id = "billing-group-1"
+    success_data = {
+        "task_uuid": str(uuid4()),
+        "file_id": "file-1",
+        "tokens": 0,
+        "client_id": slack_user.ray_client_id,
+        "target_language": "et",
+        "channel_id": "D123",
+        "mt_charge": charge,
+    }
+    fake_slack = MagicMock()
+    fake_slack.users_info = AsyncMock()
+    with (
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch("app.saq_jobs.tasks.update_slack_job", new=AsyncMock()),
+        patch(
+            "app.saq_jobs.tasks.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": "/tmp/foo", "file_name": "out.docx"}),
+        ),
+        patch("app.saq_jobs.tasks.delete_from_file_server", new=AsyncMock()),
+        patch(
+            "app.slack.listener_actions.get_language_name",
+            new=AsyncMock(return_value="Estonian"),
+        ),
+        patch("app.slack.web.upload_file_to_slack_memory_efficient", new=AsyncMock()),
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch(
+            "app.saq_jobs.dispatch.enqueue_document_mt_charge", new=AsyncMock()
+        ) as mock_enqueue,
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
+    ):
+        result = await slack_upload_mt_result(_ctx(), success_data=success_data)
+
+    assert result["status"] == "delivered"
+    fake_slack.users_info.assert_not_awaited()
+    mock_notify.assert_not_called()
+    mock_enqueue.assert_awaited_once()
+    assert "email" not in mock_enqueue.await_args.kwargs["charge"]
+
+
+@pytest.mark.asyncio
 async def test_charge_document_mt_happy_path():
     """Relays the prepared charge to the gateway and surfaces both txn uuids."""
     charge = _mt_charge()

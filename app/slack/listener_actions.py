@@ -1220,6 +1220,9 @@ async def document_machine_translate(
                 "submission_ids": submission_ids,
                 "quote_id": quote_id,
                 "preflight_task_uuid": preflight_task_uuid,
+                "team_id": context.get("team_id"),
+                "slack_user_id": context.get("user_id"),
+                "billing_group_uuid": billing_group_uuid,
             }
         )
         task_uuid = await create_slack_job(task_data, status="pending")

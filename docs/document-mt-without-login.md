@@ -98,12 +98,13 @@ No billing runs inside int-slack-verify-consumer on the Slack path; the consumer
 | Area | Change |
 |------|--------|
 | Listeners | `require_ray_client(allow_org_billing=True)` allows submit when `super_group` exists (HT/QE still use member-only default) |
-| `document_machine_translate` | Uses org `verify_organization_uuid` as `client_id` when no member; passes `team_id`, `slack_user_id`, `billing_group_uuid` |
+| `document_machine_translate` | Uses org `verify_organization_uuid` as `client_id` when no member; stamps `team_id`, `slack_user_id`, `billing_group_uuid` on `MtFileRequestSchema` / `slack:job:machine:translate:v2` |
+| `MtFileRequestSchema` | Carries org-billed delivery fields (`team_id`, `slack_user_id`, `billing_group_uuid`) so verify-consumer can echo them on `document:translated` |
 | `process_document_mt_quote_preflight` | Same super-group gate; bills org uuid on `translate:quote` when no member (avoids stuck “Preparing an AI Translate quote…”) |
 | `process_document_mt_submission` | Proceeds without a linked member when the workspace has a super group |
-| `resolve_slack_delivery_user` | Delivery/callback auth falls back to `get_slack_org` for org-billed jobs |
+| `resolve_slack_delivery_user` | Delivery/callback auth falls back to `get_slack_org` for org-billed jobs; overrides `user_id` with event `slack_user_id` when present |
 | `log_document_mt_by_client_id` | `allow_group_fallback=True` for `/mt/transaction` |
-| `slack_upload_mt_result` | Enriches charge with poster `email`/`client_name` and billing `group_uuid` |
+| `slack_upload_mt_result` | Enriches charge with poster `email`/`client_name` via `users.info` only when a Slack `U…` id is available; skips org UUID lookups |
 | int-slack-verify-consumer | Group-token fallback on balance checks; delivery context on success/error events |
 
 ### Original gap analysis (pre-implementation)

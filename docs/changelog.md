@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: RAY-79115 / RAY-80198 — org-billed Document MT (poster not logged in) now stamps `team_id` / `slack_user_id` / `billing_group_uuid` on `MtFileRequestSchema` so delivery and billing enrichment use the Slack poster id instead of the Verify org UUID; `users.info` is skipped when no Slack user id is present (Wade Norman, 2026-07-23)
 - [Fixed]: RAY-79115 / RAY-80198 — Document MT quote preflight and submission SAQ workers again require a connected workspace super group (not a LanguageCloud member), bill the org uuid when the poster has no member link, and no longer stall after “Preparing an AI Translate quote…” for org-billed users (Wade Norman, 2026-07-23)
 - [Fixed]: RAY-79115 — media pipeline errors, empty translation output, failed Slack delivery, and quote cancel now mark submissions `failed`; `completed` only after successful delivery (Wade Norman, 2026-07-20)
 - [Fixed]: RAY-79115 — media AI-translate no longer posts “download below/above” when Slack upload fails; refuse empty/near-empty files (length ≤ 1) before `files.getUploadURLExternal` (Wade Norman, 2026-07-20)

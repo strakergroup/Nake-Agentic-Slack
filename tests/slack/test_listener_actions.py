@@ -88,6 +88,9 @@ class TestDocumentMachineTranslate:
         assert task_data.target_languages == ["fr", "de"]
         assert task_data.submission_ids == {"fr": 101, "de": 102}
         assert task_data.submission_id == 101
+        assert task_data.team_id == context["team_id"]
+        assert task_data.slack_user_id == context["user_id"]
+        assert task_data.billing_group_uuid == ray_client.user_group_id
 
         assert len(fake_http_client.posts) == 1
         event_data = fake_http_client.posts[0]["json"]["data"]
@@ -96,6 +99,59 @@ class TestDocumentMachineTranslate:
         assert event_data["target_language"] == "fr"
         assert event_data["target_languages"] == ["fr", "de"]
         assert event_data["submission_ids"] == {"fr": 101, "de": 102}
+        assert event_data["team_id"] == context["team_id"]
+        assert event_data["slack_user_id"] == context["user_id"]
+        assert event_data["billing_group_uuid"] == ray_client.user_group_id
+
+    @pytest.mark.asyncio
+    async def test_org_billed_without_member_stamps_poster_delivery_context(
+        self, context
+    ):
+        """Org-billed Document MT must carry poster ids for delivery/billing."""
+        from app.auth.connector import RayConnection
+
+        fake_http_client = _FakeAsyncClient()
+        org_uuid = str(uuid4())
+        super_group = MagicMock()
+        super_group.id = str(uuid4())
+        super_group.verify_organization_uuid = org_uuid
+        context["ray"] = RayConnection(super_group=[super_group], client=None)
+
+        with (
+            patch(
+                "app.slack.listener_actions.get_group_mt_engine",
+                new_callable=AsyncMock,
+                return_value="google",
+            ),
+            patch(
+                "app.slack.listener_actions.create_slack_job",
+                new_callable=AsyncMock,
+                return_value="task-org-1",
+            ) as create_job,
+            patch(
+                "app.slack.listener_actions.httpx.AsyncClient",
+                return_value=fake_http_client,
+            ),
+        ):
+            await document_machine_translate(
+                context,
+                "gridfs-file-1",
+                "en",
+                ["et"],
+                {"et": 6614},
+            )
+
+        task_data = create_job.await_args.args[0]
+        assert task_data.client_id == org_uuid
+        assert task_data.team_id == context["team_id"]
+        assert task_data.slack_user_id == context["user_id"]
+        assert task_data.billing_group_uuid == super_group.id
+
+        event_data = fake_http_client.posts[0]["json"]["data"]
+        assert event_data["client_id"] == org_uuid
+        assert event_data["team_id"] == context["team_id"]
+        assert event_data["slack_user_id"] == context["user_id"]
+        assert event_data["billing_group_uuid"] == super_group.id
 
 
 class TestCreateServiceLanguageMapping:
