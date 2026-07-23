@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: RAY-80562 — Slack Direct Login reactivates an existing inactive LC member (`obj_m_member.active=1`) before linking Slack, so deactivated CBN users no longer see "Your connected account could not be determined." (Wade Norman, 2026-07-24)
 - [Fixed]: RAY-80734 — Document MT modal rejects same-language-family source/target pairs (e.g. `es`→`es-419`, `fr`→`fr-CA`) with an inline `target_langs` error, matching Evaluate family validation so regional dialect pairs are not submitted or billed (Wade Norman, 2026-07-15)
 - [Changed]: RAY-80198 — Human Translation login uses the `HUMAN_TRANSLATION` prompt variant and posts ephemerally so the New Job chooser message is not replaced when login is required (Wade Norman, 2026-07-07)
 - [Changed]: RAY-80198 — DM/app-mention file uploads and `mt to` direct MT now use the same org-billed access as channel/document MT (`require_ray_client(allow_org_billing=True)`); unlinked workspaces still get login; file uploads no longer fall through to Watson when access is denied (Wade Norman, 2026-07-07)

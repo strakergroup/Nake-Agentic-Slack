@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-80562 — Slack Direct Login reactivates an existing inactive LC member (`obj_m_member.active=1`) before linking Slack, so deactivated CBN users no longer see "Your connected account could not be determined." (Wade Norman, 2026-07-24)
 - [Fixed]: RAY-80734 — Slack auto-translate language list replaces bare `Portuguese (pt)` with `Portuguese (Portugal) (pt-pt)` so it no longer aliases to the same Brazil catalog row as `pt-BR` (Wade Norman, 2026-07-16)
 - [Changed]: RAY-80512 — removed new-post bot debounce; separate channel messages each translate; edit coalescing via generation counter on `message_changed` only (Wade Norman, 2026-07-02)
 - [Fixed]: RAY-80512 — bot channel auto-translate now skips placeholder-only messages (emoji tokens, bare ellipsis `...`/`…`, punctuation, Unicode emoji), debounces bursty bot posts, discards stale MT callbacks via edit generation, excludes edits from the bot rate limit, and writes the translation reply cache synchronously (Wade Norman, 2026-07-02)
