@@ -12,6 +12,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [Media Quote Confirmation](media-quote-confirmation.md) - Quote1 (transcription/embedding) and Quote2 (AI translation after ASR) before media spend
 - [Slack Modal Trigger Safety](slack-modal-trigger-safety.md) - Standard loading-modal pattern for Slack `trigger_id` TTL (RAY-72999)
 - [Document MT / AI Translate org billing](document-mt-without-login.md) - **Required:** AI Translate (Document MT) supports org/group billing without LC member login; HT/QE must still require login
+- [Changelog](changelog.md) - Includes RAY-80734 Document MT same-language-family submit rejection (`es`↔`es-419`)
 - [Direct Login member reactivation](direct-login-reactivate.md) - RAY-80562: re-enable inactive LC members on Slack Direct Login
 - [VerifyLoop Integration](verifyloop.md) - Configuration, endpoints, modal form, and data flow for the VerifyLoop feature
 - [VerifyLoop Architecture Diagrams](verifyloop-architecture.md) - Visual diagrams of system architecture, auth flow, task pipeline, and component dependencies
@@ -25,7 +26,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [Media translation empty upload](media-translation-empty-upload.md) - RAY-79115 — do not claim success when Slack upload fails / file is empty
 - [Media submission status](media-submission-status.md) - RAY-79115 — fail/complete `slack_file_translation_submissions` on media pipeline outcomes
 - [Container Build Speed](container-build-speed.md) - Jenkins/Buildah image build caching and slim ffmpeg install
-- [Changelog](changelog/changelog.md) - Record of all changes to the codebase (single consolidated changelog)
+- [Changelog](changelog.md) - Record of all changes to the codebase
 
 ## Unreleased
 
