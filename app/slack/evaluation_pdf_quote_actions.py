@@ -138,6 +138,7 @@ async def accept_pdf_evaluate_quote(
                 selected_files,
                 selected_pairs,
             ),
+            quote_id=quote_id,
         )
         await update_pdf_evaluate_quote_session(
             quote_id,

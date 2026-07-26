@@ -7,6 +7,7 @@ lookup, slack_job updates) are mocked so the tests run hermetically.
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -556,6 +557,197 @@ async def test_process_evaluation_submission_pdf_posts_prequote_before_conversio
     assert mock_save.await_args.kwargs["pdf_page_count"] == 3
     assert mock_save.await_args.kwargs["ai_token_estimate"] == 4
     mock_update.assert_awaited_once_with("quote-1", message_ts="123.456")
+
+
+def _enter_accepted_pdf_patches(
+    stack: ExitStack,
+    ray_client,
+    fake_slack,
+    *,
+    download_paths: list[str],
+) -> None:
+    """Stub the I/O boundary for an already-accepted evaluate submission."""
+    for patcher in (
+        patch(
+            "app.auth.connector.get_ray_client", new=AsyncMock(return_value=ray_client)
+        ),
+        patch(
+            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch(
+            "app.slack.web.download_file",
+            new=AsyncMock(side_effect=list(download_paths)),
+        ),
+        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
+        patch(
+            "app.api.verify.get_verify_languages",
+            new=AsyncMock(
+                return_value=[
+                    {"uuid": "src", "code": "en", "name": "English"},
+                    {"uuid": "lang-1", "code": "fr", "name": "French"},
+                ]
+            ),
+        ),
+        patch(
+            "app.ray.submissions.check_and_record_evaluate_submission_async",
+            new=AsyncMock(return_value=(False, MagicMock(id=42))),
+        ),
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("os.path.exists", return_value=False),
+    ):
+        stack.enter_context(patcher)
+
+
+@pytest.mark.asyncio
+async def test_process_evaluation_submission_pdf_accept_keeps_the_pdf():
+    """A PDF accept must not drop the PDF from its own batch.
+
+    The accept path keys selections on the name Verify sees after conversion
+    (``a.docx``) while the Slack title is still ``a.pdf``. Matching the raw
+    title discarded every PDF and then published an empty job, which Verify
+    rejected with a 400 and left the quote stuck on "converting".
+    """
+    ray_client = MagicMock()
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+
+    with ExitStack() as stack:
+        _enter_accepted_pdf_patches(
+            stack, ray_client, fake_slack, download_paths=["/tmp/a.pdf"]
+        )
+        mock_publish = stack.enter_context(
+            patch(
+                "app.slack.evaluation_submissions.publish_pdf_evaluate_convert",
+                new=AsyncMock(),
+            )
+        )
+        result = await process_evaluation_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.pdf", "size": 1000}],
+            target_langs_uuid=["lang-1"],
+            reference="ref",
+            source_lang_uuid="src",
+            workflow_uuid=None,
+            job_notes="",
+            preaccepted_ai_translation_quote=True,
+            prequote_message_ts="123.456",
+            ai_translation_filename_and_languages=["a.docx:lang-1"],
+            quote_id="quote-1",
+        )
+
+    assert result == {"status": "submitted", "file_count": 1, "duplicate_count": 0}
+    mock_publish.assert_awaited_once()
+    kwargs = mock_publish.await_args.kwargs
+    assert kwargs["input_files"] == ["/tmp/a.pdf"]
+    # int-slack-verify-consumer keys conversion off the raw .pdf name.
+    assert kwargs["file_titles"] == ["a.pdf"]
+    assert kwargs["target_langs_uuid"] == ["lang-1"]
+    # Verify sees the converted name, so the pairs must use it.
+    assert kwargs["ai_translation_filename_and_languages"] == ["a.docx:lang-1"]
+
+
+@pytest.mark.asyncio
+async def test_process_evaluation_submission_mixed_pdf_and_text_keeps_both():
+    """A PDF submitted alongside a non-PDF must not be silently dropped."""
+    ray_client = MagicMock()
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+
+    with ExitStack() as stack:
+        _enter_accepted_pdf_patches(
+            stack, ray_client, fake_slack, download_paths=["/tmp/a.pdf", "/tmp/b.txt"]
+        )
+        mock_publish = stack.enter_context(
+            patch(
+                "app.slack.evaluation_submissions.publish_pdf_evaluate_convert",
+                new=AsyncMock(),
+            )
+        )
+        result = await process_evaluation_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[
+                {"id": "F1", "title": "a.pdf", "size": 1000},
+                {"id": "F2", "title": "b.txt", "size": 10},
+            ],
+            target_langs_uuid=["lang-1"],
+            reference="ref",
+            source_lang_uuid="src",
+            workflow_uuid=None,
+            job_notes="",
+            preaccepted_ai_translation_quote=True,
+            prequote_message_ts="123.456",
+            ai_translation_filename_and_languages=["a.docx:lang-1", "b.txt:lang-1"],
+            quote_id="quote-1",
+        )
+
+    assert result["status"] == "submitted"
+    assert result["file_count"] == 2
+    kwargs = mock_publish.await_args.kwargs
+    assert kwargs["input_files"] == ["/tmp/a.pdf", "/tmp/b.txt"]
+    assert kwargs["file_titles"] == ["a.pdf", "b.txt"]
+    assert sorted(kwargs["ai_translation_filename_and_languages"]) == [
+        "a.docx:lang-1",
+        "b.txt:lang-1",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_process_evaluation_submission_refuses_to_publish_empty_batch():
+    """Never publish a job with no files or targets; restore the quote instead."""
+    ray_client = MagicMock()
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+
+    with ExitStack() as stack:
+        _enter_accepted_pdf_patches(
+            stack, ray_client, fake_slack, download_paths=["/tmp/a.pdf"]
+        )
+        mock_publish = stack.enter_context(
+            patch(
+                "app.slack.evaluation_submissions.publish_pdf_evaluate_convert",
+                new=AsyncMock(),
+            )
+        )
+        mock_restore = stack.enter_context(
+            patch(
+                "app.slack.pdf_evaluate_quotes.restore_pdf_evaluate_quote_for_retry",
+                new=AsyncMock(return_value=True),
+            )
+        )
+        result = await process_evaluation_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.pdf", "size": 1000}],
+            target_langs_uuid=["lang-1"],
+            reference="ref",
+            source_lang_uuid="src",
+            workflow_uuid=None,
+            job_notes="",
+            preaccepted_ai_translation_quote=True,
+            prequote_message_ts="123.456",
+            ai_translation_filename_and_languages=["someone-elses-file.docx:lang-1"],
+            quote_id="quote-1",
+        )
+
+    assert result == {"status": "nothing_to_submit"}
+    mock_publish.assert_not_awaited()
+    mock_restore.assert_awaited_once()
+    assert mock_restore.await_args.kwargs["quote_id"] == "quote-1"
+    assert mock_restore.await_args.kwargs["message_ts"] == "123.456"
+    fake_slack.chat_postMessage.assert_awaited()
+    assert fake_slack.chat_postMessage.await_args.kwargs["channel"] == "U1"
 
 
 @pytest.mark.asyncio

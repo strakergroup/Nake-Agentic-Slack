@@ -898,6 +898,7 @@ async def process_evaluation_submission(
     preaccepted_ai_translation_quote: bool = False,
     prequote_message_ts: str | None = None,
     ai_translation_filename_and_languages: list[str] | None = None,
+    quote_id: str | None = None,
 ) -> dict[str, Any]:
     """Durable quality-evaluation / human-translation submission processing."""
     from slack_sdk.web.async_client import AsyncWebClient
@@ -917,6 +918,7 @@ async def process_evaluation_submission(
     from app.ray.utils import is_ibm_enterprise, validate_file
     from app.slack.evaluation_ai_adjustment import (
         estimated_pdf_file_language_costs,
+        evaluate_upload_filename,
     )
     from app.slack.evaluation_submissions import publish_pdf_evaluate_convert
     from app.slack.pdf_evaluate_quotes import (
@@ -924,6 +926,7 @@ async def process_evaluation_submission(
         PDF_EVALUATE_QUOTE_ADJUST_ACTION_ID,
         estimate_pdf_evaluate_ai_tokens,
         pdf_page_count_from_file,
+        restore_pdf_evaluate_quote_for_retry,
         save_pdf_evaluate_quote_session,
         update_pdf_evaluate_quote_session,
     )
@@ -1087,9 +1090,13 @@ async def process_evaluation_submission(
         for file_index, (input_file, file_data, file_title) in enumerate(
             zip(input_files, valid_files, file_titles, strict=True)
         ):
+            # Selections are keyed on the name Verify will see, which is the
+            # converted name for a PDF. Matching on the raw Slack title drops
+            # every PDF from the batch.
+            upload_title = evaluate_upload_filename(file_data)
             file_target_uuids: list[str] = []
             for target_lang_uuid in target_langs_uuid:
-                pair_key = f"{file_title}:{target_lang_uuid}"
+                pair_key = f"{upload_title}:{target_lang_uuid}"
                 if (
                     requested_pair_keys is not None
                     and pair_key not in requested_pair_keys
@@ -1124,7 +1131,7 @@ async def process_evaluation_submission(
             new_submission_ids.append(record.id)
             allowed_file_indexes.add(file_index)
             for target_lang_uuid in file_target_uuids:
-                allowed_pairs.append(f"{file_title}:{target_lang_uuid}")
+                allowed_pairs.append(f"{upload_title}:{target_lang_uuid}")
                 if target_lang_uuid not in seen_lang_uuids:
                     seen_lang_uuids.add(target_lang_uuid)
                     allowed_lang_uuids.append(target_lang_uuid)
@@ -1169,6 +1176,36 @@ async def process_evaluation_submission(
         # Always pass explicit pairs when any file was filtered by Adjust or
         # per-file dedupe so remaining files keep their intended target sets.
         submit_ai_pairs = allowed_pairs or None
+
+        if not submit_input_files or not submit_target_langs:
+            # Publishing here would send an empty job that Verify rejects with a
+            # 400, leaving the quote stuck on "converting" with nothing running.
+            logger.error(
+                "Evaluation submission resolved to no files or targets; refusing "
+                "to publish",
+                extra={
+                    **log_extra,
+                    "requested_pair_count": len(requested_pair_keys or ()),
+                    "duplicate_count": len(duplicate_submissions),
+                },
+            )
+            _mark_new_submissions_failed()
+            await restore_pdf_evaluate_quote_for_retry(
+                client,
+                quote_id=quote_id,
+                channel_id=channel_id,
+                message_ts=prequote_message_ts,
+                is_ibm=is_ibm_enterprise(enterprise_id),
+            )
+            await client.chat_postMessage(
+                channel=user_id,
+                text=_(
+                    "We could not start your translation because none of the "
+                    "selected files and languages could be matched. Please try "
+                    "submitting again."
+                ),
+            )
+            return {"status": "nothing_to_submit"}
 
         if has_pdf:
             await publish_pdf_evaluate_convert(

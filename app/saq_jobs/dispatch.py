@@ -179,6 +179,7 @@ async def enqueue_evaluation_submission(
     preaccepted_ai_translation_quote: bool = False,
     prequote_message_ts: str | None = None,
     ai_translation_filename_and_languages: list[str] | None = None,
+    quote_id: str | None = None,
 ) -> None:
     """Enqueue durable quality-evaluation / human-translation submission processing."""
     key = "process_evaluation_submission:" + _stable_hash(
@@ -220,6 +221,7 @@ async def enqueue_evaluation_submission(
         preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
         prequote_message_ts=prequote_message_ts,
         ai_translation_filename_and_languages=ai_translation_filename_and_languages,
+        quote_id=quote_id,
     )
 
 

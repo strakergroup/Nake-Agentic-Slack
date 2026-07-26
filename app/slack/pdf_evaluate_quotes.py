@@ -186,3 +186,43 @@ async def update_pdf_evaluate_quote_message(
         text=message.text,
         blocks=message.blocks,
     )
+
+
+async def restore_pdf_evaluate_quote_for_retry(
+    client: AsyncWebClient,
+    *,
+    quote_id: str | None,
+    channel_id: str | None,
+    message_ts: str | None,
+    is_ibm: bool = False,
+    status_message: str | None = None,
+) -> bool:
+    """Return an accepted PDF quote to an acceptable state after a failed submit.
+
+    The accept handler stages the quote and strips its buttons before handing
+    off to the durable submission job. If that job cannot submit anything, the
+    message otherwise sits on "Converting PDF..." forever with no way to retry.
+    """
+    if not quote_id:
+        return False
+    session = await get_pdf_evaluate_quote_session(quote_id)
+    if not session:
+        return False
+
+    await update_pdf_evaluate_quote_session(quote_id, stage=STAGE_AWAITING_ACCEPT)
+    if not channel_id or not message_ts:
+        return False
+
+    await update_pdf_evaluate_quote_message(
+        client,
+        channel_id=channel_id,
+        message_ts=message_ts,
+        quote_id=quote_id,
+        ai_token_estimate=int(session.get("ai_token_estimate") or 0),
+        pdf_page_count=int(session.get("pdf_page_count") or 0),
+        actions=True,
+        status_message=status_message
+        or _("We could not start this translation. Please try again."),
+        is_ibm=is_ibm,
+    )
+    return True
