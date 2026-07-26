@@ -1106,6 +1106,27 @@ async def log_new_user_info(user):
     await execute(sql, async_engines["ray_integration"], commit_after=True)
 
 
+async def reactivate_member_for_direct_login(member_id: str) -> None:
+    """Re-enable an inactive LC member when they complete Slack Direct Login.
+
+    CBN cleanup may set ``active=0`` on auto-registered Slack users. Direct Login
+    recreates the Slack link but ``get_ray_client`` requires ``mem.active = 1``,
+    so inactive members must be reactivated here or login appears to fail with
+    "Your connected account could not be determined." Soft-deleted members are
+    left unchanged.
+    """
+    sql = text(
+        """
+        UPDATE obj_m_member
+        SET active = 1, email_active = 1, modified = now()
+        WHERE obj_uuid = :obj_uuid
+        AND is_deleted = 0
+        AND (active = 0 OR active IS NULL OR email_active = 0 OR email_active IS NULL)
+        """
+    ).bindparams(obj_uuid=member_id)
+    await execute(sql, async_engines["sitemanager"], commit_after=True)
+
+
 async def connect_ray_account_sso(
     user_id: str,
     team_id: str,
@@ -1172,6 +1193,7 @@ async def connect_ray_account_sso(
             raise Exception("Member ID not found")
         member_id = result.obj_uuid
 
+        await reactivate_member_for_direct_login(member_id)
         await create_client_access_tokens(client_id=member_id, type="public")
         await create_slack_deltaray_link_sso(
             user_data=json.dumps(slack_data), member_id=member_id
