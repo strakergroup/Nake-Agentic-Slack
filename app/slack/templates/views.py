@@ -1060,8 +1060,7 @@ def evaluation_ai_quote_adjust_modal(
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    f"*{_('Total cost')}:* "
-                    f"{_format_evaluate_quote_cost(total_tokens)}"
+                    f"*{_('Total cost')}:* {_format_evaluate_quote_cost(total_tokens)}"
                 ),
             },
         }
