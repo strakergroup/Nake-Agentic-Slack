@@ -42,6 +42,7 @@ from app.slack.media_quotes import (
     media_quote_lock_key,
     update_media_quote_session,
 )
+from app.slack.middleware import require_ray_client
 from app.slack.templates.messages import (
     RequiresMtTokenAdminMessage,
     RequiresMtTokenMessage,
@@ -132,11 +133,15 @@ async def _create_asr_from_quote_session(
     pipeline_type_for_db: str,
     extra_data: dict[str, Any],
 ) -> str:
-    assert context["ray"] is not None
-    assert context["ray"].client is not None
+    ray = context.get("ray")
+    ray_client = ray.client if ray is not None else None
+    if ray_client is None:
+        raise ValueError(
+            "A connected LanguageCloud member is required to start media processing"
+        )
 
     task_data = TranscriptionTaskData(
-        client_id=context["ray"].client.id,
+        client_id=ray_client.id,
         file_name=session["file_name"],
         download_url=session["download_url"],
         app_token=client.token or "",
@@ -148,7 +153,7 @@ async def _create_asr_from_quote_session(
         sandbox=False,
     )
     asr_task = ASRTask(
-        member_uuid=context["ray"].client.id,
+        member_uuid=ray_client.id,
         event_name="sup-subtitle-ai:media:asr",
         app_source="slack",
         service="azure",
@@ -251,6 +256,10 @@ async def accept_media_quote(
     try:
         required_tokens = int(session.get("total_tokens") or 0)
         if not await _require_ai_token_balance(context, client, required_tokens):
+            return
+        # Media processing bills a LanguageCloud member, so prompt for login
+        # rather than failing inside the ASR task builder.
+        if not await require_ray_client(context):
             return
 
         pipeline_kind = session["pipeline_kind"]

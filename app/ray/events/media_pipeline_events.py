@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
@@ -42,7 +43,11 @@ from app.slack.media_quotes import (
     update_media_quote_session,
 )
 from app.slack.select_options import _get_languages_cached
-from app.slack.templates.messages import JobTranscribedEventMessage
+from app.slack.templates.messages import (
+    JobTranscribedEventMessage,
+    MediaEmbeddingPartialMessage,
+    MediaTranslationPartialMessage,
+)
 from app.slack.web import upload_file_to_slack_memory_efficient
 from app.transcriber_tasks.tasks import get_transcription_task
 from app.translate import _
@@ -137,6 +142,33 @@ async def get_language_name_by_uuid(lang_uuid: str) -> str:
         return ""
     except Exception:
         return ""
+
+
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
+)
+
+
+async def resolve_language_labels(languages: Sequence[str] | None) -> list[str]:
+    """Resolve target language identifiers to display names.
+
+    sup-subtitle-ai-cons reports `failed_languages` as language codes, but the
+    catalogue is also keyed by UUID, so accept either and never show the user a
+    raw identifier when a name is available.
+    """
+    labels: list[str] = []
+    for language in languages or []:
+        if not language:
+            continue
+        label = ""
+        if _UUID_RE.match(language):
+            label = await get_language_name_by_uuid(language)
+        if not label or label == language:
+            label = get_auto_translate_language_name(language)
+        if not label or label == language:
+            label = await get_language_name(language)
+        labels.append(label or language)
+    return labels
 
 
 async def spend_transcription_credits(
@@ -541,8 +573,13 @@ async def handle_translation_complete(
     thread_ts: str | None,
     task_info: Any,
     auth: Any,
+    failed_languages: Sequence[str] | None = None,
 ) -> int:
     """Upload translated files to Slack.
+
+    `failed_languages` holds target languages that sup-subtitle-ai-cons requested
+    but could not deliver; when set alongside delivered files the user is told
+    which languages are missing instead of only seeing a plain success message.
 
     Returns the number of files successfully uploaded (0 means delivery failed).
     """
@@ -599,11 +636,20 @@ async def handle_translation_complete(
             logger.error(f"Error handling translation complete: {e}")
 
     if uploaded_count:
-        await client.chat_postMessage(
-            channel=channel_id,
-            text=_("Your file is AI translated and can be downloaded above."),
-            thread_ts=effective_thread_ts,
-        )
+        failed_language_names = await resolve_language_labels(failed_languages)
+        if failed_language_names:
+            partial_message = MediaTranslationPartialMessage(failed_language_names)
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=partial_message.text,
+                thread_ts=effective_thread_ts,
+            )
+        else:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=_("Your file is AI translated and can be downloaded above."),
+                thread_ts=effective_thread_ts,
+            )
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
@@ -656,8 +702,13 @@ async def handle_transcribe_embed_pipeline(
     channel_id: str,
     thread_ts: str | None,
     auth: Any = None,
+    failed_languages: Sequence[str] | None = None,
 ) -> bool:
     """Upload embedded media result to Slack.
+
+    `failed_languages` holds subtitle languages that were requested but not
+    embedded; the delivered video is still posted and the user is told which
+    languages are missing.
 
     Returns True when the file was delivered; False on missing file or upload error.
     """
@@ -708,6 +759,15 @@ async def handle_transcribe_embed_pipeline(
             ),
         )
         os.unlink(file_path)
+
+        failed_language_names = await resolve_language_labels(failed_languages)
+        if failed_language_names:
+            partial_message = MediaEmbeddingPartialMessage(failed_language_names)
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=partial_message.text,
+                thread_ts=effective_thread_ts,
+            )
 
         if task_info.pipeline_type in (
             "transcribe_translate_embed",

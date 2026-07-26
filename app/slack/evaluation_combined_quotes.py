@@ -16,6 +16,7 @@ from app.constants import (
     EVALUATE_SERVICE_QUALITY_EVALUATION,
 )
 from app.dependencies import RayEvent, RayEventAuth
+from app.ray.events.evaluate_quote_events import resolve_evaluate_channel_id
 from app.ray.events.logging import post_notification, slack_response_message_ts
 from app.ray.utils import format_slack_usd, is_ibm_enterprise
 from app.slack.evaluation_ai_adjustment import (
@@ -29,7 +30,6 @@ from app.slack.evaluation_ai_adjustment import (
 from app.slack.evaluation_quotes import (
     STAGE_AWAITING_QE,
     get_evaluate_quote_session,
-    resolve_evaluate_channel_id,
     save_evaluate_quote_session,
     update_evaluate_quote_slack_message,
 )

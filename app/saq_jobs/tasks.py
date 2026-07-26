@@ -68,10 +68,13 @@ def _safe_unlink(path: str | None) -> None:
 
 
 def _is_slack_user_id(user_id: str | None) -> bool:
-    """True for Slack member ids (``U…``), not Verify org/member UUIDs."""
+    """True for Slack member ids, not Verify org/member UUIDs.
+
+    Standard workspaces issue ``U…`` ids; Enterprise Grid issues ``W…``.
+    """
     if not user_id:
         return False
-    return user_id.startswith("U") and user_id.isalnum()
+    return user_id.startswith(("U", "W")) and user_id.isalnum()
 
 
 def _alert_gateway_billing_failure(
@@ -626,6 +629,8 @@ async def process_document_mt_quote_preflight(
             source_language=source_language,
             target_languages=target_languages,
             ai_engine=ai_engine,
+            team_id=team_id,
+            slack_user_id=user_id if _is_slack_user_id(user_id) else None,
         )
         return {"status": "quote_requested", "file_count": len(uploaded_files)}
     except Exception:

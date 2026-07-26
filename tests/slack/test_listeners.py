@@ -3874,6 +3874,13 @@ class TestDocumentMtQuoteActions:
         session.update(overrides)
         return session
 
+    @staticmethod
+    def _quote_lock_redis(*, lock_acquired: bool = True):
+        redis_stub = MagicMock()
+        redis_stub.set = AsyncMock(return_value=lock_acquired)
+        redis_stub.delete = AsyncMock()
+        return redis_stub
+
     @pytest.mark.asyncio
     async def test_document_mt_quote_accept_allows_same_user_with_different_click_team(
         self,
@@ -3908,11 +3915,10 @@ class TestDocumentMtQuoteActions:
                 new_callable=AsyncMock,
             ) as mock_enqueue,
             patch(
-                "app.slack.document_mt_quote_actions.redis_conn.set",
-                new_callable=AsyncMock,
-            ) as lock,
+                "app.slack.document_mt_quote_actions.redis_conn",
+                self._quote_lock_redis(),
+            ),
         ):
-            lock.return_value = True
             await document_mt_quote_accept_action(
                 ack=AsyncMock(),
                 client=client,
@@ -3968,6 +3974,100 @@ class TestDocumentMtQuoteActions:
 
         mock_delete.assert_awaited_once_with("quote-123")
         client.chat_update.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_document_mt_quote_accept_failure_restores_acceptable_quote(self):
+        """A failed enqueue must leave the quote acceptable and release the lock."""
+        from app.slack.listeners import document_mt_quote_accept_action
+
+        session = self._quote_session()
+        context = RayContext(
+            {
+                "user_id": "U_SUBMITTER",
+                "team_id": "T_CLICK",
+                "enterprise_id": "E_GRID",
+            }
+        )
+        client = AsyncMock()
+        redis_stub = self._quote_lock_redis()
+
+        with (
+            patch(
+                "app.slack.document_mt_quote_actions.get_document_mt_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+            patch(
+                "app.slack.document_mt_quote_actions.mark_document_mt_quote_accepted",
+                new_callable=AsyncMock,
+                return_value={**session, "status": "accepted"},
+            ),
+            patch(
+                "app.slack.document_mt_quote_actions.enqueue_document_mt_submission",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("queue unavailable"),
+            ),
+            patch(
+                "app.slack.document_mt_quote_actions.update_document_mt_quote_session",
+                new_callable=AsyncMock,
+            ) as mock_update_session,
+            patch("app.slack.document_mt_quote_actions.notify_exception"),
+            patch(
+                "app.slack.document_mt_quote_actions.redis_conn",
+                redis_stub,
+            ),
+        ):
+            await document_mt_quote_accept_action(
+                ack=AsyncMock(),
+                client=client,
+                body={"channel": {"id": "D_SUBMITTER"}, "message": {"ts": "123.456"}},
+                action={"value": "quote-123"},
+                context=context,
+            )
+
+        mock_update_session.assert_awaited_once_with("quote-123", {"status": "quoted"})
+        redis_stub.delete.assert_awaited_once()
+        assert "try again" in client.chat_postMessage.await_args.kwargs["text"].lower()
+
+    @pytest.mark.asyncio
+    async def test_document_mt_quote_cancel_ignores_already_accepted_quote(self):
+        """A stale Cancel click must not delete a session whose job is in flight."""
+        from app.slack.listeners import document_mt_quote_cancel_action
+
+        context = RayContext(
+            {
+                "user_id": "U_SUBMITTER",
+                "team_id": "T_CLICK",
+                "enterprise_id": "E_GRID",
+            }
+        )
+        client = AsyncMock()
+
+        with (
+            patch(
+                "app.slack.document_mt_quote_actions.get_document_mt_quote_session",
+                new_callable=AsyncMock,
+                return_value=self._quote_session(status="accepted"),
+            ),
+            patch(
+                "app.slack.document_mt_quote_actions.delete_document_mt_quote_session",
+                new_callable=AsyncMock,
+            ) as mock_delete,
+        ):
+            await document_mt_quote_cancel_action(
+                ack=AsyncMock(),
+                client=client,
+                body={"channel": {"id": "D_SUBMITTER"}, "message": {"ts": "123.456"}},
+                action={"value": "quote-123"},
+                context=context,
+            )
+
+        mock_delete.assert_not_awaited()
+        client.chat_update.assert_not_awaited()
+        assert (
+            "no longer be cancelled"
+            in client.chat_postMessage.await_args.kwargs["text"]
+        )
 
     @pytest.mark.asyncio
     async def test_handle_document_mt_job_unexpected_slack_error_notifies_exception(
@@ -6249,6 +6349,122 @@ class TestHandleVerifyJobSubmission:
                     call_args = mock_submit.call_args
                     assert call_args[1]["job_uuid"] == job_uuid
                     assert call_args[1]["user_id"] == user_id
+
+    @pytest.mark.asyncio
+    async def test_handle_verify_job_submission_qe_failure_restores_message(
+        self, user_id, team_id, ray_client
+    ):
+        """A failed QE accept must leave an actionable message, not "Accepting quote…"."""
+        from uuid import uuid4
+
+        from app.slack.listeners import handle_verify_job_submission
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        job_uuid = "job-123"
+        file_uuid = "file-123"
+        lang_uuid = "lang-123"
+        body = {
+            "view": {
+                "private_metadata": json.dumps(
+                    {
+                        "job_uuid": job_uuid,
+                        "timestamp": "123456.789",
+                        "channel_id": "C123",
+                        "combined_qe_human_quote": True,
+                    }
+                ),
+                "state": {
+                    "values": {
+                        f"verification_checkbox_{lang_uuid}_{file_uuid}": {
+                            "verification_checkbox_action": {
+                                "selected_options": [
+                                    {"value": f"{file_uuid}:{lang_uuid}:10"}
+                                ]
+                            }
+                        }
+                    }
+                },
+            },
+            "user": {"id": user_id},
+        }
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": RayConnection(super_group=[super_group], client=ray_client),
+        }
+        mock_job = {
+            "data": {
+                "uuid": job_uuid,
+                "workflow_uuid": "workflow-123",
+                "target_languages": [{"uuid": lang_uuid, "name": "French"}],
+                "source_files": [
+                    {
+                        "file_uuid": file_uuid,
+                        "filename": "test.txt",
+                        "target_files": [],
+                    }
+                ],
+            }
+        }
+        quote_message = MagicMock(text="quote", blocks=[])
+
+        module = "app.slack.handlers.evaluate_verify"
+        with (
+            patch(
+                f"{module}.redis_conn.set", new_callable=AsyncMock, return_value=True
+            ),
+            patch(f"{module}.redis_conn.delete", new_callable=AsyncMock) as mock_unlock,
+            patch(
+                f"{module}.get_client_evaluation_job",
+                new_callable=AsyncMock,
+                return_value=mock_job,
+            ),
+            patch(
+                f"{module}.get_evaluate_quote_session",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                f"{module}.get_evaluation_job_quote",
+                new_callable=AsyncMock,
+                return_value={"services_costs": {"quality_evaluation": 10}},
+            ),
+            patch(
+                f"{module}.get_job_pricing",
+                new_callable=AsyncMock,
+                return_value={"data": []},
+            ),
+            patch(f"{module}.save_evaluate_quote_session", new_callable=AsyncMock),
+            patch(f"{module}.update_evaluate_quote_stage", new_callable=AsyncMock),
+            patch(
+                f"{module}.combined_human_job_quote_message",
+                return_value=quote_message,
+            ) as mock_message,
+            patch(f"{module}.notify_exception"),
+            patch(
+                f"{module}.proceed_quality_evaluation",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("verify rejected the request"),
+            ),
+        ):
+            await handle_verify_job_submission(
+                context_dict, mock_ack, body=body, client=mock_client
+            )
+
+        mock_unlock.assert_awaited_once()
+        final_message_kwargs = mock_message.call_args_list[-1].kwargs
+        assert final_message_kwargs["actions"] is True
+        assert "error accepting your quote" in final_message_kwargs["status_message"]
+        assert mock_client.chat_update.await_count == 2
 
     @pytest.mark.asyncio
     async def test_handle_verify_job_submission_human_evaluation_workflow(

@@ -23,6 +23,22 @@ class VerifyAPIError(Exception):
         super().__init__(self.message)
 
 
+def is_ambiguous_api_failure(error: BaseException) -> bool:
+    """True when a failed Verify call may still have applied its side effect.
+
+    ``proceed_evaluation_job`` / ``proceed_quality_evaluation`` raise
+    :class:`VerifyAPIError` only for definite 401/402/403 rejections. A read
+    timeout, a dropped connection, or a 5xx leaves the caller unable to tell
+    whether the token debit landed, so the caller must not offer a retry that
+    could charge twice.
+    """
+    if isinstance(error, VerifyAPIError):
+        return False
+    if isinstance(error, httpx.HTTPStatusError):
+        return error.response.status_code >= 500
+    return isinstance(error, httpx.TransportError)
+
+
 async def submit_evaluation_job(
     user: RayClient,
     file_path: list[str],

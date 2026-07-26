@@ -161,12 +161,19 @@ async def send_document_mt_quote_request(
     source_language: str | None,
     target_languages: list[str],
     ai_engine: str,
+    team_id: str | None = None,
+    slack_user_id: str | None = None,
 ) -> None:
     """Request a document MT quote from int-slack-verify-consumer.
 
     The consumer owns document extraction and exact character counting, so this
     app publishes a preflight event instead of estimating quoteable content
     locally.
+
+    ``team_id`` / ``slack_user_id`` mirror ``MtFileRequestSchema``: for an
+    org-billed poster ``client_id`` is the Verify organization uuid, so the
+    echoed quote response needs the Slack poster to reach a real user rather
+    than DM-ing a UUID.
     """
     request_data = {
         "data": {
@@ -179,6 +186,8 @@ async def send_document_mt_quote_request(
             "ai_engine": ai_engine,
             "data_source": "slack",
             "output_stream": "verify:slack:document:quote",
+            "team_id": team_id,
+            "slack_user_id": slack_user_id,
         },
         "source": "Straker Translate for Slack",
     }

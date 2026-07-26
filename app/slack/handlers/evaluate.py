@@ -304,9 +304,18 @@ async def handle_verify_job_modal_open(
                 ),
             )
             return
-        assert context["ray"] is not None
-        assert context["ray"].client is not None
-        job = await get_client_evaluation_job(context["ray"].client, job_uuid)
+        ray_client = context["ray"].client if context["ray"] is not None else None
+        if ray_client is None:
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Sign in required"),
+                    _("Please sign in to LanguageCloud to continue."),
+                ),
+            )
+            return
+        job = await get_client_evaluation_job(ray_client, job_uuid)
         session = await get_evaluate_quote_session(job_uuid)
         quote_snapshot = (session or {}).get("quote_snapshot") or {}
         is_combined_qe_human_quote = bool(
@@ -323,7 +332,7 @@ async def handle_verify_job_modal_open(
         langs = [lang["uuid"] for lang in job["data"]["target_languages"]]
         qe_token_cost = int(quote_snapshot.get("token_cost") or 0)
         costs = await get_job_pricing(
-            context["ray"].client,
+            ray_client,
             job_uuid,
             [file["file_uuid"] for file in job["data"]["source_files"]],
             langs,

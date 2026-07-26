@@ -5,10 +5,15 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from app.api.verify import VerifyAPIError
-from app.slack.evaluation_quotes import STAGE_ACCEPTED_AI, STAGE_AWAITING_AI
+from app.slack.evaluation_quotes import (
+    STAGE_ACCEPTED_AI,
+    STAGE_AWAITING_AI,
+    STAGE_PROCESSING_AI,
+)
 from app.slack.listeners import (
     evaluation_ai_quote_accept_action,
     evaluation_ai_quote_adjust_action,
@@ -30,6 +35,17 @@ def _mock_redis(*, lock_acquired: bool = True, session: dict | None = None):
     mock_redis.set = AsyncMock(return_value=lock_acquired)
     mock_redis.delete = AsyncMock()
     return mock_redis
+
+
+@pytest.fixture(autouse=True)
+def connected_ray_client():
+    """Accept handlers gate on a connected member; these contexts are mocks."""
+    with patch(
+        "app.slack.evaluation_quote_actions.require_ray_client",
+        new_callable=AsyncMock,
+        return_value=True,
+    ) as mock_require:
+        yield mock_require
 
 
 @pytest.mark.asyncio
@@ -305,6 +321,133 @@ async def test_evaluation_ai_quote_accept_in_progress_lock_updates_message():
     mock_update.assert_awaited_once()
     assert mock_update.await_args.kwargs["actions"] is False
     client.chat_postMessage.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_evaluation_ai_quote_accept_timeout_does_not_rearm_accept():
+    """An ambiguous proceed() failure may already have debited — keep Accept off."""
+    job_uuid = str(uuid4())
+    context = {"channel_id": "C1", "ray": MagicMock(client=MagicMock())}
+    client = AsyncMock()
+    redis_stub = _mock_redis()
+
+    with (
+        patch("app.slack.evaluation_quote_actions.redis_conn", redis_stub),
+        patch(
+            "app.slack.evaluation_quote_actions.get_evaluate_quote_session",
+            new_callable=AsyncMock,
+            return_value={
+                "stage": STAGE_AWAITING_AI,
+                "quote_snapshot": {
+                    "ai_translation_file_and_languages": ["file-1:lang-1"]
+                },
+            },
+        ),
+        patch(
+            "app.slack.evaluation_quote_actions.update_evaluate_quote_stage",
+            new_callable=AsyncMock,
+        ) as mock_stage,
+        patch(
+            "app.slack.evaluation_quote_actions.update_evaluate_quote_slack_message",
+            new_callable=AsyncMock,
+        ) as mock_update,
+        patch(
+            "app.slack.evaluation_quote_actions.get_evaluation_job_quote",
+            new_callable=AsyncMock,
+            return_value={"token": 50, "services_costs": {"ai_translation": 50}},
+        ),
+        patch(
+            "app.slack.evaluation_quote_actions.get_client_evaluation_job",
+            new_callable=AsyncMock,
+            return_value={"data": {"uuid": job_uuid, "extra_info": {}}},
+        ),
+        patch(
+            "app.slack.evaluation_quote_actions.proceed_evaluation_job",
+            new_callable=AsyncMock,
+            side_effect=httpx.ReadTimeout("verify timed out"),
+        ),
+        patch("app.slack.evaluation_quote_actions.notify_exception"),
+    ):
+        await AiQuoteAcceptAction(
+            ack=AsyncMock(),
+            client=client,
+            body={"user": {"id": "U1"}, "message": {"ts": "123.456"}},
+            action={"value": job_uuid},
+            context=context,
+        )
+
+    final_update = mock_update.await_args_list[-1].kwargs
+    assert final_update["actions"] is False
+    assert "do not accept this quote again" in final_update["status_message"]
+    # Stage stays at processing_ai so a second click hits the terminal-stage guard.
+    assert [call.args[1] for call in mock_stage.await_args_list] == [
+        STAGE_PROCESSING_AI
+    ]
+    redis_stub.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_evaluation_ai_quote_accept_rejects_other_user():
+    """The Accept button is visible to the channel; only the owner may spend."""
+    job_uuid = str(uuid4())
+    context = {"channel_id": "C1", "user_id": "U_OTHER", "ray": MagicMock()}
+    client = AsyncMock()
+
+    with (
+        patch("app.slack.evaluation_quote_actions.redis_conn", _mock_redis()),
+        patch(
+            "app.slack.evaluation_quote_actions.get_evaluate_quote_session",
+            new_callable=AsyncMock,
+            return_value={"stage": STAGE_AWAITING_AI, "user_id": "U_OWNER"},
+        ),
+        patch(
+            "app.slack.evaluation_quote_actions.proceed_evaluation_job",
+            new_callable=AsyncMock,
+        ) as mock_proceed,
+    ):
+        await AiQuoteAcceptAction(
+            ack=AsyncMock(),
+            client=client,
+            body={"user": {"id": "U_OTHER"}, "message": {"ts": "123.456"}},
+            action={"value": job_uuid},
+            context=context,
+        )
+
+    mock_proceed.assert_not_called()
+    client.chat_postMessage.assert_awaited_once()
+    assert "permission" in client.chat_postMessage.await_args.kwargs["text"].lower()
+
+
+@pytest.mark.asyncio
+async def test_evaluation_qe_human_quote_accept_rejects_other_user():
+    """Same ownership rule for the combined QE + Human Translation quote."""
+    job_uuid = str(uuid4())
+    context = {"channel_id": "C1", "user_id": "U_OTHER", "ray": MagicMock()}
+    client = AsyncMock()
+
+    with (
+        patch("app.slack.evaluation_quote_actions.redis_conn", _mock_redis()),
+        patch(
+            "app.slack.evaluation_quote_actions.get_evaluate_quote_session",
+            new_callable=AsyncMock,
+            return_value={"stage": "awaiting_qe", "user_id": "U_OWNER"},
+        ),
+        patch(
+            "app.slack.evaluation_quote_actions.proceed_quality_evaluation",
+            new_callable=AsyncMock,
+        ) as mock_proceed,
+    ):
+        await QeHumanQuoteAcceptAction(
+            ack=AsyncMock(),
+            client=client,
+            body={"user": {"id": "U_OTHER"}, "message": {"ts": "123.456"}},
+            action={"value": job_uuid},
+            context=context,
+        )
+
+    mock_proceed.assert_not_called()
+    client.chat_postMessage.assert_awaited_once()
+    assert "permission" in client.chat_postMessage.await_args.kwargs["text"].lower()
 
 
 @pytest.mark.asyncio

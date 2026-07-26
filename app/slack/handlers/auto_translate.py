@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from typing import Any, Dict, Optional, cast
 
 from pydantic import ValidationError
@@ -38,6 +39,8 @@ from app.slack.templates.models import (
 )
 from app.slack.templates.views import home_view, translation_settings_view
 from app.translate import _
+
+logger = logging.getLogger(__name__)
 
 
 async def _join_channel(client: AsyncWebClient, channel_id: str):
@@ -278,5 +281,5 @@ async def handle_update_auto_translate_settings(
                 )
 
     except Exception as e:
-        print(e)
+        logger.warning("Channel translation settings submit failed", exc_info=True)
         notify_exception(e)

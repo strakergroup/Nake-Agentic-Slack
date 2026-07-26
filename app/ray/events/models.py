@@ -128,6 +128,9 @@ class JobTranscribedEvent(BaseModel):
     task_uuid: str
     client_id: str
     error: str | None = None
+    # Target language codes that were requested but not delivered. Optional so an
+    # older sup-subtitle-ai-cons deploy that does not send it still validates.
+    failed_languages: list[str] | None = None
 
     @model_validator(mode="before")
     def extract_output_file(cls, values):
@@ -142,6 +145,7 @@ class JobTranscribedEvent(BaseModel):
             values["task_uuid"] = result.get("task_uuid")
             values["client_id"] = result.get("client_id", "")
             values["error"] = result.get("error")
+            values["failed_languages"] = result.get("failed_languages")
         return values
 
 
@@ -235,6 +239,11 @@ class DocumentMtQuoteResponseSchema(BaseModel):
     total_cost_usd: float = 0.0
     preflight_task_uuid: str | None = None
     files: list[DocumentMtQuoteFileSchema] = Field(default_factory=list)
+    # Org-billed Document MT (RAY-79115): client_id is the org uuid, so the
+    # poster must be carried separately for delivery. Optional so the echo still
+    # validates against consumers that predate the change.
+    team_id: str | None = None
+    slack_user_id: str | None = None
 
 
 class Balance(BaseModel):

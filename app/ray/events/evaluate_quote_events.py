@@ -22,15 +22,16 @@ from app.dependencies import RayEvent, RayEventAuth
 from app.ray.events.logging import post_notification, slack_response_message_ts
 from app.ray.utils import is_ibm_enterprise
 from app.redis import redis_conn
+from app.slack.buglog_notifier import notify_exception
 from app.slack.evaluation_ai_adjustment import (
     AI_QUOTE_ADJUST_ACTION_ID,
+    filter_language_costs_by_pairs,
     quote_file_language_costs,
 )
 from app.slack.evaluation_quotes import (
     STAGE_ACCEPTED_AI,
-    get_evaluate_quote_session,
+    STAGE_AWAITING_AI,
     save_evaluate_quote_session,
-    update_evaluate_quote_slack_message,
 )
 from app.slack.templates.messages import EvaluationCreditsQuoteMessage
 from app.translate import _
@@ -40,8 +41,13 @@ logger = logging.getLogger(__name__)
 RAY_EVENT_DEDUPE_TTL_SECONDS = 7 * 24 * 60 * 60
 
 
-async def claim_evaluate_complete_notification(event: RayEvent) -> bool:
-    """Atomically claim a user-facing evaluate-complete notification."""
+async def claim_ray_event_notification(event: RayEvent) -> bool:
+    """Atomically claim a single delivery of a RAY event for one job.
+
+    RAY streams are at-least-once, so any handler with a user-visible or
+    billable side effect must claim before acting. The key is namespaced by
+    event name, so each event type claims independently for the same job.
+    """
     client_id = event.data.get("client_id")
     job_uuid = event.data.get("job_uuid")
     if not client_id or not job_uuid:
@@ -57,7 +63,7 @@ async def claim_evaluate_complete_notification(event: RayEvent) -> bool:
         )
     except Exception:
         logger.warning(
-            "Failed to claim evaluate-complete notification idempotency key",
+            "Failed to claim RAY event idempotency key",
             exc_info=True,
         )
         return True
@@ -89,6 +95,14 @@ def resolve_evaluate_channel_id(
         if slack_channel_id:
             return str(slack_channel_id)
     return None
+
+
+def _source_file_uuids(job_data: dict[str, Any]) -> list[str]:
+    return [
+        str(source_file["file_uuid"])
+        for source_file in job_data.get("source_files") or []
+        if source_file.get("file_uuid")
+    ]
 
 
 async def post_evaluate_service_quote(
@@ -141,59 +155,32 @@ async def post_evaluate_service_quote(
     if include_pdf_fee and pdf_page_count:
         pdf_tokens = pdf_tokens_from_page_count(int(pdf_page_count))
 
-    is_qe_quote = accept_action_id == "evaluation_qe_quote_accept"
     channel_id = resolve_evaluate_channel_id(event, job_data)
     prequote_message_ts = extra_info.get("prequote_message_ts")
     is_ibm = is_ibm_enterprise(auth.slack_user.enterprise_id)
     if service == EVALUATE_SERVICE_AI_TRANSLATION and extra_info.get(
         "preaccepted_ai_translation_quote"
     ):
-        total_token_cost = token_cost + (pdf_tokens or 0)
-        notify_channel_id = (
-            channel_id or auth.slack_user.channel_id or auth.slack_user.user_id
+        await _proceed_preaccepted_ai_quote(
+            client,
+            event,
+            auth,
+            job_uuid=job_uuid,
+            service=service,
+            service_label=service_label,
+            accept_action_id=accept_action_id,
+            ray_client=ray_client,
+            quote=quote,
+            job_data=job_data,
+            extra_info=extra_info,
+            channel_id=channel_id,
+            token_cost=token_cost,
+            pdf_tokens=pdf_tokens,
+            pdf_page_count=pdf_page_count,
+            language_costs=language_costs,
+            quoted_ai_pairs=ai_translation_file_and_languages,
+            prequote_message_ts=prequote_message_ts,
         )
-        try:
-            persisted_ai_pairs = extra_info.get("ai_translation_file_and_languages")
-            selected_ai_pairs = (
-                [str(value) for value in persisted_ai_pairs if value]
-                if isinstance(persisted_ai_pairs, list) and persisted_ai_pairs
-                else ai_translation_file_and_languages
-            )
-            await proceed_evaluation_job(
-                ray_client,
-                job_uuid,
-                token_cost=total_token_cost,
-                skip_quality_evaluation=True,
-                ai_translation_file_and_languages=selected_ai_pairs or None,
-            )
-            await save_evaluate_quote_session(
-                job_uuid,
-                channel_id=channel_id
-                or auth.slack_user.channel_id
-                or auth.slack_user.user_id,
-                user_id=auth.slack_user.user_id,
-                team_id=auth.slack_user.team_id,
-                stage=STAGE_ACCEPTED_AI,
-                pdf_page_count=int(pdf_page_count) if pdf_page_count else None,
-                quote_snapshot={
-                    "service": service,
-                    "token_cost": token_cost,
-                    "pdf_tokens": pdf_tokens,
-                    "service_label": service_label,
-                    "accept_action_id": accept_action_id,
-                    "ai_translation_file_and_languages": selected_ai_pairs,
-                },
-                message_ts=str(prequote_message_ts) if prequote_message_ts else None,
-            )
-        except VerifyAPIError as e:
-            status = (
-                _("Insufficient AI token balance to accept this quote.")
-                if e.status_code == 402
-                else _(
-                    "There was an error accepting your quote. Please try again or contact your administrator."
-                )
-            )
-            await client.chat_postMessage(channel=notify_channel_id, text=status)
         return
 
     message = EvaluationCreditsQuoteMessage(
@@ -206,45 +193,23 @@ async def post_evaluate_service_quote(
         else None,
         pdf_page_count=int(pdf_page_count) if pdf_page_count else None,
         pdf_tokens=pdf_tokens,
-        download_translations_job_uuid=job_uuid if is_qe_quote else None,
         is_ibm=is_ibm,
         language_costs=language_costs,
     )
-    session = await get_evaluate_quote_session(job_uuid) if is_qe_quote else None
-    session_channel_id = session.get("channel_id") if session else None
-    session_message_ts = session.get("message_ts") if session else None
-
-    if is_qe_quote and session_channel_id and session_message_ts:
-        await update_evaluate_quote_slack_message(
-            client,
-            channel_id=session_channel_id,
-            message_ts=session_message_ts,
-            service_label=service_label,
-            token_cost=token_cost,
-            job_uuid=job_uuid,
-            accept_action_id=accept_action_id,
-            actions=True,
-            download_translations_job_uuid=job_uuid,
-            is_ibm=is_ibm,
-        )
-        channel_id = session_channel_id
-        message_ts = session_message_ts
-    else:
-        response = await post_notification(
-            client,
-            event,
-            auth.slack_user,
-            message,
-            channel_id=channel_id,
-        )
-        message_ts = slack_response_message_ts(response)
-    stage = "awaiting_ai" if not is_qe_quote else "awaiting_qe"
+    response = await post_notification(
+        client,
+        event,
+        auth.slack_user,
+        message,
+        channel_id=channel_id,
+    )
+    message_ts = slack_response_message_ts(response)
     await save_evaluate_quote_session(
         job_uuid,
         channel_id=channel_id or auth.slack_user.channel_id or auth.slack_user.user_id,
         user_id=auth.slack_user.user_id,
         team_id=auth.slack_user.team_id,
-        stage=stage,
+        stage=STAGE_AWAITING_AI,
         pdf_page_count=int(pdf_page_count) if pdf_page_count else None,
         quote_snapshot={
             "service": service,
@@ -256,14 +221,127 @@ async def post_evaluate_service_quote(
             "ai_quote_details": quote.get("details") or [],
             "all_language_costs": language_costs,
             "language_costs": language_costs,
-            "file_uuids": [
-                str(source_file["file_uuid"])
-                for source_file in job_data.get("source_files") or []
-                if source_file.get("file_uuid")
-            ],
+            "file_uuids": _source_file_uuids(job_data),
         },
         message_ts=message_ts,
     )
+
+
+async def _proceed_preaccepted_ai_quote(
+    client: AsyncWebClient,
+    event: RayEvent,
+    auth: RayEventAuth,
+    *,
+    job_uuid: str,
+    service: str,
+    service_label: str,
+    accept_action_id: str,
+    ray_client: Any,
+    quote: dict[str, Any],
+    job_data: dict[str, Any],
+    extra_info: dict[str, Any],
+    channel_id: str | None,
+    token_cost: int,
+    pdf_tokens: int | None,
+    pdf_page_count: Any,
+    language_costs: list[dict[str, Any]] | None,
+    quoted_ai_pairs: list[str],
+    prequote_message_ts: Any,
+) -> None:
+    """Charge and record the PDF pre-quote that the user already accepted.
+
+    This runs straight off an at-least-once RAY stream and issues a real token
+    debit, so the delivery is claimed before the charge. Once the claim is held
+    nothing may escape to the router: a raised exception becomes an HTTP 422 and
+    the producer redelivers, which would debit the client a second time.
+    """
+    assert auth.slack_user is not None
+    notify_channel_id = (
+        channel_id or auth.slack_user.channel_id or auth.slack_user.user_id
+    )
+
+    if not await claim_ray_event_notification(event):
+        logger.info(
+            "Skipping duplicate preaccepted AI quote acceptance for job %s",
+            job_uuid,
+        )
+        return
+
+    try:
+        persisted_ai_pairs = extra_info.get("ai_translation_file_and_languages")
+        selected_ai_pairs = (
+            [str(value) for value in persisted_ai_pairs if value]
+            if isinstance(persisted_ai_pairs, list) and persisted_ai_pairs
+            else quoted_ai_pairs
+        )
+        await proceed_evaluation_job(
+            ray_client,
+            job_uuid,
+            token_cost=token_cost + (pdf_tokens or 0),
+            skip_quality_evaluation=True,
+            ai_translation_file_and_languages=selected_ai_pairs or None,
+        )
+    except VerifyAPIError as e:
+        status = (
+            _("Insufficient AI token balance to accept this quote.")
+            if e.status_code == 402
+            else _(
+                "There was an error accepting your quote. Please try again or contact your administrator."
+            )
+        )
+        await client.chat_postMessage(channel=notify_channel_id, text=status)
+        return
+    except Exception as e:
+        # Ambiguous failure (timeout, 5xx, connection drop): the debit may have
+        # landed, so never let the producer redeliver this event.
+        notify_exception(e, "Preaccepted AI quote acceptance failed")
+        logger.error(
+            "Preaccepted AI quote acceptance failed for job %s", job_uuid, exc_info=True
+        )
+        await client.chat_postMessage(
+            channel=notify_channel_id,
+            text=_(
+                "There was an error accepting your quote. Please try again or contact your administrator."
+            ),
+        )
+        return
+
+    try:
+        selected_language_costs = (
+            filter_language_costs_by_pairs(language_costs, selected_ai_pairs)
+            if language_costs
+            else None
+        )
+        await save_evaluate_quote_session(
+            job_uuid,
+            channel_id=notify_channel_id,
+            user_id=auth.slack_user.user_id,
+            team_id=auth.slack_user.team_id,
+            stage=STAGE_ACCEPTED_AI,
+            pdf_page_count=int(pdf_page_count) if pdf_page_count else None,
+            quote_snapshot={
+                "service": service,
+                "token_cost": token_cost,
+                "pdf_tokens": pdf_tokens,
+                "service_label": service_label,
+                "accept_action_id": accept_action_id,
+                "ai_translation_file_and_languages": selected_ai_pairs,
+                "ai_quote_details": quote.get("details") or [],
+                "all_language_costs": language_costs,
+                "language_costs": selected_language_costs or language_costs,
+                "file_uuids": _source_file_uuids(job_data),
+            },
+            message_ts=str(prequote_message_ts) if prequote_message_ts else None,
+        )
+    except Exception as e:
+        # The tokens are already spent; a retry would double-charge. Alert and
+        # let the job continue without its Slack session snapshot.
+        notify_exception(e, "Failed to persist accepted AI quote session after debit")
+        logger.error(
+            "Failed to persist accepted AI quote session for job %s after debit",
+            job_uuid,
+            exc_info=True,
+        )
 
 
 def evaluate_quote_event_error(event_name: str, error: Exception) -> HTTPException:

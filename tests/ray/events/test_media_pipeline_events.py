@@ -242,6 +242,208 @@ async def test_handle_translation_complete_posts_success_after_upload(tmp_path):
     mock_tokens.assert_awaited_once()
 
 
+def test_job_transcribed_event_carries_failed_languages():
+    """`failed_languages` is optional and survives both payload formats."""
+    from app.ray.events.models import JobTranscribedEvent
+
+    new_format = JobTranscribedEvent.model_validate(
+        {"task_uuid": "task-1", "client_id": "client-1", "failed_languages": ["fr"]}
+    )
+    assert new_format.failed_languages == ["fr"]
+
+    # Older sup-subtitle-ai-cons deploys omit the field entirely.
+    without_field = JobTranscribedEvent.model_validate(
+        {"task_uuid": "task-1", "client_id": "client-1"}
+    )
+    assert without_field.failed_languages is None
+
+    legacy = JobTranscribedEvent.model_validate(
+        {
+            "result": {
+                "task_uuid": "task-2",
+                "client_id": "client-2",
+                "error": None,
+                "failed_languages": ["de", "ja"],
+            }
+        }
+    )
+    assert legacy.task_uuid == "task-2"
+    assert legacy.failed_languages == ["de", "ja"]
+
+    legacy_without_field = JobTranscribedEvent.model_validate(
+        {"result": {"task_uuid": "task-3", "client_id": "client-3"}}
+    )
+    assert legacy_without_field.failed_languages is None
+
+
+@pytest.mark.asyncio
+async def test_handle_translation_complete_names_failed_languages(tmp_path):
+    """Partial success: deliver what arrived and name what did not."""
+    from app.ray.events.media_pipeline_events import handle_translation_complete
+
+    srt = tmp_path / "es.srt"
+    srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nhola\n")
+
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock(return_value={"ts": "999.001"})
+    task_info = SimpleNamespace(
+        task_uuid="task-partial",
+        file_name="clip.mp4",
+        pipeline_type="translate_only",
+        translated_file_ids={"es": "file-es"},
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(enterprise_id=None))
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": str(srt)}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.upload_file_to_slack_memory_efficient",
+            new=AsyncMock(return_value={"ok": True}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.show_tokens_message",
+            new=AsyncMock(),
+        ),
+    ):
+        uploaded = await handle_translation_complete(
+            client,
+            "C1",
+            "123.456",
+            task_info,
+            auth,
+            failed_languages=["fr"],
+        )
+
+    assert uploaded == 1
+    texts = [
+        call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
+    ]
+    # Exactly one message names the missing language, by name and not by code.
+    naming_failure = [text for text in texts if "French" in text]
+    assert len(naming_failure) == 1
+    assert "could not translate" in naming_failure[0]
+    assert "fr." not in naming_failure[0]
+    # The plain success line is replaced, not duplicated alongside the warning.
+    assert not any(
+        text == "Your file is AI translated and can be downloaded above."
+        for text in texts
+    )
+    # Delivered files still get the edit/reupload guidance.
+    assert any("reupload the edited files" in text for text in texts)
+
+
+@pytest.mark.asyncio
+async def test_handle_translation_complete_without_failed_languages_unchanged(tmp_path):
+    """No failed_languages (older sup-subtitle deploy) keeps the previous wording."""
+    from app.ray.events.media_pipeline_events import handle_translation_complete
+
+    srt = tmp_path / "es.srt"
+    srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nhola\n")
+
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock(return_value={"ts": "999.001"})
+    task_info = SimpleNamespace(
+        task_uuid="task-full",
+        file_name="clip.mp4",
+        pipeline_type="translate_only",
+        translated_file_ids={"es": "file-es"},
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(enterprise_id=None))
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": str(srt)}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.upload_file_to_slack_memory_efficient",
+            new=AsyncMock(return_value={"ok": True}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.show_tokens_message",
+            new=AsyncMock(),
+        ),
+    ):
+        uploaded = await handle_translation_complete(
+            client, "C1", "123.456", task_info, auth
+        )
+
+    assert uploaded == 1
+    texts = [
+        call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
+    ]
+    assert any(
+        text == "Your file is AI translated and can be downloaded above."
+        for text in texts
+    )
+    assert not any("could not translate" in text for text in texts)
+
+
+@pytest.mark.asyncio
+async def test_handle_transcribe_embed_pipeline_names_failed_languages(tmp_path):
+    """Embedded video is still delivered, with the un-embedded languages named."""
+    from app.ray.events.media_pipeline_events import handle_transcribe_embed_pipeline
+
+    media = tmp_path / "out.mp4"
+    media.write_bytes(b"fake-video")
+
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock(return_value={"ts": "1.1"})
+    task_info = SimpleNamespace(
+        task_uuid="task-embed",
+        file_name="clip.mp4",
+        pipeline_type="embed",
+    )
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": str(media)}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.upload_file_to_slack_memory_efficient",
+            new=AsyncMock(return_value={"ok": True}),
+        ),
+    ):
+        ok = await handle_transcribe_embed_pipeline(
+            client,
+            "file-1",
+            "out.mp4",
+            task_info,
+            "C1",
+            "123.456",
+            auth=None,
+            failed_languages=["de"],
+        )
+
+    assert ok is True
+    texts = [
+        call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
+    ]
+    naming_failure = [text for text in texts if "German" in text]
+    assert len(naming_failure) == 1
+    assert "could not embed subtitles" in naming_failure[0]
+
+
+@pytest.mark.asyncio
+async def test_resolve_language_labels_handles_codes_uuids_and_unknowns():
+    from app.ray.events.media_pipeline_events import resolve_language_labels
+
+    uuid = "3f1c9d2e-4b5a-4c6d-8e7f-0a1b2c3d4e5f"
+    with patch(
+        "app.ray.events.media_pipeline_events.get_language_name_by_uuid",
+        new=AsyncMock(return_value="Japanese"),
+    ) as mock_by_uuid:
+        labels = await resolve_language_labels(["fr", uuid, "", None])
+
+    assert labels == ["French", "Japanese"]
+    mock_by_uuid.assert_awaited_once_with(uuid)
+    assert await resolve_language_labels(None) == []
+
+
 @pytest.mark.asyncio
 async def test_fail_media_submissions_list_and_dict_ids():
     from app.ray.events.media_pipeline_events import fail_media_submissions

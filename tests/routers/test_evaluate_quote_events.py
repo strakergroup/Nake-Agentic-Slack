@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
 
 from app.auth.connector import SlackUser
@@ -877,16 +878,15 @@ async def test_post_combined_qe_human_quote_keeps_asymmetric_ai_scope(mock_slack
     assert mock_client.chat_update.await_args.kwargs["ts"] == "111.222"
 
 
-@pytest.mark.asyncio
-async def test_post_preaccepted_ai_quote_auto_proceeds(mock_slack_user):
-    job_uuid = str(uuid4())
-    event = RayEvent(
-        event="verify:slack:evaluate:ready_for_ai_quote",
-        data={"client_id": mock_slack_user.ray_client_id, "job_uuid": job_uuid},
-    )
-    mock_client = AsyncMock()
-    ray_client = MagicMock()
-    quote = {"services_costs": {"ai_translation": 100}, "token": 100}
+def _preaccepted_ai_quote_fixtures(job_uuid: str):
+    quote = {
+        "services_costs": {"ai_translation": 100},
+        "token": 100,
+        "details": [
+            {"file_uuid": "file-1", "target_language_uuid": "lang-1", "token": 60},
+            {"file_uuid": "file-1", "target_language_uuid": "lang-2", "token": 40},
+        ],
+    }
     job = {
         "data": {
             "uuid": job_uuid,
@@ -896,51 +896,112 @@ async def test_post_preaccepted_ai_quote_auto_proceeds(mock_slack_user):
                 "preaccepted_ai_translation_quote": True,
                 "prequote_message_ts": "111.222",
             },
+            "target_languages": [{"uuid": "lang-1"}, {"uuid": "lang-2"}],
+            "source_files": [{"file_uuid": "file-1", "filename": "source.pdf"}],
         }
     }
+    return quote, job
 
-    auth = RayEventAuth()
-    auth.slack_user = mock_slack_user
 
-    with (
+def _patch_preaccepted_ai_quote(
+    *,
+    quote: dict,
+    job: dict,
+    ray_client,
+    claim_results: list,
+    save_side_effect=None,
+    proceed_side_effect=None,
+):
+    """Patch the collaborators of the PDF preaccepted AI quote path."""
+    redis_stub = MagicMock()
+    redis_stub.set = AsyncMock(side_effect=claim_results)
+    return (
         patch(
-            "app.slack.evaluation_quotes.get_verify_languages",
-            new_callable=AsyncMock,
-            return_value=[],
+            "app.ray.events.evaluate_quote_events.redis_conn",
+            redis_stub,
         ),
         patch(
-            "app.slack.evaluation_quotes.get_ray_client",
+            "app.ray.events.evaluate_quote_events.get_verify_languages",
             new_callable=AsyncMock,
-        ) as mock_ray,
+            return_value=[
+                {"uuid": "lang-1", "name": "French"},
+                {"uuid": "lang-2", "name": "German"},
+            ],
+        ),
         patch(
-            "app.slack.evaluation_quotes.get_evaluation_job_quote",
+            "app.ray.events.evaluate_quote_events.get_ray_client",
+            new_callable=AsyncMock,
+            return_value=ray_client,
+        ),
+        patch(
+            "app.ray.events.evaluate_quote_events.get_evaluation_job_quote",
             new_callable=AsyncMock,
             return_value=quote,
         ),
         patch(
-            "app.slack.evaluation_quotes.get_evaluation_job",
+            "app.ray.events.evaluate_quote_events.get_evaluation_job",
             new_callable=AsyncMock,
             return_value=job,
         ),
         patch(
-            "app.slack.evaluation_quotes.update_evaluate_quote_slack_message",
+            "app.ray.events.evaluate_quote_events.proceed_evaluation_job",
             new_callable=AsyncMock,
-        ) as mock_update,
+            side_effect=proceed_side_effect,
+        ),
         patch(
-            "app.slack.evaluation_quotes.proceed_evaluation_job",
+            "app.ray.events.evaluate_quote_events.save_evaluate_quote_session",
             new_callable=AsyncMock,
-        ) as mock_proceed,
+            side_effect=save_side_effect,
+        ),
         patch(
-            "app.slack.evaluation_quotes.save_evaluate_quote_session",
+            "app.ray.events.evaluate_quote_events.post_notification",
             new_callable=AsyncMock,
-        ) as mock_save,
-        patch(
-            "app.slack.evaluation_quotes.post_notification",
-            new_callable=AsyncMock,
-        ) as mock_post,
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_post_preaccepted_ai_quote_auto_proceeds(mock_slack_user):
+    """The PDF pre-quote debits on arrival and keeps its per-pair cost rows."""
+    job_uuid = str(uuid4())
+    event = RayEvent(
+        event="verify:slack:evaluate:ready_for_ai_quote",
+        data={"client_id": mock_slack_user.ray_client_id, "job_uuid": job_uuid},
+    )
+    mock_client = AsyncMock()
+    ray_client = MagicMock()
+    quote, job = _preaccepted_ai_quote_fixtures(job_uuid)
+
+    auth = RayEventAuth()
+    auth.slack_user = mock_slack_user
+
+    (
+        redis_patch,
+        languages_patch,
+        ray_patch,
+        quote_patch,
+        job_patch,
+        proceed_patch,
+        save_patch,
+        post_patch,
+    ) = _patch_preaccepted_ai_quote(
+        quote=quote,
+        job=job,
+        ray_client=ray_client,
+        claim_results=[True],
+    )
+
+    with (
+        redis_patch,
+        languages_patch,
+        ray_patch,
+        quote_patch,
+        job_patch,
+        proceed_patch as mock_proceed,
+        save_patch as mock_save,
+        post_patch as mock_post,
     ):
-        mock_ray.return_value = ray_client
-        from app.slack.evaluation_quotes import post_evaluate_service_quote
+        from app.ray.events.evaluate_quote_events import post_evaluate_service_quote
 
         await post_evaluate_service_quote(
             mock_client,
@@ -953,17 +1014,205 @@ async def test_post_preaccepted_ai_quote_auto_proceeds(mock_slack_user):
             include_pdf_fee=True,
         )
 
-    mock_update.assert_not_awaited()
     mock_proceed.assert_awaited_once_with(
         ray_client,
         job_uuid,
         token_cost=150,
         skip_quality_evaluation=True,
-        ai_translation_file_and_languages=None,
+        ai_translation_file_and_languages=["file-1:lang-1", "file-1:lang-2"],
     )
     mock_save.assert_awaited_once()
     assert mock_save.await_args.kwargs["stage"] == "accepted_ai"
+    snapshot = mock_save.await_args.kwargs["quote_snapshot"]
+    # The Adjust Request modal and the AI quote refresh read these keys; the
+    # preaccepted path used to save none of them.
+    assert [row["label"] for row in snapshot["all_language_costs"]] == [
+        "French",
+        "German",
+    ]
+    assert [row["token"] for row in snapshot["language_costs"]] == [60, 40]
+    assert snapshot["ai_quote_details"] == quote["details"]
+    assert snapshot["file_uuids"] == ["file-1"]
     mock_post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_preaccepted_ai_quote_debits_once_on_redelivery(mock_slack_user):
+    """A redelivered ready_for_ai_quote must not charge the client twice."""
+    job_uuid = str(uuid4())
+    event = RayEvent(
+        event="verify:slack:evaluate:ready_for_ai_quote",
+        data={"client_id": mock_slack_user.ray_client_id, "job_uuid": job_uuid},
+    )
+    mock_client = AsyncMock()
+    quote, job = _preaccepted_ai_quote_fixtures(job_uuid)
+
+    auth = RayEventAuth()
+    auth.slack_user = mock_slack_user
+
+    (
+        redis_patch,
+        languages_patch,
+        ray_patch,
+        quote_patch,
+        job_patch,
+        proceed_patch,
+        save_patch,
+        post_patch,
+    ) = _patch_preaccepted_ai_quote(
+        quote=quote,
+        job=job,
+        ray_client=MagicMock(),
+        # First delivery wins the NX claim; the redelivery misses it.
+        claim_results=[True, None],
+    )
+
+    with (
+        redis_patch,
+        languages_patch,
+        ray_patch,
+        quote_patch,
+        job_patch,
+        proceed_patch as mock_proceed,
+        save_patch as mock_save,
+        post_patch,
+    ):
+        from app.ray.events.evaluate_quote_events import post_evaluate_service_quote
+
+        for _delivery in range(2):
+            await post_evaluate_service_quote(
+                mock_client,
+                event,
+                auth,
+                job_uuid=job_uuid,
+                service="ai_translation",
+                service_label="AI Translation",
+                accept_action_id="evaluation_ai_quote_accept",
+                include_pdf_fee=True,
+            )
+
+    assert mock_proceed.await_count == 1
+    assert mock_save.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_preaccepted_ai_quote_session_failure_after_debit_is_not_retryable(
+    mock_slack_user,
+):
+    """A Redis blip after the debit must not bubble a retryable error."""
+    job_uuid = str(uuid4())
+    event = RayEvent(
+        event="verify:slack:evaluate:ready_for_ai_quote",
+        data={"client_id": mock_slack_user.ray_client_id, "job_uuid": job_uuid},
+    )
+    mock_client = AsyncMock()
+    quote, job = _preaccepted_ai_quote_fixtures(job_uuid)
+
+    auth = RayEventAuth()
+    auth.slack_user = mock_slack_user
+
+    (
+        redis_patch,
+        languages_patch,
+        ray_patch,
+        quote_patch,
+        job_patch,
+        proceed_patch,
+        save_patch,
+        post_patch,
+    ) = _patch_preaccepted_ai_quote(
+        quote=quote,
+        job=job,
+        ray_client=MagicMock(),
+        claim_results=[True],
+        save_side_effect=ConnectionError("redis unavailable"),
+    )
+
+    with (
+        redis_patch,
+        languages_patch,
+        ray_patch,
+        quote_patch,
+        job_patch,
+        proceed_patch as mock_proceed,
+        save_patch,
+        post_patch,
+        patch("app.ray.events.evaluate_quote_events.notify_exception") as mock_notify,
+    ):
+        from app.ray.events.evaluate_quote_events import post_evaluate_service_quote
+
+        await post_evaluate_service_quote(
+            mock_client,
+            event,
+            auth,
+            job_uuid=job_uuid,
+            service="ai_translation",
+            service_label="AI Translation",
+            accept_action_id="evaluation_ai_quote_accept",
+            include_pdf_fee=True,
+        )
+
+    mock_proceed.assert_awaited_once()
+    mock_notify.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_preaccepted_ai_quote_timeout_does_not_escape_to_router(mock_slack_user):
+    """An ambiguous proceed() failure is reported, never re-raised for retry."""
+    job_uuid = str(uuid4())
+    event = RayEvent(
+        event="verify:slack:evaluate:ready_for_ai_quote",
+        data={"client_id": mock_slack_user.ray_client_id, "job_uuid": job_uuid},
+    )
+    mock_client = AsyncMock()
+    quote, job = _preaccepted_ai_quote_fixtures(job_uuid)
+
+    auth = RayEventAuth()
+    auth.slack_user = mock_slack_user
+
+    (
+        redis_patch,
+        languages_patch,
+        ray_patch,
+        quote_patch,
+        job_patch,
+        proceed_patch,
+        save_patch,
+        post_patch,
+    ) = _patch_preaccepted_ai_quote(
+        quote=quote,
+        job=job,
+        ray_client=MagicMock(),
+        claim_results=[True],
+        proceed_side_effect=httpx.ReadTimeout("verify timed out"),
+    )
+
+    with (
+        redis_patch,
+        languages_patch,
+        ray_patch,
+        quote_patch,
+        job_patch,
+        proceed_patch,
+        save_patch as mock_save,
+        post_patch,
+        patch("app.ray.events.evaluate_quote_events.notify_exception"),
+    ):
+        from app.ray.events.evaluate_quote_events import post_evaluate_service_quote
+
+        await post_evaluate_service_quote(
+            mock_client,
+            event,
+            auth,
+            job_uuid=job_uuid,
+            service="ai_translation",
+            service_label="AI Translation",
+            accept_action_id="evaluation_ai_quote_accept",
+            include_pdf_fee=True,
+        )
+
+    mock_save.assert_not_awaited()
+    mock_client.chat_postMessage.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -1001,7 +1250,7 @@ async def test_ray_events_evaluate_complete_ai_only(mock_slack_user, user_id, te
                         return_value=mock_job,
                     ):
                         with patch(
-                            "app.routers.ray.claim_evaluate_complete_notification",
+                            "app.routers.ray.claim_ray_event_notification",
                             new_callable=AsyncMock,
                             return_value=True,
                         ):
@@ -1064,7 +1313,7 @@ async def test_ray_events_evaluate_complete_hv_uses_human_job_quote(
                         return_value=mock_job,
                     ):
                         with patch(
-                            "app.routers.ray.claim_evaluate_complete_notification",
+                            "app.routers.ray.claim_ray_event_notification",
                             new_callable=AsyncMock,
                             return_value=True,
                         ):

@@ -13,6 +13,7 @@ from app.api.verify import (
     get_client_evaluation_job,
     get_evaluation_job_quote,
     get_job_pricing,
+    is_ambiguous_api_failure,
     proceed_quality_evaluation,
 )
 from app.auth.connector import RayContext
@@ -294,10 +295,43 @@ async def handle_verify_job_submission(
                 human_translation_file_and_languages=selected_languages,
                 quality_evaluation_file_and_languages=selected_languages,
             )
-        except Exception:
-            await update_evaluate_quote_stage(job_uuid, STAGE_AWAITING_QE)
-            await redis_conn.delete(lock_key)
-            raise
+        except Exception as e:
+            notify_exception(e)
+            # The message was already stripped to "Accepting quote…" with no
+            # buttons. Re-raising into Bolt would leave the user stuck there,
+            # so restore an actionable message unless the debit is ambiguous.
+            ambiguous = is_ambiguous_api_failure(e)
+            if not ambiguous:
+                await update_evaluate_quote_stage(job_uuid, STAGE_AWAITING_QE)
+                await redis_conn.delete(lock_key)
+            if message_ts and quote_channel_id:
+                message = combined_human_job_quote_message(
+                    selected_job_data,
+                    selected_costs,
+                    qe_token_cost=qe_token_cost,
+                    qe_additional_costs=qe_costs,
+                    actions=not ambiguous,
+                    status_message=_(
+                        "We could not confirm whether your acceptance went "
+                        "through. We are checking on it — please do not accept "
+                        "this quote again."
+                    )
+                    if ambiguous
+                    else _(
+                        "There was an error accepting your quote. Please try "
+                        "again or contact your administrator."
+                    ),
+                    allow_adjust=not ambiguous,
+                    download_translations_job_uuid=job_uuid,
+                    **PRE_QE_QUOTE_DISPLAY,
+                )
+                await client.chat_update(
+                    channel=quote_channel_id,
+                    ts=message_ts,
+                    text=message.text,
+                    blocks=message.blocks,
+                )
+            return
 
         await update_evaluate_quote_stage(job_uuid, STAGE_ACCEPTED_QE)
         if message_ts and quote_channel_id:

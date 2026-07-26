@@ -45,7 +45,7 @@ from ..auth.connector import (
 )
 from ..dependencies import RayEvent, RayEventAuth, get_ray_event_auth
 from ..ray.events.evaluate_quote_events import (
-    claim_evaluate_complete_notification,
+    claim_ray_event_notification,
     post_evaluate_service_quote,
 )
 from ..ray.events.logging import (
@@ -547,6 +547,7 @@ async def ray_events(
                         thread_ts,
                         task_info,
                         auth,
+                        failed_languages=transcribed_event.failed_languages,
                     )
                     if uploaded_count == 0:
                         await fail_media_submissions(extra_data)
@@ -629,6 +630,7 @@ async def ray_events(
                         str(channel_id),
                         thread_ts,
                         auth,
+                        failed_languages=transcribed_event.failed_languages,
                     )
                     if not delivered:
                         await fail_media_submissions(extra_data)
@@ -666,15 +668,28 @@ async def ray_events(
                         }
                     )
                     if error_data.error_type == "insufficient_balance":
-                        client_type = await get_client_type(
-                            auth.slack_user.ray_client_id,
-                            auth.slack_user.ray_user_group_id,
-                        )
+                        # Org-billed posters have no member link, so client_id is
+                        # the org uuid and there is no Admin/Owner role to read.
+                        client_type = None
+                        if (
+                            auth.slack_user
+                            and auth.slack_user.ray_user_group_id
+                            and auth.slack_user.ray_client_id
+                            != auth.slack_user.ray_user_group_id
+                        ):
+                            client_type = await get_client_type(
+                                auth.slack_user.ray_client_id,
+                                auth.slack_user.ray_user_group_id,
+                            )
                         balance = Balance.model_validate(error_data.error_data)
                         message = (
                             RequiresMtTokenMessage(balance.balance, balance.required)
                             if client_type in ["Admin", "Owner"]
-                            and not is_ibm_enterprise(auth.slack_user.enterprise_id)
+                            and not is_ibm_enterprise(
+                                auth.slack_user.enterprise_id
+                                if auth.slack_user
+                                else None
+                            )
                             else RequiresMtTokenAdminMessage(
                                 balance.balance, balance.required
                             )
@@ -695,13 +710,23 @@ async def ray_events(
                         )
                     else:
                         message = DocMtMessage()
-                    await post_notification_ephemeral(
-                        client,
-                        quote_data.channel_id,
-                        event,
-                        auth.slack_user,
-                        message,
-                    )
+                    if auth.slack_user is None:
+                        logger.error(
+                            "Document MT quote error has no deliverable Slack user",
+                            extra={
+                                "error_type": str(error_data.error_type),
+                                "has_team_id": bool(quote_data.team_id),
+                                "has_slack_user_id": bool(quote_data.slack_user_id),
+                            },
+                        )
+                    else:
+                        await post_notification_ephemeral(
+                            client,
+                            quote_data.channel_id,
+                            event,
+                            auth.slack_user,
+                            message,
+                        )
                 else:
                     session = await apply_document_mt_quote_result(
                         quote_data.quote_id,
@@ -836,7 +861,7 @@ async def ray_events(
                 ) from e
 
         elif event.event == "verify:slack:evaluate:complete":
-            if not await claim_evaluate_complete_notification(event):
+            if not await claim_ray_event_notification(event):
                 logger.info(
                     "Skipping duplicate evaluate-complete notification for job %s",
                     event.data.get("job_uuid"),

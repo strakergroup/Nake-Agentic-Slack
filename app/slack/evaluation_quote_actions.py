@@ -10,6 +10,7 @@ from app.api.verify import (
     get_client_evaluation_job,
     get_evaluation_job_quote,
     get_job_pricing,
+    is_ambiguous_api_failure,
     proceed_evaluation_job,
     proceed_quality_evaluation,
 )
@@ -55,7 +56,40 @@ from app.slack.evaluation_quotes import (
     update_evaluate_quote_slack_message,
     update_evaluate_quote_stage,
 )
+from app.slack.middleware import require_ray_client
 from app.translate import _
+
+
+def _pending_confirmation_status() -> str:
+    return _(
+        "We could not confirm whether your acceptance went through. "
+        "We are checking on it — please do not accept this quote again."
+    )
+
+
+def _clicking_user_id(body: dict[str, Any], context: RayContext) -> str:
+    return str(body.get("user", {}).get("id") or context.get("user_id") or "")
+
+
+async def _reject_foreign_quote_click(
+    client: AsyncWebClient,
+    *,
+    session: dict[str, Any] | None,
+    clicking_user_id: str,
+    message: str,
+) -> bool:
+    """Reject an accept click from anyone other than the quote owner.
+
+    Quote sessions live in Redis for hours, and the Slack message carrying the
+    Accept button is visible to the whole channel, so the button value alone is
+    not authorisation to spend the owner's tokens.
+    """
+    owner_id = (session or {}).get("user_id")
+    if not owner_id or not clicking_user_id or owner_id == clicking_user_id:
+        return False
+    if clicking_user_id:
+        await client.chat_postMessage(channel=clicking_user_id, text=message)
+    return True
 
 
 async def _resolve_evaluate_quote_message_ts(
@@ -181,6 +215,13 @@ async def _accept_evaluation_service_quote(
     """Accept a staged evaluate quote, updating the original Slack message in place."""
     job_uuid = action["value"]
     session = await get_evaluate_quote_session(job_uuid)
+    if await _reject_foreign_quote_click(
+        client,
+        session=session,
+        clicking_user_id=_clicking_user_id(body, context),
+        message=_("You do not have permission to accept this quote."),
+    ):
+        return
     channel_id = str(
         (session or {}).get("channel_id") or context.get("channel_id") or ""
     )
@@ -239,10 +280,12 @@ async def _accept_evaluation_service_quote(
     base_token_cost = 0
     pdf_page_count: int | None = None
     pdf_tokens: int | None = None
+    proceed_attempted = False
 
     try:
-        assert context["ray"] is not None
-        assert context["ray"].client is not None
+        if not await require_ray_client(context) or context["ray"].client is None:
+            await redis_conn.delete(lock_key)
+            return
 
         quote = await get_evaluation_job_quote(
             context["ray"].client,
@@ -283,6 +326,7 @@ async def _accept_evaluation_service_quote(
             status_message=_("Accepting quote..."),
         )
 
+        proceed_attempted = True
         await proceed(
             context["ray"].client,
             job_uuid,
@@ -332,7 +376,12 @@ async def _accept_evaluation_service_quote(
         await redis_conn.delete(lock_key)
     except Exception as e:
         notify_exception(e)
-        await update_evaluate_quote_stage(job_uuid, awaiting_stage)
+        # A timeout or 5xx after the debit was issued may still have charged the
+        # client. Keep the stage at ``processing_*`` and leave Accept off rather
+        # than inviting a second click.
+        ambiguous = proceed_attempted and is_ambiguous_api_failure(e)
+        if not ambiguous:
+            await update_evaluate_quote_stage(job_uuid, awaiting_stage)
         await _refresh_evaluate_quote_message(
             client,
             channel_id=channel_id,
@@ -347,12 +396,13 @@ async def _accept_evaluation_service_quote(
             is_ibm=is_ibm,
             quote_snapshot=quote_snapshot,
             selected_pairs=selected_pairs,
-            actions=True,
-            status_message=_(
-                "There was an error processing your request. Please try again."
-            ),
+            actions=not ambiguous,
+            status_message=_pending_confirmation_status()
+            if ambiguous
+            else _("There was an error processing your request. Please try again."),
         )
-        await redis_conn.delete(lock_key)
+        if not ambiguous:
+            await redis_conn.delete(lock_key)
 
 
 async def _proceed_ai_translation(
@@ -453,9 +503,18 @@ async def accept_combined_qe_human_quote(
 ) -> None:
     """Accept the combined Quality Evaluation + Human Translation quote."""
     job_uuid = action["value"]
-    channel_id = context["channel_id"]
     message_ts = await _resolve_evaluate_quote_message_ts(body, job_uuid)
     session = await get_evaluate_quote_session(job_uuid)
+    if await _reject_foreign_quote_click(
+        client,
+        session=session,
+        clicking_user_id=_clicking_user_id(body, context),
+        message=_("You do not have permission to accept this quote."),
+    ):
+        return
+    channel_id = str(
+        (session or {}).get("channel_id") or context.get("channel_id") or ""
+    )
     if session and session.get("stage") in QE_TERMINAL_STAGES:
         return
 
@@ -468,10 +527,12 @@ async def accept_combined_qe_human_quote(
     display_job_data: dict[str, Any] | None = None
     costs: list[dict[str, Any]] = []
     qe_costs: list[dict[str, Any]] = []
+    proceed_attempted = False
 
     try:
-        assert context["ray"] is not None
-        assert context["ray"].client is not None
+        if not await require_ray_client(context) or context["ray"].client is None:
+            await redis_conn.delete(lock_key)
+            return
 
         job = await get_client_evaluation_job(context["ray"].client, job_uuid)
         job_data = job["data"]
@@ -538,6 +599,7 @@ async def accept_combined_qe_human_quote(
             submitted=True,
         )
 
+        proceed_attempted = True
         await proceed_quality_evaluation(
             context["ray"].client,
             job_uuid,
@@ -582,7 +644,9 @@ async def accept_combined_qe_human_quote(
         await redis_conn.delete(lock_key)
     except Exception as e:
         notify_exception(e)
-        await update_evaluate_quote_stage(job_uuid, STAGE_AWAITING_QE)
+        ambiguous = proceed_attempted and is_ambiguous_api_failure(e)
+        if not ambiguous:
+            await update_evaluate_quote_stage(job_uuid, STAGE_AWAITING_QE)
         await _refresh_combined_quote(
             client,
             channel_id=channel_id,
@@ -591,9 +655,11 @@ async def accept_combined_qe_human_quote(
             costs=costs,
             qe_token_cost=qe_token_cost,
             qe_costs=qe_costs,
-            actions=True,
-            status_message=_(
-                "There was an error processing your request. Please try again."
-            ),
+            actions=not ambiguous,
+            status_message=_pending_confirmation_status()
+            if ambiguous
+            else _("There was an error processing your request. Please try again."),
+            submitted=ambiguous,
         )
-        await redis_conn.delete(lock_key)
+        if not ambiguous:
+            await redis_conn.delete(lock_key)

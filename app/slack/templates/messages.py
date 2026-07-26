@@ -3349,6 +3349,42 @@ class TranscriptionMessage(TextMessage):
         )
 
 
+class MediaTranslationPartialMessage(TextMessage):
+    """Message shown when only some requested AI translations were delivered.
+
+    `failed_language_names` holds display names, resolved by the caller.
+    """
+
+    def __init__(self, failed_language_names: list[str]) -> None:
+        failed_languages_string = format_strings_display(
+            failed_language_names, and_string="and"
+        )
+        super().__init__(
+            _(
+                ":warning: Your file is AI translated and can be downloaded above, "
+                "but we could not translate it into {failed_languages_string}. "
+                "Please try the missing language(s) again or contact support."
+            )
+        )
+
+
+class MediaEmbeddingPartialMessage(TextMessage):
+    """Message shown when subtitles for some requested languages were not embedded."""
+
+    def __init__(self, failed_language_names: list[str]) -> None:
+        failed_languages_string = format_strings_display(
+            failed_language_names, and_string="and"
+        )
+        super().__init__(
+            _(
+                ":warning: Your video with embedded subtitles is ready and can be "
+                "downloaded above, but we could not embed subtitles for "
+                "{failed_languages_string}. "
+                "Please try the missing language(s) again or contact support."
+            )
+        )
+
+
 class VideoOptionsMessage(SlackMessage):
     """Message shown when video(s) are detected, offering processing options.
 

@@ -122,7 +122,7 @@ async def populate_ray_connection(context: AsyncBoltContext) -> None:
                 # insert to db
                 await log_new_user_info(user)
             except Exception as e:
-                print(e)
+                logging.warning("Failed to log new Slack user info", exc_info=True)
                 notify_exception(e)
 
 

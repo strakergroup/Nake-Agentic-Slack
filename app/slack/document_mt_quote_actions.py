@@ -14,6 +14,7 @@ from app.slack.document_mt_quotes import (
     document_mt_quote_lock_key,
     get_document_mt_quote_session,
     mark_document_mt_quote_accepted,
+    update_document_mt_quote_session,
 )
 from app.slack.templates.messages import DocumentMtQuoteMessage
 from app.translate import _
@@ -59,6 +60,7 @@ async def accept_document_mt_quote(
         )
         return
 
+    marked_accepted = False
     try:
         accepted_session = await mark_document_mt_quote_accepted(quote_id)
         if accepted_session is None:
@@ -69,6 +71,7 @@ async def accept_document_mt_quote(
                 ),
             )
             return
+        marked_accepted = True
         await enqueue_document_mt_submission(
             user_id=context["user_id"],
             team_id=str(accepted_session.get("team_id") or context["team_id"]),
@@ -100,10 +103,19 @@ async def accept_document_mt_quote(
         )
     except Exception as e:
         notify_exception(e)
+        if marked_accepted:
+            # Nothing was submitted or billed, so put the quote back in a state
+            # the Accept button can act on — otherwise the retry we ask for hits
+            # the "not ready to accept" guard and the upload is stranded.
+            await update_document_mt_quote_session(
+                quote_id, {"status": QUOTE_STATUS_QUOTED}
+            )
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("There was an error accepting your quote, please try again."),
         )
+    finally:
+        await redis_conn.delete(lock_key)
 
 
 async def cancel_document_mt_quote(
@@ -120,6 +132,15 @@ async def cancel_document_mt_quote(
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("You do not have permission to cancel this translation quote."),
+        )
+        return
+    if session is not None and session.get("status") != QUOTE_STATUS_QUOTED:
+        # A stale Cancel click after Accept would delete a session whose
+        # submission is already queued, and the worker would then abort with
+        # "this quote has expired".
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=_("This translation quote can no longer be cancelled."),
         )
         return
 
