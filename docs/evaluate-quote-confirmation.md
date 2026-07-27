@@ -27,6 +27,8 @@ Evaluate submit resolves the member via `get_ray_client` (workspace super-group 
 
 Document MT and Media use the same Admin/Owner gate: admins see quotes; non-admins skip quote UX and auto-start processing.
 
+To lift the restriction, see [Removing the admin-only restriction](#removing-the-admin-only-restriction-cleanup-path).
+
 ## Non-admin Human Translation flow (parity with `master`)
 
 Non-admins see the same Slack message sequence as `master`/prod: submit, then a single Human Translation quote once AI translation and quality evaluation have run, then human verification after Accept. No AI quote and no combined QE + HT quote are posted, and there are no intermediate "AI translation started" / "Quality evaluation is running" status messages.
@@ -61,6 +63,57 @@ Differences are backend-only:
 | `confirmation_required` | `false` | `true` for HT; non-admin **Quality Evaluation** stays `false` |
 
 Because non-admin HT jobs no longer carry the fixed HT workflow UUID, any Verify-side display or billing label that keys off `workflow_uuid` will not see it on these jobs. Confirm in UAT before release if HT labelling matters downstream.
+
+## Removing the admin-only restriction (cleanup path)
+
+Everything non-admin-specific exists only to keep non-admins on the prod flow while the staged quote flow is admin-only. Rolling the staged flow out to everyone is a config flip; the code removal is a separate, later change, and doing it too early breaks jobs that are already in flight.
+
+```mermaid
+flowchart LR
+    A["1. QUOTE_ADMIN_ONLY=false<br/>config only, reversible"] --> B["2. Drain ≥ 7 days<br/>no job carries slack_ht_quote_after_qe"]
+    B --> C["3. SRT: stop producing the flag"]
+    C --> D["4. CVA + CVC: stop consuming it"]
+```
+
+### 1. The switch
+
+Set `QUOTE_ADMIN_ONLY=false`. `user_may_receive_quotes` then returns true for everyone, so every evaluate submission takes the `may_quote` branch in `process_evaluation_submission`: staged AI quote, combined QE + HT quote, `confirmation_required=true`, PDF pre-quotes, and no `slack_ht_quote_after_qe` on new jobs. No deploy is needed and flipping it back restores admin-only behaviour.
+
+**The flag is not evaluate-only.** The same gate drives Document MT (`app/slack/handlers/document_mt.py`) and Media (`app/slack/media_quote_actions.py`), so those flows start showing quote UI to everyone at the same moment. To roll evaluate out on its own, add a separate setting rather than widening this one.
+
+### 2. Drain before deleting
+
+Jobs created while the restriction was on still carry `extra_info.slack_ht_quote_after_qe`, and they need both the SRT standalone HT path and CVC's HV omission to finish correctly. Quote sessions live for `EVALUATE_QUOTE_TTL_SECONDS` (7 days), and CVC parks a staged quote for up to `STAGED_QE_QUOTE_EXPIRY_HOURS` (72h), so wait at least a week after the flip and confirm none are left before removing code. CVC logs the value on every synthetic build (`[V4:SYNTHETIC] ... slack_ht_quote_after_qe=`), which is the easiest thing to search in ELK.
+
+### 3. SRT — stop producing the flag
+
+| Location | Change |
+|---|---|
+| `app/saq_jobs/tasks.py` | Collapse the `may_quote` / `is_human_translation` / else branch to the staged defaults (`confirmation_required=True`), drop `is_human_translation` and the `user_may_receive_quotes` call if the setting is retired |
+| `app/api/verify.py` | Drop the `slack_ht_quote_after_qe` parameter from `submit_evaluation_job` and `publish_pdf_evaluate_convert` |
+| `app/slack/evaluation_submissions.py` | Drop the payload key |
+| `app/slack/evaluation_combined_quotes.py` | Drop the flag branch in `post_combined_qe_human_quote` and `_auto_proceed_qe_for_ht_quote_after_qe` |
+| `app/ray/events/evaluate_quote_events.py` | Drop the non-admin auto-proceed branch that keys off the flag |
+| `app/slack/evaluation_quotes.py` | Drop the flag clauses from `job_is_human_translation_quote` and `quote_snapshot_is_human_translation` |
+| `app/constants.py` | Remove `SLACK_HT_QUOTE_AFTER_QE_KEY` last, once nothing references it |
+
+### 4. CVA and CVC — stop consuming it
+
+Only after SRT stops sending it:
+
+- **CVA**: the `slack_ht_quote_after_qe` form parameter in `src/evaluate/router.py`, its persistence in `src/evaluate/service.py`, and `tests/evaluate/test_create_evaluation_job_metadata.py::test_create_evaluation_job_persists_slack_ht_quote_after_qe`.
+- **CVC**: `defer_hv_to_slack_quote` in `src/workflow/v4/synthetic.py` (`include_human_verification` collapses back to `is_staged_slack_quote_job`), the `extra_info` table row in `docs/staged-evaluate-quote-confirmation.md`, and `tests/workflow/v4/test_synthetic.py::test_staged_slack_ht_quote_after_qe_excludes_human_verification`.
+
+### What stays
+
+- **`job_is_human_translation_quote`** — staged quotes still clear `HUMAN_EVALUATION`, so the quote session remains the only durable HT marker. Only its flag clause goes.
+- **`standalone_ht_quote_message` and the `evaluate:complete` else-branch** — they also serve jobs whose `workflow_uuid` is `HUMAN_EVALUATION` / `HUMAN_VERIFICATION`. SRT does not create those today, but jobs created outside Slack can still arrive; confirm in ELK before deleting.
+- **`QUOTE_ADMIN_ONLY` and `user_may_receive_quotes`** — deleting them removes the only rollback that does not need a deploy. Keep them until the staged flow has been the default for everyone for a full release cycle.
+- **`show_quality_discount`** — off at every call site but harmless. Remove it together with `_format_quality_discount_text` in `app/slack/templates/blocks.py` only if quality tiers are permanently unwanted.
+
+### Verify after the flip
+
+With a non-admin account in UAT: an HT submit should now produce an **AI quote** (not silence), then a combined QE + HT quote after accept, then the final panel with the discounted amount. A plain Quality Evaluation submit should still end on the Evaluation Result panel, and a PDF HT submit should now show the pre-quote that used to be admin-only.
 
 ## Identifying a human translation quote
 
