@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: RAY-79115 — HT quote Accept/Adjust no longer replaces the quote with the QE Evaluation Result panel (“Send for Human Verification” + scores) (Wade Norman, 2026-07-27)
 - [Fixed]: RAY-79115 — non-admin HT again uses HT-after-QE (clear `HUMAN_EVALUATION`, defer HV) so Accept is not “cancelled” and Adjust has options; HT quote/Adjust hide `Quality:` tiers (Wade Norman, 2026-07-27)
 - [Changed]: RAY-79115 — removed intermediate “AI translation started…” / “Quality evaluation is running…” Slack status messages; HT Adjust Request no longer shows QE Summary/Overall Score blocks (Wade Norman, 2026-07-27)
 - [Changed]: RAY-79115 — non-admin evaluate/HT matches prod again: keep `HUMAN_EVALUATION`, `confirmation_required=false`, no auto AI/QE / HT-after-QE staging (so Slack/Verify stay HT-labelled); admins still clear that workflow for staged AI → QE → HT quotes (Wade Norman, 2026-07-27)

@@ -47,6 +47,7 @@ from app.slack.evaluation_quotes import (
 )
 from app.slack.listener_actions import (
     VERIFY_JOB_SUBMISSION_LOCK_TTL_SECONDS,
+    _job_is_ht_slack_quote,
     submit_verification_job,
     update_human_job_quote_message,
     verify_job_submission_lock_key,
@@ -98,12 +99,7 @@ async def handle_quote_accept_all(
         )
         return
 
-    job_extra = job["data"].get("extra_info") or {}
-    is_ht_quote = job["data"][
-        "workflow_uuid"
-    ] == HUMAN_EVALUATION_WORKFLOW_UUID or bool(
-        job_extra.get("slack_ht_quote_after_qe")
-    )
+    is_ht_quote = _job_is_ht_slack_quote(job["data"])
 
     # Get all available language/file combinations that are not in progress
     selected_languages = []
@@ -144,6 +140,8 @@ async def handle_quote_accept_all(
         timestamp=timestamp,
         job=job,
         channel_id=channel_id,
+        # quote_accept_all is only on HumanJobQuoteMessage — never show QE result.
+        prefer_ht_quote_message=True,
     )
 
 
@@ -390,6 +388,7 @@ async def handle_verify_job_submission(
         timestamp=message_ts,
         job=job,
         channel_id=quote_channel_id,
+        prefer_ht_quote_message=bool(private_metadata.get("ht_quote")),
     )
 
 

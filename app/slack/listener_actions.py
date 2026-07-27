@@ -23,7 +23,10 @@ from app.api.verify import (
     create_human_job,
     get_job_pricing,
 )
-from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+from app.constants import (
+    HUMAN_EVALUATION_WORKFLOW_UUID,
+    HUMAN_VERIFICATION_WORKFLOW_UUID,
+)
 from app.models import (  # noqa: F401 - kept for potential future use
     ASRTask,
     TranscriptionTask,
@@ -2473,6 +2476,21 @@ async def update_human_job_quote_message(
     )
 
 
+def _job_is_ht_slack_quote(job_data: dict[str, Any]) -> bool:
+    """Return True when this evaluate job was quoted as Human Translation in Slack."""
+    workflow_uuid = job_data.get("workflow_uuid")
+    if workflow_uuid in (
+        HUMAN_EVALUATION_WORKFLOW_UUID,
+        HUMAN_VERIFICATION_WORKFLOW_UUID,
+    ):
+        return True
+    extra = job_data.get("extra_info") or {}
+    flag = extra.get("slack_ht_quote_after_qe")
+    if isinstance(flag, str):
+        return flag.strip().lower() in {"1", "true", "yes"}
+    return bool(flag)
+
+
 async def submit_verification_job(
     client: AsyncWebClient,
     context: RayContext,
@@ -2483,6 +2501,7 @@ async def submit_verification_job(
     job: dict[str, Any],
     *,
     channel_id: str | None = None,
+    prefer_ht_quote_message: bool = False,
 ):
     """Submit a verification job with selected languages.
 
@@ -2494,6 +2513,8 @@ async def submit_verification_job(
         user_id (str): The user ID to send the response to.
         timestamp (str | None): Optional timestamp of the message to update.
         channel_id (str | None): Channel where the quote message was posted.
+        prefer_ht_quote_message: When True (HT Accept/Adjust), never replace the
+            quote with the QE Evaluation Result panel.
     """
     lock_key = verify_job_submission_lock_key(job_uuid)
     quote_channel_id = channel_id or context.get("channel_id")
@@ -2509,13 +2530,9 @@ async def submit_verification_job(
         text=msg,
     )
     try:
-        # Get the updated job details after submission
-        job_extra = job["data"].get("extra_info") or {}
-        is_ht_quote = job["data"][
-            "workflow_uuid"
-        ] == HUMAN_EVALUATION_WORKFLOW_UUID or bool(
-            job_extra.get("slack_ht_quote_after_qe")
-        )
+        # HT Accept must keep the HT quote panel. Falling back to
+        # EvaluateSuccessMessage shows QE scores + "Send for Human Verification".
+        is_ht_quote = prefer_ht_quote_message or _job_is_ht_slack_quote(job["data"])
         if is_ht_quote:
             assert context.ray is not None
             assert context.ray.client is not None
@@ -2530,6 +2547,7 @@ async def submit_verification_job(
                 costs["data"],
                 actions=False,
                 show_quality_discount=False,
+                status_message=msg,
             )
         else:
             updated_msg = EvaluateSuccessMessage(

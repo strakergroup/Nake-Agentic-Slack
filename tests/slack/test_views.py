@@ -340,6 +340,7 @@ class TestVerifyQuoteSummaryModal:
         assert modal["callback_id"] == "verify_job"
         assert "job-123" in modal["private_metadata"]
         assert '"channel_id": "C123"' in modal["private_metadata"]
+        assert '"ht_quote": true' in modal["private_metadata"]
         rendered = str(modal["blocks"])
         assert "Overall Score" not in rendered
         assert "*Summary:*" not in rendered

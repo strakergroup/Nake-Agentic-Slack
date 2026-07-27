@@ -1109,6 +1109,8 @@ def verify_quote_summary_modal(
         "job_uuid": job["uuid"],
         "timestamp": timestamp,
         "channel_id": channel_id,
+        # Marks this as HT Adjust (not QE "Send for Human Verification").
+        "ht_quote": True,
     }
     if metadata:
         private_metadata.update(metadata)
