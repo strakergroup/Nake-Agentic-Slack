@@ -1385,7 +1385,9 @@ class TestSubmitVerificationJob:
             )
 
         quote_message.assert_called_once()
+        assert quote_message.call_args.kwargs.get("status_message") is None
         qe_message.assert_not_called()
+        mock_client.chat_postMessage.assert_awaited()
 
     @pytest.mark.asyncio
     async def test_staged_ht_accept_uses_quote_session_to_stay_on_ht_quote(

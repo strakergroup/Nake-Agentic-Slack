@@ -2525,11 +2525,12 @@ async def submit_verification_job(
                 [file["file_uuid"] for file in job["data"]["source_files"]],
                 [lang["uuid"] for lang in job["data"]["target_languages"]],
             )
+            # Thank-you is the separate chat_postMessage above — do not also
+            # embed it on the quote update (prod/master never did).
             updated_msg: SlackMessage = standalone_ht_quote_message(
                 job["data"],
                 costs["data"],
                 actions=False,
-                status_message=msg,
             )
         else:
             updated_msg = EvaluateSuccessMessage(
