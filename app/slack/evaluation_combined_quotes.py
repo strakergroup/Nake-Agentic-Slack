@@ -419,13 +419,7 @@ async def _auto_proceed_qe_for_ht_quote_after_qe(
             SLACK_HT_QUOTE_AFTER_QE_KEY: True,
         },
     )
-    await client.chat_postMessage(
-        channel=channel_id,
-        text=_(
-            "Quality evaluation is running. You will receive a human translation "
-            "quote when it completes."
-        ),
-    )
+    # No intermediate "QE is running" status — HT quote posts on complete.
 
 
 async def post_combined_qe_human_quote(

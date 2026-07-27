@@ -206,10 +206,8 @@ async def post_evaluate_service_quote(
             language_costs=language_costs,
             quoted_ai_pairs=ai_translation_file_and_languages,
             prequote_message_ts=prequote_message_ts,
-            status_on_success=_(
-                "AI translation started. You will receive a human translation "
-                "quote after quality evaluation."
-            ),
+            # No intermediate status — HT quote arrives when QE completes.
+            status_on_success=None,
         )
         return
 

@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: RAY-79115 — removed intermediate “AI translation started…” / “Quality evaluation is running…” Slack status messages; HT Adjust Request no longer shows QE Summary/Overall Score blocks (Wade Norman, 2026-07-27)
 - [Changed]: RAY-79115 — non-admin evaluate/HT matches prod again: keep `HUMAN_EVALUATION`, `confirmation_required=false`, no auto AI/QE / HT-after-QE staging (so Slack/Verify stay HT-labelled); admins still clear that workflow for staged AI → QE → HT quotes (Wade Norman, 2026-07-27)
 - [Fixed]: RAY-79115 — non-admin HT-after-QE no longer pins `HUMAN_EVALUATION` workflow (HV was starting before Slack Accept, so Accept showed “cancelled”); post-QE HT-only quotes hide `Quality: best/good` like combined QE+HT quotes (Wade Norman, 2026-07-27)
 - [Fixed]: RAY-79115 — admin-only quoting review fixes: evaluate uses member `get_ray_client` (no workspace super-group required); definite AI/QE Verify 401/402/403 failures release the Redis event claim so non-admins can retry; QE quote is fetched before claiming; media auto-start falls back to posting Accept UI on balance/login failure; non-admin HT quotes post to the stored Slack channel (Wade Norman, 2026-07-27)

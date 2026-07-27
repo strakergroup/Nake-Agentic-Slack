@@ -416,11 +416,19 @@ def verify_quote_blocks(
     show_submitted_costs: bool | None = None,
     show_total_cost: bool = True,
     show_estimated_completion: bool = True,
+    show_evaluation_report: bool | None = None,
 ):
     source_files = job["source_files"]
     workflow_uuid = job["workflow_uuid"]
     if show_submitted_costs is None:
         show_submitted_costs = show_quality_discount
+    # HT Adjust/quotes should not show QE Summary/Overall Score blocks.
+    # Default keeps the legacy QE "Send for HV" modal behaviour.
+    include_evaluation_report = (
+        show_evaluation_report
+        if show_evaluation_report is not None
+        else workflow_uuid != HUMAN_EVALUATION_WORKFLOW_UUID
+    )
     blocks: list[dict[str, Any]] = []
     total_cost = 0.0
     total_savings = 0.0
@@ -531,7 +539,7 @@ def verify_quote_blocks(
                 total_cost += line_cost
                 total_savings += quality_discount_savings
                 report = None
-                if workflow_uuid != HUMAN_EVALUATION_WORKFLOW_UUID:
+                if include_evaluation_report:
                     if "report" in file and "evaluation_reports" in file["report"]:
                         report = next(
                             (
@@ -591,60 +599,63 @@ def verify_quote_blocks(
                             ],
                         }
                     )
-                    source_lang_uuid = file["report"]["language_uuid"]
-                    all_langs = get_languages_sync()
-                    if not all_langs:
-                        # Fallback: return a default message if languages cache is empty
-                        source_lang = {"name": "Unknown Language"}
-                    else:
-                        source_lang = next(
-                            (
-                                lang
-                                for lang in all_langs
-                                if lang["uuid"] == source_lang_uuid
-                            ),
-                            {"name": "Unknown Language"},
-                        )
-                    summary = job_summary_string(source_lang, lang, file)
+                    if include_evaluation_report:
+                        source_lang_uuid = file["report"]["language_uuid"]
+                        all_langs = get_languages_sync()
+                        if not all_langs:
+                            # Fallback: return a default message if languages cache is empty
+                            source_lang = {"name": "Unknown Language"}
+                        else:
+                            source_lang = next(
+                                (
+                                    lang
+                                    for lang in all_langs
+                                    if lang["uuid"] == source_lang_uuid
+                                ),
+                                {"name": "Unknown Language"},
+                            )
+                        summary = job_summary_string(source_lang, lang, file)
 
-                    if report:
-                        pct = calculate_evaluation_percentages(report["count"])
-                        report_message = f":large_blue_square: {_('Translation Memory')}: {pct['translation_memory']}%\n"
-                        report_message += (
-                            f":large_green_square: {_('Best')}: {pct['best']}%\n"
-                        )
-                        report_message += (
-                            f":large_yellow_square: {_('Good')}: {pct['good']}%\n"
-                        )
-                        report_message += f":large_orange_square: {_('Acceptable')}: {pct['acceptable']}%\n"
-                        report_message += (
-                            f":large_red_square: {_('Bad')}: {pct['bad']}%"
-                        )
-                        blocks.append(
-                            {
-                                "type": "section",
-                                "fields": [
-                                    {
-                                        "type": "mrkdwn",
-                                        "text": _("*Summary:*\n{summary}"),
-                                    },
-                                    {
-                                        "type": "mrkdwn",
-                                        "text": _("*Overall Score:*\n{report_message}"),
-                                    },
-                                ],
-                            },
-                        )
-                    else:
-                        blocks.append(
-                            {
-                                "type": "section",
-                                "text": {
-                                    "type": "mrkdwn",
-                                    "text": summary,
+                        if report:
+                            pct = calculate_evaluation_percentages(report["count"])
+                            report_message = f":large_blue_square: {_('Translation Memory')}: {pct['translation_memory']}%\n"
+                            report_message += (
+                                f":large_green_square: {_('Best')}: {pct['best']}%\n"
+                            )
+                            report_message += (
+                                f":large_yellow_square: {_('Good')}: {pct['good']}%\n"
+                            )
+                            report_message += f":large_orange_square: {_('Acceptable')}: {pct['acceptable']}%\n"
+                            report_message += (
+                                f":large_red_square: {_('Bad')}: {pct['bad']}%"
+                            )
+                            blocks.append(
+                                {
+                                    "type": "section",
+                                    "fields": [
+                                        {
+                                            "type": "mrkdwn",
+                                            "text": _("*Summary:*\n{summary}"),
+                                        },
+                                        {
+                                            "type": "mrkdwn",
+                                            "text": _(
+                                                "*Overall Score:*\n{report_message}"
+                                            ),
+                                        },
+                                    ],
                                 },
-                            }
-                        )
+                            )
+                        else:
+                            blocks.append(
+                                {
+                                    "type": "section",
+                                    "text": {
+                                        "type": "mrkdwn",
+                                        "text": summary,
+                                    },
+                                }
+                            )
                 else:
                     quote_text = f"*{lang['name']}*\n>{format_slack_usd(line_cost)}"
                     if quality_discount_text:

@@ -307,7 +307,22 @@ class TestVerifyQuoteSummaryModal:
                     "file_uuid": "file-123",
                     "filename": "test.txt",
                     "target_files": [],
-                    "report": {"language_uuid": "source-uuid"},
+                    "report": {
+                        "language_uuid": "source-uuid",
+                        "evaluation_reports": [
+                            {
+                                "target_language": "lang-123",
+                                "count": {
+                                    "bad": 1,
+                                    "good": 5,
+                                    "best": 2,
+                                    "acceptable": 1,
+                                    "translation_memory": 1,
+                                },
+                                "score": 0.85,
+                            }
+                        ],
+                    },
                 }
             ],
         }
@@ -325,6 +340,9 @@ class TestVerifyQuoteSummaryModal:
         assert modal["callback_id"] == "verify_job"
         assert "job-123" in modal["private_metadata"]
         assert '"channel_id": "C123"' in modal["private_metadata"]
+        rendered = str(modal["blocks"])
+        assert "Overall Score" not in rendered
+        assert "*Summary:*" not in rendered
 
 
 class TestCalculateTotalCost:

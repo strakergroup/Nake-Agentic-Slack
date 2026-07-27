@@ -1102,6 +1102,8 @@ def verify_quote_summary_modal(
         show_savings=show_savings,
         embed_additional_costs_in_line_price=embed_additional_costs_in_line_price,
         total_cost_label=total_cost_label or "Maximum Total Cost",
+        # HT Adjust Request is file/language selection only — not the QE score view.
+        show_evaluation_report=False,
     )
     private_metadata = {
         "job_uuid": job["uuid"],

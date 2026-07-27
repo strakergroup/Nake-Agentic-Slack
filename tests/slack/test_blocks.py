@@ -535,6 +535,52 @@ class TestVerifyQuoteBlocks:
             assert any("Summary" in str(block) for block in blocks)
             assert any("Overall Score" in str(block) for block in blocks)
 
+    def test_verify_quote_blocks_can_hide_evaluation_report(self):
+        """HT Adjust Request must not render QE Summary/Overall Score blocks."""
+        job = {
+            "uuid": "job-123",
+            "workflow_uuid": "other-workflow-uuid",
+            "target_languages": [{"uuid": "lang-123", "name": "French"}],
+            "source_files": [
+                {
+                    "file_uuid": "file-123",
+                    "filename": "test.txt",
+                    "target_files": [],
+                    "report": {
+                        "language_uuid": "source-uuid",
+                        "evaluation_reports": [
+                            {
+                                "target_language": "lang-123",
+                                "count": {
+                                    "bad": 1,
+                                    "good": 5,
+                                    "best": 2,
+                                    "acceptable": 1,
+                                    "translation_memory": 1,
+                                },
+                                "score": 0.85,
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+        costs = [
+            {
+                "file_uuid": "file-123",
+                "language_uuid": "lang-123",
+                "service_list": [{"estimated_cost": 10.50, "time_estimate_days": 2}],
+            }
+        ]
+
+        blocks = verify_quote_blocks(
+            job, costs, selectable=True, show_evaluation_report=False
+        )
+        rendered = str(blocks)
+        assert "Overall Score" not in rendered
+        assert "Summary" not in rendered
+        assert "French" in rendered
+
     def test_verify_quote_blocks_not_selectable(self):
         """Test verify quote blocks when not selectable."""
         job = {
