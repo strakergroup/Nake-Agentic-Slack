@@ -2455,6 +2455,7 @@ async def update_human_job_quote_message(
     costs: list[dict[str, Any]],
     actions: bool = False,
     status_message: str | None = None,
+    show_quality_discount: bool = False,
 ) -> None:
     """Update the original human translation quote message in place."""
     message = HumanJobQuoteMessage(
@@ -2462,6 +2463,7 @@ async def update_human_job_quote_message(
         costs,
         actions=actions,
         status_message=status_message,
+        show_quality_discount=show_quality_discount,
     )
     await client.chat_update(
         channel=channel_id,
@@ -2508,7 +2510,13 @@ async def submit_verification_job(
     )
     try:
         # Get the updated job details after submission
-        if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+        job_extra = job["data"].get("extra_info") or {}
+        is_ht_quote = job["data"][
+            "workflow_uuid"
+        ] == HUMAN_EVALUATION_WORKFLOW_UUID or bool(
+            job_extra.get("slack_ht_quote_after_qe")
+        )
+        if is_ht_quote:
             assert context.ray is not None
             assert context.ray.client is not None
             costs = await get_job_pricing(
@@ -2517,9 +2525,11 @@ async def submit_verification_job(
                 [file["file_uuid"] for file in job["data"]["source_files"]],
                 [lang["uuid"] for lang in job["data"]["target_languages"]],
             )
-            #
             updated_msg: SlackMessage = HumanJobQuoteMessage(
-                job["data"], costs["data"], actions=False
+                job["data"],
+                costs["data"],
+                actions=False,
+                show_quality_discount=False,
             )
         else:
             updated_msg = EvaluateSuccessMessage(

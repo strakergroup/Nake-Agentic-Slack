@@ -955,7 +955,7 @@ async def ray_events(
                             message = HumanJobQuoteMessage(
                                 job["data"],
                                 costs["data"],
-                                show_quality_discount=not ht_quote_after_qe,
+                                show_quality_discount=False,
                             )
                     else:
                         message = EvaluateSuccessMessage(

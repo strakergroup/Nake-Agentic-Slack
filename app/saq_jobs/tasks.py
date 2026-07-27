@@ -957,10 +957,20 @@ async def process_evaluation_submission(
         logger.error("Evaluation submission has no RAY client", extra=log_extra)
         return {"status": "no_ray_client"}
     may_quote = await user_may_receive_quotes(RayConnection([], ray_client))
-    # Admins get staged AI → QE → HT quotes (confirmation_required).
-    # Non-admins keep prod evaluate behaviour: no staged quotes / no HT-after-QE.
-    slack_ht_quote_after_qe = False
-    confirmation_required = may_quote
+    # HUMAN_EVALUATION embeds HV and starts TP jobs before Slack Accept
+    # ("cancelled" + empty Adjust). Non-admin HT must use synthetic AI+QE with
+    # slack_ht_quote_after_qe so HV waits for the HT quote Accept.
+    is_human_translation = workflow_uuid == HUMAN_EVALUATION_WORKFLOW_UUID
+    if may_quote:
+        slack_ht_quote_after_qe = False
+        confirmation_required = True
+    elif is_human_translation:
+        slack_ht_quote_after_qe = True
+        confirmation_required = True
+    else:
+        # Non-admin Quality Evaluation: prod-like auto-run, no quote staging.
+        slack_ht_quote_after_qe = False
+        confirmation_required = False
 
     bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
     if not bot_token:
@@ -1223,11 +1233,9 @@ async def process_evaluation_submission(
             )
             return {"status": "nothing_to_submit"}
 
-        # Admin HT uses CVC synthetic workflow (clear HUMAN_EVALUATION) so AI/QE
-        # quotes can stage before HV. Non-admin HT keeps HUMAN_EVALUATION like prod.
-        submit_workflow_uuid = workflow_uuid
-        if may_quote and workflow_uuid == HUMAN_EVALUATION_WORKFLOW_UUID:
-            submit_workflow_uuid = None
+        # Clear HUMAN_EVALUATION for any staged HT path (admin quotes or
+        # non-admin HT-after-QE) so CVC builds synthetic AI+QE without early HV.
+        submit_workflow_uuid = None if is_human_translation else workflow_uuid
 
         if has_pdf:
             await publish_pdf_evaluate_convert(

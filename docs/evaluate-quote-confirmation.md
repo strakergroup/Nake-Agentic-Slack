@@ -18,9 +18,10 @@ When `QUOTE_ADMIN_ONLY=true` (default), only Verify group **Admin/Owner** member
 | Role | AI | QE | Human Translation |
 |------|----|----|-------------------|
 | Admin / Owner | Quote → accept | Combined **QE + HT** quote at worst-case QE tier → accept | Included in that combined accept |
-| Non-admin | Same as prod (no staged AI/QE quotes) | Same as prod (`confirmation_required=false`) | Same as prod: `HUMAN_EVALUATION` workflow + HT quote (`HumanJobQuoteMessage`) |
+| Non-admin | Auto-proceed (no quote) | Auto-purchase QE (no quote) | Separate HT quote after QE; HV only after Accept |
+| Non-admin QE modal | Same as prod (`confirmation_required=false`) | Evaluation Result + optional Send for HV | N/A |
 
-Non-admin evaluate / Human Translation keeps production behaviour so Slack and Verify UI stay labelled as Human Translation (workflow UUID, billing relabel, Accept/Adjust quote). Admins clear `HUMAN_EVALUATION` at submit so CVC builds the synthetic staged AI → QE → HT workflow with `confirmation_required=true`. PDF pre-quotes are admin-only; non-admins convert/create immediately without quote staging.
+Non-admin **Human Translation** clears the fixed `HUMAN_EVALUATION` workflow (it embeds HV too early → empty Adjust / “cancelled” Accept), sets `confirmation_required=true` and `extra_info.slack_ht_quote_after_qe=true`, and lets CVC run synthetic AI+QE **without** an HV node until Slack Accept. HT quotes hide `Quality:` tiers and Adjust is file/language pricing only. Non-admin **Quality Evaluation** stays prod-like (`confirmation_required=false`, no HT-after-QE). PDF pre-quotes are admin-only.
 
 Evaluate submit resolves the member via `get_ray_client` (workspace super-group link is not required). Media non-admin auto-start falls back to posting the Accept quote when balance/login blocks start.
 

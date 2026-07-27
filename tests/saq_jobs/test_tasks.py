@@ -561,8 +561,8 @@ async def test_process_evaluation_submission_non_admin_skips_pdf_prequote():
 
 
 @pytest.mark.asyncio
-async def test_process_evaluation_submission_non_admin_ht_keeps_prod_workflow():
-    """Non-admin Human Translation keeps HUMAN_EVALUATION like prod."""
+async def test_process_evaluation_submission_non_admin_ht_uses_ht_after_qe():
+    """Non-admin HT clears HUMAN_EVALUATION and defers HV until Slack Accept."""
     from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 
     ray_client = MagicMock()
@@ -618,11 +618,9 @@ async def test_process_evaluation_submission_non_admin_ht_keeps_prod_workflow():
 
     assert result["status"] == "submitted"
     mock_submit.assert_awaited_once()
-    assert mock_submit.await_args.kwargs["slack_ht_quote_after_qe"] is False
-    assert mock_submit.await_args.kwargs["confirmation_required"] is False
-    assert (
-        mock_submit.await_args.kwargs["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID
-    )
+    assert mock_submit.await_args.kwargs["slack_ht_quote_after_qe"] is True
+    assert mock_submit.await_args.kwargs["confirmation_required"] is True
+    assert mock_submit.await_args.kwargs["workflow_uuid"] is None
 
 
 @pytest.mark.asyncio

@@ -366,7 +366,8 @@ async def handle_verify_job_modal_open(
                 }
                 if is_combined_qe_human_quote
                 else None,
-                show_quality_discount=not is_combined_qe_human_quote,
+                # HT Adjust never shows Quality: tiers (combined already hides them).
+                show_quality_discount=False,
                 show_savings=not is_combined_qe_human_quote,
                 embed_additional_costs_in_line_price=is_combined_qe_human_quote,
             )

@@ -98,6 +98,13 @@ async def handle_quote_accept_all(
         )
         return
 
+    job_extra = job["data"].get("extra_info") or {}
+    is_ht_quote = job["data"][
+        "workflow_uuid"
+    ] == HUMAN_EVALUATION_WORKFLOW_UUID or bool(
+        job_extra.get("slack_ht_quote_after_qe")
+    )
+
     # Get all available language/file combinations that are not in progress
     selected_languages = []
     for source_file in job["data"]["source_files"]:
@@ -107,10 +114,10 @@ async def handle_quote_accept_all(
                 selected_languages.append(
                     f"{source_file['file_uuid']}:{target_file['language_uuid']}"
                 )
-            if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+            if is_ht_quote:
                 target_file["human_job_status"] = "Submitted"
 
-    if timestamp and job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+    if timestamp and is_ht_quote:
         costs = await get_job_pricing(
             context["ray"].client,
             job_uuid,
@@ -125,6 +132,7 @@ async def handle_quote_accept_all(
             costs=costs["data"],
             actions=False,
             status_message=_("Submitting quote..."),
+            show_quality_discount=False,
         )
 
     await submit_verification_job(
@@ -186,7 +194,12 @@ async def handle_verify_job_submission(
                         for option in selected_options
                     ]
                 )
-                if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+                mark_ht_submitted = job["data"][
+                    "workflow_uuid"
+                ] == HUMAN_EVALUATION_WORKFLOW_UUID or bool(
+                    (job["data"].get("extra_info") or {}).get("slack_ht_quote_after_qe")
+                )
+                if mark_ht_submitted:
                     for target_lang_option in selected_languages:
                         parts = target_lang_option.rsplit(":", 1)
                         file_uuid, lang_uuid = parts[0], parts[1]
@@ -357,7 +370,10 @@ async def handle_verify_job_submission(
             )
         return
 
-    if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID:
+    adjust_extra = job["data"].get("extra_info") or {}
+    if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID or bool(
+        adjust_extra.get("slack_ht_quote_after_qe")
+    ):
         for source_file in job["data"]["source_files"]:
             for target_file in source_file["target_files"]:
                 if target_file.get("human_job_status") != "Submitted":
