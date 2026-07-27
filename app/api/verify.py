@@ -55,6 +55,7 @@ async def submit_evaluation_job(
     preaccepted_ai_translation_quote: bool = False,
     prequote_message_ts: str | None = None,
     ai_translation_filename_and_languages: list[str] | None = None,
+    slack_ht_quote_after_qe: bool = False,
 ):
     confirmation_required = True
     target_languages_data: dict[str, Any] = {
@@ -77,6 +78,8 @@ async def submit_evaluation_job(
         target_languages_data["preaccepted_ai_translation_quote"] = "true"
     if prequote_message_ts:
         target_languages_data["prequote_message_ts"] = prequote_message_ts
+    if slack_ht_quote_after_qe:
+        target_languages_data["slack_ht_quote_after_qe"] = "true"
     if ai_translation_filename_and_languages:
         target_languages_data["ai_translation_filename_and_languages"] = (
             ai_translation_filename_and_languages

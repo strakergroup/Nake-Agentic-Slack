@@ -559,6 +559,93 @@ async def test_ai_quote_event_waits_for_adjustable_acceptance(mock_slack_user):
 
 
 @pytest.mark.asyncio
+async def test_auto_qe_fetches_quote_before_claim_and_releases_on_402(
+    mock_slack_user,
+):
+    """Quote fetch must precede claim; definite 402 releases for retry."""
+    from app.api.verify import VerifyAPIError
+
+    job_uuid = str(uuid4())
+    event = RayEvent(
+        event="verify:slack:evaluate:ready_for_qe_quote",
+        data={"client_id": mock_slack_user.ray_client_id, "job_uuid": job_uuid},
+    )
+    mock_client = AsyncMock()
+    job = {
+        "data": {
+            "uuid": job_uuid,
+            "extra_info": {
+                "slack_channel_id": "C123",
+                "slack_ht_quote_after_qe": True,
+                "ai_translation_file_and_languages": ["f1:l1"],
+            },
+            "source_files": [
+                {"file_uuid": "f1", "filename": "file.docx", "target_files": []}
+            ],
+            "target_languages": [{"uuid": "l1", "name": "French"}],
+        }
+    }
+    auth = RayEventAuth()
+    auth.slack_user = mock_slack_user
+    call_order: list[str] = []
+
+    async def _quote(*_args, **_kwargs):
+        call_order.append("quote")
+        return {"services_costs": {"quality_evaluation": 80}, "token": 80}
+
+    async def _claim(*_args, **_kwargs):
+        call_order.append("claim")
+        return True
+
+    with (
+        patch(
+            "app.slack.evaluation_combined_quotes.get_ray_client",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.get_evaluation_job",
+            new_callable=AsyncMock,
+            return_value=job,
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.get_evaluation_job_quote",
+            new=_quote,
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.claim_ray_event_notification",
+            new=_claim,
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.release_ray_event_notification",
+            new_callable=AsyncMock,
+        ) as mock_release,
+        patch(
+            "app.slack.evaluation_combined_quotes.proceed_quality_evaluation",
+            new_callable=AsyncMock,
+            side_effect=VerifyAPIError("Insufficient AI token balance.", 402),
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.save_evaluate_quote_session",
+            new_callable=AsyncMock,
+        ) as mock_save,
+    ):
+        from app.slack.evaluation_combined_quotes import post_combined_qe_human_quote
+
+        await post_combined_qe_human_quote(
+            mock_client,
+            event,
+            auth,
+            job_uuid=job_uuid,
+        )
+
+    assert call_order == ["quote", "claim"]
+    mock_release.assert_awaited_once()
+    mock_save.assert_not_awaited()
+    mock_client.chat_postMessage.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
     mock_slack_user,
 ):
@@ -915,6 +1002,7 @@ def _patch_preaccepted_ai_quote(
     """Patch the collaborators of the PDF preaccepted AI quote path."""
     redis_stub = MagicMock()
     redis_stub.set = AsyncMock(side_effect=claim_results)
+    redis_stub.delete = AsyncMock(return_value=1)
     return (
         patch(
             "app.ray.events.evaluate_quote_events.redis_conn",
@@ -1216,6 +1304,72 @@ async def test_preaccepted_ai_quote_timeout_does_not_escape_to_router(mock_slack
 
 
 @pytest.mark.asyncio
+async def test_preaccepted_ai_quote_releases_claim_on_insufficient_balance(
+    mock_slack_user,
+):
+    """Definite 402 before debit side effects must release the claim for retry."""
+    from app.api.verify import VerifyAPIError
+
+    job_uuid = str(uuid4())
+    event = RayEvent(
+        event="verify:slack:evaluate:ready_for_ai_quote",
+        data={"client_id": mock_slack_user.ray_client_id, "job_uuid": job_uuid},
+    )
+    mock_client = AsyncMock()
+    quote, job = _preaccepted_ai_quote_fixtures(job_uuid)
+    # Non-admin auto path uses the same preaccepted proceed helper.
+    job["data"]["extra_info"]["slack_ht_quote_after_qe"] = True
+    job["data"]["extra_info"]["preaccepted_ai_translation_quote"] = True
+
+    auth = RayEventAuth()
+    auth.slack_user = mock_slack_user
+
+    (
+        redis_patch,
+        languages_patch,
+        ray_patch,
+        quote_patch,
+        job_patch,
+        proceed_patch,
+        save_patch,
+        post_patch,
+    ) = _patch_preaccepted_ai_quote(
+        quote=quote,
+        job=job,
+        ray_client=MagicMock(),
+        claim_results=[True],
+        proceed_side_effect=VerifyAPIError("Insufficient AI token balance.", 402),
+    )
+
+    with (
+        redis_patch as redis_conn,
+        languages_patch,
+        ray_patch,
+        quote_patch,
+        job_patch,
+        proceed_patch,
+        save_patch as mock_save,
+        post_patch,
+    ):
+        from app.ray.events.evaluate_quote_events import post_evaluate_service_quote
+
+        await post_evaluate_service_quote(
+            mock_client,
+            event,
+            auth,
+            job_uuid=job_uuid,
+            service="ai_translation",
+            service_label="AI Translation",
+            accept_action_id="evaluation_ai_quote_accept",
+            include_pdf_fee=True,
+        )
+
+    mock_save.assert_not_awaited()
+    redis_conn.delete.assert_awaited_once()
+    mock_client.chat_postMessage.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_ray_events_evaluate_complete_ai_only(mock_slack_user, user_id, team_id):
     job_uuid = str(uuid4())
     event = RayEvent(
@@ -1344,3 +1498,91 @@ async def test_ray_events_evaluate_complete_hv_uses_human_job_quote(
                                             await ray_events(event, auth)
 
                                             mock_ht.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ray_events_evaluate_complete_ht_quote_uses_stored_channel(
+    mock_slack_user, user_id, team_id
+):
+    """Non-admin HT quotes must post to slack_channel_id, not only the DM."""
+    job_uuid = str(uuid4())
+    event = RayEvent(
+        event="verify:slack:evaluate:complete",
+        data={
+            "client_id": mock_slack_user.ray_client_id,
+            "job_uuid": job_uuid,
+            "tokens": 10,
+        },
+    )
+    mock_job = {
+        "data": {
+            "uuid": job_uuid,
+            "workflow_uuid": None,
+            "human_job_in_progress": False,
+            "source_files": [{"file_uuid": "f1"}],
+            "target_languages": [{"uuid": "l1"}],
+            "extra_info": {
+                "slack_ht_quote_after_qe": True,
+                "slack_channel_id": "C-EVAL-CHANNEL",
+            },
+        }
+    }
+    mock_client = AsyncMock()
+
+    with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+        with patch(
+            "app.dependencies.resolve_slack_delivery_user",
+            new_callable=AsyncMock,
+            return_value=mock_slack_user,
+        ):
+            with patch("app.dependencies.get_demo_link", return_value=[]):
+                with patch("app.routers.ray.AsyncWebClient", return_value=mock_client):
+                    with patch(
+                        "app.routers.ray.get_evaluation_job",
+                        return_value=mock_job,
+                    ):
+                        with patch(
+                            "app.routers.ray.claim_ray_event_notification",
+                            new_callable=AsyncMock,
+                            return_value=True,
+                        ):
+                            with patch(
+                                "app.routers.ray.get_ray_client",
+                                new_callable=AsyncMock,
+                                return_value=MagicMock(),
+                            ):
+                                with patch(
+                                    "app.routers.ray.get_job_pricing",
+                                    new_callable=AsyncMock,
+                                    return_value={"data": []},
+                                ):
+                                    with patch(
+                                        "app.routers.ray.handle_combined_qe_complete",
+                                        new_callable=AsyncMock,
+                                        return_value=False,
+                                    ):
+                                        with patch(
+                                            "app.routers.ray.post_notification",
+                                            new_callable=AsyncMock,
+                                        ) as mock_post:
+                                            with patch(
+                                                "app.routers.ray.HumanJobQuoteMessage"
+                                            ) as mock_ht:
+                                                mock_ht.return_value = MagicMock(
+                                                    text="HT quote", blocks=[]
+                                                )
+                                                from app.routers.ray import ray_events
+
+                                                auth = RayEventAuth()
+                                                await auth.initialize(
+                                                    event, "valid-token"
+                                                )
+                                                await ray_events(event, auth)
+
+                                                mock_ht.assert_called_once()
+                                                assert (
+                                                    mock_post.await_args.kwargs[
+                                                        "channel_id"
+                                                    ]
+                                                    == "C-EVAL-CHANNEL"
+                                                )

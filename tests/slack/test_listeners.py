@@ -3480,6 +3480,15 @@ class TestDocumentMtJobAction:
 class TestHandleDocumentMtJob:
     """Tests for handle_document_mt_job function - document MT job handler."""
 
+    @pytest.fixture(autouse=True)
+    def _admin_may_receive_quotes(self):
+        with patch(
+            "app.slack.handlers.document_mt.user_may_receive_quotes",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_handle_document_mt_job_requires_source_language(
         self, user_id, team_id, ray_client
@@ -3842,6 +3851,15 @@ class TestHandleDocumentMtJob:
 
 class TestDocumentMtQuoteActions:
     """Tests for accepting and cancelling document MT quotes."""
+
+    @pytest.fixture(autouse=True)
+    def _admin_may_receive_quotes(self):
+        with patch(
+            "app.slack.handlers.document_mt.user_may_receive_quotes",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            yield
 
     @staticmethod
     def _quote_session(**overrides):
@@ -4801,7 +4819,7 @@ class TestMessageEvent:
                 "app.slack.listener_actions.create_asr_task", new_callable=AsyncMock
             ) as mock_create_task,
             patch(
-                "app.slack.media_quote_actions.post_media_quote_message",
+                "app.slack.media_quote_actions.post_or_auto_start_media_quote",
                 new_callable=AsyncMock,
             ) as mock_post_quote,
             patch(
@@ -4829,7 +4847,7 @@ class TestMessageEvent:
             mock_upload_to_file_server.assert_called_once_with("/tmp/captions.srt")
             mock_create_task.assert_not_called()
             mock_post_quote.assert_awaited_once()
-            session = mock_post_quote.await_args.args[1]
+            session = mock_post_quote.await_args.args[2]
             assert session["pipeline_kind"] == "embed"
             assert session["duration_ms"] == 60000
             assert session["srt_file_ids"] == ["gridfs-srt-123"]

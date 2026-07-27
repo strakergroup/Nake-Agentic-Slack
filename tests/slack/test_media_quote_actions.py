@@ -205,3 +205,72 @@ async def test_cancel_media_quote_fails_submissions():
 
     mock_fail.assert_awaited_once_with(session)
     client.chat_update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_post_or_auto_start_falls_back_to_quote_when_balance_fails():
+    """Non-admin auto-start must not strand the submission without Accept UI."""
+    from app.slack.media_quote_actions import post_or_auto_start_media_quote
+
+    client = AsyncMock()
+    context = MagicMock()
+    context.get = lambda key, default=None: None
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "channel_id": "C1",
+        "stage": STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
+        "pipeline_kind": PIPELINE_TRANSCRIBE,
+        "total_tokens": 100,
+    }
+
+    with (
+        patch(
+            "app.slack.media_quote_actions.user_may_receive_quotes",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "app.slack.media_quote_actions.update_media_quote_session",
+            new=AsyncMock(return_value={**session, "auto_proceed": True}),
+        ),
+        patch(
+            "app.slack.media_quote_actions.get_media_quote_session",
+            new=AsyncMock(return_value={**session, "auto_proceed": True}),
+        ),
+        patch(
+            "app.slack.media_quote_actions.accept_media_quote",
+            new=AsyncMock(return_value=False),
+        ) as mock_accept,
+        patch(
+            "app.slack.media_quote_actions.post_media_quote_message",
+            new=AsyncMock(),
+        ) as mock_post,
+    ):
+        await post_or_auto_start_media_quote(client, context, session)
+
+    mock_accept.assert_awaited_once()
+    mock_post.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_auto_accept_translation_returns_false_without_ray_client():
+    from app.slack.media_quote_actions import (
+        auto_accept_media_translation_quote_if_needed,
+    )
+
+    client = AsyncMock()
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "team_id": "T1",
+        "auto_proceed": True,
+        "channel_id": "C1",
+    }
+
+    with patch(
+        "app.auth.connector.get_ray_client",
+        new=AsyncMock(return_value=None),
+    ):
+        handled = await auto_accept_media_translation_quote_if_needed(client, session)
+
+    assert handled is False

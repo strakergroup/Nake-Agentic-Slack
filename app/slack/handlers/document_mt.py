@@ -8,11 +8,14 @@ from slack_bolt.kwargs_injection.async_args import AsyncAck, AsyncSay
 from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 
-from app.auth.connector import RayContext
+from app.auth.connector import RayContext, user_may_receive_quotes
 from app.ray.submissions import check_and_record_submission_async
 from app.ray.utils import upload_to_file_server
 from app.redis import redis_conn
-from app.saq_jobs import enqueue_document_mt_quote_preflight
+from app.saq_jobs import (
+    enqueue_document_mt_quote_preflight,
+    enqueue_document_mt_submission,
+)
 from app.slack.buglog_notifier import notify_exception
 from app.slack.document_mt_quotes import new_document_mt_quote_id
 from app.slack.file_submissions import slack_file_submission_payload_from_option
@@ -269,23 +272,43 @@ async def handle_document_mt_job(
                 return
 
             selected_file_titles = [str(file["title"]) for file in file_payloads]
-            quote_id = new_document_mt_quote_id()
-            await enqueue_document_mt_quote_preflight(
-                quote_id=quote_id,
-                user_id=context["user_id"],
-                team_id=context["team_id"],
-                enterprise_id=context.enterprise_id,
-                channel_id=context["channel_id"],
-                files=file_payloads,
-                source_language=selected_source_language,
-                target_languages=[str(lang["value"]) for lang in selected_languages],
-            )
-            await client.chat_postMessage(
-                channel=context["channel_id"],
-                text=_(
-                    f"Preparing an AI Translate quote for document(s) *({', '.join(selected_file_titles)})*. Please review the quote before translation starts."
-                ),
-            )
+            target_languages = [str(lang["value"]) for lang in selected_languages]
+            if await user_may_receive_quotes(context.get("ray")):
+                quote_id = new_document_mt_quote_id()
+                await enqueue_document_mt_quote_preflight(
+                    quote_id=quote_id,
+                    user_id=context["user_id"],
+                    team_id=context["team_id"],
+                    enterprise_id=context.enterprise_id,
+                    channel_id=context["channel_id"],
+                    files=file_payloads,
+                    source_language=selected_source_language,
+                    target_languages=target_languages,
+                )
+                await client.chat_postMessage(
+                    channel=context["channel_id"],
+                    text=_(
+                        f"Preparing an AI Translate quote for document(s) *({', '.join(selected_file_titles)})*. Please review the quote before translation starts."
+                    ),
+                )
+            else:
+                await enqueue_document_mt_submission(
+                    user_id=context["user_id"],
+                    team_id=context["team_id"],
+                    enterprise_id=context.enterprise_id,
+                    channel_id=context["channel_id"],
+                    files=file_payloads,
+                    source_language=selected_source_language,
+                    target_languages=target_languages,
+                    quote_id=None,
+                )
+                await client.chat_postMessage(
+                    channel=context["channel_id"],
+                    text=_(
+                        f"Your document translation for *({', '.join(selected_file_titles)})* "
+                        "has been submitted. You will be notified when it is ready."
+                    ),
+                )
 
         except Exception as e:
             if not acked:

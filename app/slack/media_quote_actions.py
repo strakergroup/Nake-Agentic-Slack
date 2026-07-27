@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import httpx
+from slack_bolt.context.async_context import AsyncBoltContext
 from slack_sdk.web.async_client import AsyncWebClient
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from app.auth.connector import (
     get_client_tokens,
     get_client_type,
     get_group_tokens,
+    user_may_receive_quotes,
 )
 from app.config import domains
 from app.database import async_engines
@@ -216,8 +218,12 @@ async def accept_media_quote(
     body: dict[str, Any],
     action: dict[str, Any],
     context: RayContext,
-) -> None:
-    """Accept Quote1 (transcription / embedding) and start the first pipeline phase."""
+) -> bool:
+    """Accept Quote1 (transcription / embedding) and start the first pipeline phase.
+
+    Returns True when processing started; False on early-exit / failure so callers
+    (non-admin auto-start) can fall back to posting a retryable quote UI.
+    """
     quote_id = action["value"]
     session = await get_media_quote_session(quote_id)
     channel_id = body.get("channel", {}).get("id")
@@ -228,19 +234,19 @@ async def accept_media_quote(
             channel=context["user_id"],
             text=_("This media quote has expired. Please request a new quote."),
         )
-        return
+        return False
     if session.get("user_id") != context["user_id"]:
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("You do not have permission to accept this media quote."),
         )
-        return
+        return False
     if session.get("stage") != STAGE_AWAITING_TRANSCRIPTION_ACCEPT:
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("This media quote is not ready to accept."),
         )
-        return
+        return False
 
     lock_key = media_quote_lock_key(quote_id)
     lock_acquired = await redis_conn.set(lock_key, "1", ex=120, nx=True)
@@ -251,16 +257,16 @@ async def accept_media_quote(
                 "A request is already in progress. Please try again in a few seconds."
             ),
         )
-        return
+        return False
 
     try:
         required_tokens = int(session.get("total_tokens") or 0)
         if not await _require_ai_token_balance(context, client, required_tokens):
-            return
+            return False
         # Media processing bills a LanguageCloud member, so prompt for login
         # rather than failing inside the ASR task builder.
         if not await require_ray_client(context):
-            return
+            return False
 
         pipeline_kind = session["pipeline_kind"]
         extra_data: dict[str, Any] = {
@@ -333,7 +339,7 @@ async def accept_media_quote(
                 channel=context["user_id"],
                 text=_("Unsupported media quote type."),
             )
-            return
+            return False
 
         extra_data["pipeline_type"] = db_pipeline
         task_uuid = await _create_asr_from_quote_session(
@@ -366,6 +372,7 @@ async def accept_media_quote(
             text=wait_text,
             thread_ts=session.get("thread_ts"),
         )
+        return True
     except Exception as e:
         notify_exception(e)
         # Lazy import avoids circular dependency with media_pipeline_events.
@@ -376,6 +383,7 @@ async def accept_media_quote(
             channel=context["user_id"],
             text=_("There was an error accepting your quote, please try again."),
         )
+        return False
     finally:
         await redis_conn.delete(lock_key)
 
@@ -386,8 +394,11 @@ async def accept_media_translation_quote(
     body: dict[str, Any],
     action: dict[str, Any],
     context: RayContext,
-) -> None:
-    """Accept Quote2 (AI translation) and resume translate / translate+embed."""
+) -> bool:
+    """Accept Quote2 (AI translation) and resume translate / translate+embed.
+
+    Returns True when translation started; False on early-exit / failure.
+    """
     quote_id = action["value"]
     session = await get_media_quote_session(quote_id)
     channel_id = body.get("channel", {}).get("id")
@@ -398,19 +409,19 @@ async def accept_media_translation_quote(
             channel=context["user_id"],
             text=_("This translation quote has expired. Please request a new quote."),
         )
-        return
+        return False
     if session.get("user_id") != context["user_id"]:
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("You do not have permission to accept this translation quote."),
         )
-        return
+        return False
     if session.get("stage") != STAGE_AWAITING_TRANSLATION_ACCEPT:
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("This translation quote is not ready to accept."),
         )
-        return
+        return False
 
     task_uuid = session.get("task_uuid")
     if not task_uuid:
@@ -418,7 +429,7 @@ async def accept_media_translation_quote(
             channel=context["user_id"],
             text=_("Missing transcription task for this quote. Please try again."),
         )
-        return
+        return False
 
     lock_key = media_quote_lock_key(f"translate:{quote_id}")
     lock_acquired = await redis_conn.set(lock_key, "1", ex=120, nx=True)
@@ -429,12 +440,12 @@ async def accept_media_translation_quote(
                 "A request is already in progress. Please try again in a few seconds."
             ),
         )
-        return
+        return False
 
     try:
         required_tokens = int(session.get("total_tokens") or 0)
         if not await _require_ai_token_balance(context, client, required_tokens):
-            return
+            return False
 
         pipeline_kind = session["pipeline_kind"]
         await _resume_translate_phase(
@@ -462,6 +473,7 @@ async def accept_media_translation_quote(
             ),
             thread_ts=session.get("thread_ts"),
         )
+        return True
     except Exception as e:
         notify_exception(e)
         # Lazy import avoids circular dependency with media_pipeline_events.
@@ -472,6 +484,7 @@ async def accept_media_translation_quote(
             channel=context["user_id"],
             text=_("There was an error accepting your quote, please try again."),
         )
+        return False
     finally:
         await redis_conn.delete(lock_key)
 
@@ -551,10 +564,104 @@ async def post_media_quote_message(
     return message_ts
 
 
+async def post_or_auto_start_media_quote(
+    client: AsyncWebClient,
+    context: RayContext,
+    session: dict[str, Any],
+    *,
+    accept_action_id: str = ACTION_MEDIA_QUOTE_ACCEPT,
+    cancel_action_id: str = ACTION_MEDIA_QUOTE_CANCEL,
+) -> None:
+    """Show Quote1 to admins; non-admins skip the quote and start processing.
+
+    If auto-start exits early (balance/login), fall back to posting the quote so
+    the submission is not stranded without a retry path.
+    """
+    if await user_may_receive_quotes(context.get("ray")):
+        await post_media_quote_message(
+            client,
+            session,
+            accept_action_id=accept_action_id,
+            cancel_action_id=cancel_action_id,
+        )
+        return
+
+    await update_media_quote_session(session["quote_id"], {"auto_proceed": True})
+    refreshed = await get_media_quote_session(session["quote_id"]) or session
+    started = await accept_media_quote(
+        client=client,
+        body={
+            "channel": {"id": refreshed.get("channel_id")},
+            "message": {},
+            "user": {"id": refreshed.get("user_id")},
+        },
+        action={"value": refreshed["quote_id"]},
+        context=context,
+    )
+    if not started:
+        await post_media_quote_message(
+            client,
+            refreshed,
+            accept_action_id=accept_action_id,
+            cancel_action_id=cancel_action_id,
+        )
+
+
+async def auto_accept_media_translation_quote_if_needed(
+    client: AsyncWebClient,
+    session: dict[str, Any],
+) -> bool:
+    """When ``auto_proceed`` is set, start Quote2 without posting Accept UI.
+
+    Returns True when auto-proceed started translation (caller should not post).
+    Returns False when auto-proceed is unset or failed, so the caller posts Quote2.
+    """
+    if not session.get("auto_proceed"):
+        return False
+
+    from app.auth.connector import RayConnection, get_ray_client
+
+    # Prefer member client without requiring a workspace super-group link.
+    ray_client = await get_ray_client(
+        session["user_id"],
+        session["team_id"],
+        session.get("enterprise_id"),
+    )
+    if ray_client is None:
+        return False
+
+    # Build a minimal Bolt-like context; set ray after init for typing.
+    context = RayContext(
+        cast(
+            AsyncBoltContext,
+            {
+                "user_id": session["user_id"],
+                "team_id": session["team_id"],
+                "enterprise_id": session.get("enterprise_id"),
+                "channel_id": session.get("channel_id"),
+            },
+        )
+    )
+    context["ray"] = RayConnection([], ray_client)
+
+    return await accept_media_translation_quote(
+        client=client,
+        body={
+            "channel": {"id": session.get("channel_id")},
+            "message": {},
+            "user": {"id": session.get("user_id")},
+        },
+        action={"value": session["quote_id"]},
+        context=context,
+    )
+
+
 # Re-export stage constants used by ray callback for Quote2.
 __all__ = [
     "accept_media_quote",
     "accept_media_translation_quote",
+    "auto_accept_media_translation_quote_if_needed",
     "cancel_media_quote",
     "post_media_quote_message",
+    "post_or_auto_start_media_quote",
 ]

@@ -1,24 +1,33 @@
 """Combined Quality Evaluation + Human Translation quote orchestration."""
 
+import logging
 from typing import Any
 
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.api.verify import (
+    VerifyAPIError,
     get_evaluation_job,
     get_evaluation_job_quote,
     get_job_pricing,
     get_verify_languages,
+    proceed_quality_evaluation,
 )
 from app.auth.connector import get_ray_client
 from app.constants import (
     EVALUATE_SERVICE_AI_TRANSLATION,
     EVALUATE_SERVICE_QUALITY_EVALUATION,
+    SLACK_HT_QUOTE_AFTER_QE_KEY,
 )
 from app.dependencies import RayEvent, RayEventAuth
-from app.ray.events.evaluate_quote_events import resolve_evaluate_channel_id
+from app.ray.events.evaluate_quote_events import (
+    claim_ray_event_notification,
+    release_ray_event_notification,
+    resolve_evaluate_channel_id,
+)
 from app.ray.events.logging import post_notification, slack_response_message_ts
 from app.ray.utils import format_slack_usd, is_ibm_enterprise
+from app.slack.buglog_notifier import notify_exception
 from app.slack.evaluation_ai_adjustment import (
     AI_QUOTE_ADJUST_ACTION_ID,
     ai_scope_from_job,
@@ -28,6 +37,7 @@ from app.slack.evaluation_ai_adjustment import (
     quote_file_language_costs,
 )
 from app.slack.evaluation_quotes import (
+    STAGE_ACCEPTED_QE,
     STAGE_AWAITING_QE,
     get_evaluate_quote_session,
     save_evaluate_quote_session,
@@ -35,6 +45,8 @@ from app.slack.evaluation_quotes import (
 )
 from app.slack.templates.messages import HumanJobQuoteMessage, SlackMessage
 from app.translate import _
+
+logger = logging.getLogger(__name__)
 
 COMBINED_QE_HUMAN_QUOTE_ACCEPT_ACTION_ID = "evaluation_qe_human_quote_accept"
 WORST_CASE_QE_QUALITY_TIER = "bad"
@@ -319,6 +331,103 @@ def ai_translation_target_file_uuids(job_data: dict[str, Any]) -> list[str]:
     return file_uuids
 
 
+async def _auto_proceed_qe_for_ht_quote_after_qe(
+    client: AsyncWebClient,
+    event: RayEvent,
+    auth: RayEventAuth,
+    *,
+    ray_client: Any,
+    job_uuid: str,
+    job_data: dict[str, Any],
+) -> None:
+    """Purchase QE only for non-admins; HT is quoted after QE completes."""
+    assert auth.slack_user is not None
+    channel_id = (
+        resolve_evaluate_channel_id(event, job_data)
+        or auth.slack_user.channel_id
+        or auth.slack_user.user_id
+    )
+
+    # Fetch the quote before claiming so a timeout here can redeliver safely.
+    ai_scope = ai_scope_from_job(job_data)
+    quote = await get_evaluation_job_quote(
+        ray_client,
+        job_uuid,
+        [EVALUATE_SERVICE_QUALITY_EVALUATION],
+        file_and_languages=ai_scope,
+    )
+    services_costs = quote.get("services_costs") or {}
+    qe_token_cost = int(
+        services_costs.get(EVALUATE_SERVICE_QUALITY_EVALUATION, quote.get("token", 0))
+    )
+
+    if not await claim_ray_event_notification(event):
+        logger.info(
+            "Skipping duplicate auto QE proceed for job %s",
+            job_uuid,
+        )
+        return
+
+    try:
+        await proceed_quality_evaluation(
+            ray_client,
+            job_uuid,
+            token_cost=qe_token_cost,
+            quality_evaluation_file_and_languages=ai_scope or None,
+            # Omit HT scope so the synthetic HV node is not required; HT is
+            # quoted and submitted from Slack after QE completes.
+            human_translation_file_and_languages=None,
+        )
+    except VerifyAPIError as e:
+        # Definite non-billable rejection: release so a later redelivery can retry.
+        await release_ray_event_notification(event)
+        status = (
+            _("Insufficient AI token balance to continue quality evaluation.")
+            if e.status_code == 402
+            else _(
+                "There was an error starting quality evaluation. Please try again "
+                "or contact your administrator."
+            )
+        )
+        await client.chat_postMessage(channel=channel_id, text=status)
+        return
+    except Exception as e:
+        notify_exception(e, "Auto QE proceed failed")
+        logger.error("Auto QE proceed failed for job %s", job_uuid, exc_info=True)
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=_(
+                "There was an error starting quality evaluation. Please try again "
+                "or contact your administrator."
+            ),
+        )
+        return
+
+    await save_evaluate_quote_session(
+        job_uuid,
+        channel_id=channel_id,
+        user_id=auth.slack_user.user_id,
+        team_id=auth.slack_user.team_id,
+        stage=STAGE_ACCEPTED_QE,
+        quote_snapshot={
+            "service": EVALUATE_SERVICE_QUALITY_EVALUATION,
+            "token_cost": qe_token_cost,
+            "service_label": _("Quality Evaluation"),
+            "auto_submit_human_job": False,
+            "ai_translation_file_and_languages": ai_scope,
+            "quality_evaluation_file_and_languages": ai_scope,
+            SLACK_HT_QUOTE_AFTER_QE_KEY: True,
+        },
+    )
+    await client.chat_postMessage(
+        channel=channel_id,
+        text=_(
+            "Quality evaluation is running. You will receive a human translation "
+            "quote when it completes."
+        ),
+    )
+
+
 async def post_combined_qe_human_quote(
     client: AsyncWebClient,
     event: RayEvent,
@@ -339,6 +448,18 @@ async def post_combined_qe_human_quote(
 
     job = await get_evaluation_job(auth.slack_user, job_uuid)
     job_data = job["data"]
+    extra_info = job_data.get("extra_info") or {}
+    if extra_info.get(SLACK_HT_QUOTE_AFTER_QE_KEY):
+        await _auto_proceed_qe_for_ht_quote_after_qe(
+            client,
+            event,
+            auth,
+            ray_client=ray_client,
+            job_uuid=job_uuid,
+            job_data=job_data,
+        )
+        return
+
     ai_scope = ai_scope_from_job(job_data)
     # Keep full language list for Cancelled rows; pricing uses active pairs only.
     display_job = mark_out_of_scope_pairs_cancelled(job_data, ai_scope)

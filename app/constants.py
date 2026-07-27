@@ -40,5 +40,9 @@ HUMAN_VERIFICATION_WORKFLOW_UUID = "06294ecf-85a8-453a-b98e-20ee4ac629b5"
 EVALUATE_SERVICE_AI_TRANSLATION = "ai_translation"
 EVALUATE_SERVICE_QUALITY_EVALUATION = "quality_evaluation"
 
+# Job extra_info flag: non-admin evaluate path auto-runs AI+QE, then quotes HT.
+# CVC synthetic workflows omit human-verification when this is set.
+SLACK_HT_QUOTE_AFTER_QE_KEY = "slack_ht_quote_after_qe"
+
 # PDF conversion fee aligned with Document MT (tokens per page)
 EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE = 25

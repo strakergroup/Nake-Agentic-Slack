@@ -17,6 +17,7 @@ from app.auth.connector import get_ray_client
 from app.constants import (
     EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE,
     EVALUATE_SERVICE_AI_TRANSLATION,
+    SLACK_HT_QUOTE_AFTER_QE_KEY,
 )
 from app.dependencies import RayEvent, RayEventAuth
 from app.ray.events.logging import post_notification, slack_response_message_ts
@@ -41,6 +42,14 @@ logger = logging.getLogger(__name__)
 RAY_EVENT_DEDUPE_TTL_SECONDS = 7 * 24 * 60 * 60
 
 
+def _ray_event_dedupe_key(event: RayEvent) -> str | None:
+    client_id = event.data.get("client_id")
+    job_uuid = event.data.get("job_uuid")
+    if not client_id or not job_uuid:
+        return None
+    return f"ray_event:{event.event}:{client_id}:{job_uuid}"
+
+
 async def claim_ray_event_notification(event: RayEvent) -> bool:
     """Atomically claim a single delivery of a RAY event for one job.
 
@@ -48,12 +57,10 @@ async def claim_ray_event_notification(event: RayEvent) -> bool:
     billable side effect must claim before acting. The key is namespaced by
     event name, so each event type claims independently for the same job.
     """
-    client_id = event.data.get("client_id")
-    job_uuid = event.data.get("job_uuid")
-    if not client_id or not job_uuid:
+    key = _ray_event_dedupe_key(event)
+    if key is None:
         return True
 
-    key = f"ray_event:{event.event}:{client_id}:{job_uuid}"
     try:
         was_set = await redis_conn.set(
             key,
@@ -75,6 +82,24 @@ async def claim_ray_event_notification(event: RayEvent) -> bool:
     if isinstance(was_set, str):
         return was_set.upper() == "OK"
     return bool(was_set)
+
+
+async def release_ray_event_notification(event: RayEvent) -> None:
+    """Drop a claim so a later redelivery can retry a non-billable failure.
+
+    Call this only when no debit/purchase could have landed (definite 401/402/403
+    before side effects, or failures before the billable API call).
+    """
+    key = _ray_event_dedupe_key(event)
+    if key is None:
+        return
+    try:
+        await redis_conn.delete(key)
+    except Exception:
+        logger.warning(
+            "Failed to release RAY event idempotency key",
+            exc_info=True,
+        )
 
 
 def pdf_tokens_from_page_count(pdf_page_count: int | None) -> int | None:
@@ -159,6 +184,36 @@ async def post_evaluate_service_quote(
     prequote_message_ts = extra_info.get("prequote_message_ts")
     is_ibm = is_ibm_enterprise(auth.slack_user.enterprise_id)
     if service == EVALUATE_SERVICE_AI_TRANSLATION and extra_info.get(
+        SLACK_HT_QUOTE_AFTER_QE_KEY
+    ):
+        # Non-admin: auto-run AI (no Accept UI); HT is quoted after QE.
+        await _proceed_preaccepted_ai_quote(
+            client,
+            event,
+            auth,
+            job_uuid=job_uuid,
+            service=service,
+            service_label=service_label,
+            accept_action_id=accept_action_id,
+            ray_client=ray_client,
+            quote=quote,
+            job_data=job_data,
+            extra_info=extra_info,
+            channel_id=channel_id,
+            token_cost=token_cost,
+            pdf_tokens=pdf_tokens,
+            pdf_page_count=pdf_page_count,
+            language_costs=language_costs,
+            quoted_ai_pairs=ai_translation_file_and_languages,
+            prequote_message_ts=prequote_message_ts,
+            status_on_success=_(
+                "AI translation started. You will receive a human translation "
+                "quote after quality evaluation."
+            ),
+        )
+        return
+
+    if service == EVALUATE_SERVICE_AI_TRANSLATION and extra_info.get(
         "preaccepted_ai_translation_quote"
     ):
         await _proceed_preaccepted_ai_quote(
@@ -180,6 +235,7 @@ async def post_evaluate_service_quote(
             language_costs=language_costs,
             quoted_ai_pairs=ai_translation_file_and_languages,
             prequote_message_ts=prequote_message_ts,
+            status_on_success=None,
         )
         return
 
@@ -247,13 +303,16 @@ async def _proceed_preaccepted_ai_quote(
     language_costs: list[dict[str, Any]] | None,
     quoted_ai_pairs: list[str],
     prequote_message_ts: Any,
+    status_on_success: str | None = None,
 ) -> None:
-    """Charge and record the PDF pre-quote that the user already accepted.
+    """Charge and proceed AI translation without an Accept click.
 
-    This runs straight off an at-least-once RAY stream and issues a real token
-    debit, so the delivery is claimed before the charge. Once the claim is held
-    nothing may escape to the router: a raised exception becomes an HTTP 422 and
-    the producer redelivers, which would debit the client a second time.
+    Used for PDF pre-quotes the user already accepted, and for non-admin
+    auto-proceed (``slack_ht_quote_after_qe``). Runs off an at-least-once RAY
+    stream and issues a real token debit, so the delivery is claimed before the
+    charge. Once the claim is held nothing may escape to the router: a raised
+    exception becomes an HTTP 422 and the producer redelivers, which would
+    debit the client a second time.
     """
     assert auth.slack_user is not None
     notify_channel_id = (
@@ -282,6 +341,9 @@ async def _proceed_preaccepted_ai_quote(
             ai_translation_file_and_languages=selected_ai_pairs or None,
         )
     except VerifyAPIError as e:
+        # Definite non-billable rejection (401/402/403): release so a later
+        # redelivery or balance top-up can retry. Non-admins have no Accept UI.
+        await release_ray_event_notification(event)
         status = (
             _("Insufficient AI token balance to accept this quote.")
             if e.status_code == 402
@@ -333,6 +395,10 @@ async def _proceed_preaccepted_ai_quote(
             },
             message_ts=str(prequote_message_ts) if prequote_message_ts else None,
         )
+        if status_on_success:
+            await client.chat_postMessage(
+                channel=notify_channel_id, text=status_on_success
+            )
     except Exception as e:
         # The tokens are already spent; a retry would double-charge. Alert and
         # let the job continue without its Slack session snapshot.

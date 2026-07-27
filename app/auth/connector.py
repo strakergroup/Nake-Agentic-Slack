@@ -1925,6 +1925,23 @@ async def get_client_type(client_id: str, group_id: str | None):
     return result["client_type"]
 
 
+async def user_may_receive_quotes(ray: RayConnection | None) -> bool:
+    """Return whether this connection should see Slack quote Accept UI.
+
+    When ``config.quote_admin_only`` is false, everyone receives quotes.
+    Otherwise only Verify group Admin/Owner members do; org-billed posters
+    without a member client auto-proceed without quote UX.
+    """
+    from app.config import config
+
+    if not config.quote_admin_only:
+        return True
+    if ray is None or ray.client is None:
+        return False
+    client_type = await get_client_type(ray.client.id, ray.client.user_group_id)
+    return client_type in ("Admin", "Owner")
+
+
 async def get_job_group_quote_settings(job_id: str):
     """Get the quote settings for the job group."""
     sql = text(

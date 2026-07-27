@@ -908,7 +908,12 @@ async def process_evaluation_submission(
         get_verify_languages,
         submit_evaluation_job,
     )
-    from app.auth.connector import get_bot_token_async, get_ray_client
+    from app.auth.connector import (
+        RayConnection,
+        get_bot_token_async,
+        get_ray_client,
+        user_may_receive_quotes,
+    )
     from app.constants import EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE
     from app.ray.submissions import (
         SubmissionStatus,
@@ -942,10 +947,15 @@ async def process_evaluation_submission(
         "attempt": attempt,
         "file_count": len(files),
     }
+    # Evaluate needs a member client for Verify API auth. Do not require a
+    # workspace super-group link — individually connected users must still work.
     ray_client = await get_ray_client(user_id, team_id, enterprise_id)
     if ray_client is None:
         logger.error("Evaluation submission has no RAY client", extra=log_extra)
         return {"status": "no_ray_client"}
+    may_quote = await user_may_receive_quotes(RayConnection([], ray_client))
+    # Non-admins keep confirmation_required but auto-run AI+QE, then quote HT.
+    slack_ht_quote_after_qe = not may_quote
 
     bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
     if not bot_token:
@@ -995,7 +1005,8 @@ async def process_evaluation_submission(
             return {"status": "no_valid_files"}
 
         has_pdf = any(title.lower().endswith(".pdf") for title in file_titles)
-        if has_pdf and not preaccepted_ai_translation_quote:
+        # Admins get the PDF pre-quote; non-admins skip straight to convert/create.
+        if has_pdf and not preaccepted_ai_translation_quote and may_quote:
             # PDF pre-quote: do not record submissions (accept re-enqueues this task).
             pdf_page_count = 0
             for file_path, file_data in zip(input_files, valid_files, strict=True):
@@ -1221,6 +1232,7 @@ async def process_evaluation_submission(
                 preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
                 prequote_message_ts=prequote_message_ts,
                 ai_translation_filename_and_languages=submit_ai_pairs,
+                slack_ht_quote_after_qe=slack_ht_quote_after_qe,
             )
         else:
             await submit_evaluation_job(
@@ -1235,6 +1247,7 @@ async def process_evaluation_submission(
                 preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
                 prequote_message_ts=prequote_message_ts,
                 ai_translation_filename_and_languages=submit_ai_pairs,
+                slack_ht_quote_after_qe=slack_ht_quote_after_qe,
             )
         return {
             "status": "submitted",

@@ -84,6 +84,9 @@ class StrakerConfig(BaseSettings):
     saq_logging_timeout_seconds: int = Field(default=30, ge=5, le=600)
 
     evaluate_quote_ttl_seconds: int = Field(default=604800, ge=3600)
+    # When true, only Verify Admin/Owner users see quote Accept UI. Non-admins
+    # auto-proceed AI+QE on evaluate, then still get a Human Translation quote.
+    quote_admin_only: bool = True
 
     @field_validator("google_mt_api_key", mode="after")
     def validate_google_mt_api_key(cls, v, info: ValidationInfo):

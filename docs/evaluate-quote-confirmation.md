@@ -11,6 +11,21 @@ Human Translation (`evaluate_job_human`) submissions:
 - Handle staged Slack events and quote accept actions
 - Treat `ready_for_qe_quote` as the combined Quality Evaluation + Human Translation quote, not as a standalone QE view
 
+## Admin-only quote UX (`QUOTE_ADMIN_ONLY`)
+
+When `QUOTE_ADMIN_ONLY=true` (default), only Verify group **Admin/Owner** members see Accept/Adjust quote UI. Role comes from `get_client_type` / `user_may_receive_quotes`.
+
+| Role | AI | QE | Human Translation |
+|------|----|----|-------------------|
+| Admin / Owner | Quote → accept | Combined **QE + HT** quote at worst-case QE tier → accept | Included in that combined accept |
+| Non-admin | Auto-proceed (no quote) | Auto-purchase QE (no quote) | Separate HT quote (`HumanJobQuoteMessage`) after QE |
+
+Non-admin evaluate jobs still set `confirmation_required=true` so AI/QE staging works, and set `extra_info.slack_ht_quote_after_qe=true`. CVC’s synthetic workflow then includes QE but **omits** the `human-verification` node so HT is not created before the Slack HT quote. PDF pre-quotes are skipped for non-admins (convert/create runs immediately with the same flag).
+
+Evaluate submit resolves the member via `get_ray_client` (workspace super-group link is not required). Definite Verify `401`/`402`/`403` on auto AI/QE releases the Redis event claim so a later redelivery can retry. Media non-admin auto-start falls back to posting the Accept quote when balance/login blocks start.
+
+Document MT and Media use the same Admin/Owner gate: admins see quotes; non-admins skip quote UX and auto-start processing.
+
 ## Resubmission prevention
 
 QE and HT modal submits use a 24h dedupe gate in `process_evaluation_submission` (`check_and_record_evaluate_submission_async`). Unlike Document MT (per target language), evaluate treats the **full target set** as one unit for simpler grouping:

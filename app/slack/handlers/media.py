@@ -19,7 +19,7 @@ from app.slack.media_quote_actions import (
     accept_media_quote,
     accept_media_translation_quote,
     cancel_media_quote,
-    post_media_quote_message,
+    post_or_auto_start_media_quote,
 )
 from app.slack.media_quotes import (
     ACTION_MEDIA_QUOTE_ACCEPT,
@@ -175,8 +175,9 @@ async def handle_video_transcribe_only(
                 download_url=download_url,
                 submission_id=file_info["submission_id"],
             )
-            await post_media_quote_message(
+            await post_or_auto_start_media_quote(
                 client,
+                context,
                 session,
                 accept_action_id=ACTION_MEDIA_QUOTE_ACCEPT,
                 cancel_action_id=ACTION_MEDIA_QUOTE_CANCEL,

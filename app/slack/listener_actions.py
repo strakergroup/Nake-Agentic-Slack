@@ -843,7 +843,7 @@ async def quote_existing_srt_embed_task(
     thread_ts: str | None,
 ) -> bool:
     """Post Quote1 (embedding only) for an uploaded SRT + original video."""
-    from .media_quote_actions import post_media_quote_message
+    from .media_quote_actions import post_or_auto_start_media_quote
     from .media_quotes import (
         ACTION_MEDIA_QUOTE_ACCEPT,
         ACTION_MEDIA_QUOTE_CANCEL,
@@ -968,8 +968,9 @@ async def quote_existing_srt_embed_task(
                 "language_codes": [subtitle_language_code],
             },
         )
-        await post_media_quote_message(
+        await post_or_auto_start_media_quote(
             client,
+            context,
             session,
             accept_action_id=ACTION_MEDIA_QUOTE_ACCEPT,
             cancel_action_id=ACTION_MEDIA_QUOTE_CANCEL,

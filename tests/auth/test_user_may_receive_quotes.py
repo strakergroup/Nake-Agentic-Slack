@@ -1,0 +1,45 @@
+"""Tests for admin-only quote gating."""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from app.auth.connector import user_may_receive_quotes
+
+
+@pytest.mark.asyncio
+async def test_quote_admin_only_off_allows_everyone():
+    with patch("app.config.config") as mock_config:
+        mock_config.quote_admin_only = False
+        assert await user_may_receive_quotes(None) is True
+        assert await user_may_receive_quotes(SimpleNamespace(client=None)) is True
+
+
+@pytest.mark.asyncio
+async def test_quote_admin_only_requires_admin_or_owner():
+    ray = SimpleNamespace(
+        client=SimpleNamespace(id="client-1", user_group_id="group-1")
+    )
+    with (
+        patch("app.config.config") as mock_config,
+        patch(
+            "app.auth.connector.get_client_type",
+            new=AsyncMock(side_effect=["Admin", "Owner", "Normal", None]),
+        ),
+    ):
+        mock_config.quote_admin_only = True
+        assert await user_may_receive_quotes(ray) is True
+        assert await user_may_receive_quotes(ray) is True
+        assert await user_may_receive_quotes(ray) is False
+        assert await user_may_receive_quotes(ray) is False
+
+
+@pytest.mark.asyncio
+async def test_quote_admin_only_denies_missing_member_client():
+    with patch("app.config.config") as mock_config:
+        mock_config.quote_admin_only = True
+        assert await user_may_receive_quotes(None) is False
+        assert await user_may_receive_quotes(SimpleNamespace(client=None)) is False

@@ -47,6 +47,7 @@ from ..dependencies import RayEvent, RayEventAuth, get_ray_event_auth
 from ..ray.events.evaluate_quote_events import (
     claim_ray_event_notification,
     post_evaluate_service_quote,
+    resolve_evaluate_channel_id,
 )
 from ..ray.events.logging import (
     post_channel_translation_notification,
@@ -868,6 +869,7 @@ async def ray_events(
                 )
                 return {"message": "Duplicate evaluate-complete event skipped"}
 
+            job_data_for_notify = None
             if event.data.get("error"):
                 try:
                     error_data = MtErrorResponseSchema.model_validate(event.data)
@@ -914,12 +916,15 @@ async def ray_events(
                     job = await get_evaluation_job(
                         auth.slack_user, event.data["job_uuid"]
                     )
+                    job_data_for_notify = job["data"]
                     if job["data"].get("human_job_in_progress", False):
                         raise ValueError(f"Invalid RAY event type: {event.event}")
                     workflow_uuid = job["data"].get("workflow_uuid")
+                    job_extra = job["data"].get("extra_info") or {}
+                    ht_quote_after_qe = bool(job_extra.get("slack_ht_quote_after_qe"))
                     if event.data.get("ai_only"):
                         message = EvaluateAiOnlyCompleteMessage(job["data"])
-                    elif workflow_uuid in (
+                    elif ht_quote_after_qe or workflow_uuid in (
                         HUMAN_EVALUATION_WORKFLOW_UUID,
                         HUMAN_VERIFICATION_WORKFLOW_UUID,
                     ):
@@ -943,6 +948,8 @@ async def ray_events(
                         ):
                             message = None
                         else:
+                            # Non-admin path (slack_ht_quote_after_qe) and legacy
+                            # human workflows: post an HT-only quote to accept.
                             message = HumanJobQuoteMessage(job["data"], costs["data"])
                     else:
                         message = EvaluateSuccessMessage(
@@ -956,13 +963,14 @@ async def ray_events(
                         },
                     ) from e
 
-            # Send message if we have one
+            # Send message if we have one (HT quotes use stored slack_channel_id).
             if message is not None:
                 await post_notification(
                     client,
                     event,
                     auth.slack_user,
                     message,
+                    channel_id=resolve_evaluate_channel_id(event, job_data_for_notify),
                 )
         elif event.event == "verify:human_verification:completed":
             try:

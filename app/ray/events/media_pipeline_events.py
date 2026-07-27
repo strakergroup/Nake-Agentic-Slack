@@ -29,7 +29,10 @@ from app.ray.events.logging import post_notification
 from app.ray.utils import download_from_file_server_async, is_ibm_enterprise
 from app.saq_jobs.dispatch import enqueue_transcription_upload
 from app.slack.buglog_notifier import notify_exception
-from app.slack.media_quote_actions import post_media_quote_message
+from app.slack.media_quote_actions import (
+    auto_accept_media_translation_quote_if_needed,
+    post_media_quote_message,
+)
 from app.slack.media_quotes import (
     ACTION_MEDIA_TRANSLATION_QUOTE_ACCEPT,
     ACTION_MEDIA_TRANSLATION_QUOTE_CANCEL,
@@ -496,6 +499,9 @@ async def maybe_post_media_translation_quote(
     )
     if updated is None:
         return False
+
+    if await auto_accept_media_translation_quote_if_needed(client, updated):
+        return True
 
     await post_media_quote_message(
         client,
