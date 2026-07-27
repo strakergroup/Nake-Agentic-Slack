@@ -250,3 +250,48 @@ def test_human_job_quote_message_hides_accept_helper_after_accept():
         "Click Accept Quote to send your translation for human review" not in rendered
     )
     assert "calculating your final discount based on AI quality" in rendered
+
+
+def test_standalone_ht_quote_matches_prod_totals_without_discount_details():
+    """Non-admin HT quotes render like the fixed HUMAN_EVALUATION workflow on prod."""
+    from app.slack.evaluation_combined_quotes import standalone_ht_quote_message
+
+    job = {
+        "uuid": "job-123",
+        "workflow_uuid": "workflow-123",
+        "target_languages": [{"uuid": "lang-123", "name": "French"}],
+        "source_files": [
+            {
+                "file_uuid": "file-123",
+                "filename": "test.txt",
+                "target_files": [],
+                "report": {"language_uuid": "source-uuid"},
+            }
+        ],
+    }
+    costs = [
+        {
+            "file_uuid": "file-123",
+            "language_uuid": "lang-123",
+            "service_list": [
+                {
+                    "estimated_cost": 10.50,
+                    "time_estimate_days": 2,
+                    "quality_discount": {
+                        "tier": "good",
+                        "word_discount_rate": 0.3,
+                        "savings": 4.5,
+                        "pricing_cap_applied": False,
+                    },
+                }
+            ],
+        }
+    ]
+
+    rendered = str(standalone_ht_quote_message(job, costs).blocks)
+
+    assert "USD 10.50" in rendered
+    assert "*Total Cost*: USD 10.50" in rendered
+    assert "Quality: " not in rendered
+    assert "saved USD" not in rendered
+    assert "Maximum Total Cost" not in rendered

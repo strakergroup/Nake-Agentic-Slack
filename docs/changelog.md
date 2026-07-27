@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: RAY-79115 — standalone (non-admin) human translation quotes now render exactly as they do on prod: `standalone_ht_quote_message()` centralises no quality tier, no `(saved USD X)` suffix, and a plain `Total Cost` label, and `show_quality_discount` now defaults to off so tiers can only appear by opting in (Wade Norman, 2026-07-28)
+- [Docs]: RAY-79115 — documented the non-admin HT flow (diagram + the backend-only differences from `master`), corrected the quality-discount section (`Quality:` tiers were introduced by this branch and are now off everywhere, so quotes match `master`), and clarified that the admin combined-quote accept is the only HT accept (Wade Norman, 2026-07-28)
+- [Fixed]: RAY-79115 — the QE Evaluation Result panel no longer replaces a human translation quote. Staged HT submits without `HUMAN_EVALUATION` (so CVC can hold HV back), which left `workflow_uuid` unable to identify HT; `job_is_human_translation_quote` now derives it from the Slack quote session and `slack_ht_quote_after_qe`, and is the single check used by `evaluate:complete`, Accept and Adjust (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — HT quote Accept/Adjust no longer replaces the quote with the QE Evaluation Result panel (“Send for Human Verification” + scores) (Wade Norman, 2026-07-27)
 - [Fixed]: RAY-79115 — non-admin HT again uses HT-after-QE (clear `HUMAN_EVALUATION`, defer HV) so Accept is not “cancelled” and Adjust has options; HT quote/Adjust hide `Quality:` tiers (Wade Norman, 2026-07-27)
 - [Changed]: RAY-79115 — removed intermediate “AI translation started…” / “Quality evaluation is running…” Slack status messages; HT Adjust Request no longer shows QE Summary/Overall Score blocks (Wade Norman, 2026-07-27)

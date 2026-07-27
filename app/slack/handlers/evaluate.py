@@ -30,6 +30,7 @@ from app.slack.evaluation_ai_quote_modal_service import (
 )
 from app.slack.evaluation_ai_quote_submit_service import persist_ai_quote_adjustment
 from app.slack.evaluation_combined_quotes import (
+    STANDALONE_HT_TOTAL_COST_LABEL,
     WORST_CASE_QE_QUALITY_TIER,
     active_quote_cost_rows,
 )
@@ -366,9 +367,12 @@ async def handle_verify_job_modal_open(
                 }
                 if is_combined_qe_human_quote
                 else None,
-                # HT Adjust never shows Quality: tiers (combined already hides them).
+                # HT Adjust mirrors its quote: no tiers, and no savings suffix.
                 show_quality_discount=False,
-                show_savings=not is_combined_qe_human_quote,
+                show_savings=False,
+                total_cost_label=None
+                if is_combined_qe_human_quote
+                else STANDALONE_HT_TOTAL_COST_LABEL,
                 embed_additional_costs_in_line_price=is_combined_qe_human_quote,
             )
             if action["action_id"] == "quote_summary_modal_open"

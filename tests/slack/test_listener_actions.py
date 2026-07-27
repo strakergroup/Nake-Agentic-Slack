@@ -1266,7 +1266,9 @@ class TestSubmitVerificationJob:
                 new_callable=AsyncMock,
                 return_value={"data": []},
             ),
-            patch("app.slack.listener_actions.HumanJobQuoteMessage") as quote_message,
+            patch(
+                "app.slack.listener_actions.standalone_ht_quote_message"
+            ) as quote_message,
             patch(
                 "app.slack.listener_actions.create_human_job",
                 new_callable=AsyncMock,
@@ -1298,7 +1300,6 @@ class TestSubmitVerificationJob:
             purchase_order_number="alpha.xlf",
         )
         quote_message.assert_called_once()
-        assert quote_message.call_args.kwargs.get("show_quality_discount") is False
         mock_client.chat_update.assert_awaited_once_with(
             channel="C123",
             text="Quote summary",
@@ -1355,7 +1356,9 @@ class TestSubmitVerificationJob:
                 new_callable=AsyncMock,
                 return_value={"data": []},
             ),
-            patch("app.slack.listener_actions.HumanJobQuoteMessage") as quote_message,
+            patch(
+                "app.slack.listener_actions.standalone_ht_quote_message"
+            ) as quote_message,
             patch("app.slack.listener_actions.EvaluateSuccessMessage") as qe_message,
             patch(
                 "app.slack.listener_actions.create_human_job",
@@ -1379,6 +1382,89 @@ class TestSubmitVerificationJob:
                 job=job,
                 channel_id="C123",
                 prefer_ht_quote_message=True,
+            )
+
+        quote_message.assert_called_once()
+        qe_message.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_staged_ht_accept_uses_quote_session_to_stay_on_ht_quote(
+        self, ray_client
+    ):
+        """Staged HT jobs carry no workflow or flag — the quote session identifies them."""
+        from app.auth.connector import RayConnection, RayContext
+
+        mock_client = AsyncMock()
+        mock_client.chat_postMessage.return_value = {
+            "channel": "D123",
+            "ts": "1710000000.000000",
+        }
+        context = RayContext(
+            {
+                "ray": RayConnection(super_group=[], client=ray_client),
+                "response_url": None,
+                "respond": None,
+                "channel_id": "C123",
+            }
+        )
+        job = {
+            "data": {
+                "uuid": "verify-job-uuid",
+                "title": "slack job",
+                "workflow_uuid": None,
+                "extra_info": {},
+                "source_files": [
+                    {
+                        "file_uuid": "file-uuid",
+                        "filename": "alpha.xlf",
+                        "target_files": [
+                            {
+                                "language_uuid": "lang-uuid",
+                                "human_job_status": "Submitted",
+                            }
+                        ],
+                    }
+                ],
+                "target_languages": [{"uuid": "lang-uuid"}],
+            }
+        }
+
+        with (
+            patch(
+                "app.slack.listener_actions.get_job_pricing",
+                new_callable=AsyncMock,
+                return_value={"data": []},
+            ),
+            patch(
+                "app.slack.evaluation_quotes.get_evaluate_quote_session",
+                new_callable=AsyncMock,
+                return_value={"quote_snapshot": {"auto_submit_human_job": True}},
+            ),
+            patch(
+                "app.slack.listener_actions.standalone_ht_quote_message"
+            ) as quote_message,
+            patch("app.slack.listener_actions.EvaluateSuccessMessage") as qe_message,
+            patch(
+                "app.slack.listener_actions.create_human_job",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.slack.listener_actions.redis_conn.delete",
+                new_callable=AsyncMock,
+            ),
+        ):
+            quote_message.return_value.text = "HT quote"
+            quote_message.return_value.blocks = []
+
+            await submit_verification_job(
+                client=mock_client,
+                context=context,
+                job_uuid="verify-job-uuid",
+                selected_languages=["file-uuid:lang-uuid"],
+                user_id="U123",
+                timestamp="1710000000.000000",
+                job=job,
+                channel_id="C123",
             )
 
         quote_message.assert_called_once()

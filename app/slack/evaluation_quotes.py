@@ -9,6 +9,11 @@ from typing import Any
 from slack_sdk.web.async_client import AsyncWebClient
 
 from app.config import config
+from app.constants import (
+    HUMAN_EVALUATION_WORKFLOW_UUID,
+    HUMAN_VERIFICATION_WORKFLOW_UUID,
+    SLACK_HT_QUOTE_AFTER_QE_KEY,
+)
 from app.redis import redis_conn
 from app.slack.templates.messages import EvaluationCreditsQuoteMessage
 
@@ -89,6 +94,45 @@ async def get_evaluate_quote_session(job_uuid: str) -> dict[str, Any] | None:
         return data if isinstance(data, dict) else None
     except (TypeError, json.JSONDecodeError):
         return None
+
+
+def _flag_is_true(value: Any) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    return bool(value)
+
+
+def quote_snapshot_is_human_translation(snapshot: dict[str, Any] | None) -> bool:
+    """Return True when a stored quote snapshot quoted human translation."""
+    snapshot = snapshot or {}
+    return bool(
+        snapshot.get("auto_submit_human_job")
+        or _flag_is_true(snapshot.get(SLACK_HT_QUOTE_AFTER_QE_KEY))
+        or snapshot.get("human_translation_file_and_languages")
+    )
+
+
+async def job_is_human_translation_quote(job_data: dict[str, Any]) -> bool:
+    """Return True when this evaluate job was quoted as human translation in Slack.
+
+    Staged Slack quotes submit without HUMAN_EVALUATION so CVC builds a
+    synthetic workflow that holds human verification back until the quote is
+    accepted. ``workflow_uuid`` therefore cannot identify HT on its own — the
+    quote session and ``slack_ht_quote_after_qe`` are the durable markers.
+    """
+    if job_data.get("workflow_uuid") in (
+        HUMAN_EVALUATION_WORKFLOW_UUID,
+        HUMAN_VERIFICATION_WORKFLOW_UUID,
+    ):
+        return True
+    extra_info = job_data.get("extra_info") or {}
+    if _flag_is_true(extra_info.get(SLACK_HT_QUOTE_AFTER_QE_KEY)):
+        return True
+    job_uuid = job_data.get("uuid")
+    if not job_uuid:
+        return False
+    session = await get_evaluate_quote_session(str(job_uuid))
+    return quote_snapshot_is_human_translation((session or {}).get("quote_snapshot"))
 
 
 async def update_evaluate_quote_session(

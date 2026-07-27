@@ -5,8 +5,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.slack.evaluation_quotes import (
     get_evaluate_quote_session,
+    job_is_human_translation_quote,
     save_evaluate_quote_session,
     update_evaluate_quote_session,
     update_evaluate_quote_stage,
@@ -158,6 +160,64 @@ async def test_update_evaluate_quote_session_preserves_existing_fields():
         assert session["channel_id"] == "C1"
         assert session["stage"] == "awaiting_ai"
         assert session["quote_snapshot"]["token_cost"] == 25
+
+
+class TestJobIsHumanTranslationQuote:
+    """Staged Slack quotes clear HUMAN_EVALUATION, so HT must be detectable without it."""
+
+    @pytest.mark.asyncio
+    async def test_legacy_human_evaluation_workflow(self):
+        assert await job_is_human_translation_quote(
+            {"uuid": "job-1", "workflow_uuid": HUMAN_EVALUATION_WORKFLOW_UUID}
+        )
+
+    @pytest.mark.asyncio
+    async def test_ht_quote_after_qe_flag(self):
+        for flag in (True, "true"):
+            assert await job_is_human_translation_quote(
+                {
+                    "uuid": "job-1",
+                    "workflow_uuid": None,
+                    "extra_info": {"slack_ht_quote_after_qe": flag},
+                }
+            )
+
+    @pytest.mark.asyncio
+    async def test_combined_qe_human_quote_session(self):
+        """Staged admin HT: no workflow and no flag — only the quote session knows."""
+        stored = {
+            "slack-ray-translator:evaluate-quote:job-staged": json.dumps(
+                {"quote_snapshot": {"auto_submit_human_job": True}}
+            )
+        }
+
+        async def fake_get(key):
+            return stored.get(key)
+
+        with patch("app.slack.evaluation_quotes.redis_conn") as mock_redis:
+            mock_redis.get = AsyncMock(side_effect=fake_get)
+
+            assert await job_is_human_translation_quote(
+                {"uuid": "job-staged", "workflow_uuid": None, "extra_info": {}}
+            )
+
+    @pytest.mark.asyncio
+    async def test_quality_evaluation_only_job(self):
+        stored = {
+            "slack-ray-translator:evaluate-quote:job-qe": json.dumps(
+                {"quote_snapshot": {"service": "quality_evaluation"}}
+            )
+        }
+
+        async def fake_get(key):
+            return stored.get(key)
+
+        with patch("app.slack.evaluation_quotes.redis_conn") as mock_redis:
+            mock_redis.get = AsyncMock(side_effect=fake_get)
+
+            assert not await job_is_human_translation_quote(
+                {"uuid": "job-qe", "workflow_uuid": "other-workflow", "extra_info": {}}
+            )
 
 
 @pytest.mark.asyncio

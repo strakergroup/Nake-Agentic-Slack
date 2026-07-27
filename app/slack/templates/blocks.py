@@ -409,7 +409,7 @@ def verify_quote_blocks(
     selectable: bool = True,
     additional_costs: list[dict[str, Any]] | None = None,
     *,
-    show_quality_discount: bool = True,
+    show_quality_discount: bool = False,
     show_savings: bool = True,
     embed_additional_costs_in_line_price: bool = False,
     total_cost_label: str | None = None,

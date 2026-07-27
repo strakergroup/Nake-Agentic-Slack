@@ -18,11 +18,7 @@ from app.auth.connector import (
     get_ray_client,
     get_ray_connection,
 )
-from app.constants import (
-    EVALUATE_SERVICE_AI_TRANSLATION,
-    HUMAN_EVALUATION_WORKFLOW_UUID,
-    HUMAN_VERIFICATION_WORKFLOW_UUID,
-)
+from app.constants import EVALUATE_SERVICE_AI_TRANSLATION
 from app.ray.submissions import SubmissionStatus, updated_submission_status
 from app.ray.utils import (
     is_ibm_enterprise,
@@ -96,7 +92,9 @@ from ..slack.evaluation_combined_quotes import (
     job_file_uuids,
     job_target_language_uuids,
     post_combined_qe_human_quote,
+    standalone_ht_quote_message,
 )
+from ..slack.evaluation_quotes import job_is_human_translation_quote
 from ..slack.templates.messages import (
     AutoTranslationMessage,
     ClientApprovedEventMessage,
@@ -919,15 +917,9 @@ async def ray_events(
                     job_data_for_notify = job["data"]
                     if job["data"].get("human_job_in_progress", False):
                         raise ValueError(f"Invalid RAY event type: {event.event}")
-                    workflow_uuid = job["data"].get("workflow_uuid")
-                    job_extra = job["data"].get("extra_info") or {}
-                    ht_quote_after_qe = bool(job_extra.get("slack_ht_quote_after_qe"))
                     if event.data.get("ai_only"):
                         message = EvaluateAiOnlyCompleteMessage(job["data"])
-                    elif ht_quote_after_qe or workflow_uuid in (
-                        HUMAN_EVALUATION_WORKFLOW_UUID,
-                        HUMAN_VERIFICATION_WORKFLOW_UUID,
-                    ):
+                    elif await job_is_human_translation_quote(job["data"]):
                         ray_client = await get_ray_client(
                             auth.slack_user.user_id, auth.slack_user.team_id
                         )
@@ -950,12 +942,9 @@ async def ray_events(
                         else:
                             # Non-admin path (slack_ht_quote_after_qe) and legacy
                             # human workflows: post an HT-only quote to accept.
-                            # Hide "Quality: best/good" — same as combined QE+HT
-                            # quotes; the discount is already in the line price.
-                            message = HumanJobQuoteMessage(
+                            message = standalone_ht_quote_message(
                                 job["data"],
                                 costs["data"],
-                                show_quality_discount=False,
                             )
                     else:
                         message = EvaluateSuccessMessage(

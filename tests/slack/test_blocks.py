@@ -648,7 +648,9 @@ class TestVerifyQuoteBlocks:
             }
         ]
 
-        blocks = verify_quote_blocks(job, costs, selectable=False)
+        blocks = verify_quote_blocks(
+            job, costs, selectable=False, show_quality_discount=True
+        )
         rendered = str(blocks)
 
         assert "USD 10.50" in rendered
@@ -895,7 +897,9 @@ class TestVerifyQuoteBlocks:
             }
         ]
 
-        blocks = verify_quote_blocks(job, costs, selectable=True)
+        blocks = verify_quote_blocks(
+            job, costs, selectable=True, show_quality_discount=True
+        )
         rendered = str(blocks)
 
         assert "USD 10.50" in rendered

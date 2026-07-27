@@ -49,6 +49,7 @@ from app.translate import _
 logger = logging.getLogger(__name__)
 
 COMBINED_QE_HUMAN_QUOTE_ACCEPT_ACTION_ID = "evaluation_qe_human_quote_accept"
+STANDALONE_HT_TOTAL_COST_LABEL = "Total Cost"
 WORST_CASE_QE_QUALITY_TIER = "bad"
 QE_TOKEN_USD_RATE = 0.02
 PRE_QE_QUOTE_DISPLAY = {
@@ -131,6 +132,30 @@ def validate_combined_quote_includes_qe_cost(
     }
 
 
+def standalone_ht_quote_message(
+    job_data: dict[str, Any],
+    costs: list[dict[str, Any]],
+    *,
+    actions: bool = True,
+    status_message: str | None = None,
+) -> HumanJobQuoteMessage:
+    """HT-only quote: non-admin submissions and legacy human workflows.
+
+    Renders exactly as the fixed HUMAN_EVALUATION workflow does on prod — no
+    quality tier per line and no savings suffix, so the total stays
+    "Total Cost: USD x". The discount is still reflected in the prices.
+    """
+    return HumanJobQuoteMessage(
+        job_data,
+        costs,
+        actions=actions,
+        status_message=status_message,
+        show_quality_discount=False,
+        show_savings=False,
+        total_cost_label=STANDALONE_HT_TOTAL_COST_LABEL,
+    )
+
+
 def combined_human_job_quote_message(
     job_data: dict[str, Any],
     costs: list[dict[str, Any]],
@@ -141,7 +166,7 @@ def combined_human_job_quote_message(
     status_message: str | None = None,
     allow_adjust: bool = True,
     download_translations_job_uuid: str | None = None,
-    show_quality_discount: bool = True,
+    show_quality_discount: bool = False,
     show_savings: bool = True,
     embed_additional_costs_in_line_price: bool = False,
     total_cost_label: str | None = None,

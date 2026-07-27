@@ -17,10 +17,7 @@ from app.api.verify import (
     proceed_quality_evaluation,
 )
 from app.auth.connector import RayContext
-from app.constants import (
-    EVALUATE_SERVICE_QUALITY_EVALUATION,
-    HUMAN_EVALUATION_WORKFLOW_UUID,
-)
+from app.constants import EVALUATE_SERVICE_QUALITY_EVALUATION
 from app.ray.utils import format_slack_usd
 from app.redis import redis_conn
 from app.slack.buglog_notifier import notify_exception
@@ -42,12 +39,12 @@ from app.slack.evaluation_quotes import (
     STAGE_AWAITING_QE,
     STAGE_PROCESSING_QE,
     get_evaluate_quote_session,
+    job_is_human_translation_quote,
     save_evaluate_quote_session,
     update_evaluate_quote_stage,
 )
 from app.slack.listener_actions import (
     VERIFY_JOB_SUBMISSION_LOCK_TTL_SECONDS,
-    _job_is_ht_slack_quote,
     submit_verification_job,
     update_human_job_quote_message,
     verify_job_submission_lock_key,
@@ -99,7 +96,7 @@ async def handle_quote_accept_all(
         )
         return
 
-    is_ht_quote = _job_is_ht_slack_quote(job["data"])
+    is_ht_quote = await job_is_human_translation_quote(job["data"])
 
     # Get all available language/file combinations that are not in progress
     selected_languages = []
@@ -128,7 +125,6 @@ async def handle_quote_accept_all(
             costs=costs["data"],
             actions=False,
             status_message=_("Submitting quote..."),
-            show_quality_discount=False,
         )
 
     await submit_verification_job(
@@ -174,6 +170,9 @@ async def handle_verify_job_submission(
 
     job = await get_client_evaluation_job(context["ray"].client, job_uuid)
     target_languages = job["data"]["target_languages"]
+    is_ht_quote = bool(
+        private_metadata.get("ht_quote")
+    ) or await job_is_human_translation_quote(job["data"])
 
     # Extract the selected checkbox values from input blocks
     selected_languages = []
@@ -192,12 +191,7 @@ async def handle_verify_job_submission(
                         for option in selected_options
                     ]
                 )
-                mark_ht_submitted = job["data"][
-                    "workflow_uuid"
-                ] == HUMAN_EVALUATION_WORKFLOW_UUID or bool(
-                    (job["data"].get("extra_info") or {}).get("slack_ht_quote_after_qe")
-                )
-                if mark_ht_submitted:
+                if is_ht_quote:
                     for target_lang_option in selected_languages:
                         parts = target_lang_option.rsplit(":", 1)
                         file_uuid, lang_uuid = parts[0], parts[1]
@@ -368,10 +362,7 @@ async def handle_verify_job_submission(
             )
         return
 
-    adjust_extra = job["data"].get("extra_info") or {}
-    if job["data"]["workflow_uuid"] == HUMAN_EVALUATION_WORKFLOW_UUID or bool(
-        adjust_extra.get("slack_ht_quote_after_qe")
-    ):
+    if is_ht_quote:
         for source_file in job["data"]["source_files"]:
             for target_file in source_file["target_files"]:
                 if target_file.get("human_job_status") != "Submitted":
@@ -388,7 +379,7 @@ async def handle_verify_job_submission(
         timestamp=message_ts,
         job=job,
         channel_id=quote_channel_id,
-        prefer_ht_quote_message=bool(private_metadata.get("ht_quote")),
+        prefer_ht_quote_message=is_ht_quote,
     )
 
 

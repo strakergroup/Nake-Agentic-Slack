@@ -91,17 +91,17 @@ def test_ibm_quote_catalog_entry_uses_dollar_display():
     assert "USD 27.00" in rendered
 
 
-def test_human_job_quote_catalog_entry_shows_quality_discount():
+def test_human_job_quote_catalog_entry_applies_discount_without_quality_tiers():
+    """The catalog mirrors Slack, which prices off the discount but hides the tier."""
     entries = build_all_messages()
     entry = next(item for item in entries if item["name"] == "HumanJobQuoteMessage")
     rendered = str(entry["blocks"])
 
     assert "USD 53.75" in rendered
     assert "Quality Evaluation: USD 8.00" in rendered
-    assert "Quality: good" in rendered
-    assert "-30% off" not in rendered
     assert "USD 46.50" in rendered
-    assert "Quality: acceptable" in rendered
+    assert "Quality: " not in rendered
+    assert "-30% off" not in rendered
     assert "-20% off" not in rendered
     assert "Total Cost*: USD 100.25" in rendered
     assert "saved USD 29.24" in rendered
@@ -119,9 +119,8 @@ def test_quote_flow_html_contains_only_new_quote_steps():
     payload = QUOTE_FLOW_MODULE.build_flow_payload()
     rendered = str(payload)
     assert "USD 27.00" in rendered
-    assert "Quality: good" in rendered
+    assert "Quality: " not in rendered
     assert "-30% off" not in rendered
-    assert "Quality: acceptable" in rendered
     assert "-20% off" not in rendered
     assert "saved USD 29.24" in rendered
     assert "JobStatusMessage" not in rendered

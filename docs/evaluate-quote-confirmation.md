@@ -27,6 +27,57 @@ Evaluate submit resolves the member via `get_ray_client` (workspace super-group 
 
 Document MT and Media use the same Admin/Owner gate: admins see quotes; non-admins skip quote UX and auto-start processing.
 
+## Non-admin Human Translation flow (parity with `master`)
+
+Non-admins see the same Slack message sequence as `master`/prod: submit, then a single Human Translation quote once AI translation and quality evaluation have run, then human verification after Accept. No AI quote and no combined QE + HT quote are posted, and there are no intermediate "AI translation started" / "Quality evaluation is running" status messages.
+
+```mermaid
+sequenceDiagram
+    participant User as SlackUser (non-admin)
+    participant SRT as slack-ray-translator
+    participant CVA as cloud-verify-api
+    participant CVC as cloud-verify-consumer
+
+    User->>SRT: Submit Human Translation modal
+    SRT->>User: Analyzing content...
+    CVA->>SRT: verify:slack:evaluate:ready_for_ai_quote
+    SRT->>CVA: POST /evaluate/proceed (auto-accept AI, no quote posted)
+    CVA->>SRT: verify:slack:evaluate:ready_for_qe_quote
+    SRT->>CVA: POST /evaluate/{uuid}/proceed-quality-evaluation (auto-purchase QE)
+    CVC->>SRT: verify:slack:evaluate:complete
+    SRT->>User: Human Translation quote + Accept / Adjust Request
+    User->>SRT: Accept Quote
+    SRT->>CVA: Create human job — human verification starts
+    SRT->>User: Same HT quote panel, actions removed + submission confirmation
+```
+
+The Slack messages themselves are format-identical to `master`: the same per-file/per-language price lines, the same `Total Cost` line, and the same "Human translation has been submitted for this language." rows after Accept. `master` never rendered `Quality: best/good` or a `(saved USD X)` suffix — both were added by this branch and are now suppressed on HT quotes, so this is parity, not a change.
+
+Differences are backend-only:
+
+| | `master` / prod | Now |
+|---|---|---|
+| Workflow on `/evaluate/create` | fixed `HUMAN_EVALUATION` | none — CVC builds synthetic AI + QE, and human verification is created on Accept |
+| `confirmation_required` | `false` | `true` for HT; non-admin **Quality Evaluation** stays `false` |
+
+Because non-admin HT jobs no longer carry the fixed HT workflow UUID, any Verify-side display or billing label that keys off `workflow_uuid` will not see it on these jobs. Confirm in UAT before release if HT labelling matters downstream.
+
+## Identifying a human translation quote
+
+Both staged paths submit **without** `HUMAN_EVALUATION` so CVC builds a synthetic workflow, so `job_uuid`/`workflow_uuid` cannot tell Slack that a job was quoted as human translation. Deciding rendering from `workflow_uuid` is what caused HT quotes to be replaced by the QE **Evaluation Result** panel (scores + “Send for Human Verification”) after Accept.
+
+`job_is_human_translation_quote` (`app/slack/evaluation_quotes.py`) is the single check, and returns true when any of these hold:
+
+| Signal | Path it covers |
+|--------|----------------|
+| `workflow_uuid` is `HUMAN_EVALUATION` / `HUMAN_VERIFICATION` | legacy / prod HT jobs |
+| `extra_info.slack_ht_quote_after_qe` | non-admin HT-after-QE |
+| Quote session snapshot has `auto_submit_human_job`, `slack_ht_quote_after_qe`, or `human_translation_file_and_languages` | admin staged combined QE + HT quote |
+
+It is used by the `verify:slack:evaluate:complete` handler, `submit_verification_job`, `handle_quote_accept_all`, and the Adjust Request submit. The session is stored in Redis for `EVALUATE_QUOTE_TTL_SECONDS` (7 days by default), which outlives the quote → accept window.
+
+Note that the admin staged workflow **does** include an HV node: the combined QE + HT quote is accepted before QE runs, so human verification is meant to start automatically once QE completes. Only the non-admin HT-after-QE path omits HV until Accept.
+
 ## Resubmission prevention
 
 QE and HT modal submits use a 24h dedupe gate in `process_evaluation_submission` (`check_and_record_evaluate_submission_async`). Unlike Document MT (per target language), evaluate treats the **full target set** as one unit for simpler grouping:
@@ -56,11 +107,11 @@ flowchart TD
     dedupe -->|some_files_new| submit
 ```
 
-## Flow
+## Admin / Owner staged flow
 
 ```mermaid
 sequenceDiagram
-    participant User as SlackUser
+    participant User as SlackUser (Admin/Owner)
     participant SRT as slack-ray-translator
     participant CVA as cloud-verify-api
     participant CVC as cloud-verify-consumer
@@ -79,10 +130,12 @@ sequenceDiagram
     SRT->>User: Update AI quote to complete + post new QE + Human Translation quote
     User->>SRT: Deselect file/language pairs or Accept
     SRT->>CVA: POST /evaluate/{uuid}/proceed-quality-evaluation (same QE + HT scope)
+    CVC->>CVA: QE scored, then human verification for the HT scope
     CVC->>SRT: verify:slack:evaluate:complete
-    SRT->>CVA: Submit Human Translation job automatically
-    SRT->>User: Human Translation submitted
+    SRT->>User: Update the same quote with final cost after the AI quality discount
 ```
+
+The accept of the combined quote is the only human translation accept: CVC creates the human verification work for the stored HT scope, and SRT only updates the existing quote message. There is no second accept step after QE.
 
 ## Slack events
 
@@ -127,4 +180,8 @@ When `verify:slack:evaluate:complete` arrives, SRT validates that refreshed tota
 
 ## Human verification quality discount
 
-When CVA returns `quality_discount` metadata from `/automation/service/pricing`, standalone Human Translation quotes (fixed `HUMAN_EVALUATION` workflow — non-admin / prod path) display a compact quality line beneath each price, for example: `USD 45.75` and `Quality: good`. Their quote total uses CVA's final `estimated_cost` sum and shows aggregate savings for the currently selected file/language pairs, recalculating when the user deselects items. Combined QE + Human Translation quotes (admin staged path) do not display quality tiers in either the pre-QE or final panel.
+`master` renders no quality tiers at all — `quality_discount` does not appear in its `verify_quote_blocks`. The `Quality: good` line and the `(saved USD X)` total suffix were both added here, so both are off by default (`show_quality_discount=False` on `HumanJobQuoteMessage`, `verify_quote_blocks`, `verify_quote_summary_modal` and `combined_human_job_quote_message`); a call site must opt in.
+
+Standalone HT quotes — non-admin submissions and legacy human workflows — go through `standalone_ht_quote_message()`, which pins the prod rendering in one place: no tier, no savings suffix, and a plain `Total Cost` label. That last part matters because `verify_quote_blocks` otherwise switches the label to `Maximum Total Cost` whenever savings are hidden. The quote posted on `evaluate:complete`, the in-place update on Accept, and the "Submitting quote…" update all use it, and the HT Adjust modal passes the same label.
+
+Prices are unaffected: totals still come from CVA's discounted `estimated_cost` (`/automation/service/pricing`) and recalculate as the user deselects pairs. Only the discount's presentation is suppressed. Combined QE + HT quotes (admin) keep their own display constants — they fold the discount into the line price and do show savings on the post-QE `Final Cost` panel.

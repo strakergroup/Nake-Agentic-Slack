@@ -23,10 +23,6 @@ from app.api.verify import (
     create_human_job,
     get_job_pricing,
 )
-from app.constants import (
-    HUMAN_EVALUATION_WORKFLOW_UUID,
-    HUMAN_VERIFICATION_WORKFLOW_UUID,
-)
 from app.models import (  # noqa: F401 - kept for potential future use
     ASRTask,
     TranscriptionTask,
@@ -41,6 +37,7 @@ from app.mt.service import (
 )
 from app.ray.events.models import MtFileRequestSchema
 from app.slack.buglog_notifier import notify_exception, notify_message
+from app.slack.evaluation_combined_quotes import standalone_ht_quote_message
 from app.slack.utils import escape_slack_emoji
 from app.slack_job import create_slack_job
 from app.transcriber_tasks.tasks import (
@@ -83,6 +80,7 @@ from .bot_translation import (
     is_untranslatable_placeholder,
 )
 from .bot_translation_limits import can_translate_bot_message
+from .evaluation_quotes import job_is_human_translation_quote
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
     AIHelperMessage,
@@ -2458,15 +2456,13 @@ async def update_human_job_quote_message(
     costs: list[dict[str, Any]],
     actions: bool = False,
     status_message: str | None = None,
-    show_quality_discount: bool = False,
 ) -> None:
     """Update the original human translation quote message in place."""
-    message = HumanJobQuoteMessage(
+    message = standalone_ht_quote_message(
         job,
         costs,
         actions=actions,
         status_message=status_message,
-        show_quality_discount=show_quality_discount,
     )
     await client.chat_update(
         channel=channel_id,
@@ -2474,21 +2470,6 @@ async def update_human_job_quote_message(
         text=message.text,
         blocks=message.blocks,
     )
-
-
-def _job_is_ht_slack_quote(job_data: dict[str, Any]) -> bool:
-    """Return True when this evaluate job was quoted as Human Translation in Slack."""
-    workflow_uuid = job_data.get("workflow_uuid")
-    if workflow_uuid in (
-        HUMAN_EVALUATION_WORKFLOW_UUID,
-        HUMAN_VERIFICATION_WORKFLOW_UUID,
-    ):
-        return True
-    extra = job_data.get("extra_info") or {}
-    flag = extra.get("slack_ht_quote_after_qe")
-    if isinstance(flag, str):
-        return flag.strip().lower() in {"1", "true", "yes"}
-    return bool(flag)
 
 
 async def submit_verification_job(
@@ -2532,7 +2513,9 @@ async def submit_verification_job(
     try:
         # HT Accept must keep the HT quote panel. Falling back to
         # EvaluateSuccessMessage shows QE scores + "Send for Human Verification".
-        is_ht_quote = prefer_ht_quote_message or _job_is_ht_slack_quote(job["data"])
+        is_ht_quote = prefer_ht_quote_message or await job_is_human_translation_quote(
+            job["data"]
+        )
         if is_ht_quote:
             assert context.ray is not None
             assert context.ray.client is not None
@@ -2542,11 +2525,10 @@ async def submit_verification_job(
                 [file["file_uuid"] for file in job["data"]["source_files"]],
                 [lang["uuid"] for lang in job["data"]["target_languages"]],
             )
-            updated_msg: SlackMessage = HumanJobQuoteMessage(
+            updated_msg: SlackMessage = standalone_ht_quote_message(
                 job["data"],
                 costs["data"],
                 actions=False,
-                show_quality_discount=False,
                 status_message=msg,
             )
         else:

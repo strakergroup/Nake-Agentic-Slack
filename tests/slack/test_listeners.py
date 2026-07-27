@@ -6452,6 +6452,11 @@ class TestHandleVerifyJobSubmission:
                 return_value=None,
             ),
             patch(
+                f"{module}.job_is_human_translation_quote",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
                 f"{module}.get_evaluation_job_quote",
                 new_callable=AsyncMock,
                 return_value={"services_costs": {"quality_evaluation": 10}},

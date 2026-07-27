@@ -1486,7 +1486,7 @@ async def test_ray_events_evaluate_complete_hv_uses_human_job_quote(
                                         new_callable=AsyncMock,
                                     ):
                                         with patch(
-                                            "app.routers.ray.HumanJobQuoteMessage"
+                                            "app.routers.ray.standalone_ht_quote_message"
                                         ) as mock_ht:
                                             mock_ht.return_value = MagicMock(
                                                 text="HT quote", blocks=[]
@@ -1566,7 +1566,7 @@ async def test_ray_events_evaluate_complete_ht_quote_uses_stored_channel(
                                             new_callable=AsyncMock,
                                         ) as mock_post:
                                             with patch(
-                                                "app.routers.ray.HumanJobQuoteMessage"
+                                                "app.routers.ray.standalone_ht_quote_message"
                                             ) as mock_ht:
                                                 mock_ht.return_value = MagicMock(
                                                     text="HT quote", blocks=[]
@@ -1580,12 +1580,6 @@ async def test_ray_events_evaluate_complete_ht_quote_uses_stored_channel(
                                                 await ray_events(event, auth)
 
                                                 mock_ht.assert_called_once()
-                                                assert (
-                                                    mock_ht.call_args.kwargs.get(
-                                                        "show_quality_discount"
-                                                    )
-                                                    is False
-                                                )
                                                 assert (
                                                     mock_post.await_args.kwargs[
                                                         "channel_id"

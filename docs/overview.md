@@ -8,7 +8,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [Internal Services & Redis Stream Events](internal-services.md) - Comprehensive catalogue of all internal service endpoints called and Redis stream events dispatched
 - [Document MT Quote Confirmation](document-mt-quote-confirmation.md) - AI Translate quote preflight, cached file state, and Accept/Cancel confirmation flow (RAY-79115)
 - [Document MT PDF Billing](document-mt-pdf-billing.md) - Deferred PDF conversion-fee billing after successful delivery (RAY-80417)
-- [Evaluate Quote Confirmation](evaluate-quote-confirmation.md) - Sequential AI → combined QE + Human Translation quote flow for Slack HV, including QE/HT resubmission prevention (RAY-79115)
+- [Evaluate Quote Confirmation](evaluate-quote-confirmation.md) - Admin staged AI → combined QE + Human Translation quote flow, non-admin HT parity with `master`, and QE/HT resubmission prevention (RAY-79115)
 - [Media Quote Confirmation](media-quote-confirmation.md) - Quote1 (transcription/embedding) and Quote2 (AI translation after ASR) before media spend
 - [Slack Modal Trigger Safety](slack-modal-trigger-safety.md) - Standard loading-modal pattern for Slack `trigger_id` TTL (RAY-72999)
 - [Document MT / AI Translate org billing](document-mt-without-login.md) - **Required:** AI Translate (Document MT) supports org/group billing without LC member login; HT/QE must still require login
