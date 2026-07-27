@@ -1218,6 +1218,11 @@ async def process_evaluation_submission(
             )
             return {"status": "nothing_to_submit"}
 
+        # Non-admin HT-after-QE must use CVC synthetic workflow so HV is omitted
+        # until the Slack HT quote is accepted. A fixed HUMAN_EVALUATION UUID
+        # embeds HV and starts TP jobs before Accept (false "cancelled" UX).
+        submit_workflow_uuid = None if slack_ht_quote_after_qe else workflow_uuid
+
         if has_pdf:
             await publish_pdf_evaluate_convert(
                 ray_client=ray_client,
@@ -1227,7 +1232,7 @@ async def process_evaluation_submission(
                 reference=reference,
                 channel_id=channel_id,
                 source_lang_uuid=source_lang_uuid,
-                workflow_uuid=workflow_uuid,
+                workflow_uuid=submit_workflow_uuid,
                 job_notes=job_notes,
                 preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
                 prequote_message_ts=prequote_message_ts,
@@ -1241,7 +1246,7 @@ async def process_evaluation_submission(
                 submit_target_langs,
                 reference,
                 source_language_uuid=source_lang_uuid,
-                workflow_uuid=workflow_uuid,
+                workflow_uuid=submit_workflow_uuid,
                 job_notes=job_notes,
                 slack_channel_id=channel_id,
                 preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,

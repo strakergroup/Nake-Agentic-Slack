@@ -556,6 +556,69 @@ async def test_process_evaluation_submission_non_admin_skips_pdf_prequote():
     mock_save.assert_not_awaited()
     mock_publish.assert_awaited_once()
     assert mock_publish.await_args.kwargs["slack_ht_quote_after_qe"] is True
+    assert mock_publish.await_args.kwargs["workflow_uuid"] is None
+
+
+@pytest.mark.asyncio
+async def test_process_evaluation_submission_ht_after_qe_clears_fixed_workflow():
+    """Non-admin HT-after-QE must not submit HUMAN_EVALUATION (HV before Accept)."""
+    from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+
+    ray_client = MagicMock()
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+    record = MagicMock(id=42)
+
+    with (
+        patch(
+            "app.auth.connector.get_ray_client",
+            new=AsyncMock(return_value=ray_client),
+        ),
+        patch(
+            "app.auth.connector.user_may_receive_quotes",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.docx")),
+        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
+        patch(
+            "app.api.verify.get_verify_languages",
+            new=AsyncMock(
+                return_value=[
+                    {"uuid": "src", "code": "en", "name": "English"},
+                    {"uuid": "lang-1", "code": "fr", "name": "French"},
+                ]
+            ),
+        ),
+        patch(
+            "app.ray.submissions.check_and_record_evaluate_submission_async",
+            new=AsyncMock(return_value=(False, record)),
+        ),
+        patch("app.api.verify.submit_evaluation_job", new=AsyncMock()) as mock_submit,
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("os.path.exists", return_value=False),
+    ):
+        result = await process_evaluation_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.docx", "size": 1000}],
+            target_langs_uuid=["lang-1"],
+            reference="ref",
+            source_lang_uuid="src",
+            workflow_uuid=HUMAN_EVALUATION_WORKFLOW_UUID,
+            job_notes="",
+        )
+
+    assert result["status"] == "submitted"
+    mock_submit.assert_awaited_once()
+    assert mock_submit.await_args.kwargs["slack_ht_quote_after_qe"] is True
+    assert mock_submit.await_args.kwargs["workflow_uuid"] is None
 
 
 @pytest.mark.asyncio

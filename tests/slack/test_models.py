@@ -531,6 +531,29 @@ class TestEvaluateJobForm:
         form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job")
         assert form.workflow_options is None
 
+    def test_evaluate_job_human_form_defaults_to_no_workflow(self):
+        """Human Translation must not pin HUMAN_EVALUATION (HV starts before Accept)."""
+        values = {
+            "reference": {"reference": {"value": "REF-123"}},
+            "source_lang": {
+                "source_language_option_uuid": {
+                    "selected_option": {"value": "src-lang-001"}
+                }
+            },
+            "target_langs": {
+                "language_options_uuid": {"selected_options": [{"value": "lang-123"}]}
+            },
+            "files": {
+                "files": {
+                    "selected_options": [
+                        {"value": "file-123", "text": {"text": "test.txt"}}
+                    ]
+                }
+            },
+        }
+        form = EvaluateJobForm.parse_human_job_form(values, "evaluate_job_human")
+        assert form.workflow_options is None
+
     def test_evaluate_job_form_rejects_source_in_targets(self):
         """Test that source language cannot be a target language."""
         values = {

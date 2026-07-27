@@ -1581,6 +1581,12 @@ async def test_ray_events_evaluate_complete_ht_quote_uses_stored_channel(
 
                                                 mock_ht.assert_called_once()
                                                 assert (
+                                                    mock_ht.call_args.kwargs.get(
+                                                        "show_quality_discount"
+                                                    )
+                                                    is False
+                                                )
+                                                assert (
                                                     mock_post.await_args.kwargs[
                                                         "channel_id"
                                                     ]

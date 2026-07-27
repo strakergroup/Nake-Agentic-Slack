@@ -950,7 +950,13 @@ async def ray_events(
                         else:
                             # Non-admin path (slack_ht_quote_after_qe) and legacy
                             # human workflows: post an HT-only quote to accept.
-                            message = HumanJobQuoteMessage(job["data"], costs["data"])
+                            # Hide "Quality: best/good" — same as combined QE+HT
+                            # quotes; the discount is already in the line price.
+                            message = HumanJobQuoteMessage(
+                                job["data"],
+                                costs["data"],
+                                show_quality_discount=not ht_quote_after_qe,
+                            )
                     else:
                         message = EvaluateSuccessMessage(
                             job["data"], is_ibm, event.data.get("tokens")
