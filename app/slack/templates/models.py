@@ -10,6 +10,7 @@ from pydantic import (
 )
 from ray_sdk.api.v3.file import is_valid_file_ext
 
+from ...constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from ...models import SlackGroupSettingsTranslation
 from ..file_submissions import parse_slack_file_option_value
 
@@ -317,9 +318,9 @@ class EvaluateJobForm(BaseModel):
         ]
         job_notes = values.get("job_notes", {}).get("job_notes", {}).get("value", "")
 
-        # Staged Slack evaluate (AI → QE → HT quote) needs CVC's synthetic
-        # workflow. A fixed HUMAN_EVALUATION UUID embeds HV and starts TP jobs
-        # before the Slack HT Accept, which races the quote UI.
+        # Human Translation pins the prod HT workflow so Slack/Verify UI and
+        # billing labels stay HT (not QE). Admins clear this at submit time for
+        # the staged AI → QE → HT quote path; non-admins keep prod behaviour.
         if callback_id == "evaluate_job":
             selected_option = (
                 values.get("workflow_options", {})
@@ -328,7 +329,7 @@ class EvaluateJobForm(BaseModel):
             )
             workflow_options = selected_option["value"] if selected_option else None
         else:
-            workflow_options = None
+            workflow_options = HUMAN_EVALUATION_WORKFLOW_UUID
         selected_files = [
             SlackFile.parse_slack_option(opt)
             for opt in values["files"]["files"]["selected_options"]

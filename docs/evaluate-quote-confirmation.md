@@ -18,11 +18,11 @@ When `QUOTE_ADMIN_ONLY=true` (default), only Verify group **Admin/Owner** member
 | Role | AI | QE | Human Translation |
 |------|----|----|-------------------|
 | Admin / Owner | Quote → accept | Combined **QE + HT** quote at worst-case QE tier → accept | Included in that combined accept |
-| Non-admin | Auto-proceed (no quote) | Auto-purchase QE (no quote) | Separate HT quote (`HumanJobQuoteMessage`) after QE |
+| Non-admin | Same as prod (no staged AI/QE quotes) | Same as prod (`confirmation_required=false`) | Same as prod: `HUMAN_EVALUATION` workflow + HT quote (`HumanJobQuoteMessage`) |
 
-Non-admin evaluate jobs still set `confirmation_required=true` so AI/QE staging works, and set `extra_info.slack_ht_quote_after_qe=true`. CVC’s synthetic workflow then includes QE but **omits** the `human-verification` node so HT is not created before the Slack HT quote. PDF pre-quotes are skipped for non-admins (convert/create runs immediately with the same flag).
+Non-admin evaluate / Human Translation keeps production behaviour so Slack and Verify UI stay labelled as Human Translation (workflow UUID, billing relabel, Accept/Adjust quote). Admins clear `HUMAN_EVALUATION` at submit so CVC builds the synthetic staged AI → QE → HT workflow with `confirmation_required=true`. PDF pre-quotes are admin-only; non-admins convert/create immediately without quote staging.
 
-Evaluate submit resolves the member via `get_ray_client` (workspace super-group link is not required). Definite Verify `401`/`402`/`403` on auto AI/QE releases the Redis event claim so a later redelivery can retry. Media non-admin auto-start falls back to posting the Accept quote when balance/login blocks start.
+Evaluate submit resolves the member via `get_ray_client` (workspace super-group link is not required). Media non-admin auto-start falls back to posting the Accept quote when balance/login blocks start.
 
 Document MT and Media use the same Admin/Owner gate: admins see quotes; non-admins skip quote UX and auto-start processing.
 
@@ -126,4 +126,4 @@ When `verify:slack:evaluate:complete` arrives, SRT validates that refreshed tota
 
 ## Human verification quality discount
 
-When CVA returns `quality_discount` metadata from `/automation/service/pricing`, legacy standalone Human Translation quotes (fixed `HUMAN_EVALUATION` workflow) display a compact quality line beneath each price, for example: `USD 45.75` and `Quality: good`. Their quote total uses CVA's final `estimated_cost` sum and shows aggregate savings for the currently selected file/language pairs, recalculating when the user deselects items. Combined QE + Human Translation quotes and non-admin post-QE HT-only quotes (`slack_ht_quote_after_qe`) do not display quality tiers — the discount is already reflected in the line price (QE has already run).
+When CVA returns `quality_discount` metadata from `/automation/service/pricing`, standalone Human Translation quotes (fixed `HUMAN_EVALUATION` workflow — non-admin / prod path) display a compact quality line beneath each price, for example: `USD 45.75` and `Quality: good`. Their quote total uses CVA's final `estimated_cost` sum and shows aggregate savings for the currently selected file/language pairs, recalculating when the user deselects items. Combined QE + Human Translation quotes (admin staged path) do not display quality tiers in either the pre-QE or final panel.

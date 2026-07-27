@@ -914,7 +914,10 @@ async def process_evaluation_submission(
         get_ray_client,
         user_may_receive_quotes,
     )
-    from app.constants import EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE
+    from app.constants import (
+        EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE,
+        HUMAN_EVALUATION_WORKFLOW_UUID,
+    )
     from app.ray.submissions import (
         SubmissionStatus,
         check_and_record_evaluate_submission_async,
@@ -954,8 +957,10 @@ async def process_evaluation_submission(
         logger.error("Evaluation submission has no RAY client", extra=log_extra)
         return {"status": "no_ray_client"}
     may_quote = await user_may_receive_quotes(RayConnection([], ray_client))
-    # Non-admins keep confirmation_required but auto-run AI+QE, then quote HT.
-    slack_ht_quote_after_qe = not may_quote
+    # Admins get staged AI → QE → HT quotes (confirmation_required).
+    # Non-admins keep prod evaluate behaviour: no staged quotes / no HT-after-QE.
+    slack_ht_quote_after_qe = False
+    confirmation_required = may_quote
 
     bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
     if not bot_token:
@@ -1218,10 +1223,11 @@ async def process_evaluation_submission(
             )
             return {"status": "nothing_to_submit"}
 
-        # Non-admin HT-after-QE must use CVC synthetic workflow so HV is omitted
-        # until the Slack HT quote is accepted. A fixed HUMAN_EVALUATION UUID
-        # embeds HV and starts TP jobs before Accept (false "cancelled" UX).
-        submit_workflow_uuid = None if slack_ht_quote_after_qe else workflow_uuid
+        # Admin HT uses CVC synthetic workflow (clear HUMAN_EVALUATION) so AI/QE
+        # quotes can stage before HV. Non-admin HT keeps HUMAN_EVALUATION like prod.
+        submit_workflow_uuid = workflow_uuid
+        if may_quote and workflow_uuid == HUMAN_EVALUATION_WORKFLOW_UUID:
+            submit_workflow_uuid = None
 
         if has_pdf:
             await publish_pdf_evaluate_convert(
@@ -1238,6 +1244,7 @@ async def process_evaluation_submission(
                 prequote_message_ts=prequote_message_ts,
                 ai_translation_filename_and_languages=submit_ai_pairs,
                 slack_ht_quote_after_qe=slack_ht_quote_after_qe,
+                confirmation_required=confirmation_required,
             )
         else:
             await submit_evaluation_job(
@@ -1253,6 +1260,7 @@ async def process_evaluation_submission(
                 prequote_message_ts=prequote_message_ts,
                 ai_translation_filename_and_languages=submit_ai_pairs,
                 slack_ht_quote_after_qe=slack_ht_quote_after_qe,
+                confirmation_required=confirmation_required,
             )
         return {
             "status": "submitted",

@@ -23,6 +23,7 @@ async def publish_pdf_evaluate_convert(
     prequote_message_ts: str | None = None,
     ai_translation_filename_and_languages: list[str] | None = None,
     slack_ht_quote_after_qe: bool = False,
+    confirmation_required: bool = True,
 ) -> None:
     """Upload files to GridFS and publish to the PDF evaluate conversion stream."""
     file_ids = []
@@ -43,7 +44,7 @@ async def publish_pdf_evaluate_convert(
         "docconverter_version": docconverter_version,
         "channel_id": channel_id,
         "app_source": "slack",
-        "confirmation_required": True,
+        "confirmation_required": confirmation_required,
         "preaccepted_ai_translation_quote": preaccepted_ai_translation_quote,
         "slack_ht_quote_after_qe": slack_ht_quote_after_qe,
     }

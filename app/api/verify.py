@@ -56,8 +56,8 @@ async def submit_evaluation_job(
     prequote_message_ts: str | None = None,
     ai_translation_filename_and_languages: list[str] | None = None,
     slack_ht_quote_after_qe: bool = False,
+    confirmation_required: bool = True,
 ):
-    confirmation_required = True
     target_languages_data: dict[str, Any] = {
         "target_languages": target_languages_uuid,
         "title": reference,
