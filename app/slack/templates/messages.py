@@ -3943,6 +3943,9 @@ class HumanJobQuoteMessage(SlackMessage):
         show_total_cost: bool = True,
         show_estimated_completion: bool = True,
         message_title: str | None = None,
+        # Admin pre-QE combined quote only. Must not key off show_savings —
+        # standalone (non-admin) HT also hides savings for prod-like totals.
+        show_accept_discount_helper: bool = False,
     ) -> None:
         blocks = []
         blocks = verify_quote_blocks(
@@ -3965,8 +3968,8 @@ class HumanJobQuoteMessage(SlackMessage):
                     "text": {"type": "mrkdwn", "text": status_message},
                 }
             )
-        # Pre-QE estimate (actions on, savings hidden): explain Accept Quote.
-        if actions and not show_savings:
+        # Admin staged pre-QE combined quote: worst-case estimate until QE runs.
+        if actions and show_accept_discount_helper:
             blocks.append(
                 {
                     "type": "section",

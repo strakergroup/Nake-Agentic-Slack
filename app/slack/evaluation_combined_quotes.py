@@ -57,6 +57,9 @@ PRE_QE_QUOTE_DISPLAY = {
     "show_savings": False,
     "embed_additional_costs_in_line_price": True,
     "total_cost_label": "Maximum Total Cost",
+    # Admin-only: worst-case estimate until QE finishes. Standalone HT must
+    # never set this (non-admin quotes already include the final price).
+    "show_accept_discount_helper": True,
 }
 POST_QE_QUOTE_DISPLAY = {
     "show_quality_discount": False,
@@ -174,6 +177,7 @@ def combined_human_job_quote_message(
     show_total_cost: bool = True,
     show_estimated_completion: bool = True,
     message_title: str | None = None,
+    show_accept_discount_helper: bool = False,
     pricing_costs: list[dict[str, Any]] | None = None,
 ) -> HumanJobQuoteMessage:
     priced_costs = pricing_costs if pricing_costs is not None else costs
@@ -200,6 +204,7 @@ def combined_human_job_quote_message(
         show_total_cost=show_total_cost,
         show_estimated_completion=show_estimated_completion,
         message_title=message_title,
+        show_accept_discount_helper=show_accept_discount_helper,
     )
 
 
@@ -522,6 +527,7 @@ async def post_combined_qe_human_quote(
             "embed_additional_costs_in_line_price"
         ],
         total_cost_label=PRE_QE_QUOTE_DISPLAY["total_cost_label"],
+        show_accept_discount_helper=PRE_QE_QUOTE_DISPLAY["show_accept_discount_helper"],
     )
     session = await get_evaluate_quote_session(job_uuid)
     channel_id = resolve_evaluate_channel_id(event, job_data) or auth.slack_user.user_id

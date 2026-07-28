@@ -27,7 +27,7 @@ Evaluate submit resolves the member via `get_ray_client` (workspace super-group 
 
 Document MT and Media use the same Admin/Owner gate: admins see quotes; non-admins skip quote UX and auto-start processing.
 
-To lift the restriction, see [Removing the admin-only restriction](#removing-the-admin-only-restriction-cleanup-path).
+To lift the restriction, see [Full release plan (lifting admin-only)](#full-release-plan-lifting-admin-only).
 
 ## Non-admin Human Translation flow (parity with `master`)
 
@@ -64,9 +64,25 @@ Differences are backend-only:
 
 Because non-admin HT jobs no longer carry the fixed HT workflow UUID, any Verify-side display or billing label that keys off `workflow_uuid` will not see it on these jobs. Confirm in UAT before release if HT labelling matters downstream.
 
-## Removing the admin-only restriction (cleanup path)
+## Full release plan (lifting admin-only)
 
-Everything non-admin-specific exists only to keep non-admins on the prod flow while the staged quote flow is admin-only. Rolling the staged flow out to everyone is a config flip; the code removal is a separate, later change, and doing it too early breaks jobs that are already in flight.
+Everything below is the plan for rolling the staged quote flow out beyond Admin/Owner. Until then, non-admins stay on the prod-like HT quote; admins alone see staged AI → combined QE + HT.
+
+### What is admin-only today
+
+| UX / behaviour | Admin / Owner | Non-admin |
+|---|---|---|
+| Staged AI Translation quote + Accept / Adjust | Yes | No (AI auto-proceeds) |
+| Combined QE + HT quote at worst-case tier (`Maximum Total Cost`) | Yes | No |
+| Accept helper: “A *discount* will be applied… based on the quality of the AI translation” (`show_accept_discount_helper`) | Yes — pre-QE combined quote only (`PRE_QE_QUOTE_DISPLAY`) | No — standalone HT already has the final price |
+| Post-QE in-place update with `Final Cost` + savings | Yes | N/A (no combined quote) |
+| PDF evaluate pre-quote | Yes | No (convert/create immediately) |
+| Standalone HT quote (`standalone_ht_quote_message`) | Only if a legacy path hits it | Yes — after AI+QE, before HV Accept |
+| Document MT / Media quote Accept UI | Yes | No (auto-start) |
+
+The discount helper used to be implied by `actions and not show_savings`. That leaked onto non-admin HT once standalone quotes also hid savings for prod-like totals. It is now an explicit `show_accept_discount_helper` flag, set only in `PRE_QE_QUOTE_DISPLAY`. When the staged flow is opened to everyone, that helper correctly appears on their combined pre-QE quote — do not re-couple it to `show_savings`.
+
+### Release steps
 
 ```mermaid
 flowchart LR
@@ -75,17 +91,17 @@ flowchart LR
     C --> D["4. CVA + CVC: stop consuming it"]
 ```
 
-### 1. The switch
+#### 1. The switch
 
-Set `QUOTE_ADMIN_ONLY=false`. `user_may_receive_quotes` then returns true for everyone, so every evaluate submission takes the `may_quote` branch in `process_evaluation_submission`: staged AI quote, combined QE + HT quote, `confirmation_required=true`, PDF pre-quotes, and no `slack_ht_quote_after_qe` on new jobs. No deploy is needed and flipping it back restores admin-only behaviour.
+Set `QUOTE_ADMIN_ONLY=false`. `user_may_receive_quotes` then returns true for everyone, so every evaluate submission takes the `may_quote` branch in `process_evaluation_submission`: staged AI quote, combined QE + HT quote (including the discount helper on the pre-QE panel), `confirmation_required=true`, PDF pre-quotes, and no `slack_ht_quote_after_qe` on new jobs. No deploy is needed and flipping it back restores admin-only behaviour.
 
 **The flag is not evaluate-only.** The same gate drives Document MT (`app/slack/handlers/document_mt.py`) and Media (`app/slack/media_quote_actions.py`), so those flows start showing quote UI to everyone at the same moment. To roll evaluate out on its own, add a separate setting rather than widening this one.
 
-### 2. Drain before deleting
+#### 2. Drain before deleting
 
 Jobs created while the restriction was on still carry `extra_info.slack_ht_quote_after_qe`, and they need both the SRT standalone HT path and CVC's HV omission to finish correctly. Quote sessions live for `EVALUATE_QUOTE_TTL_SECONDS` (7 days), and CVC parks a staged quote for up to `STAGED_QE_QUOTE_EXPIRY_HOURS` (72h), so wait at least a week after the flip and confirm none are left before removing code. CVC logs the value on every synthetic build (`[V4:SYNTHETIC] ... slack_ht_quote_after_qe=`), which is the easiest thing to search in ELK.
 
-### 3. SRT — stop producing the flag
+#### 3. SRT — stop producing the flag
 
 | Location | Change |
 |---|---|
@@ -97,23 +113,30 @@ Jobs created while the restriction was on still carry `extra_info.slack_ht_quote
 | `app/slack/evaluation_quotes.py` | Drop the flag clauses from `job_is_human_translation_quote` and `quote_snapshot_is_human_translation` |
 | `app/constants.py` | Remove `SLACK_HT_QUOTE_AFTER_QE_KEY` last, once nothing references it |
 
-### 4. CVA and CVC — stop consuming it
+`standalone_ht_quote_message`, `show_accept_discount_helper`, and `PRE_QE_QUOTE_DISPLAY` stay — after the flip, every HT user uses the combined quote path, and the helper remains correct for the pre-QE worst-case estimate.
+
+#### 4. CVA and CVC — stop consuming it
 
 Only after SRT stops sending it:
 
 - **CVA**: the `slack_ht_quote_after_qe` form parameter in `src/evaluate/router.py`, its persistence in `src/evaluate/service.py`, and `tests/evaluate/test_create_evaluation_job_metadata.py::test_create_evaluation_job_persists_slack_ht_quote_after_qe`.
 - **CVC**: `defer_hv_to_slack_quote` in `src/workflow/v4/synthetic.py` (`include_human_verification` collapses back to `is_staged_slack_quote_job`), the `extra_info` table row in `docs/staged-evaluate-quote-confirmation.md`, and `tests/workflow/v4/test_synthetic.py::test_staged_slack_ht_quote_after_qe_excludes_human_verification`.
 
-### What stays
+### What stays after cleanup
 
 - **`job_is_human_translation_quote`** — staged quotes still clear `HUMAN_EVALUATION`, so the quote session remains the only durable HT marker. Only its flag clause goes.
 - **`standalone_ht_quote_message` and the `evaluate:complete` else-branch** — they also serve jobs whose `workflow_uuid` is `HUMAN_EVALUATION` / `HUMAN_VERIFICATION`. SRT does not create those today, but jobs created outside Slack can still arrive; confirm in ELK before deleting.
 - **`QUOTE_ADMIN_ONLY` and `user_may_receive_quotes`** — deleting them removes the only rollback that does not need a deploy. Keep them until the staged flow has been the default for everyone for a full release cycle.
-- **`show_quality_discount`** — off at every call site but harmless. Remove it together with `_format_quality_discount_text` in `app/slack/templates/blocks.py` only if quality tiers are permanently unwanted.
+- **`show_quality_discount` / `show_accept_discount_helper`** — keep the helpers. Tiers stay off by default; the Accept discount helper stays on for pre-QE combined quotes only. Remove `_format_quality_discount_text` only if quality tiers are permanently unwanted.
 
 ### Verify after the flip
 
-With a non-admin account in UAT: an HT submit should now produce an **AI quote** (not silence), then a combined QE + HT quote after accept, then the final panel with the discounted amount. A plain Quality Evaluation submit should still end on the Evaluation Result panel, and a PDF HT submit should now show the pre-quote that used to be admin-only.
+With a non-admin account in UAT:
+
+1. HT submit → **AI quote** (not silence) → Accept → combined QE + HT quote with **Maximum Total Cost** and the discount helper → Accept → post-QE `Final Cost` panel.
+2. Plain Quality Evaluation still ends on the Evaluation Result panel.
+3. PDF HT submit shows the pre-quote that used to be admin-only.
+4. Document MT / Media show quote Accept UI (same gate) unless a separate evaluate-only setting was added.
 
 ## Identifying a human translation quote
 
@@ -235,6 +258,6 @@ When `verify:slack:evaluate:complete` arrives, SRT validates that refreshed tota
 
 `master` renders no quality tiers at all — `quality_discount` does not appear in its `verify_quote_blocks`. The `Quality: good` line and the `(saved USD X)` total suffix were both added here, so both are off by default (`show_quality_discount=False` on `HumanJobQuoteMessage`, `verify_quote_blocks`, `verify_quote_summary_modal` and `combined_human_job_quote_message`); a call site must opt in.
 
-Standalone HT quotes — non-admin submissions and legacy human workflows — go through `standalone_ht_quote_message()`, which pins the prod rendering in one place: no tier, no savings suffix, and a plain `Total Cost` label. That last part matters because `verify_quote_blocks` otherwise switches the label to `Maximum Total Cost` whenever savings are hidden. The quote posted on `evaluate:complete`, the in-place update on Accept, and the "Submitting quote…" update all use it, and the HT Adjust modal passes the same label.
+Standalone HT quotes — non-admin submissions and legacy human workflows — go through `standalone_ht_quote_message()`, which pins the prod rendering in one place: no tier, no savings suffix, a plain `Total Cost` label, and **no** Accept discount helper. That last part matters because `verify_quote_blocks` otherwise switches the label to `Maximum Total Cost` whenever savings are hidden, and the Accept helper used to key off the same `show_savings=False` signal. The helper is now `show_accept_discount_helper` (default off); only admin `PRE_QE_QUOTE_DISPLAY` turns it on. The quote posted on `evaluate:complete`, the in-place update on Accept, and the "Submitting quote…" update all use the standalone builder, and the HT Adjust modal passes the same total label.
 
-Prices are unaffected: totals still come from CVA's discounted `estimated_cost` (`/automation/service/pricing`) and recalculate as the user deselects pairs. Only the discount's presentation is suppressed. Combined QE + HT quotes (admin) keep their own display constants — they fold the discount into the line price and do show savings on the post-QE `Final Cost` panel.
+Prices are unaffected: totals still come from CVA's discounted `estimated_cost` (`/automation/service/pricing`) and recalculate as the user deselects pairs. Only the discount's presentation is suppressed. Combined QE + HT quotes (admin) keep their own display constants — they fold the discount into the line price, show the Accept helper on the pre-QE worst-case panel, and show savings on the post-QE `Final Cost` panel.

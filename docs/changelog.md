@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: RAY-79115 — the Accept discount helper (“A *discount* will be applied… based on the quality of the AI translation”) is admin-only again. It is gated by `show_accept_discount_helper` in `PRE_QE_QUOTE_DISPLAY`, not by `show_savings=False`, so standalone non-admin HT quotes no longer show it (Wade Norman, 2026-07-28)
+- [Docs]: RAY-79115 — expanded the admin-only cleanup notes into a full release plan (admin-only UX table including the discount helper, flip → drain → SRT → CVA/CVC) (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — non-admin HT Accept no longer duplicates the thank-you text: it stays on the new DM only, matching prod (the quote update had also embedded `status_message`) (Wade Norman, 2026-07-28)
 - [Docs]: RAY-79115 — documented the cleanup path for lifting the admin-only restriction: the `QUOTE_ADMIN_ONLY=false` flip and its Document MT / Media side effects, the drain window before any deletion, the SRT → CVA → CVC removal order for `slack_ht_quote_after_qe`, and what must stay behind (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — standalone (non-admin) human translation quotes now render exactly as they do on prod: `standalone_ht_quote_message()` centralises no quality tier, no `(saved USD X)` suffix, and a plain `Total Cost` label, and `show_quality_discount` now defaults to off so tiers can only appear by opting in (Wade Norman, 2026-07-28)

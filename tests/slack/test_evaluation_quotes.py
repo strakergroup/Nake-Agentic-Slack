@@ -198,6 +198,7 @@ def test_human_job_quote_message_shows_accept_helper_on_pre_qe_estimate():
         actions=True,
         show_savings=False,
         show_quality_discount=False,
+        show_accept_discount_helper=True,
     )
     rendered = str(message.blocks)
     assert "Maximum Total Cost" in rendered
@@ -295,3 +296,6 @@ def test_standalone_ht_quote_matches_prod_totals_without_discount_details():
     assert "Quality: " not in rendered
     assert "saved USD" not in rendered
     assert "Maximum Total Cost" not in rendered
+    # Admin pre-QE helper must not appear — prices are already final.
+    assert "discount* will be applied" not in rendered
+    assert "Click *Accept Quote* to send your translation" not in rendered
