@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-79115 — quote admin gate checks workspace super group or the member’s primary LC group when it belongs to the workspace Verify org (e.g. IBM Slack App); ignores sibling org groups and inactive `mglink` rows (Wade Norman, 2026-07-28)
+- [Fixed]: RAY-79115 — quote admin checks ignore inactive `obj_m_mglink` rows (`is_active = 1`) so soft-removed group memberships do not unlock quotes (Wade Norman, 2026-07-28)
 - [Added]: Docs + Cursor rule for Verify org→team vs legacy CRM super group→group vocabulary and role overlap (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — admin-only quote gating treats Admin/Owner of any LC group under the workspace Verify org as quote-eligible (super groups are often empty of admins); evaluate SAQ now passes workspace `super_group` into the gate (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — quote total cost line no longer wraps the assembled `*{label}*: USD … (saved …)` string in `_()` (false missing-translation warnings in UI catalog / Translator); savings use `_("(saved {formatted_savings})")` (Wade Norman, 2026-07-28)

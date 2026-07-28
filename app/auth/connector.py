@@ -1917,6 +1917,7 @@ async def get_client_type(client_id: str, group_id: str | None):
         FROM obj_m_mglink
         WHERE memberid = :client_id
         AND groupid = :group_id
+        AND is_active = 1
         """
     ).bindparams(client_id=client_id, group_id=group_id)
     result = await fetch_one(sql, async_engines["sitemanager_readonly"])
@@ -1925,28 +1926,21 @@ async def get_client_type(client_id: str, group_id: str | None):
     return result["client_type"]
 
 
-async def member_is_admin_in_organization(
-    client_id: str, organization_id: str | None
+async def group_belongs_to_organization(
+    group_id: str | None, organization_id: str | None
 ) -> bool:
-    """True if the member is Admin/Owner of any LC group under the Verify org.
-
-    Workspace super groups often have few (or no) mglink Admin rows; real
-    customer admins sit on child groups whose ``organization_id`` matches the
-    workspace ``verify_organization_uuid``.
-    """
-    if not client_id or not organization_id:
+    """True if the CRM group’s ``organization_id`` equals the Verify org uuid."""
+    if not group_id or not organization_id:
         return False
     sql = text(
         """
         SELECT 1 AS ok
-        FROM obj_m_mglink link
-        INNER JOIN obj_m_group g ON g.obj_uuid = link.groupid
-        WHERE link.memberid = :client_id
-          AND g.organization_id = :organization_id
-          AND link.client_type IN ('Admin', 'Owner')
+        FROM obj_m_group
+        WHERE obj_uuid = :group_id
+          AND organization_id = :organization_id
         LIMIT 1
         """
-    ).bindparams(client_id=client_id, organization_id=organization_id)
+    ).bindparams(group_id=group_id, organization_id=organization_id)
     result = await fetch_one(sql, async_engines["sitemanager_readonly"])
     return bool(result)
 
@@ -1959,10 +1953,11 @@ async def user_may_receive_quotes(ray: RayConnection | None) -> bool:
     without a member client auto-proceed without quote UX.
 
     When a workspace-linked super group is present, Admin/Owner is accepted
-    on that super group **or** on any LC group under the same Verify
-    organization (``verify_organization_uuid``). Unrelated Straker test-group
-    admins do not unlock staged quotes in a customer workspace.
-    Without workspace context, fall back to the member's primary LC group.
+    on that super group **or** on the member’s **primary** LC group
+    (``user_group_id``, e.g. “IBM Slack App”) when that group belongs to the
+    workspace Verify org. Admin of other sibling org groups (or inactive
+    mglinks) does not unlock quotes. Without workspace context, fall back to
+    the primary LC group alone.
     """
     from app.config import config
 
@@ -1972,15 +1967,20 @@ async def user_may_receive_quotes(ray: RayConnection | None) -> bool:
         return False
 
     client_id = ray.client.id
+    primary_group_id = ray.client.user_group_id
     super_groups = getattr(ray, "super_group", None) or []
     if super_groups and getattr(super_groups[0], "id", None):
         sg = super_groups[0]
         if await get_client_type(client_id, sg.id) in ("Admin", "Owner"):
             return True
         org_id = getattr(sg, "verify_organization_uuid", None) or None
-        return await member_is_admin_in_organization(client_id, org_id)
+        if not await group_belongs_to_organization(primary_group_id, org_id):
+            return False
+        return await get_client_type(client_id, primary_group_id) in (
+            "Admin",
+            "Owner",
+        )
 
-    primary_group_id = ray.client.user_group_id
     client_type = await get_client_type(client_id, primary_group_id)
     return client_type in ("Admin", "Owner")
 

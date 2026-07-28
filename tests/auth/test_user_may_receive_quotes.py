@@ -43,8 +43,8 @@ async def test_quote_admin_only_requires_admin_or_owner():
 
 
 @pytest.mark.asyncio
-async def test_quote_admin_only_unrelated_primary_admin_denied_without_org_admin():
-    """Admin of an unrelated primary group must not unlock quotes in IBM Slack."""
+async def test_quote_admin_only_unrelated_primary_denied_even_if_admin():
+    """Primary group outside the workspace Verify org must not unlock quotes."""
     ray = SimpleNamespace(
         client=SimpleNamespace(id="client-1", user_group_id="straker-test-group"),
         super_group=[
@@ -61,21 +61,21 @@ async def test_quote_admin_only_unrelated_primary_admin_denied_without_org_admin
             new=AsyncMock(return_value="Normal"),
         ) as mock_get_client_type,
         patch(
-            "app.auth.connector.member_is_admin_in_organization",
+            "app.auth.connector.group_belongs_to_organization",
             new=AsyncMock(return_value=False),
-        ) as mock_org_admin,
+        ) as mock_group_in_org,
     ):
         mock_config.quote_admin_only = True
         assert await user_may_receive_quotes(ray) is False
 
     mock_get_client_type.assert_awaited_once_with("client-1", "ibm-super-group")
-    mock_org_admin.assert_awaited_once_with("client-1", "ibm-org")
+    mock_group_in_org.assert_awaited_once_with("straker-test-group", "ibm-org")
 
 
 @pytest.mark.asyncio
 async def test_quote_admin_only_super_group_admin_allows_quotes():
     ray = SimpleNamespace(
-        client=SimpleNamespace(id="client-1", user_group_id="straker-test-group"),
+        client=SimpleNamespace(id="client-1", user_group_id="ibm-slack-app"),
         super_group=[
             SimpleNamespace(
                 id="ibm-super-group",
@@ -90,22 +90,22 @@ async def test_quote_admin_only_super_group_admin_allows_quotes():
             new=AsyncMock(return_value="Admin"),
         ) as mock_get_client_type,
         patch(
-            "app.auth.connector.member_is_admin_in_organization",
+            "app.auth.connector.group_belongs_to_organization",
             new=AsyncMock(),
-        ) as mock_org_admin,
+        ) as mock_group_in_org,
     ):
         mock_config.quote_admin_only = True
         assert await user_may_receive_quotes(ray) is True
 
     mock_get_client_type.assert_awaited_once_with("client-1", "ibm-super-group")
-    mock_org_admin.assert_not_awaited()
+    mock_group_in_org.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_quote_admin_only_org_child_group_admin_allows_quotes():
-    """IBM Slack App admins are on org child groups, not the empty super group."""
+async def test_quote_admin_only_primary_group_under_workspace_org_allows_quotes():
+    """Admin of primary group under workspace org (e.g. IBM Slack App)."""
     ray = SimpleNamespace(
-        client=SimpleNamespace(id="client-1", user_group_id="straker-test-group"),
+        client=SimpleNamespace(id="client-1", user_group_id="ibm-slack-app"),
         super_group=[
             SimpleNamespace(
                 id="ibm-super-group",
@@ -117,18 +117,25 @@ async def test_quote_admin_only_org_child_group_admin_allows_quotes():
         patch("app.config.config") as mock_config,
         patch(
             "app.auth.connector.get_client_type",
-            new=AsyncMock(return_value="Normal"),
+            new=AsyncMock(side_effect=["Normal", "Admin"]),
         ) as mock_get_client_type,
         patch(
-            "app.auth.connector.member_is_admin_in_organization",
+            "app.auth.connector.group_belongs_to_organization",
             new=AsyncMock(return_value=True),
-        ) as mock_org_admin,
+        ) as mock_group_in_org,
     ):
         mock_config.quote_admin_only = True
         assert await user_may_receive_quotes(ray) is True
 
-    mock_get_client_type.assert_awaited_once_with("client-1", "ibm-super-group")
-    mock_org_admin.assert_awaited_once_with("client-1", "ibm-org")
+    assert mock_get_client_type.await_args_list[0].args == (
+        "client-1",
+        "ibm-super-group",
+    )
+    assert mock_get_client_type.await_args_list[1].args == (
+        "client-1",
+        "ibm-slack-app",
+    )
+    mock_group_in_org.assert_awaited_once_with("ibm-slack-app", "ibm-org")
 
 
 @pytest.mark.asyncio

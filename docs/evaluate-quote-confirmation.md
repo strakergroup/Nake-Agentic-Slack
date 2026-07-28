@@ -13,7 +13,7 @@ Human Translation (`evaluate_job_human`) submissions:
 
 ## Admin-only quote UX (`QUOTE_ADMIN_ONLY`)
 
-When `QUOTE_ADMIN_ONLY=true` (default), only Verify group **Admin/Owner** members see Accept/Adjust quote UI. Role comes from `user_may_receive_quotes`: Admin/Owner of the **workspace-linked super group**, or of **any LC group under the same Verify organization** (`verify_organization_uuid`). Workspace super groups often have few mglink Admin rows (real admins sit on child groups such as “IBM Slack App”). Admin/Owner of an unrelated Straker org/group does not unlock staged quotes in a customer workspace.
+When `QUOTE_ADMIN_ONLY=true` (default), only Verify group **Admin/Owner** members see Accept/Adjust quote UI. Role comes from `user_may_receive_quotes`: Admin/Owner of the **workspace-linked super group**, or of the member’s **primary** LC group when that group belongs to the workspace Verify org (e.g. primary “IBM Slack App” under the IBM org). Sibling org groups and inactive `mglink` rows do not unlock quotes. Admin/Owner of an unrelated Straker org/group does not unlock staged quotes in a customer workspace.
 
 | Role | AI | QE | Human Translation |
 |------|----|----|-------------------|

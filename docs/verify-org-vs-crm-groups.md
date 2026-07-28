@@ -120,7 +120,9 @@ FROM sitemanager.obj_m_mglink link
 JOIN sitemanager.obj_m_group g ON g.obj_uuid = link.groupid
 JOIN sitemanager.obj_m_member m ON m.obj_uuid = link.memberid
 WHERE g.organization_id = :verify_organization_uuid
-  AND link.client_type IN ('Admin', 'Owner');
+  AND link.client_type IN ('Admin', 'Owner')
+  AND link.is_active = 1;
 ```
 
-Code entry points: `get_ray_client` / `slack_deltaray_link`, `get_ray_super_group` / `slack_super_group_link`, `user_may_receive_quotes` / `member_is_admin_in_organization`.
+
+Code entry points: `get_ray_client` / `slack_deltaray_link`, `get_ray_super_group` / `slack_super_group_link`, `user_may_receive_quotes` / `group_belongs_to_organization` (quote gate uses primary group under workspace org, e.g. IBM Slack App).
