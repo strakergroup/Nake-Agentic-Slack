@@ -208,6 +208,13 @@ filename prefix before any returned-file suffix. For example,
 `translations_fr-ca_updated__French_Canada.xlsx` imports as `fr-ca`, matching
 the `obj_stringtranslator.lang` value used by the app.
 
+Japanese is a special case: Slack/BCP-47 uses `ja-JP` and Google uses `ja`, but
+`obj_m_langs.shortname` / `obj_stringtranslator.lang` is `jp`. The SQL importer
+normalizes workbook `target_language` values and filename codes `ja` / `ja-jp`
+to `jp` so returned vendor files do not insert under the wrong language key.
+Prefer exporting and naming workbooks as `translations_jp.xlsx` /
+`missing_strings_jp.xlsx` when possible.
+
 ## Output Columns
 
 Translator-facing XLSX files use one visible unnamed column. On export, each
