@@ -1931,6 +1931,11 @@ async def user_may_receive_quotes(ray: RayConnection | None) -> bool:
     When ``config.quote_admin_only`` is false, everyone receives quotes.
     Otherwise only Verify group Admin/Owner members do; org-billed posters
     without a member client auto-proceed without quote UX.
+
+    Role is resolved against the **workspace-linked super group** when present
+    (e.g. IBM Supergroup in an IBM Slack workspace), not the member's primary
+    ``obj_m_member.groupid``. That way Admin/Owner of an unrelated Straker test
+    group does not unlock staged quotes in the customer workspace.
     """
     from app.config import config
 
@@ -1938,7 +1943,14 @@ async def user_may_receive_quotes(ray: RayConnection | None) -> bool:
         return True
     if ray is None or ray.client is None:
         return False
-    client_type = await get_client_type(ray.client.id, ray.client.user_group_id)
+    # Prefer workspace org/super group over the member's default LC group.
+    super_groups = getattr(ray, "super_group", None) or []
+    group_id = (
+        super_groups[0].id
+        if super_groups and getattr(super_groups[0], "id", None)
+        else ray.client.user_group_id
+    )
+    client_type = await get_client_type(ray.client.id, group_id)
     return client_type in ("Admin", "Owner")
 
 

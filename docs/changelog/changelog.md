@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-79115 — admin-only quote gating (`user_may_receive_quotes`) checks Admin/Owner on the workspace-linked super group (e.g. IBM), not the member’s primary LC group, so admin of an unrelated Straker group no longer unlocks staged quotes in the customer workspace (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — Document MT `failed_delivery` / `no_slack_user` now alerts BugLog + Google Chat (with `task_uuid` / `client_id` / poster context) and marks the submission `failed` instead of failing silently (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — media pipeline errors, empty translation output, failed Slack delivery, and quote cancel now mark submissions `failed`; `completed` only after successful delivery (Wade Norman, 2026-07-20)
 - [Fixed]: RAY-79115 — media AI-translate no longer posts success when Slack upload fails; refuse empty/near-empty files before upload (Wade Norman, 2026-07-20)
