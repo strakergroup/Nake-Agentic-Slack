@@ -22,21 +22,26 @@ Rough parallel: **org ≈ super-group bucket**, **team ≈ group** — related, 
 
 ## How the pieces relate
 
+`verify_organization` has **no FK to a group or super group**. CRM rows and Slack links point **at** the org.
+
 | Relation | How it is stored |
 |----------|------------------|
 | **Verify team → org** | `verify_team.organization_uuid` → `verify_organization.obj_uuid` (many teams per org) |
-| **Org → CRM group** | Child `obj_m_group.organization_id` = Verify org uuid (groups hang under the org; not a Verify-side FK) |
-| **CRM group → super group** | **No direct parent FK.** Join via org: group.`organization_id` = `slack_super_group_link.verify_organization_uuid` → `super_group_uuid`. Super group rows often have `organization_id` NULL |
+| **CRM group → org** | Child `obj_m_group.organization_id` = org uuid — **usual** place members/admins live |
+| **CRM super group → org** | Same `organization_id` on the super-group row — **optional** (often `NULL`, e.g. IBM Supergroup) |
+| **CRM group ↔ super group** | **No direct parent FK.** For Slack, join via `slack_super_group_link`: child `organization_id` = link.`verify_organization_uuid` → `super_group_uuid` |
+
+**Both are possible:** a Verify org can be referenced by child groups, by a super group, or by both. Slack workspaces pair **org + super group** on one `slack_super_group_link` row (org may be null on older links).
 
 ```text
 Verify:     organization ──< team
+                 ▲
+                 │  organization_id (optional on super; usual on child groups)
                  │
-                 │  organization_id (on CRM group)
-                 ▼
-CRM:        [super group] ··· sibling via Slack link ··· [group] ──< mglink ── member
-                 ▲                                         ▲
-                 └──── slack_super_group_link ─────────────┘
-                       (workspace: both UUIDs on one row)
+CRM:        [super group] ··· via Slack link ··· [group] ──< mglink ── member
+                 ▲                                    ▲
+                 └──── slack_super_group_link ────────┘
+                       (workspace: super_group_uuid + verify_organization_uuid)
 ```
 
 ## Slack link tables (`ray_integration`)

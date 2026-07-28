@@ -48,19 +48,23 @@ They are **analogous**, not the same records.
 - `verify_team.organization_uuid` points at `verify_organization.obj_uuid`.
 - One org has many teams; team membership/roles live on `verify_team_user_link`.
 
-### Organization → CRM group
+### Verify organization ↔ CRM group / super group
 
-- CRM groups hang under the Verify org via `obj_m_group.organization_id` = org uuid.
-- This is on the CRM group row (not a column on `verify_organization`).
-- Example: “IBM Slack App” group → org “IBM Slack App”.
+`verify_organization` has **no FK** to a group or super group. CRM rows point **at** the org:
+
+| Who references the org | How | Typical? |
+|------------------------|-----|----------|
+| CRM **group** (child) | `obj_m_group.organization_id` = org uuid | **Yes** — members/admins usually here |
+| CRM **super group** | Same `organization_id` on the super-group row | **Optional** — often `NULL` (e.g. IBM Supergroup) |
+
+**Both are possible** for the same org. Slack workspaces pair **org + super group** on `slack_super_group_link` (org may be null on older links).
 
 ### CRM group → super group
 
 - **No direct parent/child FK** between group and super group on `obj_m_group`.
-- They meet through the Verify org on the Slack workspace link:
-  - `group.organization_id` = `slack_super_group_link.verify_organization_uuid`
+- For Slack, join via the workspace link:
+  - child `organization_id` = `slack_super_group_link.verify_organization_uuid`
   - that row’s `super_group_uuid` is the workspace super group
-- Super group rows are often flagged `is_super_group` and frequently have `organization_id` NULL.
 - Real LC members/admins usually sit on **child groups**, not the super group.
 
 ## Slack link tables
