@@ -950,6 +950,7 @@ async def process_evaluation_submission(
         RayConnection,
         get_bot_token_async,
         get_ray_client,
+        get_ray_super_group,
         user_may_receive_quotes,
     )
     from app.constants import (
@@ -994,7 +995,11 @@ async def process_evaluation_submission(
     if ray_client is None:
         logger.error("Evaluation submission has no RAY client", extra=log_extra)
         return {"status": "no_ray_client"}
-    may_quote = await user_may_receive_quotes(RayConnection([], ray_client))
+    # Prefer workspace super group so quote gating is org-scoped (same as
+    # Document MT / Media). Individually connected users without a workspace
+    # link still fall back to primary-group Admin/Owner.
+    super_groups = await get_ray_super_group(team_id, enterprise_id) or []
+    may_quote = await user_may_receive_quotes(RayConnection(super_groups, ray_client))
     # HUMAN_EVALUATION embeds HV and starts TP jobs before Slack Accept
     # ("cancelled" + empty Adjust). Non-admin HT must use synthetic AI+QE with
     # slack_ht_quote_after_qe so HV waits for the HT quote Accept.

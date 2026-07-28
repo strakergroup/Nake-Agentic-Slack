@@ -1,0 +1,41 @@
+---
+description: Verify org→team vs legacy CRM super group→group vocabulary and how they relate
+alwaysApply: true
+---
+
+# Verify org/team vs CRM super group/group
+
+Two parallel hierarchies. Do not conflate names or assume roles transfer 1:1.
+
+## Vocabulary
+
+| Side | Parent | Child | Membership / roles |
+|------|--------|-------|--------------------|
+| **Verify** | **Organization** (`verify_organization`) | **Team** (`verify_team.organization_uuid`) | `verify_team_user_link.user_role` |
+| **Legacy CRM (LC)** | **Super group** (`obj_m_group` via `slack_super_group_link.super_group_uuid`) | **Group** (`obj_m_group` with `organization_id` = Verify org uuid) | `obj_m_mglink.client_type` (`Owner` / `Admin` / `Normal` / …) |
+
+Rough parallel: **org ≈ super-group bucket**, **team ≈ group** — related, not identical objects.
+
+## How they normally connect (Slack)
+
+```text
+Slack workspace
+  └─ slack_super_group_link
+       ├─ super_group_uuid     → CRM super group (often few/no mglink rows)
+       └─ verify_organization_uuid → Verify org
+            └─ child CRM groups: obj_m_group.organization_id = that org uuid
+                 └─ real LC members/admins usually live HERE
+```
+
+- Org-billed Document MT uses `verify_organization_uuid` as `client_id`.
+- Quote Admin/Owner checks must use workspace org scope (super group **or** any child group under that org) — not the member’s unrelated primary LC group.
+- Super-group Admin alone is rare; child-group Admin is the common case.
+
+## Role overlap (gotchas)
+
+- Verify team role ≠ CRM `client_type` automatically.
+- Admin of an unrelated Straker CRM group does **not** mean Admin of the customer workspace org.
+- Primary `obj_m_member.groupid` is often a child group; it may differ from the workspace-linked super group.
+- Prefer workspace `verify_organization_uuid` / linked super group for workspace-scoped gates; fall back to primary group only when no workspace link exists.
+
+See also: [docs/verify-org-vs-crm-groups.md](../../docs/verify-org-vs-crm-groups.md).

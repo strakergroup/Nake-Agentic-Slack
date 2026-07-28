@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- [Added]: Docs + Cursor rule for Verify org→team vs legacy CRM super group→group vocabulary and role overlap (Wade Norman, 2026-07-28)
+- [Fixed]: RAY-79115 — admin-only quote gating treats Admin/Owner of any LC group under the workspace Verify org as quote-eligible (super groups are often empty of admins); evaluate SAQ now passes workspace `super_group` into the gate (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — quote total cost line no longer wraps the assembled `*{label}*: USD … (saved …)` string in `_()` (false missing-translation warnings in UI catalog / Translator); savings use `_("(saved {formatted_savings})")` (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — admin-only quote gating (`user_may_receive_quotes`) checks Admin/Owner on the workspace-linked super group (e.g. IBM), not the member’s primary LC group, so admin of an unrelated Straker group no longer unlocks staged quotes in the customer workspace (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — Document MT `failed_delivery` / `no_slack_user` now alerts BugLog + Google Chat (with `task_uuid` / `client_id` / poster context) and marks the submission `failed` instead of failing silently (Wade Norman, 2026-07-28)

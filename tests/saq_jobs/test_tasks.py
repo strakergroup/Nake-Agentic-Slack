@@ -427,6 +427,10 @@ async def test_process_evaluation_submission_direct_verify_upload():
             new=AsyncMock(return_value=ray_client),
         ),
         patch(
+            "app.auth.connector.get_ray_super_group",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
             "app.auth.connector.user_may_receive_quotes",
             new=AsyncMock(return_value=True),
         ),
@@ -506,6 +510,10 @@ async def test_process_evaluation_submission_non_admin_skips_pdf_prequote():
             new=AsyncMock(return_value=ray_client),
         ),
         patch(
+            "app.auth.connector.get_ray_super_group",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
             "app.auth.connector.user_may_receive_quotes",
             new=AsyncMock(return_value=False),
         ),
@@ -577,6 +585,10 @@ async def test_process_evaluation_submission_non_admin_ht_uses_ht_after_qe():
             new=AsyncMock(return_value=ray_client),
         ),
         patch(
+            "app.auth.connector.get_ray_super_group",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
             "app.auth.connector.user_may_receive_quotes",
             new=AsyncMock(return_value=False),
         ),
@@ -640,6 +652,10 @@ async def test_process_evaluation_submission_admin_ht_clears_fixed_workflow():
             new=AsyncMock(return_value=ray_client),
         ),
         patch(
+            "app.auth.connector.get_ray_super_group",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
             "app.auth.connector.user_may_receive_quotes",
             new=AsyncMock(return_value=True),
         ),
@@ -699,6 +715,10 @@ async def test_process_evaluation_submission_pdf_posts_prequote_before_conversio
         patch(
             "app.auth.connector.get_ray_client",
             new=AsyncMock(return_value=ray_client),
+        ),
+        patch(
+            "app.auth.connector.get_ray_super_group",
+            new=AsyncMock(return_value=[]),
         ),
         patch(
             "app.auth.connector.user_may_receive_quotes",
@@ -777,6 +797,10 @@ def _enter_accepted_pdf_patches(
         patch(
             "app.auth.connector.get_ray_client",
             new=AsyncMock(return_value=ray_client),
+        ),
+        patch(
+            "app.auth.connector.get_ray_super_group",
+            new=AsyncMock(return_value=[]),
         ),
         patch(
             "app.auth.connector.user_may_receive_quotes",
@@ -976,6 +1000,10 @@ async def test_process_evaluation_submission_verify_api_error_posts_permission_m
             new=AsyncMock(return_value=ray_client),
         ),
         patch(
+            "app.auth.connector.get_ray_super_group",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
             "app.auth.connector.user_may_receive_quotes",
             new=AsyncMock(return_value=True),
         ),
@@ -1046,6 +1074,10 @@ async def test_process_evaluation_submission_all_duplicates_skips_verify():
             new=AsyncMock(return_value=ray_client),
         ),
         patch(
+            "app.auth.connector.get_ray_super_group",
+            new=AsyncMock(return_value=[]),
+        ),
+        patch(
             "app.auth.connector.user_may_receive_quotes",
             new=AsyncMock(return_value=True),
         ),
@@ -1108,6 +1140,10 @@ async def test_process_evaluation_submission_different_target_set_not_duplicate(
         patch(
             "app.auth.connector.get_ray_client",
             new=AsyncMock(return_value=ray_client),
+        ),
+        patch(
+            "app.auth.connector.get_ray_super_group",
+            new=AsyncMock(return_value=[]),
         ),
         patch(
             "app.auth.connector.user_may_receive_quotes",

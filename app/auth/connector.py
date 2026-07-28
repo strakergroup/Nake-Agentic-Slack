@@ -1925,6 +1925,32 @@ async def get_client_type(client_id: str, group_id: str | None):
     return result["client_type"]
 
 
+async def member_is_admin_in_organization(
+    client_id: str, organization_id: str | None
+) -> bool:
+    """True if the member is Admin/Owner of any LC group under the Verify org.
+
+    Workspace super groups often have few (or no) mglink Admin rows; real
+    customer admins sit on child groups whose ``organization_id`` matches the
+    workspace ``verify_organization_uuid``.
+    """
+    if not client_id or not organization_id:
+        return False
+    sql = text(
+        """
+        SELECT 1 AS ok
+        FROM obj_m_mglink link
+        INNER JOIN obj_m_group g ON g.obj_uuid = link.groupid
+        WHERE link.memberid = :client_id
+          AND g.organization_id = :organization_id
+          AND link.client_type IN ('Admin', 'Owner')
+        LIMIT 1
+        """
+    ).bindparams(client_id=client_id, organization_id=organization_id)
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    return bool(result)
+
+
 async def user_may_receive_quotes(ray: RayConnection | None) -> bool:
     """Return whether this connection should see Slack quote Accept UI.
 
@@ -1932,10 +1958,11 @@ async def user_may_receive_quotes(ray: RayConnection | None) -> bool:
     Otherwise only Verify group Admin/Owner members do; org-billed posters
     without a member client auto-proceed without quote UX.
 
-    Role is resolved against the **workspace-linked super group** when present
-    (e.g. IBM Supergroup in an IBM Slack workspace), not the member's primary
-    ``obj_m_member.groupid``. That way Admin/Owner of an unrelated Straker test
-    group does not unlock staged quotes in the customer workspace.
+    When a workspace-linked super group is present, Admin/Owner is accepted
+    on that super group **or** on any LC group under the same Verify
+    organization (``verify_organization_uuid``). Unrelated Straker test-group
+    admins do not unlock staged quotes in a customer workspace.
+    Without workspace context, fall back to the member's primary LC group.
     """
     from app.config import config
 
@@ -1943,14 +1970,18 @@ async def user_may_receive_quotes(ray: RayConnection | None) -> bool:
         return True
     if ray is None or ray.client is None:
         return False
-    # Prefer workspace org/super group over the member's default LC group.
+
+    client_id = ray.client.id
     super_groups = getattr(ray, "super_group", None) or []
-    group_id = (
-        super_groups[0].id
-        if super_groups and getattr(super_groups[0], "id", None)
-        else ray.client.user_group_id
-    )
-    client_type = await get_client_type(ray.client.id, group_id)
+    if super_groups and getattr(super_groups[0], "id", None):
+        sg = super_groups[0]
+        if await get_client_type(client_id, sg.id) in ("Admin", "Owner"):
+            return True
+        org_id = getattr(sg, "verify_organization_uuid", None) or None
+        return await member_is_admin_in_organization(client_id, org_id)
+
+    primary_group_id = ray.client.user_group_id
+    client_type = await get_client_type(client_id, primary_group_id)
     return client_type in ("Admin", "Owner")
 
 
