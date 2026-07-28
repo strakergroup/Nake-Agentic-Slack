@@ -160,6 +160,10 @@ async def slack_upload_mt_result(
         "file_id": data.file_id,
         "channel_id": data.channel_id,
         "target_language": data.target_language,
+        "client_id": data.client_id,
+        "team_id": data.team_id,
+        "slack_user_id": data.slack_user_id,
+        "submission_id": data.submission_id,
         "attempt": attempt,
     }
     logger.info("MT success upload starting", extra=log_extra)
@@ -194,6 +198,27 @@ async def slack_upload_mt_result(
         await update_slack_job(
             task_uuid=data.task_uuid,
             status="failed_delivery",
+        )
+        if data.submission_id:
+            try:
+                updated_submission_status(
+                    submission_id=data.submission_id,
+                    processing_status=SubmissionStatus.FAILED,
+                )
+            except Exception as e:
+                notify_exception(
+                    e,
+                    "Failed to mark MT submission failed after delivery user miss",
+                    extra=log_extra,
+                )
+        # Org-billed Document MT often hits this when poster context is missing
+        # (RAY-79115 / RAY-80198). Alert immediately — there is no SAQ retry for
+        # this non-retryable resolution failure, and silent failed_delivery left
+        # IBM deliveries invisible in Google Chat.
+        notify_exception(
+            Exception("Document MT Slack delivery failed: no deliverable Slack user"),
+            "Document MT Slack delivery failed (no_slack_user)",
+            extra=log_extra,
         )
         return {"status": "no_slack_user", "task_uuid": data.task_uuid}
 
@@ -288,9 +313,22 @@ async def slack_upload_mt_result(
                 )
             except Exception as e:
                 notify_exception(e, "Failed to mark slack_job failed_delivery")
+            if data.submission_id:
+                try:
+                    updated_submission_status(
+                        submission_id=data.submission_id,
+                        processing_status=SubmissionStatus.FAILED,
+                    )
+                except Exception as e:
+                    notify_exception(
+                        e,
+                        "Failed to mark MT submission failed after delivery error",
+                        extra=log_extra,
+                    )
             notify_exception(
-                Exception("Background MT success file handling failed"),
-                "Background MT success file handling failed (final attempt)",
+                Exception("Document MT Slack delivery failed after retries"),
+                "Document MT Slack delivery failed (final attempt)",
+                extra=log_extra,
             )
         raise
     finally:

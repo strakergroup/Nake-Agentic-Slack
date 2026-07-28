@@ -51,6 +51,17 @@ flowchart TB
 | Quote preflight | N/A (inline) | Org uuid on `translate:quote` | N/A (member Verify quote) |
 | Charge endpoint | `/mt/inline-usage` group fallback | `/mt/transaction` group fallback | Verify / automation |
 
+## Delivery failure alerting (RAY-79115)
+
+`slack_upload_mt_result` must page BugLog / Google Chat when Slack delivery fails:
+
+| Outcome | Alert |
+|---------|--------|
+| `resolve_slack_delivery_user` returns `None` (`no_slack_user`) | Immediate — non-retryable; marks `slack_job` `failed_delivery` and submission `failed` |
+| Upload/download error exhausted SAQ retries | On final attempt — same status updates + alert with `task_uuid` / `client_id` / `team_id` / `slack_user_id` |
+
+Silent `failed_delivery` (log only) hid org-billed IBM misses when poster context was missing. Covered by `test_slack_upload_mt_result_no_slack_user_returns_no_user_status` and `test_slack_upload_mt_result_alerts_on_final_delivery_failure`.
+
 ## Regression to avoid
 
 If quote SAQ still returns `no_ray_client` when only a super group is linked, Slack posts “Preparing an AI Translate quote…” and never publishes `slack:job:machine:translate:quote`. Covered by `test_process_document_mt_quote_preflight_org_billed_without_member`.

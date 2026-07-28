@@ -15,6 +15,7 @@ from uuid import uuid4
 import httpx
 import pytest
 
+from app.ray.submissions import SubmissionStatus
 from app.saq_jobs.tasks import (
     charge_document_mt,
     charge_inline_mt_usage,
@@ -1214,13 +1215,18 @@ async def test_slack_upload_mt_result_happy_path(slack_user):
 
 @pytest.mark.asyncio
 async def test_slack_upload_mt_result_no_slack_user_returns_no_user_status():
+    task_uuid = str(uuid4())
+    client_id = str(uuid4())
     success_data = {
-        "task_uuid": str(uuid4()),
+        "task_uuid": task_uuid,
         "file_id": "file-1",
         "tokens": 0,
-        "client_id": str(uuid4()),
+        "client_id": client_id,
         "target_language": "fr",
         "channel_id": "C123",
+        "team_id": "TTEAM",
+        "slack_user_id": "UUSER",
+        "submission_id": 99123,
     }
 
     with (
@@ -1228,11 +1234,27 @@ async def test_slack_upload_mt_result_no_slack_user_returns_no_user_status():
             "app.saq_jobs.tasks.resolve_slack_delivery_user",
             new=AsyncMock(return_value=None),
         ),
-        patch("app.saq_jobs.tasks.update_slack_job", new=AsyncMock()),
+        patch(
+            "app.saq_jobs.tasks.update_slack_job", new=AsyncMock()
+        ) as mock_update_job,
+        patch("app.saq_jobs.tasks.updated_submission_status") as mock_submission_status,
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
     ):
         result = await slack_upload_mt_result(_ctx(), success_data=success_data)
 
     assert result["status"] == "no_slack_user"
+    mock_update_job.assert_any_await(task_uuid=task_uuid, status="failed_delivery")
+    assert mock_submission_status.call_args_list[-1].kwargs == {
+        "submission_id": 99123,
+        "processing_status": SubmissionStatus.FAILED,
+    }
+    mock_notify.assert_called()
+    notify_args, notify_kwargs = mock_notify.call_args
+    assert notify_args[1] == "Document MT Slack delivery failed (no_slack_user)"
+    assert notify_kwargs["extra"]["task_uuid"] == task_uuid
+    assert notify_kwargs["extra"]["client_id"] == client_id
+    assert notify_kwargs["extra"]["team_id"] == "TTEAM"
+    assert notify_kwargs["extra"]["slack_user_id"] == "UUSER"
 
 
 @pytest.mark.asyncio
@@ -1266,9 +1288,71 @@ async def test_slack_upload_mt_result_re_raises_for_saq_retry(slack_user):
             new=AsyncMock(side_effect=RuntimeError("file_update_failed")),
         ),
         patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
     ):
         with pytest.raises(RuntimeError):
             await slack_upload_mt_result(_ctx(), success_data=success_data)
+
+    # Retryable attempt: do not page yet.
+    mock_notify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_slack_upload_mt_result_alerts_on_final_delivery_failure(slack_user):
+    """Final failed Slack upload pages Google Chat / BugLog with delivery context."""
+    task_uuid = str(uuid4())
+    success_data = {
+        "task_uuid": task_uuid,
+        "file_id": "file-1",
+        "tokens": 0,
+        "client_id": slack_user.ray_client_id,
+        "target_language": "fr",
+        "channel_id": "C123",
+        "team_id": "TTEAM",
+        "slack_user_id": "UUSER",
+        "submission_id": 42,
+    }
+
+    with (
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
+        ),
+        patch(
+            "app.saq_jobs.tasks.update_slack_job", new=AsyncMock()
+        ) as mock_update_job,
+        patch("app.saq_jobs.tasks.updated_submission_status") as mock_submission_status,
+        patch(
+            "app.saq_jobs.tasks.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": "/tmp/foo", "file_name": "out.docx"}),
+        ),
+        patch(
+            "app.slack.listener_actions.get_language_name",
+            new=AsyncMock(return_value="French"),
+        ),
+        patch(
+            "app.slack.web.upload_file_to_slack_memory_efficient",
+            new=AsyncMock(side_effect=RuntimeError("file_update_failed")),
+        ),
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
+    ):
+        with pytest.raises(RuntimeError):
+            await slack_upload_mt_result(
+                _ctx(retryable=False), success_data=success_data
+            )
+
+    mock_update_job.assert_any_await(task_uuid=task_uuid, status="failed_delivery")
+    assert mock_submission_status.call_args_list[-1].kwargs == {
+        "submission_id": 42,
+        "processing_status": SubmissionStatus.FAILED,
+    }
+    assert any(
+        call.args
+        and len(call.args) > 1
+        and call.args[1] == "Document MT Slack delivery failed (final attempt)"
+        for call in mock_notify.call_args_list
+    )
 
 
 # --------------------------------------------------------------------------- #

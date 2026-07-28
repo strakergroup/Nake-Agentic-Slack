@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-79115 — Document MT `failed_delivery` / `no_slack_user` now alerts BugLog + Google Chat (with `task_uuid` / `client_id` / poster context) and marks the submission `failed` instead of failing silently (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — media pipeline errors, empty translation output, failed Slack delivery, and quote cancel now mark submissions `failed`; `completed` only after successful delivery (Wade Norman, 2026-07-20)
 - [Fixed]: RAY-79115 — media AI-translate no longer posts success when Slack upload fails; refuse empty/near-empty files before upload (Wade Norman, 2026-07-20)
 - [Changed]: IBM home tab no longer shows the Direct Login button when disconnected; channel SSO login prompts are unchanged (Wade Norman, 2026-07-20)
