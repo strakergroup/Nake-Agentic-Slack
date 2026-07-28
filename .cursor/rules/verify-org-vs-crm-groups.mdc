@@ -1,6 +1,10 @@
 ---
-description: Verify org→team vs legacy CRM super group→group vocabulary and how they relate
-alwaysApply: true
+description: >-
+  Verify org→team vs legacy CRM super group→group vocabulary, Slack link tables
+  (deltaray = member, super_group_link = workspace org+super group), role overlap.
+  Use when org/team/super group/group, quote admin gates, org billing,
+  RayConnection, verify_organization_uuid, obj_m_mglink, or deltaray links are involved.
+alwaysApply: false
 ---
 
 # Verify org/team vs CRM super group/group
@@ -11,31 +15,44 @@ Two parallel hierarchies. Do not conflate names or assume roles transfer 1:1.
 
 | Side | Parent | Child | Membership / roles |
 |------|--------|-------|--------------------|
-| **Verify** | **Organization** (`verify_organization`) | **Team** (`verify_team.organization_uuid`) | `verify_team_user_link.user_role` |
-| **Legacy CRM (LC)** | **Super group** (`obj_m_group` via `slack_super_group_link.super_group_uuid`) | **Group** (`obj_m_group` with `organization_id` = Verify org uuid) | `obj_m_mglink.client_type` (`Owner` / `Admin` / `Normal` / …) |
+| **Verify** | **Organization** (`verify_organization`) | **Team** (`verify_team`) | `verify_team_user_link.user_role` |
+| **Legacy CRM (LC)** | **Super group** (`obj_m_group`, `is_super_group`) | **Group** (`obj_m_group`) | `obj_m_mglink.client_type` (`Owner` / `Admin` / `Normal` / …) |
 
 Rough parallel: **org ≈ super-group bucket**, **team ≈ group** — related, not identical objects.
 
-## How they normally connect (Slack)
+## How the pieces relate
+
+| Relation | How it is stored |
+|----------|------------------|
+| **Verify team → org** | `verify_team.organization_uuid` → `verify_organization.obj_uuid` (many teams per org) |
+| **Org → CRM group** | Child `obj_m_group.organization_id` = Verify org uuid (groups hang under the org; not a Verify-side FK) |
+| **CRM group → super group** | **No direct parent FK.** Join via org: group.`organization_id` = `slack_super_group_link.verify_organization_uuid` → `super_group_uuid`. Super group rows often have `organization_id` NULL |
 
 ```text
-Slack workspace
-  └─ slack_super_group_link
-       ├─ super_group_uuid     → CRM super group (often few/no mglink rows)
-       └─ verify_organization_uuid → Verify org
-            └─ child CRM groups: obj_m_group.organization_id = that org uuid
-                 └─ real LC members/admins usually live HERE
+Verify:     organization ──< team
+                 │
+                 │  organization_id (on CRM group)
+                 ▼
+CRM:        [super group] ··· sibling via Slack link ··· [group] ──< mglink ── member
+                 ▲                                         ▲
+                 └──── slack_super_group_link ─────────────┘
+                       (workspace: both UUIDs on one row)
 ```
 
+## Slack link tables (`ray_integration`)
+
+| Table | Links | Org? | Team? |
+|-------|-------|------|-------|
+| **`slack_deltaray_link`** | Slack user ↔ LC **member** (`member_uuid` = `obj_m_member.obj_uuid`) | **No** | **No** (Verify team). `slack_team_id` is the **Slack workspace** id, not Verify team |
+| **`slack_super_group_link`** | Slack workspace ↔ CRM **super group** + Verify **organization** | **Yes** (`verify_organization_uuid`) | **No** |
+
+Deltaray is **member-only** (unique `member_uuid`). Workspace org/super-group context comes from `slack_super_group_link`, not from the deltaray row.
+
+## Practical notes
+
 - Org-billed Document MT uses `verify_organization_uuid` as `client_id`.
-- Quote Admin/Owner checks must use workspace org scope (super group **or** any child group under that org) — not the member’s unrelated primary LC group.
-- Super-group Admin alone is rare; child-group Admin is the common case.
-
-## Role overlap (gotchas)
-
-- Verify team role ≠ CRM `client_type` automatically.
-- Admin of an unrelated Straker CRM group does **not** mean Admin of the customer workspace org.
-- Primary `obj_m_member.groupid` is often a child group; it may differ from the workspace-linked super group.
-- Prefer workspace `verify_organization_uuid` / linked super group for workspace-scoped gates; fall back to primary group only when no workspace link exists.
+- Quote Admin/Owner: workspace org scope (super group **or** any child group under that org). Super-group Admin alone is rare; child-group Admin is common.
+- Verify team role ≠ CRM `client_type`. Unrelated Straker CRM Admin ≠ customer workspace org Admin.
+- Prefer workspace `verify_organization_uuid` / linked super group for workspace gates; fall back to primary group only with no workspace link.
 
 See also: [docs/verify-org-vs-crm-groups.md](../../docs/verify-org-vs-crm-groups.md).
