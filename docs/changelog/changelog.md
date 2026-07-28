@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-79115 — quote total cost line no longer wraps the assembled `*{label}*: USD … (saved …)` string in `_()` (false missing-translation warnings in UI catalog / Translator); savings use `_("(saved {formatted_savings})")` (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — admin-only quote gating (`user_may_receive_quotes`) checks Admin/Owner on the workspace-linked super group (e.g. IBM), not the member’s primary LC group, so admin of an unrelated Straker group no longer unlocks staged quotes in the customer workspace (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — Document MT `failed_delivery` / `no_slack_user` now alerts BugLog + Google Chat (with `task_uuid` / `client_id` / poster context) and marks the submission `failed` instead of failing silently (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — media pipeline errors, empty translation output, failed Slack delivery, and quote cancel now mark submissions `failed`; `completed` only after successful delivery (Wade Norman, 2026-07-20)

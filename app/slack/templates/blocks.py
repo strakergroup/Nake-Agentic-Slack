@@ -703,13 +703,16 @@ def verify_quote_blocks(
     formatted_date = completion_date.strftime("%d %B %Y")
 
     # Pre-QE / Adjust Request: Maximum Total Cost; post-QE: Final Cost.
+    # Translate the label (and optional savings clause) as literals — never wrap the
+    # assembled cost line in _(), or Translator looks up dynamic USD amounts as labels.
     if total_cost_label is None:
         total_cost_label = (
             _("Maximum Total Cost") if not show_savings else _("Total Cost")
         )
     else:
         total_cost_label = _(total_cost_label)
-    total_cost_text = f"*{total_cost_label}*: {format_slack_usd(total_cost)}"
+    formatted_total = format_slack_usd(total_cost)
+    total_cost_text = f"*{total_cost_label}*: {formatted_total}"
     if show_savings:
         displayed_savings = (
             combined_quote_net_savings(
@@ -721,7 +724,8 @@ def verify_quote_blocks(
             else total_savings
         )
         if displayed_savings > 0:
-            total_cost_text += f" (saved {format_slack_usd(displayed_savings)})"
+            formatted_savings = format_slack_usd(displayed_savings)
+            total_cost_text += f" {_('(saved {formatted_savings})')}"
 
     if show_total_cost:
         blocks.append(
@@ -730,7 +734,7 @@ def verify_quote_blocks(
                 "block_id": "total_cost_block",
                 "text": {
                     "type": "mrkdwn",
-                    "text": _(total_cost_text),
+                    "text": total_cost_text,
                 },
             }
         )
