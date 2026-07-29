@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-79115 — AI Translate Adjust Request (HV staged AI quote and direct Document MT) keeps deselected file/language rows on the quote message as **AI Translate quote cancelled** instead of hiding them; human HT quotes still use the short **Cancelled** status (Wade Norman, 2026-07-29)
 - [Added]: RAY-79115 — Document MT (direct AI Translate) quotes now offer the same Adjust Request UI as the staged human verification AI quote: per-file/per-language cost rows on the Service Quote message, an Adjust Request modal with independent per-file/language checkboxes and a live total, modal submit as Accept Quote, and submission plus consumer funding scoped to the persisted `file_id:target_language` `selected_pairs` (Wade Norman, 2026-07-29)
 - [Fixed]: `tools/translation-export` SQL import normalizes Japanese workbook/filename codes `ja` / `ja-jp` to DB shortname `jp` (`obj_stringtranslator.lang`) (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — quote admin gate checks workspace super group or the member’s primary LC group when it belongs to the workspace Verify org (e.g. IBM Slack App); ignores sibling org groups and inactive `mglink` rows (Wade Norman, 2026-07-28)

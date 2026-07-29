@@ -208,7 +208,9 @@ class TestDocumentMtQuoteBlocks:
 
         rendered = str(blocks)
         assert "document.docx" in rendered
-        assert "legal-appendix.pdf" not in rendered
+        # Deselected pairs stay visible as cancelled (HV AI quote parity).
+        assert "legal-appendix.pdf" in rendered
+        assert "AI Translate quote cancelled" in rendered
         # grid-1 French row only: 400 tokens -> USD 8.00 total, no PDF fee.
         assert "USD 8.00" in rendered
         assert "USD 10.00" not in rendered

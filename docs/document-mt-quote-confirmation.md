@@ -48,7 +48,7 @@ sequenceDiagram
     else Adjust Request (reduced scope)
         User->>SRT: Adjust Request → deselect file/language pairs → Accept Quote
         SRT->>Redis: Persist selected_pairs on the quote session
-        SRT->>User: Quote message refreshed with adjusted rows and total
+        SRT->>User: Quote message refreshed (deselected = AI Translate quote cancelled)
     end
     SRT->>SAQ: process_document_mt_submission(quote_id)
     SAQ->>Redis: Read cached file state + selected_pairs
@@ -97,8 +97,12 @@ dedicated `quote_kind="document_mt"`:
   (`document_mt_tokens_for_pairs`); PDF conversion fees follow files that
   still have at least one selected pair (`document_mt_pdf_tokens_for_pairs`).
 - Modal submit persists `selected_pairs` onto the quote session, refreshes the
-  quote message with the adjusted rows and total, then accepts the quote —
-  mirroring the staged AI quote, whose modal submit button is **Accept Quote**.
+  quote message keeping the full file/language grid (deselected pairs show
+  **AI Translate quote cancelled**, matching the staged AI quote), re-prices
+  the total from the selection, then accepts the quote — mirroring the staged
+  AI quote, whose modal submit button is **Accept Quote**.
+  Deselecting every pair is rejected in the modal (*Select at least one file
+  and language.*) — the same guard as the HV AI Adjust Request.
 
 Pair keys use the GridFS `file_id` (not the Slack file id) so the modal, the
 quote session, the submission filter, and the consumer funding check all agree

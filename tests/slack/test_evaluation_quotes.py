@@ -87,7 +87,8 @@ class TestEvaluationCreditsQuoteBlocks:
         )
         rendered = str(blocks)
         assert "*French*\\n>USD 0.80" in rendered
-        assert "*German*\\n>Cancelled" in rendered
+        assert "*German*\\n>AI Translate quote cancelled" in rendered
+        assert ">Cancelled" not in rendered
         assert "*Total cost:* USD 0.80" in rendered
         assert "Estimated Completion" not in rendered
 

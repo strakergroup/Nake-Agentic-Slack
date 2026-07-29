@@ -18,6 +18,7 @@ from app.slack.evaluation_ai_adjustment import (
     AI_QUOTE_ADJUST_ACTION_ID,
     files_and_languages_from_pairs,
     filter_language_costs_by_pairs,
+    language_costs_with_cancelled_status,
     pdf_costs_for_pairs,
     quote_tokens_for_pairs,
     selected_pairs_from_values,
@@ -141,7 +142,13 @@ async def persist_ai_quote_adjustment(
         or quote_snapshot.get("language_costs")
         or []
     )
+    # Persist the active subset for downstream accept/scope, but refresh the
+    # Slack message with Cancelled placeholders for deselected pairs so HV and
+    # Document MT Adjust Request receipts look the same.
     language_costs = filter_language_costs_by_pairs(all_language_costs, pairs)
+    display_language_costs = language_costs_with_cancelled_status(
+        all_language_costs, pairs
+    )
     quote_snapshot.update(
         {
             "token_cost": ai_tokens,
@@ -179,6 +186,6 @@ async def persist_ai_quote_adjustment(
             actions=True,
             status_message=None,
             is_ibm=is_ibm_enterprise(context.get("enterprise_id")),
-            language_costs=language_costs,
+            language_costs=display_language_costs,
         )
     return True

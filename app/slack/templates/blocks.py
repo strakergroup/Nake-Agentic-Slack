@@ -9,8 +9,8 @@ from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.ray.events.models import JobQuoteCreatedEvent
 from app.slack.document_mt_quote_adjustment import (
     DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID,
-    document_mt_filter_rows,
     document_mt_language_costs,
+    document_mt_language_costs_with_cancelled,
     document_mt_pdf_pages_for_pairs,
     document_mt_pdf_tokens_for_pairs,
     document_mt_tokens_for_pairs,
@@ -779,10 +779,11 @@ def document_mt_quote_blocks(
     language_costs = document_mt_language_costs(quote)
     selected_pairs = [str(pair) for pair in session.get("selected_pairs") or []]
     if selected_pairs:
-        # Adjusted quotes show the selected rows and re-price from them; the
-        # initial quote shows the full grid against the aggregate quoted total
-        # (matching the staged evaluate AI quote presentation).
-        language_costs = document_mt_filter_rows(language_costs, selected_pairs)
+        # Adjusted quotes keep the full grid, mark deselected pairs cancelled
+        # (matching staged evaluate AI quotes), and re-price from the selection.
+        language_costs = document_mt_language_costs_with_cancelled(
+            language_costs, selected_pairs
+        )
         translation_tokens = document_mt_tokens_for_pairs(quote, selected_pairs)
         pdf_tokens = document_mt_pdf_tokens_for_pairs(quote, selected_pairs)
         pdf_page_count = document_mt_pdf_pages_for_pairs(quote, selected_pairs)
@@ -1042,7 +1043,10 @@ def evaluation_credits_quote_blocks(
                 )
                 current_file = file_label
             if language_cost.get("cancelled"):
-                line_text = f"*{language_cost['label']}*\n>{_('Cancelled')}"
+                line_text = (
+                    f"*{language_cost['label']}*\n>"
+                    f"{_('AI Translate quote cancelled')}"
+                )
             else:
                 line_text = (
                     f"*{language_cost['label']}*\n>"

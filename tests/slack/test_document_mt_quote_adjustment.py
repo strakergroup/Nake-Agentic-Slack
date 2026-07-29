@@ -9,6 +9,7 @@ from app.slack.document_mt_quote_adjustment import (
     document_mt_all_pairs,
     document_mt_filter_rows,
     document_mt_language_costs,
+    document_mt_language_costs_with_cancelled,
     document_mt_pdf_pages_for_pairs,
     document_mt_pdf_tokens_for_pairs,
     document_mt_tokens_for_pairs,
@@ -103,6 +104,21 @@ class TestDocumentMtQuoteAdjustmentHelpers:
         assert [(row["file_uuid"], row["value"]) for row in filtered] == [
             ("grid-1", "fr")
         ]
+
+    def test_language_costs_with_cancelled_marks_deselected(self):
+        rows = document_mt_language_costs(_quote())
+
+        marked = document_mt_language_costs_with_cancelled(rows, ["grid-1:fr"])
+
+        by_key = {
+            f"{row['file_uuid']}:{row['value']}": row["cancelled"] for row in marked
+        }
+        assert by_key == {
+            "grid-1:fr": False,
+            "grid-1:de": True,
+            "grid-2:fr": True,
+        }
+        assert len(marked) == 3
 
     def test_tokens_for_pairs_sums_selected_rows(self):
         assert document_mt_tokens_for_pairs(_quote(), ["grid-1:fr", "grid-2:fr"]) == 500

@@ -954,12 +954,13 @@ async def test_post_combined_qe_human_quote_keeps_asymmetric_ai_scope(mock_slack
 
     ai_updated = str(mock_client.chat_update.await_args.kwargs["blocks"])
     assert "*AI Translation:*" in ai_updated
-    assert ai_updated.count("Cancelled") == 2
+    assert ai_updated.count("AI Translate quote cancelled") == 2
     assert "*Service:*" not in ai_updated
     rendered = str(mock_post.await_args.args[3].blocks)
     assert "*Hindi*\\n>USD 2.10" in rendered or "*Hindi*\n>USD 2.10" in rendered
     assert "*Korean*\\n>USD 40.10" in rendered or "*Korean*\n>USD 40.10" in rendered
     assert "USD 99" not in rendered
+    # Human HT quote keeps the short Cancelled status (not AI Translate wording).
     assert rendered.count("Cancelled") == 2
     assert "Maximum Total Cost*: USD 42.20" in rendered
     assert mock_client.chat_update.await_args.kwargs["ts"] == "111.222"

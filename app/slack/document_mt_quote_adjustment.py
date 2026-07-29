@@ -102,6 +102,28 @@ def document_mt_filter_rows(
     ]
 
 
+def document_mt_language_costs_with_cancelled(
+    language_costs: Iterable[dict[str, Any]],
+    selected_pairs: Iterable[str],
+) -> list[dict[str, Any]]:
+    """Return all cost rows, marking deselected pairs as cancelled for display.
+
+    Mirrors the staged-evaluate AI quote behaviour so Adjust Request keeps the
+    full file/language grid and labels opted-out pairs instead of hiding them.
+    """
+    selected = set(selected_pairs)
+    marked: list[dict[str, Any]] = []
+    for language_cost in language_costs:
+        row = dict(language_cost)
+        key = document_mt_pair_key(
+            str(row.get("file_uuid") or ""),
+            str(row.get("value") or ""),
+        )
+        row["cancelled"] = bool(selected) and key not in selected
+        marked.append(row)
+    return marked
+
+
 def _selected_file_ids(
     quote: dict[str, Any], selected_pairs: Iterable[str]
 ) -> set[str]:
