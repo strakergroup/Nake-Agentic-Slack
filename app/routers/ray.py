@@ -108,7 +108,6 @@ from ..slack.templates.messages import (
     EvaluateAiOnlyCompleteMessage,
     EvaluateErrorMessage,
     EvaluateSuccessMessage,
-    HumanJobQuoteMessage,
     JobCancelledEventMessage,
     JobCompletedEventMessage,
     JobCreationMessage,

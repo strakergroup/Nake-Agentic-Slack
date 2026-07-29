@@ -91,7 +91,6 @@ from .templates.messages import (
     EvaluateSuccessMessage,
     FileListMessage,
     HelpMessage,
-    HumanJobQuoteMessage,
     InvalidJobMessage,
     InvalidMTResultMessage,
     JobDetailsMessage,
