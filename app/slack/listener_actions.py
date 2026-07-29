@@ -1148,6 +1148,7 @@ async def document_machine_translate(
     submission_id: int | dict[str, int],
     quote_id: str | None = None,
     preflight_task_uuid: str | None = None,
+    selected_pairs: list[str] | None = None,
 ):
     """Translate the Document using verify-task-consumer
 
@@ -1209,6 +1210,7 @@ async def document_machine_translate(
                 "team_id": context.get("team_id"),
                 "slack_user_id": context.get("user_id"),
                 "billing_group_uuid": billing_group_uuid,
+                "selected_pairs": selected_pairs,
             }
         )
         task_uuid = await create_slack_job(task_data, status="pending")

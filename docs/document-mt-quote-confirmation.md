@@ -13,8 +13,15 @@ may differ slightly from the preflight quote.
 
 Slack renders Document MT quotes with the same **Service Quote** layout used for
 staged evaluate AI Translation quotes: optional PDF conversion cost first
-(page count + fee), then AI Translation cost, and total cost. Quotes no longer use
-“estimated” wording or an aggregate-only total when PDF conversion applies.
+(page count + fee), then a per-file / per-language AI Translation cost
+breakdown, and total cost. Quotes no longer use “estimated” wording or an
+aggregate-only total when PDF conversion applies.
+
+The quote message offers the same **Adjust Request** UI as the staged human
+verification AI quote: an **Adjust Request** button opens a modal with
+independent per-file/per-language checkboxes and a live total, and its submit
+button (**Accept Quote**) applies the selection and starts translation for the
+adjusted scope only.
 
 ## Flow
 
@@ -35,11 +42,18 @@ sequenceDiagram
     Consumer->>Consumer: Extract and calculate quote
     Consumer->>SRT: verify:slack:document:quote
     SRT->>Redis: Store priced quote
-    SRT->>User: Quote message with Accept / Cancel
-    User->>SRT: Accept Quote
+    SRT->>User: Quote message with Adjust Request / Accept Quote
+    alt Accept Quote (full scope)
+        User->>SRT: Accept Quote
+    else Adjust Request (reduced scope)
+        User->>SRT: Adjust Request → deselect file/language pairs → Accept Quote
+        SRT->>Redis: Persist selected_pairs on the quote session
+        SRT->>User: Quote message refreshed with adjusted rows and total
+    end
     SRT->>SAQ: process_document_mt_submission(quote_id)
-    SAQ->>Redis: Read cached file state
-    SAQ->>Consumer: slack:job:machine:translate:v2
+    SAQ->>Redis: Read cached file state + selected_pairs
+    SAQ->>Consumer: slack:job:machine:translate:v2 (selected pairs only)
+    Consumer->>Consumer: Re-check wallet against adjusted quoted total
 ```
 
 ## Cached Quote Session
@@ -56,10 +70,44 @@ The session stores:
   SHA-256 content hash
 - Consumer quote result: per-file character counts, per-target token/USD
   estimates, total tokens, total USD, and optional `preflight_task_uuid`
+- Adjust Request state (optional): `selected_pairs`
+  (`<gridfs_file_id>:<target_language>` entries kept by the user) and the quote
+  `message_ts` used to refresh the quote message in place
 
 The accept path uses this cached state to avoid downloading the Slack file again
 and to create duplicate-submission records from metadata instead of re-reading
 the source file.
+
+## Adjust Request
+
+The Adjust Request flow reuses the staged-evaluate AI quote machinery with a
+dedicated `quote_kind="document_mt"`:
+
+- `document_mt_quote_blocks` builds per-file/per-language cost rows from the
+  consumer quote's `files[].target_languages[]` breakdown and passes
+  `adjust_action_id="document_mt_quote_adjust"` to the shared
+  `evaluation_credits_quote_blocks` layout. Quotes priced before this change
+  (no per-file rows) keep the aggregate layout with Accept only.
+- `handle_ai_quote_adjust` maps the action to the `document_mt` quote kind and
+  `populate_ai_quote_adjustment_modal` renders
+  `evaluation_ai_quote_adjust_modal` straight from the Redis quote session —
+  no Verify API call is needed. Language display names come from the MT
+  language catalogue (`get_auto_translate_languages`).
+- Checkbox toggles refresh the modal total from the selected rows
+  (`document_mt_tokens_for_pairs`); PDF conversion fees follow files that
+  still have at least one selected pair (`document_mt_pdf_tokens_for_pairs`).
+- Modal submit persists `selected_pairs` onto the quote session, refreshes the
+  quote message with the adjusted rows and total, then accepts the quote —
+  mirroring the staged AI quote, whose modal submit button is **Accept Quote**.
+
+Pair keys use the GridFS `file_id` (not the Slack file id) so the modal, the
+quote session, the submission filter, and the consumer funding check all agree
+on one identity.
+
+Displayed adjusted totals sum the per-row token estimates; per-row figures
+carry their own ceil, so the displayed total can exceed the aggregate charged
+figure by up to (targets − 1) tokens per file — the same presentation drift
+the staged evaluate AI quote already accepts.
 
 ## Stream Contract
 
@@ -163,7 +211,18 @@ When the user accepts the quote, SRT publishes the existing
 
 - `quote_id`
 - `preflight_task_uuid`
+- `selected_pairs` — the full adjusted scope as `<gridfs_file_id>:<target_language>`
+  entries, present on every file request in the batch when the user adjusted
+  the quote (absent/`null` for unadjusted quotes)
 
 The consumer should use these fields to reuse preflight extract state when
 available. If no consumer cache is present, the existing full extract/translate
 path should still work.
+
+`process_document_mt_submission` scopes an adjusted quote to its selection:
+per-file target lists are filtered to the selected pairs, files with no
+selected pairs are skipped, and only submitted pairs create
+duplicate-submission records, so unsubmitted work is never billed. The
+consumer additionally narrows its acceptance-time wallet re-check to the
+adjusted quoted total (see `docs/document-mt-quote-preflight.md` in
+`int-slack-verify-consumer`).

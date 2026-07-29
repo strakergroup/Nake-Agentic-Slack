@@ -7,6 +7,13 @@ from slack_sdk.web.async_client import AsyncWebClient
 from app.auth.connector import RayContext
 from app.constants import EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE
 from app.ray.utils import is_ibm_enterprise
+from app.slack.document_mt_quote_adjustment import DOCUMENT_MT_QUOTE_KIND
+from app.slack.document_mt_quotes import (
+    QUOTE_STATUS_QUOTED,
+    get_document_mt_quote_session,
+    update_document_mt_quote_session,
+    update_document_mt_quote_slack_message,
+)
 from app.slack.evaluation_ai_adjustment import (
     AI_QUOTE_ADJUST_ACTION_ID,
     files_and_languages_from_pairs,
@@ -45,6 +52,36 @@ async def persist_ai_quote_adjustment(
 ) -> bool:
     """Persist selection and refresh the original quote if it is still adjustable."""
     pairs = selected_pairs_from_values(selected_pairs)
+    if quote_kind == DOCUMENT_MT_QUOTE_KIND:
+        session = await get_document_mt_quote_session(quote_id)
+        if (
+            not session
+            or session.get("user_id") != user_id
+            or session.get("status") != QUOTE_STATUS_QUOTED
+        ):
+            return False
+        resolved_channel_id = str(
+            channel_id or session.get("channel_id") or context.get("channel_id") or ""
+        )
+        resolved_message_ts = str(message_ts or session.get("message_ts") or "") or None
+        updated_session = await update_document_mt_quote_session(
+            quote_id,
+            {
+                "selected_pairs": pairs,
+                "channel_id": resolved_channel_id or session.get("channel_id"),
+                "message_ts": resolved_message_ts or session.get("message_ts"),
+            },
+        )
+        if resolved_channel_id and resolved_message_ts and updated_session:
+            await update_document_mt_quote_slack_message(
+                client,
+                channel_id=resolved_channel_id,
+                message_ts=resolved_message_ts,
+                session=updated_session,
+                actions=True,
+            )
+        return True
+
     if quote_kind == "pdf_prequote":
         session = await get_pdf_evaluate_quote_session(quote_id)
         if (

@@ -17,6 +17,11 @@ from app.ray.utils import is_ibm_enterprise
 from app.redis import redis_conn
 from app.saq_jobs import enqueue_evaluation_submission
 from app.slack.buglog_notifier import notify_exception
+from app.slack.document_mt_quote_actions import accept_document_mt_quote
+from app.slack.document_mt_quote_adjustment import (
+    DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID,
+    DOCUMENT_MT_QUOTE_KIND,
+)
 from app.slack.evaluation_ai_adjustment import (
     ai_scope_from_job,
     filter_job_to_pairs,
@@ -406,11 +411,11 @@ async def handle_ai_quote_adjust(
     """Open the staged AI quote adjustment modal before any slow I/O."""
     view_id = await open_loading_modal(client, body["trigger_id"])
     quote_id = str(action["value"])
-    quote_kind = (
-        "pdf_prequote"
-        if action["action_id"] == PDF_EVALUATE_QUOTE_ADJUST_ACTION_ID
-        else "evaluate"
-    )
+    quote_kind = "evaluate"
+    if action["action_id"] == PDF_EVALUATE_QUOTE_ADJUST_ACTION_ID:
+        quote_kind = "pdf_prequote"
+    elif action["action_id"] == DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID:
+        quote_kind = DOCUMENT_MT_QUOTE_KIND
     channel_id, message_ts = quote_message_context_from_body(body)
     try:
         await populate_ai_quote_adjustment_modal(
@@ -487,6 +492,13 @@ async def handle_ai_quote_adjust_submit(
             quote_id,
             context,
             selected_pairs_override=selected_pairs,
+        )
+    elif quote_kind == DOCUMENT_MT_QUOTE_KIND:
+        await accept_document_mt_quote(
+            client=client,
+            body=body,
+            action={"value": quote_id},
+            context=context,
         )
     else:
         await accept_ai_translation_quote(

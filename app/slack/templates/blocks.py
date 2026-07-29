@@ -7,6 +7,14 @@ from ray_sdk.api.v3.models import Quote
 
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.ray.events.models import JobQuoteCreatedEvent
+from app.slack.document_mt_quote_adjustment import (
+    DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID,
+    document_mt_filter_rows,
+    document_mt_language_costs,
+    document_mt_pdf_pages_for_pairs,
+    document_mt_pdf_tokens_for_pairs,
+    document_mt_tokens_for_pairs,
+)
 from app.slack.select_options import get_languages_sync
 from app.slack.utils import (
     calculate_evaluation_percentages,
@@ -768,16 +776,32 @@ def document_mt_quote_blocks(
         for file in quote.get("files") or []
     )
 
+    language_costs = document_mt_language_costs(quote)
+    selected_pairs = [str(pair) for pair in session.get("selected_pairs") or []]
+    if selected_pairs:
+        # Adjusted quotes show the selected rows and re-price from them; the
+        # initial quote shows the full grid against the aggregate quoted total
+        # (matching the staged evaluate AI quote presentation).
+        language_costs = document_mt_filter_rows(language_costs, selected_pairs)
+        translation_tokens = document_mt_tokens_for_pairs(quote, selected_pairs)
+        pdf_tokens = document_mt_pdf_tokens_for_pairs(quote, selected_pairs)
+        pdf_page_count = document_mt_pdf_pages_for_pairs(quote, selected_pairs)
+
     return evaluation_credits_quote_blocks(
         _("AI Translation"),
         translation_tokens,
         pdf_page_count=pdf_page_count or None,
         pdf_tokens=pdf_tokens or None,
         accept_action_id="document_mt_quote_accept",
+        adjust_action_id=(
+            DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID if actions and language_costs else None
+        ),
         job_uuid=str(session["quote_id"]),
         actions=actions,
         status_message=status_message,
         is_ibm=is_ibm_enterprise(session.get("enterprise_id")),
+        language_costs=language_costs or None,
+        intro_text=_("Running the AI translation will incur the following cost:"),
     )
 
 
@@ -944,16 +968,19 @@ def evaluation_credits_quote_blocks(
     download_translations_job_uuid: str | None = None,
     is_ibm: bool = False,
     language_costs: list[dict[str, Any]] | None = None,
+    intro_text: str | None = None,
 ) -> list[dict[str, Any]]:
     """Build Slack blocks for a single-service evaluate credits quote."""
     cost_label = _("Cost")
     total_label = _("Total cost")
-    # Staged evaluate (HT) quotes expose Adjust Request; Document MT does not.
-    intro_text = (
-        _("AI pre-translation before human review will incur the following cost:")
-        if adjust_action_id
-        else _("Running the AI translation will incur the following cost:")
-    )
+    # Staged evaluate (HT) quotes pre-translate before human review; Document
+    # MT and non-adjustable quotes run AI translation only.
+    if intro_text is None:
+        intro_text = (
+            _("AI pre-translation before human review will incur the following cost:")
+            if adjust_action_id
+            else _("Running the AI translation will incur the following cost:")
+        )
     blocks: list[dict[str, Any]] = [
         {
             "type": "header",

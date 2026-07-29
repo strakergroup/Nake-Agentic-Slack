@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Added]: RAY-79115 — Document MT (direct AI Translate) quotes now offer the same Adjust Request UI as the staged human verification AI quote: per-file/per-language cost rows on the Service Quote message, an Adjust Request modal with independent per-file/language checkboxes and a live total, modal submit as Accept Quote, and submission plus consumer funding scoped to the persisted `file_id:target_language` `selected_pairs` (Wade Norman, 2026-07-29)
 - [Fixed]: `tools/translation-export` SQL import normalizes Japanese workbook/filename codes `ja` / `ja-jp` to DB shortname `jp` (`obj_stringtranslator.lang`) (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — quote total cost line no longer wraps the assembled `*{label}*: USD … (saved …)` string in `_()` (false missing-translation warnings in UI catalog / Translator); savings use `_("(saved {formatted_savings})")` (Wade Norman, 2026-07-28)
 - [Fixed]: RAY-79115 — the Accept discount helper (“A *discount* will be applied… based on the quality of the AI translation”) is admin-only again. It is gated by `show_accept_discount_helper` in `PRE_QE_QUOTE_DISPLAY`, not by `show_savings=False`, so standalone non-admin HT quotes no longer show it (Wade Norman, 2026-07-28)

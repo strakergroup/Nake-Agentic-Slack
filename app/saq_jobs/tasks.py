@@ -788,6 +788,13 @@ async def process_document_mt_submission(
         preflight_task_uuid = (
             cached_quote.get("preflight_task_uuid") if cached_quote else None
         )
+        # Quote Adjust Request selections scope the submission to the chosen
+        # file/language pairs; empty means the full quoted batch.
+        selected_pairs = (
+            {str(pair) for pair in cached_quote.get("selected_pairs") or []}
+            if cached_quote
+            else set()
+        )
 
         for file_data in files_to_process:
             slack_file_id = str(
@@ -827,7 +834,13 @@ async def process_document_mt_submission(
                 input_file_id = await upload_to_file_server(input_file)
             submitted_languages: list[str] = []
             submission_ids: dict[str, int] = {}
+            pair_file_id = str(file_data.get("file_id") or "")
             for target_language in target_languages:
+                if (
+                    selected_pairs
+                    and f"{pair_file_id}:{target_language}" not in selected_pairs
+                ):
+                    continue
                 if cached_quote:
                     is_dup, record = await check_and_record_submission_metadata_async(
                         file_hash=str(file_data["file_hash"]),
@@ -870,6 +883,7 @@ async def process_document_mt_submission(
                     submission_ids,
                     quote_id=quote_id,
                     preflight_task_uuid=preflight_task_uuid,
+                    selected_pairs=sorted(selected_pairs) if selected_pairs else None,
                 )
                 files_uploaded.append(file_title)
 

@@ -87,7 +87,11 @@ async def accept_document_mt_quote(
         )
         message = DocumentMtQuoteMessage(accepted_session, actions=False)
         channel_id = body.get("channel", {}).get("id") or accepted_session["channel_id"]
-        message_ts = body.get("message", {}).get("ts")
+        # Adjust-submit payloads carry no message context; the persist step
+        # stashes the quote message ts on the session instead.
+        message_ts = body.get("message", {}).get("ts") or accepted_session.get(
+            "message_ts"
+        )
         if channel_id and message_ts:
             await client.chat_update(
                 channel=channel_id,

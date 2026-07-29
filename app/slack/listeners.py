@@ -20,6 +20,7 @@ from .document_mt_quote_actions import (
     accept_document_mt_quote,
     cancel_document_mt_quote,
 )
+from .document_mt_quote_adjustment import DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID
 from .evaluation_ai_adjustment import (
     AI_QUOTE_ADJUST_ACTION_ID,
     AI_QUOTE_ADJUST_CALLBACK_ID,
@@ -696,6 +697,7 @@ async def verify_job_modal_open_action(
 
 @app.action(AI_QUOTE_ADJUST_ACTION_ID)
 @app.action(PDF_EVALUATE_QUOTE_ADJUST_ACTION_ID)
+@app.action(DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID)
 @slack_log_decorator
 async def evaluation_ai_quote_adjust_action(
     ack: AsyncAck,

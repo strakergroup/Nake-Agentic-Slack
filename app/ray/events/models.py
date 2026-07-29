@@ -175,6 +175,10 @@ class MtFileRequestSchema(BaseModel):
     original_video_file_name: str | None = None
     quote_id: str | None = None
     preflight_task_uuid: str | None = None
+    # Quote Adjust Request scope (RAY-79115): file_id:target_language pairs the
+    # user kept; None/empty means the full quoted batch. Lets the consumer
+    # re-check the accepted quote funding against the adjusted total.
+    selected_pairs: list[str] | None = None
     # Org-billed Document MT (RAY-80198): poster/workspace for delivery + billing.
     team_id: str | None = None
     slack_user_id: str | None = None

@@ -411,6 +411,98 @@ async def test_process_document_mt_submission_uses_cached_quote_file_state():
     assert mock_mt.await_args.kwargs == {
         "quote_id": "quote-1",
         "preflight_task_uuid": "preflight-1",
+        "selected_pairs": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_process_document_mt_submission_filters_adjusted_quote_scope():
+    """Quote Adjust Request selections scope files, languages and MT event pairs."""
+    ray_client = MagicMock()
+    ray_client.is_trial = False
+    ray_client.id_token = "id-token"
+    super_group = MagicMock()
+    super_group.verify_organization_uuid = "org-uuid"
+    ray_connection = MagicMock()
+    ray_connection.client = ray_client
+    ray_connection.super_group = [super_group]
+    record = MagicMock(id=123)
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+    session = {
+        "quote_id": "quote-1",
+        "user_id": "U1",
+        "team_id": "T1",
+        "channel_id": "C1",
+        "source_language": "en",
+        "target_languages": ["fr", "de"],
+        "preflight_task_uuid": "preflight-1",
+        "selected_pairs": ["grid-1:fr"],
+        "files": [
+            {
+                "slack_file_id": "F1",
+                "title": "a.docx",
+                "file_id": "grid-1",
+                "file_name": "a.docx",
+                "file_hash": "hash-1",
+                "file_size": 1234,
+            },
+            {
+                "slack_file_id": "F2",
+                "title": "b.docx",
+                "file_id": "grid-2",
+                "file_name": "b.docx",
+                "file_hash": "hash-2",
+                "file_size": 2345,
+            },
+        ],
+    }
+
+    with (
+        patch(
+            "app.auth.connector.get_ray_connection",
+            new=AsyncMock(return_value=ray_connection),
+        ),
+        patch(
+            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch(
+            "app.slack.document_mt_quotes.get_document_mt_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.ray.submissions.check_and_record_submission_metadata_async",
+            new=AsyncMock(return_value=(False, record)),
+        ) as mock_record,
+        patch(
+            "app.slack.listener_actions.document_machine_translate", new=AsyncMock()
+        ) as mock_mt,
+    ):
+        result = await process_document_mt_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[],
+            source_language="en",
+            target_languages=["fr", "de"],
+            quote_id="quote-1",
+        )
+
+    assert result["status"] == "processed"
+    assert result["uploaded_count"] == 1
+    # Only the selected grid-1:fr pair is recorded and submitted; grid-1:de and
+    # the whole of grid-2 are out of the adjusted scope.
+    mock_record.assert_awaited_once()
+    assert mock_record.await_args.kwargs["target_language"] == "fr"
+    mock_mt.assert_awaited_once()
+    assert mock_mt.await_args.args[1:] == ("grid-1", "en", ["fr"], {"fr": 123})
+    assert mock_mt.await_args.kwargs == {
+        "quote_id": "quote-1",
+        "preflight_task_uuid": "preflight-1",
+        "selected_pairs": ["grid-1:fr"],
     }
 
 

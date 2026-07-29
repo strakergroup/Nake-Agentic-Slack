@@ -104,8 +104,8 @@ class TestDocumentMtQuoteBlocks:
                         "target_languages": [
                             {
                                 "target_language": "fr",
-                                "tokens": 500 if include_pdf else 125,
-                                "cost_usd": 10.00 if include_pdf else 1.25,
+                                "tokens": 400 if include_pdf else 125,
+                                "cost_usd": 8.00 if include_pdf else 1.25,
                             }
                         ],
                     }
@@ -167,7 +167,52 @@ class TestDocumentMtQuoteBlocks:
             if block.get("type") == "actions"
             for element in block.get("elements", [])
         ]
+        assert action_ids == ["document_mt_quote_adjust", "document_mt_quote_accept"]
+
+    def test_document_mt_quote_blocks_show_file_language_rows(self):
+        blocks = document_mt_quote_blocks(self._session(include_pdf=True), actions=True)
+
+        rendered = str(blocks)
+        assert "document.docx" in rendered
+        assert "legal-appendix.pdf" in rendered
+        assert "French" in rendered
+        assert "Running the AI translation" in rendered
+        assert "human review" not in rendered
+        assert "Adjust Request" in rendered
+
+    def test_document_mt_quote_blocks_without_rows_hide_adjust(self):
+        session = self._session()
+        session["quote"]["files"] = []
+
+        blocks = document_mt_quote_blocks(session, actions=True)
+
+        action_ids = [
+            element["action_id"]
+            for block in blocks
+            if block.get("type") == "actions"
+            for element in block.get("elements", [])
+        ]
         assert action_ids == ["document_mt_quote_accept"]
+
+    def test_document_mt_quote_blocks_actions_false_hide_adjust(self):
+        blocks = document_mt_quote_blocks(self._session(), actions=False)
+
+        assert all(block.get("type") != "actions" for block in blocks)
+
+    def test_document_mt_quote_blocks_selected_pairs_reprice(self):
+        session = self._session(include_pdf=True)
+        # Deselect the PDF file's only pair; its conversion fee drops too.
+        session["selected_pairs"] = ["grid-1:fr"]
+
+        blocks = document_mt_quote_blocks(session, actions=True)
+
+        rendered = str(blocks)
+        assert "document.docx" in rendered
+        assert "legal-appendix.pdf" not in rendered
+        # grid-1 French row only: 400 tokens -> USD 8.00 total, no PDF fee.
+        assert "USD 8.00" in rendered
+        assert "USD 10.00" not in rendered
+        assert "PDF conversion" not in rendered
 
 
 class TestJobLinkBlock:

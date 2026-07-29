@@ -5,8 +5,11 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
+from slack_sdk.web.async_client import AsyncWebClient
+
 from app.config import config
 from app.redis import redis_conn
+from app.slack.templates.messages import DocumentMtQuoteMessage
 
 QUOTE_STATUS_PENDING = "pending"
 QUOTE_STATUS_QUOTED = "quoted"
@@ -95,3 +98,26 @@ async def mark_document_mt_quote_accepted(
 
 async def delete_document_mt_quote_session(quote_id: str) -> None:
     await redis_conn.delete(document_mt_quote_key(quote_id))
+
+
+async def update_document_mt_quote_slack_message(
+    client: AsyncWebClient,
+    *,
+    channel_id: str,
+    message_ts: str,
+    session: dict[str, Any],
+    actions: bool = True,
+    status_message: str | None = None,
+) -> None:
+    """Replace the original document MT quote message in place."""
+    message = DocumentMtQuoteMessage(
+        session,
+        actions=actions,
+        status_message=status_message,
+    )
+    await client.chat_update(
+        channel=channel_id,
+        ts=message_ts,
+        text=message.text,
+        blocks=message.blocks,
+    )

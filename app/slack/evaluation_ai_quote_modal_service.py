@@ -16,6 +16,18 @@ from app.constants import (
     EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE,
     EVALUATE_SERVICE_AI_TRANSLATION,
 )
+from app.slack.document_mt_quote_adjustment import (
+    DOCUMENT_MT_QUOTE_KIND,
+    document_mt_all_pairs,
+    document_mt_language_costs,
+    document_mt_pdf_tokens_for_pairs,
+    document_mt_tokens_for_pairs,
+)
+from app.slack.document_mt_quotes import (
+    QUOTE_STATUS_QUOTED,
+    get_document_mt_quote_session,
+    update_document_mt_quote_session,
+)
 from app.slack.evaluation_ai_adjustment import (
     estimated_pdf_file_language_costs,
     file_language_pairs,
@@ -53,6 +65,46 @@ async def populate_ai_quote_adjustment_modal(
     message_ts: str | None = None,
 ) -> None:
     """Populate the already-opened loading modal for PDF or extracted quotes."""
+    if quote_kind == DOCUMENT_MT_QUOTE_KIND:
+        session = await get_document_mt_quote_session(quote_id)
+        if (
+            not session
+            or session.get("user_id") != user_id
+            or session.get("status") != QUOTE_STATUS_QUOTED
+        ):
+            await safe_views_update(client, view_id, request_error_modal())
+            return
+        resolved_channel_id = str(
+            channel_id or session.get("channel_id") or context.get("channel_id") or ""
+        )
+        resolved_message_ts = str(message_ts or session.get("message_ts") or "") or None
+        session_updates: dict[str, Any] = {}
+        if resolved_channel_id and resolved_channel_id != session.get("channel_id"):
+            session_updates["channel_id"] = resolved_channel_id
+        if resolved_message_ts and resolved_message_ts != session.get("message_ts"):
+            session_updates["message_ts"] = resolved_message_ts
+        if session_updates:
+            await update_document_mt_quote_session(quote_id, session_updates)
+        quote = session.get("quote") or {}
+        selected_pairs = [
+            str(value) for value in session.get("selected_pairs") or []
+        ] or document_mt_all_pairs(quote)
+        await safe_views_update(
+            client,
+            view_id,
+            evaluation_ai_quote_adjust_modal(
+                quote_id=quote_id,
+                quote_kind=quote_kind,
+                language_costs=document_mt_language_costs(quote),
+                selected_pairs=selected_pairs,
+                ai_tokens=document_mt_tokens_for_pairs(quote, selected_pairs),
+                pdf_tokens=document_mt_pdf_tokens_for_pairs(quote, selected_pairs),
+                channel_id=resolved_channel_id or None,
+                message_ts=resolved_message_ts,
+            ),
+        )
+        return
+
     if quote_kind == "pdf_prequote":
         session = await get_pdf_evaluate_quote_session(quote_id)
         if not session or session.get("user_id") != user_id:
@@ -208,7 +260,14 @@ async def refresh_ai_quote_adjustment_cost(
 ) -> None:
     """Refresh modal cost blocks from its current checkbox state."""
     selected_pairs = selected_pairs_from_view(view)
-    if quote_kind == "pdf_prequote":
+    if quote_kind == DOCUMENT_MT_QUOTE_KIND:
+        session = await get_document_mt_quote_session(quote_id)
+        if not session:
+            return
+        quote = session.get("quote") or {}
+        ai_tokens = document_mt_tokens_for_pairs(quote, selected_pairs)
+        pdf_tokens = document_mt_pdf_tokens_for_pairs(quote, selected_pairs)
+    elif quote_kind == "pdf_prequote":
         session = await get_pdf_evaluate_quote_session(quote_id)
         if not session:
             return
