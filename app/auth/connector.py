@@ -1926,21 +1926,29 @@ async def get_client_type(client_id: str, group_id: str | None):
     return result["client_type"]
 
 
-async def group_belongs_to_organization(
-    group_id: str | None, organization_id: str | None
+async def user_is_organization_group_admin(
+    client_id: str | None, organization_id: str | None
 ) -> bool:
-    """True if the CRM group’s ``organization_id`` equals the Verify org uuid."""
-    if not group_id or not organization_id:
+    """True if the member is active Admin/Owner of any CRM group under the org.
+
+    Uses workspace ``verify_organization_uuid`` → child ``obj_m_group`` rows
+    (e.g. “IBM Slack App”). Does **not** use ``obj_m_member.groupid`` (default
+    group); inactive mglinks do not count.
+    """
+    if not client_id or not organization_id:
         return False
     sql = text(
         """
         SELECT 1 AS ok
-        FROM obj_m_group
-        WHERE obj_uuid = :group_id
-          AND organization_id = :organization_id
+        FROM obj_m_mglink link
+        JOIN obj_m_group g ON g.obj_uuid = link.groupid
+        WHERE link.memberid = :client_id
+          AND link.is_active = 1
+          AND link.client_type IN ('Admin', 'Owner')
+          AND g.organization_id = :organization_id
         LIMIT 1
         """
-    ).bindparams(group_id=group_id, organization_id=organization_id)
+    ).bindparams(client_id=client_id, organization_id=organization_id)
     result = await fetch_one(sql, async_engines["sitemanager_readonly"])
     return bool(result)
 
@@ -1952,12 +1960,10 @@ async def user_may_receive_quotes(ray: RayConnection | None) -> bool:
     Otherwise only Verify group Admin/Owner members do; org-billed posters
     without a member client auto-proceed without quote UX.
 
-    When a workspace-linked super group is present, Admin/Owner is accepted
-    on that super group **or** on the member’s **primary** LC group
-    (``user_group_id``, e.g. “IBM Slack App”) when that group belongs to the
-    workspace Verify org. Admin of other sibling org groups (or inactive
-    mglinks) does not unlock quotes. Without workspace context, fall back to
-    the primary LC group alone.
+    Admin/Owner is accepted on the workspace-linked super group **or** on any
+    active LC group under the workspace Verify org (e.g. “IBM Slack App”).
+    The member’s default group (``obj_m_member.groupid`` / ``user_group_id``)
+    is not used. Without workspace super-group context, quotes are denied.
     """
     from app.config import config
 
@@ -1967,22 +1973,15 @@ async def user_may_receive_quotes(ray: RayConnection | None) -> bool:
         return False
 
     client_id = ray.client.id
-    primary_group_id = ray.client.user_group_id
     super_groups = getattr(ray, "super_group", None) or []
-    if super_groups and getattr(super_groups[0], "id", None):
-        sg = super_groups[0]
-        if await get_client_type(client_id, sg.id) in ("Admin", "Owner"):
-            return True
-        org_id = getattr(sg, "verify_organization_uuid", None) or None
-        if not await group_belongs_to_organization(primary_group_id, org_id):
-            return False
-        return await get_client_type(client_id, primary_group_id) in (
-            "Admin",
-            "Owner",
-        )
+    if not super_groups or not getattr(super_groups[0], "id", None):
+        return False
 
-    client_type = await get_client_type(client_id, primary_group_id)
-    return client_type in ("Admin", "Owner")
+    sg = super_groups[0]
+    if await get_client_type(client_id, sg.id) in ("Admin", "Owner"):
+        return True
+    org_id = getattr(sg, "verify_organization_uuid", None) or None
+    return await user_is_organization_group_admin(client_id, org_id)
 
 
 async def get_job_group_quote_settings(job_id: str):

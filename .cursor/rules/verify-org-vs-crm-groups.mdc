@@ -56,8 +56,8 @@ Deltaray is **member-only** (unique `member_uuid`). Workspace org/super-group co
 ## Practical notes
 
 - Org-billed Document MT uses `verify_organization_uuid` as `client_id`.
-- Quote Admin/Owner: workspace super group **or** the member’s **primary** LC group when it belongs to the workspace Verify org (e.g. IBM Slack App). Sibling org groups / inactive mglinks do not count.
+- Quote Admin/Owner: workspace super group **or** any active Admin/Owner LC group under the workspace Verify org (e.g. IBM Slack App). Default group (`obj_m_member.groupid`) is unused; inactive mglinks do not count.
 - Verify team role ≠ CRM `client_type`. Unrelated Straker CRM Admin ≠ customer workspace org Admin.
-- Prefer workspace `verify_organization_uuid` / linked super group for workspace gates; fall back to primary group only with no workspace link.
+- Prefer workspace `verify_organization_uuid` / linked super group for workspace gates; without workspace link, quote admin gate denies.
 
 See also: [docs/verify-org-vs-crm-groups.md](../../docs/verify-org-vs-crm-groups.md).

@@ -96,7 +96,7 @@ One row ties the workspace to **both** the CRM super group and the Verify org.
 | Expectation | Reality |
 |---|---|
 | Verify team admin ⇒ CRM Admin | Not automatic; separate role tables |
-| CRM Admin on primary group ⇒ quotes in this Slack workspace | Only if under the **workspace** Verify org |
+| CRM Admin on default group ⇒ quotes in this Slack workspace | No — default group is unused; need Admin under the **workspace** Verify org (or super group) |
 | Super-group Admin is how customers are set up | Uncommon; check child groups under `organization_id` |
 | Deltaray link implies org membership | No — only Slack user ↔ member |
 | “Team” in conversation | Ask: Slack workspace team id, Verify **team**, or CRM **group**? |
@@ -125,4 +125,4 @@ WHERE g.organization_id = :verify_organization_uuid
 ```
 
 
-Code entry points: `get_ray_client` / `slack_deltaray_link`, `get_ray_super_group` / `slack_super_group_link`, `user_may_receive_quotes` / `group_belongs_to_organization` (quote gate uses primary group under workspace org, e.g. IBM Slack App).
+Code entry points: `get_ray_client` / `slack_deltaray_link`, `get_ray_super_group` / `slack_super_group_link`, `user_may_receive_quotes` / `user_is_organization_group_admin` (quote gate: workspace super group or any Admin/Owner child group under workspace org; default group unused).

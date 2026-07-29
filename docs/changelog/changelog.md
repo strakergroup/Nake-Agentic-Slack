@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-79115 — quote admin gate no longer uses the member’s default group (`obj_m_member.groupid`); Admin/Owner on the workspace super group or any active LC group under the workspace Verify org (e.g. IBM Slack App) unlocks staged quotes (Wade Norman, 2026-07-30)
 - [Fixed]: RAY-79115 — AI Translate Adjust Request allows submitting with every file/language deselected; the quote message shows all rows as **AI Translate quote cancelled**, strips Accept/Adjust, and skips acceptance (Wade Norman, 2026-07-30)
 - [Fixed]: RAY-79115 — AI Translate Adjust Request (HV staged AI quote and direct Document MT) keeps deselected file/language rows on the quote message as **AI Translate quote cancelled** instead of hiding them; human HT quotes still use the short **Cancelled** status (Wade Norman, 2026-07-29)
 - [Added]: RAY-79115 — Document MT (direct AI Translate) quotes now offer the same Adjust Request UI as the staged human verification AI quote: per-file/per-language cost rows on the Service Quote message, an Adjust Request modal with independent per-file/language checkboxes and a live total, modal submit as Accept Quote, and submission plus consumer funding scoped to the persisted `file_id:target_language` `selected_pairs` (Wade Norman, 2026-07-29)
