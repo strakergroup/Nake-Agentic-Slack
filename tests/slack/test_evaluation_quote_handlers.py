@@ -487,8 +487,9 @@ async def test_ai_quote_adjust_opens_loading_modal_before_service_calls():
 
 
 @pytest.mark.asyncio
-async def test_ai_quote_adjust_submit_rejects_empty_selection():
+async def test_ai_quote_adjust_submit_empty_selection_cancels_without_accept():
     ack = AsyncMock()
+    client = AsyncMock()
     view = {
         "state": {
             "values": {
@@ -499,24 +500,35 @@ async def test_ai_quote_adjust_submit_rejects_empty_selection():
                 },
             }
         },
-        "private_metadata": '{"quote_id":"job-1","quote_kind":"evaluate"}',
+        "private_metadata": (
+            '{"quote_id":"job-1","quote_kind":"evaluate",'
+            '"channel_id":"C1","message_ts":"111.222"}'
+        ),
         "blocks": [],
     }
 
-    with patch(
-        "app.slack.handlers.evaluate.persist_ai_quote_adjustment",
-        new_callable=AsyncMock,
-    ) as mock_persist:
+    with (
+        patch(
+            "app.slack.handlers.evaluate.persist_ai_quote_adjustment",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_persist,
+        patch(
+            "app.slack.handlers.evaluate.accept_ai_translation_quote",
+            new_callable=AsyncMock,
+        ) as mock_accept,
+    ):
         await AiQuoteAdjustSubmit(
             ack=ack,
             body={"view": view, "user": {"id": "U1"}},
-            client=AsyncMock(),
+            client=client,
             context={},
         )
 
-    assert ack.await_args.kwargs["response_action"] == "update"
-    assert "Select at least one file and language" in str(ack.await_args.kwargs["view"])
-    mock_persist.assert_not_awaited()
+    assert ack.await_args.kwargs["response_action"] == "clear"
+    mock_persist.assert_awaited_once()
+    assert mock_persist.await_args.kwargs["selected_pairs"] == []
+    mock_accept.assert_not_awaited()
 
 
 @pytest.mark.asyncio

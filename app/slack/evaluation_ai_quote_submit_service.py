@@ -9,6 +9,7 @@ from app.constants import EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE
 from app.ray.utils import is_ibm_enterprise
 from app.slack.document_mt_quote_adjustment import DOCUMENT_MT_QUOTE_KIND
 from app.slack.document_mt_quotes import (
+    QUOTE_STATUS_CANCELLED,
     QUOTE_STATUS_QUOTED,
     get_document_mt_quote_session,
     update_document_mt_quote_session,
@@ -25,9 +26,13 @@ from app.slack.evaluation_ai_adjustment import (
 )
 from app.slack.evaluation_quotes import (
     STAGE_AWAITING_AI,
+    STAGE_CANCELLED_AI,
     get_evaluate_quote_session,
     update_evaluate_quote_session,
     update_evaluate_quote_slack_message,
+)
+from app.slack.pdf_evaluate_quotes import (
+    STAGE_ACCEPTED as PDF_PREQUOTE_STAGE_ACCEPTED,
 )
 from app.slack.pdf_evaluate_quotes import (
     STAGE_AWAITING_ACCEPT as PDF_PREQUOTE_STAGE_AWAITING_ACCEPT,
@@ -51,8 +56,14 @@ async def persist_ai_quote_adjustment(
     channel_id: str | None = None,
     message_ts: str | None = None,
 ) -> bool:
-    """Persist selection and refresh the original quote if it is still adjustable."""
+    """Persist selection and refresh the original quote if it is still adjustable.
+
+    An empty selection cancels the quote: every file/language row is shown as
+    **AI Translate quote cancelled**, Accept/Adjust actions are removed, and the
+    session moves to a non-accept terminal state so acceptance cannot proceed.
+    """
     pairs = selected_pairs_from_values(selected_pairs)
+    cancelled = not pairs
     if quote_kind == DOCUMENT_MT_QUOTE_KIND:
         session = await get_document_mt_quote_session(quote_id)
         if (
@@ -71,7 +82,8 @@ async def persist_ai_quote_adjustment(
                 "selected_pairs": pairs,
                 "channel_id": resolved_channel_id or session.get("channel_id"),
                 "message_ts": resolved_message_ts or session.get("message_ts"),
-            },
+            }
+            | ({"status": QUOTE_STATUS_CANCELLED} if cancelled else {}),
         )
         if resolved_channel_id and resolved_message_ts and updated_session:
             await update_document_mt_quote_slack_message(
@@ -79,7 +91,10 @@ async def persist_ai_quote_adjustment(
                 channel_id=resolved_channel_id,
                 message_ts=resolved_message_ts,
                 session=updated_session,
-                actions=True,
+                actions=not cancelled,
+                status_message=(
+                    _("AI Translate quote cancelled.") if cancelled else None
+                ),
             )
         return True
 
@@ -110,6 +125,11 @@ async def persist_ai_quote_adjustment(
             pdf_tokens=pdf_tokens,
             channel_id=resolved_channel_id or session.get("channel_id"),
             message_ts=resolved_message_ts or session.get("message_ts"),
+            stage=(
+                PDF_PREQUOTE_STAGE_ACCEPTED
+                if cancelled
+                else PDF_PREQUOTE_STAGE_AWAITING_ACCEPT
+            ),
         )
         if resolved_channel_id and resolved_message_ts:
             await update_pdf_evaluate_quote_message(
@@ -119,8 +139,10 @@ async def persist_ai_quote_adjustment(
                 quote_id=quote_id,
                 ai_token_estimate=ai_tokens,
                 pdf_page_count=pdf_page_count,
-                actions=True,
-                status_message=None,
+                actions=not cancelled,
+                status_message=(
+                    _("AI Translate quote cancelled.") if cancelled else None
+                ),
                 is_ibm=is_ibm_enterprise(session.get("enterprise_id")),
             )
         return True
@@ -162,6 +184,8 @@ async def persist_ai_quote_adjustment(
     )
     resolved_message_ts = str(message_ts or session.get("message_ts") or "") or None
     session_updates: dict = {"quote_snapshot": quote_snapshot}
+    if cancelled:
+        session_updates["stage"] = STAGE_CANCELLED_AI
     if resolved_channel_id:
         session_updates["channel_id"] = resolved_channel_id
     if resolved_message_ts:
@@ -183,8 +207,8 @@ async def persist_ai_quote_adjustment(
             adjust_action_id=AI_QUOTE_ADJUST_ACTION_ID,
             pdf_page_count=session.get("pdf_page_count"),
             pdf_tokens=quote_snapshot.get("pdf_tokens"),
-            actions=True,
-            status_message=None,
+            actions=not cancelled,
+            status_message=(_("AI Translate quote cancelled.") if cancelled else None),
             is_ibm=is_ibm_enterprise(context.get("enterprise_id")),
             language_costs=display_language_costs,
         )

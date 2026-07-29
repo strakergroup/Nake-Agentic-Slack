@@ -110,6 +110,7 @@ def document_mt_language_costs_with_cancelled(
 
     Mirrors the staged-evaluate AI quote behaviour so Adjust Request keeps the
     full file/language grid and labels opted-out pairs instead of hiding them.
+    An empty selection marks every row cancelled (full quote opt-out).
     """
     selected = set(selected_pairs)
     marked: list[dict[str, Any]] = []
@@ -119,7 +120,7 @@ def document_mt_language_costs_with_cancelled(
             str(row.get("file_uuid") or ""),
             str(row.get("value") or ""),
         )
-        row["cancelled"] = bool(selected) and key not in selected
+        row["cancelled"] = key not in selected
         marked.append(row)
     return marked
 

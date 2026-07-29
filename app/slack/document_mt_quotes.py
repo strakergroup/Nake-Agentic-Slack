@@ -14,6 +14,7 @@ from app.slack.templates.messages import DocumentMtQuoteMessage
 QUOTE_STATUS_PENDING = "pending"
 QUOTE_STATUS_QUOTED = "quoted"
 QUOTE_STATUS_ACCEPTED = "accepted"
+QUOTE_STATUS_CANCELLED = "cancelled"
 
 DOCUMENT_MT_QUOTE_KEY_PREFIX = "slack-ray-translator:document-mt-quote"
 DOCUMENT_MT_QUOTE_LOCK_PREFIX = "slack-ray-translator:document-mt-quote-lock"

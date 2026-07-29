@@ -992,8 +992,8 @@ def evaluation_ai_quote_adjust_modal(
                 "type": "mrkdwn",
                 "text": _(
                     "Deselect any file and language combinations you do not want "
-                    "translated. Selections are independent per file. At least one "
-                    "selection is required."
+                    "translated. Selections are independent per file. Deselecting "
+                    "all cancels the quote."
                 ),
             },
         },

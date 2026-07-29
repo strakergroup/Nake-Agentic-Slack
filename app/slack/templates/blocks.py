@@ -777,8 +777,10 @@ def document_mt_quote_blocks(
     )
 
     language_costs = document_mt_language_costs(quote)
-    selected_pairs = [str(pair) for pair in session.get("selected_pairs") or []]
-    if selected_pairs:
+    # Only apply adjustment display when selected_pairs was persisted (including
+    # an explicit empty list from deselecting every pair).
+    if "selected_pairs" in session:
+        selected_pairs = [str(pair) for pair in session.get("selected_pairs") or []]
         # Adjusted quotes keep the full grid, mark deselected pairs cancelled
         # (matching staged evaluate AI quotes), and re-price from the selection.
         language_costs = document_mt_language_costs_with_cancelled(

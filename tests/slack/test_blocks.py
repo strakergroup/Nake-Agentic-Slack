@@ -216,6 +216,16 @@ class TestDocumentMtQuoteBlocks:
         assert "USD 10.00" not in rendered
         assert "PDF conversion" not in rendered
 
+    def test_document_mt_quote_blocks_empty_selected_pairs_all_cancelled(self):
+        session = self._session(include_pdf=True)
+        session["selected_pairs"] = []
+
+        blocks = document_mt_quote_blocks(session, actions=False)
+
+        rendered = str(blocks)
+        assert rendered.count("AI Translate quote cancelled") == 2
+        assert all(block.get("type") != "actions" for block in blocks)
+
 
 class TestJobLinkBlock:
     """Tests for job_link_block function."""

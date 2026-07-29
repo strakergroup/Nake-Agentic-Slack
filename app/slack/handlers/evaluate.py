@@ -25,7 +25,6 @@ from app.slack.document_mt_quote_adjustment import (
 from app.slack.evaluation_ai_adjustment import (
     ai_scope_from_job,
     filter_job_to_pairs,
-    modal_with_language_selection_error,
     quote_message_context_from_body,
     selected_pairs_from_view,
 )
@@ -457,15 +456,13 @@ async def handle_ai_quote_adjust_submit(
     client: AsyncWebClient,
     context: RayContext,
 ):
-    """Persist an AI quote adjustment and refresh the original quote."""
+    """Persist an AI quote adjustment and refresh the original quote.
+
+    Deselecting every file/language pair is allowed: the quote message is
+    updated to show all rows as cancelled and acceptance is skipped.
+    """
     view = body["view"]
     selected_pairs = selected_pairs_from_view(view)
-    if not selected_pairs:
-        await ack(
-            response_action="update",
-            view=modal_with_language_selection_error(view),
-        )
-        return
     await ack(response_action="clear")
 
     metadata = json.loads(view.get("private_metadata") or "{}")
@@ -483,7 +480,7 @@ async def handle_ai_quote_adjust_submit(
         channel_id=channel_id or None,
         message_ts=message_ts,
     )
-    if not persisted:
+    if not persisted or not selected_pairs:
         return
     if quote_kind == "pdf_prequote":
         await accept_pdf_evaluate_quote(

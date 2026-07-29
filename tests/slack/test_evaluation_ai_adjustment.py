@@ -222,6 +222,17 @@ def test_language_costs_with_cancelled_status_marks_deselected_rows():
     assert marked[1]["label"] == "German"
 
 
+def test_language_costs_with_cancelled_status_marks_all_when_empty():
+    rows = [
+        {"file_uuid": "file-1", "value": "lang-1", "label": "French", "token": 10},
+        {"file_uuid": "file-1", "value": "lang-2", "label": "German", "token": 20},
+    ]
+
+    marked = language_costs_with_cancelled_status(rows, [])
+
+    assert all(row["cancelled"] is True for row in marked)
+
+
 def test_filter_job_to_pairs_removes_unselected_rows_without_mutating_job():
     job = {
         "source_files": [

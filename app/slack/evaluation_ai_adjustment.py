@@ -120,7 +120,11 @@ def language_costs_with_cancelled_status(
     language_costs: Iterable[dict[str, Any]],
     selected_pairs: Iterable[str],
 ) -> list[dict[str, Any]]:
-    """Return all cost rows, marking deselected pairs as cancelled for display."""
+    """Return all cost rows, marking deselected pairs as cancelled for display.
+
+    An empty selection marks every row cancelled so Adjust Request can submit a
+    full opt-out as a cancelled quote.
+    """
     selected = set(selected_pairs)
     marked: list[dict[str, Any]] = []
     for language_cost in language_costs:
@@ -129,7 +133,7 @@ def language_costs_with_cancelled_status(
             str(row.get("file_uuid") or ""),
             str(row.get("value") or ""),
         )
-        row["cancelled"] = bool(selected) and key not in selected
+        row["cancelled"] = key not in selected
         marked.append(row)
     return marked
 
@@ -516,39 +520,6 @@ def update_modal_cost_blocks(
                 f"*{_('Total cost')}:* "
                 f"{_format_evaluate_quote_cost(ai_tokens + pdf_tokens)}"
             )
-    return {
-        key: view[key]
-        for key in (
-            "type",
-            "title",
-            "blocks",
-            "close",
-            "submit",
-            "private_metadata",
-            "callback_id",
-        )
-        if key in view
-    }
-
-
-def modal_with_language_selection_error(view: dict[str, Any]) -> dict[str, Any]:
-    """Keep the modal open and show an error when every language is deselected."""
-    sync_checkbox_initial_options_from_state(view)
-    blocks = view.setdefault("blocks", [])
-    if not any(block.get("block_id") == "ai_quote_selection_error" for block in blocks):
-        blocks.insert(
-            1,
-            {
-                "type": "section",
-                "block_id": "ai_quote_selection_error",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": (
-                        f":warning: *{_('Select at least one file and language.')}*"
-                    ),
-                },
-            },
-        )
     return {
         key: view[key]
         for key in (

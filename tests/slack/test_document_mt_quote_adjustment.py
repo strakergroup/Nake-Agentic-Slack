@@ -120,6 +120,14 @@ class TestDocumentMtQuoteAdjustmentHelpers:
         }
         assert len(marked) == 3
 
+    def test_language_costs_with_cancelled_marks_all_when_empty(self):
+        rows = document_mt_language_costs(_quote())
+
+        marked = document_mt_language_costs_with_cancelled(rows, [])
+
+        assert marked
+        assert all(row["cancelled"] is True for row in marked)
+
     def test_tokens_for_pairs_sums_selected_rows(self):
         assert document_mt_tokens_for_pairs(_quote(), ["grid-1:fr", "grid-2:fr"]) == 500
 
@@ -334,4 +342,46 @@ class TestPersistDocumentMtQuoteAdjustment:
             message_ts="111.222",
             session=updated_session,
             actions=True,
+            status_message=None,
+        )
+
+    async def test_empty_selection_cancels_quote_message(self):
+        client = AsyncMock()
+        updated_session = _session(selected_pairs=[], status="cancelled")
+        with (
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.get_document_mt_quote_session",
+                new_callable=AsyncMock,
+                return_value=_session(),
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.update_document_mt_quote_session",
+                new_callable=AsyncMock,
+                return_value=updated_session,
+            ) as mock_update_session,
+            patch(
+                "app.slack.evaluation_ai_quote_submit_service.update_document_mt_quote_slack_message",
+                new_callable=AsyncMock,
+            ) as mock_update_message,
+        ):
+            persisted = await persist_ai_quote_adjustment(
+                client,
+                quote_id="quote-1",
+                quote_kind="document_mt",
+                selected_pairs=[],
+                user_id="U1",
+                context=MagicMock(),
+                channel_id="C1",
+                message_ts="111.222",
+            )
+
+        assert persisted is True
+        # Session is atomically marked cancelled so a concurrent Accept cannot
+        # bill the full batch while the Slack message is refreshed.
+        assert mock_update_session.await_args.args[1]["status"] == "cancelled"
+        mock_update_message.assert_awaited_once()
+        assert mock_update_message.await_args.kwargs["actions"] is False
+        assert (
+            "cancelled"
+            in str(mock_update_message.await_args.kwargs["status_message"]).lower()
         )

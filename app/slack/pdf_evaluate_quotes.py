@@ -142,6 +142,7 @@ async def update_pdf_evaluate_quote_message(
     is_ibm: bool = False,
 ) -> None:
     session = await get_pdf_evaluate_quote_session(quote_id)
+    has_selected_pairs = "selected_pairs" in (session or {})
     selected_pairs = {
         str(value) for value in (session or {}).get("selected_pairs") or [] if value
     }
@@ -162,7 +163,8 @@ async def update_pdf_evaluate_quote_message(
                     continue
             elif selected_languages and str(row.get("value")) not in selected_languages:
                 continue
-        elif selected_pairs:
+        elif has_selected_pairs:
+            # Explicit empty selection (full opt-out) marks every row cancelled.
             row["cancelled"] = bool(pair) and pair not in selected_pairs
         elif selected_languages:
             row["cancelled"] = str(row.get("value")) not in selected_languages

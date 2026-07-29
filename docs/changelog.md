@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Docs]: RAY-79115 — deployment guide for prod go-live: which DB changes are required (stringtranslator yes; HUMAN_EVALUATION HV INSERT is a safety net because new jobs use CVC synthetic workflows), app PR order, pre/post checks, smoke tests (`docs/ray-79115-deployment.md`) (Wade Norman, 2026-07-30)
+- [Fixed]: RAY-79115 — AI Translate Adjust Request allows submitting with every file/language deselected; the quote message shows all rows as **AI Translate quote cancelled**, strips Accept/Adjust, and skips acceptance (Wade Norman, 2026-07-30)
 - [Fixed]: RAY-79115 — AI Translate Adjust Request (HV staged AI quote and direct Document MT) keeps deselected file/language rows on the quote message as **AI Translate quote cancelled** instead of hiding them; human HT quotes still use the short **Cancelled** status (Wade Norman, 2026-07-29)
 - [Added]: RAY-79115 — Document MT (direct AI Translate) quotes now offer the same Adjust Request UI as the staged human verification AI quote: per-file/per-language cost rows on the Service Quote message, an Adjust Request modal with independent per-file/language checkboxes and a live total, modal submit as Accept Quote, and submission plus consumer funding scoped to the persisted `file_id:target_language` `selected_pairs` (Wade Norman, 2026-07-29)
 - [Fixed]: `tools/translation-export` SQL import normalizes Japanese workbook/filename codes `ja` / `ja-jp` to DB shortname `jp` (`obj_stringtranslator.lang`) (Wade Norman, 2026-07-28)

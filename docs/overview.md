@@ -9,6 +9,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [Document MT Quote Confirmation](document-mt-quote-confirmation.md) - AI Translate quote preflight, cached file state, Adjust Request scope editing, and Accept confirmation flow (RAY-79115)
 - [Document MT PDF Billing](document-mt-pdf-billing.md) - Deferred PDF conversion-fee billing after successful delivery (RAY-80417)
 - [Evaluate Quote Confirmation](evaluate-quote-confirmation.md) - Admin staged AI → combined QE + Human Translation quote flow, non-admin HT parity with `master`, the full release plan for lifting the admin-only restriction, and QE/HT resubmission prevention (RAY-79115)
+- [RAY-79115 Deployment Guide](ray-79115-deployment.md) - Prod DB requirements (workflow HV INSERT vs synthetic path, stringtranslator), app deploy order, smoke tests
 - [Media Quote Confirmation](media-quote-confirmation.md) - Quote1 (transcription/embedding) and Quote2 (AI translation after ASR) before media spend
 - [Slack Modal Trigger Safety](slack-modal-trigger-safety.md) - Standard loading-modal pattern for Slack `trigger_id` TTL (RAY-72999)
 - [Document MT / AI Translate org billing](document-mt-without-login.md) - **Required:** AI Translate (Document MT) supports org/group billing without LC member login; HT/QE must still require login

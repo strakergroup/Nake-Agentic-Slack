@@ -101,8 +101,9 @@ dedicated `quote_kind="document_mt"`:
   **AI Translate quote cancelled**, matching the staged AI quote), re-prices
   the total from the selection, then accepts the quote — mirroring the staged
   AI quote, whose modal submit button is **Accept Quote**.
-  Deselecting every pair is rejected in the modal (*Select at least one file
-  and language.*) — the same guard as the HV AI Adjust Request.
+  Deselecting every pair is allowed: the quote message keeps the full grid with
+  every row as **AI Translate quote cancelled**, Accept/Adjust actions are
+  removed, and acceptance is skipped (the Redis quote session is deleted).
 
 Pair keys use the GridFS `file_id` (not the Slack file id) so the modal, the
 quote session, the submission filter, and the consumer funding check all agree
