@@ -9,7 +9,10 @@ from app.slack.buglog_notifier import notify_exception
 
 from .database import engines
 
-SELF_CLOSING_X_TAG = "<x id={index}/>"
+# Canonical DB/workbook placeholder form uses quoted ids.
+SELF_CLOSING_X_TAG = '<x id="{index}"/>'
+# Prior unquoted self-closing labels still present in obj_stringtranslator.
+UNQUOTED_X_TAG = "<x id={index}/>"
 LEGACY_X_TAG = "<x id={index}>"
 
 
@@ -35,51 +38,48 @@ class Translator:
                 language_map[row[0]] = row[1]
         return language_map
 
+    def _lookup_translation(self, conn, label: str):
+        sql = text(
+            """
+            SELECT langstring
+            FROM obj_stringtranslator
+            WHERE lang = :lang
+            AND label = :input
+            order by created desc
+            """,
+        ).bindparams(lang=self.lang, input=label)
+        return conn.execute(sql).fetchone()
+
     def translate(self, input: str, max_length: int = 0) -> tuple[str, bool]:
         if self.lang.lower().startswith(("en", "gb", "us")):
             return input, True
         if input in self.cache:
             return self.cache[input], True
         translation = input
-        # check redis for translation
-        # input_hash = hashlib.sha256(input.encode()).hexdigest()
-        # cached_translation = redis_conn.get(f"translation:{self.lang}:{input_hash}")
-        # if cached_translation:
-        #     return cached_translation
         # prepare input for translation by replacing emojis and python varible expansion with x tags
         replacements = {}
+        unquoted_label = input
         legacy_label = input
         for i, match in enumerate(re.finditer(r":\w+:|\{.*?\}", input)):
             index = i + 1
             tag = SELF_CLOSING_X_TAG.format(index=index)
+            unquoted_tag = UNQUOTED_X_TAG.format(index=index)
             legacy_tag = LEGACY_X_TAG.format(index=index)
-            replacements[match.group()] = (tag, legacy_tag)
+            replacements[match.group()] = (tag, unquoted_tag, legacy_tag)
             translation = translation.replace(match.group(), tag)
+            unquoted_label = unquoted_label.replace(match.group(), unquoted_tag)
             legacy_label = legacy_label.replace(match.group(), legacy_tag)
 
-        # get translation from db
+        # get translation from db (quoted first, then unquoted / legacy labels)
         with engines["sitemanager_readonly"].connect() as conn:
-            sql = text(
-                """
-                SELECT langstring
-                FROM obj_stringtranslator
-                WHERE lang = :lang
-                AND label = :input
-                order by created desc
-                """,
-            ).bindparams(lang=self.lang, input=translation)
-            translation_row = conn.execute(sql).fetchone()
-            if not translation_row and legacy_label != translation:
-                legacy_sql = text(
-                    """
-                    SELECT langstring
-                    FROM obj_stringtranslator
-                    WHERE lang = :lang
-                    AND label = :input
-                    order by created desc
-                    """,
-                ).bindparams(lang=self.lang, input=legacy_label)
-                translation_row = conn.execute(legacy_sql).fetchone()
+            translation_row = self._lookup_translation(conn, translation)
+            if not translation_row and unquoted_label != translation:
+                translation_row = self._lookup_translation(conn, unquoted_label)
+            if not translation_row and legacy_label not in (
+                translation,
+                unquoted_label,
+            ):
+                translation_row = self._lookup_translation(conn, legacy_label)
             if translation_row:
                 translation = translation_row[0]
                 if max_length and len(translation) > max_length:
@@ -92,12 +92,10 @@ class Translator:
                 logging.warning(f"WARNING Missing translation for {self.lang}: {input}")
                 return input, False
         # place back the emojis and python variable expansion from the input
-        for original, (tag, legacy_tag) in replacements.items():
+        for original, (tag, unquoted_tag, legacy_tag) in replacements.items():
             translation = translation.replace(tag, original)
+            translation = translation.replace(unquoted_tag, original)
             translation = translation.replace(legacy_tag, original)
-            # cache in redis
-        # if translation != input:
-        # redis_conn.set(f"translation:{self.lang}:{input_hash}", translation)
         self.cache[input] = translation
 
         return translation, True

@@ -115,7 +115,7 @@ def make_workbook(path: Path) -> None:
             "max_length",
         ]
     )
-    sheet.append(["en", "fr", "Submit <x id=1/>", "", 0])
+    sheet.append(["en", "fr", 'Submit <x id="1"/>', "", 0])
     sheet.append(["en", "de", "Cancel", "Abbrechen", 0])
     workbook.save(path)
     workbook.close()
@@ -137,7 +137,7 @@ def test_write_translator_xlsx_uses_single_unnamed_column_with_metadata(tmp_path
         EXPORT.MissingStringRow(
             source_language="en",
             target_language="fr",
-            source_text="Submit <x id=1/>",
+            source_text='Submit <x id="1"/>',
             target_text="",
             max_length=20,
         )
@@ -150,14 +150,14 @@ def test_write_translator_xlsx_uses_single_unnamed_column_with_metadata(tmp_path
         sheet = workbook.active
         assert sheet.title == "Translations"
         assert sheet.max_column == 1
-        assert sheet["A1"].value == "Submit <x id=1/>"
+        assert sheet["A1"].value == 'Submit <x id="1"/>'
         metadata_sheet = workbook[EXPORT.TRANSLATOR_METADATA_SHEET]
         assert metadata_sheet.sheet_state == "hidden"
         assert [cell.value for cell in metadata_sheet[1]] == [
             "source_text",
             "max_length",
         ]
-        assert metadata_sheet["A2"].value == "Submit <x id=1/>"
+        assert metadata_sheet["A2"].value == 'Submit <x id="1"/>'
         assert metadata_sheet["B2"].value == 20
     finally:
         workbook.close()
@@ -179,9 +179,9 @@ def test_fill_workbook_translations_populates_blank_translation(tmp_path, monkey
         sheet = workbook.active
         assert filled == 1
         assert total == 2
-        assert sheet["D2"].value == "fr:Submit <x id=1/>"
+        assert sheet["D2"].value == 'fr:Submit <x id="1"/>'
         assert sheet["D3"].value == "Abbrechen"
-        assert client.calls[0]["contents"] == ["Submit <x id=1/>"]
+        assert client.calls[0]["contents"] == ['Submit <x id="1"/>']
         assert client.calls[0]["target_language_code"] == "fr"
         assert client.calls[0]["mime_type"] == "text/html"
     finally:
@@ -222,7 +222,7 @@ def test_fill_single_column_translator_workbook_replaces_visible_source_text(
         EXPORT.MissingStringRow(
             source_language="en",
             target_language="fr",
-            source_text="Submit <x id=1/>",
+            source_text='Submit <x id="1"/>',
             target_text="",
             max_length=0,
         )
@@ -242,8 +242,8 @@ def test_fill_single_column_translator_workbook_replaces_visible_source_text(
         assert filled == 1
         assert total == 1
         assert sheet.max_column == 1
-        assert sheet["A1"].value == "fr:Submit <x id=1/>"
-        assert client.calls[0]["contents"] == ["Submit <x id=1/>"]
+        assert sheet["A1"].value == 'fr:Submit <x id="1"/>'
+        assert client.calls[0]["contents"] == ['Submit <x id="1"/>']
         assert client.calls[0]["target_language_code"] == "fr"
     finally:
         workbook.close()
@@ -256,7 +256,7 @@ def test_fill_workbook_translations_decodes_html_entities_and_preserves_tags(
     make_workbook(workbook_path)
     client = RecordingGoogleClient(
         lambda contents, target_language_code: [
-            "L&#39;envoi &quot;OK&quot; &amp; <x id=1/>&nbsp;" for _ in contents
+            'L&#39;envoi &quot;OK&quot; &amp; <x id="1"/>&nbsp;' for _ in contents
         ]
     )
     monkeypatch.setattr(MT_FILL, "fetch_mt_language_map", lambda: {})
@@ -271,7 +271,7 @@ def test_fill_workbook_translations_decodes_html_entities_and_preserves_tags(
         sheet = workbook.active
         assert filled == 1
         assert total == 2
-        assert sheet["D2"].value == 'L\'envoi "OK" & <x id=1/>\xa0'
+        assert sheet["D2"].value == 'L\'envoi "OK" & <x id="1"/>\xa0'
     finally:
         workbook.close()
 
@@ -448,7 +448,7 @@ def test_write_import_sql_accepts_single_column_translator_workbook(tmp_path):
         EXPORT.MissingStringRow(
             source_language="en",
             target_language="fr",
-            source_text="Submit <x id=1/>",
+            source_text='Submit <x id="1"/>',
             target_text="",
             max_length=0,
         )
@@ -458,7 +458,7 @@ def test_write_import_sql_accepts_single_column_translator_workbook(tmp_path):
     workbook = openpyxl.load_workbook(workbook_path)
     try:
         sheet = workbook.active
-        sheet["A1"].value = "Soumettre <x id=1/>"
+        sheet["A1"].value = 'Soumettre <x id="1"/>'
         workbook.save(workbook_path)
     finally:
         workbook.close()
@@ -468,8 +468,8 @@ def test_write_import_sql_accepts_single_column_translator_workbook(tmp_path):
     sql = output_path.read_text(encoding="utf-8")
     assert count == 1
     assert '"fr"' in sql
-    assert '"Submit <x id=1/>"' in sql
-    assert '"Soumettre <x id=1/>"' in sql
+    assert 'Submit <x id=\\"1\\"/>' in sql
+    assert 'Soumettre <x id=\\"1\\"/>' in sql
 
 
 def test_write_import_sql_reads_returned_translator_second_column(tmp_path):
@@ -479,7 +479,7 @@ def test_write_import_sql_reads_returned_translator_second_column(tmp_path):
         EXPORT.MissingStringRow(
             source_language="en",
             target_language="fr-ca",
-            source_text="Submit <x id=1/>",
+            source_text='Submit <x id="1"/>',
             target_text="",
             max_length=0,
         )
@@ -489,7 +489,7 @@ def test_write_import_sql_reads_returned_translator_second_column(tmp_path):
     workbook = openpyxl.load_workbook(workbook_path)
     try:
         sheet = workbook.active
-        sheet["B1"].value = "Soumettre <x id=1/>"
+        sheet["B1"].value = 'Soumettre <x id="1"/>'
         workbook.save(workbook_path)
     finally:
         workbook.close()
@@ -500,8 +500,8 @@ def test_write_import_sql_reads_returned_translator_second_column(tmp_path):
     assert count == 1
     assert '"fr-ca"' in sql
     assert '"French_Canada"' not in sql
-    assert '"Submit <x id=1/>"' in sql
-    assert '"Soumettre <x id=1/>"' in sql
+    assert 'Submit <x id=\\"1\\"/>' in sql
+    assert 'Soumettre <x id=\\"1\\"/>' in sql
 
 
 def test_write_import_sql_deletes_only_generated_lang_label_pairs(tmp_path):
@@ -591,19 +591,19 @@ def test_write_import_sql_deduplicates_generated_lang_label_pairs(tmp_path):
 
 def test_validate_translation_tags_reports_missing_and_bad_tags():
     errors = IMPORT_SQL.validate_translation_tags(
-        "Submit <x id=1/>",
+        'Submit <x id="1"/>',
         "Soumettre <x id=two>",
     )
 
     assert "translation contains malformed tag(s): <x id=two>" in errors
-    assert "translation is missing placeholder tag(s): <x id=1/>" in errors
+    assert 'translation is missing placeholder tag(s): <x id="1"/>' in errors
 
 
 def test_validate_translation_tags_accepts_self_closing_and_legacy_tags():
     assert (
         IMPORT_SQL.validate_translation_tags(
-            "Submit <x id=1/>",
-            "Soumettre <x id=1/>",
+            'Submit <x id="1"/>',
+            'Soumettre <x id="1"/>',
         )
         == []
     )
@@ -621,7 +621,7 @@ def test_runtime_translator_restores_self_closing_and_legacy_x_tags(monkeypatch)
 
     fake_engine = FakeEngine(
         {
-            "Hello <x id=1/>": "Bonjour <x id=1/>",
+            'Hello <x id="1"/>': 'Bonjour <x id="1"/>',
             "Legacy <x id=1>": "Héritage <x id=1>",
         }
     )
@@ -652,9 +652,49 @@ def test_runtime_translator_restores_self_closing_and_legacy_x_tags(monkeypatch)
     assert translator.translate("Hello {name}") == ("Bonjour {name}", True)
     assert translator.translate("Legacy {name}") == ("Héritage {name}", True)
     assert fake_engine.connection.queries == [
-        "Hello <x id=1/>",
+        'Hello <x id="1"/>',
+        'Legacy <x id="1"/>',
         "Legacy <x id=1/>",
         "Legacy <x id=1>",
+    ]
+
+
+def test_runtime_translator_falls_back_to_unquoted_db_labels(monkeypatch):
+    import types
+
+    fake_engine = FakeEngine(
+        {
+            "Hello <x id=1/>": "Bonjour <x id=1/>",
+        }
+    )
+    fake_database = types.SimpleNamespace(
+        engines={
+            "translators_readonly": FakeEngine({}),
+            "sitemanager_readonly": fake_engine,
+        }
+    )
+    fake_buglog = types.SimpleNamespace(notify_exception=lambda exc: None)
+    monkeypatch.setitem(sys.modules, "app.database", fake_database)
+    monkeypatch.setitem(sys.modules, "app.slack.buglog_notifier", fake_buglog)
+    module_name = "app.translate_runtime_unquoted_test"
+    sys.modules.pop(module_name, None)
+    spec = importlib.util.spec_from_file_location(
+        module_name,
+        APP_ROOT / "app" / "translate.py",
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    translate_module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, module_name, translate_module)
+    spec.loader.exec_module(translate_module)
+    translate_module.Translator.BCP_47_TO_SHORTNAME = {"fr-FR": "fr"}
+
+    translator = translate_module.Translator("fr-FR")
+
+    assert translator.translate("Hello {name}") == ("Bonjour {name}", True)
+    assert fake_engine.connection.queries == [
+        'Hello <x id="1"/>',
+        "Hello <x id=1/>",
     ]
 
 
@@ -687,7 +727,7 @@ def test_write_import_sql_fails_and_reports_placeholder_validation_errors(tmp_pa
         [
             "en",
             "fr",
-            "Submit <x id=1/>",
+            'Submit <x id="1"/>',
             "Soumettre",
             0,
         ]
@@ -703,7 +743,8 @@ def test_write_import_sql_fails_and_reports_placeholder_validation_errors(tmp_pa
         raise AssertionError("Expected placeholder validation to fail")
 
     report = report_path.read_text(encoding="utf-8")
-    assert "translation is missing placeholder tag(s): <x id=1/>" in report
+    # CSV escapes embedded quotes by doubling them.
+    assert 'translation is missing placeholder tag(s): <x id=""1""/>' in report
     assert not output_path.exists()
 
 
@@ -763,7 +804,7 @@ def test_google_translate_texts_uses_google_v3_batch_request():
     client = RecordingGoogleClient(lambda contents, target_language_code: ["Bonjour"])
 
     translations = MT_FILL.google_translate_texts(
-        ["Hello <x id=1/>"],
+        ['Hello <x id="1"/>'],
         "fr",
         client=client,
         project_id="project-123",
@@ -773,7 +814,7 @@ def test_google_translate_texts_uses_google_v3_batch_request():
     assert translations == ["Bonjour"]
     assert client.calls == [
         {
-            "contents": ["Hello <x id=1/>"],
+            "contents": ['Hello <x id="1"/>'],
             "parent": "projects/project-123/locations/global",
             "mime_type": "text/html",
             "source_language_code": "en",

@@ -86,7 +86,7 @@ For professional translators, use the vendor-facing workflow:
    `translations_fr-ca.xlsx`.
 2. Send the per-language workbooks to translators. They should replace the text
    in the single visible column with the translated text and preserve every
-   `<x id=N/>` tag exactly.
+   `<x id="N"/>` tag exactly.
 3. `make import-sql INPUT='output/translations_*.xlsx' SQL_OUTPUT=output/import.sql`
    creates refresh-safe SQL for the filled workbooks.
 
@@ -138,14 +138,14 @@ this tool.
 
 ## Import Validation
 
-`make import-sql` validates placeholder tags before writing SQL. Every `<x id=N/>`
+`make import-sql` validates placeholder tags before writing SQL. Every `<x id="N"/>`
 tag present in `source_text` must also be present in the translated cell
 (`target_text` for internal workbooks or the visible text cell for
 translator-facing workbooks), and translations must not introduce unexpected or
-malformed `<x ...>` tags. The importer still accepts legacy `<x id=N>` tags in
-older workbooks, but new exports use self-closing `<x id=N/>` tags. This
-protects the runtime replacement logic used by
-`app.translate.Translator`.
+malformed `<x ...>` tags. The importer still accepts legacy `<x id=N>` and
+unquoted `<x id=N/>` tags in older workbooks/DB rows, but new exports use
+quoted self-closing `<x id="N"/>` tags. This protects the runtime replacement
+logic used by `app.translate.Translator`.
 
 The MT fill step rejects Google language mappings that resolve a non-English DB
 language to English and flags unchanged non-English output. SQL generation
@@ -231,5 +231,5 @@ Internal import files use these columns:
 - `max_length` - Optional `_()` max length metadata.
 
 Placeholders such as `{client_name}` and Slack emoji shortcodes such as
-`:white_check_mark:` are converted to self-closing `<x id=N/>` tags before
+`:white_check_mark:` are converted to self-closing `<x id="N"/>` tags before
 lookup, matching the app's current `Translator` behaviour.

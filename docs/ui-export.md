@@ -82,7 +82,7 @@ When `--translations-file` or `UI_EXPORT_TRANSLATIONS_FILE` is provided, the gen
 {
   "fr": {
     "Submit": "Envoyer",
-    "Hello <x id=1>": "Bonjour <x id=1>"
+    "Hello <x id=\"1\"/>": "Bonjour <x id=\"1\"/>"
   }
 }
 ```

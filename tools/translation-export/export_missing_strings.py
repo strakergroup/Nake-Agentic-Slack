@@ -32,7 +32,7 @@ DEFAULT_SLACK_LOCALES = (
 )
 ENGLISH_PREFIXES = ("en", "gb", "us")
 PLACEHOLDER_PATTERN = re.compile(r":\w+:|\{.*?\}")
-X_TAG_PATTERN = re.compile(r"<x id=(\d+)\s*/?>")
+X_TAG_PATTERN = re.compile(r'<x id="?(\d+)"?\s*/?>')
 OUTPUT_COLUMNS = (
     "source_language",
     "target_language",
@@ -100,13 +100,13 @@ def tag_placeholders(text_value: str) -> str:
     """Match app.translate.Translator placeholder tagging for DB labels."""
     tagged_text = text_value
     for index, match in enumerate(PLACEHOLDER_PATTERN.finditer(text_value), start=1):
-        tagged_text = tagged_text.replace(match.group(), f"<x id={index}/>")
+        tagged_text = tagged_text.replace(match.group(), f'<x id="{index}"/>')
     return tagged_text
 
 
 def normalize_db_label_for_lookup(label: str) -> str:
     """Mirror MySQL label equality and treat x-tag styles as equivalent."""
-    normalized_label = X_TAG_PATTERN.sub(r"<x id=\1/>", label)
+    normalized_label = X_TAG_PATTERN.sub(r'<x id="\1"/>', label)
     return normalized_label.rstrip(" ").casefold()
 
 

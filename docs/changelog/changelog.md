@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- [Changed]: Placeholder tags are now generated as `<x id="N"/>` (quoted) in runtime Translator, translation-export, and UI export; lookups still accept unquoted `<x id=N/>` and legacy `<x id=N>` DB/workbook labels (Wade Norman, 2026-07-31)
+- [Changed]: RAY-79115 — AI Translation quote guidance sentence now ends with a period (“…remove languages and/or source files.”) (Wade Norman, 2026-07-31)
 - [Fixed]: RAY-79115 — evaluate PDF pre-quote retries reuse one deterministic quote ID instead of creating duplicate Redis sessions/messages; Adjust Request totals now sum consumer-provided per-pair token rows before falling back to character estimates (Wade Norman, 2026-07-31)
 - [Changed]: RAY-79115 — AI Translation quote view amounts stay frozen after accept (AI-complete refresh and Adjust Request open use the Redis snapshot only; no live `/quote/credits` reprice). QE/HT quote amount updates are unchanged (Wade Norman, 2026-07-31)
 - [Fixed]: RAY-79115 — HT/evaluate PDF pre-quotes no longer invent AI tokens from Slack file **bytes**; they reuse Document MT extract quoting (`slack:job:machine:translate:quote` → M48 parse, no Adobe convert) and return on `verify:slack:evaluate:pdf:quote` so Slack still shows the evaluate/HT Service Quote UI. Accept still runs `slack:evaluate:pdf:convert` (Wade Norman, 2026-07-31)

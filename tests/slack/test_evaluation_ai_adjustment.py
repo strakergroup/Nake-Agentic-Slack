@@ -394,7 +394,7 @@ def test_ai_quote_blocks_show_adjust_button_and_exact_guidance():
     assert "Adjust Request" in rendered
     assert (
         "Review the cost below and click *Accept Quote* to continue, or "
-        "*Adjust Request* to remove languages and/or source files"
+        "*Adjust Request* to remove languages and/or source files."
     ) in rendered
 
 

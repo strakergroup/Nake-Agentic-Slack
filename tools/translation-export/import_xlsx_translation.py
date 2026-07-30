@@ -24,7 +24,7 @@ COLUMN_ALIASES = {
     LABEL_COLUMN: ("db_label",),
     TRANSLATION_COLUMN: ("translation",),
 }
-VALID_TAG_PATTERN = re.compile(r"<x id=(\d+)\s*/?>")
+VALID_TAG_PATTERN = re.compile(r'<x id="?(\d+)"?\s*/?>')
 X_TAG_CANDIDATE_PATTERN = re.compile(r"</?x\b[^>]*>|<x\b[^>]*$")
 ENGLISH_PREFIXES = ("en", "gb", "us")
 LANGUAGE_FILENAME_PATTERN = re.compile(
@@ -91,7 +91,7 @@ def find_tag_ids(text: str) -> set[str]:
 
 
 def format_x_tag(tag_id: str) -> str:
-    return f"<x id={tag_id}/>"
+    return f'<x id="{tag_id}"/>'
 
 
 def find_malformed_tags(text: str) -> list[str]:

@@ -1091,7 +1091,7 @@ def evaluation_credits_quote_blocks(
                             "text": _(
                                 "Review the cost below and click *Accept Quote* to "
                                 "continue, or *Adjust Request* to remove languages "
-                                "and/or source files"
+                                "and/or source files."
                             ),
                         },
                     }

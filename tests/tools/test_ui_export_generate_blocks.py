@@ -270,7 +270,7 @@ def test_requested_translation_source_reads_env(monkeypatch):
 
 
 def test_mock_translate_uses_configured_language_catalog():
-    configure_translation("fr", {"Hello <x id=1>": "Bonjour <x id=1>"})
+    configure_translation("fr", {'Hello <x id="1"/>': 'Bonjour <x id="1"/>'})
 
     try:
         translated = _mock_translate("Hello {name}")

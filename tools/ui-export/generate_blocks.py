@@ -196,14 +196,15 @@ def install_template_translation_function() -> None:
             module._ = translate_function
 
 
-def _tag_placeholders(text: str) -> tuple[str, dict[str, tuple[str, str]]]:
+def _tag_placeholders(text: str) -> tuple[str, dict[str, tuple[str, str, str]]]:
     replacements = {}
 
     def replace(match: re.Match[str]) -> str:
         index = len(replacements) + 1
-        tag = f"<x id={index}/>"
+        tag = f'<x id="{index}"/>'
+        unquoted_tag = f"<x id={index}/>"
         legacy_tag = f"<x id={index}>"
-        replacements[match.group()] = (tag, legacy_tag)
+        replacements[match.group()] = (tag, unquoted_tag, legacy_tag)
         return tag
 
     return PLACEHOLDER_PATTERN.sub(replace, text), replacements
@@ -218,15 +219,20 @@ def _translate_catalog_text(text: str) -> str:
         text
     )
     if translation is None:
+        unquoted_tagged_text = tagged_text
         legacy_tagged_text = tagged_text
-        for tag, legacy_tag in replacements.values():
+        for tag, unquoted_tag, legacy_tag in replacements.values():
+            unquoted_tagged_text = unquoted_tagged_text.replace(tag, unquoted_tag)
             legacy_tagged_text = legacy_tagged_text.replace(tag, legacy_tag)
-        translation = _translation_catalog.get(legacy_tagged_text)
+        translation = _translation_catalog.get(
+            unquoted_tagged_text
+        ) or _translation_catalog.get(legacy_tagged_text)
         if translation is None:
             return text
 
-    for original, (tag, legacy_tag) in replacements.items():
+    for original, (tag, unquoted_tag, legacy_tag) in replacements.items():
         translation = translation.replace(tag, original)
+        translation = translation.replace(unquoted_tag, original)
         translation = translation.replace(legacy_tag, original)
     return translation
 
