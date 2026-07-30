@@ -128,6 +128,9 @@ class JobTranscribedEvent(BaseModel):
     task_uuid: str
     client_id: str
     error: str | None = None
+    # Target language codes that were requested but not delivered. Optional so an
+    # older sup-subtitle-ai-cons deploy that does not send it still validates.
+    failed_languages: list[str] | None = None
 
     @model_validator(mode="before")
     def extract_output_file(cls, values):
@@ -142,6 +145,7 @@ class JobTranscribedEvent(BaseModel):
             values["task_uuid"] = result.get("task_uuid")
             values["client_id"] = result.get("client_id", "")
             values["error"] = result.get("error")
+            values["failed_languages"] = result.get("failed_languages")
         return values
 
 
@@ -169,8 +173,13 @@ class MtFileRequestSchema(BaseModel):
     embed_subtitles: bool = False
     original_video_file_id: str | None = None
     original_video_file_name: str | None = None
-    # Org-billed Document MT (RAY-80198): delivery + reporting context when the
-    # poster has no LanguageCloud member link.
+    quote_id: str | None = None
+    preflight_task_uuid: str | None = None
+    # Quote Adjust Request scope (RAY-79115): file_id:target_language pairs the
+    # user kept; None/empty means the full quoted batch. Lets the consumer
+    # re-check the accepted quote funding against the adjusted total.
+    selected_pairs: list[str] | None = None
+    # Org-billed Document MT (RAY-80198): poster/workspace for delivery + billing.
     team_id: str | None = None
     slack_user_id: str | None = None
     billing_group_uuid: str | None = None
@@ -202,6 +211,41 @@ class MtSuccessResponseSchema(BaseModel):
     # MT + optional combined PDF fee) charged after successful Slack delivery.
     mt_charge: Dict[str, Any] | None = None
     # Org-billed Document MT delivery context (RAY-80198).
+    team_id: str | None = None
+    slack_user_id: str | None = None
+
+
+class DocumentMtQuoteTargetSchema(BaseModel):
+    target_language: str
+    tokens: int = 0
+    cost_usd: float = 0.0
+
+
+class DocumentMtQuoteFileSchema(BaseModel):
+    file_id: str
+    file_name: str
+    character_count: int = 0
+    pdf_conversion_page_count: int | None = None
+    pdf_conversion_tokens: int = 0
+    target_languages: list[DocumentMtQuoteTargetSchema] = Field(default_factory=list)
+
+
+class DocumentMtQuoteResponseSchema(BaseModel):
+    quote_id: str
+    client_id: str
+    channel_id: str
+    error: bool = False
+    error_type: MtErrorTypes | None = None
+    error_data: Dict[str, Any] = Field(default_factory=dict)
+    currency: str = "USD"
+    total_tokens: int = 0
+    pdf_conversion_tokens: int = 0
+    total_cost_usd: float = 0.0
+    preflight_task_uuid: str | None = None
+    files: list[DocumentMtQuoteFileSchema] = Field(default_factory=list)
+    # Org-billed Document MT (RAY-79115): client_id is the org uuid, so the
+    # poster must be carried separately for delivery. Optional so the echo still
+    # validates against consumers that predate the change.
     team_id: str | None = None
     slack_user_id: str | None = None
 

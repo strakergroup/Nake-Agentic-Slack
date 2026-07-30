@@ -1,8 +1,17 @@
-# Document MT without user login — analysis (not HT/QE)
+# Document MT / AI Translate org-billed access (not HT/QE)
 
-Slack **Document MT** (direct machine translation of uploaded files) is a separate product path from **Quality Evaluation (QE)** and **Human Translation (HT)**. This document compares Document MT to **channel translation** and **shortcut translate**, which already allow org-billed usage without a LanguageCloud user login, and lists what would need to change if Document MT followed the same model.
+## Required product contract
 
-> **Out of scope:** QE and HT always require a connected LanguageCloud account. They create Verify jobs (`POST /evaluate/create`, `POST /automation/service/create-human-job`) tied to a member identity, quote settings, and workflow context. This doc does **not** propose removing that login requirement.
+| Path | Org / group billing without LanguageCloud member login | Must work |
+|------|--------------------------------------------------------|-----------|
+| **AI Translate (Document MT)** — modal, quote preflight, Accept Quote, submit | **Yes** — workspace connected `super_group` is enough; bill `verify_organization_uuid` | **Required.** Quote must not stall on “Preparing an AI Translate quote…” |
+| Channel / shortcut / DM text MT | **Yes** — same org-wallet model | Required |
+| **Human Translation (HT)** | **No** — LanguageCloud member login required | Must keep `require_ray_client(...)` default (no `allow_org_billing`) |
+| **Quality Evaluation (QE)** | **No** — member login required | Same as HT |
+
+HT/QE create Verify jobs tied to a member identity (`POST /evaluate/create`, human-job automation). Do **not** enable `allow_org_billing` on those paths.
+
+Document MT / AI Translate is implemented under **RAY-80198** + quote flow **RAY-79115**. SAQ workers (`process_document_mt_quote_preflight`, `process_document_mt_submission`) must use the **super-group** gate (`no_super_group`), not a member-only `no_ray_client` check.
 
 ## Flow comparison
 
@@ -18,33 +27,44 @@ flowchart TB
     A6 --> A7["/mt/inline-usage (group token fallback)"]
   end
 
-  subgraph doc["Document MT — today"]
-    B1[File action / modal] --> B2{Logged in?}
-    B2 -->|No| B3[Login prompt — blocked]
-    B2 -->|Yes| B4["client_id = member obj_uuid"]
-    B4 --> B5[int-slack-verify-consumer pipeline"]
-    B5 --> B6["Balance via member JWT only"]
-    B6 --> B7[Deliver file to Slack]
-    B7 --> B8["/mt/transaction (member JWT only)"]
+  subgraph doc["Document MT / AI Translate — org-billed"]
+    B1[File action / modal] --> B2{Member or super_group?}
+    B2 -->|super_group only| B3["client_id = org verify_organization_uuid"]
+    B2 -->|member| B4["client_id = member obj_uuid"]
+    B3 --> B5[quote preflight SAQ]
+    B4 --> B5
+    B5 --> B6[Accept Quote → translate:v2]
+    B6 --> B7["/mt/transaction group-token fallback"]
+  end
+
+  subgraph ht["Human Translation / QE"]
+    C1[HT or QE action] --> C2{LC member linked?}
+    C2 -->|No| C3[Login required — blocked]
+    C2 -->|Yes| C4[Verify evaluate / human job]
   end
 ```
 
-| Aspect | Channel / shortcut MT | Document MT (today) |
-|--------|----------------------|---------------------|
-| Login required to submit | No — workspace super group is enough | Yes — `require_ray_client` on modal open and submit |
-| Billing principal | Org uuid when poster has no member link | Member uuid only |
-| Pre-flight balance check | `get_group_tokens(org_uuid)` via `require_mt_tokens` | Member balance in consumer via `/credits/balance` with member JWT |
-| Charge endpoint | `/mt/inline-usage` with `allow_group_fallback=True` | `/mt/transaction` via `log_document_mt_by_client_id` — **no** group fallback |
-| Poster on usage report | `email` / `client_name` sent on charge payload | Resolved from `client_uuid` (member) — no poster override today |
-| Delivery auth | `get_slack_org` fallback on MT result callback | `get_slack_user(client_id)` only — fails if `client_id` is org uuid |
+| Aspect | Channel / shortcut MT | Document MT / AI Translate | HT / QE |
+|--------|----------------------|----------------------------|---------|
+| Login required | No — super group enough | No — super group enough | **Yes — member required** |
+| Billing principal | Org uuid when no member | Org uuid when no member | Member only |
+| Quote preflight | N/A (inline) | Org uuid on `translate:quote` | N/A (member Verify quote) |
+| Charge endpoint | `/mt/inline-usage` group fallback | `/mt/transaction` group fallback | Verify / automation |
 
-## Current Document MT login gates
+## Delivery failure alerting (RAY-79115)
 
-Three layers block org-billed Document MT today:
+`slack_upload_mt_result` must page BugLog / Google Chat when Slack delivery fails:
 
-1. **UI** — `document_mt_job` action and `handle_document_mt_job` call `require_ray_client` (modal cannot open or submit without a linked member).
-2. **Submission worker** — `process_document_mt_submission` returns `no_ray_client` when `get_ray_connection` has no member.
-3. **Publish** — `document_machine_translate` returns early when `context["ray"].client` is missing; it never substitutes the org uuid into `MtFileRequestSchema.client_id`.
+| Outcome | Alert |
+|---------|--------|
+| `resolve_slack_delivery_user` returns `None` (`no_slack_user`) | Immediate — non-retryable; marks `slack_job` `failed_delivery` and submission `failed` |
+| Upload/download error exhausted SAQ retries | On final attempt — same status updates + alert with `task_uuid` / `client_id` / `team_id` / `slack_user_id` |
+
+Silent `failed_delivery` (log only) hid org-billed IBM misses when poster context was missing. Covered by `test_slack_upload_mt_result_no_slack_user_returns_no_user_status` and `test_slack_upload_mt_result_alerts_on_final_delivery_failure`.
+
+## Regression to avoid
+
+If quote SAQ still returns `no_ray_client` when only a super group is linked, Slack posts “Preparing an AI Translate quote…” and never publishes `slack:job:machine:translate:quote`. Covered by `test_process_document_mt_quote_preflight_org_billed_without_member`.
 
 Reference — channel MT org billing pattern:
 
@@ -54,13 +74,8 @@ Reference — channel MT org billing pattern:
         group_id = await get_group_id(org_uuid)
 ```
 
-Reference — Document MT hard requirement on member:
-
-```1124:1126:app/slack/listener_actions.py
-    client: RayClient | None = context["ray"].client
-    if not file_id or not client:
-        return
-```
+Document MT publish (`document_machine_translate`) uses the same org-uuid
+fallback as channel MT when `ray_connection.client` is missing.
 
 ## End-to-end Document MT path (for context)
 
@@ -94,11 +109,13 @@ No billing runs inside int-slack-verify-consumer on the Slack path; the consumer
 | Area | Change |
 |------|--------|
 | Listeners | `require_ray_client(allow_org_billing=True)` allows submit when `super_group` exists (HT/QE still use member-only default) |
-| `document_machine_translate` | Uses org `verify_organization_uuid` as `client_id` when no member; passes `team_id`, `slack_user_id`, `billing_group_uuid` |
+| `document_machine_translate` | Uses org `verify_organization_uuid` as `client_id` when no member; stamps `team_id`, `slack_user_id`, `billing_group_uuid` on `MtFileRequestSchema` / `slack:job:machine:translate:v2` |
+| `MtFileRequestSchema` | Carries org-billed delivery fields (`team_id`, `slack_user_id`, `billing_group_uuid`) so verify-consumer can echo them on `document:translated` |
+| `process_document_mt_quote_preflight` | Same super-group gate; bills org uuid on `translate:quote` when no member (avoids stuck “Preparing an AI Translate quote…”) |
 | `process_document_mt_submission` | Proceeds without a linked member when the workspace has a super group |
-| `resolve_slack_delivery_user` | Delivery/callback auth falls back to `get_slack_org` for org-billed jobs |
+| `resolve_slack_delivery_user` | Delivery/callback auth falls back to `get_slack_org` for org-billed jobs; overrides `user_id` with event `slack_user_id` when present |
 | `log_document_mt_by_client_id` | `allow_group_fallback=True` for `/mt/transaction` |
-| `slack_upload_mt_result` | Enriches charge with poster `email`/`client_name` and billing `group_uuid` |
+| `slack_upload_mt_result` | Enriches charge with poster `email`/`client_name` via `users.info` only when a Slack `U…` id is available; skips org UUID lookups |
 | int-slack-verify-consumer | Group-token fallback on balance checks; delivery context on success/error events |
 
 ### Original gap analysis (pre-implementation)
@@ -167,14 +184,9 @@ No billing runs inside int-slack-verify-consumer on the Slack path; the consumer
 
 Document MT is the only file-MT path that could reasonably adopt the channel/shortcut org model.
 
-## Recommendation
+## Recommendation / status
 
-Treat org-billed Document MT as a ** deliberate feature** aligned with channel/shortcut MT, not a config flag on the existing member-only path. Minimum viable slice:
-
-1. Extend group-token auth in **both** slack-ray-translator (`log_document_mt_by_client_id`) and int-slack-verify-consumer (balance + any gateway calls).
-2. Fix **delivery and callback auth** before changing submit gates (avoid translated files stuck undelivered).
-3. Add poster identity + `group_uuid` to document MT charge payload for reporting parity.
-4. Add integration tests for: submit without login → pipeline → delivery → single `/mt/transaction` debit against org balance.
+Org-billed Document MT / AI Translate is **implemented and required** (RAY-80198 + RAY-79115 quote path). Keep HT/QE member-login only. When rebasing quote branches, re-verify SAQ gates still use `no_super_group` — not member-only `no_ray_client`.
 
 ## Related docs
 

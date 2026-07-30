@@ -11,18 +11,15 @@ from fastapi.testclient import TestClient
 from app.auth.connector import RayConnection, RaySuperGroup, SlackUser
 from app.dependencies import RayEvent, RayEventAuth
 from app.models import TranscriptionTaskInfo
+from app.ray.events.evaluate_quote_events import (
+    RAY_EVENT_DEDUPE_TTL_SECONDS,
+    claim_ray_event_notification,
+)
 from app.ray.events.models import (
     ClientGroup,
 )
-from app.routers.ray import (
-    RAY_EVENT_DEDUPE_TTL_SECONDS,
-    RayCallback,
-    _claim_evaluate_complete_notification,
-    _format_callback_error,
-    api_job_callback,
-    ray_events,
-    router,
-)
+from app.routers.ray import RayCallback, api_job_callback, ray_events, router
+from app.slack.utils import format_callback_error
 
 
 @pytest.fixture
@@ -91,10 +88,10 @@ class TestRayEventsEndpoint:
     ):
         payload_error = expected.split(": ", 1)[1]
 
-        assert _format_callback_error(stage, payload_error) == expected
+        assert format_callback_error(stage, payload_error) == expected
 
     def test_callback_error_text_uses_exportable_unknown_error_template(self):
-        assert _format_callback_error("translation", "") == (
+        assert format_callback_error("translation", "") == (
             "Translation failed: Unknown error"
         )
 
@@ -572,36 +569,28 @@ class TestRayEventsEndpoint:
                             return_value=mock_task_info,
                         ):
                             with patch(
-                                "app.routers.ray._mark_stage_processed",
+                                "app.routers.ray.mark_stage_processed",
                                 new_callable=AsyncMock,
                             ):
                                 with patch(
-                                    "app.routers.ray._spend_transcription_credits",
+                                    "app.routers.ray.spend_transcription_credits",
                                     new_callable=AsyncMock,
                                     return_value=0,
                                 ):
                                     with patch(
-                                        "app.routers.ray._update_tokens_consumed",
+                                        "app.routers.ray.update_tokens_consumed",
                                         new_callable=AsyncMock,
                                     ):
                                         with patch(
-                                            "app.routers.ray.post_notification",
+                                            "app.routers.ray.handle_transcription_complete",
                                             new_callable=AsyncMock,
-                                            return_value=mock_response,
-                                        ) as mock_post:
-                                            with patch(
-                                                "app.routers.ray.enqueue_transcription_upload",
-                                                new_callable=AsyncMock,
-                                            ) as mock_enqueue:
-                                                auth = RayEventAuth()
-                                                await auth.initialize(
-                                                    event, "valid-token"
-                                                )
+                                        ) as mock_handle:
+                                            auth = RayEventAuth()
+                                            await auth.initialize(event, "valid-token")
 
-                                                await ray_events(event, auth)
+                                            await ray_events(event, auth)
 
-                                                mock_post.assert_called_once()
-                                                mock_enqueue.assert_called_once()
+                                            mock_handle.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_transcription_error(
@@ -672,16 +661,328 @@ class TestRayEventsEndpoint:
                             new_callable=AsyncMock,
                             return_value=mock_task_info,
                         ):
-                            auth = RayEventAuth()
-                            await auth.initialize(event, "valid-token")
+                            with patch(
+                                "app.routers.ray.fail_media_submissions",
+                                new_callable=AsyncMock,
+                            ) as mock_fail:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
 
-                            await ray_events(event, auth)
+                                await ray_events(event, auth)
 
-                            mock_client.chat_postEphemeral.assert_called_once()
-                            assert (
-                                mock_client.chat_postEphemeral.call_args.kwargs["text"]
-                                == "Transcription failed: No sound"
-                            )
+                                mock_client.chat_postEphemeral.assert_called_once()
+                                assert (
+                                    mock_client.chat_postEphemeral.call_args.kwargs[
+                                        "text"
+                                    ]
+                                    == "Transcription failed: No sound"
+                                )
+                                mock_fail.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_ray_events_translation_error_fails_submissions(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """Translation callback errors mark media submissions failed."""
+        task_uuid = str(uuid4())
+        event = RayEvent(
+            event="transcription:slack:media:translation:results",
+            data={
+                "client_id": mock_slack_user.ray_client_id,
+                "task_uuid": task_uuid,
+                "error": "MT failed",
+            },
+        )
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+        }
+        mock_client.chat_postEphemeral = AsyncMock()
+        mock_task_info = TranscriptionTaskInfo(
+            task_uuid=task_uuid,
+            client_id=mock_slack_user.ray_client_id,
+            file_name="clip.srt",
+            download_url="https://example.com/clip.srt",
+            bot_token="xoxb-test-token",
+            pipeline_type="translate_only",
+            status="failed",
+            stage=None,
+            error_message="MT failed",
+            result_file_id=None,
+            result_file_name=None,
+            detected_language=None,
+            translated_file_ids=None,
+            extra_data={"submission_id": 99},
+            started_at=None,
+            finished_at=None,
+            duration_ms=None,
+            source_text_length=None,
+            num_target_languages=None,
+            tokens_consumed=0,
+            credit_transaction_uuid=None,
+            model=None,
+            service=None,
+            app_source=None,
+            created_at=datetime.datetime.now(),
+            updated_at=datetime.datetime.now(),
+        )
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray.get_transcription_task",
+                            new_callable=AsyncMock,
+                            return_value=mock_task_info,
+                        ):
+                            with patch(
+                                "app.routers.ray.fail_media_submissions",
+                                new_callable=AsyncMock,
+                            ) as mock_fail:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
+                                await ray_events(event, auth)
+                                mock_fail.assert_awaited_once_with(
+                                    {"submission_id": 99}
+                                )
+
+    @pytest.mark.asyncio
+    async def test_ray_events_translation_empty_ids_fails_submissions(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """Empty translated_file_ids fails submissions instead of silent skip."""
+        task_uuid = str(uuid4())
+        event = RayEvent(
+            event="transcription:slack:media:translation:results",
+            data={
+                "client_id": mock_slack_user.ray_client_id,
+                "task_uuid": task_uuid,
+                "error": None,
+            },
+        )
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+        }
+        mock_client.chat_postEphemeral = AsyncMock()
+        mock_task_info = TranscriptionTaskInfo(
+            task_uuid=task_uuid,
+            client_id=mock_slack_user.ray_client_id,
+            file_name="clip.srt",
+            download_url="https://example.com/clip.srt",
+            bot_token="xoxb-test-token",
+            pipeline_type="translate_only",
+            status="completed",
+            stage=None,
+            error_message=None,
+            result_file_id=None,
+            result_file_name=None,
+            detected_language=None,
+            translated_file_ids={},
+            extra_data={"submission_ids": [42, 43]},
+            started_at=None,
+            finished_at=None,
+            duration_ms=None,
+            source_text_length=None,
+            num_target_languages=None,
+            tokens_consumed=0,
+            credit_transaction_uuid=None,
+            model=None,
+            service=None,
+            app_source=None,
+            created_at=datetime.datetime.now(),
+            updated_at=datetime.datetime.now(),
+        )
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ):
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray.get_transcription_task",
+                            new_callable=AsyncMock,
+                            return_value=mock_task_info,
+                        ):
+                            with patch(
+                                "app.routers.ray.fail_media_submissions",
+                                new_callable=AsyncMock,
+                            ) as mock_fail:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
+                                await ray_events(event, auth)
+                                mock_client.chat_postEphemeral.assert_called_once()
+                                assert (
+                                    "no output files"
+                                    in (
+                                        mock_client.chat_postEphemeral.call_args.kwargs[
+                                            "text"
+                                        ]
+                                    )
+                                )
+                                mock_fail.assert_awaited_once()
+
+    def _partial_translation_task_info(self, task_uuid, client_id):
+        return TranscriptionTaskInfo(
+            task_uuid=task_uuid,
+            client_id=client_id,
+            file_name="clip.srt",
+            download_url="https://example.com/clip.srt",
+            bot_token="xoxb-test-token",
+            pipeline_type="translate_only",
+            status="completed",
+            stage=None,
+            error_message=None,
+            result_file_id=None,
+            result_file_name=None,
+            detected_language=None,
+            translated_file_ids={"es": "file-es"},
+            extra_data={"submission_ids": [42, 43], "slack_channel_id": "C1"},
+            started_at=None,
+            finished_at=None,
+            duration_ms=None,
+            source_text_length=None,
+            num_target_languages=None,
+            tokens_consumed=0,
+            credit_transaction_uuid=None,
+            model=None,
+            service=None,
+            app_source=None,
+            created_at=datetime.datetime.now(),
+            updated_at=datetime.datetime.now(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_ray_events_translation_partial_does_not_fail_submissions(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """A partial result delivers what arrived and must not fail those submissions."""
+        task_uuid = str(uuid4())
+        event = RayEvent(
+            event="transcription:slack:media:translation:results",
+            data={
+                "client_id": mock_slack_user.ray_client_id,
+                "task_uuid": task_uuid,
+                "error": None,
+                "failed_languages": ["fr"],
+            },
+        )
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+        }
+        mock_task_info = self._partial_translation_task_info(
+            task_uuid, mock_slack_user.ray_client_id
+        )
+
+        with (
+            patch("app.dependencies.validate_queue_proxy_secret", return_value=True),
+            patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ),
+            patch("app.dependencies.get_demo_link", return_value=[]),
+            patch("app.routers.ray.AsyncWebClient", return_value=mock_client),
+            patch(
+                "app.routers.ray.get_transcription_task",
+                new_callable=AsyncMock,
+                return_value=mock_task_info,
+            ),
+            patch("app.routers.ray.mark_stage_processed", new_callable=AsyncMock),
+            patch(
+                "app.routers.ray.handle_translation_complete",
+                new_callable=AsyncMock,
+                return_value=1,
+            ) as mock_handle,
+            patch(
+                "app.routers.ray.spend_translation_credits",
+                new_callable=AsyncMock,
+                return_value=0,
+            ),
+            patch(
+                "app.routers.ray.update_submission_status", new_callable=AsyncMock
+            ) as mock_complete,
+            patch("app.routers.ray.mark_media_quote_done", new_callable=AsyncMock),
+            patch(
+                "app.routers.ray.fail_media_submissions", new_callable=AsyncMock
+            ) as mock_fail,
+        ):
+            auth = RayEventAuth()
+            await auth.initialize(event, "valid-token")
+            await ray_events(event, auth)
+
+        assert mock_handle.await_args.kwargs["failed_languages"] == ["fr"]
+        mock_fail.assert_not_awaited()
+        mock_complete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_ray_events_translation_without_failed_languages_passes_none(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """An older sup-subtitle payload omits the field and behaves as before."""
+        task_uuid = str(uuid4())
+        event = RayEvent(
+            event="transcription:slack:media:translation:results",
+            data={
+                "client_id": mock_slack_user.ray_client_id,
+                "task_uuid": task_uuid,
+                "error": None,
+            },
+        )
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+        }
+        mock_task_info = self._partial_translation_task_info(
+            task_uuid, mock_slack_user.ray_client_id
+        )
+
+        with (
+            patch("app.dependencies.validate_queue_proxy_secret", return_value=True),
+            patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ),
+            patch("app.dependencies.get_demo_link", return_value=[]),
+            patch("app.routers.ray.AsyncWebClient", return_value=mock_client),
+            patch(
+                "app.routers.ray.get_transcription_task",
+                new_callable=AsyncMock,
+                return_value=mock_task_info,
+            ),
+            patch("app.routers.ray.mark_stage_processed", new_callable=AsyncMock),
+            patch(
+                "app.routers.ray.handle_translation_complete",
+                new_callable=AsyncMock,
+                return_value=1,
+            ) as mock_handle,
+            patch(
+                "app.routers.ray.spend_translation_credits",
+                new_callable=AsyncMock,
+                return_value=0,
+            ),
+            patch("app.routers.ray.update_submission_status", new_callable=AsyncMock),
+            patch("app.routers.ray.mark_media_quote_done", new_callable=AsyncMock),
+            patch(
+                "app.routers.ray.fail_media_submissions", new_callable=AsyncMock
+            ) as mock_fail,
+        ):
+            auth = RayEventAuth()
+            await auth.initialize(event, "valid-token")
+            await ray_events(event, auth)
+
+        assert mock_handle.await_args.kwargs["failed_languages"] is None
+        mock_fail.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_ray_events_document_translated_error(
@@ -730,6 +1031,176 @@ class TestRayEventsEndpoint:
 
                                     # Verify error notification was sent
                                     mock_post.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_ray_events_document_mt_quote_posts_quote_message(
+        self, mock_slack_user, user_id, team_id
+    ):
+        quote_id = str(uuid4())
+        event = RayEvent(
+            event="verify:slack:document:quote",
+            data={
+                "quote_id": quote_id,
+                "client_id": mock_slack_user.ray_client_id,
+                "channel_id": "C123",
+                "currency": "USD",
+                "total_tokens": 10,
+                "total_cost_usd": 0.02,
+                "files": [
+                    {
+                        "file_id": "grid-1",
+                        "file_name": "a.docx",
+                        "character_count": 5000,
+                        "target_languages": [
+                            {
+                                "target_language": "fr",
+                                "tokens": 10,
+                                "cost_usd": 0.02,
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+        }
+        session = {
+            "quote_id": quote_id,
+            "status": "quoted",
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": "C123",
+            "source_language": "en",
+            "target_languages": ["fr"],
+            "files": [],
+            "quote": event.data,
+        }
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                new_callable=AsyncMock,
+                return_value=mock_slack_user,
+            ):
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray.apply_document_mt_quote_result",
+                            new_callable=AsyncMock,
+                            return_value=session,
+                        ) as mock_apply:
+                            with patch(
+                                "app.routers.ray.post_notification",
+                                new_callable=AsyncMock,
+                            ) as mock_post:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
+
+                                await ray_events(event, auth)
+
+        mock_apply.assert_awaited_once()
+        mock_post.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_ray_events_document_mt_quote_error_reaches_org_billed_poster(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """Org-billed quote errors must DM the Slack poster, not the org UUID.
+
+        For an org-billed submission ``client_id`` is the Verify organization
+        uuid, so the echoed ``team_id`` / ``slack_user_id`` are what let the
+        error resolve to a real Slack member.
+        """
+        organization_uuid = str(uuid4())
+        event = RayEvent(
+            event="verify:slack:document:quote",
+            data={
+                "quote_id": str(uuid4()),
+                "client_id": organization_uuid,
+                "channel_id": "C123",
+                "error": True,
+                "error_type": "insufficient_balance",
+                "error_data": {"balance": 0, "required": 10},
+                "team_id": team_id,
+                "slack_user_id": user_id,
+            },
+        )
+        mock_client = AsyncMock()
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                new_callable=AsyncMock,
+                return_value=mock_slack_user,
+            ) as mock_resolve:
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray.get_client_type",
+                            new_callable=AsyncMock,
+                            return_value="Member",
+                        ):
+                            with patch(
+                                "app.routers.ray.post_notification_ephemeral",
+                                new_callable=AsyncMock,
+                            ) as mock_post:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
+
+                                await ray_events(event, auth)
+
+        assert mock_resolve.await_args.args[0] == organization_uuid
+        assert mock_resolve.await_args.kwargs["team_id"] == team_id
+        assert mock_resolve.await_args.kwargs["slack_user_id"] == user_id
+        mock_post.assert_awaited_once()
+        delivered_user = mock_post.await_args.args[3]
+        assert delivered_user.user_id == user_id
+        assert delivered_user.user_id != organization_uuid
+
+    @pytest.mark.asyncio
+    async def test_ray_events_document_mt_quote_error_without_slack_user_is_logged(
+        self, user_id
+    ):
+        """An unresolvable poster must be logged, not raised as a 500."""
+        event = RayEvent(
+            event="verify:slack:document:quote",
+            data={
+                "quote_id": str(uuid4()),
+                "client_id": str(uuid4()),
+                "channel_id": "C123",
+                "error": True,
+                "error_type": "insufficient_balance",
+                "error_data": {"balance": 0, "required": 10},
+            },
+        )
+        mock_client = AsyncMock()
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                new_callable=AsyncMock,
+                return_value=None,
+            ):
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray.post_notification_ephemeral",
+                            new_callable=AsyncMock,
+                        ) as mock_post:
+                            auth = RayEventAuth()
+                            await auth.initialize(event, "valid-token")
+
+                            await ray_events(event, auth)
+
+        mock_post.assert_not_awaited()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -865,7 +1336,7 @@ class TestRayEventsEndpoint:
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
                     ):
                         with patch(
-                            "app.routers.ray._claim_evaluate_complete_notification",
+                            "app.routers.ray.claim_ray_event_notification",
                             new_callable=AsyncMock,
                             return_value=True,
                         ):
@@ -942,39 +1413,134 @@ class TestRayEventsEndpoint:
             "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
         }
 
-        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
-            with patch(
+        with (
+            patch("app.dependencies.validate_queue_proxy_secret", return_value=True),
+            patch(
                 "app.dependencies.resolve_slack_delivery_user",
                 return_value=mock_slack_user,
-            ):
-                with patch("app.dependencies.get_demo_link", return_value=[]):
-                    with patch(
-                        "app.routers.ray.AsyncWebClient", return_value=mock_client
-                    ):
-                        with patch(
-                            "app.routers.ray.get_evaluation_job",
-                            return_value=mock_job,
-                        ):
-                            with patch(
-                                "app.routers.ray._get_languages_cached",
-                                return_value=[],
-                            ):
-                                with patch(
-                                    "app.routers.ray._claim_evaluate_complete_notification",
-                                    new_callable=AsyncMock,
-                                    return_value=True,
-                                ):
-                                    with patch(
-                                        "app.routers.ray.post_notification",
-                                        new_callable=AsyncMock,
-                                    ) as mock_post:
-                                        auth = RayEventAuth()
-                                        await auth.initialize(event, "valid-token")
+            ),
+            patch("app.dependencies.get_demo_link", return_value=[]),
+            patch("app.routers.ray.AsyncWebClient", return_value=mock_client),
+            patch("app.routers.ray.get_evaluation_job", return_value=mock_job),
+            patch("app.routers.ray.get_language_name_by_uuid", return_value=[]),
+            patch(
+                "app.routers.ray.claim_ray_event_notification",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.routers.ray.job_is_human_translation_quote",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.routers.ray.post_notification",
+                new_callable=AsyncMock,
+            ) as mock_post,
+        ):
+            auth = RayEventAuth()
+            await auth.initialize(event, "valid-token")
 
-                                        await ray_events(event, auth)
+            await ray_events(event, auth)
 
-                                        # Verify success notification was sent
-                                        mock_post.assert_called_once()
+            # Verify success notification was sent
+            mock_post.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_ray_events_evaluate_complete_staged_ht_keeps_ht_quote(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """Staged HT jobs have no HUMAN_EVALUATION workflow, so the quote session decides.
+
+        Rendering the QE Evaluation Result here replaces the human translation
+        quote with scores and a "Send for Human Verification" button.
+        """
+        from app.slack.templates.messages import HumanJobQuoteMessage
+
+        job_uuid = str(uuid4())
+        lang_uuid = str(uuid4())
+        mock_job = {
+            "data": {
+                "uuid": job_uuid,
+                "workflow_uuid": None,
+                "extra_info": {},
+                "human_job_in_progress": False,
+                "source_files": [
+                    {
+                        "file_uuid": str(uuid4()),
+                        "filename": "test.txt",
+                        "target_files": [
+                            {
+                                "language_uuid": lang_uuid,
+                                "human_job_status": None,
+                                "target_file_uuid": str(uuid4()),
+                            }
+                        ],
+                    }
+                ],
+                "target_languages": [{"uuid": lang_uuid, "name": "French"}],
+            }
+        }
+        event = RayEvent(
+            event="verify:slack:evaluate:complete",
+            data={
+                "client_id": mock_slack_user.ray_client_id,
+                "error": False,
+                "job_uuid": job_uuid,
+            },
+        )
+
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+        }
+
+        with (
+            patch("app.dependencies.validate_queue_proxy_secret", return_value=True),
+            patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ),
+            patch("app.dependencies.get_demo_link", return_value=[]),
+            patch("app.routers.ray.AsyncWebClient", return_value=mock_client),
+            patch("app.routers.ray.get_evaluation_job", return_value=mock_job),
+            patch(
+                "app.routers.ray.claim_ray_event_notification",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.evaluation_quotes.get_evaluate_quote_session",
+                new_callable=AsyncMock,
+                return_value={"quote_snapshot": {"auto_submit_human_job": True}},
+            ),
+            patch(
+                "app.routers.ray.handle_combined_qe_complete",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "app.routers.ray.get_ray_client",
+                new_callable=AsyncMock,
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.routers.ray.get_job_pricing",
+                new_callable=AsyncMock,
+                return_value={"data": []},
+            ),
+            patch(
+                "app.routers.ray.post_notification",
+                new_callable=AsyncMock,
+            ) as mock_post,
+        ):
+            auth = RayEventAuth()
+            await auth.initialize(event, "valid-token")
+
+            await ray_events(event, auth)
+
+        mock_post.assert_called_once()
+        assert isinstance(mock_post.call_args.args[3], HumanJobQuoteMessage)
 
     @pytest.mark.asyncio
     async def test_ray_events_evaluate_complete_duplicate_is_skipped(
@@ -1006,7 +1572,7 @@ class TestRayEventsEndpoint:
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
                     ):
                         with patch(
-                            "app.routers.ray._claim_evaluate_complete_notification",
+                            "app.routers.ray.claim_ray_event_notification",
                             new_callable=AsyncMock,
                             return_value=False,
                         ):
@@ -1025,7 +1591,7 @@ class TestRayEventsEndpoint:
                                 mock_post.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_claim_evaluate_complete_notification_claims_once(self):
+    async def test_claim_ray_event_notification_claims_once(self):
         """The evaluate-complete idempotency guard uses an atomic Redis claim."""
         event = RayEvent(
             event="verify:slack:evaluate:complete",
@@ -1033,11 +1599,12 @@ class TestRayEventsEndpoint:
         )
 
         with patch(
-            "app.routers.ray.redis_conn.set", new_callable=AsyncMock
+            "app.ray.events.evaluate_quote_events.redis_conn.set",
+            new_callable=AsyncMock,
         ) as mock_set:
             mock_set.return_value = True
 
-            claimed = await _claim_evaluate_complete_notification(event)
+            claimed = await claim_ray_event_notification(event)
 
             assert claimed is True
             mock_set.assert_awaited_once_with(
@@ -1048,7 +1615,7 @@ class TestRayEventsEndpoint:
             )
 
     @pytest.mark.asyncio
-    async def test_claim_evaluate_complete_notification_rejects_duplicate(self):
+    async def test_claim_ray_event_notification_rejects_duplicate(self):
         """Redis NX misses are treated as duplicate events."""
         event = RayEvent(
             event="verify:slack:evaluate:complete",
@@ -1056,11 +1623,12 @@ class TestRayEventsEndpoint:
         )
 
         with patch(
-            "app.routers.ray.redis_conn.set", new_callable=AsyncMock
+            "app.ray.events.evaluate_quote_events.redis_conn.set",
+            new_callable=AsyncMock,
         ) as mock_set:
             mock_set.return_value = None
 
-            claimed = await _claim_evaluate_complete_notification(event)
+            claimed = await claim_ray_event_notification(event)
 
             assert claimed is False
 
@@ -1098,8 +1666,8 @@ class TestRayEventsEndpoint:
                         "app.routers.ray.AsyncWebClient", return_value=mock_client
                     ):
                         with patch(
-                            "app.routers.ray._get_languages_cached",
-                            return_value=mock_languages,
+                            "app.routers.ray.get_language_name_by_uuid",
+                            return_value="French",
                         ):
                             with patch(
                                 "app.routers.ray.post_notification",

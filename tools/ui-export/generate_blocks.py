@@ -264,7 +264,6 @@ sys.modules.setdefault("app.watson.assistant", MagicMock())
 # Mock API modules that try to connect on import
 sys.modules.setdefault("app.api.language_cloud", MagicMock())
 sys.modules.setdefault("app.api.verify", MagicMock())
-sys.modules.setdefault("app.api.http_client", MagicMock())
 sys.modules.setdefault("app.api.stream_proxy", MagicMock())
 sys.modules.setdefault("app.api.verifyloop", MagicMock())
 
@@ -490,6 +489,57 @@ def make_job_quote_accepted_event() -> JobQuoteAcceptedEvent:
     )
 
 
+def make_document_mt_quote_session(*, accepted: bool = False) -> dict[str, Any]:
+    return {
+        "quote_id": JOB_UUID,
+        "channel_id": CHANNEL_ID,
+        "user_id": USER_ID,
+        "team_id": TEAM_ID,
+        "enterprise_id": ENTERPRISE_ID,
+        "status": "accepted" if accepted else "quoted",
+        "files": [
+            {"id": "F001", "title": "strategy-overview.docx", "size": 48210},
+            {"id": "F002", "title": "legal-appendix.pdf", "size": 138912},
+        ],
+        "source_language": "en",
+        "target_languages": ["fr", "es"],
+        "quote": {
+            "quote_id": JOB_UUID,
+            "client_id": CLIENT_UUID,
+            "channel_id": CHANNEL_ID,
+            "currency": "USD",
+            "total_tokens": 1420,
+            "pdf_conversion_tokens": 100,
+            "total_cost_usd": 28.40,
+            "preflight_task_uuid": JOB_UUID,
+            "files": [
+                {
+                    "file_id": "F001",
+                    "file_name": "strategy-overview.docx",
+                    "character_count": 310_000,
+                    "pdf_conversion_page_count": None,
+                    "pdf_conversion_tokens": 0,
+                    "target_languages": [
+                        {"target_language": "fr", "tokens": 0, "cost_usd": 0.0},
+                        {"target_language": "es", "tokens": 0, "cost_usd": 0.0},
+                    ],
+                },
+                {
+                    "file_id": "F002",
+                    "file_name": "legal-appendix.pdf",
+                    "character_count": 350_000,
+                    "pdf_conversion_page_count": 4,
+                    "pdf_conversion_tokens": 100,
+                    "target_languages": [
+                        {"target_language": "fr", "tokens": 0, "cost_usd": 0.0},
+                        {"target_language": "es", "tokens": 0, "cost_usd": 0.0},
+                    ],
+                },
+            ],
+        },
+    }
+
+
 def make_client_signup_event() -> ClientSignupEvent:
     return ClientSignupEvent(
         client_id=CLIENT_UUID,
@@ -565,12 +615,42 @@ def make_costs() -> list[dict[str, Any]]:
         {
             "file_uuid": "file-uuid-001",
             "language_uuid": "lang-fr-uuid",
-            "service_list": [{"estimated_cost": 45.75, "time_estimate_days": 3}],
+            "service_list": [
+                {
+                    "estimated_cost": 45.75,
+                    "time_estimate_days": 3,
+                    "quality_discount": {
+                        "score": 0.91,
+                        "tier": "good",
+                        "word_discount_rate": 0.3,
+                        "base_estimated_cost": 65.36,
+                        "discounted_estimated_cost": 45.75,
+                        "final_estimated_cost": 45.75,
+                        "savings": 19.61,
+                        "pricing_cap_applied": False,
+                    },
+                }
+            ],
         },
         {
             "file_uuid": "file-uuid-001",
             "language_uuid": "lang-es-uuid",
-            "service_list": [{"estimated_cost": 38.50, "time_estimate_days": 2}],
+            "service_list": [
+                {
+                    "estimated_cost": 38.50,
+                    "time_estimate_days": 2,
+                    "quality_discount": {
+                        "score": 0.82,
+                        "tier": "acceptable",
+                        "word_discount_rate": 0.2,
+                        "base_estimated_cost": 48.13,
+                        "discounted_estimated_cost": 38.50,
+                        "final_estimated_cost": 38.50,
+                        "savings": 9.63,
+                        "pricing_cap_applied": False,
+                    },
+                }
+            ],
         },
     ]
 
@@ -613,6 +693,14 @@ MOCK_DISPLAY_FORMAT_OPTIONS = [
     {"text": {"type": "plain_text", "text": "Thread replies"}, "value": "thread"},
     {"text": {"type": "plain_text", "text": "Direct messages"}, "value": "message"},
 ]
+
+
+def mock_format_currency(value: float, currency: str) -> str:
+    """Mirror the runtime USD display shape without depending on Babel in catalog tests."""
+    normalized_currency = currency.split("_", 1)[0]
+    if normalized_currency == "USD":
+        return f"USD {value:,.2f}"
+    return f"{normalized_currency} {value:,.2f}"
 
 
 # ---------------------------------------------------------------------------
@@ -727,7 +815,7 @@ def build_all_messages() -> list[dict[str, Any]]:
         ),
         patch(f"{BLK}.get_job_url", return_value="#mock-job-url"),
         patch(f"{BLK}.is_ibm_enterprise", return_value=False),
-        patch(f"{BLK}.format_currency", side_effect=lambda v, c: f"${v:,.2f}"),
+        patch(f"{BLK}.format_currency", side_effect=mock_format_currency),
         patch(f"{BLK}.format_currency_symbol", return_value="USD"),
         patch(f"{BLK}.domains", _domains_mock),
         patch(
@@ -760,6 +848,7 @@ def build_all_messages() -> list[dict[str, Any]]:
             DocumentMTJobMessage,
             EvaluateErrorMessage,
             EvaluateSuccessMessage,
+            EvaluationCreditsQuoteMessage,
             FileListMessage,
             FileTooLargeMessage,
             FileTranslatedMessage,
@@ -1140,10 +1229,57 @@ def build_all_messages() -> list[dict[str, Any]]:
             "Quotes",
             JobQuoteCancelledEventMessage(CLIENT_UUID, JOB_UUID, "TJ123456", True),
         )
-
         eval_job = make_evaluate_job()
         costs = make_costs()
-        add("HumanJobQuoteMessage", "Quotes", HumanJobQuoteMessage(eval_job, costs))
+        add(
+            "HumanJobQuoteMessage",
+            "Quotes",
+            HumanJobQuoteMessage(
+                eval_job,
+                costs,
+                additional_costs=[
+                    {
+                        "label": "Quality Evaluation",
+                        "cost": 8.00,
+                        "file_uuid": "file-uuid-001",
+                        "language_uuid": "lang-fr-uuid",
+                    },
+                    {
+                        "label": "Quality Evaluation",
+                        "cost": 8.00,
+                        "file_uuid": "file-uuid-001",
+                        "language_uuid": "lang-es-uuid",
+                    },
+                ],
+                download_translations_job_uuid=JOB_UUID,
+            ),
+        )
+        add(
+            "EvaluationCreditsQuoteMessage (IBM HT AI quote with PDF)",
+            "Quotes",
+            EvaluationCreditsQuoteMessage(
+                service_label="AI Translation",
+                token_cost=1250,
+                job_uuid=JOB_UUID,
+                accept_action_id="evaluation_ai_quote_accept",
+                pdf_page_count=4,
+                pdf_tokens=100,
+                is_ibm=True,
+            ),
+        )
+        add(
+            "EvaluationCreditsQuoteMessage (IBM HT PDF prequote estimate)",
+            "Quotes",
+            EvaluationCreditsQuoteMessage(
+                service_label="AI Translation",
+                token_cost=1350,
+                job_uuid=JOB_UUID,
+                accept_action_id="evaluation_pdf_prequote_accept",
+                pdf_page_count=4,
+                pdf_tokens=100,
+                is_ibm=True,
+            ),
+        )
 
         # ---- Events ----
         signup = make_client_signup_event()
@@ -1379,6 +1515,7 @@ def build_all_messages() -> list[dict[str, Any]]:
         patch(f"{BLK}.is_ibm_enterprise", return_value=True),
     ):
         from app.slack.templates.messages import (
+            DocumentMtQuoteMessage,
             HelpMessage,
             LoginMessage,
             SuccessfulLoginMessage,
@@ -1415,6 +1552,19 @@ def build_all_messages() -> list[dict[str, Any]]:
                 ENTERPRISE_ID,
                 CHANNEL_ID,
                 variation=LoginMessage.NEW_JOB,
+            ),
+        )
+        add(
+            "DocumentMtQuoteMessage (IBM AI Translate direct quote)",
+            "Quotes",
+            DocumentMtQuoteMessage(make_document_mt_quote_session()),
+        )
+        add(
+            "DocumentMtQuoteMessage (IBM AI Translate accepted)",
+            "Quotes",
+            DocumentMtQuoteMessage(
+                make_document_mt_quote_session(accepted=True),
+                actions=False,
             ),
         )
         ray_connection_ibm_admin = make_ray_connection(enable_verify=True)
@@ -1594,7 +1744,7 @@ def build_all_views() -> list[dict[str, Any]]:
         ),
         patch(f"{BLK}.get_job_url", return_value="#mock-job-url"),
         patch(f"{BLK}.is_ibm_enterprise", return_value=False),
-        patch(f"{BLK}.format_currency", side_effect=lambda v, c: f"${v:,.2f}"),
+        patch(f"{BLK}.format_currency", side_effect=mock_format_currency),
         patch(f"{BLK}.format_currency_symbol", return_value="USD"),
         patch(f"{BLK}.domains", _domains_mock),
         patch(
@@ -1648,11 +1798,6 @@ def build_all_views() -> list[dict[str, Any]]:
             "human_job_modal (evaluate)",
             "Modals",
             human_job_modal(CHANNEL_ID, FILE_INFO, False, "evaluate"),
-        )
-        add(
-            "human_job_modal (evaluate, IBM)",
-            "Modals",
-            human_job_modal(CHANNEL_ID, FILE_INFO, True, "evaluate"),
         )
         add("sso_form_modal", "Modals", sso_form_modal())
         add("cancel_job_modal", "Modals", cancel_job_modal("jane.doe@acme.com"))

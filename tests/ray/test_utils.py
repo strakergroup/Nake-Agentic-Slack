@@ -45,9 +45,15 @@ def test_format_currency_symbol():
     assert app.ray.utils.format_currency_symbol("AUD") == "AUD"
 
 
+def test_format_slack_usd():
+    assert app.ray.utils.format_slack_usd(3.5) == "USD 3.50"
+    assert app.ray.utils.format_slack_usd(40) == "USD 40.00"
+    assert app.ray.utils.format_slack_usd("12.345") == "USD 12.35"
+
+
 def test_format_currency():
-    assert app.ray.utils.format_currency(3.5, "USD") == "US$3.50"
-    assert app.ray.utils.format_currency(3.5, "USD_Other") == "US$3.50"
+    assert app.ray.utils.format_currency(3.5, "USD") == "USD 3.50"
+    assert app.ray.utils.format_currency(3.5, "USD_Other") == "USD 3.50"
     assert app.ray.utils.format_currency(3.5, "NZD") == "NZ$3.50"
     assert app.ray.utils.format_currency(2.5, "EUR") == "€2.50"
     assert app.ray.utils.format_currency(2.501, "GBP") == "£2.50"

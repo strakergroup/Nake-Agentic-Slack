@@ -39,6 +39,9 @@ class StrakerConfig(BaseSettings):
     watson_environment_id: str = Field(min_length=1)
     google_mt_api_key: SecretStr = SecretStr("")
     document_mt_pdf_max_size_mb: int = Field(default=25, ge=1)
+    document_mt_quote_ttl_seconds: int = Field(default=43200, ge=60, le=86400)
+    # Media transcription / embedding / translation quote session TTL (default 12h).
+    media_quote_ttl_seconds: int = Field(default=43200, ge=60, le=86400)
     # taus_api_key: SecretStr = Field(min_length=1)
     elastic_apm_server_url: str | None = None
     # Derived settings.
@@ -79,6 +82,11 @@ class StrakerConfig(BaseSettings):
     saq_file_upload_timeout_seconds: int = Field(default=900, ge=10, le=3600)
     saq_logging_retries: int = Field(default=3, ge=0, le=20)
     saq_logging_timeout_seconds: int = Field(default=30, ge=5, le=600)
+
+    evaluate_quote_ttl_seconds: int = Field(default=604800, ge=3600)
+    # When true, only Verify Admin/Owner users see quote Accept UI. Non-admins
+    # auto-proceed AI+QE on evaluate, then still get a Human Translation quote.
+    quote_admin_only: bool = True
 
     @field_validator("google_mt_api_key", mode="after")
     def validate_google_mt_api_key(cls, v, info: ValidationInfo):

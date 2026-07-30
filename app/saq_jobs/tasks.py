@@ -67,6 +67,16 @@ def _safe_unlink(path: str | None) -> None:
         logger.warning("Failed to remove temp file", extra={"path_present": True})
 
 
+def _is_slack_user_id(user_id: str | None) -> bool:
+    """True for Slack member ids, not Verify org/member UUIDs.
+
+    Standard workspaces issue ``U…`` ids; Enterprise Grid issues ``W…``.
+    """
+    if not user_id:
+        return False
+    return user_id.startswith(("U", "W")) and user_id.isalnum()
+
+
 def _alert_gateway_billing_failure(
     exc: BaseException,
     label: str,
@@ -150,6 +160,10 @@ async def slack_upload_mt_result(
         "file_id": data.file_id,
         "channel_id": data.channel_id,
         "target_language": data.target_language,
+        "client_id": data.client_id,
+        "team_id": data.team_id,
+        "slack_user_id": data.slack_user_id,
+        "submission_id": data.submission_id,
         "attempt": attempt,
     }
     logger.info("MT success upload starting", extra=log_extra)
@@ -185,6 +199,27 @@ async def slack_upload_mt_result(
             task_uuid=data.task_uuid,
             status="failed_delivery",
         )
+        if data.submission_id:
+            try:
+                updated_submission_status(
+                    submission_id=data.submission_id,
+                    processing_status=SubmissionStatus.FAILED,
+                )
+            except Exception as e:
+                notify_exception(
+                    e,
+                    "Failed to mark MT submission failed after delivery user miss",
+                    extra=log_extra,
+                )
+        # Org-billed Document MT often hits this when poster context is missing
+        # (RAY-79115 / RAY-80198). Alert immediately — there is no SAQ retry for
+        # this non-retryable resolution failure, and silent failed_delivery left
+        # IBM deliveries invisible in Google Chat.
+        notify_exception(
+            Exception("Document MT Slack delivery failed: no deliverable Slack user"),
+            "Document MT Slack delivery failed (no_slack_user)",
+            extra=log_extra,
+        )
         return {"status": "no_slack_user", "task_uuid": data.task_uuid}
 
     file_path: str | None = None
@@ -198,9 +233,11 @@ async def slack_upload_mt_result(
             )
         title = output_file.get("file_name")
         # Resolve language name lazily to avoid pulling the cache module at import time.
-        from app.routers.ray import _get_language_name  # local: avoids import cycle
+        from app.slack.listener_actions import (
+            get_language_name,  # local: avoids import cycle
+        )
 
-        language_name = await _get_language_name(data.target_language)
+        language_name = await get_language_name(data.target_language)
         initial_comment = _(
             f"Your file is AI translated to *{language_name}* and can be downloaded below."
         )
@@ -231,19 +268,30 @@ async def slack_upload_mt_result(
             charge = dict(data.mt_charge)
             if slack_user.ray_user_group_id:
                 charge["group_uuid"] = slack_user.ray_user_group_id
-            try:
-                user_info = await client.users_info(user=slack_user.user_id)
-                profile = (user_info.get("user") or {}).get("profile") or {}
-                if profile.get("email"):
-                    charge["email"] = profile["email"]
-                charge["client_name"] = (
-                    profile.get("real_name")
-                    or profile.get("real_name_normalized")
-                    or charge.get("client_name")
-                )
-            except Exception as e:
-                notify_exception(
-                    e, "Failed to resolve poster profile for document MT billing"
+            poster_user_id = data.slack_user_id or slack_user.user_id
+            if _is_slack_user_id(poster_user_id):
+                try:
+                    user_info = await client.users_info(user=poster_user_id)
+                    profile = (user_info.get("user") or {}).get("profile") or {}
+                    if profile.get("email"):
+                        charge["email"] = profile["email"]
+                    charge["client_name"] = (
+                        profile.get("real_name")
+                        or profile.get("real_name_normalized")
+                        or charge.get("client_name")
+                    )
+                except Exception as e:
+                    # Best-effort enrichment for usage reports; do not page on
+                    # deleted/deactivated posters (user_not_found).
+                    logger.warning(
+                        "Failed to resolve poster profile for document MT billing",
+                        extra={**log_extra, "poster_user_id": poster_user_id},
+                        exc_info=e,
+                    )
+            else:
+                logger.info(
+                    "Skipping poster profile lookup; no Slack user id on org-billed MT",
+                    extra={**log_extra, "poster_user_id": poster_user_id},
                 )
 
             idempotency_key = charge.get("idempotency_key") or data.task_uuid
@@ -265,9 +313,22 @@ async def slack_upload_mt_result(
                 )
             except Exception as e:
                 notify_exception(e, "Failed to mark slack_job failed_delivery")
+            if data.submission_id:
+                try:
+                    updated_submission_status(
+                        submission_id=data.submission_id,
+                        processing_status=SubmissionStatus.FAILED,
+                    )
+                except Exception as e:
+                    notify_exception(
+                        e,
+                        "Failed to mark MT submission failed after delivery error",
+                        extra=log_extra,
+                    )
             notify_exception(
-                Exception("Background MT success file handling failed"),
-                "Background MT success file handling failed (final attempt)",
+                Exception("Document MT Slack delivery failed after retries"),
+                "Document MT Slack delivery failed (final attempt)",
+                extra=log_extra,
             )
         raise
     finally:
@@ -447,6 +508,188 @@ async def slack_upload_verify_complete(
 # --------------------------------------------------------------------------- #
 
 
+async def process_document_mt_quote_preflight(
+    ctx: Context,
+    *,
+    quote_id: str,
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    channel_id: str,
+    files: list[dict[str, Any]],
+    source_language: str | None,
+    target_languages: list[str],
+) -> dict[str, Any]:
+    """Prepare a document MT quote by caching file state and requesting pricing."""
+    from slack_sdk.web.async_client import AsyncWebClient
+
+    from app.api.stream_proxy import send_document_mt_quote_request
+    from app.auth.connector import (
+        get_bot_token_async,
+        get_group_mt_engine,
+        get_ray_connection,
+        get_verify_trial_status,
+    )
+    from app.config import config
+    from app.ray.submissions import _hash_file_content_sha256_hex
+    from app.ray.utils import upload_to_file_server, validate_file
+    from app.slack.document_mt_quotes import (
+        QUOTE_STATUS_PENDING,
+        save_document_mt_quote_session,
+    )
+    from app.slack.web import download_file
+
+    job = ctx.get("job")
+    attempt = job.attempts if job is not None else 1
+    log_extra = {
+        "quote_id": quote_id,
+        "user_id": user_id,
+        "team_id": team_id,
+        "channel_id": channel_id,
+        "attempt": attempt,
+        "file_count": len(files),
+    }
+    ray_connection = await get_ray_connection(user_id, team_id, enterprise_id)
+    if ray_connection is None or not ray_connection.super_group:
+        logger.error(
+            "Document MT quote preflight has no connected workspace org",
+            extra=log_extra,
+        )
+        return {"status": "no_super_group"}
+
+    bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
+    if not bot_token:
+        logger.error(
+            "Document MT quote preflight has no Slack bot token", extra=log_extra
+        )
+        return {"status": "no_bot_token"}
+
+    ray_client = ray_connection.client
+    if ray_client is not None and ray_client.is_trial is None:
+        ray_client.is_trial, ray_client.trial_remaining = await get_verify_trial_status(
+            ray_client.id_token
+        )
+    max_pdf_size_bytes = (
+        config.document_mt_pdf_max_size_bytes
+        if ray_client is not None and ray_client.is_trial
+        else None
+    )
+
+    client = AsyncWebClient(token=bot_token)
+    downloaded_files: list[str] = []
+    uploaded_files: list[dict[str, Any]] = []
+    validation_errors: list[str] = []
+
+    try:
+        for file_data in files:
+            slack_file_id = file_data["id"]
+            file_title = file_data.get("title") or slack_file_id
+            input_file = await download_file(
+                client=client, file_id=slack_file_id, http=None
+            )
+            downloaded_files.append(input_file)
+
+            is_valid_file_type, is_valid_content, error_message = validate_file(
+                input_file,
+                max_pdf_size_bytes=max_pdf_size_bytes,
+            )
+            if not is_valid_file_type:
+                validation_errors.append(
+                    _(
+                        f"The file ({file_title}) file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
+                    )
+                )
+                continue
+            if not is_valid_content:
+                validation_errors.append(error_message or _("Invalid file content."))
+                continue
+
+            input_file_id = await upload_to_file_server(input_file)
+            uploaded_files.append(
+                {
+                    "slack_file_id": slack_file_id,
+                    "title": file_title,
+                    "size": file_data.get("size"),
+                    "file_id": input_file_id,
+                    "file_name": os.path.basename(input_file),
+                    "file_hash": _hash_file_content_sha256_hex(input_file),
+                    "file_size": os.path.getsize(input_file),
+                }
+            )
+
+        for message in validation_errors:
+            await client.chat_postMessage(channel=user_id, text=message)
+
+        if not uploaded_files:
+            await client.chat_postMessage(
+                channel=user_id,
+                text=_("No valid files were available to quote."),
+            )
+            return {"status": "no_valid_files"}
+
+        if ray_connection.client is None:
+            user_group_id = ray_connection.super_group[0].id
+            billing_client_id = ray_connection.super_group[0].verify_organization_uuid
+            is_group_id = True
+        else:
+            user_group_id = ray_connection.client.user_group_id
+            billing_client_id = ray_connection.client.id
+            is_group_id = False
+        ai_engine = await get_group_mt_engine(user_group_id, is_group_id)
+        if len(target_languages) == 1 and target_languages[0].lower() == "fr-ca":
+            ai_engine = "microsoft"
+
+        await save_document_mt_quote_session(
+            {
+                "quote_id": quote_id,
+                "status": QUOTE_STATUS_PENDING,
+                "user_id": user_id,
+                "team_id": team_id,
+                "enterprise_id": enterprise_id,
+                "channel_id": channel_id,
+                "source_language": source_language,
+                "target_languages": target_languages,
+                "files": uploaded_files,
+            }
+        )
+        await send_document_mt_quote_request(
+            quote_id=quote_id,
+            files=[
+                {
+                    "file_id": file["file_id"],
+                    "file_name": file["file_name"],
+                    "file_size": file["file_size"],
+                }
+                for file in uploaded_files
+            ],
+            client_id=billing_client_id,
+            channel_id=channel_id,
+            source_language=source_language,
+            target_languages=target_languages,
+            ai_engine=ai_engine,
+            team_id=team_id,
+            slack_user_id=user_id if _is_slack_user_id(user_id) else None,
+        )
+        return {"status": "quote_requested", "file_count": len(uploaded_files)}
+    except Exception:
+        logger.exception("Document MT quote preflight failed", extra=log_extra)
+        if job is not None and not job.retryable:
+            notify_exception(
+                Exception("Queued document MT quote preflight failed"),
+                "Queued document MT quote preflight failed (final attempt)",
+            )
+            await client.chat_postMessage(
+                channel=user_id,
+                text=_(
+                    "There was an error preparing your translation quote, please try again."
+                ),
+            )
+        raise
+    finally:
+        for path in downloaded_files:
+            _safe_unlink(path)
+
+
 async def process_document_mt_submission(
     ctx: Context,
     *,
@@ -457,6 +700,7 @@ async def process_document_mt_submission(
     files: list[dict[str, Any]],
     source_language: str | None,
     target_languages: list[str],
+    quote_id: str | None = None,
 ) -> dict[str, Any]:
     """Durable document MT submission processing.
 
@@ -473,8 +717,12 @@ async def process_document_mt_submission(
         get_verify_trial_status,
     )
     from app.config import config
-    from app.ray.submissions import check_and_record_submission_async
+    from app.ray.submissions import (
+        check_and_record_submission_async,
+        check_and_record_submission_metadata_async,
+    )
     from app.ray.utils import upload_to_file_server, validate_file
+    from app.slack.document_mt_quotes import get_document_mt_quote_session
     from app.slack.listener_actions import document_machine_translate
     from app.slack.web import download_file
 
@@ -523,43 +771,100 @@ async def process_document_mt_submission(
     validation_errors: list[str] = []
 
     try:
-        for file_data in files:
-            slack_file_id = file_data["id"]
-            file_title = file_data.get("title") or slack_file_id
-            input_file = await download_file(
-                client=client, file_id=slack_file_id, http=None
+        cached_quote = (
+            await get_document_mt_quote_session(quote_id) if quote_id else None
+        )
+        if quote_id and cached_quote is None:
+            await client.chat_postMessage(
+                channel=user_id,
+                text=_(
+                    "This translation quote has expired. Please request a new quote."
+                ),
             )
-            downloaded_files.append(input_file)
+            return {"status": "quote_expired"}
 
-            is_valid_file_type, is_valid_content, error_message = validate_file(
-                input_file,
-                max_pdf_size_bytes=max_pdf_size_bytes,
+        cached_files = cached_quote.get("files", []) if cached_quote else []
+        files_to_process = cached_files or files
+        preflight_task_uuid = (
+            cached_quote.get("preflight_task_uuid") if cached_quote else None
+        )
+        # Quote Adjust Request selections scope the submission to the chosen
+        # file/language pairs; empty means the full quoted batch.
+        selected_pairs = (
+            {str(pair) for pair in cached_quote.get("selected_pairs") or []}
+            if cached_quote
+            else set()
+        )
+
+        for file_data in files_to_process:
+            slack_file_id = str(
+                file_data.get("id") or file_data.get("slack_file_id") or ""
             )
-            if not is_valid_file_type:
-                validation_errors.append(
-                    _(
-                        f"The file ({file_title}) file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
-                    )
+            file_title = str(
+                file_data.get("title") or file_data.get("file_name") or slack_file_id
+            )
+            input_file = None
+            input_file_id = str(file_data.get("file_id") or "")
+            if not input_file_id:
+                if not slack_file_id:
+                    validation_errors.append(_("Invalid Slack file metadata."))
+                    continue
+                input_file = await download_file(
+                    client=client, file_id=slack_file_id, http=None
                 )
-                continue
-            if not is_valid_content:
-                validation_errors.append(error_message or _("Invalid file content."))
-                continue
+                downloaded_files.append(input_file)
 
-            input_file_id = await upload_to_file_server(input_file)
+                is_valid_file_type, is_valid_content, error_message = validate_file(
+                    input_file,
+                    max_pdf_size_bytes=max_pdf_size_bytes,
+                )
+                if not is_valid_file_type:
+                    validation_errors.append(
+                        _(
+                            f"The file ({file_title}) file type is currently not supported. Please check the <https://help.strakertranslations.com/hc/en-us/articles/35943216049945-AI-Translate-for-Documents-in-Straker-Translate-App-for-Slack|help docs>"
+                        )
+                    )
+                    continue
+                if not is_valid_content:
+                    validation_errors.append(
+                        error_message or _("Invalid file content.")
+                    )
+                    continue
+
+                input_file_id = await upload_to_file_server(input_file)
             submitted_languages: list[str] = []
             submission_ids: dict[str, int] = {}
+            pair_file_id = str(file_data.get("file_id") or "")
             for target_language in target_languages:
-                is_dup, record = await check_and_record_submission_async(
-                    path=input_file,
-                    file_name=os.path.basename(input_file),
-                    file_id=input_file_id,
-                    user_id=user_id,
-                    team_id=team_id,
-                    channel_id=channel_id,
-                    source_language=source_language or "",
-                    target_language=target_language,
-                )
+                if (
+                    selected_pairs
+                    and f"{pair_file_id}:{target_language}" not in selected_pairs
+                ):
+                    continue
+                if cached_quote:
+                    is_dup, record = await check_and_record_submission_metadata_async(
+                        file_hash=str(file_data["file_hash"]),
+                        file_name=str(file_data["file_name"]),
+                        file_size=int(file_data.get("file_size") or 0),
+                        file_id=input_file_id,
+                        user_id=user_id,
+                        team_id=team_id,
+                        channel_id=channel_id,
+                        source_language=source_language or "",
+                        target_language=target_language,
+                    )
+                else:
+                    assert input_file is not None
+                    is_dup, record = await check_and_record_submission_async(
+                        path=input_file,
+                        file_name=os.path.basename(input_file),
+                        file_id=input_file_id,
+                        user_id=user_id,
+                        team_id=team_id,
+                        channel_id=channel_id,
+                        source_language=source_language or "",
+                        target_language=target_language,
+                    )
                 if is_dup:
                     duplicate_submissions.append(
                         f"{file_title} ({source_language or 'auto'} -> {target_language})"
@@ -576,6 +881,9 @@ async def process_document_mt_submission(
                     source_language,
                     submitted_languages,
                     submission_ids,
+                    quote_id=quote_id,
+                    preflight_task_uuid=preflight_task_uuid,
+                    selected_pairs=sorted(selected_pairs) if selected_pairs else None,
                 )
                 files_uploaded.append(file_title)
 
@@ -639,14 +947,51 @@ async def process_evaluation_submission(
     source_lang_uuid: str,
     workflow_uuid: str | None,
     job_notes: str,
+    preaccepted_ai_translation_quote: bool = False,
+    prequote_message_ts: str | None = None,
+    ai_translation_filename_and_languages: list[str] | None = None,
+    quote_id: str | None = None,
 ) -> dict[str, Any]:
     """Durable quality-evaluation / human-translation submission processing."""
     from slack_sdk.web.async_client import AsyncWebClient
 
-    from app.api.verify import VerifyAPIError, submit_evaluation_job
-    from app.auth.connector import get_bot_token_async, get_ray_client
-    from app.ray.utils import validate_file
-    from app.slack.listeners import _publish_pdf_evaluate_convert
+    from app.api.verify import (
+        VerifyAPIError,
+        get_verify_languages,
+        submit_evaluation_job,
+    )
+    from app.auth.connector import (
+        RayConnection,
+        get_bot_token_async,
+        get_ray_client,
+        get_ray_super_group,
+        user_may_receive_quotes,
+    )
+    from app.constants import (
+        EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE,
+        HUMAN_EVALUATION_WORKFLOW_UUID,
+    )
+    from app.ray.submissions import (
+        SubmissionStatus,
+        check_and_record_evaluate_submission_async,
+        updated_submission_status,
+    )
+    from app.ray.utils import is_ibm_enterprise, validate_file
+    from app.slack.evaluation_ai_adjustment import (
+        estimated_pdf_file_language_costs,
+        evaluate_upload_filename,
+    )
+    from app.slack.evaluation_submissions import publish_pdf_evaluate_convert
+    from app.slack.pdf_evaluate_quotes import (
+        PDF_EVALUATE_QUOTE_ACTION_ID,
+        PDF_EVALUATE_QUOTE_ADJUST_ACTION_ID,
+        estimate_pdf_evaluate_ai_tokens,
+        pdf_page_count_from_file,
+        restore_pdf_evaluate_quote_for_retry,
+        save_pdf_evaluate_quote_session,
+        update_pdf_evaluate_quote_session,
+    )
+    from app.slack.templates.messages import EvaluationCreditsQuoteMessage
     from app.slack.web import download_file
 
     job = ctx.get("job")
@@ -658,10 +1003,31 @@ async def process_evaluation_submission(
         "attempt": attempt,
         "file_count": len(files),
     }
+    # Evaluate needs a member client for Verify API auth. Do not require a
+    # workspace super-group link — individually connected users must still work.
     ray_client = await get_ray_client(user_id, team_id, enterprise_id)
     if ray_client is None:
         logger.error("Evaluation submission has no RAY client", extra=log_extra)
         return {"status": "no_ray_client"}
+    # Prefer workspace super group so quote gating is org-scoped (same as
+    # Document MT / Media). Individually connected users without a workspace
+    # link still fall back to primary-group Admin/Owner.
+    super_groups = await get_ray_super_group(team_id, enterprise_id) or []
+    may_quote = await user_may_receive_quotes(RayConnection(super_groups, ray_client))
+    # HUMAN_EVALUATION embeds HV and starts TP jobs before Slack Accept
+    # ("cancelled" + empty Adjust). Non-admin HT must use synthetic AI+QE with
+    # slack_ht_quote_after_qe so HV waits for the HT quote Accept.
+    is_human_translation = workflow_uuid == HUMAN_EVALUATION_WORKFLOW_UUID
+    if may_quote:
+        slack_ht_quote_after_qe = False
+        confirmation_required = True
+    elif is_human_translation:
+        slack_ht_quote_after_qe = True
+        confirmation_required = True
+    else:
+        # Non-admin Quality Evaluation: prod-like auto-run, no quote staging.
+        slack_ht_quote_after_qe = False
+        confirmation_required = False
 
     bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
     if not bot_token:
@@ -672,6 +1038,21 @@ async def process_evaluation_submission(
     downloaded_files: list[str] = []
     input_files: list[str] = []
     file_titles: list[str] = []
+    valid_files: list[dict[str, Any]] = []
+    new_submission_ids: list[int] = []
+
+    def _mark_new_submissions_failed() -> None:
+        for submission_id in new_submission_ids:
+            try:
+                updated_submission_status(
+                    submission_id=submission_id,
+                    processing_status=SubmissionStatus.FAILED,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to mark evaluate submission as failed",
+                    extra={**log_extra, "submission_id": submission_id},
+                )
 
     try:
         for file_data in files:
@@ -686,37 +1067,273 @@ async def process_evaluation_submission(
                     text=error_message,
                 )
                 continue
+            if not file_data.get("size") and os.path.exists(input_file):
+                file_data["size"] = os.path.getsize(input_file)
             input_files.append(input_file)
             file_titles.append(file_data["title"])
+            valid_files.append(file_data)
 
         if not input_files:
             return {"status": "no_valid_files"}
 
         has_pdf = any(title.lower().endswith(".pdf") for title in file_titles)
-        if has_pdf:
-            await _publish_pdf_evaluate_convert(
-                ray_client=ray_client,
-                input_files=input_files,
-                file_titles=file_titles,
+        # Admins get the PDF pre-quote; non-admins skip straight to convert/create.
+        if has_pdf and not preaccepted_ai_translation_quote and may_quote:
+            # PDF pre-quote: do not record submissions (accept re-enqueues this task).
+            pdf_page_count = 0
+            for file_path, file_data in zip(input_files, valid_files, strict=True):
+                page_count = (
+                    pdf_page_count_from_file(file_path)
+                    if str(file_data["title"]).lower().endswith(".pdf")
+                    else 0
+                )
+                file_data["pdf_page_count"] = page_count
+                pdf_page_count += page_count
+            ai_token_estimate = estimate_pdf_evaluate_ai_tokens(
+                valid_files,
+                len(target_langs_uuid),
+            )
+            language_names = {
+                str(language["uuid"]): str(language.get("name") or language["uuid"])
+                for language in await get_verify_languages()
+            }
+            language_costs = estimated_pdf_file_language_costs(
+                valid_files,
+                [
+                    {
+                        "value": language_uuid,
+                        "label": language_names.get(language_uuid, language_uuid),
+                    }
+                    for language_uuid in target_langs_uuid
+                ],
+            )
+            quote_id = await save_pdf_evaluate_quote_session(
+                channel_id=channel_id,
+                user_id=user_id,
+                team_id=team_id,
+                enterprise_id=enterprise_id,
+                files=valid_files,
                 target_langs_uuid=target_langs_uuid,
                 reference=reference,
-                channel_id=channel_id,
                 source_lang_uuid=source_lang_uuid,
                 workflow_uuid=workflow_uuid,
                 job_notes=job_notes,
+                ai_token_estimate=ai_token_estimate,
+                pdf_page_count=pdf_page_count,
+                language_costs=language_costs,
+            )
+            message = EvaluationCreditsQuoteMessage(
+                service_label=_("AI Translation"),
+                token_cost=ai_token_estimate,
+                job_uuid=quote_id,
+                accept_action_id=PDF_EVALUATE_QUOTE_ACTION_ID,
+                adjust_action_id=PDF_EVALUATE_QUOTE_ADJUST_ACTION_ID,
+                pdf_page_count=pdf_page_count,
+                pdf_tokens=pdf_page_count * EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE,
+                is_ibm=is_ibm_enterprise(enterprise_id),
+                language_costs=language_costs,
+            )
+            response = await client.chat_postMessage(
+                channel=channel_id,
+                text=message.text,
+                blocks=message.blocks,
+            )
+            message_ts = response.get("ts")
+            if message_ts:
+                await update_pdf_evaluate_quote_session(
+                    quote_id,
+                    message_ts=message_ts,
+                )
+            return {"status": "quoted", "quote_id": quote_id}
+
+        verify_languages = await get_verify_languages()
+        uuid_to_code = {
+            str(language["uuid"]): str(language.get("code") or language["uuid"])[:10]
+            for language in verify_languages
+        }
+        source_language_code = uuid_to_code.get(
+            source_lang_uuid, (source_lang_uuid or "")[:10]
+        )
+
+        requested_pair_keys: set[str] | None = None
+        if ai_translation_filename_and_languages:
+            requested_pair_keys = {
+                str(pair).strip()
+                for pair in ai_translation_filename_and_languages
+                if str(pair).strip()
+            }
+
+        duplicate_submissions: list[str] = []
+        allowed_file_indexes: set[int] = set()
+        allowed_pairs: list[str] = []
+        # Union of target UUIDs across allowed files (preserve modal order).
+        allowed_lang_uuids: list[str] = []
+        seen_lang_uuids: set[str] = set()
+
+        for file_index, (input_file, file_data, file_title) in enumerate(
+            zip(input_files, valid_files, file_titles, strict=True)
+        ):
+            # Selections are keyed on the name Verify will see, which is the
+            # converted name for a PDF. Matching on the raw Slack title drops
+            # every PDF from the batch.
+            upload_title = evaluate_upload_filename(file_data)
+            file_target_uuids: list[str] = []
+            for target_lang_uuid in target_langs_uuid:
+                pair_key = f"{upload_title}:{target_lang_uuid}"
+                if (
+                    requested_pair_keys is not None
+                    and pair_key not in requested_pair_keys
+                ):
+                    continue
+                file_target_uuids.append(target_lang_uuid)
+            if not file_target_uuids:
+                continue
+
+            file_target_codes = [
+                uuid_to_code.get(lang_uuid, (lang_uuid or "")[:10])
+                for lang_uuid in file_target_uuids
+            ]
+            is_dup, record = await check_and_record_evaluate_submission_async(
+                path=input_file,
+                file_name=os.path.basename(input_file),
+                file_id=str(file_data.get("id") or ""),
+                user_id=user_id,
+                team_id=team_id,
+                channel_id=channel_id,
+                source_language=source_language_code,
+                target_languages=file_target_codes,
+            )
+            targets_label = ", ".join(file_target_codes)
+            if is_dup:
+                duplicate_submissions.append(
+                    f"{file_title} ({source_language_code or 'auto'} -> "
+                    f"{targets_label})"
+                )
+                continue
+
+            new_submission_ids.append(record.id)
+            allowed_file_indexes.add(file_index)
+            for target_lang_uuid in file_target_uuids:
+                allowed_pairs.append(f"{upload_title}:{target_lang_uuid}")
+                if target_lang_uuid not in seen_lang_uuids:
+                    seen_lang_uuids.add(target_lang_uuid)
+                    allowed_lang_uuids.append(target_lang_uuid)
+
+        if duplicate_submissions and not allowed_file_indexes:
+            await client.chat_postMessage(
+                channel=user_id,
+                text=_(
+                    "Please allow the system to complete the ongoing human "
+                    "translation request(s) "
+                    f"*({', '.join(duplicate_submissions)})* to prevent "
+                    "duplicate submissions."
+                ),
+            )
+            return {
+                "status": "duplicate",
+                "duplicate_count": len(duplicate_submissions),
+            }
+
+        if duplicate_submissions:
+            await client.chat_postMessage(
+                channel=user_id,
+                text=_(
+                    "Please allow the system to complete the ongoing human "
+                    "translation request(s) "
+                    f"*({', '.join(duplicate_submissions)})* to prevent "
+                    "duplicate submissions."
+                ),
+            )
+
+        submit_input_files = [
+            path
+            for index, path in enumerate(input_files)
+            if index in allowed_file_indexes
+        ]
+        submit_file_titles = [
+            title
+            for index, title in enumerate(file_titles)
+            if index in allowed_file_indexes
+        ]
+        submit_target_langs = allowed_lang_uuids
+        # Always pass explicit pairs when any file was filtered by Adjust or
+        # per-file dedupe so remaining files keep their intended target sets.
+        submit_ai_pairs = allowed_pairs or None
+
+        if not submit_input_files or not submit_target_langs:
+            # Publishing here would send an empty job that Verify rejects with a
+            # 400, leaving the quote stuck on "converting" with nothing running.
+            logger.error(
+                "Evaluation submission resolved to no files or targets; refusing "
+                "to publish",
+                extra={
+                    **log_extra,
+                    "requested_pair_count": len(requested_pair_keys or ()),
+                    "duplicate_count": len(duplicate_submissions),
+                },
+            )
+            _mark_new_submissions_failed()
+            await restore_pdf_evaluate_quote_for_retry(
+                client,
+                quote_id=quote_id,
+                channel_id=channel_id,
+                message_ts=prequote_message_ts,
+                is_ibm=is_ibm_enterprise(enterprise_id),
+            )
+            await client.chat_postMessage(
+                channel=user_id,
+                text=_(
+                    "We could not start your translation because none of the "
+                    "selected files and languages could be matched. Please try "
+                    "submitting again."
+                ),
+            )
+            return {"status": "nothing_to_submit"}
+
+        # Clear HUMAN_EVALUATION for any staged HT path (admin quotes or
+        # non-admin HT-after-QE) so CVC builds synthetic AI+QE without early HV.
+        submit_workflow_uuid = None if is_human_translation else workflow_uuid
+
+        if has_pdf:
+            await publish_pdf_evaluate_convert(
+                ray_client=ray_client,
+                input_files=submit_input_files,
+                file_titles=submit_file_titles,
+                target_langs_uuid=submit_target_langs,
+                reference=reference,
+                channel_id=channel_id,
+                source_lang_uuid=source_lang_uuid,
+                workflow_uuid=submit_workflow_uuid,
+                job_notes=job_notes,
+                preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
+                prequote_message_ts=prequote_message_ts,
+                ai_translation_filename_and_languages=submit_ai_pairs,
+                slack_ht_quote_after_qe=slack_ht_quote_after_qe,
+                confirmation_required=confirmation_required,
             )
         else:
             await submit_evaluation_job(
                 ray_client,
-                input_files,
-                target_langs_uuid,
+                submit_input_files,
+                submit_target_langs,
                 reference,
                 source_language_uuid=source_lang_uuid,
-                workflow_uuid=workflow_uuid,
+                workflow_uuid=submit_workflow_uuid,
                 job_notes=job_notes,
+                slack_channel_id=channel_id,
+                preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
+                prequote_message_ts=prequote_message_ts,
+                ai_translation_filename_and_languages=submit_ai_pairs,
+                slack_ht_quote_after_qe=slack_ht_quote_after_qe,
+                confirmation_required=confirmation_required,
             )
-        return {"status": "submitted", "file_count": len(input_files)}
+        return {
+            "status": "submitted",
+            "file_count": len(submit_input_files),
+            "duplicate_count": len(duplicate_submissions),
+        }
     except VerifyAPIError:
+        _mark_new_submissions_failed()
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
@@ -729,6 +1346,7 @@ async def process_evaluation_submission(
             "Evaluation submission failed; SAQ will retry", extra=log_extra
         )
         if job is not None and not job.retryable:
+            _mark_new_submissions_failed()
             notify_exception(
                 Exception("Queued evaluation submission failed"),
                 "Queued evaluation submission failed (final attempt)",
@@ -929,6 +1547,7 @@ FILE_DELIVERY_TASK_FUNCTIONS = [
 ]
 
 FILE_SUBMISSION_TASK_FUNCTIONS = [
+    process_document_mt_quote_preflight,
     process_document_mt_submission,
     process_evaluation_submission,
 ]

@@ -84,6 +84,7 @@ async def enqueue_document_mt_submission(
     files: list[FileSubmissionPayload],
     source_language: str | None,
     target_languages: list[str],
+    quote_id: str | None = None,
 ) -> None:
     """Enqueue durable document MT submission processing.
 
@@ -99,6 +100,7 @@ async def enqueue_document_mt_submission(
             "files": files,
             "source_language": source_language,
             "target_languages": target_languages,
+            "quote_id": quote_id,
         }
     )
     await enqueue(
@@ -109,6 +111,49 @@ async def enqueue_document_mt_submission(
         timeout=_submission_timeout_seconds(files),
         retry_delay=2.0,
         retry_backoff=True,
+        user_id=user_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+        channel_id=channel_id,
+        files=files,
+        source_language=source_language,
+        target_languages=target_languages,
+        quote_id=quote_id,
+    )
+
+
+async def enqueue_document_mt_quote_preflight(
+    *,
+    quote_id: str,
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    channel_id: str,
+    files: list[FileSubmissionPayload],
+    source_language: str | None,
+    target_languages: list[str],
+) -> None:
+    """Enqueue durable document MT quote preflight processing."""
+    key = "process_document_mt_quote_preflight:" + _stable_hash(
+        {
+            "quote_id": quote_id,
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": channel_id,
+            "files": files,
+            "source_language": source_language,
+            "target_languages": target_languages,
+        }
+    )
+    await enqueue(
+        "process_document_mt_quote_preflight",
+        queue_name=_submission_queue_name(files),
+        key=key,
+        retries=app_config.saq_file_upload_retries,
+        timeout=_submission_timeout_seconds(files),
+        retry_delay=2.0,
+        retry_backoff=True,
+        quote_id=quote_id,
         user_id=user_id,
         team_id=team_id,
         enterprise_id=enterprise_id,
@@ -131,6 +176,10 @@ async def enqueue_evaluation_submission(
     source_lang_uuid: str,
     workflow_uuid: str | None,
     job_notes: str,
+    preaccepted_ai_translation_quote: bool = False,
+    prequote_message_ts: str | None = None,
+    ai_translation_filename_and_languages: list[str] | None = None,
+    quote_id: str | None = None,
 ) -> None:
     """Enqueue durable quality-evaluation / human-translation submission processing."""
     key = "process_evaluation_submission:" + _stable_hash(
@@ -144,6 +193,11 @@ async def enqueue_evaluation_submission(
             "source_lang_uuid": source_lang_uuid,
             "workflow_uuid": workflow_uuid,
             "job_notes": job_notes,
+            "preaccepted_ai_translation_quote": preaccepted_ai_translation_quote,
+            "prequote_message_ts": prequote_message_ts,
+            "ai_translation_filename_and_languages": (
+                ai_translation_filename_and_languages
+            ),
         }
     )
     await enqueue(
@@ -164,6 +218,10 @@ async def enqueue_evaluation_submission(
         source_lang_uuid=source_lang_uuid,
         workflow_uuid=workflow_uuid,
         job_notes=job_notes,
+        preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
+        prequote_message_ts=prequote_message_ts,
+        ai_translation_filename_and_languages=ai_translation_filename_and_languages,
+        quote_id=quote_id,
     )
 
 

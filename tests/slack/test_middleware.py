@@ -246,6 +246,29 @@ class TestRequireRayClientOrgBilling:
 
         assert result is False
 
+    @pytest.mark.asyncio
+    async def test_human_translation_still_requires_member_when_org_linked(
+        self, context
+    ):
+        """HT must not use allow_org_billing — org alone is not enough."""
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=context["team_id"],
+            verify_organization_uuid="org-123",
+            slack_enterprise_id=None,
+        )
+        context["ray"] = RayConnection(super_group=[super_group], client=None)
+
+        # Default / HT path (no allow_org_billing) — matches evaluate human job.
+        result = await require_ray_client(
+            context,
+            prompt_login=False,
+            variation=LoginMessage.HUMAN_TRANSLATION,
+        )
+
+        assert result is False
+
 
 class TestRequireRayClientLoginPrompt:
     """Login prompts for feature-specific actions."""

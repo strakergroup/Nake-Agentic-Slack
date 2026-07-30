@@ -30,6 +30,13 @@ ENGLISH_PREFIXES = ("en", "gb", "us")
 LANGUAGE_FILENAME_PATTERN = re.compile(
     r"^(?:translations|missing_strings)_([^_]+)(?:_|$)"
 )
+# Vendor/Google-style codes that are not obj_stringtranslator.lang shortnames.
+# Slack locale ja-JP resolves to shortname `jp` in obj_m_langs; returned workbooks
+# and filenames often still use `ja`.
+DB_LANG_ALIASES = {
+    "ja": "jp",
+    "ja-jp": "jp",
+}
 
 
 @dataclass(frozen=True)
@@ -166,15 +173,23 @@ def column_index(indexes: dict[str, int], column: str) -> int | None:
     )
 
 
+def normalize_db_lang(lang: object) -> str:
+    """Map workbook/filename language codes to obj_stringtranslator.lang values."""
+    text = str(lang).strip()
+    return DB_LANG_ALIASES.get(text.lower(), text)
+
+
 def infer_target_language_from_path(workbook_path: Path) -> str | None:
     """Infer DB language from names like translations_fr_updated__French.xlsx."""
     stem = workbook_path.stem
     match = LANGUAGE_FILENAME_PATTERN.match(stem)
     if match:
-        return match.group(1) or None
+        inferred = match.group(1) or None
+        return normalize_db_lang(inferred) if inferred else None
     if "_" not in stem:
         return None
-    return stem.rsplit("_", 1)[1] or None
+    inferred = stem.rsplit("_", 1)[1] or None
+    return normalize_db_lang(inferred) if inferred else None
 
 
 def read_single_column_translation(sheet, row_number: int) -> object:
@@ -270,7 +285,7 @@ def collect_insert_statements(
             if not label or not lang or not translation or not str(translation).strip():
                 continue
             label_text = str(label)
-            lang_text = str(lang)
+            lang_text = normalize_db_lang(lang)
             translation_text = str(translation)
             if (
                 is_single_column_translator_workbook

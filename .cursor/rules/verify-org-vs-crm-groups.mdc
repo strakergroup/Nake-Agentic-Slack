@@ -1,0 +1,63 @@
+---
+description: >-
+  Verify org→team vs legacy CRM super group→group vocabulary, Slack link tables
+  (deltaray = member, super_group_link = workspace org+super group), role overlap.
+  Use when org/team/super group/group, quote admin gates, org billing,
+  RayConnection, verify_organization_uuid, obj_m_mglink, or deltaray links are involved.
+alwaysApply: false
+---
+
+# Verify org/team vs CRM super group/group
+
+Two parallel hierarchies. Do not conflate names or assume roles transfer 1:1.
+
+## Vocabulary
+
+| Side | Parent | Child | Membership / roles |
+|------|--------|-------|--------------------|
+| **Verify** | **Organization** (`verify_organization`) | **Team** (`verify_team`) | `verify_team_user_link.user_role` |
+| **Legacy CRM (LC)** | **Super group** (`obj_m_group`, `is_super_group`) | **Group** (`obj_m_group`) | `obj_m_mglink.client_type` (`Owner` / `Admin` / `Normal` / …) |
+
+Rough parallel: **org ≈ super-group bucket**, **team ≈ group** — related, not identical objects.
+
+## How the pieces relate
+
+`verify_organization` has **no FK to a group or super group**. CRM rows and Slack links point **at** the org.
+
+| Relation | How it is stored |
+|----------|------------------|
+| **Verify team → org** | `verify_team.organization_uuid` → `verify_organization.obj_uuid` (many teams per org) |
+| **CRM group → org** | Child `obj_m_group.organization_id` = org uuid — **usual** place members/admins live |
+| **CRM super group → org** | Same `organization_id` on the super-group row — **optional** (often `NULL`, e.g. IBM Supergroup) |
+| **CRM group ↔ super group** | **No direct parent FK.** For Slack, join via `slack_super_group_link`: child `organization_id` = link.`verify_organization_uuid` → `super_group_uuid` |
+
+**Both are possible:** a Verify org can be referenced by child groups, by a super group, or by both. Slack workspaces pair **org + super group** on one `slack_super_group_link` row (org may be null on older links).
+
+```text
+Verify:     organization ──< team
+                 ▲
+                 │  organization_id (optional on super; usual on child groups)
+                 │
+CRM:        [super group] ··· via Slack link ··· [group] ──< mglink ── member
+                 ▲                                    ▲
+                 └──── slack_super_group_link ────────┘
+                       (workspace: super_group_uuid + verify_organization_uuid)
+```
+
+## Slack link tables (`ray_integration`)
+
+| Table | Links | Org? | Team? |
+|-------|-------|------|-------|
+| **`slack_deltaray_link`** | Slack user ↔ LC **member** (`member_uuid` = `obj_m_member.obj_uuid`) | **No** | **No** (Verify team). `slack_team_id` is the **Slack workspace** id, not Verify team |
+| **`slack_super_group_link`** | Slack workspace ↔ CRM **super group** + Verify **organization** | **Yes** (`verify_organization_uuid`) | **No** |
+
+Deltaray is **member-only** (unique `member_uuid`). Workspace org/super-group context comes from `slack_super_group_link`, not from the deltaray row.
+
+## Practical notes
+
+- Org-billed Document MT uses `verify_organization_uuid` as `client_id`.
+- Quote Admin/Owner: workspace super group **or** any active Admin/Owner LC group under the workspace Verify org (e.g. IBM Slack App). Default group (`obj_m_member.groupid`) is unused; inactive mglinks do not count.
+- Verify team role ≠ CRM `client_type`. Unrelated Straker CRM Admin ≠ customer workspace org Admin.
+- Prefer workspace `verify_organization_uuid` / linked super group for workspace gates; without workspace link, quote admin gate denies.
+
+See also: [docs/verify-org-vs-crm-groups.md](../../docs/verify-org-vs-crm-groups.md).

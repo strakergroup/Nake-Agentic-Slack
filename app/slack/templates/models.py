@@ -318,7 +318,9 @@ class EvaluateJobForm(BaseModel):
         ]
         job_notes = values.get("job_notes", {}).get("job_notes", {}).get("value", "")
 
-        # Set workflow_options based on callback_id
+        # Form still pins HUMAN_EVALUATION so submit ack/errors use HT copy.
+        # process_evaluation_submission clears it for staged admin quotes and
+        # non-admin HT-after-QE (fixed workflow starts HV before Slack Accept).
         if callback_id == "evaluate_job":
             selected_option = (
                 values.get("workflow_options", {})

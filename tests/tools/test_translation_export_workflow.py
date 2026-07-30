@@ -396,11 +396,49 @@ def test_workbook_language_inference_reads_db_code_before_update_suffix():
         )
         == "jp"
     )
+    assert (
+        IMPORT_SQL.infer_target_language_from_path(
+            Path("missing_strings_ja_updated__Japanese.xlsx")
+        )
+        == "jp"
+    )
+    assert IMPORT_SQL.normalize_db_lang("ja") == "jp"
+    assert IMPORT_SQL.normalize_db_lang("JA-JP") == "jp"
+    assert IMPORT_SQL.normalize_db_lang("jp") == "jp"
+    assert IMPORT_SQL.normalize_db_lang("fr-ca") == "fr-ca"
     assert MT_FILL.infer_target_language_from_path(Path("translations_fr.xlsx")) == "fr"
     assert (
         MT_FILL.infer_target_language_from_path(Path("missing_strings_zh-CN.xlsx"))
         == "zh-CN"
     )
+
+
+def test_write_import_sql_normalizes_japanese_ja_to_jp(tmp_path):
+    workbook_path = tmp_path / "missing_strings_ja.xlsx"
+    output_path = tmp_path / "import.sql"
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.append(
+        [
+            "source_language",
+            "target_language",
+            "source_text",
+            "target_text",
+            "max_length",
+        ]
+    )
+    sheet.append(["en", "ja", "Cancel", "キャンセル", 0])
+    workbook.save(workbook_path)
+    workbook.close()
+
+    count = IMPORT_SQL.write_import_sql([workbook_path], output_path)
+
+    sql = output_path.read_text(encoding="utf-8")
+    assert count == 1
+    assert '`lang` = "jp"' in sql
+    assert ', "jp", "キャンセル"' in sql
+    assert ', "ja",' not in sql
+    assert '`lang` = "ja"' not in sql
 
 
 def test_write_import_sql_accepts_single_column_translator_workbook(tmp_path):

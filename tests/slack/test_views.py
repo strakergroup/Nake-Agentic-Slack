@@ -104,13 +104,12 @@ def test_verify_job_modal_cost_update_individual_checkboxes():
         None,
     )
 
-    assert (
-        total_cost_block is not None
-    ), "total_cost_block is missing from modal['blocks']"
+    message = "total_cost_block is missing from modal['blocks']"
+    assert total_cost_block is not None, message
 
     # Validate the total cost text dynamically
     assert (
-        f"*Total Cost*: USD ${expected_total_cost:.2f}"
+        f"*Maximum Total Cost*: USD {expected_total_cost:.2f}"
         in total_cost_block["text"]["text"]
     )
 
@@ -138,13 +137,12 @@ def test_verify_job_modal_cost_update_individual_checkboxes():
         None,
     )
 
-    assert (
-        total_cost_block is not None
-    ), "total_cost_block is missing from modal['blocks']"
+    message = "total_cost_block is missing from modal['blocks']"
+    assert total_cost_block is not None, message
 
     # Validate the updated total cost text dynamically
     assert (
-        f"*Total Cost*: USD ${expected_total_cost:.2f}"
+        f"*Maximum Total Cost*: USD {expected_total_cost:.2f}"
         in total_cost_block["text"]["text"]
     )
 
@@ -180,14 +178,16 @@ class TestHumanJobModal:
         assert "Request Quote" in modal["submit"]["text"]
 
     def test_human_job_modal_quality_evaluation_type(self):
-        """Test human job modal with quality evaluation type."""
+        """Test non-IBM quality evaluation modal keeps project metadata."""
         file_info = [{"id": "file-123", "name": "test.txt"}]
         modal = human_job_modal("C123", file_info, False, "quality")
 
         assert modal["type"] == "modal"
         assert modal["callback_id"] == "evaluate_job"
         assert "Quality Evaluation" in modal["title"]["text"]
-        assert "Submit" in modal["submit"]["text"]
+        assert "Request Quote" in modal["submit"]["text"]
+        assert "Project Name" in str(modal["blocks"])
+        assert "translation quality scores" in str(modal["blocks"])
 
     def test_human_job_modal_ibm_enterprise(self):
         """Test human job modal for IBM enterprise."""
@@ -307,7 +307,22 @@ class TestVerifyQuoteSummaryModal:
                     "file_uuid": "file-123",
                     "filename": "test.txt",
                     "target_files": [],
-                    "report": {"language_uuid": "source-uuid"},
+                    "report": {
+                        "language_uuid": "source-uuid",
+                        "evaluation_reports": [
+                            {
+                                "target_language": "lang-123",
+                                "count": {
+                                    "bad": 1,
+                                    "good": 5,
+                                    "best": 2,
+                                    "acceptable": 1,
+                                    "translation_memory": 1,
+                                },
+                                "score": 0.85,
+                            }
+                        ],
+                    },
                 }
             ],
         }
@@ -319,11 +334,16 @@ class TestVerifyQuoteSummaryModal:
             }
         ]
 
-        modal = verify_quote_summary_modal(job, costs, "1234567890.123456")
+        modal = verify_quote_summary_modal(job, costs, "1234567890.123456", "C123")
 
         assert modal["type"] == "modal"
         assert modal["callback_id"] == "verify_job"
         assert "job-123" in modal["private_metadata"]
+        assert '"channel_id": "C123"' in modal["private_metadata"]
+        assert '"ht_quote": true' in modal["private_metadata"]
+        rendered = str(modal["blocks"])
+        assert "Overall Score" not in rendered
+        assert "*Summary:*" not in rendered
 
 
 class TestCalculateTotalCost:
@@ -385,14 +405,22 @@ class TestDocumentMtJobModal:
         assert modal["private_metadata"] == "C123"
 
         source_block = next(
-            (block for block in modal["blocks"] if block.get("block_id") == "source_lang"),
+            (
+                block
+                for block in modal["blocks"]
+                if block.get("block_id") == "source_lang"
+            ),
             None,
         )
         assert source_block is not None
         assert source_block["element"]["type"] == "static_select"
 
         target_block = next(
-            (block for block in modal["blocks"] if block.get("block_id") == "target_langs"),
+            (
+                block
+                for block in modal["blocks"]
+                if block.get("block_id") == "target_langs"
+            ),
             None,
         )
         assert target_block is not None
@@ -581,9 +609,8 @@ class TestVideoTranscribeTranslateModal:
         if hasattr(file_block, "optional"):
             assert file_block.optional is False, "File field should be required"
         elif isinstance(file_block, dict):
-            assert (
-                file_block.get("optional", True) is False
-            ), "File field should be required"
+            message = "File field should be required"
+            assert file_block.get("optional", True) is False, message
 
     def test_private_metadata_contains_file_info(self):
         """Test that private_metadata contains file information."""

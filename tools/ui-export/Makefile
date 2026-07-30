@@ -6,6 +6,8 @@
 #   make generate   # Python step only (creates output/blocks.json)
 #   make render     # Node.js step only (creates output/ui-catalog.html)
 #   make supported-languages # Generate + render all supported Slack locales
+#   make quote-flow # Generate a static IBM HT staged quote flow mock
+#   make ai-translate-quote-flow # Generate a static direct AI Translate quote flow mock
 #   make clean      # Remove generated output
 
 SHELL := /bin/bash
@@ -45,7 +47,7 @@ ifdef TRANSLATIONS_FILE
 SUPPORTED_UI_EXPORT_ARGS += --translations-file $(TRANSLATIONS_FILE)
 endif
 
-.PHONY: all generate render supported-languages all-languages typecheck open clean install
+.PHONY: all generate render quote-flow ai-translate-quote-flow supported-languages all-languages typecheck open clean install
 
 all: generate render open
 
@@ -68,6 +70,14 @@ render: output/ui-catalog.html
 output/ui-catalog.html: output/blocks.json render.mjs node_modules
 	$(NODE_BIN) render.mjs
 
+quote-flow:
+	$(PYTHON) generate_quote_flow.py
+	$(NODE_BIN) render_quote_flow.mjs
+
+ai-translate-quote-flow:
+	$(PYTHON) generate_ai_translate_quote_flow.py
+	$(NODE_BIN) render_quote_flow.mjs --input output/ai-translate-quote-flow.json --output output/ai-translate-quote-flow.html
+
 supported-languages: node_modules
 	$(PYTHON) generate_blocks.py $(SUPPORTED_UI_EXPORT_ARGS)
 	$(NODE_BIN) render.mjs
@@ -82,4 +92,4 @@ open: output/ui-catalog.html
 	@open output/ui-catalog.html 2>/dev/null || xdg-open output/ui-catalog.html 2>/dev/null || echo "Open output/ui-catalog.html manually"
 
 clean:
-	rm -rf output/blocks.json output/ui-catalog.html
+	rm -rf output/blocks.json output/ui-catalog.html output/ibm-ht-staged-quote-flow.json output/ibm-ht-staged-quote-flow.html output/ai-translate-quote-flow.json output/ai-translate-quote-flow.html

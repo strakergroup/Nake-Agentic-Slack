@@ -50,17 +50,11 @@ class TestDocumentMachineTranslate:
     async def test_emits_one_event_for_multiple_target_languages(
         self, context, ray_client
     ):
-        from app.auth.connector import RayConnection, RaySuperGroup
+        from app.auth.connector import RayConnection
 
         fake_http_client = _FakeAsyncClient()
-        super_group = RaySuperGroup(
-            id=str(uuid4()),
-            name="Test Group",
-            verify_organization_uuid=str(uuid4()),
-            enable_verify_in_slack=False,
-            slack_team_id=context.get("team_id"),
-            slack_enterprise_id=None,
-        )
+        super_group = MagicMock()
+        super_group.id = ray_client.user_group_id
         context["ray"] = RayConnection(super_group=[super_group], client=ray_client)
 
         with (
@@ -94,6 +88,9 @@ class TestDocumentMachineTranslate:
         assert task_data.target_languages == ["fr", "de"]
         assert task_data.submission_ids == {"fr": 101, "de": 102}
         assert task_data.submission_id == 101
+        assert task_data.team_id == context["team_id"]
+        assert task_data.slack_user_id == context["user_id"]
+        assert task_data.billing_group_uuid == ray_client.user_group_id
 
         assert len(fake_http_client.posts) == 1
         event_data = fake_http_client.posts[0]["json"]["data"]
@@ -102,6 +99,59 @@ class TestDocumentMachineTranslate:
         assert event_data["target_language"] == "fr"
         assert event_data["target_languages"] == ["fr", "de"]
         assert event_data["submission_ids"] == {"fr": 101, "de": 102}
+        assert event_data["team_id"] == context["team_id"]
+        assert event_data["slack_user_id"] == context["user_id"]
+        assert event_data["billing_group_uuid"] == ray_client.user_group_id
+
+    @pytest.mark.asyncio
+    async def test_org_billed_without_member_stamps_poster_delivery_context(
+        self, context
+    ):
+        """Org-billed Document MT must carry poster ids for delivery/billing."""
+        from app.auth.connector import RayConnection
+
+        fake_http_client = _FakeAsyncClient()
+        org_uuid = str(uuid4())
+        super_group = MagicMock()
+        super_group.id = str(uuid4())
+        super_group.verify_organization_uuid = org_uuid
+        context["ray"] = RayConnection(super_group=[super_group], client=None)
+
+        with (
+            patch(
+                "app.slack.listener_actions.get_group_mt_engine",
+                new_callable=AsyncMock,
+                return_value="google",
+            ),
+            patch(
+                "app.slack.listener_actions.create_slack_job",
+                new_callable=AsyncMock,
+                return_value="task-org-1",
+            ) as create_job,
+            patch(
+                "app.slack.listener_actions.httpx.AsyncClient",
+                return_value=fake_http_client,
+            ),
+        ):
+            await document_machine_translate(
+                context,
+                "gridfs-file-1",
+                "en",
+                ["et"],
+                {"et": 6614},
+            )
+
+        task_data = create_job.await_args.args[0]
+        assert task_data.client_id == org_uuid
+        assert task_data.team_id == context["team_id"]
+        assert task_data.slack_user_id == context["user_id"]
+        assert task_data.billing_group_uuid == super_group.id
+
+        event_data = fake_http_client.posts[0]["json"]["data"]
+        assert event_data["client_id"] == org_uuid
+        assert event_data["team_id"] == context["team_id"]
+        assert event_data["slack_user_id"] == context["user_id"]
+        assert event_data["billing_group_uuid"] == super_group.id
 
 
 class TestCreateServiceLanguageMapping:
@@ -227,15 +277,13 @@ class TestIsVideoFile:
         for video_type in VIDEO_FILE_TYPES:
             # Test by filetype
             file_details = {"filetype": video_type, "name": "test"}
-            assert (
-                is_video_file(file_details) is True
-            ), f"Failed for filetype: {video_type}"
+            message = f"Failed for filetype: {video_type}"
+            assert is_video_file(file_details) is True, message
 
             # Test by extension
             file_details = {"filetype": "", "name": f"test.{video_type}"}
-            assert (
-                is_video_file(file_details) is True
-            ), f"Failed for extension: {video_type}"
+            message = f"Failed for extension: {video_type}"
+            assert is_video_file(file_details) is True, message
 
 
 class TestThreadMediaEmbedOption:
@@ -282,7 +330,7 @@ class TestThreadMediaEmbedOption:
 
     @pytest.mark.asyncio
     async def test_maybe_show_thread_media_embed_option_uses_thread_root_message(self):
-        """Test SRT uploads use the root thread message instead of thread replies."""
+        """Test SRT uploads quote embed-only from the root thread video."""
         client = AsyncMock()
         client.conversations_history.return_value = {
             "messages": [
@@ -301,10 +349,17 @@ class TestThreadMediaEmbedOption:
             "files": [{"id": "F123", "name": "captions.srt", "filetype": "srt"}],
         }
 
-        with patch(
-            "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
-        ) as mock_require:
+        with (
+            patch(
+                "app.slack.listener_actions.require_ray_client", new_callable=AsyncMock
+            ) as mock_require,
+            patch(
+                "app.slack.listener_actions.quote_existing_srt_embed_task",
+                new_callable=AsyncMock,
+            ) as mock_quote,
+        ):
             mock_require.return_value = True
+            mock_quote.return_value = True
             handled = await maybe_show_thread_media_embed_option(
                 client, context, message
             )
@@ -317,16 +372,13 @@ class TestThreadMediaEmbedOption:
             inclusive=True,
             limit=1,
         )
-        assert context.say.call_count == 1
-        assert context.say.call_args.kwargs["thread_ts"] == "123456.789"
-        assert context.say.call_args.kwargs["blocks"][0]["accessory"]["action_id"] == (
-            "video_embed_subtitles"
-        )
-        updated_action_data = json.loads(
-            context.say.call_args.kwargs["blocks"][0]["accessory"]["value"]
-        )
-        assert updated_action_data["files"][0]["file_id"] == "V123"
-        assert updated_action_data["subtitle_file"]["file_id"] == "F123"
+        assert context.say.call_count == 0
+        mock_quote.assert_awaited_once()
+        quote_args = mock_quote.await_args.args
+        assert quote_args[3] == "123456.789"
+        action_data = quote_args[2]
+        assert action_data["files"][0]["file_id"] == "V123"
+        assert action_data["subtitle_file"]["file_id"] == "F123"
 
     @pytest.mark.asyncio
     async def test_maybe_show_thread_media_embed_option_returns_false_for_non_media_root(
@@ -1184,6 +1236,7 @@ class TestSubmitVerificationJob:
                 "ray": RayConnection(super_group=[], client=ray_client),
                 "response_url": None,
                 "respond": None,
+                "channel_id": "C123",
             }
         )
         job = {
@@ -1213,7 +1266,9 @@ class TestSubmitVerificationJob:
                 new_callable=AsyncMock,
                 return_value={"data": []},
             ),
-            patch("app.slack.listener_actions.HumanJobQuoteMessage") as quote_message,
+            patch(
+                "app.slack.listener_actions.standalone_ht_quote_message"
+            ) as quote_message,
             patch(
                 "app.slack.listener_actions.create_human_job",
                 new_callable=AsyncMock,
@@ -1221,7 +1276,7 @@ class TestSubmitVerificationJob:
             patch(
                 "app.slack.listener_actions.redis_conn.delete",
                 new_callable=AsyncMock,
-            ),
+            ) as mock_delete_lock,
         ):
             quote_message.return_value.text = "Quote summary"
             quote_message.return_value.blocks = []
@@ -1234,6 +1289,8 @@ class TestSubmitVerificationJob:
                 user_id="U123",
                 timestamp="1710000000.000000",
                 job=job,
+                channel_id="C123",
+                prefer_ht_quote_message=True,
             )
 
         create_human_job.assert_awaited_once_with(
@@ -1242,3 +1299,175 @@ class TestSubmitVerificationJob:
             ["file-uuid:lang-uuid"],
             purchase_order_number="alpha.xlf",
         )
+        quote_message.assert_called_once()
+        mock_client.chat_update.assert_awaited_once_with(
+            channel="C123",
+            text="Quote summary",
+            blocks=[],
+            ts="1710000000.000000",
+        )
+        mock_delete_lock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ht_accept_keeps_ht_quote_when_workflow_flag_missing(
+        self, ray_client
+    ):
+        """Accept from HT quote must not fall back to QE Evaluation Result UI."""
+        from app.auth.connector import RayConnection, RayContext
+
+        mock_client = AsyncMock()
+        mock_client.chat_postMessage.return_value = {
+            "channel": "D123",
+            "ts": "1710000000.000000",
+        }
+        context = RayContext(
+            {
+                "ray": RayConnection(super_group=[], client=ray_client),
+                "response_url": None,
+                "respond": None,
+                "channel_id": "C123",
+            }
+        )
+        job = {
+            "data": {
+                "uuid": "verify-job-uuid",
+                "title": "slack job",
+                "workflow_uuid": None,
+                "extra_info": {},
+                "source_files": [
+                    {
+                        "file_uuid": "file-uuid",
+                        "filename": "alpha.xlf",
+                        "target_files": [
+                            {
+                                "language_uuid": "lang-uuid",
+                                "human_job_status": "Submitted",
+                            }
+                        ],
+                    }
+                ],
+                "target_languages": [{"uuid": "lang-uuid"}],
+            }
+        }
+
+        with (
+            patch(
+                "app.slack.listener_actions.get_job_pricing",
+                new_callable=AsyncMock,
+                return_value={"data": []},
+            ),
+            patch(
+                "app.slack.listener_actions.standalone_ht_quote_message"
+            ) as quote_message,
+            patch("app.slack.listener_actions.EvaluateSuccessMessage") as qe_message,
+            patch(
+                "app.slack.listener_actions.create_human_job",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.slack.listener_actions.redis_conn.delete",
+                new_callable=AsyncMock,
+            ),
+        ):
+            quote_message.return_value.text = "HT quote"
+            quote_message.return_value.blocks = []
+
+            await submit_verification_job(
+                client=mock_client,
+                context=context,
+                job_uuid="verify-job-uuid",
+                selected_languages=["file-uuid:lang-uuid"],
+                user_id="U123",
+                timestamp="1710000000.000000",
+                job=job,
+                channel_id="C123",
+                prefer_ht_quote_message=True,
+            )
+
+        quote_message.assert_called_once()
+        assert quote_message.call_args.kwargs.get("status_message") is None
+        qe_message.assert_not_called()
+        mock_client.chat_postMessage.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_staged_ht_accept_uses_quote_session_to_stay_on_ht_quote(
+        self, ray_client
+    ):
+        """Staged HT jobs carry no workflow or flag — the quote session identifies them."""
+        from app.auth.connector import RayConnection, RayContext
+
+        mock_client = AsyncMock()
+        mock_client.chat_postMessage.return_value = {
+            "channel": "D123",
+            "ts": "1710000000.000000",
+        }
+        context = RayContext(
+            {
+                "ray": RayConnection(super_group=[], client=ray_client),
+                "response_url": None,
+                "respond": None,
+                "channel_id": "C123",
+            }
+        )
+        job = {
+            "data": {
+                "uuid": "verify-job-uuid",
+                "title": "slack job",
+                "workflow_uuid": None,
+                "extra_info": {},
+                "source_files": [
+                    {
+                        "file_uuid": "file-uuid",
+                        "filename": "alpha.xlf",
+                        "target_files": [
+                            {
+                                "language_uuid": "lang-uuid",
+                                "human_job_status": "Submitted",
+                            }
+                        ],
+                    }
+                ],
+                "target_languages": [{"uuid": "lang-uuid"}],
+            }
+        }
+
+        with (
+            patch(
+                "app.slack.listener_actions.get_job_pricing",
+                new_callable=AsyncMock,
+                return_value={"data": []},
+            ),
+            patch(
+                "app.slack.evaluation_quotes.get_evaluate_quote_session",
+                new_callable=AsyncMock,
+                return_value={"quote_snapshot": {"auto_submit_human_job": True}},
+            ),
+            patch(
+                "app.slack.listener_actions.standalone_ht_quote_message"
+            ) as quote_message,
+            patch("app.slack.listener_actions.EvaluateSuccessMessage") as qe_message,
+            patch(
+                "app.slack.listener_actions.create_human_job",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.slack.listener_actions.redis_conn.delete",
+                new_callable=AsyncMock,
+            ),
+        ):
+            quote_message.return_value.text = "HT quote"
+            quote_message.return_value.blocks = []
+
+            await submit_verification_job(
+                client=mock_client,
+                context=context,
+                job_uuid="verify-job-uuid",
+                selected_languages=["file-uuid:lang-uuid"],
+                user_id="U123",
+                timestamp="1710000000.000000",
+                job=job,
+                channel_id="C123",
+            )
+
+        quote_message.assert_called_once()
+        qe_message.assert_not_called()

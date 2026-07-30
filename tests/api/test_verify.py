@@ -67,7 +67,8 @@ async def test_create_human_job_sends_multiple_file_and_languages_fields():
             assert kwargs["headers"] == {"Authorization": "Bearer test-token"}
 
             # Implementation sends a form body via data= (not multipart files=)
-            assert "data" in kwargs, f"Expected data= on httpx.post. Got: {list(kwargs.keys())}"
+            message = f"Expected data= on httpx.post. Got: {list(kwargs.keys())}"
+            assert "data" in kwargs, message
             posted = kwargs["data"]
             assert posted["job_uuid"] == job_uuid
             assert posted["file_and_languages"] == file_and_languages

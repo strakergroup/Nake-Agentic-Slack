@@ -180,7 +180,7 @@ def map_file_options(
             continue
         # Options text has max 75 characters.
         if len(title) > max_title_length:
-            title = f"{title[:max_title_length - 1]}…"
+            title = f"{title[: max_title_length - 1]}…"
         id = file.get("id")
         if not id or len(id) > max_title_length:
             continue
