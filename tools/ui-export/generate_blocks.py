@@ -846,6 +846,7 @@ def build_all_messages() -> list[dict[str, Any]]:
             DocMtMessage,
             DocParseErrorMessage,
             DocumentMTJobMessage,
+            EvaluateAiOnlyCompleteMessage,
             EvaluateErrorMessage,
             EvaluateSuccessMessage,
             EvaluationCreditsQuoteMessage,
@@ -854,7 +855,6 @@ def build_all_messages() -> list[dict[str, Any]]:
             FileTranslatedMessage,
             HelpMessage,
             HumanJobMessage,
-            HumanJobQuoteMessage,
             InfoMessage,
             InvalidCommandMessage,
             InvalidJobMessage,
@@ -864,6 +864,7 @@ def build_all_messages() -> list[dict[str, Any]]:
             JobCreationMessage,
             JobDelayMessage,
             JobDetailsMessage,
+            JobFileListEmptyMessage,
             JobListMessage,
             JobQuoteAcceptedEventMessage,
             JobQuoteCancelledEventMessage,
@@ -880,6 +881,9 @@ def build_all_messages() -> list[dict[str, Any]]:
             LoginMessage,
             LogoutMessage,
             MachineTranslationMessage,
+            MediaEmbeddingPartialMessage,
+            MediaTranslationPartialMessage,
+            MissingSlackFilesMessage,
             NewJobMessage,
             OnboardingMessage,
             QuoteMessage,
@@ -1231,28 +1235,30 @@ def build_all_messages() -> list[dict[str, Any]]:
         )
         eval_job = make_evaluate_job()
         costs = make_costs()
+        # Match prod combined pre-QE quote: QE fee embedded in each language
+        # line (no separate "Quality Evaluation: USD …" rows).
+        from app.slack.evaluation_combined_quotes import (
+            PRE_QE_QUOTE_DISPLAY,
+            combined_human_job_quote_message,
+            standalone_ht_quote_message,
+        )
+
         add(
             "HumanJobQuoteMessage",
             "Quotes",
-            HumanJobQuoteMessage(
+            combined_human_job_quote_message(
                 eval_job,
                 costs,
-                additional_costs=[
-                    {
-                        "label": "Quality Evaluation",
-                        "cost": 8.00,
-                        "file_uuid": "file-uuid-001",
-                        "language_uuid": "lang-fr-uuid",
-                    },
-                    {
-                        "label": "Quality Evaluation",
-                        "cost": 8.00,
-                        "file_uuid": "file-uuid-001",
-                        "language_uuid": "lang-es-uuid",
-                    },
-                ],
+                # 800 tokens * $0.02 = $16 total QE → $8 per language target
+                qe_token_cost=800,
                 download_translations_job_uuid=JOB_UUID,
+                **PRE_QE_QUOTE_DISPLAY,
             ),
+        )
+        add(
+            "HumanJobQuoteMessage (standalone HT)",
+            "Quotes",
+            standalone_ht_quote_message(eval_job, costs),
         )
         add(
             "EvaluationCreditsQuoteMessage (IBM HT AI quote with PDF)",
@@ -1432,6 +1438,16 @@ def build_all_messages() -> list[dict[str, Any]]:
             "Video",
             TranscriptionMessage("meeting-recording.mp4"),
         )
+        add(
+            "MediaTranslationPartialMessage",
+            "Video",
+            MediaTranslationPartialMessage(["French", "Spanish"]),
+        )
+        add(
+            "MediaEmbeddingPartialMessage",
+            "Video",
+            MediaEmbeddingPartialMessage(["German", "Japanese"]),
+        )
 
         # ---- Quality Evaluation ----
         add(
@@ -1450,6 +1466,11 @@ def build_all_messages() -> list[dict[str, Any]]:
             EvaluateSuccessMessage(eval_job, False, actions=False),
         )
         add("EvaluateErrorMessage", "Quality", EvaluateErrorMessage())
+        add(
+            "EvaluateAiOnlyCompleteMessage",
+            "Quality",
+            EvaluateAiOnlyCompleteMessage(eval_job),
+        )
         add(
             "VerifyCompleteMessage",
             "Quality",
@@ -1483,6 +1504,33 @@ def build_all_messages() -> list[dict[str, Any]]:
             "FileTooLargeMessage",
             "Errors",
             FileTooLargeMessage("huge-video.mp4", 52_428_800),
+        )
+        add(
+            "MissingSlackFilesMessage (single)",
+            "Errors",
+            MissingSlackFilesMessage(
+                [{"id": "F001", "title": "homepage.html"}],
+            ),
+        )
+        add(
+            "MissingSlackFilesMessage (multiple)",
+            "Errors",
+            MissingSlackFilesMessage(
+                [
+                    {"id": "F001", "title": "homepage.html"},
+                    {"id": "F002", "title": "about-us.docx"},
+                ],
+            ),
+        )
+        add(
+            "JobFileListEmptyMessage (in-progress)",
+            "Errors",
+            JobFileListEmptyMessage("TJ123456", "in-progress"),
+        )
+        add(
+            "JobFileListEmptyMessage (completed)",
+            "Errors",
+            JobFileListEmptyMessage("TJ123456", "completed"),
         )
 
         # ---- Tokens ----
@@ -1759,6 +1807,7 @@ def build_all_views() -> list[dict[str, Any]]:
         from app.slack.templates.views import (
             cancel_job_modal,
             document_mt_job_modal,
+            evaluation_ai_quote_adjust_modal,
             human_job_modal,
             job_search_modal,
             loading_modal,
@@ -1832,6 +1881,45 @@ def build_all_views() -> list[dict[str, Any]]:
             "verify_quote_summary_modal",
             "Modals",
             verify_quote_summary_modal(eval_job, costs, "1234567890.123456"),
+        )
+        add(
+            "evaluation_ai_quote_adjust_modal",
+            "Modals",
+            evaluation_ai_quote_adjust_modal(
+                quote_id=JOB_UUID,
+                quote_kind="evaluate",
+                language_costs=[
+                    {
+                        "file_uuid": "file-uuid-001",
+                        "file_label": "marketing-copy.docx",
+                        "value": "lang-fr-uuid",
+                        "label": "French",
+                        "token": 25,
+                    },
+                    {
+                        "file_uuid": "file-uuid-001",
+                        "file_label": "marketing-copy.docx",
+                        "value": "lang-es-uuid",
+                        "label": "Spanish",
+                        "token": 20,
+                    },
+                    {
+                        "file_uuid": "file-uuid-002",
+                        "file_label": "pricing.xlsx",
+                        "value": "lang-fr-uuid",
+                        "label": "French",
+                        "token": 15,
+                    },
+                ],
+                selected_pairs=[
+                    "file-uuid-001:lang-fr-uuid",
+                    "file-uuid-001:lang-es-uuid",
+                ],
+                ai_tokens=45,
+                pdf_tokens=10,
+                channel_id=CHANNEL_ID,
+                message_ts="1234567890.123456",
+            ),
         )
         add(
             "document_mt_job_modal",

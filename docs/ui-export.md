@@ -99,7 +99,7 @@ By default, language exports stay offline and deterministic. To use the real app
 The HTML file includes:
 
 - Navigation sidebar with all categories and templates
-- 110+ templates across 13 categories (Auth, Jobs, Quotes, Events, etc.)
+- 139 templates across message and modal categories (Auth, Jobs, Quotes, Events, etc.)
 - Modal views rendered with chrome (title bar, submit button)
 - Text-only messages displayed with a styled block
 - Language selector for switching between generated template translations
@@ -129,16 +129,15 @@ When a new message class or view function is added to the app:
 
 | Category    | Count | Description                              |
 |-------------|-------|------------------------------------------|
-| Auth        | 20    | Login, logout, onboarding, permissions   |
-| Home        | 2     | App home tab views                       |
-| Jobs        | 21    | Job status, lists, creation, files       |
-| Quotes      | 6     | Quote creation, acceptance, cancellation |
-| Events      | 8     | Signup, approval, status change events   |
-| Translation | 7     | Auto-translate, MT results, settings     |
-| Video       | 5     | Transcription, subtitle options          |
-| Quality     | 4     | Evaluation results, verify complete      |
-| FactCheck   | 2     | Claim extraction results                 |
-| Modals      | 19    | All modal dialogs                        |
-| Help        | 4     | Help messages, AI helper                 |
+| Auth        | 28    | Login, logout, onboarding, permissions   |
+| Home        | 5     | App home tab views                       |
+| Jobs        | 24    | Job status, lists, creation, files       |
+| Quotes      | 14    | Quote creation, acceptance, cancellation |
+| Events      | 10    | Signup, approval, status change events   |
+| Translation | 6     | Auto-translate, MT results, settings     |
+| Video       | 9     | Transcription, subtitle options, partial delivery |
+| Quality     | 6     | Evaluation results, AI-only complete, verify |
+| Modals      | 17    | All modal dialogs, including Adjust Request |
+| Help        | 6     | Help messages, AI helper                 |
 | Tokens      | 3     | Token purchase prompts                   |
-| Errors      | 7     | Error and warning messages               |
+| Errors      | 11    | Error and warning messages, missing files |

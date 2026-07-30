@@ -91,20 +91,39 @@ def test_ibm_quote_catalog_entry_uses_dollar_display():
     assert "USD 27.00" in rendered
 
 
-def test_human_job_quote_catalog_entry_applies_discount_without_quality_tiers():
-    """The catalog mirrors Slack, which prices off the discount but hides the tier."""
+def test_human_job_quote_catalog_entry_embeds_qe_without_quality_tiers():
+    """Catalog combined HT quote matches PRE_QE_QUOTE_DISPLAY (embedded QE)."""
     entries = build_all_messages()
     entry = next(item for item in entries if item["name"] == "HumanJobQuoteMessage")
     rendered = str(entry["blocks"])
 
     assert "USD 53.75" in rendered
-    assert "Quality Evaluation: USD 8.00" in rendered
     assert "USD 46.50" in rendered
+    assert "Quality Evaluation: USD 8.00" not in rendered
     assert "Quality: " not in rendered
     assert "-30% off" not in rendered
     assert "-20% off" not in rendered
-    assert "Total Cost*: USD 100.25" in rendered
-    assert "saved USD 29.24" in rendered
+    assert "Maximum Total Cost*: USD 100.25" in rendered
+    assert "saved USD" not in rendered
+    assert "discount" in rendered.lower()
+
+
+def test_standalone_ht_quote_catalog_entry_matches_prod_ht_only():
+    entries = build_all_messages()
+    entry = next(
+        item
+        for item in entries
+        if item["name"] == "HumanJobQuoteMessage (standalone HT)"
+    )
+    rendered = str(entry["blocks"])
+
+    assert "USD 45.75" in rendered
+    assert "USD 38.50" in rendered
+    assert "Quality Evaluation" not in rendered
+    assert "Quality: " not in rendered
+    assert "Total Cost*: USD 84.25" in rendered
+    assert "saved USD" not in rendered
+    assert "Maximum Total Cost" not in rendered
 
 
 def test_quote_flow_html_contains_only_new_quote_steps():
@@ -122,7 +141,9 @@ def test_quote_flow_html_contains_only_new_quote_steps():
     assert "Quality: " not in rendered
     assert "-30% off" not in rendered
     assert "-20% off" not in rendered
-    assert "saved USD 29.24" in rendered
+    assert "Quality Evaluation: USD" not in rendered
+    assert "Maximum Total Cost*: USD 100.25" in rendered
+    assert "saved USD" not in rendered
     assert "JobStatusMessage" not in rendered
 
 
@@ -150,6 +171,35 @@ def test_build_all_views_includes_ibm_connected_home_variants():
     assert "home_view (IBM, connected, admin)" in names
     assert "home_view (IBM, connected, non-admin)" in names
     assert "home_view (IBM, connected)" not in names
+
+
+def test_build_all_messages_includes_previously_missing_templates():
+    entries = build_all_messages()
+    names = {entry["name"] for entry in entries}
+
+    assert "MissingSlackFilesMessage (single)" in names
+    assert "MissingSlackFilesMessage (multiple)" in names
+    assert "JobFileListEmptyMessage (in-progress)" in names
+    assert "JobFileListEmptyMessage (completed)" in names
+    assert "MediaTranslationPartialMessage" in names
+    assert "MediaEmbeddingPartialMessage" in names
+    assert "EvaluateAiOnlyCompleteMessage" in names
+
+
+def test_build_all_views_includes_evaluation_ai_quote_adjust_modal():
+    entries = build_all_views()
+    entry = next(
+        item for item in entries if item["name"] == "evaluation_ai_quote_adjust_modal"
+    )
+    rendered = str(entry["blocks"])
+
+    assert entry["type"] == "modal"
+    assert entry["title"] == "Adjust Request"
+    assert "independent per file" in rendered
+    assert ":paperclip: *marketing-copy.docx*" in rendered
+    assert ":paperclip: *pricing.xlsx*" in rendered
+    assert "*Total cost:*" in rendered
+    assert "PDF conversion" in rendered
 
 
 def _collect_text_values(value):

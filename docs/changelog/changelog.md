@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- [Fixed]: UI export `HumanJobQuoteMessage` now uses prod `PRE_QE_QUOTE_DISPLAY` (QE fee embedded in language lines, Maximum Total Cost, no separate Quality Evaluation rows); added a standalone HT catalog variant (Wade Norman, 2026-07-30)
+- [Added]: UI export catalog now includes previously missing templates: `evaluation_ai_quote_adjust_modal`, `MissingSlackFilesMessage`, `JobFileListEmptyMessage`, `MediaTranslationPartialMessage`, `MediaEmbeddingPartialMessage`, and `EvaluateAiOnlyCompleteMessage` (Wade Norman, 2026-07-30)
 - [Fixed]: RAY-79115 — Human Translation Adjust Request allows submitting with every file/language deselected; the quote message shows all rows as **Cancelled**, strips Accept/Adjust, moves the session to `cancelled_qe`, and skips QE/HT acceptance (Wade Norman, 2026-07-30)
 - [Fixed]: RAY-79115 — quote admin gate no longer uses the member’s default group (`obj_m_member.groupid`); Admin/Owner on the workspace super group or any active LC group under the workspace Verify org (e.g. IBM Slack App) unlocks staged quotes (Wade Norman, 2026-07-30)
 - [Fixed]: RAY-79115 — AI Translate Adjust Request allows submitting with every file/language deselected; the quote message shows all rows as **AI Translate quote cancelled**, strips Accept/Adjust, and skips acceptance (Wade Norman, 2026-07-30)
