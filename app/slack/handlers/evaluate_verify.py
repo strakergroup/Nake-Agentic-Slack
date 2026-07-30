@@ -37,10 +37,12 @@ from app.slack.evaluation_quotes import (
     QE_TERMINAL_STAGES,
     STAGE_ACCEPTED_QE,
     STAGE_AWAITING_QE,
+    STAGE_CANCELLED_QE,
     STAGE_PROCESSING_QE,
     get_evaluate_quote_session,
     job_is_human_translation_quote,
     save_evaluate_quote_session,
+    update_evaluate_quote_session,
     update_evaluate_quote_stage,
 )
 from app.slack.listener_actions import (
@@ -203,16 +205,58 @@ async def handle_verify_job_submission(
                                     break
 
     if private_metadata.get("combined_qe_human_quote"):
-        if not selected_languages:
-            await redis_conn.delete(lock_key)
-            await client.chat_postMessage(
-                channel=body["user"]["id"],
-                text=_("Please select at least one file and target language."),
-            )
-            return
-
         session = await get_evaluate_quote_session(job_uuid)
         if session and session.get("stage") in QE_TERMINAL_STAGES:
+            await redis_conn.delete(lock_key)
+            return
+
+        # Full opt-out via Adjust Request: cancel like AI Translate (Cancelled
+        # rows, strip Accept/Adjust, skip QE/HT acceptance).
+        if not selected_languages:
+            display_job_data = mark_out_of_scope_pairs_cancelled(job["data"], [])
+            quote_snapshot = dict((session or {}).get("quote_snapshot") or {})
+            quote_snapshot.update(
+                {
+                    "selected_languages": [],
+                    "quality_evaluation_file_and_languages": [],
+                    "human_translation_file_and_languages": [],
+                }
+            )
+            if session:
+                await update_evaluate_quote_session(
+                    job_uuid,
+                    {
+                        "stage": STAGE_CANCELLED_QE,
+                        "quote_snapshot": quote_snapshot,
+                        "channel_id": quote_channel_id or session.get("channel_id"),
+                        "message_ts": message_ts or session.get("message_ts"),
+                    },
+                )
+            if message_ts and quote_channel_id:
+                message = combined_human_job_quote_message(
+                    display_job_data,
+                    [],
+                    qe_token_cost=0,
+                    qe_additional_costs=[],
+                    actions=False,
+                    status_message=_("Human Translation quote cancelled."),
+                    allow_adjust=False,
+                    show_total_cost=False,
+                    show_estimated_completion=False,
+                    show_accept_discount_helper=False,
+                    show_quality_discount=False,
+                    show_savings=False,
+                )
+                await client.chat_update(
+                    channel=quote_channel_id,
+                    ts=message_ts,
+                    text=message.text,
+                    blocks=message.blocks,
+                )
+            await client.chat_postMessage(
+                channel=body["user"]["id"],
+                text=_("Your request has been cancelled."),
+            )
             await redis_conn.delete(lock_key)
             return
 

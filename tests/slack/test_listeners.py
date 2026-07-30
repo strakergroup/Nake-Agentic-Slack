@@ -6759,6 +6759,149 @@ class TestHandleVerifyJobSubmission:
                     call_args = mock_submit.call_args
                     assert call_args[1]["selected_languages"] == []
 
+    @pytest.mark.asyncio
+    async def test_combined_ht_adjust_empty_selection_cancels_quote(
+        self, user_id, team_id, ray_client
+    ):
+        """Deselecting every HT/QE pair cancels the quote like AI Adjust Request."""
+        from uuid import uuid4
+
+        from app.slack.evaluation_quotes import STAGE_CANCELLED_QE
+        from app.slack.listeners import handle_verify_job_submission
+
+        mock_ack = AsyncMock()
+        mock_client = AsyncMock()
+        job_uuid = "job-123"
+        file_uuid = "file-123"
+        lang_uuid = "lang-123"
+        body = {
+            "view": {
+                "private_metadata": json.dumps(
+                    {
+                        "job_uuid": job_uuid,
+                        "timestamp": "123456.789",
+                        "channel_id": "C123",
+                        "combined_qe_human_quote": True,
+                        "ht_quote": True,
+                    }
+                ),
+                "state": {
+                    "values": {
+                        f"verification_checkbox_{lang_uuid}_{file_uuid}": {
+                            "verification_checkbox_action": {
+                                "selected_options": [],
+                            }
+                        }
+                    }
+                },
+            },
+            "user": {"id": user_id},
+        }
+        super_group = RaySuperGroup(
+            id=str(uuid4()),
+            name="Test Group",
+            verify_organization_uuid=str(uuid4()),
+            enable_verify_in_slack=False,
+            slack_team_id=team_id,
+            slack_enterprise_id=None,
+        )
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "ray": RayConnection(super_group=[super_group], client=ray_client),
+        }
+        mock_job = {
+            "data": {
+                "uuid": job_uuid,
+                "workflow_uuid": "workflow-123",
+                "target_languages": [{"uuid": lang_uuid, "name": "French"}],
+                "source_files": [
+                    {
+                        "file_uuid": file_uuid,
+                        "filename": "test.txt",
+                        "target_files": [
+                            {"language_uuid": lang_uuid},
+                        ],
+                    }
+                ],
+            }
+        }
+        session = {
+            "user_id": user_id,
+            "channel_id": "C123",
+            "message_ts": "123456.789",
+            "stage": "awaiting_qe",
+            "quote_snapshot": {
+                "auto_submit_human_job": True,
+                "quality_evaluation_file_and_languages": [f"{file_uuid}:{lang_uuid}"],
+                "human_translation_file_and_languages": [f"{file_uuid}:{lang_uuid}"],
+            },
+        }
+        quote_message = MagicMock(text="cancelled", blocks=[{"type": "section"}])
+        module = "app.slack.handlers.evaluate_verify"
+        with (
+            patch(
+                f"{module}.redis_conn.set", new_callable=AsyncMock, return_value=True
+            ),
+            patch(f"{module}.redis_conn.delete", new_callable=AsyncMock) as mock_unlock,
+            patch(
+                f"{module}.get_client_evaluation_job",
+                new_callable=AsyncMock,
+                return_value=mock_job,
+            ),
+            patch(
+                f"{module}.get_evaluate_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+            patch(
+                f"{module}.update_evaluate_quote_session",
+                new_callable=AsyncMock,
+            ) as mock_update_session,
+            patch(
+                f"{module}.combined_human_job_quote_message",
+                return_value=quote_message,
+            ) as mock_message,
+            patch(
+                f"{module}.proceed_quality_evaluation",
+                new_callable=AsyncMock,
+            ) as mock_proceed,
+            patch(
+                f"{module}.submit_verification_job",
+                new_callable=AsyncMock,
+            ) as mock_submit,
+        ):
+            await handle_verify_job_submission(
+                context_dict, mock_ack, body=body, client=mock_client
+            )
+
+        mock_ack.assert_called_once_with(response_action="clear")
+        mock_proceed.assert_not_awaited()
+        mock_submit.assert_not_awaited()
+        mock_update_session.assert_awaited_once()
+        session_updates = mock_update_session.await_args.args[1]
+        assert session_updates["stage"] == STAGE_CANCELLED_QE
+        assert session_updates["quote_snapshot"]["selected_languages"] == []
+        mock_message.assert_called_once()
+        assert mock_message.call_args.kwargs["actions"] is False
+        assert mock_message.call_args.kwargs["allow_adjust"] is False
+        assert "cancelled" in mock_message.call_args.kwargs["status_message"].lower()
+        display_job = mock_message.call_args.args[0]
+        assert (
+            display_job["source_files"][0]["target_files"][0]["human_job_status"]
+            == "Cancelled"
+        )
+        mock_client.chat_update.assert_awaited_once_with(
+            channel="C123",
+            ts="123456.789",
+            text=quote_message.text,
+            blocks=quote_message.blocks,
+        )
+        dm = mock_client.chat_postMessage.await_args.kwargs
+        assert dm["channel"] == user_id
+        assert "cancelled" in dm["text"].lower()
+        mock_unlock.assert_awaited()
+
 
 class TestViewUpdateAutoTranslateSettings:
     """Tests for view_update_auto_translate_settings function."""

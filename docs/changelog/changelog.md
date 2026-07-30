@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-79115 — Human Translation Adjust Request allows submitting with every file/language deselected; the quote message shows all rows as **Cancelled**, strips Accept/Adjust, moves the session to `cancelled_qe`, and skips QE/HT acceptance (Wade Norman, 2026-07-30)
 - [Fixed]: RAY-79115 — quote admin gate no longer uses the member’s default group (`obj_m_member.groupid`); Admin/Owner on the workspace super group or any active LC group under the workspace Verify org (e.g. IBM Slack App) unlocks staged quotes (Wade Norman, 2026-07-30)
 - [Fixed]: RAY-79115 — AI Translate Adjust Request allows submitting with every file/language deselected; the quote message shows all rows as **AI Translate quote cancelled**, strips Accept/Adjust, and skips acceptance (Wade Norman, 2026-07-30)
 - [Fixed]: RAY-79115 — AI Translate Adjust Request (HV staged AI quote and direct Document MT) keeps deselected file/language rows on the quote message as **AI Translate quote cancelled** instead of hiding them; human HT quotes still use the short **Cancelled** status (Wade Norman, 2026-07-29)
