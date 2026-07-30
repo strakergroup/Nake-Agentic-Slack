@@ -841,7 +841,7 @@ async def test_process_evaluation_submission_pdf_requests_extract_quote_before_c
         ),
         patch(
             "app.slack.pdf_evaluate_quotes.save_pdf_evaluate_quote_session",
-            new=AsyncMock(return_value="quote-1"),
+            new=AsyncMock(return_value="stable-quote-id"),
         ) as mock_save,
         patch(
             "app.api.stream_proxy.send_document_mt_quote_request",
@@ -872,14 +872,16 @@ async def test_process_evaluation_submission_pdf_requests_extract_quote_before_c
             source_lang_uuid="src",
             workflow_uuid=None,
             job_notes="notes",
+            quote_id="stable-quote-id",
         )
 
-    assert result == {"status": "quote_requested", "quote_id": "quote-1"}
+    assert result == {"status": "quote_requested", "quote_id": "stable-quote-id"}
     mock_publish.assert_not_awaited()
     mock_dedupe.assert_not_awaited()
     fake_slack.chat_postMessage.assert_not_called()
     mock_upload.assert_awaited_once()
     mock_save.assert_awaited_once()
+    assert mock_save.await_args.kwargs["quote_id"] == "stable-quote-id"
     assert mock_save.await_args.kwargs["stage"] == "quote_pending"
     assert mock_save.await_args.kwargs["files"][0]["gridfs_file_id"] == "grid-pdf-1"
     mock_quote.assert_awaited_once()

@@ -278,6 +278,39 @@ async def test_enqueue_evaluation_submission_forwards_payload():
     assert kwargs["target_langs_uuid"] == ["lang-1"]
     assert kwargs["reference"] == "ref"
     assert kwargs["key"].startswith("process_evaluation_submission:")
+    assert kwargs["quote_id"]
+
+
+@pytest.mark.asyncio
+async def test_enqueue_evaluation_submission_derives_stable_quote_id():
+    enqueue_kwargs = {
+        "user_id": "U1",
+        "team_id": "T1",
+        "enterprise_id": None,
+        "channel_id": "C1",
+        "files": [{"id": "F1", "title": "a.pdf"}],
+        "target_langs_uuid": ["lang-1"],
+        "reference": "ref",
+        "source_lang_uuid": "src",
+        "workflow_uuid": None,
+        "job_notes": "",
+    }
+    with (
+        patch("app.saq_jobs.dispatch.enqueue", new=AsyncMock()) as mock_enq,
+        patch("app.saq_jobs.dispatch.app_config") as mock_cfg,
+    ):
+        mock_cfg.saq_file_submission_queue_name = "submissions-q"
+        mock_cfg.saq_small_file_submission_queue_name = "small-submissions-q"
+        mock_cfg.saq_file_upload_retries = 5
+        mock_cfg.saq_file_upload_timeout_seconds = 900
+        mock_cfg.saq_small_file_upload_timeout_seconds = 300
+
+        await enqueue_evaluation_submission(**enqueue_kwargs)
+        first_quote_id = mock_enq.await_args.kwargs["quote_id"]
+        await enqueue_evaluation_submission(**enqueue_kwargs)
+        second_quote_id = mock_enq.await_args.kwargs["quote_id"]
+
+    assert first_quote_id == second_quote_id
 
 
 @pytest.mark.asyncio

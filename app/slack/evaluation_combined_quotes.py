@@ -10,12 +10,10 @@ from app.api.verify import (
     get_evaluation_job,
     get_evaluation_job_quote,
     get_job_pricing,
-    get_verify_languages,
     proceed_quality_evaluation,
 )
 from app.auth.connector import get_ray_client
 from app.constants import (
-    EVALUATE_SERVICE_AI_TRANSLATION,
     EVALUATE_SERVICE_QUALITY_EVALUATION,
     SLACK_HT_QUOTE_AFTER_QE_KEY,
 )
@@ -34,7 +32,6 @@ from app.slack.evaluation_ai_adjustment import (
     filter_job_to_pairs,
     language_costs_with_cancelled_status,
     mark_out_of_scope_pairs_cancelled,
-    quote_file_language_costs,
 )
 from app.slack.evaluation_quotes import (
     STAGE_ACCEPTED_QE,
@@ -562,25 +559,13 @@ async def post_combined_qe_human_quote(
             )
             if value
         ]
+        # Freeze accepted AI amounts — never re-quote AI Translation here.
+        # Status/actions may change; token rows stay as stored on accept/adjust.
         all_language_costs = (
             quote_snapshot.get("all_language_costs")
             or quote_snapshot.get("language_costs")
             or []
         )
-        # PDF preaccept used to omit language_costs; rebuild from the AI quote.
-        if not all_language_costs:
-            ai_quote = await get_evaluation_job_quote(
-                ray_client,
-                job_uuid,
-                [EVALUATE_SERVICE_AI_TRANSLATION],
-            )
-            language_names = {
-                str(language["uuid"]): str(language.get("name") or language["uuid"])
-                for language in await get_verify_languages()
-            }
-            all_language_costs = quote_file_language_costs(
-                ai_quote, job_data, language_names
-            )
         language_costs = (
             language_costs_with_cancelled_status(all_language_costs, selected_pairs)
             if all_language_costs

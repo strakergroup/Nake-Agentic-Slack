@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from typing import Any
 
 from app.config import config as app_config
@@ -200,6 +201,9 @@ async def enqueue_evaluation_submission(
             ),
         }
     )
+    # SAQ reuses this payload on every retry. Derive the pre-quote id from its
+    # stable job key so retries update one Redis session and publish one id.
+    resolved_quote_id = quote_id or str(uuid.uuid5(uuid.NAMESPACE_URL, key))
     await enqueue(
         "process_evaluation_submission",
         queue_name=_submission_queue_name(files),
@@ -221,7 +225,7 @@ async def enqueue_evaluation_submission(
         preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
         prequote_message_ts=prequote_message_ts,
         ai_translation_filename_and_languages=ai_translation_filename_and_languages,
-        quote_id=quote_id,
+        quote_id=resolved_quote_id,
     )
 
 

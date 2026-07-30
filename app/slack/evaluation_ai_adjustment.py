@@ -416,6 +416,12 @@ def pdf_costs_for_pairs(
     pdf_page_count = sum(
         int(file_data.get("pdf_page_count") or 0) for file_data in files
     )
+    language_costs = filter_language_costs_by_pairs(
+        session.get("all_language_costs") or session.get("language_costs") or [],
+        pairs,
+    )
+    if language_costs:
+        return tokens_from_language_cost_rows(language_costs), pdf_page_count
     if any("character_count" in file_data for file_data in files):
         langs_by_file: dict[str, list[str]] = {}
         for pair in pairs:
@@ -432,12 +438,6 @@ def pdf_costs_for_pairs(
             if langs_by_file.get(str(file_data.get("id")))
         )
         return ai_token_estimate, pdf_page_count
-    language_costs = filter_language_costs_by_pairs(
-        session.get("language_costs") or [],
-        pairs,
-    )
-    if language_costs:
-        return tokens_from_language_cost_rows(language_costs), pdf_page_count
     return pdf_adjusted_costs(
         session,
         selected_file_ids,

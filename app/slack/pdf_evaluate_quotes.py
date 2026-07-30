@@ -41,6 +41,7 @@ def _quote_key(quote_id: str) -> str:
 
 async def save_pdf_evaluate_quote_session(
     *,
+    quote_id: str | None = None,
     channel_id: str,
     user_id: str,
     team_id: str,
@@ -59,7 +60,7 @@ async def save_pdf_evaluate_quote_session(
     message_ts: str | None = None,
     stage: str = STAGE_QUOTE_PENDING,
 ) -> str:
-    quote_id = str(uuid.uuid4())
+    quote_id = quote_id or str(uuid.uuid4())
     payload = {
         "quote_id": quote_id,
         "channel_id": channel_id,
@@ -270,8 +271,17 @@ async def post_pdf_evaluate_quote_message(
     session: dict[str, Any],
     is_ibm: bool = False,
 ) -> str | None:
-    """Post the priced evaluate/HT PDF Service Quote and remember its timestamp."""
+    """Post or update the priced PDF Service Quote and remember its timestamp."""
     message = evaluation_pdf_quote_message(session, actions=True, is_ibm=is_ibm)
+    existing_message_ts = str(session.get("message_ts") or "")
+    if existing_message_ts:
+        await client.chat_update(
+            channel=channel_id,
+            ts=existing_message_ts,
+            text=message.text,
+            blocks=message.blocks,
+        )
+        return existing_message_ts
     response = await client.chat_postMessage(
         channel=channel_id,
         text=message.text,

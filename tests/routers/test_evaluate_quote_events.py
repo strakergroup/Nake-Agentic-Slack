@@ -7,7 +7,11 @@ import httpx
 import pytest
 
 from app.auth.connector import SlackUser
-from app.constants import HUMAN_VERIFICATION_WORKFLOW_UUID
+from app.constants import (
+    EVALUATE_SERVICE_AI_TRANSLATION,
+    EVALUATE_SERVICE_QUALITY_EVALUATION,
+    HUMAN_VERIFICATION_WORKFLOW_UUID,
+)
 from app.dependencies import RayEvent, RayEventAuth
 
 
@@ -692,6 +696,11 @@ async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
 
     auth = RayEventAuth()
     auth.slack_user = mock_slack_user
+    quote_calls: list[list[str]] = []
+
+    async def _quote(_ray_client, _job_uuid, services, **_kwargs):
+        quote_calls.append(list(services))
+        return {"services_costs": {"quality_evaluation": 80}, "token": 80}
 
     with (
         patch(
@@ -700,8 +709,7 @@ async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
         ) as mock_ray,
         patch(
             "app.slack.evaluation_combined_quotes.get_evaluation_job_quote",
-            new_callable=AsyncMock,
-            return_value={"services_costs": {"quality_evaluation": 80}, "token": 80},
+            new=_quote,
         ),
         patch(
             "app.slack.evaluation_combined_quotes.get_evaluation_job",
@@ -768,6 +776,11 @@ async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
 
     mock_pricing.assert_awaited_once()
     assert mock_pricing.await_args.kwargs["assumed_quality_tier"] == "bad"
+    # QE quote only — AI Translation amounts must not be re-fetched.
+    assert quote_calls == [[EVALUATE_SERVICE_QUALITY_EVALUATION]]
+    assert EVALUATE_SERVICE_AI_TRANSLATION not in {
+        service for services in quote_calls for service in services
+    }
     mock_client.chat_update.assert_awaited_once()
     assert mock_client.chat_update.await_args.kwargs["channel"] == "C123"
     assert mock_client.chat_update.await_args.kwargs["ts"] == "111.222"
@@ -776,6 +789,8 @@ async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
     assert "Review the human translation quote below." in ai_updated
     assert "*AI Translation:*" in ai_updated
     assert "*French*" in ai_updated
+    # Frozen snapshot: 100 AI tokens -> USD 2.00 (not a live re-quote).
+    assert "USD 2.00" in ai_updated
     assert "*Service:*" not in ai_updated
     assert "download_ai_translations_action" not in ai_updated
     mock_post.assert_awaited_once()
@@ -792,6 +807,119 @@ async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
     assert (
         mock_save.await_args.kwargs["quote_snapshot"]["auto_submit_human_job"] is True
     )
+
+
+@pytest.mark.asyncio
+async def test_post_combined_qe_human_quote_does_not_requote_ai_when_costs_missing(
+    mock_slack_user,
+):
+    """Missing AI language_costs must not trigger a live AI /quote/credits refresh."""
+    job_uuid = str(uuid4())
+    event = RayEvent(
+        event="verify:slack:evaluate:ready_for_qe_quote",
+        data={"client_id": mock_slack_user.ray_client_id, "job_uuid": job_uuid},
+    )
+    mock_client = AsyncMock()
+    ray_client = MagicMock()
+    job = {
+        "data": {
+            "uuid": job_uuid,
+            "extra_info": {
+                "slack_channel_id": "C123",
+                "ai_translation_file_and_languages": ["f1:l1"],
+            },
+            "workflow_uuid": HUMAN_VERIFICATION_WORKFLOW_UUID,
+            "source_files": [
+                {"file_uuid": "f1", "filename": "file.docx", "target_files": []}
+            ],
+            "target_languages": [{"uuid": "l1", "name": "French"}],
+        }
+    }
+    session = {
+        "channel_id": "C123",
+        "message_ts": "111.222",
+        "quote_snapshot": {
+            "service_label": "AI Translation",
+            "token_cost": 100,
+            "accept_action_id": "evaluation_ai_quote_accept",
+            "ai_translation_file_and_languages": ["f1:l1"],
+        },
+    }
+    auth = RayEventAuth()
+    auth.slack_user = mock_slack_user
+    quote_calls: list[list[str]] = []
+
+    async def _quote(_ray_client, _job_uuid, services, **_kwargs):
+        quote_calls.append(list(services))
+        return {"services_costs": {"quality_evaluation": 80}, "token": 80}
+
+    with (
+        patch(
+            "app.slack.evaluation_combined_quotes.get_ray_client",
+            new_callable=AsyncMock,
+            return_value=ray_client,
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.get_evaluation_job_quote",
+            new=_quote,
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.get_evaluation_job",
+            new_callable=AsyncMock,
+            return_value=job,
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.get_job_pricing",
+            new_callable=AsyncMock,
+            return_value={
+                "data": [
+                    {
+                        "file_uuid": "f1",
+                        "language_uuid": "l1",
+                        "service_list": [
+                            {
+                                "estimated_cost": 90.0,
+                                "time_estimate_days": 2,
+                                "quality_discount": {
+                                    "tier": "bad",
+                                    "word_discount_rate": 0.1,
+                                    "savings": 10.0,
+                                    "is_estimate": True,
+                                },
+                            }
+                        ],
+                    }
+                ]
+            },
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.get_evaluate_quote_session",
+            new_callable=AsyncMock,
+            return_value=session,
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.save_evaluate_quote_session",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.slack.evaluation_combined_quotes.post_notification",
+            new_callable=AsyncMock,
+            return_value={"ts": "333.444"},
+        ),
+    ):
+        from app.slack.evaluation_combined_quotes import post_combined_qe_human_quote
+
+        await post_combined_qe_human_quote(
+            mock_client,
+            event,
+            auth,
+            job_uuid=job_uuid,
+        )
+
+    assert quote_calls == [[EVALUATE_SERVICE_QUALITY_EVALUATION]]
+    ai_updated = str(mock_client.chat_update.await_args.kwargs["blocks"])
+    assert "AI translation is complete" in ai_updated
+    assert "USD 2.00" in ai_updated
 
 
 @pytest.mark.asyncio

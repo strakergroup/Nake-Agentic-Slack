@@ -10,6 +10,7 @@ from app.slack.pdf_evaluate_quotes import (
     STAGE_AWAITING_ACCEPT,
     apply_pdf_evaluate_quote_result,
     build_pdf_evaluate_language_costs,
+    post_pdf_evaluate_quote_message,
 )
 
 
@@ -109,3 +110,25 @@ async def test_apply_pdf_evaluate_quote_result_stores_extract_totals():
     assert kwargs["pdf_page_count"] == 1
     assert kwargs["stage"] == STAGE_AWAITING_ACCEPT
     assert kwargs["language_costs"][0]["token"] == 1
+
+
+@pytest.mark.asyncio
+async def test_pdf_quote_callback_updates_existing_message_on_retry():
+    client = AsyncMock()
+    session = {
+        "quote_id": "quote-1",
+        "message_ts": "111.222",
+        "ai_token_estimate": 1,
+        "language_costs": [],
+    }
+
+    message_ts = await post_pdf_evaluate_quote_message(
+        client,
+        channel_id="C1",
+        session=session,
+    )
+
+    assert message_ts == "111.222"
+    client.chat_update.assert_awaited_once()
+    assert client.chat_update.await_args.kwargs["ts"] == "111.222"
+    client.chat_postMessage.assert_not_awaited()

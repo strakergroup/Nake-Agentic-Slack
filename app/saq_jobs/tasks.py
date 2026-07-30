@@ -1117,6 +1117,7 @@ async def process_evaluation_submission(
                 ai_engine = "microsoft"
 
             quote_id = await save_pdf_evaluate_quote_session(
+                quote_id=quote_id,
                 channel_id=channel_id,
                 user_id=user_id,
                 team_id=team_id,

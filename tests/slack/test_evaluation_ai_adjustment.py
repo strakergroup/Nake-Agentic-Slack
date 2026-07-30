@@ -169,10 +169,20 @@ def test_pdf_file_language_rows_group_prices_by_filename():
 def test_pdf_costs_for_pairs_uses_only_selected_file_language_rows():
     session = {
         "files": [
-            {"id": "file-1", "size": 100, "pdf_page_count": 1},
-            {"id": "file-2", "size": 100, "pdf_page_count": 2},
+            {
+                "id": "file-1",
+                "size": 100,
+                "character_count": 9999,
+                "pdf_page_count": 1,
+            },
+            {
+                "id": "file-2",
+                "size": 100,
+                "character_count": 9999,
+                "pdf_page_count": 2,
+            },
         ],
-        "language_costs": [
+        "all_language_costs": [
             {
                 "file_uuid": "file-1",
                 "value": "lang-1",
