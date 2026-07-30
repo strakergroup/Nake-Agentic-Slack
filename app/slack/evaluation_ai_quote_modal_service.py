@@ -6,16 +6,9 @@ from typing import Any
 
 from slack_sdk.web.async_client import AsyncWebClient
 
-from app.api.verify import (
-    get_client_evaluation_job,
-    get_evaluation_job_quote,
-    get_verify_languages,
-)
+from app.api.verify import get_verify_languages
 from app.auth.connector import RayContext
-from app.constants import (
-    EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE,
-    EVALUATE_SERVICE_AI_TRANSLATION,
-)
+from app.constants import EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE
 from app.slack.document_mt_quote_adjustment import (
     DOCUMENT_MT_QUOTE_KIND,
     document_mt_all_pairs,
@@ -31,9 +24,7 @@ from app.slack.document_mt_quotes import (
 from app.slack.evaluation_ai_adjustment import (
     estimated_pdf_file_language_costs,
     file_language_pairs,
-    job_adjustment_options,
     pdf_costs_for_pairs,
-    quote_file_language_costs,
     quote_tokens_for_pairs,
     selected_pairs_from_view,
     update_modal_cost_blocks,
@@ -133,11 +124,18 @@ async def populate_ai_quote_adjustment_modal(
             }
             for language_uuid in target_language_uuids
         ]
-        language_costs = estimated_pdf_file_language_costs(
-            session.get("files") or [],
-            languages,
+        language_costs = list(
+            session.get("all_language_costs") or session.get("language_costs") or []
         )
-        session_updates["language_costs"] = language_costs
+        if not language_costs:
+            # Extract-priced rows should already be on the session; rebuild from
+            # character counts only as a safety net for older sessions.
+            language_costs = estimated_pdf_file_language_costs(
+                session.get("files") or [],
+                languages,
+            )
+            session_updates["language_costs"] = language_costs
+            session_updates["all_language_costs"] = language_costs
         selected_pairs = [
             str(value) for value in session.get("selected_pairs") or []
         ] or file_language_pairs(
@@ -178,8 +176,6 @@ async def populate_ai_quote_adjustment_modal(
             ),
         )
         return
-    assert context["ray"] is not None
-    assert context["ray"].client is not None
     session = await get_evaluate_quote_session(quote_id)
     if (
         not session
@@ -197,52 +193,55 @@ async def populate_ai_quote_adjustment_modal(
         session_updates["channel_id"] = resolved_channel_id
     if resolved_message_ts and resolved_message_ts != session.get("message_ts"):
         session_updates["message_ts"] = resolved_message_ts
-    job = await get_client_evaluation_job(context["ray"].client, quote_id)
-    quote = await get_evaluation_job_quote(
-        context["ray"].client,
-        quote_id,
-        [EVALUATE_SERVICE_AI_TRANSLATION],
-    )
-    files, languages = job_adjustment_options(job["data"])
+    # Freeze amounts from the staged quote snapshot — never re-quote AI
+    # Translation here (TM/memory changes after MT must not rewrite the view).
     quote_snapshot = dict(session.get("quote_snapshot") or {})
+    language_costs = list(
+        quote_snapshot.get("all_language_costs")
+        or quote_snapshot.get("language_costs")
+        or []
+    )
+    quote_details = list(quote_snapshot.get("ai_quote_details") or [])
+    if not language_costs:
+        await safe_views_update(client, view_id, request_error_modal())
+        return
     selected_pairs = [
         str(value)
         for value in quote_snapshot.get("ai_translation_file_and_languages") or []
     ] or file_language_pairs(
-        [file_data["value"] for file_data in files],
-        [language["value"] for language in languages],
+        [
+            str(file_uuid)
+            for file_uuid in quote_snapshot.get("file_uuids") or []
+            if file_uuid
+        ]
+        or sorted(
+            {
+                str(row.get("file_uuid"))
+                for row in language_costs
+                if row.get("file_uuid")
+            }
+        ),
+        sorted({str(row.get("value")) for row in language_costs if row.get("value")}),
     )
-    quote_details = [
-        {
-            "file_uuid": detail.get("file_uuid"),
-            "target_language_uuid": detail.get("target_language_uuid"),
-            "token": int(detail.get("token") or 0),
-        }
-        for detail in quote.get("details") or []
-    ]
-    language_names = {
-        str(language["uuid"]): str(language.get("name") or language["uuid"])
-        for language in await get_verify_languages()
-    }
-    quote_snapshot["ai_quote_details"] = quote_details
-    quote_snapshot["file_uuids"] = [file_data["value"] for file_data in files]
-    quote_snapshot["language_costs"] = quote_file_language_costs(
-        {"details": quote_details},
-        job["data"],
-        language_names,
-    )
-    session_updates["quote_snapshot"] = quote_snapshot
-    await update_evaluate_quote_session(quote_id, session_updates)
+    if session_updates:
+        await update_evaluate_quote_session(quote_id, session_updates)
     await safe_views_update(
         client,
         view_id,
         evaluation_ai_quote_adjust_modal(
             quote_id=quote_id,
             quote_kind=quote_kind,
-            language_costs=quote_snapshot["language_costs"],
+            language_costs=language_costs,
             selected_pairs=selected_pairs,
-            ai_tokens=quote_tokens_for_pairs(
-                {"details": quote_details}, selected_pairs
+            ai_tokens=(
+                quote_tokens_for_pairs({"details": quote_details}, selected_pairs)
+                if quote_details
+                else sum(
+                    int(row.get("token") or 0)
+                    for row in language_costs
+                    if f"{row.get('file_uuid')}:{row.get('value')}"
+                    in set(selected_pairs)
+                )
             ),
             pdf_tokens=int(quote_snapshot.get("pdf_tokens") or 0),
             channel_id=resolved_channel_id or None,

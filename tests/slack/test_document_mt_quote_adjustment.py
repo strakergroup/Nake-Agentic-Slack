@@ -385,3 +385,81 @@ class TestPersistDocumentMtQuoteAdjustment:
             "cancelled"
             in str(mock_update_message.await_args.kwargs["status_message"]).lower()
         )
+
+
+@pytest.mark.asyncio
+class TestPopulateEvaluateAiQuoteAdjustmentModal:
+    async def test_uses_frozen_snapshot_amounts_without_requote(self):
+        client = AsyncMock()
+        session = {
+            "user_id": "U1",
+            "stage": "awaiting_ai",
+            "channel_id": "C1",
+            "message_ts": "111.222",
+            "quote_snapshot": {
+                "token_cost": 100,
+                "ai_translation_file_and_languages": ["f1:l1"],
+                "ai_quote_details": [
+                    {
+                        "file_uuid": "f1",
+                        "target_language_uuid": "l1",
+                        "token": 100,
+                    }
+                ],
+                "all_language_costs": [
+                    {
+                        "file_uuid": "f1",
+                        "file_label": "file.docx",
+                        "value": "l1",
+                        "label": "French",
+                        "token": 100,
+                    }
+                ],
+                "language_costs": [
+                    {
+                        "file_uuid": "f1",
+                        "file_label": "file.docx",
+                        "value": "l1",
+                        "label": "French",
+                        "token": 100,
+                    }
+                ],
+                "file_uuids": ["f1"],
+            },
+        }
+        with (
+            patch(
+                "app.slack.evaluation_ai_quote_modal_service.populate_ray_connection",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_modal_service.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_modal_service.get_evaluate_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_modal_service.safe_views_update",
+                new_callable=AsyncMock,
+            ) as mock_update,
+        ):
+            await populate_ai_quote_adjustment_modal(
+                client,
+                view_id="view-1",
+                quote_id="job-1",
+                quote_kind="extracted",
+                user_id="U1",
+                context={"channel_id": "C1"},
+                channel_id="C1",
+                message_ts="111.222",
+            )
+
+        modal = mock_update.await_args.args[2]
+        rendered = str(modal["blocks"])
+        assert "file.docx" in rendered
+        assert "French" in rendered
+        assert "USD 2.00" in rendered

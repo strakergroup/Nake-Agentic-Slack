@@ -1106,6 +1106,78 @@ class TestRayEventsEndpoint:
         mock_post.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_ray_events_evaluate_pdf_quote_posts_evaluate_quote_message(
+        self, mock_slack_user, user_id, team_id
+    ):
+        quote_id = str(uuid4())
+        event = RayEvent(
+            event="verify:slack:evaluate:pdf:quote",
+            data={
+                "quote_id": quote_id,
+                "client_id": mock_slack_user.ray_client_id,
+                "channel_id": "C123",
+                "currency": "USD",
+                "total_tokens": 26,
+                "pdf_conversion_tokens": 25,
+                "total_cost_usd": 0.52,
+                "files": [
+                    {
+                        "file_id": "grid-1",
+                        "file_name": "1Test.pdf",
+                        "character_count": 15,
+                        "pdf_conversion_page_count": 1,
+                        "pdf_conversion_tokens": 25,
+                        "target_languages": [
+                            {
+                                "target_language": "fr",
+                                "tokens": 1,
+                                "cost_usd": 0.02,
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        mock_client = AsyncMock()
+        session = {
+            "quote_id": quote_id,
+            "channel_id": "C123",
+            "enterprise_id": None,
+            "ai_token_estimate": 1,
+            "pdf_page_count": 1,
+            "pdf_tokens": 25,
+            "language_costs": [],
+        }
+
+        with patch("app.dependencies.validate_queue_proxy_secret", return_value=True):
+            with patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                new_callable=AsyncMock,
+                return_value=mock_slack_user,
+            ):
+                with patch("app.dependencies.get_demo_link", return_value=[]):
+                    with patch(
+                        "app.routers.ray.AsyncWebClient", return_value=mock_client
+                    ):
+                        with patch(
+                            "app.routers.ray.apply_pdf_evaluate_quote_result",
+                            new_callable=AsyncMock,
+                            return_value=session,
+                        ) as mock_apply:
+                            with patch(
+                                "app.routers.ray.post_pdf_evaluate_quote_message",
+                                new_callable=AsyncMock,
+                            ) as mock_post:
+                                auth = RayEventAuth()
+                                await auth.initialize(event, "valid-token")
+
+                                await ray_events(event, auth)
+
+        mock_apply.assert_awaited_once()
+        mock_post.assert_awaited_once()
+        assert mock_post.await_args.kwargs["channel_id"] == "C123"
+
+    @pytest.mark.asyncio
     async def test_ray_events_document_mt_quote_error_reaches_org_billed_poster(
         self, mock_slack_user, user_id, team_id
     ):

@@ -277,10 +277,10 @@ All events are published via HTTP POST to `{STREAM_PROXY_DOMAIN}/events/{stream_
 
 | Field             | Value                                                                                         |
 | ----------------- | --------------------------------------------------------------------------------------------- |
-| **Purpose**       | Preflight pricing for file-based AI Translate before the user accepts the quote                |
-| **Trigger**       | User submits the AI Translate modal; SRT SAQ downloads, validates, and uploads files to GridFS |
+| **Purpose**       | Preflight pricing via M48 extract (character count) before the user accepts a quote             |
+| **Trigger**       | AI Translate modal submit, **or** admin HT/QE PDF pre-quote (GridFS upload, no Adobe convert) |
 | **Consumer**      | **int-slack-verify-consumer** (extract/character count + token/USD estimate)                  |
-| **Output Stream** | Results via redis-slack-consumer → `POST /ray/events` with `verify:slack:document:quote`      |
+| **Output Stream** | `verify:slack:document:quote` (Document MT) or `verify:slack:evaluate:pdf:quote` (HT/evaluate PDF) |
 | **Source Files**  | `app/api/stream_proxy.py`, `app/saq_jobs/tasks.py`                                            |
 
 
@@ -307,6 +307,8 @@ All events are published via HTTP POST to `{STREAM_PROXY_DOMAIN}/events/{stream_
   }
 }
 ```
+
+For HT/evaluate PDF pre-quotes, `output_stream` is `verify:slack:evaluate:pdf:quote` so `/ray/events` updates the pdf-evaluate session and posts `EvaluationCreditsQuoteMessage` instead of the Document MT quote UI.
 
 ---
 
@@ -429,6 +431,7 @@ These events arrive via `POST /ray/events` from **redis-slack-consumer**, which 
 | `transcription:slack:media:embedding:results`     | sup-subtitle-ai       | Subtitle embedding into video complete                          |
 | `verify:slack:document:quote`                     | int-slack-verify-consumer | Document machine translation quote ready for user confirmation   |
 | `verify:slack:document:translated`                | int-slack-verify-consumer | Document machine translation complete (success or error)        |
+| `verify:slack:evaluate:pdf:quote`                 | int-slack-verify-consumer | HT/evaluate PDF pre-quote after extract (no Adobe convert yet)  |
 | `verify:slack:evaluate:complete`                  | Verify API            | Quality evaluation job complete                                 |
 | `verify:human_verification:completed`             | Verify API            | Human verification/translation job complete                     |
 | `slack:direct:mt:result`                          | mt-service            | Direct/channel text MT translation result                       |

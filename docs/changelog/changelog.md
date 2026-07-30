@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-79115 — evaluate PDF pre-quote retries reuse one deterministic quote ID instead of creating duplicate Redis sessions/messages; Adjust Request totals now sum consumer-provided per-pair token rows before falling back to character estimates (Wade Norman, 2026-07-31)
+- [Changed]: RAY-79115 — AI Translation quote view amounts stay frozen after accept (AI-complete refresh and Adjust Request open use the Redis snapshot only; no live `/quote/credits` reprice). QE/HT quote amount updates are unchanged (Wade Norman, 2026-07-31)
+- [Fixed]: RAY-79115 — HT/evaluate PDF pre-quotes no longer invent AI tokens from Slack file **bytes**; they reuse Document MT extract quoting (`slack:job:machine:translate:quote` → M48 parse, no Adobe convert) and return on `verify:slack:evaluate:pdf:quote` so Slack still shows the evaluate/HT Service Quote UI. Accept still runs `slack:evaluate:pdf:convert` (Wade Norman, 2026-07-31)
 - [Fixed]: UI export `HumanJobQuoteMessage` now uses prod `PRE_QE_QUOTE_DISPLAY` (QE fee embedded in language lines, Maximum Total Cost, no separate Quality Evaluation rows); added a standalone HT catalog variant (Wade Norman, 2026-07-30)
 - [Added]: UI export catalog now includes previously missing templates: `evaluation_ai_quote_adjust_modal`, `MissingSlackFilesMessage`, `JobFileListEmptyMessage`, `MediaTranslationPartialMessage`, `MediaEmbeddingPartialMessage`, and `EvaluateAiOnlyCompleteMessage` (Wade Norman, 2026-07-30)
 - [Fixed]: RAY-79115 — Human Translation Adjust Request allows submitting with every file/language deselected; the quote message shows all rows as **Cancelled**, strips Accept/Adjust, moves the session to `cancelled_qe`, and skips QE/HT acceptance (Wade Norman, 2026-07-30)

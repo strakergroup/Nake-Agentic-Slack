@@ -117,8 +117,8 @@ def test_quote_file_language_costs_groups_rows_and_resolves_language_names():
 def test_pdf_adjusted_costs_filters_files_and_recalculates_pages():
     session = {
         "files": [
-            {"id": "file-1", "size": 1000, "pdf_page_count": 2},
-            {"id": "file-2", "size": 3000, "pdf_page_count": 5},
+            {"id": "file-1", "character_count": 1000, "pdf_page_count": 2},
+            {"id": "file-2", "character_count": 3000, "pdf_page_count": 5},
         ]
     }
 
@@ -128,12 +128,12 @@ def test_pdf_adjusted_costs_filters_files_and_recalculates_pages():
         ["lang-1", "lang-2"],
     )
 
-    assert ai_tokens > 0
+    assert ai_tokens == 4  # ceil(1000 * 2 * 0.002)
     assert page_count == 2
 
 
 def test_pdf_language_rows_sum_to_the_aggregate_estimate():
-    files = [{"id": "file-1", "size": 100}]
+    files = [{"id": "file-1", "character_count": 500}]
     languages = [
         {"value": "lang-1", "label": "French"},
         {"value": "lang-2", "label": "German"},
@@ -151,7 +151,7 @@ def test_pdf_language_rows_sum_to_the_aggregate_estimate():
 
 def test_pdf_file_language_rows_group_prices_by_filename():
     rows = estimated_pdf_file_language_costs(
-        [{"id": "file-1", "title": "source.pdf", "size": 100}],
+        [{"id": "file-1", "title": "source.pdf", "character_count": 100}],
         [{"value": "lang-1", "label": "French"}],
     )
 
@@ -169,10 +169,20 @@ def test_pdf_file_language_rows_group_prices_by_filename():
 def test_pdf_costs_for_pairs_uses_only_selected_file_language_rows():
     session = {
         "files": [
-            {"id": "file-1", "size": 100, "pdf_page_count": 1},
-            {"id": "file-2", "size": 100, "pdf_page_count": 2},
+            {
+                "id": "file-1",
+                "size": 100,
+                "character_count": 9999,
+                "pdf_page_count": 1,
+            },
+            {
+                "id": "file-2",
+                "size": 100,
+                "character_count": 9999,
+                "pdf_page_count": 2,
+            },
         ],
-        "language_costs": [
+        "all_language_costs": [
             {
                 "file_uuid": "file-1",
                 "value": "lang-1",

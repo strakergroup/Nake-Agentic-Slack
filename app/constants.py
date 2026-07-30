@@ -46,3 +46,8 @@ SLACK_HT_QUOTE_AFTER_QE_KEY = "slack_ht_quote_after_qe"
 
 # PDF conversion fee aligned with Document MT (tokens per page)
 EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE = 25
+
+# HT/evaluate PDF pre-quote uses the same consumer extract path as Document MT,
+# but returns on a distinct callback so Slack renders EvaluationCreditsQuoteMessage.
+EVALUATE_PDF_QUOTE_OUTPUT_STREAM = "verify:slack:evaluate:pdf:quote"
+DOCUMENT_MT_QUOTE_OUTPUT_STREAM = "verify:slack:document:quote"
