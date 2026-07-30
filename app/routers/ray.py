@@ -95,6 +95,10 @@ from ..slack.evaluation_combined_quotes import (
     standalone_ht_quote_message,
 )
 from ..slack.evaluation_quotes import job_is_human_translation_quote
+from ..slack.pdf_evaluate_quotes import (
+    apply_pdf_evaluate_quote_result,
+    post_pdf_evaluate_quote_message,
+)
 from ..slack.templates.messages import (
     AutoTranslationMessage,
     ClientApprovedEventMessage,
@@ -652,9 +656,13 @@ async def ray_events(
                     },
                 ) from e
 
-        elif event.event == "verify:slack:document:quote":
+        elif event.event in {
+            "verify:slack:document:quote",
+            "verify:slack:evaluate:pdf:quote",
+        }:
             try:
                 quote_data = DocumentMtQuoteResponseSchema.model_validate(event.data)
+                is_evaluate_pdf_quote = event.event == "verify:slack:evaluate:pdf:quote"
                 if quote_data.error:
                     error_data = MtErrorResponseSchema.model_validate(
                         {
@@ -710,8 +718,9 @@ async def ray_events(
                         message = DocMtMessage()
                     if auth.slack_user is None:
                         logger.error(
-                            "Document MT quote error has no deliverable Slack user",
+                            "Extract quote error has no deliverable Slack user",
                             extra={
+                                "event": event.event,
                                 "error_type": str(error_data.error_type),
                                 "has_team_id": bool(quote_data.team_id),
                                 "has_slack_user_id": bool(quote_data.slack_user_id),
@@ -725,6 +734,28 @@ async def ray_events(
                             auth.slack_user,
                             message,
                         )
+                elif is_evaluate_pdf_quote:
+                    session = await apply_pdf_evaluate_quote_result(
+                        quote_data.quote_id,
+                        quote_data.model_dump(),
+                    )
+                    if session is None:
+                        raise HTTPException(
+                            404,
+                            {
+                                "message": (
+                                    "Evaluate PDF quote session expired or missing"
+                                )
+                            },
+                        )
+                    await post_pdf_evaluate_quote_message(
+                        client,
+                        channel_id=str(
+                            session.get("channel_id") or quote_data.channel_id
+                        ),
+                        session=session,
+                        is_ibm=is_ibm_enterprise(session.get("enterprise_id")),
+                    )
                 else:
                     session = await apply_document_mt_quote_result(
                         quote_data.quote_id,

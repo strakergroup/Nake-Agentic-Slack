@@ -236,7 +236,27 @@ Separate PR required in **cloud-verify-consumer** — full contract documented i
 
 ## PDF conversion fee
 
-PDF submissions use a pre-job quote so Adobe PDF-to-DOCX conversion is not paid before the user accepts. SRT records each file's PDF page count and derives the AI Translation token cost from Slack file metadata, then shows PDF conversion cost first (25 tokens/page), followed by AI Translation prices grouped by source filename and target language. **Adjust Request** lets the user choose independent file/language pairs; AI cost is recalculated for the selected pairs while PDF conversion cost covers only files that remain in scope. Cost refreshes rewrite checkbox `initial_options` from the live modal state so Slack `views.update` cannot re-select deselected pairs. On accept, SRT forwards `ai_translation_filename_and_languages` (and preaccepted quote metadata) through PDF convert or direct evaluate create — including when the remaining selection is non-PDF only. CVA maps those upload filenames onto `extra_info.ai_translation_file_and_languages` after the files are saved, so MT/QE only process the chosen pairs instead of the full file×language cross-product. int-slack also remaps `.pdf` selections onto the converted `.docx` upload names.
+PDF submissions use a pre-job quote so Adobe PDF-to-DOCX conversion is not paid before the user accepts. SRT uploads the original PDF(s) to GridFS and publishes `slack:job:machine:translate:quote` with `output_stream=verify:slack:evaluate:pdf:quote` — the same consumer extract path as Document MT (M48 parse on the PDF, Adobe properties for page count, **no** DOCX convert). The priced callback updates the `pdf-evaluate-quote` Redis session and posts the evaluate/HT Service Quote (PDF conversion first at 25 tokens/page, then AI Translation rows from extracted character counts). **Adjust Request** lets the user choose independent file/language pairs; AI cost is recalculated from those extract counts while PDF conversion cost covers only files that remain in scope. Cost refreshes rewrite checkbox `initial_options` from the live modal state so Slack `views.update` cannot re-select deselected pairs. On accept, SRT forwards `ai_translation_filename_and_languages` (and preaccepted quote metadata) through PDF convert or direct evaluate create — including when the remaining selection is non-PDF only. CVA maps those upload filenames onto `extra_info.ai_translation_file_and_languages` after the files are saved, so MT/QE only process the chosen pairs instead of the full file×language cross-product. int-slack also remaps `.pdf` selections onto the converted `.docx` upload names.
+
+```mermaid
+sequenceDiagram
+    participant Slack as Slack user
+    participant SRT as slack-ray-translator
+    participant Consumer as int-slack-verify-consumer
+    participant M48 as doc-converter
+    participant RSC as redis-slack-consumer
+
+    Slack->>SRT: HT/QE submit with PDF
+    SRT->>SRT: upload PDF to GridFS (no Adobe convert)
+    SRT->>Consumer: slack:job:machine:translate:quote<br/>output_stream=verify:slack:evaluate:pdf:quote
+    Consumer->>M48: extract on original PDF
+    M48-->>Consumer: XLF / character count
+    Consumer->>RSC: verify:slack:evaluate:pdf:quote
+    RSC->>SRT: POST /ray/events
+    SRT->>Slack: Service Quote (AI pre-translation…)
+    Slack->>SRT: Accept Quote
+    SRT->>Consumer: slack:evaluate:pdf:convert (Adobe DOCX)
+```
 
 Direct AI Translate (Document MT) quotes use the same Service Quote layout: optional PDF conversion cost first, then AI Translation cost, and total cost. Document MT intro copy states that running AI translation will incur the displayed cost. Staged evaluate (HT) quotes use “AI pre-translation before human review will incur the following cost:” and always show an **AI Translation:** section header beneath PDF conversion so file/language rows are clearly AI costs. Evaluate staged quotes and Document MT quotes no longer use “Estimated” labels or aggregate-only totals when PDF conversion applies.
 

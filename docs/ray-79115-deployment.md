@@ -183,7 +183,7 @@ Run the refresh SQL, then re-run the pre-check — expect `c = 4` for each of
 | 1 | cloud-verify-api | [#114](https://github.com/strakergroup/cloud-verify-api/pull/114) | Quote/proceed APIs, `slack_ht_quote_after_qe`, selection scopes |
 | 2 | cloud-verify-consumer | [#124](https://github.com/strakergroup/cloud-verify-consumer/pull/124) | Staged pause, synthetic HV, PDF fee ownership |
 | 3 | int-slack-verify-consumer | [#14](https://github.com/strakergroup/int-slack-verify-consumer/pull/14) | Document MT quote preflight, dialect/Hebrew, PDF flag forward |
-| 3 | redis-slack-consumer | [#5](https://github.com/strakergroup/slack-straker-consumer/pull/5) | Subscribe to evaluate + document MT quote streams |
+| 3 | redis-slack-consumer | [#5](https://github.com/strakergroup/slack-straker-consumer/pull/5) | Subscribe to evaluate + document MT quote streams (also `verify:slack:evaluate:pdf:quote`) |
 | 4 | slack-ray-translator | [#54](https://github.com/strakergroup/slack-straker-translate/pull/54) | Quote UX; clears `HUMAN_EVALUATION` on HT submit |
 
 Prefer DB (workflow INSERT + stringtranslator) **before or with** step 1–2 so
@@ -191,7 +191,9 @@ any job still on the fixed workflow can create HV. SRT last so quote UX and
 workflow clearing land after backends can handle them.
 
 No new Redis stream **schema**; redis-slack-consumer must simply subscribe to
-the new event names (covered by PR #5).
+the new event names (covered by PR #5), including `verify:slack:evaluate:pdf:quote`
+for HT/evaluate PDF pre-quotes priced via consumer extract (same request stream
+as Document MT, distinct callback).
 
 ---
 

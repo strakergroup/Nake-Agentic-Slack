@@ -796,12 +796,11 @@ async def test_process_evaluation_submission_admin_ht_clears_fixed_workflow():
 
 
 @pytest.mark.asyncio
-async def test_process_evaluation_submission_pdf_posts_prequote_before_conversion():
+async def test_process_evaluation_submission_pdf_requests_extract_quote_before_conversion():
     ray_client = MagicMock()
+    ray_client.id = "member-1"
+    ray_client.user_group_id = "group-1"
     fake_slack = MagicMock()
-    slack_response = MagicMock()
-    slack_response.get.return_value = "123.456"
-    fake_slack.chat_postMessage = AsyncMock(return_value=slack_response)
 
     with (
         patch(
@@ -819,30 +818,35 @@ async def test_process_evaluation_submission_pdf_posts_prequote_before_conversio
         patch(
             "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
         ),
+        patch(
+            "app.auth.connector.get_group_mt_engine",
+            new=AsyncMock(return_value="google"),
+        ),
         patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
         patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.pdf")),
         patch("app.ray.utils.validate_file", return_value=(True, True, "")),
         patch(
+            "app.ray.utils.upload_to_file_server",
+            new=AsyncMock(return_value="grid-pdf-1"),
+        ) as mock_upload,
+        patch(
             "app.api.verify.get_verify_languages",
             new=AsyncMock(
                 return_value=[
-                    {"uuid": "lang-1", "name": "French"},
-                    {"uuid": "lang-2", "name": "German"},
+                    {"uuid": "src", "code": "en", "name": "English"},
+                    {"uuid": "lang-1", "code": "fr", "name": "French"},
+                    {"uuid": "lang-2", "code": "de", "name": "German"},
                 ]
             ),
-        ),
-        patch(
-            "app.slack.pdf_evaluate_quotes.pdf_page_count_from_file",
-            return_value=3,
         ),
         patch(
             "app.slack.pdf_evaluate_quotes.save_pdf_evaluate_quote_session",
             new=AsyncMock(return_value="quote-1"),
         ) as mock_save,
         patch(
-            "app.slack.pdf_evaluate_quotes.update_pdf_evaluate_quote_session",
+            "app.api.stream_proxy.send_document_mt_quote_request",
             new=AsyncMock(),
-        ) as mock_update,
+        ) as mock_quote,
         patch(
             "app.slack.evaluation_submissions.publish_pdf_evaluate_convert",
             new=AsyncMock(),
@@ -852,7 +856,9 @@ async def test_process_evaluation_submission_pdf_posts_prequote_before_conversio
             new=AsyncMock(),
         ) as mock_dedupe,
         patch("app.saq_jobs.tasks._safe_unlink"),
-        patch("os.path.exists", return_value=False),
+        patch("os.path.exists", return_value=True),
+        patch("os.path.getsize", return_value=1000),
+        patch("os.path.basename", return_value="a.pdf"),
     ):
         result = await process_evaluation_submission(
             _ctx(),
@@ -868,13 +874,22 @@ async def test_process_evaluation_submission_pdf_posts_prequote_before_conversio
             job_notes="notes",
         )
 
-    assert result == {"status": "quoted", "quote_id": "quote-1"}
+    assert result == {"status": "quote_requested", "quote_id": "quote-1"}
     mock_publish.assert_not_awaited()
     mock_dedupe.assert_not_awaited()
+    fake_slack.chat_postMessage.assert_not_called()
+    mock_upload.assert_awaited_once()
     mock_save.assert_awaited_once()
-    assert mock_save.await_args.kwargs["pdf_page_count"] == 3
-    assert mock_save.await_args.kwargs["ai_token_estimate"] == 4
-    mock_update.assert_awaited_once_with("quote-1", message_ts="123.456")
+    assert mock_save.await_args.kwargs["stage"] == "quote_pending"
+    assert mock_save.await_args.kwargs["files"][0]["gridfs_file_id"] == "grid-pdf-1"
+    mock_quote.assert_awaited_once()
+    assert mock_quote.await_args.kwargs["output_stream"] == (
+        "verify:slack:evaluate:pdf:quote"
+    )
+    assert mock_quote.await_args.kwargs["target_languages"] == ["fr", "de"]
+    assert mock_quote.await_args.kwargs["files"] == [
+        {"file_id": "grid-pdf-1", "file_name": "a.pdf", "file_size": 1000}
+    ]
 
 
 def _enter_accepted_pdf_patches(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Iterable
 
-from app.slack.pdf_evaluate_quotes import estimate_pdf_evaluate_ai_tokens
+from app.slack.media_quotes import media_translation_tokens
 from app.slack.templates.blocks import _format_evaluate_quote_cost
 from app.translate import _
 
@@ -241,13 +241,14 @@ def estimated_pdf_language_costs(
     languages: Iterable[dict[str, Any]],
     selected_language_uuids: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Return one pre-extraction estimate row per selected target language."""
+    """Return one extract-priced row per selected target language."""
     selected = (
         {str(value) for value in selected_language_uuids}
         if selected_language_uuids is not None
         else None
     )
-    tokens_per_language = estimate_pdf_evaluate_ai_tokens(files, 1)
+    character_count = sum(int(file.get("character_count") or 0) for file in files)
+    tokens_per_language = media_translation_tokens(character_count, 1)
     return [
         {
             "value": str(language["value"]),
@@ -263,11 +264,14 @@ def estimated_pdf_file_language_costs(
     files: list[dict[str, Any]],
     languages: Iterable[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Return pre-extraction estimate rows grouped by file and language."""
+    """Return extract-priced rows grouped by file and language."""
     language_list = list(languages)
     rows: list[dict[str, Any]] = []
     for file_data in files:
-        tokens_per_language = estimate_pdf_evaluate_ai_tokens([file_data], 1)
+        tokens_per_language = media_translation_tokens(
+            int(file_data.get("character_count") or 0),
+            1,
+        )
         for language in language_list:
             rows.append(
                 {
@@ -374,7 +378,7 @@ def pdf_adjusted_costs(
     selected_file_ids: Iterable[str],
     selected_language_uuids: Iterable[str],
 ) -> tuple[int, int]:
-    """Return AI estimate and PDF page count for a pre-job selection."""
+    """Return AI tokens and PDF page count for a pre-job selection."""
     selected_files = set(selected_file_ids)
     selected_languages = list(selected_language_uuids)
     files = [
@@ -385,9 +389,14 @@ def pdf_adjusted_costs(
     pdf_page_count = sum(
         int(file_data.get("pdf_page_count") or 0) for file_data in files
     )
-    ai_token_estimate = estimate_pdf_evaluate_ai_tokens(
-        files,
-        len(selected_languages),
+    target_count = len(selected_languages)
+    ai_token_estimate = sum(
+        media_translation_tokens(
+            int(file_data.get("character_count") or 0),
+            target_count,
+        )
+        for file_data in files
+        if target_count
     )
     return ai_token_estimate, pdf_page_count
 
@@ -396,9 +405,9 @@ def pdf_costs_for_pairs(
     session: dict[str, Any],
     selected_pairs: Iterable[str],
 ) -> tuple[int, int]:
-    """Return AI estimate and PDF page count for selected file/language pairs."""
+    """Return AI tokens and PDF page count for selected file/language pairs."""
     pairs = selected_pairs_from_values(selected_pairs)
-    selected_file_ids, _ = files_and_languages_from_pairs(pairs)
+    selected_file_ids, selected_language_uuids = files_and_languages_from_pairs(pairs)
     files = [
         file_data
         for file_data in session.get("files") or []
@@ -407,17 +416,32 @@ def pdf_costs_for_pairs(
     pdf_page_count = sum(
         int(file_data.get("pdf_page_count") or 0) for file_data in files
     )
+    if any("character_count" in file_data for file_data in files):
+        langs_by_file: dict[str, list[str]] = {}
+        for pair in pairs:
+            file_id, _, language_uuid = str(pair).partition(":")
+            if not file_id or not language_uuid:
+                continue
+            langs_by_file.setdefault(file_id, []).append(language_uuid)
+        ai_token_estimate = sum(
+            media_translation_tokens(
+                int(file_data.get("character_count") or 0),
+                len(langs_by_file.get(str(file_data.get("id")), [])),
+            )
+            for file_data in files
+            if langs_by_file.get(str(file_data.get("id")))
+        )
+        return ai_token_estimate, pdf_page_count
     language_costs = filter_language_costs_by_pairs(
         session.get("language_costs") or [],
         pairs,
     )
     if language_costs:
         return tokens_from_language_cost_rows(language_costs), pdf_page_count
-    # Fall back when the session has no per-row estimates yet.
     return pdf_adjusted_costs(
         session,
         selected_file_ids,
-        files_and_languages_from_pairs(pairs)[1],
+        selected_language_uuids,
     )
 
 

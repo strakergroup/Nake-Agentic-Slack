@@ -133,11 +133,18 @@ async def populate_ai_quote_adjustment_modal(
             }
             for language_uuid in target_language_uuids
         ]
-        language_costs = estimated_pdf_file_language_costs(
-            session.get("files") or [],
-            languages,
+        language_costs = list(
+            session.get("all_language_costs") or session.get("language_costs") or []
         )
-        session_updates["language_costs"] = language_costs
+        if not language_costs:
+            # Extract-priced rows should already be on the session; rebuild from
+            # character counts only as a safety net for older sessions.
+            language_costs = estimated_pdf_file_language_costs(
+                session.get("files") or [],
+                languages,
+            )
+            session_updates["language_costs"] = language_costs
+            session_updates["all_language_costs"] = language_costs
         selected_pairs = [
             str(value) for value in session.get("selected_pairs") or []
         ] or file_language_pairs(

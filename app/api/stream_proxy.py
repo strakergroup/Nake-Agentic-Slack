@@ -163,18 +163,23 @@ async def send_document_mt_quote_request(
     ai_engine: str,
     team_id: str | None = None,
     slack_user_id: str | None = None,
+    output_stream: str | None = None,
 ) -> None:
-    """Request a document MT quote from int-slack-verify-consumer.
+    """Request a document extract quote from int-slack-verify-consumer.
 
     The consumer owns document extraction and exact character counting, so this
     app publishes a preflight event instead of estimating quoteable content
-    locally.
+    locally. Direct AI Translate and HT/evaluate PDF pre-quotes share this
+    request stream; ``output_stream`` selects which Slack callback handles the
+    priced result.
 
     ``team_id`` / ``slack_user_id`` mirror ``MtFileRequestSchema``: for an
     org-billed poster ``client_id`` is the Verify organization uuid, so the
     echoed quote response needs the Slack poster to reach a real user rather
     than DM-ing a UUID.
     """
+    from app.constants import DOCUMENT_MT_QUOTE_OUTPUT_STREAM
+
     request_data = {
         "data": {
             "quote_id": quote_id,
@@ -185,7 +190,7 @@ async def send_document_mt_quote_request(
             "target_languages": target_languages,
             "ai_engine": ai_engine,
             "data_source": "slack",
-            "output_stream": "verify:slack:document:quote",
+            "output_stream": output_stream or DOCUMENT_MT_QUOTE_OUTPUT_STREAM,
             "team_id": team_id,
             "slack_user_id": slack_user_id,
         },

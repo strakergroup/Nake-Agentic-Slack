@@ -1,6 +1,5 @@
 """Tests for sequential evaluate quote Slack blocks and messages."""
 
-from app.slack.pdf_evaluate_quotes import estimate_pdf_evaluate_ai_tokens
 from app.slack.templates.blocks import evaluation_credits_quote_blocks
 from app.slack.templates.messages import EvaluationCreditsQuoteMessage
 
@@ -160,14 +159,6 @@ class TestEvaluationCreditsQuoteBlocks:
         assert "PDF conversion" in rendered
         assert "PDF conversion cost" not in rendered
         assert rendered.index("PDF conversion") < rendered.index("AI Translation")
-
-    def test_pdf_evaluate_prequote_estimates_from_file_sizes_and_targets(self):
-        tokens = estimate_pdf_evaluate_ai_tokens(
-            [{"size": 1000}, {"size": 500}],
-            target_language_count=2,
-        )
-
-        assert tokens == 6
 
 
 def test_human_job_quote_message_shows_accept_helper_on_pre_qe_estimate():

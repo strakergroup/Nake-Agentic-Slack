@@ -24,6 +24,9 @@ from app.slack.pdf_evaluate_quotes import (
     STAGE_PROCESSING_ACCEPT as PDF_PREQUOTE_STAGE_PROCESSING_ACCEPT,
 )
 from app.slack.pdf_evaluate_quotes import (
+    STAGE_QUOTE_PENDING as PDF_PREQUOTE_STAGE_QUOTE_PENDING,
+)
+from app.slack.pdf_evaluate_quotes import (
     get_pdf_evaluate_quote_session,
     update_pdf_evaluate_quote_message,
     update_pdf_evaluate_quote_session,
@@ -43,9 +46,12 @@ async def accept_pdf_evaluate_quote(
     if not session:
         return
     if session.get("stage") in {
+        PDF_PREQUOTE_STAGE_QUOTE_PENDING,
         PDF_PREQUOTE_STAGE_PROCESSING_ACCEPT,
         PDF_PREQUOTE_STAGE_ACCEPTED,
     }:
+        return
+    if session.get("stage") != PDF_PREQUOTE_STAGE_AWAITING_ACCEPT:
         return
 
     lock_key = f"evaluate_pdf_prequote_accept_{quote_id}"
