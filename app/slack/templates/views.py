@@ -34,6 +34,7 @@ from ...ray.settings import (
 )
 from ...ray.utils import is_ibm_enterprise
 from ...slack.utils import format_strings_display
+from ..ai_quote_display import ai_language_cost_display_amounts
 from ..evaluation_ai_adjustment import (
     AI_QUOTE_ADJUST_CALLBACK_ID,
     AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID,
@@ -47,6 +48,7 @@ from ..select_options import (
 )
 from .blocks import (
     _format_evaluate_quote_cost,
+    _format_evaluate_quote_usd,
     home_auth_blocks,
     verify_quote_blocks,
 )
@@ -998,8 +1000,13 @@ def evaluation_ai_quote_adjust_modal(
             },
         },
     ]
+    display_amounts = ai_language_cost_display_amounts(
+        ai_tokens,
+        language_costs,
+        selected_pairs=selected,
+    )
     current_file: str | None = None
-    for language in language_costs:
+    for language, display_usd in zip(language_costs, display_amounts, strict=True):
         file_uuid = str(language.get("file_uuid") or "")
         language_uuid = str(language["value"])
         option_value = f"{file_uuid}:{language_uuid}" if file_uuid else language_uuid
@@ -1015,10 +1022,8 @@ def evaluation_ai_quote_adjust_modal(
                 }
             )
             current_file = file_label
-        option_text = (
-            f"*{language['label']}*: "
-            f"{_format_evaluate_quote_cost(int(language.get('token') or 0))}"
-        )
+        amount = 0.0 if display_usd is None else display_usd
+        option_text = f"*{language['label']}*: {_format_evaluate_quote_usd(amount)}"
         option = {
             "text": {"type": "mrkdwn", "text": option_text},
             "value": option_value,

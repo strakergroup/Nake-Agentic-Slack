@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-79115 — Document MT Adjust Request recomputes AI tokens with the SOW formula (`ceil(chars × selected_targets × 0.002)`) and redistributes line USD so minimum/ceil row tokens cannot inflate the modal Total (Wade Norman, 2026-07-31)
+- [Fixed]: RAY-79115 — AI Translation quote language lines distribute the charged aggregate (two-decimal `USD` display) so per-row minimum/ceil tokens cannot make line amounts exceed Total; Adjust Request redistributes on selection change (Wade Norman, 2026-07-31)
 - [Changed]: Placeholder tags are now generated as `<x id="N"/>` (quoted) in runtime Translator, translation-export, and UI export; lookups still accept unquoted `<x id=N/>` and legacy `<x id=N>` DB/workbook labels (Wade Norman, 2026-07-31)
 - [Changed]: RAY-79115 — AI Translation quote guidance sentence now ends with a period (“…remove languages and/or source files.”) (Wade Norman, 2026-07-31)
 - [Fixed]: RAY-79115 — evaluate PDF pre-quote retries reuse one deterministic quote ID instead of creating duplicate Redis sessions/messages; Adjust Request totals now sum consumer-provided per-pair token rows before falling back to character estimates (Wade Norman, 2026-07-31)

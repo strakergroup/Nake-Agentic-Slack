@@ -93,9 +93,12 @@ dedicated `quote_kind="document_mt"`:
   `evaluation_ai_quote_adjust_modal` straight from the Redis quote session —
   no Verify API call is needed. Language display names come from the MT
   language catalogue (`get_auto_translate_languages`).
-- Checkbox toggles refresh the modal total from the selected rows
-  (`document_mt_tokens_for_pairs`); PDF conversion fees follow files that
-  still have at least one selected pair (`document_mt_pdf_tokens_for_pairs`).
+- Checkbox toggles refresh the modal total from the SOW charge
+  (`ceil(chars × selected_targets × 0.002)` per file via
+  `document_mt_tokens_for_pairs`) and redistribute per-row USD labels across
+  the selected pairs so lines still sum to Total; PDF conversion fees follow
+  files that still have at least one selected pair
+  (`document_mt_pdf_tokens_for_pairs`).
 - Modal submit persists `selected_pairs` onto the quote session, refreshes the
   quote message keeping the full file/language grid (deselected pairs show
   **AI Translate quote cancelled**, matching the staged AI quote), re-prices
@@ -109,10 +112,13 @@ Pair keys use the GridFS `file_id` (not the Slack file id) so the modal, the
 quote session, the submission filter, and the consumer funding check all agree
 on one identity.
 
-Displayed adjusted totals sum the per-row token estimates; per-row figures
-carry their own ceil, so the displayed total can exceed the aggregate charged
-figure by up to (targets − 1) tokens per file — the same presentation drift
-the staged evaluate AI quote already accepts.
+USD amounts always display with two decimal places (`USD 0.02`). Per-target
+token rows are individually ceiled, so summing them can exceed the charged AI
+total (minimum-token cases). Quote message and Adjust modal line amounts
+therefore **distribute** the charged total across active file/language rows
+(largest remainder on cents). Charged AI tokens for any Adjust selection are
+recomputed with the SOW formula from `character_count` and the selected target
+count per file (not by summing ceiled row tokens).
 
 ## Stream Contract
 

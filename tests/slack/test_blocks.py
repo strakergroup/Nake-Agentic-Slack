@@ -98,7 +98,7 @@ class TestDocumentMtQuoteBlocks:
                     {
                         "file_id": "grid-1",
                         "file_name": "document.docx",
-                        "character_count": 250000,
+                        "character_count": 200000 if include_pdf else 62500,
                         "pdf_conversion_page_count": None,
                         "pdf_conversion_tokens": 0,
                         "target_languages": [
@@ -117,7 +117,7 @@ class TestDocumentMtQuoteBlocks:
                 {
                     "file_id": "grid-2",
                     "file_name": "legal-appendix.pdf",
-                    "character_count": 350000,
+                    "character_count": 0,
                     "pdf_conversion_page_count": 4,
                     "pdf_conversion_tokens": 100,
                     "target_languages": [
@@ -225,6 +225,47 @@ class TestDocumentMtQuoteBlocks:
         rendered = str(blocks)
         assert rendered.count("AI Translate quote cancelled") == 2
         assert all(block.get("type") != "actions" for block in blocks)
+
+    def test_document_mt_quote_blocks_distribute_minimum_ai_charge(self):
+        session = {
+            "quote_id": "quote-min",
+            "enterprise_id": None,
+            "quote": {
+                "currency": "USD",
+                "total_cost_usd": 0.52,
+                "total_tokens": 26,
+                "pdf_conversion_tokens": 25,
+                "files": [
+                    {
+                        "file_id": "grid-1",
+                        "file_name": "brief.pdf",
+                        "character_count": 100,
+                        "pdf_conversion_page_count": 1,
+                        "pdf_conversion_tokens": 25,
+                        "target_languages": [
+                            {
+                                "target_language": "hr",
+                                "tokens": 1,
+                                "cost_usd": 0.02,
+                            },
+                            {
+                                "target_language": "ny",
+                                "tokens": 1,
+                                "cost_usd": 0.02,
+                            },
+                        ],
+                    }
+                ],
+            },
+        }
+
+        with patch("app.slack.templates.blocks.is_ibm_enterprise", return_value=False):
+            blocks = document_mt_quote_blocks(session, actions=False)
+
+        rendered = str(blocks)
+        assert rendered.count("USD 0.01") == 2
+        assert "*Total cost:* USD 0.52" in rendered
+        assert "USD 0.54" not in rendered
 
 
 class TestJobLinkBlock:

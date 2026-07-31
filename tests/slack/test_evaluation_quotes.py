@@ -91,6 +91,40 @@ class TestEvaluationCreditsQuoteBlocks:
         assert "*Total cost:* USD 0.80" in rendered
         assert "Estimated Completion" not in rendered
 
+    def test_ai_translation_quote_blocks_distribute_minimum_charge(self):
+        """Per-row ceils must not make language lines exceed the aggregate Total."""
+        blocks = evaluation_credits_quote_blocks(
+            "AI Translation",
+            1,
+            pdf_page_count=1,
+            pdf_tokens=25,
+            accept_action_id="evaluation_ai_quote_accept",
+            job_uuid="job-1",
+            actions=False,
+            language_costs=[
+                {
+                    "file_label": "brief.pdf",
+                    "value": "hr",
+                    "label": "Croatian",
+                    "token": 1,
+                },
+                {
+                    "file_label": "brief.pdf",
+                    "value": "ny",
+                    "label": "Chichewa",
+                    "token": 1,
+                },
+            ],
+        )
+        rendered = str(blocks)
+        assert rendered.count("USD 0.01") == 2
+        # PDF $0.50 + distributed AI $0.02; lines must not each show the minimum.
+        assert "*Total cost:* USD 0.52" in rendered
+        assert "USD 0.50" in rendered
+        assert "USD 0.54" not in rendered
+        assert "*Croatian*\\n>USD 0.02" not in rendered
+        assert "*Chichewa*\\n>USD 0.02" not in rendered
+
     def test_evaluation_quote_blocks_display_dollar_cost(self):
         blocks = evaluation_credits_quote_blocks(
             "AI Translation",

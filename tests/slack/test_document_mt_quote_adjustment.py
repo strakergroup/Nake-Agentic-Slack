@@ -31,7 +31,8 @@ def _quote():
             {
                 "file_id": "grid-1",
                 "file_name": "document.docx",
-                "character_count": 250000,
+                # 150000 chars → ceil(150000×0.002)=300 per lang; ×2 langs → 600.
+                "character_count": 150000,
                 "pdf_conversion_page_count": None,
                 "pdf_conversion_tokens": 0,
                 "target_languages": [
@@ -42,7 +43,8 @@ def _quote():
             {
                 "file_id": "grid-2",
                 "file_name": "legal-appendix.pdf",
-                "character_count": 350000,
+                # 100000 chars → ceil(100000×0.002)=200.
+                "character_count": 100000,
                 "pdf_conversion_page_count": 4,
                 "pdf_conversion_tokens": 100,
                 "target_languages": [
@@ -128,8 +130,31 @@ class TestDocumentMtQuoteAdjustmentHelpers:
         assert marked
         assert all(row["cancelled"] is True for row in marked)
 
-    def test_tokens_for_pairs_sums_selected_rows(self):
+    def test_tokens_for_pairs_uses_sow_for_selected_count(self):
+        # One lang each file: ceil(150000×0.002)+ceil(100000×0.002)=300+200.
         assert document_mt_tokens_for_pairs(_quote(), ["grid-1:fr", "grid-2:fr"]) == 500
+
+    def test_tokens_for_pairs_full_selection_uses_sow_not_row_sum(self):
+        quote = {
+            "total_tokens": 26,
+            "pdf_conversion_tokens": 25,
+            "files": [
+                {
+                    "file_id": "grid-1",
+                    "file_name": "brief.pdf",
+                    "character_count": 100,
+                    "pdf_conversion_page_count": 1,
+                    "pdf_conversion_tokens": 25,
+                    "target_languages": [
+                        {"target_language": "hr", "tokens": 1, "cost_usd": 0.02},
+                        {"target_language": "ny", "tokens": 1, "cost_usd": 0.02},
+                    ],
+                }
+            ],
+        }
+        # Row sum would be 2; SOW ceil(100×2×0.002)=1.
+        assert document_mt_tokens_for_pairs(quote, ["grid-1:hr", "grid-1:ny"]) == 1
+        assert document_mt_tokens_for_pairs(quote, ["grid-1:hr"]) == 1
 
     def test_pdf_tokens_and_pages_follow_selected_files(self):
         # grid-2 still selected -> its PDF fee applies.
@@ -276,6 +301,119 @@ class TestRefreshDocumentMtQuoteAdjustmentCost:
         # grid-1 French row only: 300 tokens -> USD 6.00, PDF fee dropped.
         assert "USD 6.00" in str(updated_view["blocks"])
         assert "USD 18.00" not in str(updated_view["blocks"])
+
+    async def test_refresh_redistributes_minimum_ai_charge_across_selected(self):
+        session = _session()
+        session["quote"] = {
+            "currency": "USD",
+            "total_tokens": 26,
+            "pdf_conversion_tokens": 25,
+            "total_cost_usd": 0.52,
+            "files": [
+                {
+                    "file_id": "grid-1",
+                    "file_name": "brief.pdf",
+                    "character_count": 100,
+                    "pdf_conversion_page_count": 1,
+                    "pdf_conversion_tokens": 25,
+                    "target_languages": [
+                        {"target_language": "hr", "tokens": 1, "cost_usd": 0.02},
+                        {"target_language": "ny", "tokens": 1, "cost_usd": 0.02},
+                    ],
+                }
+            ],
+        }
+        hr_option = {
+            "text": {"type": "mrkdwn", "text": "*Croatian*: USD 0.02"},
+            "value": "grid-1:hr",
+        }
+        ny_option = {
+            "text": {"type": "mrkdwn", "text": "*Chichewa*: USD 0.02"},
+            "value": "grid-1:ny",
+        }
+        view = {
+            "id": "view-1",
+            "state": {
+                "values": {
+                    "ai_quote_language_grid-1_hr": {
+                        "evaluation_ai_quote_language_selection": {
+                            "selected_options": [hr_option],
+                        }
+                    },
+                    "ai_quote_language_grid-1_ny": {
+                        "evaluation_ai_quote_language_selection": {
+                            "selected_options": [ny_option],
+                        }
+                    },
+                }
+            },
+            "blocks": [
+                {
+                    "type": "actions",
+                    "block_id": "ai_quote_language_grid-1_hr",
+                    "elements": [
+                        {
+                            "type": "checkboxes",
+                            "action_id": "evaluation_ai_quote_language_selection",
+                            "options": [hr_option],
+                            "initial_options": [hr_option],
+                        }
+                    ],
+                },
+                {
+                    "type": "actions",
+                    "block_id": "ai_quote_language_grid-1_ny",
+                    "elements": [
+                        {
+                            "type": "checkboxes",
+                            "action_id": "evaluation_ai_quote_language_selection",
+                            "options": [ny_option],
+                            "initial_options": [ny_option],
+                        }
+                    ],
+                },
+                {
+                    "type": "section",
+                    "block_id": "ai_quote_pdf_cost_block",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "*PDF conversion:* USD 0.50",
+                    },
+                },
+                {
+                    "type": "section",
+                    "block_id": "total_cost_block",
+                    "text": {"type": "mrkdwn", "text": "*Total cost:* USD 0.54"},
+                },
+            ],
+        }
+        client = AsyncMock()
+        with patch(
+            "app.slack.evaluation_ai_quote_modal_service.get_document_mt_quote_session",
+            new_callable=AsyncMock,
+            return_value=session,
+        ):
+            await refresh_ai_quote_adjustment_cost(
+                client,
+                view=view,
+                quote_id="quote-1",
+                quote_kind="document_mt",
+            )
+
+        updated = client.views_update.await_args.kwargs["view"]
+        option_labels = [
+            option["text"]["text"]
+            for block in updated["blocks"]
+            for element in block.get("elements") or []
+            for option in element.get("options") or []
+        ]
+        # SOW AI total is 1 token ($0.02), split across both checked rows.
+        assert option_labels == [
+            "*Croatian*: USD 0.01",
+            "*Chichewa*: USD 0.01",
+        ]
+        assert "*Total cost:* USD 0.52" in str(updated["blocks"])
+        assert "USD 0.54" not in str(updated["blocks"])
 
 
 @pytest.mark.asyncio

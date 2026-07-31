@@ -225,6 +225,22 @@ async def populate_ai_quote_adjustment_modal(
     )
     if session_updates:
         await update_evaluate_quote_session(quote_id, session_updates)
+    all_pair_keys = {
+        f"{row.get('file_uuid')}:{row.get('value')}"
+        for row in language_costs
+        if row.get("file_uuid") and row.get("value")
+    }
+    aggregate_tokens = int(quote_snapshot.get("token_cost") or 0)
+    if set(selected_pairs) == all_pair_keys and aggregate_tokens:
+        ai_tokens = aggregate_tokens
+    elif quote_details:
+        ai_tokens = quote_tokens_for_pairs({"details": quote_details}, selected_pairs)
+    else:
+        ai_tokens = sum(
+            int(row.get("token") or 0)
+            for row in language_costs
+            if f"{row.get('file_uuid')}:{row.get('value')}" in set(selected_pairs)
+        )
     await safe_views_update(
         client,
         view_id,
@@ -233,16 +249,7 @@ async def populate_ai_quote_adjustment_modal(
             quote_kind=quote_kind,
             language_costs=language_costs,
             selected_pairs=selected_pairs,
-            ai_tokens=(
-                quote_tokens_for_pairs({"details": quote_details}, selected_pairs)
-                if quote_details
-                else sum(
-                    int(row.get("token") or 0)
-                    for row in language_costs
-                    if f"{row.get('file_uuid')}:{row.get('value')}"
-                    in set(selected_pairs)
-                )
-            ),
+            ai_tokens=ai_tokens,
             pdf_tokens=int(quote_snapshot.get("pdf_tokens") or 0),
             channel_id=resolved_channel_id or None,
             message_ts=resolved_message_ts,
@@ -259,28 +266,56 @@ async def refresh_ai_quote_adjustment_cost(
 ) -> None:
     """Refresh modal cost blocks from its current checkbox state."""
     selected_pairs = selected_pairs_from_view(view)
+    language_costs: list[dict[str, Any]] = []
     if quote_kind == DOCUMENT_MT_QUOTE_KIND:
         session = await get_document_mt_quote_session(quote_id)
         if not session:
             return
         quote = session.get("quote") or {}
+        language_costs = document_mt_language_costs(quote)
         ai_tokens = document_mt_tokens_for_pairs(quote, selected_pairs)
         pdf_tokens = document_mt_pdf_tokens_for_pairs(quote, selected_pairs)
     elif quote_kind == "pdf_prequote":
         session = await get_pdf_evaluate_quote_session(quote_id)
         if not session:
             return
-        ai_tokens, pdf_page_count = pdf_costs_for_pairs(session, selected_pairs)
-        pdf_tokens = pdf_page_count * EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE
+        language_costs = list(
+            session.get("all_language_costs") or session.get("language_costs") or []
+        )
+        all_pair_keys = {
+            f"{row.get('file_uuid')}:{row.get('value')}"
+            for row in language_costs
+            if row.get("file_uuid") and row.get("value")
+        }
+        if selected_pairs and set(selected_pairs) == all_pair_keys:
+            ai_tokens = int(session.get("ai_token_estimate") or 0)
+            pdf_tokens = int(session.get("pdf_tokens") or 0)
+        else:
+            ai_tokens, pdf_page_count = pdf_costs_for_pairs(session, selected_pairs)
+            pdf_tokens = pdf_page_count * EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE
     else:
         session = await get_evaluate_quote_session(quote_id)
         if not session:
             return
         quote_snapshot = session.get("quote_snapshot") or {}
-        ai_tokens = quote_tokens_for_pairs(
-            {"details": quote_snapshot.get("ai_quote_details") or []},
-            selected_pairs,
+        language_costs = list(
+            quote_snapshot.get("all_language_costs")
+            or quote_snapshot.get("language_costs")
+            or []
         )
+        all_pair_keys = {
+            f"{row.get('file_uuid')}:{row.get('value')}"
+            for row in language_costs
+            if row.get("file_uuid") and row.get("value")
+        }
+        aggregate_tokens = int(quote_snapshot.get("token_cost") or 0)
+        if selected_pairs and set(selected_pairs) == all_pair_keys and aggregate_tokens:
+            ai_tokens = aggregate_tokens
+        else:
+            ai_tokens = quote_tokens_for_pairs(
+                {"details": quote_snapshot.get("ai_quote_details") or []},
+                selected_pairs,
+            )
         pdf_tokens = int(quote_snapshot.get("pdf_tokens") or 0)
     await client.views_update(
         view_id=view["id"],
@@ -288,5 +323,6 @@ async def refresh_ai_quote_adjustment_cost(
             view,
             ai_tokens=ai_tokens,
             pdf_tokens=pdf_tokens,
+            language_costs=language_costs or None,
         ),
     )

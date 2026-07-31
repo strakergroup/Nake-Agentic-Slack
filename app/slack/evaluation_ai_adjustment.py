@@ -5,8 +5,12 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Iterable
 
+from app.slack.ai_quote_display import ai_language_cost_display_amounts
 from app.slack.media_quotes import media_translation_tokens
-from app.slack.templates.blocks import _format_evaluate_quote_cost
+from app.slack.templates.blocks import (
+    _format_evaluate_quote_cost,
+    _format_evaluate_quote_usd,
+)
 from app.translate import _
 
 AI_QUOTE_ADJUST_ACTION_ID = "evaluation_ai_quote_adjust"
@@ -529,10 +533,38 @@ def sync_checkbox_initial_options_from_state(view: dict[str, Any]) -> None:
 
 
 def update_modal_cost_blocks(
-    view: dict[str, Any], *, ai_tokens: int, pdf_tokens: int
+    view: dict[str, Any],
+    *,
+    ai_tokens: int,
+    pdf_tokens: int,
+    language_costs: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Update cost blocks and keep checkbox initial options in sync with state."""
+    """Update cost blocks and keep checkbox initial options in sync with state.
+
+    When ``language_costs`` is provided, checkbox labels redistribute the
+    charged AI total across the currently selected pairs.
+    """
     sync_checkbox_initial_options_from_state(view)
+    selected = set(selected_pairs_from_view(view))
+    display_by_pair: dict[str, float] = {}
+    if language_costs is not None:
+        for row, amount in zip(
+            language_costs,
+            ai_language_cost_display_amounts(
+                ai_tokens,
+                language_costs,
+                selected_pairs=selected,
+            ),
+            strict=True,
+        ):
+            file_uuid = str(row.get("file_uuid") or "")
+            language_uuid = str(row.get("value") or "")
+            key = (
+                f"{file_uuid}:{language_uuid}"
+                if file_uuid and language_uuid
+                else language_uuid
+            )
+            display_by_pair[key] = 0.0 if amount is None else amount
     for block in view.get("blocks") or []:
         block_id = block.get("block_id")
         if block_id == "ai_quote_pdf_cost_block":
@@ -544,6 +576,36 @@ def update_modal_cost_blocks(
                 f"*{_('Total cost')}:* "
                 f"{_format_evaluate_quote_cost(ai_tokens + pdf_tokens)}"
             )
+        if not display_by_pair:
+            continue
+        for element in block.get("elements") or []:
+            if element.get("type") != "checkboxes":
+                continue
+            if element.get("action_id") != AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID:
+                continue
+            for option in element.get("options") or []:
+                value = str(option.get("value") or "")
+                if value not in display_by_pair:
+                    continue
+                label = str((option.get("text") or {}).get("text") or "")
+                # Preserve "*Label*: …" prefix when rewriting the amount.
+                prefix = label.split(":", 1)[0] if ":" in label else label
+                option["text"] = {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"{prefix}: {_format_evaluate_quote_usd(display_by_pair[value])}"
+                    ),
+                }
+            if element.get("initial_options"):
+                option_by_value = {
+                    str(option.get("value") or ""): option
+                    for option in element.get("options") or []
+                }
+                element["initial_options"] = [
+                    option_by_value[str(option.get("value") or "")]
+                    for option in element["initial_options"]
+                    if str(option.get("value") or "") in option_by_value
+                ]
     return {
         key: view[key]
         for key in (

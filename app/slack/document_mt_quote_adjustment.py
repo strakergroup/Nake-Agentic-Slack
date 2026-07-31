@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from app.ray.settings import get_auto_translate_languages
+from app.slack.media_quotes import media_translation_tokens
 
 DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID = "document_mt_quote_adjust"
 DOCUMENT_MT_QUOTE_KIND = "document_mt"
@@ -140,13 +141,42 @@ def _selected_file_ids(
 def document_mt_tokens_for_pairs(
     quote: dict[str, Any], selected_pairs: Iterable[str]
 ) -> int:
-    """Sum the per-row translation tokens for the selected pairs.
+    """Return charged AI translation tokens for the selected pairs.
 
-    Display total only: each row carries its own ceil, so this can exceed the
-    aggregate quoted total by up to (targets - 1) tokens per file — the same
-    presentation drift the staged evaluate AI quote already accepts.
+    Prefer the SOW charge ``ceil(chars × selected_targets × 0.002)`` per file so
+    Adjust Request and quote totals match gateway billing (per-row ceils must not
+    stack a second minimum). Fall back to the quote aggregate for a full
+    selection, then to summing selected per-row token estimates when character
+    counts are unavailable.
     """
     selected = set(selected_pairs)
+    if not selected:
+        return 0
+
+    sow_total = 0
+    saw_character_count = False
+    for file in _quote_files(quote):
+        file_id = str(file["file_id"])
+        selected_count = sum(
+            1
+            for target in file.get("target_languages") or []
+            if document_mt_pair_key(file_id, str(target.get("target_language") or ""))
+            in selected
+        )
+        if selected_count <= 0:
+            continue
+        character_count = int(file.get("character_count") or 0)
+        if character_count > 0:
+            saw_character_count = True
+            sow_total += media_translation_tokens(character_count, selected_count)
+
+    if saw_character_count:
+        return sow_total
+
+    if selected == set(document_mt_all_pairs(quote)):
+        pdf_tokens = int(quote.get("pdf_conversion_tokens") or 0)
+        return max(int(quote.get("total_tokens") or 0) - pdf_tokens, 0)
+
     return sum(
         int(detail["token"])
         for detail in document_mt_quote_details(quote)

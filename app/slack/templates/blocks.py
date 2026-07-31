@@ -7,6 +7,7 @@ from ray_sdk.api.v3.models import Quote
 
 from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
 from app.ray.events.models import JobQuoteCreatedEvent
+from app.slack.ai_quote_display import ai_language_cost_display_amounts
 from app.slack.document_mt_quote_adjustment import (
     DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID,
     document_mt_language_costs,
@@ -41,6 +42,11 @@ AI_TOKEN_USD_RATE = 0.02
 
 def _format_evaluate_quote_cost(token_count: int, *, is_ibm: bool = True) -> str:
     return format_slack_usd(token_count * AI_TOKEN_USD_RATE)
+
+
+def _format_evaluate_quote_usd(amount: float, *, is_ibm: bool = True) -> str:
+    """Format a USD amount already converted from tokens (two decimal places)."""
+    return format_slack_usd(amount)
 
 
 def home_auth_blocks(
@@ -1024,6 +1030,8 @@ def evaluation_credits_quote_blocks(
         total_tokens += pdf_tokens
     if language_costs:
         current_file: str | None = None
+        # Distribute the charged aggregate so per-row ceils cannot overshoot Total.
+        display_amounts = ai_language_cost_display_amounts(token_cost, language_costs)
         # Always label the AI Translation section (matches PDF conversion header).
         blocks.append(
             {
@@ -1031,7 +1039,9 @@ def evaluation_credits_quote_blocks(
                 "text": {"type": "mrkdwn", "text": f"*{service_label}:*"},
             }
         )
-        for language_cost in language_costs:
+        for language_cost, display_usd in zip(
+            language_costs, display_amounts, strict=True
+        ):
             file_label = str(language_cost.get("file_label") or "")
             if file_label and file_label != current_file:
                 blocks.append(
@@ -1044,7 +1054,7 @@ def evaluation_credits_quote_blocks(
                     }
                 )
                 current_file = file_label
-            if language_cost.get("cancelled"):
+            if language_cost.get("cancelled") or display_usd is None:
                 line_text = (
                     f"*{language_cost['label']}*\n>"
                     f"{_('AI Translate quote cancelled')}"
@@ -1052,7 +1062,7 @@ def evaluation_credits_quote_blocks(
             else:
                 line_text = (
                     f"*{language_cost['label']}*\n>"
-                    f"{_format_evaluate_quote_cost(int(language_cost['token']), is_ibm=is_ibm)}"
+                    f"{_format_evaluate_quote_usd(display_usd, is_ibm=is_ibm)}"
                 )
             blocks.append(
                 {
