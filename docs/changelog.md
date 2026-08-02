@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: RAY-81020 — Document MT / quote / evaluate errors map through `slack_message_for_document_mt_error`; `sample_text_not_found` and `conversion_error` render producer `error_data.message` via `DocParseErrorMessage` instead of the generic technical-issues ephemeral (Wade Norman, 2026-07-30)
 - [Fixed]: RAY-79115 — Document MT Adjust Request recomputes AI tokens with the SOW formula (`ceil(chars × selected_targets × 0.002)`) and redistributes line USD so minimum/ceil row tokens cannot inflate the modal Total (Wade Norman, 2026-07-31)
 - [Fixed]: RAY-79115 — AI Translation quote language lines distribute the charged aggregate (two-decimal `USD` display) so per-row minimum/ceil tokens cannot make line amounts exceed Total; Adjust Request redistributes on selection change (Wade Norman, 2026-07-31)
 - [Changed]: Placeholder tags are now generated as `<x id="N"/>` (quoted) in runtime Translator, translation-export, and UI export; lookups still accept unquoted `<x id=N/>` and legacy `<x id=N>` DB/workbook labels (Wade Norman, 2026-07-31)

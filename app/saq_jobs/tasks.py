@@ -985,7 +985,6 @@ async def process_evaluation_submission(
         STAGE_QUOTE_PENDING,
         restore_pdf_evaluate_quote_for_retry,
         save_pdf_evaluate_quote_session,
-        update_pdf_evaluate_quote_session,
     )
     from app.slack.web import download_file
 

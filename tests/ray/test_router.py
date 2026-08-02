@@ -56,6 +56,44 @@ def mock_async_web_client():
 @patch("app.routers.ray.post_notification_ephemeral")
 @patch("app.routers.ray.AsyncWebClient")
 @patch("app.routers.ray.get_ray_event_auth")
+async def test_verify_slack_document_translated_error_type_sample_text_not_found(
+    mock_get_auth,
+    mock_client_class,
+    mock_post_notification,
+    mock_ray_event_auth,
+    mock_async_web_client,
+):
+    """RAY-81020: sample_text_not_found must not fall through to DocMtMessage."""
+    from app.slack.templates.messages import DocParseErrorMessage
+
+    mock_get_auth.return_value = mock_ray_event_auth
+    mock_client_class.return_value = mock_async_web_client
+
+    event_data = {
+        "error": True,
+        "error_type": "sample_text_not_found",
+        "client_id": str(uuid4()),
+        "channel_id": "C123456",
+        "tokens": 0,
+        "error_data": {
+            "message": ":warning: We couldn't find any translatable text in this file.",
+            "ext": ".docx",
+        },
+    }
+
+    event = RayEvent(event="verify:slack:document:translated", data=event_data)
+    await ray_events(event, mock_ray_event_auth)
+
+    mock_post_notification.assert_called_once()
+    message = mock_post_notification.call_args[0][4]
+    assert isinstance(message, DocParseErrorMessage)
+    assert "translatable text" in message.blocks[0]["text"]["text"].lower()
+
+
+@pytest.mark.asyncio
+@patch("app.routers.ray.post_notification_ephemeral")
+@patch("app.routers.ray.AsyncWebClient")
+@patch("app.routers.ray.get_ray_event_auth")
 async def test_verify_slack_document_translated_error_type_other(
     mock_get_auth,
     mock_client_class,

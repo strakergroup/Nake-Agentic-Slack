@@ -86,6 +86,10 @@ from ..saq_jobs.dispatch import (
     enqueue_mt_success_upload,
     enqueue_verify_complete_upload,
 )
+from ..slack.document_mt_error_messages import (
+    document_mt_generic_fallback,
+    slack_message_for_document_mt_error,
+)
 from ..slack.document_mt_quotes import apply_document_mt_quote_result
 from ..slack.evaluation_combined_quotes import (
     handle_combined_qe_complete,
@@ -104,13 +108,8 @@ from ..slack.templates.messages import (
     ClientApprovedEventMessage,
     ClientSignupEventAdminMessage,
     ClientSignupEventMessage,
-    DocComplexityErrorMessage,
-    DocInvalidPdfErrorMessage,
-    DocMtMessage,
-    DocParseErrorMessage,
     DocumentMtQuoteMessage,
     EvaluateAiOnlyCompleteMessage,
-    EvaluateErrorMessage,
     EvaluateSuccessMessage,
     JobCancelledEventMessage,
     JobCompletedEventMessage,
@@ -673,6 +672,7 @@ async def ray_events(
                             "error_data": quote_data.error_data,
                         }
                     )
+                    balance_message = None
                     if error_data.error_type == "insufficient_balance":
                         # Org-billed posters have no member link, so client_id is
                         # the org uuid and there is no Admin/Owner role to read.
@@ -688,7 +688,7 @@ async def ray_events(
                                 auth.slack_user.ray_user_group_id,
                             )
                         balance = Balance.model_validate(error_data.error_data)
-                        message = (
+                        balance_message = (
                             RequiresMtTokenMessage(balance.balance, balance.required)
                             if client_type in ["Admin", "Owner"]
                             and not is_ibm_enterprise(
@@ -700,22 +700,12 @@ async def ray_events(
                                 balance.balance, balance.required
                             )
                         )
-                    elif error_data.error_type == "conversion_error":
-                        message = DocParseErrorMessage(
-                            error_data.error_data.get("ext", ""),
-                            error_data.error_data.get("file_expected", ""),
-                            error_data.error_data.get("message", ""),
-                        )
-                    elif error_data.error_type == "file_complexity_error":
-                        message = DocComplexityErrorMessage(
-                            error_data.error_data.get("ext", ""),
-                        )
-                    elif error_data.error_type == "invalid_pdf":
-                        message = DocInvalidPdfErrorMessage(
-                            error_data.error_data.get("message", ""),
-                        )
-                    else:
-                        message = DocMtMessage()
+                    message = slack_message_for_document_mt_error(
+                        error_data.error_type,
+                        error_data.error_data,
+                        balance_message=balance_message,
+                        generic_fallback=document_mt_generic_fallback(),
+                    )
                     if auth.slack_user is None:
                         logger.error(
                             "Extract quote error has no deliverable Slack user",
@@ -794,7 +784,7 @@ async def ray_events(
                         submission_id=document_translated_data.submission_id,
                         processing_status=SubmissionStatus.FAILED,
                     )
-                document_message: Optional[SlackMessage] = None
+                balance_message = None
                 if document_translated_data.error_type == "insufficient_balance":
                     # Send message to user that they need to purchase tokens
                     client_type = None
@@ -815,29 +805,21 @@ async def ray_events(
                     if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
                         auth.slack_user.enterprise_id
                     ):
-                        document_message = RequiresMtTokenMessage(
+                        balance_message = RequiresMtTokenMessage(
                             balance.balance, balance.required
                         )
                     else:
-                        document_message = RequiresMtTokenAdminMessage(
+                        balance_message = RequiresMtTokenAdminMessage(
                             balance.balance, balance.required
                         )
-                elif document_translated_data.error_type == "conversion_error":
-                    document_message = DocParseErrorMessage(
-                        document_translated_data.error_data.get("ext", ""),
-                        document_translated_data.error_data.get("file_expected", ""),
-                        document_translated_data.error_data.get("message", ""),
+                document_message: Optional[SlackMessage] = (
+                    slack_message_for_document_mt_error(
+                        document_translated_data.error_type,
+                        document_translated_data.error_data,
+                        balance_message=balance_message,
+                        generic_fallback=document_mt_generic_fallback(),
                     )
-                elif document_translated_data.error_type == "file_complexity_error":
-                    document_message = DocComplexityErrorMessage(
-                        document_translated_data.error_data.get("ext", ""),
-                    )
-                elif document_translated_data.error_type == "invalid_pdf":
-                    document_message = DocInvalidPdfErrorMessage(
-                        document_translated_data.error_data.get("message", ""),
-                    )
-                else:
-                    document_message = DocMtMessage()
+                )
                 if document_message is not None and auth.slack_user is not None:
                     await post_notification_ephemeral(
                         client,
@@ -901,6 +883,7 @@ async def ray_events(
             if event.data.get("error"):
                 try:
                     error_data = MtErrorResponseSchema.model_validate(event.data)
+                    balance_message = None
                     if error_data.error_type == "insufficient_balance":
                         # Send message to user that they need to purchase tokens
                         client_type = await get_client_type(
@@ -912,33 +895,22 @@ async def ray_events(
                         if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
                             auth.slack_user.enterprise_id
                         ):
-                            message = RequiresMtTokenMessage(
+                            balance_message = RequiresMtTokenMessage(
                                 balance.balance, balance.required
                             )
                         else:
-                            message = RequiresMtTokenAdminMessage(
+                            balance_message = RequiresMtTokenAdminMessage(
                                 balance.balance, balance.required
                             )
-                    elif error_data.error_type == "conversion_error":
-                        message = DocParseErrorMessage(
-                            error_data.error_data.get("ext", ""),
-                            error_data.error_data.get("file_expected", ""),
-                            error_data.error_data.get("message", ""),
-                        )
-                    elif error_data.error_type == "file_complexity_error":
-                        message = DocComplexityErrorMessage(
-                            error_data.error_data.get("ext", ""),
-                        )
-                    elif error_data.error_type == "invalid_pdf":
-                        message = DocInvalidPdfErrorMessage(
-                            error_data.error_data.get("message", ""),
-                        )
-                    else:
-                        # For "other" or any other error type, use generic error message
-                        message = EvaluateErrorMessage()
+                    message = slack_message_for_document_mt_error(
+                        error_data.error_type,
+                        error_data.error_data,
+                        balance_message=balance_message,
+                        generic_fallback=document_mt_generic_fallback(evaluate=True),
+                    )
                 except ValidationError:
                     # If validation fails, fall back to generic error message
-                    message = EvaluateErrorMessage()
+                    message = document_mt_generic_fallback(evaluate=True)
             else:
                 try:
                     job = await get_evaluation_job(
