@@ -44,6 +44,14 @@ async def accept_pdf_evaluate_quote(
     """Accept a pre-job PDF evaluate quote and start real processing."""
     session = await get_pdf_evaluate_quote_session(quote_id)
     if not session:
+        user_id = str(body.get("user", {}).get("id") or context.get("user_id") or "")
+        if user_id:
+            await client.chat_postMessage(
+                channel=user_id,
+                text=_(
+                    "This translation quote has expired. Please request a new quote."
+                ),
+            )
         return
     if session.get("stage") in {
         PDF_PREQUOTE_STAGE_QUOTE_PENDING,

@@ -31,6 +31,7 @@ from app.slack.evaluation_ai_adjustment import (
 )
 from app.slack.evaluation_quotes import (
     STAGE_AWAITING_AI,
+    evaluate_quote_expired_message,
     get_evaluate_quote_session,
     update_evaluate_quote_session,
 )
@@ -42,6 +43,10 @@ from app.slack.pdf_evaluate_quotes import (
 )
 from app.slack.templates.views import evaluation_ai_quote_adjust_modal
 from app.translate import _
+
+
+def _quote_expired_modal() -> dict[str, Any]:
+    return status_modal(_("Quote expired"), evaluate_quote_expired_message())
 
 
 async def populate_ai_quote_adjustment_modal(
@@ -58,9 +63,11 @@ async def populate_ai_quote_adjustment_modal(
     """Populate the already-opened loading modal for PDF or extracted quotes."""
     if quote_kind == DOCUMENT_MT_QUOTE_KIND:
         session = await get_document_mt_quote_session(quote_id)
+        if not session:
+            await safe_views_update(client, view_id, _quote_expired_modal())
+            return
         if (
-            not session
-            or session.get("user_id") != user_id
+            session.get("user_id") != user_id
             or session.get("status") != QUOTE_STATUS_QUOTED
         ):
             await safe_views_update(client, view_id, request_error_modal())
@@ -98,7 +105,10 @@ async def populate_ai_quote_adjustment_modal(
 
     if quote_kind == "pdf_prequote":
         session = await get_pdf_evaluate_quote_session(quote_id)
-        if not session or session.get("user_id") != user_id:
+        if not session:
+            await safe_views_update(client, view_id, _quote_expired_modal())
+            return
+        if session.get("user_id") != user_id:
             await safe_views_update(client, view_id, request_error_modal())
             return
         resolved_channel_id = str(
@@ -177,11 +187,10 @@ async def populate_ai_quote_adjustment_modal(
         )
         return
     session = await get_evaluate_quote_session(quote_id)
-    if (
-        not session
-        or session.get("user_id") != user_id
-        or session.get("stage") != STAGE_AWAITING_AI
-    ):
+    if not session:
+        await safe_views_update(client, view_id, _quote_expired_modal())
+        return
+    if session.get("user_id") != user_id or session.get("stage") != STAGE_AWAITING_AI:
         await safe_views_update(client, view_id, request_error_modal())
         return
     resolved_channel_id = str(

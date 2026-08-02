@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-81103 — evaluate quote Accept/Adjust after Redis TTL shows “This translation quote has expired…” (same as Document MT) instead of the generic processing error; PDF pre-quote Accept and Adjust modal open included (Wade Norman, 2026-08-03)
 - [Fixed]: RAY-79115 — Document MT Adjust Request recomputes AI tokens with the SOW formula (`ceil(chars × selected_targets × 0.002)`) and redistributes line USD so minimum/ceil row tokens cannot inflate the modal Total (Wade Norman, 2026-07-31)
 - [Fixed]: RAY-79115 — AI Translation quote language lines distribute the charged aggregate (two-decimal `USD` display) so per-row minimum/ceil tokens cannot make line amounts exceed Total; Adjust Request redistributes on selection change (Wade Norman, 2026-07-31)
 - [Changed]: Placeholder tags are now generated as `<x id="N"/>` (quoted) in runtime Translator, translation-export, and UI export; lookups still accept unquoted `<x id=N/>` and legacy `<x id=N>` DB/workbook labels (Wade Norman, 2026-07-31)

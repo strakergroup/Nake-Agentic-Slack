@@ -152,6 +152,8 @@ Both staged paths submit **without** `HUMAN_EVALUATION` so CVC builds a syntheti
 
 It is used by the `verify:slack:evaluate:complete` handler, `submit_verification_job`, `handle_quote_accept_all`, and the Adjust Request submit. The session is stored in Redis for `EVALUATE_QUOTE_TTL_SECONDS` (7 days by default), which outlives the quote → accept window.
 
+When Accept or Adjust runs after that TTL (session missing), SRT DMs the clicker with `evaluate_quote_expired_message()` (“This translation quote has expired. Please request a new quote.”), updates the quote message in place when channel/ts are available, and does **not** fall through to the generic “There was an error processing your request…” path. PDF pre-quote Accept and Adjust modal open use the same copy.
+
 Note that the admin staged workflow **does** include an HV node: the combined QE + HT quote is accepted before QE runs, so human verification is meant to start automatically once QE completes. Only the non-admin HT-after-QE path omits HV until Accept.
 
 ## Resubmission prevention

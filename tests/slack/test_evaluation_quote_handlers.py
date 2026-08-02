@@ -12,7 +12,9 @@ from app.api.verify import VerifyAPIError
 from app.slack.evaluation_quotes import (
     STAGE_ACCEPTED_AI,
     STAGE_AWAITING_AI,
+    STAGE_AWAITING_QE,
     STAGE_PROCESSING_AI,
+    evaluate_quote_expired_message,
 )
 from app.slack.listeners import (
     evaluation_ai_quote_accept_action,
@@ -147,7 +149,12 @@ async def test_evaluation_qe_human_quote_accept_runs_quality_evaluation():
         with patch(
             "app.slack.evaluation_quote_actions.get_evaluate_quote_session",
             new_callable=AsyncMock,
-            return_value=None,
+            return_value={
+                "stage": STAGE_AWAITING_QE,
+                "channel_id": "C1",
+                "user_id": "U1",
+                "quote_snapshot": {},
+            },
         ):
             with patch(
                 "app.slack.evaluation_quote_actions.update_evaluate_quote_stage",
@@ -209,7 +216,14 @@ async def test_evaluation_ai_quote_accept_insufficient_balance_updates_message()
         with patch(
             "app.slack.evaluation_quote_actions.get_evaluate_quote_session",
             new_callable=AsyncMock,
-            return_value=None,
+            return_value={
+                "stage": STAGE_AWAITING_AI,
+                "channel_id": "C1",
+                "user_id": "U1",
+                "quote_snapshot": {
+                    "ai_translation_file_and_languages": ["file-1:lang-1"]
+                },
+            },
         ):
             with patch(
                 "app.slack.evaluation_quote_actions.update_evaluate_quote_stage",
@@ -252,6 +266,88 @@ async def test_evaluation_ai_quote_accept_insufficient_balance_updates_message()
     assert "Insufficient" in mock_update.await_args.kwargs["status_message"]
     assert mock_update.await_args.kwargs["actions"] is False
     client.chat_postMessage.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_evaluation_ai_quote_accept_expired_session_notifies_user():
+    job_uuid = str(uuid4())
+    context = {"channel_id": "C1", "ray": MagicMock(client=MagicMock())}
+    client = AsyncMock()
+
+    with (
+        patch("app.slack.evaluation_quote_actions.redis_conn", _mock_redis()),
+        patch(
+            "app.slack.evaluation_quote_actions.get_evaluate_quote_session",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.slack.evaluation_quote_actions.proceed_evaluation_job",
+            new_callable=AsyncMock,
+        ) as mock_proceed,
+    ):
+        await AiQuoteAcceptAction(
+            ack=AsyncMock(),
+            client=client,
+            body={
+                "user": {"id": "U1"},
+                "channel": {"id": "C1"},
+                "message": {"ts": "123.456"},
+            },
+            action={"value": job_uuid},
+            context=context,
+        )
+
+    mock_proceed.assert_not_called()
+    client.chat_postMessage.assert_awaited_once_with(
+        channel="U1",
+        text=evaluate_quote_expired_message(),
+    )
+    client.chat_update.assert_awaited_once()
+    assert (
+        client.chat_update.await_args.kwargs["text"] == evaluate_quote_expired_message()
+    )
+
+
+@pytest.mark.asyncio
+async def test_evaluation_qe_human_quote_accept_expired_session_notifies_user():
+    job_uuid = str(uuid4())
+    context = {"channel_id": "C1", "ray": MagicMock(client=MagicMock())}
+    client = AsyncMock()
+
+    with (
+        patch("app.slack.evaluation_quote_actions.redis_conn", _mock_redis()),
+        patch(
+            "app.slack.evaluation_quote_actions.get_evaluate_quote_session",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.slack.evaluation_quote_actions.proceed_quality_evaluation",
+            new_callable=AsyncMock,
+        ) as mock_proceed,
+    ):
+        await QeHumanQuoteAcceptAction(
+            ack=AsyncMock(),
+            client=client,
+            body={
+                "user": {"id": "U1"},
+                "channel": {"id": "C1"},
+                "message": {"ts": "123.456"},
+            },
+            action={"value": job_uuid},
+            context=context,
+        )
+
+    mock_proceed.assert_not_called()
+    client.chat_postMessage.assert_awaited_once_with(
+        channel="U1",
+        text=evaluate_quote_expired_message(),
+    )
+    client.chat_update.assert_awaited_once()
+    assert (
+        client.chat_update.await_args.kwargs["text"] == evaluate_quote_expired_message()
+    )
 
 
 @pytest.mark.asyncio

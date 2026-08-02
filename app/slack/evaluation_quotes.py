@@ -16,6 +16,7 @@ from app.constants import (
 )
 from app.redis import redis_conn
 from app.slack.templates.messages import EvaluationCreditsQuoteMessage
+from app.translate import _
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,11 @@ AI_TERMINAL_STAGES = frozenset(
 QE_TERMINAL_STAGES = frozenset(
     {STAGE_PROCESSING_QE, STAGE_ACCEPTED_QE, STAGE_CANCELLED_QE}
 )
+
+
+def evaluate_quote_expired_message() -> str:
+    """User-facing copy when the Redis evaluate quote session is gone (TTL)."""
+    return _("This translation quote has expired. Please request a new quote.")
 
 
 def _quote_key(job_uuid: str) -> str:
