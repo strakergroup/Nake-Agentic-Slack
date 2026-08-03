@@ -93,6 +93,8 @@ def test_media_quote_blocks_include_accept_cancel():
         "quote_id": "q-1",
         "file_name": "clip.mp4",
         "enterprise_id": None,
+        "pipeline_kind": PIPELINE_TRANSCRIBE,
+        "stage": STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
         "line_items": [{"label": "Transcription", "tokens": 100}],
         "total_tokens": 100,
     }
@@ -103,10 +105,54 @@ def test_media_quote_blocks_include_accept_cancel():
         actions=True,
     )
     assert blocks[0]["type"] == "header"
+    assert (
+        blocks[1]["text"]["text"]
+        == "Review the quote below and click *Accept Quote* to continue."
+    )
     actions = [b for b in blocks if b.get("type") == "actions"]
     assert len(actions) == 1
     action_ids = [el["action_id"] for el in actions[0]["elements"]]
     assert action_ids == ["media_quote_accept", "media_quote_cancel"]
+
+
+def test_media_quote1_intro_explains_transcription_before_ai_translate():
+    session = {
+        "quote_id": "q-tt",
+        "file_name": "clip.mp4",
+        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
+        "stage": STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
+        "line_items": [{"label": "Transcription", "tokens": 100}],
+        "total_tokens": 100,
+    }
+    blocks = media_quote_blocks(
+        session,
+        accept_action_id="media_quote_accept",
+        cancel_action_id="media_quote_cancel",
+        actions=False,
+    )
+    assert "must first be transcribed" in blocks[1]["text"]["text"]
+    assert "transcription service charges will apply" in blocks[1]["text"]["text"]
+
+
+def test_media_quote2_intro_matches_document_ai_copy():
+    session = {
+        "quote_id": "q-2",
+        "file_name": "clip.mp4",
+        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
+        "stage": STAGE_AWAITING_TRANSLATION_ACCEPT,
+        "line_items": [{"label": "AI Translation", "tokens": 50}],
+        "total_tokens": 50,
+    }
+    blocks = media_quote_blocks(
+        session,
+        accept_action_id="media_translation_quote_accept",
+        cancel_action_id="media_translation_quote_cancel",
+        actions=False,
+    )
+    assert (
+        blocks[1]["text"]["text"]
+        == "Running the AI translation will incur the following cost:"
+    )
 
 
 def test_media_quote_blocks_always_show_usd():
@@ -115,6 +161,8 @@ def test_media_quote_blocks_always_show_usd():
         "quote_id": "q-ibm",
         "file_name": "clip.mp4",
         "enterprise_id": "EIBM",
+        "pipeline_kind": PIPELINE_TRANSCRIBE,
+        "stage": STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
         "line_items": [{"label": "Transcription", "tokens": 100}],
         "total_tokens": 100,
     }

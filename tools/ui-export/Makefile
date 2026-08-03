@@ -5,9 +5,8 @@
 #   make            # Generate JSON + render HTML, then open in browser
 #   make generate   # Python step only (creates output/blocks.json)
 #   make render     # Node.js step only (creates output/ui-catalog.html)
+#   make subset MATCH='MediaQuote|HumanJobQuote'  # Filtered catalog for active work
 #   make supported-languages # Generate + render all supported Slack locales
-#   make quote-flow # Generate a static IBM HT staged quote flow mock
-#   make ai-translate-quote-flow # Generate a static direct AI Translate quote flow mock
 #   make clean      # Remove generated output
 
 SHELL := /bin/bash
@@ -21,6 +20,11 @@ ifeq ($(wildcard $(PYTHON_VENV)),)
 PYTHON := pipenv run python
 else
 PYTHON := $(PYTHON_VENV)
+endif
+
+# Prefer pipenv when the local .venv is incomplete (missing app deps).
+ifeq ($(shell $(PYTHON) -c "import httpx" 2>/dev/null || echo missing),missing)
+PYTHON := pipenv run python
 endif
 
 # nvm lazy-loads in interactive shells, so we source it explicitly for Make.
@@ -41,13 +45,25 @@ endif
 ifdef TRANSLATION_SOURCE
 UI_EXPORT_ARGS += --translation-source $(TRANSLATION_SOURCE)
 endif
+ifdef MATCH
+UI_EXPORT_ARGS += --match '$(MATCH)'
+endif
+ifdef NAMES
+UI_EXPORT_ARGS += --names '$(NAMES)'
+endif
+ifdef CATEGORY
+UI_EXPORT_ARGS += --category '$(CATEGORY)'
+endif
 
 SUPPORTED_UI_EXPORT_ARGS := --languages $(SUPPORTED_LANGUAGES) --translation-source $(SUPPORTED_TRANSLATION_SOURCE)
 ifdef TRANSLATIONS_FILE
 SUPPORTED_UI_EXPORT_ARGS += --translations-file $(TRANSLATIONS_FILE)
 endif
 
-.PHONY: all generate render quote-flow ai-translate-quote-flow supported-languages all-languages typecheck open clean install
+SUBSET_JSON ?= output/blocks-subset.json
+SUBSET_HTML ?= output/ui-catalog-subset.html
+
+.PHONY: all generate render subset list-names supported-languages all-languages typecheck open open-subset clean install
 
 all: generate render open
 
@@ -70,13 +86,22 @@ render: output/ui-catalog.html
 output/ui-catalog.html: output/blocks.json render.mjs node_modules
 	$(NODE_BIN) render.mjs
 
-quote-flow:
-	$(PYTHON) generate_quote_flow.py
-	$(NODE_BIN) render_quote_flow.mjs
+# Filtered catalog for the templates under active work (agents / ticket review).
+# Examples:
+#   make subset MATCH='MediaQuote|EvaluationCredits|HumanJobQuote|DocumentMtQuote|evaluation_ai_quote_adjust'
+#   make subset CATEGORY=Quotes
+#   make subset NAMES='HumanJobQuoteMessage,DocumentMtQuoteMessage (IBM AI Translate direct quote)'
+subset: node_modules
+	@if [ -z "$(MATCH)$(NAMES)$(CATEGORY)" ]; then \
+		echo "Usage: make subset MATCH='regex' [CATEGORY=Quotes] [NAMES='Exact Name,...']"; \
+		exit 1; \
+	fi
+	$(PYTHON) generate_blocks.py $(UI_EXPORT_ARGS) --output $(SUBSET_JSON)
+	$(NODE_BIN) render.mjs --input $(SUBSET_JSON) --output $(SUBSET_HTML)
+	@echo "Subset catalog: $(SUBSET_HTML)"
 
-ai-translate-quote-flow:
-	$(PYTHON) generate_ai_translate_quote_flow.py
-	$(NODE_BIN) render_quote_flow.mjs --input output/ai-translate-quote-flow.json --output output/ai-translate-quote-flow.html
+list-names:
+	$(PYTHON) generate_blocks.py $(UI_EXPORT_ARGS) --list-names
 
 supported-languages: node_modules
 	$(PYTHON) generate_blocks.py $(SUPPORTED_UI_EXPORT_ARGS)
@@ -91,5 +116,12 @@ open: output/ui-catalog.html
 	@echo "Opening ui-catalog.html in default browser..."
 	@open output/ui-catalog.html 2>/dev/null || xdg-open output/ui-catalog.html 2>/dev/null || echo "Open output/ui-catalog.html manually"
 
+open-subset: $(SUBSET_HTML)
+	@echo "Opening ui-catalog-subset.html in default browser..."
+	@open $(SUBSET_HTML) 2>/dev/null || xdg-open $(SUBSET_HTML) 2>/dev/null || echo "Open $(SUBSET_HTML) manually"
+
 clean:
-	rm -rf output/blocks.json output/ui-catalog.html output/ibm-ht-staged-quote-flow.json output/ibm-ht-staged-quote-flow.html output/ai-translate-quote-flow.json output/ai-translate-quote-flow.html
+	rm -rf output/blocks.json output/blocks-subset.json output/ui-catalog.html output/ui-catalog-subset.html \
+		output/ibm-ht-staged-quote-flow.json output/ibm-ht-staged-quote-flow.html \
+		output/ai-translate-quote-flow.json output/ai-translate-quote-flow.html \
+		output/ai-translation-quote-flow.html

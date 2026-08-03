@@ -123,6 +123,23 @@ def _format_quote_cost(token_count: int) -> str:
     return format_slack_usd(token_count * AI_TOKEN_USD_RATE)
 
 
+def media_quote_intro_text(session: dict[str, Any]) -> str:
+    """Intro copy under the Service Quote header for Quote1 / Quote2."""
+    stage = session.get("stage")
+    pipeline_kind = session.get("pipeline_kind")
+    if stage == STAGE_AWAITING_TRANSLATION_ACCEPT:
+        return _("Running the AI translation will incur the following cost:")
+    if pipeline_kind in (
+        PIPELINE_TRANSCRIBE_TRANSLATE,
+        PIPELINE_TRANSCRIBE_TRANSLATE_EMBED,
+    ):
+        return _(
+            "To estimate the cost of AI translation, your source file(s) must first "
+            "be transcribed. The following transcription service charges will apply:"
+        )
+    return _("Review the quote below and click *Accept Quote* to continue.")
+
+
 def media_quote_blocks(
     session: dict[str, Any],
     *,
@@ -148,9 +165,7 @@ def media_quote_blocks(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": _(
-                    "Review the quote below and click *Accept Quote* to continue."
-                ),
+                "text": media_quote_intro_text(session),
             },
         },
         {"type": "divider"},

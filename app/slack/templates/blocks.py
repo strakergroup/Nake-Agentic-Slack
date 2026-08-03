@@ -443,7 +443,12 @@ def verify_quote_blocks(
         if show_evaluation_report is not None
         else workflow_uuid != HUMAN_EVALUATION_WORKFLOW_UUID
     )
-    blocks: list[dict[str, Any]] = []
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*{_('Human Translation')}:*"},
+        }
+    ]
     total_cost = 0.0
     total_savings = 0.0
     for file in source_files:
@@ -984,12 +989,15 @@ def evaluation_credits_quote_blocks(
     total_label = _("Total cost")
     # Staged evaluate (HT) quotes pre-translate before human review; Document
     # MT and non-adjustable quotes run AI translation only.
+    ht_pretranslate_quote = False
     if intro_text is None:
-        intro_text = (
-            _("AI pre-translation before human review will incur the following cost:")
-            if adjust_action_id
-            else _("Running the AI translation will incur the following cost:")
-        )
+        if adjust_action_id:
+            intro_text = _(
+                "AI pre-translation before human review will incur the following cost:"
+            )
+            ht_pretranslate_quote = True
+        else:
+            intro_text = _("Running the AI translation will incur the following cost:")
     blocks: list[dict[str, Any]] = [
         {
             "type": "header",
@@ -1098,10 +1106,19 @@ def evaluation_credits_quote_blocks(
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": _(
-                                "Review the cost below and click *Accept Quote* to "
-                                "continue, or *Adjust Request* to remove languages "
-                                "and/or source files."
+                            "text": (
+                                _(
+                                    "Review the cost below. To continue preparing "
+                                    "your human translation quote, click "
+                                    "*Accept Quote* or click *Adjust Request* to "
+                                    "remove languages and/or source files."
+                                )
+                                if ht_pretranslate_quote
+                                else _(
+                                    "Review the cost below and click *Accept Quote* "
+                                    "to continue, or *Adjust Request* to remove "
+                                    "languages and/or source files."
+                                )
                             ),
                         },
                     }
