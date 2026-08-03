@@ -202,7 +202,7 @@ as Document MT, distinct callback).
 | Setting | Default intent | Notes |
 |---------|----------------|-------|
 | `QUOTE_ADMIN_ONLY` | `true` | Only Admin/Owner see staged AI / combined QE+HT quotes. Non-admins keep prod-like HT quote after AI+QE. |
-| Lifting admin-only later | flip to `false` | Config-only; see [evaluate-quote-confirmation.md](evaluate-quote-confirmation.md#full-release-plan-lifting-admin-only). Drain `slack_ht_quote_after_qe` jobs ≥ 7 days before deleting that flag from code. |
+| Lifting admin-only later | flip to `false` | Config-only; see [evaluate-quote-confirmation.md](evaluate-quote-confirmation.md#full-release-plan-lifting-admin-only). Drain `slack_ht_quote_after_qe` jobs for at least one `EVALUATE_QUOTE_TTL_SECONDS` window (default 30 days) before deleting that flag from code. |
 
 ---
 

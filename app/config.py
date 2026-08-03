@@ -83,7 +83,8 @@ class StrakerConfig(BaseSettings):
     saq_logging_retries: int = Field(default=3, ge=0, le=20)
     saq_logging_timeout_seconds: int = Field(default=30, ge=5, le=600)
 
-    evaluate_quote_ttl_seconds: int = Field(default=604800, ge=3600)
+    # Default 30 days — HT quotes are often accepted well after the first Slack message.
+    evaluate_quote_ttl_seconds: int = Field(default=2592000, ge=3600)
     # When true, only Verify Admin/Owner users see quote Accept UI. Non-admins
     # auto-proceed AI+QE on evaluate, then still get a Human Translation quote.
     quote_admin_only: bool = True

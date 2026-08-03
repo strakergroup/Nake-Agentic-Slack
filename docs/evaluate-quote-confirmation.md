@@ -86,7 +86,7 @@ The discount helper used to be implied by `actions and not show_savings`. That l
 
 ```mermaid
 flowchart LR
-    A["1. QUOTE_ADMIN_ONLY=false<br/>config only, reversible"] --> B["2. Drain ≥ 7 days<br/>no job carries slack_ht_quote_after_qe"]
+    A["1. QUOTE_ADMIN_ONLY=false<br/>config only, reversible"] --> B["2. Drain ≥ EVALUATE_QUOTE_TTL<br/>no job carries slack_ht_quote_after_qe"]
     B --> C["3. SRT: stop producing the flag"]
     C --> D["4. CVA + CVC: stop consuming it"]
 ```
@@ -99,7 +99,7 @@ Set `QUOTE_ADMIN_ONLY=false`. `user_may_receive_quotes` then returns true for ev
 
 #### 2. Drain before deleting
 
-Jobs created while the restriction was on still carry `extra_info.slack_ht_quote_after_qe`, and they need both the SRT standalone HT path and CVC's HV omission to finish correctly. Quote sessions live for `EVALUATE_QUOTE_TTL_SECONDS` (7 days), and CVC parks a staged quote for up to `STAGED_QE_QUOTE_EXPIRY_HOURS` (72h), so wait at least a week after the flip and confirm none are left before removing code. CVC logs the value on every synthetic build (`[V4:SYNTHETIC] ... slack_ht_quote_after_qe=`), which is the easiest thing to search in ELK.
+Jobs created while the restriction was on still carry `extra_info.slack_ht_quote_after_qe`, and they need both the SRT standalone HT path and CVC's HV omission to finish correctly. Quote sessions live for `EVALUATE_QUOTE_TTL_SECONDS` (30 days by default), and CVC parks a staged quote for up to `STAGED_QE_QUOTE_EXPIRY_HOURS` (72h), so wait at least one evaluate-quote TTL after the flip and confirm none are left before removing code. CVC logs the value on every synthetic build (`[V4:SYNTHETIC] ... slack_ht_quote_after_qe=`), which is the easiest thing to search in ELK.
 
 #### 3. SRT — stop producing the flag
 
@@ -150,7 +150,7 @@ Both staged paths submit **without** `HUMAN_EVALUATION` so CVC builds a syntheti
 | `extra_info.slack_ht_quote_after_qe` | non-admin HT-after-QE |
 | Quote session snapshot has `auto_submit_human_job`, `slack_ht_quote_after_qe`, or `human_translation_file_and_languages` | admin staged combined QE + HT quote |
 
-It is used by the `verify:slack:evaluate:complete` handler, `submit_verification_job`, `handle_quote_accept_all`, and the Adjust Request submit. The session is stored in Redis for `EVALUATE_QUOTE_TTL_SECONDS` (7 days by default), which outlives the quote → accept window.
+It is used by the `verify:slack:evaluate:complete` handler, `submit_verification_job`, `handle_quote_accept_all`, and the Adjust Request submit. The session is stored in Redis for `EVALUATE_QUOTE_TTL_SECONDS` (30 days by default), which outlives a typical quote → accept window.
 
 When Accept or Adjust runs after that TTL (session missing), SRT DMs the clicker with `evaluate_quote_expired_message()` (“This translation quote has expired. Please request a new quote.”), updates the quote message in place when channel/ts are available, and does **not** fall through to the generic “There was an error processing your request…” path. PDF pre-quote Accept and Adjust modal open use the same copy.
 
