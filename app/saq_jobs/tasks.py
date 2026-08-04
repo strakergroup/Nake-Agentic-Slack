@@ -50,7 +50,7 @@ from app.ray.events.models import MtSuccessResponseSchema
 from app.ray.submissions import SubmissionStatus, updated_submission_status
 from app.ray.utils import delete_from_file_server, download_from_file_server_async
 from app.slack.buglog_notifier import notify_exception
-from app.slack_job import update_slack_job
+from app.slack_job import update_slack_job, update_slack_job_transaction_uuid
 from app.translate import _
 
 logger = logging.getLogger(__name__)
@@ -1516,14 +1516,24 @@ async def charge_document_mt(
                     "transaction_uuid": (result or {}).get("transaction_uuid"),
                 },
             )
+        transaction_uuid = (result or {}).get("transaction_uuid")
         logger.info(
             "Document MT billing charged",
             extra={
                 **log_extra,
-                "transaction_uuid": (result or {}).get("transaction_uuid"),
+                "transaction_uuid": transaction_uuid,
                 "pdf_transaction_uuid": (result or {}).get("pdf_transaction_uuid"),
             },
         )
+        # RAY-80941: persist document-MT txn on slack_job so IBM report PDF
+        # Transaction Group / identity can remappoint without stem/time heuristics.
+        try:
+            await update_slack_job_transaction_uuid(task_uuid, transaction_uuid)
+        except Exception:
+            logger.exception(
+                "Failed to link slack_job.transaction_uuid after document MT charge",
+                extra={**log_extra, "transaction_uuid": transaction_uuid},
+            )
         return {"status": "charged", **(result or {})}
     except Exception as exc:
         logger.exception("Document MT billing failed; SAQ will retry", extra=log_extra)

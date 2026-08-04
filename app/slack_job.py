@@ -162,3 +162,31 @@ async def update_slack_job(
             },
         )
         await conn.commit()
+
+
+async def update_slack_job_transaction_uuid(
+    task_uuid: str | None,
+    transaction_uuid: str | None,
+) -> None:
+    """Link a slack_job to its document-MT credit transaction (RAY-80941).
+
+    Deferred billing (RAY-80417) charges after delivery and previously left
+    ``slack_job.transaction_uuid`` NULL, so IBM report PDF Transaction Group /
+    identity linking could not remappoint to the MT debit.
+    """
+    if not task_uuid or not transaction_uuid:
+        return
+    async with async_engines["verify"].connect() as conn:
+        sql = text("""
+            UPDATE slack_job
+            SET transaction_uuid = :transaction_uuid
+            WHERE task_uuid = :task_uuid
+        """)
+        await conn.execute(
+            sql,
+            {
+                "task_uuid": task_uuid,
+                "transaction_uuid": transaction_uuid,
+            },
+        )
+        await conn.commit()

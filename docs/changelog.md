@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: RAY-80941 — after deferred document-MT charge, persist `transaction_uuid` on `slack_job` so IBM usage report PDF Transaction Group / identity linking can remappoint to the MT debit (Wade Norman, 2026-07-23)
 - [Changed]: RAY-81103 — `EVALUATE_QUOTE_TTL_SECONDS` default raised from 7 days (`604800`) to 30 days (`2592000`) so Accept/Adjust remains available longer after the quote is posted (Wade Norman, 2026-08-03)
 - [Fixed]: RAY-81103 — evaluate quote Accept/Adjust after Redis TTL shows “This translation quote has expired…” (same as Document MT) instead of the generic processing error; PDF pre-quote Accept and Adjust modal open included (Wade Norman, 2026-08-03)
 - [Fixed]: RAY-81020 — Document MT / quote / evaluate errors map through `slack_message_for_document_mt_error`; `sample_text_not_found` and `conversion_error` render producer `error_data.message` via `DocParseErrorMessage` instead of the generic technical-issues ephemeral (Wade Norman, 2026-07-30)
