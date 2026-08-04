@@ -25,7 +25,6 @@ This folder contains documentation for the Slack Ray Translator application.
 - [Source Language Options](source-language-options.md) - How Cloud Verify source-language options flow from the Verify API and how Slack now matches them
 - [Portuguese Auto-Translate Options](portuguese-auto-translate-options.md) - RAY-80734: `pt-pt` / `pt-BR` replace bare `pt` to avoid Brazil UUID collapse
 - [Pyright Workflow](pyright-workflow.md) - Local type checking and ignored-module backlog during the Pyright rollout
-- [Lint & Typecheck CI](lint-typecheck-ci.md) - Non-blocking GitHub Actions reports for `ruff` and `pyright`, including private-lib install via `PRIVATE_REPO_TOKEN`
 - [Google Chat notifications](google-chat-notifications.md) - Standalone webhook alerts and mirroring from `buglog_notifier`
 - [SAQ Durable File Handling](saq-durable-file-handling.md) - Durable Slack file uploads and side-effect background work via SAQ + Redis
 - [Media translation empty upload](media-translation-empty-upload.md) - RAY-79115 — do not claim success when Slack upload fails / file is empty

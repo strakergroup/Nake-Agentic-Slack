@@ -33,18 +33,12 @@ These files should be removed from the ignore list incrementally as they are cle
 
 ## Current Rollout
 
-Type checking runs locally and as a **non-blocking** GitHub Actions
-report — see [`lint-typecheck-ci.md`](lint-typecheck-ci.md).
-
-Local commands:
+Type checking currently runs through local development tooling only:
 
 - `pipenv run pyright`
 - `pipenv run pre-commit run pyright --all-files`
 
-The CI workflow installs the internal Straker libraries directly from
-their private GitHub repos using the `PRIVATE_REPO_TOKEN` org secret,
-which removes the previous VPN-only blocker (the internal PyPI server
-is still used by Jenkins and other internal workloads).
+There is intentionally no repository-level GitHub Actions workflow for `Pyright` at the moment because several repositories depend on internal packages that are only available behind the VPN.
 
 ## Editor Setup
 
