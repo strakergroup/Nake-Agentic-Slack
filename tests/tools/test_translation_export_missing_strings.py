@@ -329,6 +329,47 @@ def test_build_missing_rows_flags_unmapped_slack_locale():
     assert rows[0].target_language == "pt-BR"
 
 
+def test_parent_db_lang_for_regional_variants():
+    assert MODULE.parent_db_lang("fr-ca") == "fr"
+    assert MODULE.parent_db_lang("es-MX") == "es"
+    assert MODULE.parent_db_lang("fr") is None
+    assert MODULE.parent_db_lang("jp") is None
+
+
+def test_build_missing_rows_skips_regional_variant_when_parent_has_cognate():
+    """fr Transcription==Transcription covers missing fr-ca Transcription."""
+    rows = build_missing_rows(
+        entries=[
+            StringEntry(source_text="Transcription", db_label="Transcription"),
+            StringEntry(source_text="Quote expired", db_label="Quote expired"),
+        ],
+        slack_locales=["fr-CA"],
+        language_map={"fr-ca": "fr-ca"},
+        existing_labels_by_lang={"fr-ca": set()},
+        cognate_labels_by_lang={"fr": {"Transcription"}},
+    )
+
+    assert [(row.target_language, row.source_text) for row in rows] == [
+        ("fr-ca", "Quote expired")
+    ]
+
+
+def test_build_missing_rows_does_not_apply_parent_cognates_to_base_lang():
+    rows = build_missing_rows(
+        entries=[StringEntry(source_text="Transcription", db_label="Transcription")],
+        slack_locales=["fr-FR"],
+        language_map={"fr-fr": "fr"},
+        existing_labels_by_lang={"fr": set()},
+        cognate_labels_by_lang={"fr": {"Transcription"}},
+    )
+
+    # Parent cognates only cover regional variants, not the parent itself when
+    # the row is absent (cognate_labels are not merged into existing for base).
+    assert [(row.target_language, row.source_text) for row in rows] == [
+        ("fr", "Transcription")
+    ]
+
+
 def test_resolve_locale_target_identifies_english_shortcut():
     target = resolve_locale_target("en-US", {})
 

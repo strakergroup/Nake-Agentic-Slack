@@ -353,6 +353,7 @@ class TestVerifyQuoteBlocks:
         blocks = verify_quote_blocks(job, costs)
 
         assert len(blocks) > 0
+        assert blocks[0]["text"]["text"] == "*Human Translation:*"
         assert any(block.get("block_id") == "total_cost_block" for block in blocks)
         assert any(
             block.get("block_id") == "total_estimated_time_block" for block in blocks

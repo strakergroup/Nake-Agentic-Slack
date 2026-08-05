@@ -86,6 +86,14 @@ After Quote2 accept, SRT updates the DB row and re-triggers
 Service Quote line items and totals always show **USD** (`tokens × $0.02`),
 including IBM workspaces (no token-count display on media quotes).
 
+Intro copy under the Service Quote header:
+
+| Quote | Pipeline | Intro |
+|---|---|---|
+| Quote1 | Transcribe & AI Translate / full Embed | Explains that transcription must run before an AI translation quote can be estimated, then lists transcription (and embedding when present) charges |
+| Quote1 | Transcribe only / embed-only SRT | “Review the quote below and click *Accept Quote* to continue.” |
+| Quote2 | After transcription | “Running the AI translation will incur the following cost:” (same wording as document AI Translate) |
+
 ## Balance gate
 
 Accept handlers check AI token balance against the quote’s priced token total

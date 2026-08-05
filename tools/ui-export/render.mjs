@@ -57,9 +57,23 @@ const emoji = require("node-emoji");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Read the generated blocks JSON
-const blocksPath = join(__dirname, "output", "blocks.json");
-/** @type {ExportData} */
+/**
+ * @param {string} name
+ * @param {string} fallback
+ * @returns {string}
+ */
+function argValue(name, fallback) {
+  const index = process.argv.indexOf(name);
+  if (index === -1 || index + 1 >= process.argv.length) return fallback;
+  return process.argv[index + 1];
+}
+
+const blocksPath = argValue("--input", join(__dirname, "output", "blocks.json"));
+const outputPath = argValue(
+  "--output",
+  join(__dirname, "output", "ui-catalog.html")
+);
+/** @type {ExportData & { subset?: { match?: string | null, names?: string[], categories?: string[] } }} */
 const data = JSON.parse(readFileSync(blocksPath, "utf-8"));
 
 /** @type {ExportCatalog} */
@@ -74,6 +88,22 @@ const languageCodes =
     : [data.default_language || "en"];
 const defaultLanguage = data.default_language || languageCodes[0] || "en";
 const catalogs = data.catalogs || { [defaultLanguage]: legacyCatalog };
+const isSubset = Boolean(data.subset);
+const pageTitle = isSubset ? "Slack UI Catalog (subset)" : "Slack UI Catalog";
+const subsetSummary = isSubset
+  ? [
+      data.subset?.match ? `match=${data.subset.match}` : null,
+      data.subset?.names?.length
+        ? `names=${data.subset.names.length}`
+        : null,
+      data.subset?.categories?.length
+        ? `categories=${data.subset.categories.join(",")}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" · ")
+  : "";
+
 
 // Read the slack-blocks-to-jsx stylesheet to inline
 const libCssPath = join(
@@ -356,7 +386,7 @@ const html = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Slack UI Catalog — Straker Translate</title>
+  <title>${pageTitle} — Straker Translate</title>
   <style>
     /* Inline the slack-blocks-to-jsx styles */
     ${libCss}
@@ -607,9 +637,15 @@ const html = `<!DOCTYPE html>
     ${navHtml}
   </nav>
   <main class="main">
-    <h1 class="page-title">Slack UI Catalog</h1>
+    <h1 class="page-title">${pageTitle}</h1>
     <p class="page-subtitle">
-      All ${defaultCatalog.stats.total} Slack Block Kit templates rendered with mock data.
+      ${
+        isSubset
+          ? `Focused subset of ${defaultCatalog.stats.total} Slack Block Kit templates under active review${
+              subsetSummary ? ` (${subsetSummary})` : ""
+            }.`
+          : `All ${defaultCatalog.stats.total} Slack Block Kit templates rendered with mock data.`
+      }
       ${defaultCatalog.stats.total_messages} messages and ${defaultCatalog.stats.total_views} views across
       ${defaultSortedCategories.length} categories.
     </p>
@@ -634,9 +670,11 @@ const html = `<!DOCTYPE html>
 </html>`;
 
 // Write output
-const outputDir = join(__dirname, "output");
-mkdirSync(outputDir, { recursive: true });
-const outputPath = join(outputDir, "ui-catalog.html");
+mkdirSync(dirname(outputPath), { recursive: true });
 writeFileSync(outputPath, html, "utf-8");
 
-console.log(`Rendered ${defaultCatalog.stats.total} templates -> ${outputPath}`);
+console.log(
+  `Rendered ${defaultCatalog.stats.total} templates${
+    isSubset ? " (subset)" : ""
+  } -> ${outputPath}`
+);

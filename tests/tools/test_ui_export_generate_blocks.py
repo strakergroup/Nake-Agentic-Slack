@@ -13,33 +13,12 @@ build_all_messages = MODULE.build_all_messages
 build_all_views = MODULE.build_all_views
 build_catalog = MODULE.build_catalog
 configure_translation = MODULE.configure_translation
+filter_catalog = MODULE.filter_catalog
+filter_entries = MODULE.filter_entries
+parse_csv_values = MODULE.parse_csv_values
 parse_languages = MODULE.parse_languages
 _requested_translation_source = MODULE._requested_translation_source
 _mock_translate = MODULE._mock_translate
-
-QUOTE_FLOW_SPEC = importlib.util.spec_from_file_location(
-    "ui_export_generate_quote_flow",
-    Path(__file__).resolve().parents[2]
-    / "tools"
-    / "ui-export"
-    / "generate_quote_flow.py",
-)
-assert QUOTE_FLOW_SPEC is not None
-assert QUOTE_FLOW_SPEC.loader is not None
-QUOTE_FLOW_MODULE = importlib.util.module_from_spec(QUOTE_FLOW_SPEC)
-QUOTE_FLOW_SPEC.loader.exec_module(QUOTE_FLOW_MODULE)
-
-AI_TRANSLATE_FLOW_SPEC = importlib.util.spec_from_file_location(
-    "ui_export_generate_ai_translate_quote_flow",
-    Path(__file__).resolve().parents[2]
-    / "tools"
-    / "ui-export"
-    / "generate_ai_translate_quote_flow.py",
-)
-assert AI_TRANSLATE_FLOW_SPEC is not None
-assert AI_TRANSLATE_FLOW_SPEC.loader is not None
-AI_TRANSLATE_FLOW_MODULE = importlib.util.module_from_spec(AI_TRANSLATE_FLOW_SPEC)
-AI_TRANSLATE_FLOW_SPEC.loader.exec_module(AI_TRANSLATE_FLOW_MODULE)
 
 
 def test_build_all_messages_includes_ibm_new_job_variants():
@@ -73,6 +52,8 @@ def test_build_all_messages_includes_staged_evaluate_quote_variants():
     assert "DocumentMtQuoteMessage (IBM AI Translate accepted)" in names
     assert "EvaluationCreditsQuoteMessage (IBM HT AI quote with PDF)" in names
     assert "EvaluationCreditsQuoteMessage (IBM HT PDF prequote estimate)" in names
+    assert "MediaQuoteMessage (Quote1 transcription before AI Translate)" in names
+    assert "MediaQuoteMessage (Quote2 AI Translation after transcription)" in names
 
 
 def test_ibm_quote_catalog_entry_uses_dollar_display():
@@ -86,9 +67,33 @@ def test_ibm_quote_catalog_entry_uses_dollar_display():
 
     assert "Token cost" not in rendered
     assert "Total tokens" not in rendered
-    assert "USD 25.00" in rendered
+    assert "USD 15.00" in rendered
+    assert "USD 10.00" in rendered
     assert "USD 2.00" in rendered
     assert "USD 27.00" in rendered
+    assert "AI pre-translation before human review" in rendered
+    assert "preparing your human translation quote" in rendered
+    assert "Adjust Request" in rendered
+
+
+def test_media_quote_catalog_entries_include_stage_copy():
+    entries = build_all_messages()
+    quote1 = next(
+        item
+        for item in entries
+        if item["name"]
+        == "MediaQuoteMessage (Quote1 transcription before AI Translate)"
+    )
+    quote2 = next(
+        item
+        for item in entries
+        if item["name"]
+        == "MediaQuoteMessage (Quote2 AI Translation after transcription)"
+    )
+    assert "must first be transcribed" in str(quote1["blocks"])
+    assert "Running the AI translation will incur the following cost:" in str(
+        quote2["blocks"]
+    )
 
 
 def test_human_job_quote_catalog_entry_embeds_qe_without_quality_tiers():
@@ -106,6 +111,7 @@ def test_human_job_quote_catalog_entry_embeds_qe_without_quality_tiers():
     assert "Maximum Total Cost*: USD 100.25" in rendered
     assert "saved USD" not in rendered
     assert "discount" in rendered.lower()
+    assert "*Human Translation:*" in rendered
 
 
 def test_standalone_ht_quote_catalog_entry_matches_prod_ht_only():
@@ -126,42 +132,39 @@ def test_standalone_ht_quote_catalog_entry_matches_prod_ht_only():
     assert "Maximum Total Cost" not in rendered
 
 
-def test_quote_flow_html_contains_only_new_quote_steps():
-    entries = QUOTE_FLOW_MODULE.build_flow_entries()
+def test_filter_catalog_by_match_and_category():
+    catalog = build_catalog("en")
+    filtered = filter_catalog(
+        catalog,
+        match=r"MediaQuote|HumanJobQuote|EvaluationCredits|DocumentMtQuote|evaluation_ai_quote_adjust",
+        categories=["Quotes", "Modals"],
+    )
+    names = {
+        entry["name"] for kind in ("messages", "views") for entry in filtered[kind]
+    }
 
-    assert len(entries) == 3
-    assert [entry["entry_name"] for entry in entries] == [
-        "EvaluationCreditsQuoteMessage (IBM HT PDF prequote estimate)",
-        "EvaluationCreditsQuoteMessage (IBM HT AI quote with PDF)",
-        "HumanJobQuoteMessage",
+    assert filtered["stats"]["total"] >= 6
+    assert "MediaQuoteMessage (Quote1 transcription before AI Translate)" in names
+    assert "HumanJobQuoteMessage" in names
+    assert "evaluation_ai_quote_adjust_modal" in names
+    assert "LoginMessage" not in names
+    assert all(
+        entry["category"] in {"Quotes", "Modals"}
+        for kind in ("messages", "views")
+        for entry in filtered[kind]
+    )
+
+
+def test_filter_entries_by_exact_names():
+    entries = [
+        {"name": "Alpha", "category": "Quotes"},
+        {"name": "Beta", "category": "Quotes"},
+        {"name": "Gamma", "category": "Auth"},
     ]
-    payload = QUOTE_FLOW_MODULE.build_flow_payload()
-    rendered = str(payload)
-    assert "USD 27.00" in rendered
-    assert "Quality: " not in rendered
-    assert "-30% off" not in rendered
-    assert "-20% off" not in rendered
-    assert "Quality Evaluation: USD" not in rendered
-    assert "Maximum Total Cost*: USD 100.25" in rendered
-    assert "saved USD" not in rendered
-    assert "JobStatusMessage" not in rendered
-
-
-def test_ai_translate_quote_flow_contains_direct_quote_states():
-    entries = AI_TRANSLATE_FLOW_MODULE.build_flow_entries()
-
-    assert len(entries) == 2
-    assert [entry["entry_name"] for entry in entries] == [
-        "DocumentMtQuoteMessage (IBM AI Translate direct quote)",
-        "DocumentMtQuoteMessage (IBM AI Translate accepted)",
+    assert [entry["name"] for entry in filter_entries(entries, names=["Beta"])] == [
+        "Beta"
     ]
-    payload = AI_TRANSLATE_FLOW_MODULE.build_flow_payload()
-    rendered = str(payload)
-    assert "Direct AI Translate Quote Flow" in rendered
-    assert "Service Quote" in rendered
-    assert "USD 28.40" in rendered
-    assert "Total AI Tokens" not in rendered
-    assert "EvaluationCreditsQuoteMessage" not in rendered
+    assert parse_csv_values("Quotes, Modals, Quotes") == ["Quotes", "Modals"]
 
 
 def test_build_all_views_includes_ibm_connected_home_variants():

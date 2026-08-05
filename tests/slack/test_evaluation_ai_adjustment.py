@@ -393,9 +393,28 @@ def test_ai_quote_blocks_show_adjust_button_and_exact_guidance():
 
     assert "Adjust Request" in rendered
     assert (
+        "Review the cost below. To continue preparing your human translation "
+        "quote, click *Accept Quote* or click *Adjust Request* to remove "
+        "languages and/or source files."
+    ) in rendered
+
+
+def test_document_mt_adjust_guidance_stays_generic():
+    blocks = evaluation_credits_quote_blocks(
+        "AI Translation",
+        100,
+        accept_action_id="accept",
+        adjust_action_id="document_mt_quote_adjust",
+        job_uuid="job-1",
+        intro_text="Running the AI translation will incur the following cost:",
+    )
+    rendered = str(blocks)
+
+    assert (
         "Review the cost below and click *Accept Quote* to continue, or "
         "*Adjust Request* to remove languages and/or source files."
     ) in rendered
+    assert "preparing your human translation quote" not in rendered
 
 
 def test_ai_adjust_modal_uses_independent_file_language_checkboxes():

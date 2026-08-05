@@ -55,6 +55,11 @@ class TestEvaluationCreditsQuoteBlocks:
             "AI pre-translation before human review will incur the following cost:"
             in rendered
         )
+        assert (
+            "Review the cost below. To continue preparing your human translation "
+            "quote, click *Accept Quote* or click *Adjust Request* to remove "
+            "languages and/or source files."
+        ) in rendered
         assert "Review the quote below" not in rendered
         assert "Adjust Request" in rendered
         assert "remove languages and/or source files" in rendered

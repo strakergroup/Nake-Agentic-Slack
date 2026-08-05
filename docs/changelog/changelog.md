@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Changed]: Translation export — regional variants (e.g. `fr-ca`) inherit coverage from parent-lang cognates where source equals target (e.g. `Transcription`); translator import no longer skips those same-word rows (Wade Norman, 2026-08-05)
 - [Changed]: RAY-81103 — `EVALUATE_QUOTE_TTL_SECONDS` default raised from 7 days (`604800`) to 30 days (`2592000`) so Accept/Adjust remains available longer after the quote is posted (Wade Norman, 2026-08-03)
 - [Fixed]: RAY-81103 — evaluate quote Accept/Adjust after Redis TTL shows “This translation quote has expired…” (same as Document MT) instead of the generic processing error; PDF pre-quote Accept and Adjust modal open included (Wade Norman, 2026-08-03)
 - [Fixed]: RAY-79115 — Document MT Adjust Request recomputes AI tokens with the SOW formula (`ceil(chars × selected_targets × 0.002)`) and redistributes line USD so minimum/ceil row tokens cannot inflate the modal Total (Wade Norman, 2026-07-31)

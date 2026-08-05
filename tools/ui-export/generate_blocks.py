@@ -88,12 +88,16 @@ class _Environment(str, Enum):
 
 if not USE_APP_TRANSLATOR:
     _straker_utils = MagicMock()
+    # Parent must look like a package so nested imports (e.g. redis.asyncio) resolve.
+    _straker_utils.__path__ = []
     for sub in (
         "straker_utils",
         "straker_utils.sql",
         "straker_utils.sql.async_engine",
         "straker_utils.domain",
         "straker_utils.environment",
+        "straker_utils.redis",
+        "straker_utils.redis.asyncio",
     ):
         sys.modules.setdefault(sub, _straker_utils)
     sys.modules["straker_utils.environment"].Environment = _Environment
@@ -1274,9 +1278,26 @@ def build_all_messages() -> list[dict[str, Any]]:
                 token_cost=1250,
                 job_uuid=JOB_UUID,
                 accept_action_id="evaluation_ai_quote_accept",
+                adjust_action_id="evaluation_ai_quote_adjust",
                 pdf_page_count=4,
                 pdf_tokens=100,
                 is_ibm=True,
+                language_costs=[
+                    {
+                        "file_uuid": "file-uuid-001",
+                        "file_label": "marketing-copy.docx",
+                        "value": "lang-fr-uuid",
+                        "label": "French",
+                        "token": 750,
+                    },
+                    {
+                        "file_uuid": "file-uuid-001",
+                        "file_label": "marketing-copy.docx",
+                        "value": "lang-es-uuid",
+                        "label": "Spanish",
+                        "token": 500,
+                    },
+                ],
             ),
         )
         add(
@@ -1287,10 +1308,76 @@ def build_all_messages() -> list[dict[str, Any]]:
                 token_cost=1350,
                 job_uuid=JOB_UUID,
                 accept_action_id="evaluation_pdf_prequote_accept",
+                adjust_action_id="evaluation_ai_quote_adjust",
                 pdf_page_count=4,
                 pdf_tokens=100,
                 is_ibm=True,
+                language_costs=[
+                    {
+                        "file_uuid": "file-uuid-001",
+                        "file_label": "brief.pdf",
+                        "value": "lang-fr-uuid",
+                        "label": "French",
+                        "token": 850,
+                    },
+                    {
+                        "file_uuid": "file-uuid-001",
+                        "file_label": "brief.pdf",
+                        "value": "lang-es-uuid",
+                        "label": "Spanish",
+                        "token": 500,
+                    },
+                ],
             ),
+        )
+        from app.slack.media_quotes import (
+            ACTION_MEDIA_QUOTE_ACCEPT,
+            ACTION_MEDIA_QUOTE_CANCEL,
+            ACTION_MEDIA_TRANSLATION_QUOTE_ACCEPT,
+            ACTION_MEDIA_TRANSLATION_QUOTE_CANCEL,
+            PIPELINE_TRANSCRIBE_TRANSLATE,
+            STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
+            STAGE_AWAITING_TRANSLATION_ACCEPT,
+            media_quote_blocks,
+        )
+
+        add(
+            "MediaQuoteMessage (Quote1 transcription before AI Translate)",
+            "Quotes",
+            {
+                "type": "message",
+                "blocks": media_quote_blocks(
+                    {
+                        "quote_id": JOB_UUID,
+                        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
+                        "stage": STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
+                        "file_name": "product-demo.mp4",
+                        "line_items": [{"label": "Transcription", "tokens": 100}],
+                        "total_tokens": 100,
+                    },
+                    accept_action_id=ACTION_MEDIA_QUOTE_ACCEPT,
+                    cancel_action_id=ACTION_MEDIA_QUOTE_CANCEL,
+                ),
+            },
+        )
+        add(
+            "MediaQuoteMessage (Quote2 AI Translation after transcription)",
+            "Quotes",
+            {
+                "type": "message",
+                "blocks": media_quote_blocks(
+                    {
+                        "quote_id": JOB_UUID,
+                        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
+                        "stage": STAGE_AWAITING_TRANSLATION_ACCEPT,
+                        "file_name": "product-demo.mp4",
+                        "line_items": [{"label": "AI Translation", "tokens": 50}],
+                        "total_tokens": 50,
+                    },
+                    accept_action_id=ACTION_MEDIA_TRANSLATION_QUOTE_ACCEPT,
+                    cancel_action_id=ACTION_MEDIA_TRANSLATION_QUOTE_CANCEL,
+                ),
+            },
         )
 
         # ---- Events ----
@@ -2025,6 +2112,97 @@ def build_catalog(
     }
 
 
+def parse_csv_values(value: str | None) -> list[str]:
+    """Parse comma-separated values, preserving order and dropping empties."""
+    if not value:
+        return []
+    items: list[str] = []
+    seen: set[str] = set()
+    for part in value.split(","):
+        item = part.strip()
+        if not item or item in seen:
+            continue
+        items.append(item)
+        seen.add(item)
+    return items
+
+
+def entry_matches_filters(
+    entry: dict[str, Any],
+    *,
+    match: re.Pattern[str] | None = None,
+    names: set[str] | None = None,
+    categories: set[str] | None = None,
+) -> bool:
+    """Return True when a catalog entry passes the active subset filters."""
+    name = str(entry.get("name") or "")
+    category = str(entry.get("category") or "")
+    if names is not None and name not in names:
+        return False
+    if categories is not None and category not in categories:
+        return False
+    if match is not None and match.search(name) is None:
+        return False
+    return True
+
+
+def filter_entries(
+    entries: list[dict[str, Any]],
+    *,
+    match: str | None = None,
+    names: list[str] | None = None,
+    categories: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Filter catalog entries by regex name match, exact names, and/or category."""
+    pattern = re.compile(match, re.IGNORECASE) if match else None
+    name_set = set(names) if names else None
+    category_set = set(categories) if categories else None
+    if pattern is None and name_set is None and category_set is None:
+        return entries
+    return [
+        entry
+        for entry in entries
+        if entry_matches_filters(
+            entry,
+            match=pattern,
+            names=name_set,
+            categories=category_set,
+        )
+    ]
+
+
+def filter_catalog(
+    catalog: dict[str, Any],
+    *,
+    match: str | None = None,
+    names: list[str] | None = None,
+    categories: list[str] | None = None,
+) -> dict[str, Any]:
+    """Return a catalog copy limited to the requested template subset."""
+    messages = filter_entries(
+        catalog.get("messages") or [],
+        match=match,
+        names=names,
+        categories=categories,
+    )
+    views = filter_entries(
+        catalog.get("views") or [],
+        match=match,
+        names=names,
+        categories=categories,
+    )
+    return {
+        **catalog,
+        "messages": messages,
+        "views": views,
+        "stats": {
+            "total_messages": len(messages),
+            "total_views": len(views),
+            "total": len(messages) + len(views),
+        },
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate Block Kit JSON for Slack UI templates."
@@ -2062,6 +2240,32 @@ def parse_args() -> argparse.Namespace:
             "optional JSON file; 'app'/'db' uses the real DB-backed app translator."
         ),
     )
+    parser.add_argument(
+        "--match",
+        help=(
+            "Case-insensitive regex matched against template names. Use with "
+            "--category/--names to export only templates under active work."
+        ),
+    )
+    parser.add_argument(
+        "--names",
+        help="Comma-separated exact template names to include.",
+    )
+    parser.add_argument(
+        "--category",
+        help="Comma-separated catalog categories to include (e.g. Quotes,Modals).",
+    )
+    parser.add_argument(
+        "--list-names",
+        action="store_true",
+        help="Print matching template names and exit without writing JSON.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path(__file__).parent / "output" / "blocks.json",
+        help="Path to write the generated JSON file.",
+    )
     return parser.parse_args()
 
 
@@ -2075,7 +2279,18 @@ def main():
         or DEFAULT_LANGUAGE
     )
     languages = parse_languages(language_value)
+    match = args.match or os.environ.get("UI_EXPORT_MATCH")
+    names = parse_csv_values(args.names or os.environ.get("UI_EXPORT_NAMES"))
+    categories = parse_csv_values(args.category or os.environ.get("UI_EXPORT_CATEGORY"))
+    subset_active = bool(match or names or categories)
     print(f"Generating Block Kit JSON for languages: {', '.join(languages)}...")
+    if subset_active:
+        print(
+            "  Subset filters:"
+            f" match={match!r}"
+            f" names={names or None}"
+            f" categories={categories or None}"
+        )
 
     use_app_translator = args.translation_source in APP_TRANSLATION_SOURCES
     catalogs = {}
@@ -2085,10 +2300,34 @@ def main():
             if use_app_translator
             else load_translation_catalog(args.translations_file, language)
         )
-        catalogs[language] = build_catalog(language, translation_catalog)
+        catalog = build_catalog(language, translation_catalog)
+        catalogs[language] = filter_catalog(
+            catalog,
+            match=match,
+            names=names or None,
+            categories=categories or None,
+        )
 
     default_language = languages[0]
     default_catalog = catalogs[default_language]
+
+    if args.list_names:
+        names_out = [
+            f"{entry['category']}: {entry['name']}"
+            for kind in ("messages", "views")
+            for entry in default_catalog.get(kind) or []
+        ]
+        print("\n".join(names_out) if names_out else "(no matching templates)")
+        print(f"\n{len(names_out)} matching templates")
+        return
+
+    if subset_active and default_catalog["stats"]["total"] == 0:
+        raise SystemExit(
+            "No templates matched the subset filters "
+            f"(match={match!r}, names={names or None}, "
+            f"categories={categories or None})."
+        )
+
     output = {
         "generated_at": datetime.now().isoformat(),
         "default_language": default_language,
@@ -2099,12 +2338,19 @@ def main():
         "views": default_catalog["views"],
         "stats": default_catalog["stats"],
     }
+    if subset_active:
+        output["subset"] = {
+            "match": match,
+            "names": names,
+            "categories": categories,
+        }
 
-    output_path = Path(__file__).parent / "output" / "blocks.json"
+    output_path = args.output
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(output, indent=2, default=str))
 
-    print(f"Generated {output['stats']['total']} templates -> {output_path}")
+    label = "subset" if subset_active else "full"
+    print(f"Generated {output['stats']['total']} templates ({label}) -> {output_path}")
     print(f"  Default language: {default_language}")
     print(f"  Messages: {output['stats']['total_messages']}")
     print(f"  Views:    {output['stats']['total_views']}")
