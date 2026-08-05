@@ -151,7 +151,21 @@ The MT fill step rejects Google language mappings that resolve a non-English DB
 language to English and flags unchanged non-English output. SQL generation
 performs a batch-level guard for non-English workbooks where a suspicious share
 of rows still matches the source text, which catches full-language fallback
-outputs while allowing occasional proper nouns to be reviewed normally.
+outputs while allowing occasional proper nouns / same-word cognates (for example
+French/French-Canadian `Transcription`) to import normally. Translator-facing
+workbooks also keep those cognates; they are no longer skipped on import.
+
+## Cognates and regional variants
+
+Some English UI words are identical in the target language. When the parent
+language already stores that cognate (`label` equals `langstring`), regional
+variants inherit coverage for missing-string export so the same word is not
+re-sent to translators. Example: `fr` has `Transcription` → `Transcription`, so
+`fr-ca` does not list `Transcription` as missing even if it has no row yet.
+
+Parent shortname is the segment before the first `-` (`fr-ca` → `fr`,
+`es-MX` → `es`). Base languages are not covered by their own cognate fetch for
+export; they still need an `obj_stringtranslator` row.
 
 By default, the generated SQL is safe to rerun during UAT refresh testing. For
 each filled workbook row that passes validation, the import file writes a scoped

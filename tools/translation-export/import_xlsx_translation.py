@@ -287,11 +287,9 @@ def collect_insert_statements(
             label_text = str(label)
             lang_text = normalize_db_lang(lang)
             translation_text = str(translation)
-            if (
-                is_single_column_translator_workbook
-                and translation_text.strip() == label_text.strip()
-            ):
-                continue
+            # Cognates (source == target) are valid — e.g. fr-ca "Transcription".
+            # The batch-level suspicious-share guard below still catches MT
+            # fallback dumps where most rows are unchanged English.
             row_errors = validate_translation_tags(label_text, translation_text)
             if not lang_text.strip().lower().startswith(ENGLISH_PREFIXES):
                 row_counts_by_lang[lang_text] += 1

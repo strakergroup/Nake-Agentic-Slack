@@ -42,6 +42,9 @@ OUTPUT_COLUMNS = (
 )
 TRANSLATOR_METADATA_SHEET = "_translation_metadata"
 TRANSLATOR_METADATA_COLUMNS = ("source_text", "max_length")
+# Regional DB langs (e.g. fr-ca) inherit coverage from parent-lang cognates
+# where the stored translation equals the English source (same word in both).
+REGIONAL_LANG_SEPARATOR = "-"
 
 
 @dataclass
@@ -189,14 +192,26 @@ def resolve_locale_target(
     )
 
 
+def parent_db_lang(db_lang: str) -> str | None:
+    """Parent shortname for regional variants (`fr-ca` → `fr`), else None."""
+    if REGIONAL_LANG_SEPARATOR not in db_lang:
+        return None
+    parent = db_lang.split(REGIONAL_LANG_SEPARATOR, 1)[0].strip()
+    if not parent or parent.lower() == db_lang.lower():
+        return None
+    return parent
+
+
 def build_missing_rows(
     entries: Sequence[StringEntry],
     slack_locales: Sequence[str],
     language_map: dict[str, str],
     existing_labels_by_lang: dict[str, set[str]],
     include_english: bool = False,
+    cognate_labels_by_lang: dict[str, set[str]] | None = None,
 ) -> list[MissingStringRow]:
     rows: list[MissingStringRow] = []
+    cognate_labels_by_lang = cognate_labels_by_lang or {}
 
     for slack_locale in slack_locales:
         target = resolve_locale_target(slack_locale, language_map)
@@ -207,6 +222,14 @@ def build_missing_rows(
             normalize_db_label_for_lookup(label)
             for label in existing_labels_by_lang.get(target.db_lang, set())
         }
+        parent = parent_db_lang(target.db_lang)
+        if parent:
+            # Same-word translations on the parent (e.g. fr Transcription) cover
+            # the regional variant so we do not re-send them to translators.
+            existing_labels.update(
+                normalize_db_label_for_lookup(label)
+                for label in cognate_labels_by_lang.get(parent, set())
+            )
         for entry in entries:
             if normalize_db_label_for_lookup(entry.db_label) in existing_labels:
                 continue
@@ -259,6 +282,40 @@ def fetch_existing_labels(db_langs: Iterable[str]) -> dict[str, set[str]]:
             )
             labels_by_lang[db_lang] = {str(row[0]) for row in result}
     return labels_by_lang
+
+
+def fetch_cognate_labels(db_langs: Iterable[str]) -> dict[str, set[str]]:
+    """Labels whose stored translation equals the English source for that lang.
+
+    Used so regional variants (e.g. fr-ca) can inherit coverage from parent-lang
+    cognates such as French ``Transcription`` → ``Transcription``.
+    """
+    ensure_repo_root_on_path()
+    from app.database import engines
+
+    cognates_by_lang: dict[str, set[str]] = {}
+    with engines["sitemanager_readonly"].connect() as conn:
+        for db_lang in sorted(set(db_langs)):
+            result = conn.execute(
+                text(
+                    """
+                    SELECT DISTINCT label, langstring
+                    FROM obj_stringtranslator
+                    WHERE lang = :lang
+                    AND label IS NOT NULL
+                    AND langstring IS NOT NULL
+                    """
+                ).bindparams(lang=db_lang)
+            )
+            cognates: set[str] = set()
+            for label, langstring in result:
+                label_text = str(label)
+                if normalize_db_label_for_lookup(
+                    label_text
+                ) == normalize_db_label_for_lookup(str(langstring)):
+                    cognates.add(label_text)
+            cognates_by_lang[db_lang] = cognates
+    return cognates_by_lang
 
 
 def write_csv(rows: Sequence[MissingStringRow], output_path: Path) -> None:
@@ -472,12 +529,19 @@ def main() -> None:
     ]
     entries = collect_string_entries(source_dir, root=root)
     existing_labels = fetch_existing_labels(db_langs)
+    parent_langs = {
+        parent
+        for db_lang in db_langs
+        if (parent := parent_db_lang(db_lang)) is not None
+    }
+    cognate_labels = fetch_cognate_labels(parent_langs) if parent_langs else {}
     rows = build_missing_rows(
         entries=entries,
         slack_locales=slack_locales,
         language_map=language_map,
         existing_labels_by_lang=existing_labels,
         include_english=args.include_english,
+        cognate_labels_by_lang=cognate_labels,
     )
     output_format = infer_format(args.output, args.format)
     if args.audience == "translator" and output_format == "json":

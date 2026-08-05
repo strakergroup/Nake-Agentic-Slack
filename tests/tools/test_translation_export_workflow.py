@@ -472,6 +472,46 @@ def test_write_import_sql_accepts_single_column_translator_workbook(tmp_path):
     assert 'Soumettre <x id=\\"1\\"/>' in sql
 
 
+def test_write_import_sql_accepts_single_cognate_in_translator_workbook(tmp_path):
+    """Same-word translations (e.g. Transcription) are valid, not skipped."""
+    workbook_path = tmp_path / "translations_fr-ca.xlsx"
+    output_path = tmp_path / "import.sql"
+    rows = [
+        EXPORT.MissingStringRow(
+            source_language="en",
+            target_language="fr-ca",
+            source_text="Transcription",
+            target_text="",
+            max_length=0,
+        ),
+        EXPORT.MissingStringRow(
+            source_language="en",
+            target_language="fr-ca",
+            source_text="Quote expired",
+            target_text="",
+            max_length=0,
+        ),
+    ]
+    EXPORT.write_translator_xlsx(rows, workbook_path)
+
+    workbook = openpyxl.load_workbook(workbook_path)
+    try:
+        sheet = workbook.active
+        sheet["A1"].value = "Transcription"
+        sheet["A2"].value = "Devis expiré"
+        workbook.save(workbook_path)
+    finally:
+        workbook.close()
+
+    count = IMPORT_SQL.write_import_sql([workbook_path], output_path)
+
+    sql = output_path.read_text(encoding="utf-8")
+    assert count == 2
+    assert '"Transcription"' in sql
+    assert '"Devis expiré"' in sql
+    assert '"fr-ca"' in sql
+
+
 def test_write_import_sql_reads_returned_translator_second_column(tmp_path):
     workbook_path = tmp_path / "translations_fr-ca_updated__French_Canada.xlsx"
     output_path = tmp_path / "import.sql"

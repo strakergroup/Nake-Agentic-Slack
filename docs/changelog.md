@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: Translation export — regional variants (e.g. `fr-ca`) inherit coverage from parent-lang cognates where source equals target (e.g. `Transcription`); translator import no longer skips those same-word rows (Wade Norman, 2026-08-05)
 - [Changed]: RAY-79114 — UI export subset mode (`make subset MATCH=…` / `--match`/`--names`/`--category`) replaces the standalone HT and AI Translate quote-flow generators; flow-specific scripts and HTML renderer removed (Wade Norman, 2026-08-04)
 - [Changed]: RAY-79114 — quote copy updates from IBM review: media Quote1 explains transcription-before-AI-quote, Quote2 matches document AI intro; HT staged AI Accept guidance clarifies it prepares the human translation quote; HT quote panels show a **Human Translation:** section header before file names (Wade Norman, 2026-08-04)
 - [Fixed]: RAY-80941 — after deferred document-MT charge, persist `transaction_uuid` on `slack_job` so IBM usage report PDF Transaction Group / identity linking can remappoint to the MT debit (Wade Norman, 2026-07-23)
