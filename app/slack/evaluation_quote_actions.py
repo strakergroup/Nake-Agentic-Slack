@@ -52,6 +52,7 @@ from app.slack.evaluation_quotes import (
     STAGE_AWAITING_QE,
     STAGE_PROCESSING_AI,
     STAGE_PROCESSING_QE,
+    evaluate_quote_expired_message,
     get_evaluate_quote_session,
     update_evaluate_quote_slack_message,
     update_evaluate_quote_stage,
@@ -69,6 +70,43 @@ def _pending_confirmation_status() -> str:
 
 def _clicking_user_id(body: dict[str, Any], context: RayContext) -> str:
     return str(body.get("user", {}).get("id") or context.get("user_id") or "")
+
+
+async def _notify_evaluate_quote_expired(
+    client: AsyncWebClient,
+    *,
+    body: dict[str, Any],
+    context: RayContext,
+    channel_id: str | None = None,
+    message_ts: str | None = None,
+) -> None:
+    """DM the clicker and strip Accept/Adjust from the quote message when possible."""
+    user_id = _clicking_user_id(body, context)
+    expired = evaluate_quote_expired_message()
+    if user_id:
+        await client.chat_postMessage(channel=user_id, text=expired)
+    resolved_channel = str(
+        channel_id
+        or body.get("channel", {}).get("id")
+        or context.get("channel_id")
+        or ""
+    )
+    resolved_ts = message_ts or body.get("message", {}).get("ts")
+    if resolved_channel and resolved_ts:
+        try:
+            await client.chat_update(
+                channel=resolved_channel,
+                ts=str(resolved_ts),
+                text=expired,
+                blocks=[
+                    {
+                        "type": "section",
+                        "text": {"type": "mrkdwn", "text": expired},
+                    }
+                ],
+            )
+        except Exception as e:
+            notify_exception(e)
 
 
 async def _reject_foreign_quote_click(
@@ -215,6 +253,9 @@ async def _accept_evaluation_service_quote(
     """Accept a staged evaluate quote, updating the original Slack message in place."""
     job_uuid = action["value"]
     session = await get_evaluate_quote_session(job_uuid)
+    if session is None:
+        await _notify_evaluate_quote_expired(client, body=body, context=context)
+        return
     if await _reject_foreign_quote_click(
         client,
         session=session,
@@ -222,9 +263,7 @@ async def _accept_evaluation_service_quote(
         message=_("You do not have permission to accept this quote."),
     ):
         return
-    channel_id = str(
-        (session or {}).get("channel_id") or context.get("channel_id") or ""
-    )
+    channel_id = str(session.get("channel_id") or context.get("channel_id") or "")
     private_metadata_raw = (body.get("view") or {}).get("private_metadata")
     if isinstance(private_metadata_raw, str) and private_metadata_raw:
         try:
@@ -503,8 +542,17 @@ async def accept_combined_qe_human_quote(
 ) -> None:
     """Accept the combined Quality Evaluation + Human Translation quote."""
     job_uuid = action["value"]
-    message_ts = await _resolve_evaluate_quote_message_ts(body, job_uuid)
+    message_ts = body.get("message", {}).get("ts")
     session = await get_evaluate_quote_session(job_uuid)
+    if session is None:
+        await _notify_evaluate_quote_expired(
+            client,
+            body=body,
+            context=context,
+            message_ts=message_ts,
+        )
+        return
+    message_ts = await _resolve_evaluate_quote_message_ts(body, job_uuid)
     if await _reject_foreign_quote_click(
         client,
         session=session,
@@ -512,10 +560,8 @@ async def accept_combined_qe_human_quote(
         message=_("You do not have permission to accept this quote."),
     ):
         return
-    channel_id = str(
-        (session or {}).get("channel_id") or context.get("channel_id") or ""
-    )
-    if session and session.get("stage") in QE_TERMINAL_STAGES:
+    channel_id = str(session.get("channel_id") or context.get("channel_id") or "")
+    if session.get("stage") in QE_TERMINAL_STAGES:
         return
 
     lock_key = f"evaluate_qe_human_quote_accept_{job_uuid}"

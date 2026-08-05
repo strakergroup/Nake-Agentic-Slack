@@ -38,9 +38,15 @@ sequenceDiagram
     SAQ->>User: Upload translated file to Slack
     SAQ->>SAQ: users.info(poster) then charge_document_mt
     SAQ->>LC: POST /mt/transaction<br/>document MT + combined PDF fee
+    SAQ->>SAQ: UPDATE slack_job.transaction_uuid<br/>(document-MT txn — RAY-80941)
 ```
 
 The prepared charge payload (`mt_charge`) rides on the `verify:slack:document:translated` event itself — there is no `slack_job.extra_data` hand-off. The consumer assembles it (it owns language resolution and the idempotency keys) but never charges; slack-ray relays it after delivery. Double-charge safety comes from the gateway idempotency keys: the document-MT key is per target, the PDF key is per `task_uuid` (so it dedupes to one across multi-target charges).
+
+After a successful charge, `charge_document_mt` writes the document-MT
+`transaction_uuid` onto `slack_job` (RAY-80941) so the IBM usage report can
+group the PDF conversion fee with its sibling MT debit without stem/time
+heuristics. A failed link is logged and does not fail the charge.
 
 ## Flow (Teams)
 
