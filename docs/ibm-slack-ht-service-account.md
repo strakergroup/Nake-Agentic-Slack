@@ -4,7 +4,8 @@
 
 IBM Slack Human Translation jobs prefer an **active CRM member** when the Slack
 user already has one. Otherwise the job is owned by a fixed CRM service member
-(default: Chris Sacre / `D8CF434C-6FAD-496F-9A6B-C8EE6A0A066B` on IBM Slack App).
+(default: `slackhtjobs@ibm.com` /
+`6BB48BEF-1EAD-4824-8724-5298CA10AA86` on IBM Slack App).
 
 When the service account owns the job, the Slack poster is stamped only on
 franchise group custom fields:
@@ -49,11 +50,13 @@ raise a clear error instead of auto-create.
 ## Config
 
 ```env
-HT_SERVICE_ACCOUNT_MEMBER_UUID=D8CF434C-6FAD-496F-9A6B-C8EE6A0A066B
+HT_SERVICE_ACCOUNT_MEMBER_UUID=6BB48BEF-1EAD-4824-8724-5298CA10AA86
 ```
 
 IBM Slack App group already defines Requester ID / Surrogate ID custom fields
-(`is_quote` / `is_invoice`).
+(`is_quote` / `is_invoice`). Member is created by flyway
+`V20260810_001__RAY-81247-sitemanager-INSERT-ibm-slack-ht-service-account.sql`
+(`slackhtjobs@ibm.com`, CRM `Member` + Verify `member` / `role-member`).
 
 ## Code touchpoints
 
@@ -66,6 +69,5 @@ IBM Slack App group already defines Requester ID / Surrogate ID custom fields
 
 ## Out of scope (follow-ups)
 
-- Dedicated synthetic member (vs Chris Sacre) if finance prefers
 - Surrogate ID distinct from Requester if IBM requires it
 - Persist poster email on evaluate job so Admin accept stamps original poster

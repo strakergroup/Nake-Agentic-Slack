@@ -57,5 +57,5 @@ def test_should_use_ht_service_account_prefers_active_crm(monkeypatch):
 
 def test_default_service_account_uuid():
     assert DEFAULT_HT_SERVICE_ACCOUNT_MEMBER_UUID == (
-        "D8CF434C-6FAD-496F-9A6B-C8EE6A0A066B"
+        "6BB48BEF-1EAD-4824-8724-5298CA10AA86"
     )

@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: RAY-81247 — HT service account default is flyway member `slackhtjobs@ibm.com` (`6BB48BEF-1EAD-4824-8724-5298CA10AA86`) instead of Chris Sacre (Wade Norman, 2026-08-10)
 - [Changed]: RAY-81247 — Media (transcribe/translate/embed) org-bills like AI Translate when no personal CRM member; Direct Login SSO handler/modal removed; HT/media callbacks stamp poster `team_id`/`slack_user_id` for correct Slack delivery (Wade Norman, 2026-08-10)
 - [Fixed]: RAY-81247 — omit Requester/Surrogate custom fields when Slack poster email cannot be resolved (no blank stamps) (Wade Norman, 2026-08-10)
 - [Changed]: RAY-81247 — IBM Slack HT prefers an active CRM member when linked; service account only when none. Removed Direct Login auto-create and IBM Direct Login buttons; see `docs/ibm-slack-ht-service-account.md` (Wade Norman, 2026-08-07)

@@ -22,8 +22,9 @@ from app.ray.utils import is_ibm_enterprise
 
 logger = logging.getLogger(__name__)
 
-# Prod IBM Slack App Admin (Chris Sacre) — override via HT_SERVICE_ACCOUNT_MEMBER_UUID.
-DEFAULT_HT_SERVICE_ACCOUNT_MEMBER_UUID = "D8CF434C-6FAD-496F-9A6B-C8EE6A0A066B"
+# IBM Slack HT Jobs service member — override via HT_SERVICE_ACCOUNT_MEMBER_UUID.
+# Created by flyway RAY-81247 (slackhtjobs@ibm.com).
+DEFAULT_HT_SERVICE_ACCOUNT_MEMBER_UUID = "6BB48BEF-1EAD-4824-8724-5298CA10AA86"
 
 REQUESTER_ID_LABEL = "Requester ID"
 SURROGATE_ID_LABEL = "Surrogate ID"

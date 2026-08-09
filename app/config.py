@@ -89,8 +89,8 @@ class StrakerConfig(BaseSettings):
     # auto-proceed AI+QE on evaluate, then still get a Human Translation quote.
     quote_admin_only: bool = True
     # RAY-81247: CRM member that owns IBM Slack HT jobs when the poster is not
-    # logged in. Default is Chris Sacre (IBM Slack App Admin) in prod.
-    ht_service_account_member_uuid: str = "D8CF434C-6FAD-496F-9A6B-C8EE6A0A066B"
+    # logged in. Default is slackhtjobs@ibm.com (RAY-81247 flyway member).
+    ht_service_account_member_uuid: str = "6BB48BEF-1EAD-4824-8724-5298CA10AA86"
 
     @field_validator("google_mt_api_key", mode="after")
     def validate_google_mt_api_key(cls, v, info: ValidationInfo):
