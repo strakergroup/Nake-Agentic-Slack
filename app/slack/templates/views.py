@@ -701,61 +701,6 @@ def human_job_modal(
     }
 
 
-def sso_form_modal() -> dict[str, Any]:
-    """The template for the modal to submit a new translation job. The user can
-    select the files they want to translate and enter the job details, e.g.
-    category, source and target languages.
-
-    Returns:
-        dict: The view dict.
-    """
-    return {
-        "title": {"type": "plain_text", "text": _("Direct Login", 23)[:24]},
-        "submit": {"type": "plain_text", "text": _("Submit")},
-        "blocks": [
-            {
-                "type": "input",
-                "block_id": "email",
-                "element": {
-                    "type": "email_text_input",
-                    "action_id": "email",
-                    "placeholder": {"type": "plain_text", "text": _("Email")},
-                },
-                "label": {"type": "plain_text", "text": _("Email")},
-                "optional": False,
-            },
-            {
-                "type": "input",
-                "block_id": "firstName",
-                "element": {
-                    "type": "plain_text_input",
-                    "action_id": "firstName",
-                    "placeholder": {"type": "plain_text", "text": _("First Name")},
-                    "min_length": 3,
-                    "max_length": 50,
-                },
-                "label": {"type": "plain_text", "text": _("First Name")},
-                "optional": False,
-            },
-            {
-                "type": "input",
-                "block_id": "lastName",
-                "element": {
-                    "type": "plain_text_input",
-                    "action_id": "lastName",
-                    "placeholder": {"type": "plain_text", "text": _("Last Name")},
-                    "min_length": 3,
-                    "max_length": 50,
-                },
-                "label": {"type": "plain_text", "text": _("Last Name")},
-                "optional": False,
-            },
-        ],
-        "type": "modal",
-        "callback_id": "login_sso",
-    }
-
-
 def cancel_job_modal(client_name: str) -> dict[str, Any]:
     """The template for the modal to cancel TJ by insert number and submit a search request
 

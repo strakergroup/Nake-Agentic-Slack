@@ -999,15 +999,33 @@ async def process_evaluation_submission(
     }
     # Evaluate needs a member client for Verify API auth. Do not require a
     # workspace super-group link — individually connected users must still work.
-    ray_client = await get_ray_client(user_id, team_id, enterprise_id)
-    if ray_client is None:
-        logger.error("Evaluation submission has no RAY client", extra=log_extra)
-        return {"status": "no_ray_client"}
+    # IBM non-logged-in HT (RAY-81247): own the job as the HT service account,
+    # but keep quote gating based on the Slack poster's own membership.
+    from app.ibm_ht_service_account import (
+        get_ht_service_account_ray_client,
+        should_use_ht_service_account,
+    )
+
+    poster_client = await get_ray_client(user_id, team_id, enterprise_id)
+    super_groups = await get_ray_super_group(team_id, enterprise_id) or []
+    poster_connection = RayConnection(super_groups, poster_client)
     # Prefer workspace super group so quote gating is org-scoped (same as
     # Document MT / Media). Individually connected users without a workspace
     # link still fall back to primary-group Admin/Owner.
-    super_groups = await get_ray_super_group(team_id, enterprise_id) or []
-    may_quote = await user_may_receive_quotes(RayConnection(super_groups, ray_client))
+    may_quote = await user_may_receive_quotes(poster_connection)
+    # IBM Slack HT (RAY-81247): prefer the poster's active CRM member; only use
+    # the service account when they have no personal CRM link.
+    if should_use_ht_service_account(enterprise_id, poster_connection):
+        ray_client = await get_ht_service_account_ray_client(
+            slack_user_id=user_id,
+            slack_team_id=team_id,
+            slack_enterprise_id=enterprise_id,
+        )
+    else:
+        ray_client = poster_client
+    if ray_client is None:
+        logger.error("Evaluation submission has no RAY client", extra=log_extra)
+        return {"status": "no_ray_client"}
     # HUMAN_EVALUATION embeds HV and starts TP jobs before Slack Accept
     # ("cancelled" + empty Adjust). Non-admin HT must use synthetic AI+QE with
     # slack_ht_quote_after_qe so HV waits for the HT quote Accept.
@@ -1318,6 +1336,9 @@ async def process_evaluation_submission(
                 workflow_uuid=submit_workflow_uuid,
                 job_notes=job_notes,
                 slack_channel_id=channel_id,
+                slack_user_id=user_id,
+                slack_team_id=team_id,
+                slack_enterprise_id=enterprise_id,
                 preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
                 prequote_message_ts=prequote_message_ts,
                 ai_translation_filename_and_languages=submit_ai_pairs,

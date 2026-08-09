@@ -328,17 +328,19 @@ async def resolve_slack_delivery_user(
     Member-linked jobs use ``get_slack_user``. Org-billed inline MT (channel,
     shortcut, DM) and Document MT fall back to ``get_slack_org`` and
     optionally override ``user_id`` with the poster's Slack id.
+
+    When ``slack_user_id`` is provided, it always wins over the linked member's
+    Slack id (RAY-81247 HT service-account jobs own as a CRM member that may
+    itself have a Slack link — notifications must still go to the poster).
     """
     slack_user = await get_slack_user(client_id, team_id)
-    if slack_user is not None:
-        return slack_user
-
-    org_user = await get_slack_org(client_id, team_id)
-    if org_user is None:
+    if slack_user is None:
+        slack_user = await get_slack_org(client_id, team_id)
+    if slack_user is None:
         return None
     if slack_user_id:
-        org_user.user_id = slack_user_id
-    return org_user
+        slack_user.user_id = slack_user_id
+    return slack_user
 
 
 async def get_slack_user(ray_client_id: str, team_id: str | None = None):
@@ -1168,25 +1170,14 @@ async def connect_ray_account_sso(
         conn.execute(sql)
         result1 = conn.execute(sql)
     if result1.rowcount == 0:
-        member_id = str(uuid4()).upper()
-        # Create User and User Group Link
-        await create_client_and_mglink(
-            user_data=json.dumps(slack_data),
-            member_id=member_id,
+        # RAY-81247: Slack no longer mints CRM People via Direct Login.
+        # Active CRM members can still link; IBM HT without a member uses the
+        # service account (Requester/Surrogate stamps).
+        raise LookupError(
+            "No LanguageCloud account found for this email. "
+            "Contact your administrator to be added, or submit Human Translation "
+            "without signing in."
         )
-        # Create log
-        # crete_slack_logs_sso(user_data=json.dumps(slack_data), member_id=member_id, message="New User")
-        # Create User Access Token
-        await create_client_access_tokens(client_id=member_id, type="public")
-        # Create User Slack Link
-        await create_slack_deltaray_link_sso(
-            user_data=json.dumps(slack_data), member_id=member_id
-        )
-        await add_to_verify_team(
-            user_uuid=member_id,
-            enterprise_id=enterprise_id,
-        )
-        return member_id
     else:
         result = result1.first()
         if not result:
@@ -1279,65 +1270,6 @@ async def add_client_to_slack_group(user_data: dict, member_id: str):
             """
     ).bindparams(uuid=member_id, groupid=group_id)
     await execute(sql, async_engines["sitemanager"], commit_after=True)
-
-
-async def create_client_and_mglink(
-    user_data: str,
-    member_id: str,
-):
-    json_data = json.loads(user_data)
-    group_id = get_direct_login_group(json_data.get("enterprise_id"))
-    password = "secret".encode("utf-8")  # Convert the password to bytes
-    hash_object = hashlib.sha512(password)
-    with engines["sitemanager"].connect() as conn:
-        # Get Account Manager
-        sqlAm = text(
-            """
-                SELECT account_manager
-                FROM obj_m_group
-                WHERE obj_uuid = :obj_uuid
-            """
-        ).bindparams(obj_uuid=group_id)
-        conn.execute(sqlAm)
-        resultAm = conn.execute(sqlAm).first()
-        account_manager = resultAm.account_manager if resultAm is not None else None
-        # Create User
-        sqlMem = text(
-            """
-            INSERT INTO obj_m_member
-                (obj_uuid, email_primary, login, password, password_updated, given_name, family_name, created, modified, account_manager, groupid, product, subscribed, active, email_active)
-            VALUES
-                (:obj_uuid, :email_primary, :email_primary, :password, now(), :given_name, :family_name, now(), now(), :account_manager, :groupid, :product, 1, 1, 1)
-            """
-        ).bindparams(
-            obj_uuid=member_id,
-            email_primary=json_data.get("email_id"),
-            given_name=json_data.get("first_name"),
-            family_name=json_data.get("last_name"),
-            password=hash_object.hexdigest().upper(),
-            account_manager=account_manager,
-            groupid=group_id,
-            product="Slack",
-        )
-        conn.execute(sqlMem)
-        conn.commit()
-        # Create User Group Link
-        sqlMgLink = text(
-            """
-            INSERT INTO obj_m_mglink
-                (obj_uuid, groupid, memberid, label, client_type, created, modified)
-            VALUES
-                (:obj_uuid, :groupid, :memberid, :label, :client_type, now(), now())
-            """
-        ).bindparams(
-            obj_uuid=str(uuid4()).upper(),
-            groupid=group_id,
-            memberid=member_id,
-            label=f"{member_id}-{group_id}",
-            client_type="Normal",
-        )
-        conn.execute(sqlMgLink)
-        conn.commit()
 
 
 async def create_client_access_tokens(client_id: str, type: str = "public"):
@@ -1722,7 +1654,7 @@ async def log_transcribe_by_client_id(
     if not tokens:
         raise Exception("Duration is 0")
 
-    id_token = await _id_token_for_client(client_id)
+    id_token = await _id_token_for_client(client_id, allow_group_fallback=True)
 
     url = f"{domains.languagecloud_api}/mt/transcribe"
     headers = {
@@ -1878,7 +1810,7 @@ async def log_embedding_by_client_id(
     Returns:
         str: the gateway transaction UUID.
     """
-    id_token = await _id_token_for_client(client_id)
+    id_token = await _id_token_for_client(client_id, allow_group_fallback=True)
 
     url = f"{domains.languagecloud_api}/mt/embed"
     headers = {

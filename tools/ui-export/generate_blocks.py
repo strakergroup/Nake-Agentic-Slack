@@ -1905,7 +1905,6 @@ def build_all_views() -> list[dict[str, Any]]:
             job_search_modal,
             loading_modal,
             srt_translate_modal,
-            sso_form_modal,
             translation_settings_view,
             translation_settings_view_error,
             verify_job_modal,
@@ -1941,7 +1940,6 @@ def build_all_views() -> list[dict[str, Any]]:
             "Modals",
             human_job_modal(CHANNEL_ID, FILE_INFO, False, "evaluate"),
         )
-        add("sso_form_modal", "Modals", sso_form_modal())
         add("cancel_job_modal", "Modals", cancel_job_modal("jane.doe@acme.com"))
         add(
             "translation_settings_view",

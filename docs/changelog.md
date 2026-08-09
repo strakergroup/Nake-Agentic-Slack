@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: RAY-81247 — Media (transcribe/translate/embed) org-bills like AI Translate when no personal CRM member; Direct Login SSO handler/modal removed; HT/media callbacks stamp poster `team_id`/`slack_user_id` for correct Slack delivery (Wade Norman, 2026-08-10)
+- [Fixed]: RAY-81247 — omit Requester/Surrogate custom fields when Slack poster email cannot be resolved (no blank stamps) (Wade Norman, 2026-08-10)
+- [Changed]: RAY-81247 — IBM Slack HT prefers an active CRM member when linked; service account only when none. Removed Direct Login auto-create and IBM Direct Login buttons; see `docs/ibm-slack-ht-service-account.md` (Wade Norman, 2026-08-07)
+- [Added]: RAY-81247 — IBM Slack HT reporting-only identity: own HT as CRM service account (`HT_SERVICE_ACCOUNT_MEMBER_UUID`); stamp Slack poster on Requester ID / Surrogate ID; see `docs/ibm-slack-ht-service-account.md` (Wade Norman, 2026-08-07)
 - [Changed]: Translation export — regional variants (e.g. `fr-ca`) inherit coverage from parent-lang cognates where source equals target (e.g. `Transcription`); translator import no longer skips those same-word rows (Wade Norman, 2026-08-05)
 - [Changed]: RAY-79114 — UI export subset mode (`make subset MATCH=…` / `--match`/`--names`/`--category`) replaces the standalone HT and AI Translate quote-flow generators; flow-specific scripts and HTML renderer removed (Wade Norman, 2026-08-04)
 - [Changed]: RAY-79114 — quote copy updates from IBM review: media Quote1 explains transcription-before-AI-quote, Quote2 matches document AI intro; HT staged AI Accept guidance clarifies it prepares the human translation quote; HT quote panels show a **Human Translation:** section header before file names (Wade Norman, 2026-08-04)

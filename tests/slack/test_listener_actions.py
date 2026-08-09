@@ -1267,6 +1267,11 @@ class TestSubmitVerificationJob:
                 return_value={"data": []},
             ),
             patch(
+                "app.ibm_ht_service_account.resolve_ht_verify_client_for_job",
+                new_callable=AsyncMock,
+                return_value=(ray_client, job),
+            ),
+            patch(
                 "app.slack.listener_actions.standalone_ht_quote_message"
             ) as quote_message,
             patch(
@@ -1298,6 +1303,7 @@ class TestSubmitVerificationJob:
             "verify-job-uuid",
             ["file-uuid:lang-uuid"],
             purchase_order_number="alpha.xlf",
+            custom_fields="",
         )
         quote_message.assert_called_once()
         mock_client.chat_update.assert_awaited_once_with(
@@ -1355,6 +1361,11 @@ class TestSubmitVerificationJob:
                 "app.slack.listener_actions.get_job_pricing",
                 new_callable=AsyncMock,
                 return_value={"data": []},
+            ),
+            patch(
+                "app.ibm_ht_service_account.resolve_ht_verify_client_for_job",
+                new_callable=AsyncMock,
+                return_value=(ray_client, job),
             ),
             patch(
                 "app.slack.listener_actions.standalone_ht_quote_message"
@@ -1436,6 +1447,11 @@ class TestSubmitVerificationJob:
                 "app.slack.listener_actions.get_job_pricing",
                 new_callable=AsyncMock,
                 return_value={"data": []},
+            ),
+            patch(
+                "app.ibm_ht_service_account.resolve_ht_verify_client_for_job",
+                new_callable=AsyncMock,
+                return_value=(ray_client, job),
             ),
             patch(
                 "app.slack.evaluation_quotes.get_evaluate_quote_session",

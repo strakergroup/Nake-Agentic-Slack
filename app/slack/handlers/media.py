@@ -49,7 +49,7 @@ async def handle_media_quote_accept(
     context: RayContext,
 ):
     """Accept Quote1 (transcription / embedding) and start the first pipeline phase."""
-    if not await require_ray_client(context):
+    if not await require_ray_client(context, allow_org_billing=True):
         return
     await accept_media_quote(client=client, body=body, action=action, context=context)
 
@@ -71,7 +71,7 @@ async def handle_media_translation_quote_accept(
     context: RayContext,
 ):
     """Accept Quote2 (AI translation) and resume translate / translate+embed."""
-    if not await require_ray_client(context):
+    if not await require_ray_client(context, allow_org_billing=True):
         return
     await accept_media_translation_quote(
         client=client, body=body, action=action, context=context
@@ -101,13 +101,12 @@ async def handle_video_transcribe_only(
     client: AsyncWebClient,
 ):
     """Handle transcribe-only button — post Quote1 before starting ASR."""
-    if not await require_ray_client(context):
+    if not await require_ray_client(context, allow_org_billing=True):
         return
 
     try:
         assert action is not None
         assert context["ray"] is not None
-        assert context["ray"].client is not None
 
         action_data = json.loads(action.get("value", "{}"))
         channel_id = (
@@ -219,7 +218,7 @@ async def handle_video_transcribe_translate(
     view_id = await open_loading_modal(client, body["trigger_id"])
     try:
         await populate_ray_connection(context)
-        if not await require_ray_client(context):
+        if not await require_ray_client(context, allow_org_billing=True):
             await safe_views_update(
                 client,
                 view_id,
@@ -256,7 +255,7 @@ async def handle_video_embed_subtitles(
     thread_ts = resolve_media_thread_ts(action_data, body)
     if action_data.get("subtitle_file"):
         await populate_ray_connection(context)
-        if await require_ray_client(context):
+        if await require_ray_client(context, allow_org_billing=True):
             await quote_existing_srt_embed_task(client, context, action_data, thread_ts)
         return
 
@@ -276,7 +275,7 @@ async def handle_video_embed_subtitles(
     view_id = await open_loading_modal(client, body["trigger_id"])
     try:
         await populate_ray_connection(context)
-        if not await require_ray_client(context):
+        if not await require_ray_client(context, allow_org_billing=True):
             await safe_views_update(
                 client,
                 view_id,

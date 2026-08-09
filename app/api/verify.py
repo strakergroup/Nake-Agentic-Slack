@@ -52,6 +52,9 @@ async def submit_evaluation_job(
     *,
     slack_channel_id: str = "",
     pdf_page_count: int | None = None,
+    slack_user_id: str = "",
+    slack_team_id: str = "",
+    slack_enterprise_id: str | None = None,
     preaccepted_ai_translation_quote: bool = False,
     prequote_message_ts: str | None = None,
     ai_translation_filename_and_languages: list[str] | None = None,
@@ -74,6 +77,12 @@ async def submit_evaluation_job(
         target_languages_data["slack_channel_id"] = slack_channel_id
     if pdf_page_count is not None and pdf_page_count > 0:
         target_languages_data["pdf_page_count"] = str(pdf_page_count)
+    if slack_user_id:
+        target_languages_data["slack_user_id"] = slack_user_id
+    if slack_team_id:
+        target_languages_data["slack_team_id"] = slack_team_id
+    if slack_enterprise_id:
+        target_languages_data["slack_enterprise_id"] = slack_enterprise_id
     if preaccepted_ai_translation_quote:
         target_languages_data["preaccepted_ai_translation_quote"] = "true"
     if prequote_message_ts:
@@ -223,6 +232,7 @@ async def create_human_job(
     job_uuid: str,
     file_and_languages: List[str],
     purchase_order_number: str = "",
+    custom_fields: str = "",
 ):
     """
     Create a human job in the Verify API
@@ -232,6 +242,8 @@ async def create_human_job(
         job_uuid: UUID of the job
         file_and_languages: List of strings with the format "file_uuid:language_uuid"
         purchase_order_number: Client reference to show in LanguageCloud and Job Portal.
+        custom_fields: Optional JSON list of {label, value} for franchise custom fields
+            (RAY-81247 Requester ID / Surrogate ID).
     """
 
     url = f"{domains.verify_api}/automation/service/create-human-job"
@@ -244,6 +256,8 @@ async def create_human_job(
         "file_and_languages": file_and_languages,
         "purchase_order_number": purchase_order_number,
     }
+    if custom_fields:
+        data["custom_fields"] = custom_fields
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
         response = await client.post(url, headers=headers, data=data)

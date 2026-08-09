@@ -272,20 +272,6 @@ async def srt_translate_action(
     )
 
 
-@app.block_action("login_sso", middleware=[ray_connection])
-@slack_log_decorator
-async def login_sso_action(
-    ack: AsyncAck,
-    context: RayContext,
-    respond: AsyncRespond,
-    client: AsyncWebClient,
-    view: Optional[Dict[str, Any]],
-):
-    await auth.handle_login_sso(
-        ack=ack, context=context, respond=respond, client=client, view=view
-    )
-
-
 @app.block_action("job_search")
 @slack_log_decorator
 async def job_search_action(

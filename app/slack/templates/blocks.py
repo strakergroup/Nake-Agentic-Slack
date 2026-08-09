@@ -103,7 +103,7 @@ def home_auth_blocks(
             },
         },
     ]
-    # IBM Direct Login is not offered on the home tab; channel login prompts keep SSO.
+    # RAY-81247: IBM Direct Login removed (home tab and channel prompts).
     if is_ibm:
         return blocks
 

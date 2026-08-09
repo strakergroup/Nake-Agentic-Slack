@@ -152,6 +152,7 @@ async def require_ray_client(
     variation: str | None = None,
     *,
     allow_org_billing: bool = False,
+    allow_ht_service_account: bool = False,
 ) -> bool:
     """Checks whether MT may proceed for this Slack user/workspace.
 
@@ -163,17 +164,28 @@ async def require_ray_client(
     separately by ``require_mt_tokens``; group-token minting happens at charge
     time, not here.
 
+    With ``allow_ht_service_account=True`` (IBM Slack HT, RAY-81247), allows a
+    linked workspace without a personal LC member — Verify calls then use the
+    configured HT service-account JWT.
+
     Args:
         context (AsyncBoltContext): The Slack listener context.
         prompt_login (bool, optional): Post a login message when access is denied.
         variation (str | None, optional): Login message variation.
         allow_org_billing (bool): Accept org-billed workspace without member login.
+        allow_ht_service_account (bool): Accept IBM HT via service account without member.
 
     Returns:
         bool: Access is allowed.
     """
     if isinstance(ray := context.get("ray"), RayConnection):
         if ray.client is not None or (allow_org_billing and ray.super_group):
+            return True
+        if (
+            allow_ht_service_account
+            and ray.super_group
+            and is_ibm_enterprise(context.get("enterprise_id"))
+        ):
             return True
 
     if prompt_login and context.client:

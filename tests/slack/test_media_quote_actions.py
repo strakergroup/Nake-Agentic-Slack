@@ -267,9 +267,15 @@ async def test_auto_accept_translation_returns_false_without_ray_client():
         "channel_id": "C1",
     }
 
-    with patch(
-        "app.auth.connector.get_ray_client",
-        new=AsyncMock(return_value=None),
+    with (
+        patch(
+            "app.auth.connector.get_ray_client",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.auth.connector.get_ray_super_group",
+            new=AsyncMock(return_value=[]),
+        ),
     ):
         handled = await auto_accept_media_translation_quote_if_needed(client, session)
 

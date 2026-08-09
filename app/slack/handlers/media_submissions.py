@@ -27,13 +27,12 @@ async def handle_video_transcribe_translate_submit(
     client: AsyncWebClient,
 ):
     """Handle transcribe & translate form submission — post Quote1 before ASR."""
-    if not await require_ray_client(context, prompt_login=True):
+    if not await require_ray_client(context, prompt_login=True, allow_org_billing=True):
         return
 
     try:
         assert view is not None
         assert context["ray"] is not None
-        assert context["ray"].client is not None
 
         metadata = json.loads(view["private_metadata"])
         form_values = view["state"]["values"]
@@ -174,13 +173,12 @@ async def handle_video_embed_subtitles_submit(
     client: AsyncWebClient,
 ):
     """Handle embed subtitles form submission — post Quote1 before ASR."""
-    if not await require_ray_client(context, prompt_login=True):
+    if not await require_ray_client(context, prompt_login=True, allow_org_billing=True):
         return
 
     try:
         assert view is not None
         assert context["ray"] is not None
-        assert context["ray"].client is not None
 
         metadata = json.loads(view["private_metadata"])
         form_values = view["state"]["values"]

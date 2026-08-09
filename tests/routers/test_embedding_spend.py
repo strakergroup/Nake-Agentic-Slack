@@ -111,12 +111,26 @@ def test_embedding_key_distinct_from_transcription():
 
 
 @pytest.mark.asyncio
-async def test_embedding_raises_for_unknown_client():
-    """A missing member is surfaced rather than silently dropping the charge."""
-    with patch("app.auth.connector.fetch_one", new=AsyncMock(return_value=None)):
-        with pytest.raises(Exception, match="not found"):
-            await log_embedding_by_client_id(
-                client_id="missing",
-                duration_ms=1_000,
-                num_target_languages=1,
-            )
+async def test_embedding_falls_back_to_group_token_for_unknown_client():
+    """Org-billed media mints a group token when the client_id is not a member."""
+    cm, mock_http = _patch_async_client({"transaction_uuid": "txn-group"})
+
+    with (
+        patch("app.auth.connector.fetch_one", new=AsyncMock(return_value=None)),
+        patch(
+            "app.auth.connector.create_languagecloud_group_token",
+            return_value="group-token",
+        ) as mock_group_token,
+        patch("app.auth.connector.httpx.AsyncClient", return_value=cm),
+    ):
+        transaction_uuid = await log_embedding_by_client_id(
+            client_id="org-uuid",
+            duration_ms=1_000,
+            num_target_languages=1,
+        )
+
+    mock_group_token.assert_called_once()
+    assert mock_http.post.call_args.kwargs["headers"]["Authorization"] == (
+        "Bearer group-token"
+    )
+    assert transaction_uuid == "txn-group"

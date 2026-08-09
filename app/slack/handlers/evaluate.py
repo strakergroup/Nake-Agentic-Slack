@@ -231,7 +231,12 @@ async def handle_evaluate_job_action(
     view_id = await open_loading_modal(client, body["trigger_id"])
     try:
         await populate_ray_connection(context)
-        if not await require_ray_client(context, variation=login_variation):
+        allow_ht_sa = login_variation == LoginMessage.HUMAN_TRANSLATION
+        if not await require_ray_client(
+            context,
+            variation=login_variation,
+            allow_ht_service_account=allow_ht_sa,
+        ):
             await safe_views_update(
                 client,
                 view_id,
@@ -299,7 +304,9 @@ async def handle_verify_job_modal_open(
                 ),
             )
             return
-        if not await require_ray_client(context, prompt_login=True):
+        if not await require_ray_client(
+            context, prompt_login=True, allow_ht_service_account=True
+        ):
             await safe_views_update(
                 client,
                 view_id,
@@ -309,7 +316,14 @@ async def handle_verify_job_modal_open(
                 ),
             )
             return
-        ray_client = context["ray"].client if context["ray"] is not None else None
+        from app.ibm_ht_service_account import resolve_ht_verify_client
+
+        ray_client = await resolve_ht_verify_client(
+            context["ray"],
+            slack_user_id=context.get("user_id") or "",
+            slack_team_id=context.get("team_id") or "",
+            slack_enterprise_id=context.get("enterprise_id"),
+        )
         if ray_client is None:
             await safe_views_update(
                 client,

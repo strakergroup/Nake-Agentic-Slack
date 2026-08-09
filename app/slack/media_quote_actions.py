@@ -136,14 +136,24 @@ async def _create_asr_from_quote_session(
     extra_data: dict[str, Any],
 ) -> str:
     ray = context.get("ray")
-    ray_client = ray.client if ray is not None else None
-    if ray_client is None:
+    if ray is None:
+        raise ValueError("Ray connection is required to start media processing")
+
+    # Prefer personal CRM member; otherwise org-bill like Document MT / AI Translate.
+    if ray.client is not None:
+        billing_client_id = ray.client.id
+    elif ray.super_group:
+        billing_client_id = ray.super_group[0].verify_organization_uuid
+    else:
         raise ValueError(
-            "A connected LanguageCloud member is required to start media processing"
+            "A LanguageCloud member or workspace organisation is required "
+            "to start media processing"
         )
+    if not billing_client_id:
+        raise ValueError("No billing client available for media processing")
 
     task_data = TranscriptionTaskData(
-        client_id=ray_client.id,
+        client_id=billing_client_id,
         file_name=session["file_name"],
         download_url=session["download_url"],
         app_token=client.token or "",
@@ -155,7 +165,7 @@ async def _create_asr_from_quote_session(
         sandbox=False,
     )
     asr_task = ASRTask(
-        member_uuid=ray_client.id,
+        member_uuid=billing_client_id,
         event_name="sup-subtitle-ai:media:asr",
         app_source="slack",
         service="azure",
@@ -263,9 +273,8 @@ async def accept_media_quote(
         required_tokens = int(session.get("total_tokens") or 0)
         if not await _require_ai_token_balance(context, client, required_tokens):
             return False
-        # Media processing bills a LanguageCloud member, so prompt for login
-        # rather than failing inside the ASR task builder.
-        if not await require_ray_client(context):
+        # Media processing can org-bill like AI Translate when no personal member.
+        if not await require_ray_client(context, allow_org_billing=True):
             return False
 
         pipeline_kind = session["pipeline_kind"]
@@ -619,15 +628,22 @@ async def auto_accept_media_translation_quote_if_needed(
     if not session.get("auto_proceed"):
         return False
 
-    from app.auth.connector import RayConnection, get_ray_client
+    from app.auth.connector import RayConnection, get_ray_client, get_ray_super_group
 
-    # Prefer member client without requiring a workspace super-group link.
+    # Prefer member client; fall back to workspace org for org-billed media.
     ray_client = await get_ray_client(
         session["user_id"],
         session["team_id"],
         session.get("enterprise_id"),
     )
-    if ray_client is None:
+    super_groups = (
+        await get_ray_super_group(
+            session["team_id"],
+            session.get("enterprise_id"),
+        )
+        or []
+    )
+    if ray_client is None and not super_groups:
         return False
 
     # Build a minimal Bolt-like context; set ray after init for typing.
@@ -642,7 +658,7 @@ async def auto_accept_media_translation_quote_if_needed(
             },
         )
     )
-    context["ray"] = RayConnection([], ray_client)
+    context["ray"] = RayConnection(super_groups, ray_client)
 
     return await accept_media_translation_quote(
         client=client,

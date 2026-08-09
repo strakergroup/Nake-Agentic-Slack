@@ -13,11 +13,12 @@ This folder contains documentation for the Slack Ray Translator application.
 - [RAY-79115 Deployment Guide](ray-79115-deployment.md) - Prod DB requirements (workflow HV INSERT vs synthetic path, stringtranslator), app deploy order, smoke tests
 - [Media Quote Confirmation](media-quote-confirmation.md) - Quote1 (transcription/embedding) and Quote2 (AI translation after ASR) before media spend
 - [Slack Modal Trigger Safety](slack-modal-trigger-safety.md) - Standard loading-modal pattern for Slack `trigger_id` TTL (RAY-72999)
-- [Document MT / AI Translate org billing](document-mt-without-login.md) - **Required:** AI Translate (Document MT) supports org/group billing without LC member login; HT/QE must still require login
+- [Document MT / AI Translate org billing](document-mt-without-login.md) - **Required:** AI Translate (Document MT) supports org/group billing without LC member login
+- [IBM Slack HT service account](ibm-slack-ht-service-account.md) - RAY-81247: prefer active CRM; otherwise HT service member + Requester/Surrogate; Direct Login auto-create removed
 - [Verify org/team vs CRM super group/group](verify-org-vs-crm-groups.md) - Vocabulary map: Verify org→team vs legacy CRM super group→group, role overlap, Slack link
 - [Changelog](changelog.md) - Includes RAY-80734 Document MT same-language-family submit rejection (`es`↔`es-419`)
 
-- [Direct Login member reactivation](direct-login-reactivate.md) - RAY-80562: re-enable inactive LC members on Slack Direct Login
+- [Direct Login removed](direct-login-reactivate.md) - RAY-81247: Slack Direct Login SSO UI/handler removed; IBM HT/Media no longer mint CRM via SSO
 - [VerifyLoop Integration](verifyloop.md) - Configuration, endpoints, modal form, and data flow for the VerifyLoop feature
 - [VerifyLoop Architecture Diagrams](verifyloop-architecture.md) - Visual diagrams of system architecture, auth flow, task pipeline, and component dependencies
 - [Channel Info Caching](channel-info-caching.md) - How channel names and privacy status are cached in the database

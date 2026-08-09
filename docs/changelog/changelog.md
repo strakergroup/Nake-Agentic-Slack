@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- [Changed]: RAY-81247 — Media (transcribe/translate/embed) org-bills like AI Translate when no personal CRM member; Direct Login SSO handler/modal removed; HT/media callbacks stamp poster `team_id`/`slack_user_id` for correct Slack delivery (Wade Norman, 2026-08-10)
+- [Fixed]: RAY-81247 — omit Requester/Surrogate custom fields when Slack poster email cannot be resolved (no blank stamps) (Wade Norman, 2026-08-10)
+- [Changed]: RAY-81247 — IBM Slack HT prefers an active CRM member when linked; service account only when none. Removed Direct Login auto-create and IBM Direct Login buttons; see `docs/ibm-slack-ht-service-account.md` (Wade Norman, 2026-08-07)
 - [Changed]: Translation export — regional variants (e.g. `fr-ca`) inherit coverage from parent-lang cognates where source equals target (e.g. `Transcription`); translator import no longer skips those same-word rows (Wade Norman, 2026-08-05)
 - [Changed]: RAY-81103 — `EVALUATE_QUOTE_TTL_SECONDS` default raised from 7 days (`604800`) to 30 days (`2592000`) so Accept/Adjust remains available longer after the quote is posted (Wade Norman, 2026-08-03)
 - [Fixed]: RAY-81103 — evaluate quote Accept/Adjust after Redis TTL shows “This translation quote has expired…” (same as Document MT) instead of the generic processing error; PDF pre-quote Accept and Adjust modal open included (Wade Norman, 2026-08-03)
