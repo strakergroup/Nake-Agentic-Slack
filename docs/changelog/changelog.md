@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-81247 — Slack delivery falls back to workspace bot + stamped poster when deltaray is missing/inactive (HT SA / logout); CVC HV events forward poster stamps (Wade Norman, 2026-08-10)
 - [Fixed]: RAY-81247 — IBM email→CRM tries live Slack profile before stale `slack_user_details`; HT modal submit allows HT service account (Wade Norman, 2026-08-10)
 - [Changed]: RAY-81247 — HT service account + Slack-email→CRM auto-identity gated to real IBM customer super group only; Straker Dev / sandbox stay IBM-like for UI but still require LanguageCloud Connect (Wade Norman, 2026-08-10)
 - [Changed]: RAY-81247 — IBM identity resolves Slack email → active CRM member (deltaray not required; upserts active link). Removed “provisioned by your administrator” disconnect copy (Wade Norman, 2026-08-10)

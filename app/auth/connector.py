@@ -320,11 +320,46 @@ async def get_slack_org(org_uuid: str, team_id: str | None = None):
     )
 
 
+async def get_slack_user_from_workspace_stamps(
+    client_id: str,
+    *,
+    team_id: str,
+    slack_user_id: str,
+    enterprise_id: str | None = None,
+    channel_id: str | None = None,
+) -> SlackUser | None:
+    """Build a delivery SlackUser from workspace bot token + poster stamps.
+
+    Used when the Verify ``client_id`` has no active deltaray (HT service account
+    or deactivated poster link). Bot credentials come from ``slack_bots`` for the
+    stamped team/enterprise; notifications go to ``slack_user_id``.
+    """
+    bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
+    if not bot_token and enterprise_id:
+        # Installation rows are sometimes stored without enterprise_id.
+        bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=None)
+    if not bot_token:
+        return None
+    return SlackUser(
+        user_id=slack_user_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+        channel_id=channel_id or "",
+        is_subscribed=False,
+        bot_token=bot_token,
+        ray_client_id=client_id,
+        ray_username="",
+        ray_user_group_id=None,
+    )
+
+
 async def resolve_slack_delivery_user(
     client_id: str,
     *,
     team_id: str | None = None,
     slack_user_id: str | None = None,
+    enterprise_id: str | None = None,
+    channel_id: str | None = None,
 ) -> SlackUser | None:
     """Resolve Slack bot credentials for file delivery or event callbacks.
 
@@ -332,17 +367,30 @@ async def resolve_slack_delivery_user(
     shortcut, DM) and Document MT fall back to ``get_slack_org`` and
     optionally override ``user_id`` with the poster's Slack id.
 
+    When member/org lookup fails but the event carries ``team_id`` +
+    ``slack_user_id`` (RAY-81247 HT SA / inactive deltaray), resolve the bot
+    from the workspace installation and deliver to the stamped poster.
+
     When ``slack_user_id`` is provided, it always wins over the linked member's
-    Slack id (RAY-81247 HT service-account jobs own as a CRM member that may
-    itself have a Slack link — notifications must still go to the poster).
+    Slack id (notifications must still go to the poster).
     """
     slack_user = await get_slack_user(client_id, team_id)
     if slack_user is None:
         slack_user = await get_slack_org(client_id, team_id)
+    if slack_user is None and team_id and slack_user_id:
+        slack_user = await get_slack_user_from_workspace_stamps(
+            client_id,
+            team_id=team_id,
+            slack_user_id=slack_user_id,
+            enterprise_id=enterprise_id,
+            channel_id=channel_id,
+        )
     if slack_user is None:
         return None
     if slack_user_id:
         slack_user.user_id = slack_user_id
+    if channel_id and not slack_user.channel_id:
+        slack_user.channel_id = channel_id
     return slack_user
 
 

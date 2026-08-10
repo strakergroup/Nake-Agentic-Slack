@@ -93,15 +93,24 @@ IBM Slack App group already defines Requester ID / Surrogate ID custom fields
 `V20260810_001__RAY-81247-sitemanager-INSERT-ibm-slack-ht-service-account.sql`
 (`slackhtjobs@ibm.com`, CRM `Member` + Verify `member` / `role-member`).
 
-## Code touchpoints
+## Slack delivery (evaluate / HV)
 
-- `app/ibm_ht_service_account.py` — prefer CRM; mint SA JWT; custom-field payload
-- `app/auth/connector.py` — `get_ray_client_ibm_by_email` / `ensure_active_ibm_deltaray_link`
-- Evaluate / quote accept / create-human-job use personal CRM when present
-- `cloud-verify-api` create-human-job accepts `custom_fields` and writes
-  `obj_tp_job_custom_fields`
-- `ibm_ht_quote_export` remaps Client Email when `client_uuid` is the service account
-- `pt-languagecloud-api` allows custom_fields for Verify/Slack (not only SwiftBridge)
+CVC does **not** look up deltaray. It publishes stream-proxy events with
+`client_id` plus poster stamps from `evaluation_jobs.extra_info`
+(`slack_user_id`, `slack_team_id`, `slack_channel_id`, `slack_enterprise_id`).
+
+SRT `resolve_slack_delivery_user`:
+
+1. Active `slack_deltaray_link` for `client_id`
+2. Else org link when `client_id` is the Verify org UUID
+3. Else **workspace stamp fallback**: bot token from `slack_bots` for stamped
+   `team_id` / `enterprise_id`, deliver to stamped `slack_user_id`
+
+That covers HT service-account-owned jobs and inactive poster deltaray for
+evaluate complete **and** human-verification complete.
+
+Requester/Surrogate remain reporting-only (not delivery).
+
 
 ## Out of scope (follow-ups)
 

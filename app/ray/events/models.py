@@ -264,6 +264,7 @@ class MtErrorResponseSchema(BaseModel):
     submission_id: int | None = None
     team_id: str | None = None
     slack_user_id: str | None = None
+    enterprise_id: str | None = None
 
 
 class MtFileReponseSchema(RootModel):
