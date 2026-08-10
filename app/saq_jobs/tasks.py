@@ -463,7 +463,10 @@ async def slack_upload_verify_complete(
     attempt = job.attempts if job is not None else 1
     log_extra = {
         "grid_file_id": grid_file_id,
+        "client_id": client_id,
         "channel_id": channel_id,
+        "team_id": team_id,
+        "slack_user_id": slack_user_id,
         "attempt": attempt,
     }
     logger.info("Verify-complete upload starting", extra=log_extra)
@@ -478,6 +481,13 @@ async def slack_upload_verify_complete(
     if slack_user is None:
         logger.error(
             "Slack user disappeared before verify-complete upload",
+            extra=log_extra,
+        )
+        # Same gap as pre-RAY-79115 Document MT: soft no_slack_user skipped
+        # BugLog/Google Chat, so HT SA / stamp misses were silent (RAY-81247).
+        notify_exception(
+            Exception("HV complete Slack delivery failed: no deliverable Slack user"),
+            "HV complete Slack delivery failed (no_slack_user)",
             extra=log_extra,
         )
         return {"status": "no_slack_user"}

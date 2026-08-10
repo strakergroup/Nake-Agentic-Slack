@@ -1628,9 +1628,12 @@ async def test_slack_upload_verify_complete_happy_path(slack_user):
 
 @pytest.mark.asyncio
 async def test_slack_upload_verify_complete_no_slack_user():
-    with patch(
-        "app.saq_jobs.tasks.resolve_slack_delivery_user",
-        new=AsyncMock(return_value=None),
+    with (
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
     ):
         result = await slack_upload_verify_complete(
             _ctx(),
@@ -1642,6 +1645,10 @@ async def test_slack_upload_verify_complete_no_slack_user():
         )
 
     assert result == {"status": "no_slack_user"}
+    mock_notify.assert_called_once()
+    assert "no_slack_user" in mock_notify.call_args.args[1]
+    assert mock_notify.call_args.kwargs["extra"]["client_id"] == "ht-sa-uuid"
+    assert mock_notify.call_args.kwargs["extra"]["slack_user_id"] == "U1"
 
 
 # --------------------------------------------------------------------------- #
