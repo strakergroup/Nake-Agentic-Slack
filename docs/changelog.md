@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: RAY-81247 — evaluate AI/QE quote handlers use HT service-account Verify JWT when poster CRM is inactive (was failing “Could not get ray client” after ready_for_ai_quote) (Wade Norman, 2026-08-10)
 - [Fixed]: RAY-81247 — Slack delivery falls back to workspace bot + stamped poster when deltaray is missing/inactive (HT SA / logout); CVC HV events forward poster stamps (Wade Norman, 2026-08-10)
 - [Fixed]: RAY-81247 — IBM email→CRM tries live Slack profile before stale `slack_user_details`; HT modal submit allows HT service account (Wade Norman, 2026-08-10)
 - [Changed]: RAY-81247 — IBM identity resolves Slack email → active CRM member (deltaray not required; upserts active link). Removed “provisioned by your administrator” disconnect copy (Wade Norman, 2026-08-10)

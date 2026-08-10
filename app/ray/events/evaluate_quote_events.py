@@ -8,18 +8,22 @@ from slack_sdk.web.async_client import AsyncWebClient
 
 from app.api.verify import (
     VerifyAPIError,
-    get_evaluation_job,
+    get_client_evaluation_job,
     get_evaluation_job_quote,
     get_verify_languages,
     proceed_evaluation_job,
 )
-from app.auth.connector import get_ray_client
+from app.auth.connector import RayClient, get_ray_client
 from app.constants import (
     EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE,
     EVALUATE_SERVICE_AI_TRANSLATION,
     SLACK_HT_QUOTE_AFTER_QE_KEY,
 )
 from app.dependencies import RayEvent, RayEventAuth
+from app.ibm_ht_service_account import (
+    get_ht_service_account_ray_client,
+    ht_service_account_member_uuid,
+)
 from app.ray.events.logging import post_notification, slack_response_message_ts
 from app.ray.utils import is_ibm_enterprise
 from app.redis import redis_conn
@@ -40,6 +44,41 @@ from app.translate import _
 logger = logging.getLogger(__name__)
 
 RAY_EVENT_DEDUPE_TTL_SECONDS = 7 * 24 * 60 * 60
+
+
+async def resolve_evaluate_quote_verify_client(
+    auth: RayEventAuth,
+    event: RayEvent,
+) -> RayClient:
+    """Resolve Verify JWT for quote/proceed — personal CRM, else HT service account.
+
+    Delivery uses stamped Slack identity on ``auth.slack_user``. Quote API calls
+    must still authenticate as the job owner. When the poster has no active CRM
+    (RAY-81247 inactive member / HT SA ownership), mint the HT service-account
+    client from the event ``client_id``.
+    """
+    if auth.slack_user is None:
+        raise ValueError("Slack user is required for evaluate quote notifications")
+
+    ray_client = await get_ray_client(
+        auth.slack_user.user_id,
+        auth.slack_user.team_id,
+        auth.slack_user.enterprise_id,
+    )
+    if ray_client is not None:
+        return ray_client
+
+    event_client_id = (event.data.get("client_id") or "").strip()
+    if event_client_id and event_client_id == ht_service_account_member_uuid():
+        service = await get_ht_service_account_ray_client(
+            slack_user_id=auth.slack_user.user_id,
+            slack_team_id=auth.slack_user.team_id,
+            slack_enterprise_id=auth.slack_user.enterprise_id,
+        )
+        if service is not None:
+            return service
+
+    raise ValueError("Could not get ray client for evaluate quote")
 
 
 def _ray_event_dedupe_key(event: RayEvent) -> str | None:
@@ -144,13 +183,7 @@ async def post_evaluate_service_quote(
     if auth.slack_user is None:
         raise ValueError("Slack user is required for evaluate quote notifications")
 
-    ray_client = await get_ray_client(
-        auth.slack_user.user_id,
-        auth.slack_user.team_id,
-        auth.slack_user.enterprise_id,
-    )
-    if ray_client is None:
-        raise ValueError("Could not get ray client for evaluate quote")
+    ray_client = await resolve_evaluate_quote_verify_client(auth, event)
 
     quote = await get_evaluation_job_quote(ray_client, job_uuid, [service])
     services_costs = quote.get("services_costs") or {}
@@ -163,7 +196,7 @@ async def post_evaluate_service_quote(
         }
     )
 
-    job = await get_evaluation_job(auth.slack_user, job_uuid)
+    job = await get_client_evaluation_job(ray_client, job_uuid)
     job_data = job["data"]
     language_names = {
         str(language["uuid"]): str(language.get("name") or language["uuid"])
