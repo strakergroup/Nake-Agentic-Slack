@@ -60,6 +60,7 @@ async def submit_evaluation_job(
     ai_translation_filename_and_languages: list[str] | None = None,
     slack_ht_quote_after_qe: bool = False,
     confirmation_required: bool = True,
+    requester_email: str = "",
 ):
     target_languages_data: dict[str, Any] = {
         "target_languages": target_languages_uuid,
@@ -93,6 +94,8 @@ async def submit_evaluation_job(
         target_languages_data["ai_translation_filename_and_languages"] = (
             ai_translation_filename_and_languages
         )
+    if requester_email:
+        target_languages_data["requester_email"] = requester_email
     target_languages_data["workflow"] = workflow_uuid or ""
 
     max_file_size = max((os.path.getsize(file) for file in file_path), default=None)

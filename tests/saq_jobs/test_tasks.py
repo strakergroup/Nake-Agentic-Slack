@@ -729,6 +729,84 @@ async def test_process_evaluation_submission_non_admin_ht_uses_ht_after_qe():
 
 
 @pytest.mark.asyncio
+async def test_process_evaluation_submission_ht_sa_stamps_requester_email():
+    """RAY-81247: HT SA path passes Slack poster email into evaluate/create."""
+    from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+
+    ht_client = MagicMock()
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+    record = MagicMock(id=42)
+
+    with (
+        patch(
+            "app.auth.connector.get_ray_client",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.auth.connector.get_ray_super_group",
+            new=AsyncMock(return_value=[{"uuid": "ibm-sg"}]),
+        ),
+        patch(
+            "app.auth.connector.user_may_receive_quotes",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "app.ibm_ht_service_account.should_use_ht_service_account",
+            return_value=True,
+        ),
+        patch(
+            "app.ibm_ht_service_account.get_ht_service_account_ray_client",
+            new=AsyncMock(return_value=ht_client),
+        ),
+        patch(
+            "app.ibm_ht_service_account.resolve_slack_poster_email",
+            new=AsyncMock(return_value="poster@ibm.com"),
+        ),
+        patch(
+            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.docx")),
+        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
+        patch(
+            "app.api.verify.get_verify_languages",
+            new=AsyncMock(
+                return_value=[
+                    {"uuid": "src", "code": "en", "name": "English"},
+                    {"uuid": "lang-1", "code": "fr", "name": "French"},
+                ]
+            ),
+        ),
+        patch(
+            "app.ray.submissions.check_and_record_evaluate_submission_async",
+            new=AsyncMock(return_value=(False, record)),
+        ),
+        patch("app.api.verify.submit_evaluation_job", new=AsyncMock()) as mock_submit,
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("os.path.exists", return_value=False),
+    ):
+        result = await process_evaluation_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id="E-IBM",
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.docx", "size": 1000}],
+            target_langs_uuid=["lang-1"],
+            reference="ref",
+            source_lang_uuid="src",
+            workflow_uuid=HUMAN_EVALUATION_WORKFLOW_UUID,
+            job_notes="",
+        )
+
+    assert result["status"] == "submitted"
+    mock_submit.assert_awaited_once()
+    assert mock_submit.await_args.kwargs["requester_email"] == "poster@ibm.com"
+    assert mock_submit.await_args.args[0] is ht_client
+
+
+@pytest.mark.asyncio
 async def test_process_evaluation_submission_admin_ht_clears_fixed_workflow():
     """Admin HT clears HUMAN_EVALUATION so staged AI/QE quotes can run."""
     from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID

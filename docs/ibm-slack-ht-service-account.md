@@ -7,14 +7,15 @@ user already has one. Otherwise the job is owned by a fixed CRM service member
 (default: `slackhtjobs@ibm.com` /
 `6BB48BEF-1EAD-4824-8724-5298CA10AA86` on IBM Slack App).
 
-When the service account owns the job, the Slack poster is stamped only on
-franchise group custom fields:
+When the service account owns the job, the Slack poster is stamped for reporting:
 
-- **Requester ID** → Slack poster email
-- **Surrogate ID** → same email (Lab CAITS pattern)
+- **`evaluation_jobs.extra_info.requester_email`** → Slack poster email (at job create;
+  covers AI/QE ledger rows that charge before TP/HV custom fields exist)
+- **Requester ID** / **Surrogate ID** franchise custom fields → same email (at TP/HV
+  create; Lab CAITS pattern)
 
-IBM usage / HT quote reports ignore the service-account `client_uuid` and use
-Requester ID (fallback Surrogate ID) for Client Email.
+IBM usage / HT quote reports ignore the service-account member email and use, in
+order: `extra_info.requester_email`, then Requester ID, then Surrogate ID.
 
 This mirrors existing IBM Lab `api-ibm` jobs (e.g. CAITS Default + Requester/Surrogate
 on Sales Order PDFs from `pay.strakertranslations.com`).
@@ -44,7 +45,7 @@ customer super group, so go-live keeps requiring account connection there.
 |------|--------------------|-----------------|
 | AI MT (existing) | Verify org UUID | usage metadata email/name |
 | Real IBM + Slack email matches active CRM | That CRM member | member email |
-| Real IBM HT + no CRM for email | HT service account member | Requester/Surrogate custom fields |
+| Real IBM HT + no CRM for email | HT service account member | `extra_info.requester_email` + Requester/Surrogate |
 | Straker Dev / sandbox HT (IBM-like UI) | Logged-in LC member | member email (Connect required) |
 | Non-IBM Slack HT | Logged-in LC member | member email (unchanged) |
 

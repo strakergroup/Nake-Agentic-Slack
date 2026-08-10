@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Added]: RAY-81247 — when HT service account owns an evaluate job, stamp Slack poster `requester_email` through to Verify create (direct + PDF convert path) for usage-report Client Email remap (Wade Norman, 2026-08-11)
 - [Fixed]: RAY-81247 — HV complete `no_slack_user` now alerts BugLog/Google Chat (was silent soft-return like pre-fix Document MT) (Wade Norman, 2026-08-10)
 - [Fixed]: RAY-81247 — HV complete file upload uses workspace stamps + delivery fallback (was posting “download the file below” with no file when owned by HT SA) (Wade Norman, 2026-08-10)
 - [Fixed]: RAY-81247 — evaluate AI/QE quote handlers use HT service-account Verify JWT when poster CRM is inactive (was failing “Could not get ray client” after ready_for_ai_quote) (Wade Norman, 2026-08-10)

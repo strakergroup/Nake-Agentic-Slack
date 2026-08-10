@@ -1024,6 +1024,7 @@ async def process_evaluation_submission(
     # but keep quote gating based on the Slack poster's own membership.
     from app.ibm_ht_service_account import (
         get_ht_service_account_ray_client,
+        resolve_slack_poster_email,
         should_use_ht_service_account,
     )
 
@@ -1036,6 +1037,7 @@ async def process_evaluation_submission(
     may_quote = await user_may_receive_quotes(poster_connection)
     # IBM Slack HT (RAY-81247): prefer the poster's active CRM member; only use
     # the service account when they have no personal CRM link.
+    requester_email = ""
     if should_use_ht_service_account(enterprise_id, poster_connection):
         ray_client = await get_ht_service_account_ray_client(
             slack_user_id=user_id,
@@ -1068,6 +1070,9 @@ async def process_evaluation_submission(
         return {"status": "no_bot_token"}
 
     client = AsyncWebClient(token=bot_token)
+    # Stamp poster email on HT-SA-owned jobs for usage-report Client Email remap.
+    if should_use_ht_service_account(enterprise_id, poster_connection):
+        requester_email = await resolve_slack_poster_email(client, user_id)
     downloaded_files: list[str] = []
     input_files: list[str] = []
     file_titles: list[str] = []
@@ -1346,6 +1351,10 @@ async def process_evaluation_submission(
                 ai_translation_filename_and_languages=submit_ai_pairs,
                 slack_ht_quote_after_qe=slack_ht_quote_after_qe,
                 confirmation_required=confirmation_required,
+                slack_user_id=user_id,
+                slack_team_id=team_id,
+                slack_enterprise_id=enterprise_id,
+                requester_email=requester_email,
             )
         else:
             await submit_evaluation_job(
@@ -1365,6 +1374,7 @@ async def process_evaluation_submission(
                 ai_translation_filename_and_languages=submit_ai_pairs,
                 slack_ht_quote_after_qe=slack_ht_quote_after_qe,
                 confirmation_required=confirmation_required,
+                requester_email=requester_email,
             )
         return {
             "status": "submitted",

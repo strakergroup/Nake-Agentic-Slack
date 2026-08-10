@@ -24,6 +24,10 @@ async def publish_pdf_evaluate_convert(
     ai_translation_filename_and_languages: list[str] | None = None,
     slack_ht_quote_after_qe: bool = False,
     confirmation_required: bool = True,
+    slack_user_id: str = "",
+    slack_team_id: str = "",
+    slack_enterprise_id: str | None = None,
+    requester_email: str = "",
 ) -> None:
     """Upload files to GridFS and publish to the PDF evaluate conversion stream."""
     file_ids = []
@@ -54,6 +58,14 @@ async def publish_pdf_evaluate_convert(
         payload["ai_translation_filename_and_languages"] = (
             ai_translation_filename_and_languages
         )
+    if slack_user_id:
+        payload["slack_user_id"] = slack_user_id
+    if slack_team_id:
+        payload["slack_team_id"] = slack_team_id
+    if slack_enterprise_id:
+        payload["slack_enterprise_id"] = slack_enterprise_id
+    if requester_email:
+        payload["requester_email"] = requester_email
 
     async with httpx.AsyncClient() as http:
         await http.post(
