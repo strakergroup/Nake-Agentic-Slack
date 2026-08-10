@@ -6,13 +6,14 @@
 |------|--------------------------------------------------------|-----------|
 | **AI Translate (Document MT)** — modal, quote preflight, Accept Quote, submit | **Yes** — workspace connected `super_group` is enough; bill `verify_organization_uuid` | **Required.** Quote must not stall on “Preparing an AI Translate quote…” |
 | Channel / shortcut / DM text MT | **Yes** — same org-wallet model | Required |
-| **Human Translation (HT)** | **IBM:** yes via HT service account when no CRM member (RAY-81247). Active CRM members still own their own HT. **Other orgs:** member login still required | IBM uses `allow_ht_service_account` + CRM prefer; see [ibm-slack-ht-service-account.md](ibm-slack-ht-service-account.md) |
+| **Human Translation (HT)** | **Real IBM customer only:** yes via HT service account when no CRM member (RAY-81247). Active CRM members still own their own HT. **Straker Dev / sandbox (IBM-like UI):** Connect still required — no HT service account. **Other orgs:** member login still required | See [ibm-slack-ht-service-account.md](ibm-slack-ht-service-account.md) |
 | **Media** (transcribe / translate / embed) | **Yes** — same org-wallet model as AI Translate (`allow_org_billing=True`) | Bills `verify_organization_uuid` when no personal member; poster via task `extra_data` + callback `team_id`/`slack_user_id` |
 | **Quality Evaluation (QE)** | **No** — member login required (standalone QE blocked on IBM) | Same as non-IBM HT |
 
-IBM HT prefers an active CRM member when the poster already has one. Only posters
-without a CRM link create Verify/franchise jobs owned by the configured HT service
-member (Requester ID / Surrogate ID stamps). Do **not** enable generic
+IBM HT (real customer enterprises only) prefers an active CRM member when the
+poster already has one. Only posters without a CRM link create Verify/franchise
+jobs owned by the configured HT service member (Requester ID / Surrogate ID
+stamps). Straker Dev must still Connect. Do **not** enable generic
 `allow_org_billing` on HT (that would bill the org UUID as `clientid`).
 
 Document MT / AI Translate is implemented under **RAY-80198** + quote flow **RAY-79115**. SAQ workers (`process_document_mt_quote_preflight`, `process_document_mt_submission`) must use the **super-group** gate (`no_super_group`), not a member-only `no_ray_client` check.

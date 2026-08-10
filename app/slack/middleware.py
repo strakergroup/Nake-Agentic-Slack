@@ -10,7 +10,11 @@ from typing import Awaitable, Callable
 from ray_logger.slack import SlackAppLog  # type: ignore
 from slack_bolt.context.async_context import AsyncBoltContext
 
-from app.ray.utils import is_ibm_enterprise, set_user_language
+from app.ray.utils import (
+    is_ibm_customer_enterprise,
+    is_ibm_enterprise,
+    set_user_language,
+)
 from app.slack.buglog_notifier import notify_exception, notify_message
 
 from ..auth.connector import (
@@ -184,7 +188,7 @@ async def require_ray_client(
         if (
             allow_ht_service_account
             and ray.super_group
-            and is_ibm_enterprise(context.get("enterprise_id"))
+            and is_ibm_customer_enterprise(context.get("enterprise_id"))
         ):
             return True
 

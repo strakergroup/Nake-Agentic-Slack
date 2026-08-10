@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- [Changed]: RAY-81247 — HT service account + Slack-email→CRM auto-identity gated to real IBM customer super group only; Straker Dev / sandbox stay IBM-like for UI but still require LanguageCloud Connect (Wade Norman, 2026-08-10)
+- [Changed]: RAY-81247 — IBM identity resolves Slack email → active CRM member (deltaray not required; upserts active link). Removed “provisioned by your administrator” disconnect copy (Wade Norman, 2026-08-10)
 - [Changed]: RAY-81247 — HT service account default is flyway member `slackhtjobs@ibm.com` (`6BB48BEF-1EAD-4824-8724-5298CA10AA86`) instead of Chris Sacre (Wade Norman, 2026-08-10)
 - [Changed]: RAY-81247 — Media (transcribe/translate/embed) org-bills like AI Translate when no personal CRM member; Direct Login SSO handler/modal removed; HT/media callbacks stamp poster `team_id`/`slack_user_id` for correct Slack delivery (Wade Norman, 2026-08-10)
 - [Fixed]: RAY-81247 — omit Requester/Surrogate custom fields when Slack poster email cannot be resolved (no blank stamps) (Wade Norman, 2026-08-10)

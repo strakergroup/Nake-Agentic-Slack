@@ -14,7 +14,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [Media Quote Confirmation](media-quote-confirmation.md) - Quote1 (transcription/embedding) and Quote2 (AI translation after ASR) before media spend
 - [Slack Modal Trigger Safety](slack-modal-trigger-safety.md) - Standard loading-modal pattern for Slack `trigger_id` TTL (RAY-72999)
 - [Document MT / AI Translate org billing](document-mt-without-login.md) - **Required:** AI Translate (Document MT) supports org/group billing without LC member login
-- [IBM Slack HT service account](ibm-slack-ht-service-account.md) - RAY-81247: prefer active CRM; otherwise HT service member + Requester/Surrogate; Direct Login auto-create removed
+- [IBM Slack HT service account](ibm-slack-ht-service-account.md) - RAY-81247: real IBM customer only — prefer CRM; else HT service member + Requester/Surrogate; Straker Dev still requires Connect
 - [Verify org/team vs CRM super group/group](verify-org-vs-crm-groups.md) - Vocabulary map: Verify org→team vs legacy CRM super group→group, role overlap, Slack link
 - [Changelog](changelog.md) - Includes RAY-80734 Document MT same-language-family submit rejection (`es`↔`es-419`)
 

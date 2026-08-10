@@ -19,33 +19,66 @@ Requester ID (fallback Surrogate ID) for Client Email.
 This mirrors existing IBM Lab `api-ibm` jobs (e.g. CAITS Default + Requester/Surrogate
 on Sales Order PDFs from `pay.strakertranslations.com`).
 
+## Scope: real IBM customer only
+
+HT service-account ownership and Slack-email→CRM auto-identity apply only when
+the Slack enterprise is linked to the **IBM customer** super group
+(`9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36`, IBM Supergroup 2021).
+
+`is_ibm_enterprise` / `is_ibm_super_group` still treat **Straker Dev** and
+sandbox super groups as IBM-like for product UI (hide QE standalone, etc.).
+Those workspaces **must still Connect LanguageCloud** and **must not** submit
+HT as `slackhtjobs@ibm.com`.
+
+| Classifier | Super groups | HT SA / email auto-resolve | Connect required |
+|------------|--------------|----------------------------|------------------|
+| `is_ibm_customer_enterprise` | IBM Supergroup 2021 only | yes | HT: no when no CRM; other features: yes if no CRM |
+| `is_ibm_enterprise` (IBM-like) | + Straker Dev + sandboxes | no | always (deltaray / Connect) |
+
+On prod, Straker Dev (`13D8D894-…`) is IBM-like for UI but is **not** the IBM
+customer super group, so go-live keeps requiring account connection there.
+
 ## Behaviour
 
 | Path | Owner (`clientid`) | Poster identity |
 |------|--------------------|-----------------|
 | AI MT (existing) | Verify org UUID | usage metadata email/name |
-| IBM Slack HT + active CRM | Poster's CRM member | member email (unchanged) |
-| IBM Slack HT + no CRM | HT service account member | Requester/Surrogate custom fields |
+| Real IBM + Slack email matches active CRM | That CRM member | member email |
+| Real IBM HT + no CRM for email | HT service account member | Requester/Surrogate custom fields |
+| Straker Dev / sandbox HT (IBM-like UI) | Logged-in LC member | member email (Connect required) |
 | Non-IBM Slack HT | Logged-in LC member | member email (unchanged) |
 
 ```mermaid
 flowchart TD
-  submit[IBM Slack HT submit]
-  crm{Active CRM member linked?}
-  ownPersonal[Own job as CRM member]
-  ownSA[Own job as HT service account]
-  stamp[Stamp Requester ID + Surrogate ID]
-  submit --> crm
-  crm -->|yes| ownPersonal
-  crm -->|no| ownSA --> stamp
+  submit[IBM Slack request]
+  email[Resolve Slack profile email]
+  crm{Active CRM member for email?}
+  upsert[Upsert active slack_deltaray_link]
+  ownPersonal[Own / auth as CRM member]
+  ownSA[HT only: service account + Requester/Surrogate]
+  submit --> email --> crm
+  crm -->|yes| upsert --> ownPersonal
+  crm -->|no HT| ownSA
 ```
+
+## Identity (real IBM customer)
+
+Customer-IBM identity does **not** depend on an existing `slack_deltaray_link`.
+
+1. Resolve Slack email (`slack_user_details`, else bot `users_info`)
+2. Look up active `obj_m_member` by `login` / `email_primary`
+3. If found → build `RayClient` and **upsert** an active deltaray row (insert or reactivate)
+4. If not found → `get_ray_client` returns `None`; HT uses the service account
+
+Logout (inactive deltaray) is irrelevant: the next request re-resolves by email.
+
+Straker Dev / sandbox skip this path and keep normal deltaray Connect behaviour.
 
 ## Direct Login
 
 Slack **Direct Login** no longer mints CRM People / mglinks. The Direct Login
-button is removed from IBM login prompts (home tab and channel). Existing CRM
-members can still be linked if an old SSO action is triggered; unknown emails
-raise a clear error instead of auto-create.
+button is removed from IBM login prompts. The old “provisioned by your
+administrator” disconnect copy is removed — email→CRM resolve is the path.
 
 ## Config
 
@@ -61,6 +94,7 @@ IBM Slack App group already defines Requester ID / Surrogate ID custom fields
 ## Code touchpoints
 
 - `app/ibm_ht_service_account.py` — prefer CRM; mint SA JWT; custom-field payload
+- `app/auth/connector.py` — `get_ray_client_ibm_by_email` / `ensure_active_ibm_deltaray_link`
 - Evaluate / quote accept / create-human-job use personal CRM when present
 - `cloud-verify-api` create-human-job accepts `custom_fields` and writes
   `obj_tp_job_custom_fields`

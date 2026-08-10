@@ -4,11 +4,12 @@ Slack **Direct Login** (SSO mint/link via the Direct Login button / `login_sso` 
 has been removed.
 
 - IBM HT and Media no longer require end-user CRM minting via Slack SSO.
-- HT without an active CRM member uses the HT service account (Requester/Surrogate).
+- HT without a reusable CRM member uses the HT service account (Requester/Surrogate).
 - Media org-bills like AI Translate when the workspace has a linked super group.
-- Existing CRM members who are already Slack-linked continue to work via
-  `slack_deltaray_link`.
+- Existing CRM members continue to work via Slack email → active CRM member
+  resolve (`get_ray_client_ibm_by_email`), which upserts `slack_deltaray_link`.
+- IBM logout / missing deltaray is irrelevant when the Slack email matches CRM.
 
-Historical note (RAY-80562): inactive member reactivation on Direct Login is obsolete
-with the SSO UI removed. See git history for `reactivate_member_for_direct_login` if
-needed for ops.
+Historical note (RAY-80562): inactive **member** reactivation on Direct Login
+(`reactivate_member_for_direct_login`) still exists for leftover SSO link paths;
+IBM UX no longer shows the Direct Login button.

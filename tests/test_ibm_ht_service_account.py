@@ -34,7 +34,7 @@ def test_should_use_ht_service_account_ibm_with_super_group(monkeypatch):
     ray.super_group = [MagicMock()]
     ray.client = None
     monkeypatch.setattr(
-        "app.ibm_ht_service_account.is_ibm_enterprise",
+        "app.ibm_ht_service_account.is_ibm_customer_enterprise",
         lambda enterprise_id: enterprise_id == "IBM",
     )
     assert should_use_ht_service_account("IBM", ray) is True
@@ -49,10 +49,22 @@ def test_should_use_ht_service_account_prefers_active_crm(monkeypatch):
     ray.super_group = [MagicMock()]
     ray.client = MagicMock()  # active CRM member linked to Slack
     monkeypatch.setattr(
-        "app.ibm_ht_service_account.is_ibm_enterprise",
+        "app.ibm_ht_service_account.is_ibm_customer_enterprise",
         lambda enterprise_id: enterprise_id == "IBM",
     )
     assert should_use_ht_service_account("IBM", ray) is False
+
+
+def test_should_use_ht_service_account_excludes_straker_dev_ibm_like(monkeypatch):
+    """Straker Dev is IBM-like for UI but must not use the HT service account."""
+    ray = MagicMock()
+    ray.super_group = [MagicMock()]
+    ray.client = None
+    monkeypatch.setattr(
+        "app.ibm_ht_service_account.is_ibm_customer_enterprise",
+        lambda enterprise_id: False,
+    )
+    assert should_use_ht_service_account("E04RDMG8XP1", ray) is False
 
 
 def test_default_service_account_uuid():

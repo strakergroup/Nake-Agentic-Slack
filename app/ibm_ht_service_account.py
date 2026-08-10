@@ -18,7 +18,7 @@ from straker_utils.sql.async_engine import fetch_one
 from app.auth.connector import RayClient, RayConnection
 from app.config import config
 from app.database import async_engines
-from app.ray.utils import is_ibm_enterprise
+from app.ray.utils import is_ibm_customer_enterprise
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +40,13 @@ def should_use_ht_service_account(
     enterprise_id: str | None,
     ray: RayConnection | None,
 ) -> bool:
-    """True when IBM workspace is linked and the Slack poster has no active CRM member.
+    """True for real IBM customer workspaces when the poster has no CRM member.
 
-    Active CRM members keep owning their own HT jobs. Service account is only for
-    reporters-only posters (no ``obj_m_member`` / Slack deltaray link).
+    Straker Dev / sandbox are IBM-like for UI but must not use the HT service
+    account — they still require LanguageCloud connection.
+    Active CRM members keep owning their own HT jobs.
     """
-    if not is_ibm_enterprise(enterprise_id):
+    if not is_ibm_customer_enterprise(enterprise_id):
         return False
     if ray is None or not ray.super_group:
         return False
@@ -169,7 +170,7 @@ async def resolve_ht_verify_client_for_job(
         return primary, job
     except VerifyAPIError:
         if (
-            not is_ibm_enterprise(slack_enterprise_id)
+            not is_ibm_customer_enterprise(slack_enterprise_id)
             or ray is None
             or not ray.super_group
             or primary.id == ht_service_account_member_uuid()

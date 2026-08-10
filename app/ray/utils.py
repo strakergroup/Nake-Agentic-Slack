@@ -274,7 +274,11 @@ def set_user_language(user_info, context=None):
 def is_ibm_enterprise(
     enterprise_id: str | None,
 ):
-    """Check if the user is in ibm enterpirse or workspace."""
+    """Check if the user is in an IBM-like enterprise or workspace.
+
+    Includes Straker Dev / sandbox (for IBM product UI). HT service-account and
+    email→CRM auto-identity use ``is_ibm_customer_enterprise`` instead.
+    """
     if not enterprise_id:
         return False
     # if config.environment == Environment.production:
@@ -290,6 +294,26 @@ def is_ibm_enterprise(
     except Exception as e:
         print(f"Error checking ibm group{e}")
     return False
+
+
+def is_ibm_customer_enterprise(
+    enterprise_id: str | None,
+) -> bool:
+    """Real IBM customer enterprises only (excludes Straker Dev / sandbox).
+
+    Use for HT service-account ownership, Slack-email→CRM auto-resolve, and
+    “no LanguageCloud login required” UX. Internal IBM-like test workspaces
+    must still require account connection.
+    """
+    if not enterprise_id:
+        return False
+    try:
+        from app.auth.connector import is_ibm_customer_super_group
+
+        return is_ibm_customer_super_group(enterprise_id)
+    except Exception as e:
+        print(f"Error checking ibm customer group{e}")
+        return False
 
 
 VALID_FILE_TYPES: dict[str, Callable[[str], Tuple[bool, str]] | None] = {

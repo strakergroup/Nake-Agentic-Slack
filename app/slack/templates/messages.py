@@ -44,6 +44,7 @@ from ...ray.utils import (
     format_job_due_date_slack,
     format_job_status,
     get_job_url,
+    is_ibm_customer_enterprise,
     is_ibm_enterprise,
 )
 from ..utils import format_strings_display, split_text_into_blocks, unescape_slack_emoji
@@ -273,7 +274,8 @@ class LoginMessage(SlackMessage):
         self._variation = variation
 
         # Have variations of the login message depending on the arguments.
-        ibm = is_ibm_enterprise(enterprise_id)
+        # IBM-like UI (incl. Straker Dev) vs real IBM customer HT no-login path.
+        ibm_customer = is_ibm_customer_enterprise(enterprise_id)
         block_text = _(
             "In order to use the Straker Translate features, please login. Click this button below;"
         )
@@ -293,7 +295,7 @@ class LoginMessage(SlackMessage):
                     "Human Translation does not require a LanguageCloud login in this "
                     "workspace."
                 )
-                if ibm
+                if ibm_customer
                 else _("Connect your account to perform human translation.")
             )
         elif isinstance(ray_client, RayClient):
@@ -303,24 +305,22 @@ class LoginMessage(SlackMessage):
             )
             if ray_client.sso:
                 block_text = _("Your connected account is: {user_details}")
-        if (
-            ibm
-            and not isinstance(ray_client, RayClient)
-            and variation not in (self.HUMAN_TRANSLATION,)
-        ):
-            block_text = _(
-                "This feature requires a LanguageCloud account provisioned by your "
-                "administrator. Human Translation does not require signing in."
-            )
+        # RAY-81247: do not show "provisioned by your administrator" on IBM.
+        # Real IBM customer identity resolves from Slack email → CRM; HT uses the
+        # service account when no CRM member exists. Straker Dev still requires
+        # LanguageCloud connection (Connect account button below).
         msg: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": block_text},
             },
         ]
-        # RAY-81247: IBM Direct Login (SSO mint/link button) removed. Non-IBM
-        # workspaces still use Connect account.
-        if not isinstance(ray_client, RayClient) and not ibm:
+        # Hide Connect only for real IBM customer HT (service-account path).
+        # Straker Dev / sandbox stay IBM-like for UI but always require Connect.
+        # Non-HT IBM customer flows (QE, jobs, etc.) still show Connect when
+        # email→CRM did not resolve a member.
+        hide_connect = ibm_customer and variation == self.HUMAN_TRANSLATION
+        if not isinstance(ray_client, RayClient) and not hide_connect:
             msg.append(
                 {
                     "type": "actions",
@@ -2210,11 +2210,11 @@ def get_account_blocks(
             }
         )
     else:
-        if is_ibm:
+        ibm_customer = is_ibm_customer_enterprise(enterprise_id)
+        if ibm_customer:
             text = _(
-                "No LanguageCloud account is linked. Human Translation does not "
-                "require signing in; other account features need an administrator "
-                "to provision access."
+                "Human Translation does not require signing in. Other features use "
+                "your LanguageCloud account when your Slack email matches a CRM member."
             )
             account_blocks.append(
                 {
@@ -2226,6 +2226,7 @@ def get_account_blocks(
                 }
             )
         else:
+            # Non-IBM and Straker Dev / sandbox: require LanguageCloud connection.
             text = _(
                 "In order to use the Straker Translate features, please login. Click this button below;"
             )

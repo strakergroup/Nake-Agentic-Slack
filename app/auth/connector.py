@@ -5,6 +5,7 @@ other services, e.g. Slack, RAY apps.
 import asyncio
 import hashlib
 import json
+import logging
 import math
 import time
 from dataclasses import dataclass
@@ -28,6 +29,8 @@ from straker_utils.sql.async_engine import execute, fetch_all, fetch_one
 from ..config import Environment, config, domains
 from ..database import async_engines, engines
 from ..slack.buglog_notifier import notify_exception
+
+logger = logging.getLogger(__name__)
 from .algorithms import encrypt_aes, hash_hmac_sha1
 
 
@@ -509,40 +512,80 @@ async def get_ray_super_group(
     ]
 
 
-def is_ibm_super_group(
-    enterprise_id: str | None = None,
+# Real IBM customer workspaces — HT service account + email→CRM identity.
+IBM_CUSTOMER_SUPER_GROUP_UUIDS = frozenset(
+    {
+        "9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36",  # IBM Supergroup 2021
+    }
+)
+
+# Internal workspaces treated as IBM for product UI only (not HT unauthenticated).
+# Straker Dev / sandbox must still require LanguageCloud account connection.
+IBM_INTERNAL_TEST_SUPER_GROUP_UUIDS = frozenset(
+    {
+        "13D8D894-3DC5-49DC-9DD0-AD9EA537E597",  # Straker Developer Super Group
+        "94c8dd41-9029-4aae-883a-57e4b86ead17",  # Test Straker Sandbox (prod)
+        "7f8bcd96-3856-43d6-a01e-3d4c4c196558",  # Test Straker Sandbox (UAT)
+    }
+)
+
+IBM_LIKE_SUPER_GROUP_UUIDS = (
+    IBM_CUSTOMER_SUPER_GROUP_UUIDS | IBM_INTERNAL_TEST_SUPER_GROUP_UUIDS
+)
+
+
+def _enterprise_has_active_ibm_like_super_group(
+    enterprise_id: str,
+    *,
+    super_group_uuids: frozenset[str],
 ) -> bool:
-    """Gets the LanguageCloud super group linked to the Slack workspace if an active
-    link exists, otherwise returns None.
-
-    Args:
-        team_id (str): The ID of the team.
-    """
-    if not enterprise_id:
-        return False
-
+    placeholders = ", ".join(f"'{uuid}'" for uuid in sorted(super_group_uuids))
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
-            """
-            SELECT link.super_group_uuid, g.label
+            f"""
+            SELECT link.super_group_uuid
             FROM slack_super_group_link link
             INNER JOIN sitemanager.obj_m_group g
             ON link.super_group_uuid = g.obj_uuid
             WHERE link.slack_enterprise_id = :enterprise_id
             AND link.is_active = 1
-            AND (
-                link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
-                OR link.super_group_uuid = '13D8D894-3DC5-49DC-9DD0-AD9EA537E597'
-                OR link.super_group_uuid = '94c8dd41-9029-4aae-883a-57e4b86ead17'
-                OR link.super_group_uuid = '7f8bcd96-3856-43d6-a01e-3d4c4c196558'
-            ) AND link.verify_organization_uuid is not null
+            AND link.super_group_uuid IN ({placeholders})
+            AND link.verify_organization_uuid is not null
+            LIMIT 1
             """
         ).bindparams(enterprise_id=enterprise_id)
         result = conn.execute(sql)
-        rows = result.fetchall()
-        if not rows:
-            return False
-    return True
+        return result.first() is not None
+
+
+def is_ibm_super_group(
+    enterprise_id: str | None = None,
+) -> bool:
+    """True when the Slack enterprise is linked to any IBM-like super group.
+
+    Includes Straker Dev / sandbox (IBM UI testing). For HT service-account and
+    email→CRM auto-identity use ``is_ibm_customer_super_group`` instead.
+    """
+    if not enterprise_id:
+        return False
+    return _enterprise_has_active_ibm_like_super_group(
+        enterprise_id, super_group_uuids=IBM_LIKE_SUPER_GROUP_UUIDS
+    )
+
+
+def is_ibm_customer_super_group(
+    enterprise_id: str | None = None,
+) -> bool:
+    """True only for real IBM customer enterprises (not Straker Dev / sandbox).
+
+    Gates HT service-account ownership and Slack-email→CRM auto-resolve so
+    internal IBM-like test workspaces still require LanguageCloud connection.
+    """
+    if not enterprise_id:
+        return False
+    return _enterprise_has_active_ibm_like_super_group(
+        enterprise_id, super_group_uuids=IBM_CUSTOMER_SUPER_GROUP_UUIDS
+    )
 
 
 async def get_ray_demo_client(
@@ -633,17 +676,272 @@ async def get_ray_demo_client(
     )
 
 
+async def _slack_email_from_details(user_id: str) -> str:
+    """Cached Slack profile email from ``slack_user_details``."""
+    sql = text(
+        """
+        SELECT client_email
+        FROM slack_user_details
+        WHERE slack_user_id = :user_id
+          AND client_email IS NOT NULL
+          AND client_email != ''
+        ORDER BY updated_at DESC
+        LIMIT 1
+        """
+    ).bindparams(user_id=user_id)
+    row = await fetch_one(sql, async_engines["ray_integration_readonly"])
+    return ((row or {}).get("client_email") or "").strip()
+
+
+async def _slack_email_from_api(
+    user_id: str, team_id: str, enterprise_id: str | None
+) -> str:
+    """Live Slack profile email via bot ``users_info``."""
+    bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
+    if not bot_token:
+        return ""
+    try:
+        client = AsyncWebClient(token=bot_token)
+        user_info = await client.users_info(user=user_id)
+        profile = ((user_info or {}).get("user") or {}).get("profile") or {}
+        return (profile.get("email") or "").strip()
+    except Exception:
+        logger.warning(
+            "Failed to resolve Slack profile email for IBM CRM lookup",
+            extra={"slack_user_id": user_id, "slack_team_id": team_id},
+            exc_info=True,
+        )
+        return ""
+
+
+async def resolve_slack_user_email(
+    user_id: str, team_id: str, enterprise_id: str | None
+) -> str:
+    """Best-effort Slack user email (cached details, then Slack API)."""
+    email = await _slack_email_from_details(user_id)
+    if email:
+        return email
+    return await _slack_email_from_api(user_id, team_id, enterprise_id)
+
+
+async def get_active_crm_member_by_email(email: str) -> dict[str, Any] | None:
+    """Active CRM ``obj_m_member`` row for login/email_primary (case-insensitive)."""
+    email = (email or "").strip()
+    if not email:
+        return None
+    sql = text(
+        """
+        SELECT
+            m.obj_uuid AS member_uuid,
+            m.login,
+            m.email_primary,
+            m.given_name,
+            m.family_name,
+            m.active,
+            m.groupid,
+            settings.id AS settings_id
+        FROM sitemanager.obj_m_member AS m
+        LEFT JOIN slack_user_settings AS settings
+            ON m.obj_uuid = settings.member_uuid
+        WHERE m.is_deleted = 0
+          AND m.active = 1
+          AND (
+              LOWER(m.login) = LOWER(:email)
+              OR LOWER(m.email_primary) = LOWER(:email)
+          )
+        LIMIT 1
+        """
+    ).bindparams(email=email)
+    return await fetch_one(sql, async_engines["ray_integration_readonly"])
+
+
+async def ensure_active_ibm_deltaray_link(
+    *,
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    member_uuid: str,
+    channel_id: str | None = None,
+) -> None:
+    """Upsert an active Slack↔CRM link after email-based IBM identity resolve."""
+    channel_id = channel_id or user_id
+    find_sql = text(
+        """
+        SELECT id
+        FROM slack_deltaray_link
+        WHERE slack_user_id = :user_id
+          AND (
+              slack_enterprise_id = :enterprise_id
+              OR slack_team_id = :team_id
+              OR :enterprise_id IS NULL
+          )
+        LIMIT 1
+        """
+    ).bindparams(
+        user_id=user_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+    )
+    existing = await fetch_one(find_sql, async_engines["ray_integration"])
+    if existing:
+        update_sql = text(
+            """
+            UPDATE slack_deltaray_link
+            SET
+                member_uuid = :member_uuid,
+                slack_team_id = :team_id,
+                slack_enterprise_id = :enterprise_id,
+                slack_channel_id = :channel_id,
+                is_subscribed = 1,
+                is_active = 1,
+                activated_at = NOW(),
+                deactivated_at = NULL
+            WHERE slack_user_id = :user_id
+              AND (
+                  slack_enterprise_id = :enterprise_id
+                  OR slack_team_id = :team_id
+                  OR :enterprise_id IS NULL
+              )
+            """
+        ).bindparams(
+            member_uuid=member_uuid,
+            user_id=user_id,
+            team_id=team_id,
+            enterprise_id=enterprise_id,
+            channel_id=channel_id,
+        )
+        await execute(update_sql, async_engines["ray_integration"], commit_after=True)
+        return
+
+    insert_sql = text(
+        """
+        INSERT INTO slack_deltaray_link (
+            member_uuid,
+            slack_user_id,
+            slack_team_id,
+            slack_enterprise_id,
+            slack_app_id,
+            slack_channel_id,
+            is_subscribed,
+            is_active,
+            is_sso,
+            activated_at
+        ) VALUES (
+            :member_uuid,
+            :user_id,
+            :team_id,
+            :enterprise_id,
+            '',
+            :channel_id,
+            1,
+            1,
+            1,
+            NOW()
+        )
+        """
+    ).bindparams(
+        member_uuid=member_uuid,
+        user_id=user_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+        channel_id=channel_id,
+    )
+    await execute(insert_sql, async_engines["ray_integration"], commit_after=True)
+
+
+async def get_ray_client_ibm_by_email(
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+) -> RayClient | None:
+    """Resolve IBM Slack identity from Slack email → active CRM member.
+
+    Does not require an existing ``slack_deltaray_link``. When a member is found,
+    an active deltaray row is upserted so delivery callbacks keep working.
+    """
+    email = await resolve_slack_user_email(user_id, team_id, enterprise_id)
+    if not email:
+        return None
+    member = await get_active_crm_member_by_email(email)
+    if not member:
+        return None
+
+    await ensure_active_ibm_deltaray_link(
+        user_id=user_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+        member_uuid=member["member_uuid"],
+        channel_id=user_id,
+    )
+    logger.info(
+        "Resolved IBM Slack user to CRM member by email",
+        extra={
+            "slack_user_id": user_id,
+            "slack_team_id": team_id,
+            "member_uuid": member["member_uuid"],
+        },
+    )
+
+    id_token = create_languagecloud_id_token(
+        uuid=member["member_uuid"],
+        given_name=member["given_name"] or "",
+        family_name=member["family_name"] or "",
+        email=member["email_primary"] or email,
+        is_active=bool(member["active"]),
+        aud="languagecloud-api",
+        secret=config.languagecloud_api_key.get_secret_value(),
+    )
+    access_token_result = await fetch_one(
+        text(
+            """
+            SELECT obj_uuid FROM access_token
+            WHERE account_id = :client_id
+            AND active = 1
+            LIMIT 1
+            """
+        ).bindparams(client_id=member["member_uuid"]),
+        async_engines["api"],
+    )
+    return RayClient(
+        id=member["member_uuid"],
+        user_group_id=member["groupid"] or "",
+        username=member["login"] or member["email_primary"] or email,
+        access_token=(access_token_result or {}).get("obj_uuid") or "",
+        slack_user_id=user_id,
+        slack_team_id=team_id,
+        slack_enterprise_id=enterprise_id,
+        slack_access_token=None,
+        settings_id=member.get("settings_id"),
+        id_token=id_token,
+        planname=None,
+        sso=True,
+    )
+
+
 async def get_ray_client(
     user_id: str, team_id: str, enterprise_id: str | None = None
 ) -> RayClient | None:
     """Gets the LanguageCloud client id and username linked to the Slack account if an active
     link exists, otherwise returns None.
 
+    On IBM enterprises, identity is resolved from the Slack user's email to an
+    active CRM member (RAY-81247) — ``slack_deltaray_link`` is not required.
+    When email matches, an active deltaray row is upserted. Active deltaray is
+    still used as a fallback when email cannot be resolved.
+
     Args:
         user_id (str): The Slack user ID.
         team_id (str): The Slack team ID.
         enterprise_id (str | None): The Slack enterprise ID.
     """
+    # Lazy import avoids connector ↔ ray.utils cycle at module load.
+    from app.ray.utils import is_ibm_customer_enterprise
+
+    if is_ibm_customer_enterprise(enterprise_id):
+        ibm_client = await get_ray_client_ibm_by_email(user_id, team_id, enterprise_id)
+        if ibm_client is not None:
+            return ibm_client
+
     # First find the client details.
     if enterprise_id:
         sql = text(
