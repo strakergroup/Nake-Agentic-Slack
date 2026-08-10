@@ -323,7 +323,12 @@ async def test_enqueue_verify_complete_upload_forwards_payload():
         mock_cfg.saq_file_upload_retries = 5
         mock_cfg.saq_file_upload_timeout_seconds = 300
         await enqueue_verify_complete_upload(
-            grid_file_id="g1", client_id="rc1", channel_id="C1"
+            grid_file_id="g1",
+            client_id="rc1",
+            channel_id="C1",
+            team_id="T1",
+            slack_user_id="U1",
+            enterprise_id="E1",
         )
 
     call_args = mock_enq.await_args
@@ -332,6 +337,9 @@ async def test_enqueue_verify_complete_upload_forwards_payload():
     assert call_args.kwargs["grid_file_id"] == "g1"
     assert call_args.kwargs["client_id"] == "rc1"
     assert call_args.kwargs["channel_id"] == "C1"
+    assert call_args.kwargs["team_id"] == "T1"
+    assert call_args.kwargs["slack_user_id"] == "U1"
+    assert call_args.kwargs["enterprise_id"] == "E1"
     assert "g1" in call_args.kwargs["key"]
 
 

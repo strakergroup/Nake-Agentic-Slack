@@ -1600,7 +1600,8 @@ async def test_slack_upload_transcription_no_slack_user_short_circuits():
 async def test_slack_upload_verify_complete_happy_path(slack_user):
     with (
         patch(
-            "app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=slack_user)
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
         ),
         patch(
             "app.saq_jobs.tasks.download_from_file_server_async",
@@ -1616,11 +1617,31 @@ async def test_slack_upload_verify_complete_happy_path(slack_user):
             grid_file_id="grid-1",
             client_id=slack_user.ray_client_id,
             channel_id="C123",
+            team_id="T1",
+            slack_user_id="U1",
         )
 
     assert result == {"status": "delivered"}
     mock_upload.assert_awaited_once()
     assert mock_upload.await_args.kwargs["filename"] == "qe.xlsx"
+
+
+@pytest.mark.asyncio
+async def test_slack_upload_verify_complete_no_slack_user():
+    with patch(
+        "app.saq_jobs.tasks.resolve_slack_delivery_user",
+        new=AsyncMock(return_value=None),
+    ):
+        result = await slack_upload_verify_complete(
+            _ctx(),
+            grid_file_id="grid-1",
+            client_id="ht-sa-uuid",
+            channel_id="C123",
+            team_id="T1",
+            slack_user_id="U1",
+        )
+
+    assert result == {"status": "no_slack_user"}
 
 
 # --------------------------------------------------------------------------- #

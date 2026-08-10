@@ -109,6 +109,11 @@ SRT `resolve_slack_delivery_user`:
 That covers HT service-account-owned jobs and inactive poster deltaray for
 evaluate complete **and** human-verification complete.
 
+HV complete file upload (`slack_upload_verify_complete`) must receive the same
+stamps via `enqueue_verify_complete_upload` and call
+`resolve_slack_delivery_user` — looking up deltaray by HT SA `client_id` alone
+returns `no_slack_user` and posts “Please download the file below” with no file.
+
 Requester/Surrogate remain reporting-only (not delivery).
 
 

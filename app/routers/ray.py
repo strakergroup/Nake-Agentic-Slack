@@ -1039,6 +1039,11 @@ async def ray_events(
                         grid_file_id=event.data["grid_file_id"],
                         client_id=auth.slack_user.ray_client_id,
                         channel_id=upload_channel_id,
+                        team_id=event.data.get("team_id") or auth.slack_user.team_id,
+                        slack_user_id=event.data.get("slack_user_id")
+                        or auth.slack_user.user_id,
+                        enterprise_id=event.data.get("enterprise_id")
+                        or auth.slack_user.enterprise_id,
                     )
             except Exception as e:
                 raise HTTPException(

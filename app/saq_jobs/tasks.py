@@ -445,10 +445,15 @@ async def slack_upload_verify_complete(
     grid_file_id: str,
     client_id: str,
     channel_id: str,
+    team_id: str | None = None,
+    slack_user_id: str | None = None,
+    enterprise_id: str | None = None,
 ) -> dict[str, Any]:
     """Durable handler for verify-complete file uploads.
 
     Replaces ``_handle_verify_complete_background`` in ``app/routers/ray.py``.
+    Uses workspace stamps when ``client_id`` is the HT service account (no
+    deltaray) so the Slack bot token still resolves (RAY-81247).
     """
     from slack_sdk.web.async_client import AsyncWebClient
 
@@ -463,7 +468,13 @@ async def slack_upload_verify_complete(
     }
     logger.info("Verify-complete upload starting", extra=log_extra)
 
-    slack_user = await get_slack_user(client_id)
+    slack_user = await resolve_slack_delivery_user(
+        client_id,
+        team_id=team_id,
+        slack_user_id=slack_user_id,
+        enterprise_id=enterprise_id,
+        channel_id=channel_id,
+    )
     if slack_user is None:
         logger.error(
             "Slack user disappeared before verify-complete upload",
