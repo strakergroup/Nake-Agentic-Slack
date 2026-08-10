@@ -31,10 +31,10 @@ sandbox super groups as IBM-like for product UI (hide QE standalone, etc.).
 Those workspaces **must still Connect LanguageCloud** and **must not** submit
 HT as `slackhtjobs@ibm.com`.
 
-| Classifier | Super groups | HT SA / email auto-resolve | Connect required |
-|------------|--------------|----------------------------|------------------|
-| `is_ibm_customer_enterprise` | IBM Supergroup 2021 only | yes | HT: no when no CRM; other features: yes if no CRM |
-| `is_ibm_enterprise` (IBM-like) | + Straker Dev + sandboxes | no | always (deltaray / Connect) |
+| Classifier | Super groups | HT SA / email auto-resolve | Connect button on auth failure |
+|------------|--------------|----------------------------|--------------------------------|
+| `is_ibm_customer_enterprise` | IBM Supergroup 2021 only | yes | Hidden except channel translation settings |
+| `is_ibm_enterprise` (IBM-like) | + Straker Dev + sandboxes | no | Shown (Connect required) |
 
 On prod, Straker Dev (`13D8D894-…`) is IBM-like for UI but is **not** the IBM
 customer super group, so go-live keeps requiring account connection there.

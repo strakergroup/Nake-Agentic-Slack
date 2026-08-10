@@ -242,6 +242,8 @@ class LoginMessage(SlackMessage):
     AI_HELP = "ai_help"
     QUALITY_EVALUATION = "quality_evaluation"
     HUMAN_TRANSLATION = "human_translation"
+    # Channel auto-translate settings still require a personal LC member on IBM.
+    CHANNEL_TRANSLATION_SETTINGS = "channel_translation_settings"
 
     def __init__(
         self,
@@ -298,6 +300,10 @@ class LoginMessage(SlackMessage):
                 if ibm_customer
                 else _("Connect your account to perform human translation.")
             )
+        elif variation == self.CHANNEL_TRANSLATION_SETTINGS:
+            block_text = _(
+                "Connect your account to manage channel translation settings."
+            )
         elif isinstance(ray_client, RayClient):
             user_details = f"<{domains.verify}|{ray_client.username}>"
             block_text = _(
@@ -315,11 +321,10 @@ class LoginMessage(SlackMessage):
                 "text": {"type": "mrkdwn", "text": block_text},
             },
         ]
-        # Hide Connect only for real IBM customer HT (service-account path).
-        # Straker Dev / sandbox stay IBM-like for UI but always require Connect.
-        # Non-HT IBM customer flows (QE, jobs, etc.) still show Connect when
-        # email→CRM did not resolve a member.
-        hide_connect = ibm_customer and variation == self.HUMAN_TRANSLATION
+        # Hide Connect for real IBM customer auth failures. Channel translation
+        # settings is the exception — managing settings still needs a personal
+        # LC member, so Connect remains available there (RAY-81247).
+        hide_connect = ibm_customer and variation != self.CHANNEL_TRANSLATION_SETTINGS
         if not isinstance(ray_client, RayClient) and not hide_connect:
             msg.append(
                 {

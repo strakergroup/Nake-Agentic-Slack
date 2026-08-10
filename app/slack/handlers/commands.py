@@ -83,7 +83,9 @@ async def handle_ray_command(
             # Open the channel translation settings modal
             # If translation_settings_enabled is True.
             # Else display link to help docs.
-            if await require_ray_client(context):
+            if await require_ray_client(
+                context, variation=LoginMessage.CHANNEL_TRANSLATION_SETTINGS
+            ):
                 is_straker_admin = (
                     context["ray"]
                     and context["ray"].client

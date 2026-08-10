@@ -170,7 +170,13 @@ class TestLoginMessage:
     def test_ibm_login_message_has_no_direct_login_button(
         self, user_id: str, team_id: str, channel_id: str
     ):
-        with patch("app.slack.templates.messages.is_ibm_enterprise", return_value=True):
+        with (
+            patch("app.slack.templates.messages.is_ibm_enterprise", return_value=True),
+            patch(
+                "app.slack.templates.messages.is_ibm_customer_enterprise",
+                return_value=True,
+            ),
+        ):
             message = LoginMessage(user_id, team_id, "E123", channel_id)
         assert "Direct Login" not in str(message.blocks)
         assert "login_sso" not in str(message.blocks)
@@ -179,7 +185,13 @@ class TestLoginMessage:
     def test_ibm_human_translation_login_explains_no_login(
         self, user_id: str, team_id: str, channel_id: str
     ):
-        with patch("app.slack.templates.messages.is_ibm_enterprise", return_value=True):
+        with (
+            patch("app.slack.templates.messages.is_ibm_enterprise", return_value=True),
+            patch(
+                "app.slack.templates.messages.is_ibm_customer_enterprise",
+                return_value=True,
+            ),
+        ):
             message = LoginMessage(
                 user_id,
                 team_id,
@@ -192,6 +204,7 @@ class TestLoginMessage:
             in message.blocks[0]["text"]["text"]
         )
         assert "Direct Login" not in str(message.blocks)
+        assert all(block.get("type") != "actions" for block in message.blocks)
 
     def test_variation_overrides_connected_variation(
         self,

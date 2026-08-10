@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Changed]: RAY-81247 — real IBM customer auth failures never show the Connect account button (QE/jobs/HT/default); only channel translation settings (`/translate`) still offers Connect for a personal LC member (Wade Norman, 2026-08-11)
 - [Fixed]: RAY-81247 — media transcription/embedding spend always stamps Slack poster `email`/`client_name` on LC usage metadata (resolve at accept into task `extra_data`, then on charge); org-billed Client Email no longer blank (Wade Norman, 2026-08-11)
 - [Fixed]: RAY-81247 — org-billed media transcription upload resolves Slack delivery via workspace stamps (`resolve_slack_delivery_user`) and alerts on `no_slack_user`; enqueue forwards `team_id`/`slack_user_id`/`enterprise_id` from task `extra_data` (Wade Norman, 2026-08-11)
 - [Fixed]: RAY-81247 — media transcription/embedding spend sends `group_uuid` (CRM billing group) with the group JWT so LC `/mt/transcribe` and `/mt/embed` can debit the org wallet without 401 (Wade Norman, 2026-08-11)
