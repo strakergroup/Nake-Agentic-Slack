@@ -714,14 +714,36 @@ async def _slack_email_from_api(
         return ""
 
 
+async def resolve_slack_user_email_candidates(
+    user_id: str, team_id: str, enterprise_id: str | None
+) -> list[str]:
+    """Unique Slack emails for CRM lookup (live API first, then cached details).
+
+    Cached ``slack_user_details`` can be stale (old domain). Prefer the live
+    Slack profile, then fall back to cache so either source can match CRM.
+    """
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for email in (
+        await _slack_email_from_api(user_id, team_id, enterprise_id),
+        await _slack_email_from_details(user_id),
+    ):
+        normalized = (email or "").strip()
+        key = normalized.lower()
+        if normalized and key not in seen:
+            seen.add(key)
+            candidates.append(normalized)
+    return candidates
+
+
 async def resolve_slack_user_email(
     user_id: str, team_id: str, enterprise_id: str | None
 ) -> str:
-    """Best-effort Slack user email (cached details, then Slack API)."""
-    email = await _slack_email_from_details(user_id)
-    if email:
-        return email
-    return await _slack_email_from_api(user_id, team_id, enterprise_id)
+    """Best-effort Slack user email (live API first, then cached details)."""
+    candidates = await resolve_slack_user_email_candidates(
+        user_id, team_id, enterprise_id
+    )
+    return candidates[0] if candidates else ""
 
 
 async def get_active_crm_member_by_email(email: str) -> dict[str, Any] | None:
@@ -858,11 +880,20 @@ async def get_ray_client_ibm_by_email(
 
     Does not require an existing ``slack_deltaray_link``. When a member is found,
     an active deltaray row is upserted so delivery callbacks keep working.
+
+    Tries live Slack profile email first, then cached ``slack_user_details``, so
+    a stale cached domain (e.g. ``@strakertranslations.com``) cannot block an
+    active CRM match on the current Slack email (e.g. ``@strakergroup.com``).
     """
-    email = await resolve_slack_user_email(user_id, team_id, enterprise_id)
-    if not email:
-        return None
-    member = await get_active_crm_member_by_email(email)
+    member: dict[str, Any] | None = None
+    matched_email = ""
+    for email in await resolve_slack_user_email_candidates(
+        user_id, team_id, enterprise_id
+    ):
+        member = await get_active_crm_member_by_email(email)
+        if member:
+            matched_email = email
+            break
     if not member:
         return None
 
@@ -886,7 +917,7 @@ async def get_ray_client_ibm_by_email(
         uuid=member["member_uuid"],
         given_name=member["given_name"] or "",
         family_name=member["family_name"] or "",
-        email=member["email_primary"] or email,
+        email=member["email_primary"] or matched_email,
         is_active=bool(member["active"]),
         aud="languagecloud-api",
         secret=config.languagecloud_api_key.get_secret_value(),
@@ -905,7 +936,7 @@ async def get_ray_client_ibm_by_email(
     return RayClient(
         id=member["member_uuid"],
         user_group_id=member["groupid"] or "",
-        username=member["login"] or member["email_primary"] or email,
+        username=member["login"] or member["email_primary"] or matched_email,
         access_token=(access_token_result or {}).get("obj_uuid") or "",
         slack_user_id=user_id,
         slack_team_id=team_id,

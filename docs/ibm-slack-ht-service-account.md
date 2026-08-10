@@ -65,12 +65,14 @@ flowchart TD
 
 Customer-IBM identity does **not** depend on an existing `slack_deltaray_link`.
 
-1. Resolve Slack email (`slack_user_details`, else bot `users_info`)
-2. Look up active `obj_m_member` by `login` / `email_primary`
+1. Resolve Slack emails (live `users_info` first, then cached `slack_user_details`)
+2. Look up active `obj_m_member` by `login` / `email_primary` for each candidate until one matches
 3. If found → build `RayClient` and **upsert** an active deltaray row (insert or reactivate)
 4. If not found → `get_ray_client` returns `None`; HT uses the service account
 
 Logout (inactive deltaray) is irrelevant: the next request re-resolves by email.
+Stale cached emails (e.g. old `@strakertranslations.com`) must not block a live
+Slack profile that matches CRM (e.g. `@strakergroup.com`).
 
 Straker Dev / sandbox skip this path and keep normal deltaray Connect behaviour.
 

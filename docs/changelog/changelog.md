@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-81247 — IBM email→CRM tries live Slack profile before stale `slack_user_details`; HT modal submit allows HT service account (Wade Norman, 2026-08-10)
 - [Changed]: RAY-81247 — HT service account + Slack-email→CRM auto-identity gated to real IBM customer super group only; Straker Dev / sandbox stay IBM-like for UI but still require LanguageCloud Connect (Wade Norman, 2026-08-10)
 - [Changed]: RAY-81247 — IBM identity resolves Slack email → active CRM member (deltaray not required; upserts active link). Removed “provisioned by your administrator” disconnect copy (Wade Norman, 2026-08-10)
 - [Changed]: RAY-81247 — HT service account default is flyway member `slackhtjobs@ibm.com` (`6BB48BEF-1EAD-4824-8724-5298CA10AA86`) instead of Chris Sacre (Wade Norman, 2026-08-10)

@@ -15,23 +15,82 @@ from app.slack.templates.messages import LoginMessage
 
 
 @pytest.mark.asyncio
-async def test_resolve_slack_user_email_prefers_cached_details():
+async def test_resolve_slack_user_email_prefers_live_api():
     with (
         patch(
-            "app.auth.connector._slack_email_from_details",
+            "app.auth.connector._slack_email_from_api",
             new=AsyncMock(return_value="wade.norman@strakergroup.com"),
         ),
         patch(
-            "app.auth.connector._slack_email_from_api",
-            new=AsyncMock(return_value="other@example.com"),
-        ) as mock_api,
+            "app.auth.connector._slack_email_from_details",
+            new=AsyncMock(return_value="wade.norman@strakertranslations.com"),
+        ) as mock_details,
     ):
         email = await resolve_slack_user_email(
             "UKVHQ6UJX", "T03PE1PGBV5", "E04RDMG8XP1"
         )
 
     assert email == "wade.norman@strakergroup.com"
-    mock_api.assert_not_awaited()
+    mock_details.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_ray_client_ibm_by_email_skips_stale_cached_email():
+    """Stale slack_user_details email must not block live Slack → CRM match."""
+    member = {
+        "member_uuid": "A02F3A2F-C6D4-4D19-BD1E-BD0A5C990952",
+        "login": "wade.norman@strakergroup.com",
+        "email_primary": "wade.norman@strakergroup.com",
+        "given_name": "Wade",
+        "family_name": "Norman",
+        "active": 1,
+        "groupid": "C9E4513A-41BC-419A-BEB9-6EDAFCD04470",
+        "settings_id": None,
+    }
+    mock_secret = MagicMock()
+    mock_secret.get_secret_value.return_value = "secret"
+
+    async def crm_by_email(email: str):
+        if email.lower() == "wade.norman@strakergroup.com":
+            return member
+        return None
+
+    with (
+        patch(
+            "app.auth.connector.resolve_slack_user_email_candidates",
+            new=AsyncMock(
+                return_value=[
+                    "wade.norman@strakergroup.com",
+                    "wade.norman@strakertranslations.com",
+                ]
+            ),
+        ),
+        patch(
+            "app.auth.connector.get_active_crm_member_by_email",
+            new=AsyncMock(side_effect=crm_by_email),
+        ),
+        patch(
+            "app.auth.connector.ensure_active_ibm_deltaray_link",
+            new=AsyncMock(),
+        ) as mock_ensure,
+        patch(
+            "app.auth.connector.create_languagecloud_id_token",
+            return_value="id-token",
+        ),
+        patch(
+            "app.auth.connector.fetch_one",
+            new=AsyncMock(return_value={"obj_uuid": "tok"}),
+        ),
+        patch("app.auth.connector.config") as mock_config,
+    ):
+        mock_config.languagecloud_api_key = mock_secret
+        client = await get_ray_client_ibm_by_email(
+            "UKVHQ6UJX", "T03PE1PGBV5", "E04RDMG8XP1"
+        )
+
+    assert client is not None
+    assert client.id == member["member_uuid"]
+    mock_ensure.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -102,8 +161,8 @@ async def test_get_ray_client_ibm_by_email_builds_client_and_upserts_link():
 
     with (
         patch(
-            "app.auth.connector.resolve_slack_user_email",
-            new=AsyncMock(return_value="wade.norman@strakergroup.com"),
+            "app.auth.connector.resolve_slack_user_email_candidates",
+            new=AsyncMock(return_value=["wade.norman@strakergroup.com"]),
         ),
         patch(
             "app.auth.connector.get_active_crm_member_by_email",

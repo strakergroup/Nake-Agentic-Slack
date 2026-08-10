@@ -122,7 +122,19 @@ async def handle_evaluate_job_submit(
         return
 
     await ack(response_action="clear")
-    if await require_ray_client(context, prompt_login=True):
+    # HT modal open already allows IBM HT SA; submit must too, otherwise a
+    # deactivated deltaray posts the default Connect prompt after the modal.
+    is_human_ht = view.get("callback_id") == "evaluate_job_human"
+    if await require_ray_client(
+        context,
+        prompt_login=True,
+        variation=(
+            LoginMessage.HUMAN_TRANSLATION
+            if is_human_ht
+            else LoginMessage.QUALITY_EVALUATION
+        ),
+        allow_ht_service_account=is_human_ht,
+    ):
         if view["callback_id"] == "evaluate_job":
             msg = _(
                 "Analyzing your content. You will receive an AI Translation quote shortly."
