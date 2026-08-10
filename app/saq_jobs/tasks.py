@@ -45,7 +45,7 @@ import httpx
 from saq.types import Context
 from slack_bolt.context.async_context import AsyncBoltContext
 
-from app.auth.connector import get_slack_user, resolve_slack_delivery_user
+from app.auth.connector import resolve_slack_delivery_user
 from app.ray.events.models import MtSuccessResponseSchema
 from app.ray.submissions import SubmissionStatus, updated_submission_status
 from app.ray.utils import delete_from_file_server, download_from_file_server_async
@@ -346,6 +346,9 @@ async def slack_upload_transcription(
     channel_id: str,
     thread_ts: str | None = None,
     follow_up_message: str | None = None,
+    team_id: str | None = None,
+    slack_user_id: str | None = None,
+    enterprise_id: str | None = None,
 ) -> dict[str, Any]:
     """Durable handler for transcription file uploads.
 
@@ -354,19 +357,8 @@ async def slack_upload_transcription(
     the temp file so Slack preserves the extension, uploads it, then posts
     the optional follow-up message.
 
-    Args:
-        ctx: SAQ task context.
-        file_id: File-server file ID.
-        file_name: Display filename (used as title and on-disk name).
-        task_uuid: Transcription task UUID for correlation/logging.
-        pipeline_type: Pipeline that produced the file.
-        client_id: Slack user's RAY client ID; used to look up the bot token.
-        channel_id: Target Slack channel ID.
-        thread_ts: Optional thread to reply in.
-        follow_up_message: Optional message to post after the upload completes.
-
-    Returns:
-        Status dict for observability.
+    Org-billed media uses the Verify org as ``client_id`` (no deltaray); resolve
+    via workspace stamps / ``get_slack_org`` (RAY-81247).
     """
     from slack_sdk.web.async_client import AsyncWebClient
 
@@ -379,14 +371,27 @@ async def slack_upload_transcription(
         "file_id": file_id,
         "channel_id": channel_id,
         "pipeline_type": pipeline_type,
+        "team_id": team_id,
+        "slack_user_id": slack_user_id,
         "attempt": attempt,
     }
     logger.info("Transcription upload starting", extra=log_extra)
 
-    slack_user = await get_slack_user(client_id)
+    slack_user = await resolve_slack_delivery_user(
+        client_id,
+        team_id=team_id,
+        slack_user_id=slack_user_id,
+        enterprise_id=enterprise_id,
+        channel_id=channel_id,
+    )
     if slack_user is None:
         logger.error(
             "Slack user disappeared before transcription upload",
+            extra=log_extra,
+        )
+        notify_exception(
+            Exception("Transcription Slack delivery failed: no deliverable Slack user"),
+            "Transcription Slack delivery failed (no_slack_user)",
             extra=log_extra,
         )
         return {"status": "no_slack_user", "task_uuid": task_uuid}

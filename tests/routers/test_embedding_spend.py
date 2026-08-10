@@ -62,6 +62,9 @@ async def test_embedding_sends_duration_languages_and_key():
             target_languages=["es", "fr", "de"],
             file_name="clip.mp4",
             idempotency_key="key-embed",
+            group_uuid="billing-group-1",
+            email="poster@ibm.com",
+            client_name="Pat Poster",
         )
 
     assert transaction_uuid == "txn-embed"
@@ -72,6 +75,9 @@ async def test_embedding_sends_duration_languages_and_key():
     assert posted_json["file_name"] == "clip.mp4"
     assert posted_json["idempotency_key"] == "key-embed"
     assert posted_json["app_name"] == "slack"
+    assert posted_json["group_uuid"] == "billing-group-1"
+    assert posted_json["email"] == "poster@ibm.com"
+    assert posted_json["client_name"] == "Pat Poster"
 
 
 @pytest.mark.asyncio

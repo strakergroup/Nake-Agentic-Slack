@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-81247 — media transcription/embedding spend always stamps Slack poster `email`/`client_name` on LC usage metadata (resolve at accept into task `extra_data`, then on charge); org-billed Client Email no longer blank (Wade Norman, 2026-08-11)
+- [Fixed]: RAY-81247 — org-billed media transcription upload resolves Slack delivery via workspace stamps (`resolve_slack_delivery_user`) and alerts on `no_slack_user`; enqueue forwards `team_id`/`slack_user_id`/`enterprise_id` from task `extra_data` (Wade Norman, 2026-08-11)
+- [Fixed]: RAY-81247 — media transcription/embedding spend sends `group_uuid` (CRM billing group) with the group JWT so LC `/mt/transcribe` and `/mt/embed` can debit the org wallet without 401 (Wade Norman, 2026-08-11)
 - [Added]: RAY-81247 — when HT service account owns an evaluate job, stamp Slack poster `requester_email` through to Verify create (direct + PDF convert path) for usage-report Client Email remap (Wade Norman, 2026-08-11)
 - [Fixed]: RAY-81247 — HV complete `no_slack_user` now alerts BugLog/Google Chat (was silent soft-return like pre-fix Document MT) (Wade Norman, 2026-08-10)
 - [Fixed]: RAY-81247 — HV complete file upload uses workspace stamps + delivery fallback (was posting “download the file below” with no file when owned by HT SA) (Wade Norman, 2026-08-10)

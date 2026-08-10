@@ -2009,6 +2009,9 @@ async def log_transcribe_by_client_id(
     source_language: str | None = None,
     idempotency_key: str | None = None,
     submission_group_uuid: str | None = None,
+    group_uuid: str | None = None,
+    email: str | None = None,
+    client_name: str | None = None,
 ) -> tuple[int, str]:
     """
     Charge a transcription via the LanguageCloud API (``/mt/transcribe``) using
@@ -2023,6 +2026,9 @@ async def log_transcribe_by_client_id(
         file_name: Name of the transcribed file
         source_language: Whisper-detected source language, persisted on the row
         idempotency_key: Stable per-task key so a replay is charged once
+        group_uuid: CRM billing group for org-billed media (RAY-81247)
+        email: Slack poster email for usage-report Client Email (RAY-81247)
+        client_name: Slack poster display name (RAY-81247)
 
     Returns:
         tuple[int, str]: (tokens consumed, gateway transaction UUID)
@@ -2049,6 +2055,12 @@ async def log_transcribe_by_client_id(
     # Media submission id so transcribe/translate/embed share a group (RAY-80417).
     if submission_group_uuid:
         data["submission_group_uuid"] = submission_group_uuid
+    if group_uuid:
+        data["group_uuid"] = group_uuid
+    if email:
+        data["email"] = email
+    if client_name:
+        data["client_name"] = client_name
     async with httpx.AsyncClient() as http:
         response = await http.post(url, headers=headers, json=data)
         response.raise_for_status()
@@ -2175,6 +2187,9 @@ async def log_embedding_by_client_id(
     app_name: str = "slack",
     idempotency_key: str | None = None,
     submission_group_uuid: str | None = None,
+    group_uuid: str | None = None,
+    email: str | None = None,
+    client_name: str | None = None,
 ) -> str:
     """
     Charge media subtitle embedding via the LanguageCloud API (``/mt/embed``)
@@ -2209,6 +2224,12 @@ async def log_embedding_by_client_id(
     # Media submission id so transcribe/translate/embed share a group (RAY-80417).
     if submission_group_uuid:
         data["submission_group_uuid"] = submission_group_uuid
+    if group_uuid:
+        data["group_uuid"] = group_uuid
+    if email:
+        data["email"] = email
+    if client_name:
+        data["client_name"] = client_name
     async with httpx.AsyncClient() as http:
         response = await http.post(url, headers=headers, json=data)
         response.raise_for_status()

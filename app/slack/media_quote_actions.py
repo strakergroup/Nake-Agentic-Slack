@@ -15,10 +15,12 @@ from app.auth.connector import (
     get_client_tokens,
     get_client_type,
     get_group_tokens,
+    resolve_slack_user_email,
     user_may_receive_quotes,
 )
 from app.config import domains
 from app.database import async_engines
+from app.ibm_ht_service_account import resolve_slack_poster_email
 from app.models import ASRTask, TranscriptionTask, TranscriptionTaskData
 from app.ray.utils import is_ibm_enterprise
 from app.redis import redis_conn
@@ -287,6 +289,26 @@ async def accept_media_quote(
             "media_quote_id": quote_id,
             "pipeline_kind": pipeline_kind,
         }
+        # Stamp poster identity at accept so media spend usage rows always carry
+        # Client Email/Name even when org-billed (RAY-81247) — same helpers as HT/channel.
+        poster_email = await resolve_slack_poster_email(client, context["user_id"])
+        if not poster_email:
+            poster_email = await resolve_slack_user_email(
+                context["user_id"],
+                context["team_id"],
+                context.enterprise_id,
+            )
+        poster_name = None
+        user_info = getattr(context, "user_info", None) or context.get("user_info")
+        if isinstance(user_info, dict):
+            profile = (user_info.get("user") or {}).get("profile") or {}
+            poster_name = (
+                profile.get("real_name") or profile.get("real_name_normalized") or None
+            )
+        if poster_email:
+            extra_data["requester_email"] = poster_email
+        if poster_name:
+            extra_data["client_name"] = poster_name
 
         if pipeline_kind == PIPELINE_TRANSCRIBE:
             if session.get("submission_id") is not None:

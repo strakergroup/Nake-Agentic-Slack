@@ -1588,7 +1588,8 @@ async def test_slack_upload_transcription_renames_temp_file_for_extension(slack_
     """The temp download is renamed to the expected filename so Slack keeps the extension."""
     with (
         patch(
-            "app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=slack_user)
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
         ),
         patch(
             "app.saq_jobs.tasks.download_from_file_server_async",
@@ -1609,6 +1610,8 @@ async def test_slack_upload_transcription_renames_temp_file_for_extension(slack_
             client_id=slack_user.ray_client_id,
             channel_id="C123",
             thread_ts="123.0",
+            team_id="T1",
+            slack_user_id="U1",
         )
 
     mock_rename.assert_called_once_with("/tmp/abc/raw", "/tmp/abc/result.srt")
@@ -1624,7 +1627,8 @@ async def test_slack_upload_transcription_posts_follow_up_message(slack_user):
 
     with (
         patch(
-            "app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=slack_user)
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
         ),
         patch(
             "app.saq_jobs.tasks.download_from_file_server_async",
@@ -1655,7 +1659,13 @@ async def test_slack_upload_transcription_posts_follow_up_message(slack_user):
 
 @pytest.mark.asyncio
 async def test_slack_upload_transcription_no_slack_user_short_circuits():
-    with patch("app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=None)):
+    with (
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
+    ):
         result = await slack_upload_transcription(
             _ctx(),
             file_id="f1",
@@ -1665,8 +1675,11 @@ async def test_slack_upload_transcription_no_slack_user_short_circuits():
             client_id="missing",
             channel_id="C1",
             thread_ts=None,
+            team_id="T1",
+            slack_user_id="U1",
         )
     assert result["status"] == "no_slack_user"
+    assert "no_slack_user" in mock_notify.call_args.args[1]
 
 
 # --------------------------------------------------------------------------- #

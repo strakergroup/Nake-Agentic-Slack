@@ -24,6 +24,11 @@ async def test_handle_transcription_complete_skips_ai_translation_follow_up():
         task_uuid="task-1",
         file_name="clip.mp4",
         pipeline_type="transcribe",
+        extra_data={
+            "slack_team_id": "T1",
+            "slack_user_id": "U1",
+            "slack_enterprise_id": "E1",
+        },
     )
     auth = SimpleNamespace(slack_user=SimpleNamespace(ray_client_id="client-1"))
     auth_slack_user = SimpleNamespace(channel_id="C1")
@@ -53,6 +58,9 @@ async def test_handle_transcription_complete_skips_ai_translation_follow_up():
 
     mock_enqueue.assert_awaited_once()
     assert "follow_up_message" not in mock_enqueue.await_args.kwargs
+    assert mock_enqueue.await_args.kwargs["team_id"] == "T1"
+    assert mock_enqueue.await_args.kwargs["slack_user_id"] == "U1"
+    assert mock_enqueue.await_args.kwargs["enterprise_id"] == "E1"
 
 
 @pytest.mark.asyncio
