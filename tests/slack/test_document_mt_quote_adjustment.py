@@ -156,6 +156,52 @@ class TestDocumentMtQuoteAdjustmentHelpers:
         assert document_mt_tokens_for_pairs(quote, ["grid-1:hr", "grid-1:ny"]) == 1
         assert document_mt_tokens_for_pairs(quote, ["grid-1:hr"]) == 1
 
+    def test_tokens_for_pairs_discounts_exact_memory_matches(self):
+        quote = {
+            "total_tokens": 4,
+            "files": [
+                {
+                    "file_id": "grid-1",
+                    "file_name": "doc.docx",
+                    "character_count": 1000,
+                    "target_languages": [
+                        {
+                            "target_language": "fr",
+                            "tokens": 0,
+                            "cost_usd": 0.0,
+                            "memory_matched_characters": 1000,
+                        },
+                        {
+                            "target_language": "de",
+                            "tokens": 2,
+                            "cost_usd": 0.04,
+                            "memory_matched_characters": 400,
+                        },
+                    ],
+                }
+            ],
+        }
+        # fr fully matched → free; de bills 1000-400=600 → ceil(600×0.002)=2.
+        assert document_mt_tokens_for_pairs(quote, ["grid-1:fr", "grid-1:de"]) == 2
+        assert document_mt_tokens_for_pairs(quote, ["grid-1:fr"]) == 0
+        assert document_mt_tokens_for_pairs(quote, ["grid-1:de"]) == 2
+
+    def test_tokens_for_pairs_missing_match_field_charges_full_volume(self):
+        quote = {
+            "total_tokens": 4,
+            "files": [
+                {
+                    "file_id": "grid-1",
+                    "file_name": "doc.docx",
+                    "character_count": 1000,
+                    "target_languages": [
+                        {"target_language": "fr", "tokens": 2, "cost_usd": 0.04},
+                    ],
+                }
+            ],
+        }
+        assert document_mt_tokens_for_pairs(quote, ["grid-1:fr"]) == 2
+
     def test_pdf_tokens_and_pages_follow_selected_files(self):
         # grid-2 still selected -> its PDF fee applies.
         assert document_mt_pdf_tokens_for_pairs(_quote(), ["grid-2:fr"]) == 100

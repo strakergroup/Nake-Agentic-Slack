@@ -143,11 +143,12 @@ def document_mt_tokens_for_pairs(
 ) -> int:
     """Return charged AI translation tokens for the selected pairs.
 
-    Prefer the SOW charge ``ceil(chars × selected_targets × 0.002)`` per file so
-    Adjust Request and quote totals match gateway billing (per-row ceils must not
-    stack a second minimum). Fall back to the quote aggregate for a full
-    selection, then to summing selected per-row token estimates when character
-    counts are unavailable.
+    Prefer the SOW charge ``ceil(billable_chars × 0.002)`` per file — where
+    billable chars subtract each selected target's exact (100%) TM/memory
+    matches — so Adjust Request and quote totals match gateway billing
+    (per-row ceils must not stack a second minimum). Fall back to the quote
+    aggregate for a full selection, then to summing selected per-row token
+    estimates when character counts are unavailable.
     """
     selected = set(selected_pairs)
     if not selected:
@@ -157,18 +158,25 @@ def document_mt_tokens_for_pairs(
     saw_character_count = False
     for file in _quote_files(quote):
         file_id = str(file["file_id"])
-        selected_count = sum(
-            1
+        selected_targets = [
+            target
             for target in file.get("target_languages") or []
             if document_mt_pair_key(file_id, str(target.get("target_language") or ""))
             in selected
-        )
-        if selected_count <= 0:
+        ]
+        if not selected_targets:
             continue
         character_count = int(file.get("character_count") or 0)
         if character_count > 0:
             saw_character_count = True
-            sow_total += media_translation_tokens(character_count, selected_count)
+            billable = sum(
+                max(
+                    0,
+                    character_count - int(target.get("memory_matched_characters") or 0),
+                )
+                for target in selected_targets
+            )
+            sow_total += media_translation_tokens(billable, 1)
 
     if saw_character_count:
         return sow_total
