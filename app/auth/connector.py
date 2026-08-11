@@ -1248,12 +1248,21 @@ def get_direct_login_verify_team(enterprise_id: str | None):
 
 
 async def add_client_to_slack_group(user_data: dict, member_id: str):
-    # function to add user to ibm slack group when they are not in the group
+    """Ensure the member has an active mglink to the Direct Login Slack group.
+
+    RAY-81311: bulk CBN cleanup may leave ``obj_m_mglink.is_active = 0``. Direct
+    Login previously treated any existing row as sufficient and skipped insert,
+    so LC still saw "no groups" (``getUserGroupByMemberid`` filters
+    ``is_active = 1``) and users could create personal ``IBM (N)`` Verify groups.
+    Reactivate inactive rows; insert only when none exist.
+    """
     group_id = get_direct_login_group(user_data.get("enterprise_id", ""))
 
     sql = text(
         """
-        SELECT obj_uuid FROM obj_m_mglink WHERE groupid = :group_id and memberid = :member_id
+        SELECT obj_uuid, is_active
+        FROM obj_m_mglink
+        WHERE groupid = :group_id AND memberid = :member_id
         """
     ).bindparams(group_id=group_id, member_id=member_id)
     users_in_group = await fetch_one(sql, async_engines["sitemanager"])
@@ -1261,9 +1270,9 @@ async def add_client_to_slack_group(user_data: dict, member_id: str):
         sqlMgLink = text(
             """
             INSERT INTO obj_m_mglink
-                (obj_uuid, groupid, memberid, label, client_type, created, modified)
+                (obj_uuid, groupid, memberid, label, client_type, is_active, created, modified)
             VALUES
-                (:obj_uuid, :groupid, :memberid, :label, :client_type, now(), now())
+                (:obj_uuid, :groupid, :memberid, :label, :client_type, 1, now(), now())
             """
         ).bindparams(
             obj_uuid=str(uuid4()).upper(),
@@ -1273,6 +1282,16 @@ async def add_client_to_slack_group(user_data: dict, member_id: str):
             client_type="Normal",
         )
         await execute(sqlMgLink, async_engines["sitemanager"], commit_after=True)
+    elif not users_in_group["is_active"]:
+        sql_reactivate = text(
+            """
+            UPDATE obj_m_mglink
+            SET is_active = 1, modified = now()
+            WHERE obj_uuid = :obj_uuid
+            AND (is_active = 0 OR is_active IS NULL)
+            """
+        ).bindparams(obj_uuid=users_in_group["obj_uuid"])
+        await execute(sql_reactivate, async_engines["sitemanager"], commit_after=True)
     sql = text(
         """
             UPDATE obj_m_member SET groupid = :groupid WHERE obj_uuid = :uuid AND (groupid IS NULL or groupid = '')
