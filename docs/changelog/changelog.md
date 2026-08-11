@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-81311 — Direct Login reactivates inactive IBM Slack App `obj_m_mglink` rows (`is_active=1`) so CBN-deactivated memberships do not leave users groupless and able to create personal `IBM (N)` Verify groups (Wade Norman, 2026-08-11)
 - [Changed]: Translation export — regional variants (e.g. `fr-ca`) inherit coverage from parent-lang cognates where source equals target (e.g. `Transcription`); translator import no longer skips those same-word rows (Wade Norman, 2026-08-05)
 - [Changed]: RAY-81103 — `EVALUATE_QUOTE_TTL_SECONDS` default raised from 7 days (`604800`) to 30 days (`2592000`) so Accept/Adjust remains available longer after the quote is posted (Wade Norman, 2026-08-03)
 - [Fixed]: RAY-81103 — evaluate quote Accept/Adjust after Redis TTL shows “This translation quote has expired…” (same as Document MT) instead of the generic processing error; PDF pre-quote Accept and Adjust modal open included (Wade Norman, 2026-08-03)

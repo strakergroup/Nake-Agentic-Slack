@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Fixed]: RAY-81311 — Direct Login reactivates inactive IBM Slack App `obj_m_mglink` rows (`is_active=1`) so CBN-deactivated memberships do not leave users groupless and able to create personal `IBM (N)` Verify groups (Wade Norman, 2026-08-11)
 - [Changed]: Translation export — regional variants (e.g. `fr-ca`) inherit coverage from parent-lang cognates where source equals target (e.g. `Transcription`); translator import no longer skips those same-word rows (Wade Norman, 2026-08-05)
 - [Changed]: RAY-79114 — UI export subset mode (`make subset MATCH=…` / `--match`/`--names`/`--category`) replaces the standalone HT and AI Translate quote-flow generators; flow-specific scripts and HTML renderer removed (Wade Norman, 2026-08-04)
 - [Changed]: RAY-79114 — quote copy updates from IBM review: media Quote1 explains transcription-before-AI-quote, Quote2 matches document AI intro; HT staged AI Accept guidance clarifies it prepares the human translation quote; HT quote panels show a **Human Translation:** section header before file names (Wade Norman, 2026-08-04)
