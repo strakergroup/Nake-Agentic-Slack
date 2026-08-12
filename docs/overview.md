@@ -18,7 +18,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [Verify org/team vs CRM super group/group](verify-org-vs-crm-groups.md) - Vocabulary map: Verify org→team vs legacy CRM super group→group, role overlap, Slack link
 - [Changelog](changelog.md) - Includes RAY-80734 Document MT same-language-family submit rejection (`es`↔`es-419`)
 
-- [Direct Login removed](direct-login-reactivate.md) - RAY-81247: Slack Direct Login SSO UI/handler removed; IBM HT/Media no longer mint CRM via SSO
+- [Direct Login removed](direct-login-reactivate.md) - RAY-81247: Slack Direct Login SSO UI/handler removed; leftover SSO still reactivates inactive LC members (RAY-80562) and IBM Slack App mglinks (RAY-81311)
 - [VerifyLoop Integration](verifyloop.md) - Configuration, endpoints, modal form, and data flow for the VerifyLoop feature
 - [VerifyLoop Architecture Diagrams](verifyloop-architecture.md) - Visual diagrams of system architecture, auth flow, task pipeline, and component dependencies
 - [Channel Info Caching](channel-info-caching.md) - How channel names and privacy status are cached in the database

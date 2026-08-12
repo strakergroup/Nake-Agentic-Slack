@@ -1,11 +1,13 @@
-"""Direct Login reactivation for inactive LC members (RAY-80562 / RAY-81247)."""
+"""Direct Login reactivation for inactive LC members / mglinks (RAY-80562, RAY-81311)."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 
 import pytest
 
 from app.auth.connector import (
+    add_client_to_slack_group,
     connect_ray_account_sso,
     reactivate_member_for_direct_login,
 )
@@ -108,3 +110,91 @@ async def test_connect_ray_account_sso_new_member_raises_lookup_error():
                 channel_id="DNEW",
                 enterprise_id="E27SFGS2W",
             )
+
+
+@pytest.mark.asyncio
+async def test_add_client_to_slack_group_reactivates_inactive_mglink():
+    """RAY-81311: existing inactive IBM Slack App mglink must be set is_active=1."""
+    mglink_uuid = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
+    mock_fetch = AsyncMock(
+        return_value={"obj_uuid": mglink_uuid, "is_active": 0},
+    )
+    mock_execute = AsyncMock()
+
+    with (
+        patch("app.auth.connector.fetch_one", new=mock_fetch),
+        patch("app.auth.connector.execute", new=mock_execute),
+        patch(
+            "app.auth.connector.get_direct_login_group",
+            return_value="07DA6A86-D635-4383-9598-724D368EF1C3",
+        ),
+    ):
+        await add_client_to_slack_group(
+            user_data={"enterprise_id": "E27SFGS2W"},
+            member_id="MEMBER-UUID",
+        )
+
+    assert mock_execute.await_count == 2
+    reactivate_sql = str(mock_execute.await_args_list[0].args[0])
+    assert "UPDATE obj_m_mglink" in reactivate_sql
+    assert "is_active = 1" in reactivate_sql
+    assert "INSERT INTO obj_m_mglink" not in reactivate_sql
+    member_sql = str(mock_execute.await_args_list[1].args[0])
+    assert "UPDATE obj_m_member SET groupid" in member_sql
+
+
+@pytest.mark.asyncio
+async def test_add_client_to_slack_group_skips_reactivate_when_mglink_active():
+    mock_fetch = AsyncMock(
+        return_value={
+            "obj_uuid": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+            "is_active": 1,
+        },
+    )
+    mock_execute = AsyncMock()
+
+    with (
+        patch("app.auth.connector.fetch_one", new=mock_fetch),
+        patch("app.auth.connector.execute", new=mock_execute),
+        patch(
+            "app.auth.connector.get_direct_login_group",
+            return_value="07DA6A86-D635-4383-9598-724D368EF1C3",
+        ),
+    ):
+        await add_client_to_slack_group(
+            user_data={"enterprise_id": "E27SFGS2W"},
+            member_id="MEMBER-UUID",
+        )
+
+    assert mock_execute.await_count == 1
+    member_sql = str(mock_execute.await_args.args[0])
+    assert "UPDATE obj_m_member SET groupid" in member_sql
+    assert "UPDATE obj_m_mglink" not in member_sql
+
+
+@pytest.mark.asyncio
+async def test_add_client_to_slack_group_inserts_when_no_mglink():
+    mock_fetch = AsyncMock(return_value=None)
+    mock_execute = AsyncMock()
+
+    with (
+        patch("app.auth.connector.fetch_one", new=mock_fetch),
+        patch("app.auth.connector.execute", new=mock_execute),
+        patch(
+            "app.auth.connector.get_direct_login_group",
+            return_value="07DA6A86-D635-4383-9598-724D368EF1C3",
+        ),
+        patch(
+            "app.auth.connector.uuid4",
+            return_value=UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
+        ),
+    ):
+        await add_client_to_slack_group(
+            user_data={"enterprise_id": "E27SFGS2W"},
+            member_id="MEMBER-UUID",
+        )
+
+    assert mock_execute.await_count == 2
+    insert_sql = str(mock_execute.await_args_list[0].args[0])
+    assert "INSERT INTO obj_m_mglink" in insert_sql
+    assert "is_active" in insert_sql
