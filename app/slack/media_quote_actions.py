@@ -309,6 +309,14 @@ async def accept_media_quote(
             extra_data["requester_email"] = poster_email
         if poster_name:
             extra_data["client_name"] = poster_name
+        # Super-group uuid for org-billed subtitle MT /mt/transaction (ISVC
+        # forwards this as group_uuid so the ledger does not collapse to the
+        # org uuid — same as channel/document MT).
+        ray = context.get("ray")
+        if ray and ray.super_group:
+            billing_group = (ray.super_group[0].id or "").strip()
+            if billing_group:
+                extra_data["billing_group_uuid"] = billing_group
 
         if pipeline_kind == PIPELINE_TRANSCRIBE:
             if session.get("submission_id") is not None:
