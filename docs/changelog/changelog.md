@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Fixed]: RAY-81247 — `/ustraker translate` opens the loading modal before Ray/DB/IBM checks, drops `initial_conversations` (Slack `invalid_conversations` on private/shared channels), and updates the modal before BugLog notify so it cannot sit on Processing (Wade Norman, 2026-08-13)
 - [Changed]: RAY-81247 — IBM customer `/translate` channel settings no longer offers Connect; the prompt tells the user to contact an admin (Wade Norman, 2026-08-13)
 - [Fixed]: RAY-81247 — media accept also stamps `billing_group_uuid` into task `extra_data` so ISVC subtitle `/mt/transaction` can set ledger `group_uuid` for org-billed Machine Translation (Wade Norman, 2026-08-12)
 - [Changed]: RAY-81247 — real IBM customer auth failures never show the Connect account button (QE/jobs/HT/default); only channel translation settings (`/translate`) still offers Connect for a personal LC member (Wade Norman, 2026-08-11)

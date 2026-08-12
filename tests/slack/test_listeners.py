@@ -1416,9 +1416,12 @@ class TestRayCommand:
             ) as mock_get_settings,
             patch("app.slack.handlers.commands.translation_settings_view") as mock_view,
         ):
-            mock_get_settings.return_value = [
-                {"target_lang": "fr", "display_format": "thread"}
-            ]
+
+            async def _settings(*_args, **_kwargs):
+                assert mock_client.views_open.await_count == 1
+                return [{"target_lang": "fr", "display_format": "thread"}]
+
+            mock_get_settings.side_effect = _settings
             mock_view.return_value = {"type": "modal"}
             await ray_command(
                 context_dict,
@@ -1429,6 +1432,8 @@ class TestRayCommand:
             )
             mock_ack.assert_called_once()
             mock_client.views_open.assert_called_once()
+            mock_view.assert_called_once()
+            assert mock_view.call_args.args[0] is None
             mock_client.views_update.assert_called_once_with(
                 view_id="V123", view={"type": "modal"}
             )
@@ -1437,12 +1442,13 @@ class TestRayCommand:
     async def test_ray_command_translate_with_settings_disabled(
         self, user_id, team_id, ray_client
     ):
-        """Test ray_command with 'translate' command when settings are disabled."""
+        """IBM non-admin /translate updates the loading modal instead of a channel message."""
         from app.slack.listeners import ray_command
 
         mock_ack = AsyncMock()
         mock_respond = AsyncMock()
         mock_client = AsyncMock()
+        mock_client.views_open.return_value = {"view": {"id": "V123"}}
         command = {"text": "translate", "trigger_id": "trigger-123"}
         ray_connection = RayConnection(super_group=[], client=ray_client)
         context_dict = {
@@ -1453,24 +1459,79 @@ class TestRayCommand:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch("app.slack.handlers.commands.is_ibm_enterprise", return_value=True):
-            with patch(
+        with (
+            patch("app.slack.handlers.commands.is_ibm_enterprise", return_value=True),
+            patch(
+                "app.slack.handlers.commands.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
                 "app.slack.handlers.commands.is_slack_team_admin",
                 new_callable=AsyncMock,
-            ) as mock_admin:
-                mock_admin.return_value = False
-                await ray_command(
-                    context_dict,
-                    mock_ack,
-                    respond=mock_respond,
-                    command=command,
-                    client=mock_client,
-                )
-                mock_ack.assert_called_once()
-                mock_client.chat_postMessage.assert_called_once()
-                assert (
-                    "help" in mock_client.chat_postMessage.call_args[1]["text"].lower()
-                )
+                return_value=False,
+            ),
+        ):
+            await ray_command(
+                context_dict,
+                mock_ack,
+                respond=mock_respond,
+                command=command,
+                client=mock_client,
+            )
+            mock_ack.assert_called_once()
+            mock_client.views_open.assert_called_once()
+            mock_client.chat_postMessage.assert_not_called()
+            mock_client.views_update.assert_called_once()
+            updated = mock_client.views_update.call_args.kwargs["view"]
+            assert "administrator" in updated["blocks"][0]["text"]["text"].lower()
+
+    @pytest.mark.asyncio
+    async def test_ray_command_translate_settings_fetch_error_updates_modal(
+        self, user_id, team_id, ray_client
+    ):
+        """Loading modal must be replaced even when settings fetch fails."""
+        from app.slack.listeners import ray_command
+
+        mock_ack = AsyncMock()
+        mock_respond = AsyncMock()
+        mock_client = AsyncMock()
+        mock_client.views_open.return_value = {"view": {"id": "V123"}}
+        command = {"text": "translate", "trigger_id": "trigger-123"}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": "C123",
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        with (
+            patch("app.slack.handlers.commands.is_ibm_enterprise", return_value=False),
+            patch(
+                "app.slack.handlers.commands.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.handlers.commands.get_auto_translate_settings_and_langs",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("db hung"),
+            ),
+            patch("app.slack.handlers.commands.notify_exception") as mock_notify,
+        ):
+            await ray_command(
+                context_dict,
+                mock_ack,
+                respond=mock_respond,
+                command=command,
+                client=mock_client,
+            )
+            mock_client.views_open.assert_called_once()
+            mock_client.views_update.assert_called_once()
+            assert mock_client.views_update.call_args.kwargs["view_id"] == "V123"
+            mock_notify.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_command_job_with_tj_number(self, user_id, team_id, ray_client):
