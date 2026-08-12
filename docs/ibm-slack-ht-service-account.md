@@ -33,7 +33,7 @@ HT as `slackhtjobs@ibm.com`.
 
 | Classifier | Super groups | HT SA / email auto-resolve | Connect button on auth failure |
 |------------|--------------|----------------------------|--------------------------------|
-| `is_ibm_customer_enterprise` | IBM Supergroup 2021 only | yes | Hidden except channel translation settings |
+| `is_ibm_customer_enterprise` | IBM Supergroup 2021 only | yes | Hidden (channel settings: contact admin) |
 | `is_ibm_enterprise` (IBM-like) | + Straker Dev + sandboxes | no | Shown (Connect required) |
 
 On prod, Straker Dev (`13D8D894-…`) is IBM-like for UI but is **not** the IBM

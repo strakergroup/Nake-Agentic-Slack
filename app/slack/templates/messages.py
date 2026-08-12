@@ -301,8 +301,13 @@ class LoginMessage(SlackMessage):
                 else _("Connect your account to perform human translation.")
             )
         elif variation == self.CHANNEL_TRANSLATION_SETTINGS:
-            block_text = _(
-                "Connect your account to manage channel translation settings."
+            block_text = (
+                _(
+                    "Channel translation settings are managed by your administrator. "
+                    "Please contact an admin to change these settings."
+                )
+                if ibm_customer
+                else _("Connect your account to manage channel translation settings.")
             )
         elif isinstance(ray_client, RayClient):
             user_details = f"<{domains.verify}|{ray_client.username}>"
@@ -321,10 +326,9 @@ class LoginMessage(SlackMessage):
                 "text": {"type": "mrkdwn", "text": block_text},
             },
         ]
-        # Hide Connect for real IBM customer auth failures. Channel translation
-        # settings is the exception — managing settings still needs a personal
-        # LC member, so Connect remains available there (RAY-81247).
-        hide_connect = ibm_customer and variation != self.CHANNEL_TRANSLATION_SETTINGS
+        # Hide Connect for real IBM customer auth failures, including channel
+        # translation settings — those are admin-managed (RAY-81247).
+        hide_connect = ibm_customer
         if not isinstance(ray_client, RayClient) and not hide_connect:
             msg.append(
                 {

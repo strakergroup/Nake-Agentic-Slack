@@ -266,7 +266,7 @@ def test_login_message_ibm_without_client_never_shows_provisioned_admin_copy():
     text = msg.blocks[0]["text"]["text"]
     assert "provisioned by your administrator" not in text.lower()
     assert "Connect your account to evaluate" in text
-    # Real IBM customer auth failures never show Connect (except channel settings).
+    # Real IBM customer auth failures never show Connect.
     assert not any(b.get("type") == "actions" for b in msg.blocks)
 
 
@@ -292,7 +292,7 @@ def test_login_message_ibm_customer_ht_hides_connect():
     assert not any(b.get("type") == "actions" for b in msg.blocks)
 
 
-def test_login_message_ibm_customer_channel_settings_keeps_connect():
+def test_login_message_ibm_customer_channel_settings_contacts_admin():
     with (
         patch("app.slack.templates.messages.is_ibm_enterprise", return_value=True),
         patch(
@@ -309,9 +309,10 @@ def test_login_message_ibm_customer_channel_settings_keeps_connect():
             variation=LoginMessage.CHANNEL_TRANSLATION_SETTINGS,
         )
 
-    assert "manage channel translation settings" in msg.blocks[0]["text"]["text"]
-    assert any(b.get("type") == "actions" for b in msg.blocks)
-    assert "Connect account" in str(msg.blocks)
+    text = msg.blocks[0]["text"]["text"]
+    assert "contact an admin" in text
+    assert "Connect your account" not in text
+    assert not any(b.get("type") == "actions" for b in msg.blocks)
 
 
 def test_login_message_straker_dev_requires_connect_for_ht():
@@ -335,3 +336,28 @@ def test_login_message_straker_dev_requires_connect_for_ht():
     assert "does not require a LanguageCloud login" not in text
     assert "Connect your account to perform human translation." in text
     assert any(b.get("type") == "actions" for b in msg.blocks)
+
+
+def test_login_message_non_ibm_channel_settings_keeps_connect():
+    with (
+        patch("app.slack.templates.messages.is_ibm_enterprise", return_value=False),
+        patch(
+            "app.slack.templates.messages.is_ibm_customer_enterprise",
+            return_value=False,
+        ),
+    ):
+        msg = LoginMessage(
+            user_id="U123",
+            team_id="T123",
+            enterprise_id="E123",
+            channel_id="C123",
+            ray_client=None,
+            variation=LoginMessage.CHANNEL_TRANSLATION_SETTINGS,
+        )
+
+    assert (
+        "Connect your account to manage channel translation settings."
+        in (msg.blocks[0]["text"]["text"])
+    )
+    assert any(b.get("type") == "actions" for b in msg.blocks)
+    assert "Connect account" in str(msg.blocks)
