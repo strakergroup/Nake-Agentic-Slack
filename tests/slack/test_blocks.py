@@ -16,6 +16,7 @@ from app.slack.templates.blocks import (
     job_link_block,
     job_summary_no_score,
     job_summary_string,
+    media_translation_quote_blocks,
     quote_message_block,
     verify_quote_blocks,
 )
@@ -266,6 +267,69 @@ class TestDocumentMtQuoteBlocks:
         assert rendered.count("USD 0.01") == 2
         assert "*Total cost:* USD 0.52" in rendered
         assert "USD 0.54" not in rendered
+
+
+class TestMediaTranslationQuoteBlocks:
+    """Quote2 uses the same AI Translate Accept/Adjust layout as Document MT."""
+
+    def _session(self):
+        return {
+            "quote_id": "quote-media",
+            "enterprise_id": None,
+            "stage": "awaiting_translation_accept",
+            "file_id": "Fmedia",
+            "file_name": "product-demo.mp4",
+            "source_text_length": 150000,
+            "target_languages": ["es", "fr"],
+            "target_language_names": ["Spanish", "French"],
+            "quote": {
+                "total_tokens": 600,
+                "pdf_conversion_tokens": 0,
+                "files": [
+                    {
+                        "file_id": "Fmedia",
+                        "file_name": "product-demo.mp4",
+                        "character_count": 150000,
+                        "target_languages": [
+                            {"target_language": "es", "tokens": 300},
+                            {"target_language": "fr", "tokens": 300},
+                        ],
+                    }
+                ],
+            },
+        }
+
+    def test_media_translation_quote_blocks_match_document_mt_actions(self):
+        blocks = media_translation_quote_blocks(self._session(), actions=True)
+
+        action_ids = [
+            element["action_id"]
+            for block in blocks
+            if block.get("type") == "actions"
+            for element in block.get("elements", [])
+        ]
+        assert action_ids == [
+            "media_translation_quote_adjust",
+            "media_translation_quote_accept",
+        ]
+        rendered = str(blocks)
+        assert "Running the AI translation will incur the following cost:" in rendered
+        assert "Adjust Request" in rendered
+        assert "product-demo.mp4" in rendered
+        assert "Spanish" in rendered
+        assert "French" in rendered
+        assert "human review" not in rendered
+        assert "media_translation_quote_cancel" not in rendered
+
+    def test_media_translation_quote_blocks_empty_selected_pairs_all_cancelled(self):
+        session = self._session()
+        session["selected_pairs"] = []
+
+        blocks = media_translation_quote_blocks(session, actions=False)
+
+        rendered = str(blocks)
+        assert rendered.count("AI Translate quote cancelled") == 2
+        assert all(block.get("type") != "actions" for block in blocks)
 
 
 class TestJobLinkBlock:

@@ -33,6 +33,7 @@ from app.slack.media_quote_actions import (
     auto_accept_media_translation_quote_if_needed,
     post_media_quote_message,
 )
+from app.slack.media_quote_adjustment import media_translation_quote_from_session
 from app.slack.media_quotes import (
     ACTION_MEDIA_TRANSLATION_QUOTE_ACCEPT,
     ACTION_MEDIA_TRANSLATION_QUOTE_CANCEL,
@@ -485,6 +486,11 @@ async def maybe_post_media_translation_quote(
             "tokens": translation_tokens,
         }
     ]
+    quote_seed = {
+        **session,
+        "source_text_length": source_text_length,
+        "target_languages": target_languages,
+    }
     updated = await update_media_quote_session(
         str(quote_id),
         {
@@ -495,6 +501,7 @@ async def maybe_post_media_translation_quote(
             "total_tokens": translation_tokens,
             "target_languages": target_languages,
             "duration_ms": task_info.duration_ms or session.get("duration_ms"),
+            "quote": media_translation_quote_from_session(quote_seed),
         },
     )
     if updated is None:

@@ -81,7 +81,9 @@ the source file.
 ## Adjust Request
 
 The Adjust Request flow reuses the staged-evaluate AI quote machinery with a
-dedicated `quote_kind="document_mt"`:
+dedicated `quote_kind="document_mt"`. Media Quote2 (AI translation after
+transcription) uses the same modal and helpers with
+`quote_kind="media_translation"` — see [Media Quote Confirmation](media-quote-confirmation.md).
 
 - `document_mt_quote_blocks` builds per-file/per-language cost rows from the
   consumer quote's `files[].target_languages[]` breakdown and passes

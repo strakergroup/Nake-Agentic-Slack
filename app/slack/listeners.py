@@ -51,6 +51,7 @@ from .handlers import (
 )
 from .handlers import help as help_handlers
 from .logging import slack_log_decorator
+from .media_quote_adjustment import MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID
 from .middleware import ray_connection
 from .pdf_evaluate_quotes import (
     PDF_EVALUATE_QUOTE_ACTION_ID,
@@ -698,6 +699,7 @@ async def verify_job_modal_open_action(
 @app.action(AI_QUOTE_ADJUST_ACTION_ID)
 @app.action(PDF_EVALUATE_QUOTE_ADJUST_ACTION_ID)
 @app.action(DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID)
+@app.action(MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID)
 @slack_log_decorator
 async def evaluation_ai_quote_adjust_action(
     ack: AsyncAck,

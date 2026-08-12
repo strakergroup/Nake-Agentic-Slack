@@ -776,3 +776,99 @@ async def test_ai_quote_adjust_submit_document_mt_accepts_document_mt_quote():
         context=context,
     )
     mock_accept_evaluate.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ai_quote_adjust_maps_media_translation_action_to_quote_kind():
+    with (
+        patch(
+            "app.slack.handlers.evaluate.open_loading_modal",
+            new=AsyncMock(return_value="view-1"),
+        ),
+        patch(
+            "app.slack.handlers.evaluate.populate_ai_quote_adjustment_modal",
+            new=AsyncMock(),
+        ) as mock_populate,
+    ):
+        await AiQuoteAdjustAction(
+            ack=AsyncMock(),
+            client=AsyncMock(),
+            body={"trigger_id": "trigger-1", "user": {"id": "U1"}},
+            action={
+                "value": "quote-1",
+                "action_id": "media_translation_quote_adjust",
+            },
+            context={},
+        )
+
+    assert mock_populate.await_args.kwargs["quote_kind"] == "media_translation"
+    assert mock_populate.await_args.kwargs["quote_id"] == "quote-1"
+
+
+@pytest.mark.asyncio
+async def test_ai_quote_adjust_submit_media_translation_accepts_media_quote():
+    ack = AsyncMock()
+    client = AsyncMock()
+    context = {"channel_id": "C1"}
+    view = {
+        "state": {
+            "values": {
+                "ai_quote_language_Fmedia_es": {
+                    "evaluation_ai_quote_language_selection": {
+                        "selected_options": [{"value": "Fmedia:es"}],
+                    }
+                },
+            }
+        },
+        "private_metadata": (
+            '{"quote_id":"quote-1","quote_kind":"media_translation",'
+            '"channel_id":"C1","message_ts":"111.222"}'
+        ),
+    }
+
+    body = {"view": view, "user": {"id": "U1"}}
+    with (
+        patch(
+            "app.slack.handlers.evaluate.persist_ai_quote_adjustment",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_persist,
+        patch(
+            "app.slack.handlers.evaluate.accept_media_translation_quote",
+            new_callable=AsyncMock,
+        ) as mock_accept_media,
+        patch(
+            "app.slack.handlers.evaluate.accept_document_mt_quote",
+            new_callable=AsyncMock,
+        ) as mock_accept_document_mt,
+        patch(
+            "app.slack.handlers.evaluate.accept_ai_translation_quote",
+            new_callable=AsyncMock,
+        ) as mock_accept_evaluate,
+    ):
+        await AiQuoteAdjustSubmit(
+            ack=ack,
+            body=body,
+            client=client,
+            context=context,
+        )
+
+    ack.assert_awaited_once_with(response_action="clear")
+    mock_persist.assert_awaited_once_with(
+        client,
+        quote_id="quote-1",
+        quote_kind="media_translation",
+        selected_pairs=["Fmedia:es"],
+        user_id="U1",
+        context=context,
+        channel_id="C1",
+        message_ts="111.222",
+    )
+    mock_accept_media.assert_awaited_once_with(
+        client=client,
+        body=body,
+        action={"value": "quote-1"},
+        context=context,
+    )
+    mock_accept_document_mt.assert_not_awaited()
+    mock_accept_evaluate.assert_not_awaited()

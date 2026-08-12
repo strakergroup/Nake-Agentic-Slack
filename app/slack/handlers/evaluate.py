@@ -48,6 +48,11 @@ from app.slack.listener_actions import (
     notify_missing_slack_files,
     verify_job_submission_lock_key,
 )
+from app.slack.media_quote_actions import accept_media_translation_quote
+from app.slack.media_quote_adjustment import (
+    MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID,
+    MEDIA_TRANSLATION_QUOTE_KIND,
+)
 from app.slack.middleware import populate_ray_connection, require_ray_client
 from app.slack.modal_trigger import (
     open_loading_modal,
@@ -415,6 +420,8 @@ async def handle_ai_quote_adjust(
         quote_kind = "pdf_prequote"
     elif action["action_id"] == DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID:
         quote_kind = DOCUMENT_MT_QUOTE_KIND
+    elif action["action_id"] == MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID:
+        quote_kind = MEDIA_TRANSLATION_QUOTE_KIND
     channel_id, message_ts = quote_message_context_from_body(body)
     try:
         await populate_ai_quote_adjustment_modal(
@@ -492,6 +499,13 @@ async def handle_ai_quote_adjust_submit(
         )
     elif quote_kind == DOCUMENT_MT_QUOTE_KIND:
         await accept_document_mt_quote(
+            client=client,
+            body=body,
+            action={"value": quote_id},
+            context=context,
+        )
+    elif quote_kind == MEDIA_TRANSLATION_QUOTE_KIND:
+        await accept_media_translation_quote(
             client=client,
             body=body,
             action={"value": quote_id},

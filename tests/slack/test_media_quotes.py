@@ -135,20 +135,21 @@ def test_media_quote1_intro_explains_transcription_before_ai_translate():
 
 
 def test_media_quote2_intro_matches_document_ai_copy():
+    from app.slack.templates.blocks import media_translation_quote_blocks
+
     session = {
         "quote_id": "q-2",
+        "file_id": "F1",
         "file_name": "clip.mp4",
         "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
         "stage": STAGE_AWAITING_TRANSLATION_ACCEPT,
+        "source_text_length": 25000,
+        "target_languages": ["es"],
+        "target_language_names": ["Spanish"],
         "line_items": [{"label": "AI Translation", "tokens": 50}],
         "total_tokens": 50,
     }
-    blocks = media_quote_blocks(
-        session,
-        accept_action_id="media_translation_quote_accept",
-        cancel_action_id="media_translation_quote_cancel",
-        actions=False,
-    )
+    blocks = media_translation_quote_blocks(session, actions=False)
     assert (
         blocks[1]["text"]["text"]
         == "Running the AI translation will incur the following cost:"
