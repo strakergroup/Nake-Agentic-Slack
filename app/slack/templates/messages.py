@@ -54,6 +54,7 @@ from .blocks import (
     evaluate_success_blocks,
     evaluation_credits_quote_blocks,
     job_link_block,
+    media_translation_quote_blocks,
     quote_message_block,
     verify_quote_blocks,
 )
@@ -4056,6 +4057,23 @@ class DocumentMtQuoteMessage(SlackMessage):
         super().__init__(
             _("Service Quote"),
             document_mt_quote_blocks(
+                session,
+                actions=actions,
+                status_message=status_message,
+            ),
+        )
+
+
+class MediaTranslationQuoteMessage(SlackMessage):
+    def __init__(
+        self,
+        session: dict[str, Any],
+        actions: bool = True,
+        status_message: str | None = None,
+    ) -> None:
+        super().__init__(
+            _("Service Quote"),
+            media_translation_quote_blocks(
                 session,
                 actions=actions,
                 status_message=status_message,

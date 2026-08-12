@@ -25,6 +25,13 @@ from app.models import ASRTask, TranscriptionTask, TranscriptionTaskData
 from app.ray.utils import is_ibm_enterprise
 from app.redis import redis_conn
 from app.slack.buglog_notifier import notify_exception
+from app.slack.document_mt_quote_adjustment import document_mt_tokens_for_pairs
+from app.slack.media_quote_adjustment import (
+    media_selected_target_language_names,
+    media_selected_target_languages,
+    media_translation_quote_from_session,
+    media_translation_quote_uses_adjust_layout,
+)
 from app.slack.media_quotes import (
     ACTION_MEDIA_QUOTE_ACCEPT,
     ACTION_MEDIA_QUOTE_CANCEL,
@@ -48,6 +55,7 @@ from app.slack.media_quotes import (
 )
 from app.slack.middleware import require_ray_client
 from app.slack.templates.messages import (
+    MediaTranslationQuoteMessage,
     RequiresMtTokenAdminMessage,
     RequiresMtTokenMessage,
 )
@@ -113,6 +121,19 @@ async def _update_quote_message(
     status_message: str | None = None,
 ) -> None:
     if not channel_id or not message_ts:
+        return
+    if media_translation_quote_uses_adjust_layout(session):
+        message = MediaTranslationQuoteMessage(
+            session,
+            actions=actions,
+            status_message=status_message,
+        )
+        await client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text=message.text,
+            blocks=message.blocks,
+        )
         return
     blocks = media_quote_blocks(
         session,
@@ -197,8 +218,11 @@ async def _resume_translate_phase(
         extra_data = dict(task.extra_data or {})
         extra_data["media_quote_id"] = session["quote_id"]
         extra_data["pipeline_kind"] = pipeline_kind
-        extra_data["target_languages"] = session.get("target_languages") or []
-        extra_data["target_language_names"] = session.get("target_language_names") or []
+        selected_languages = media_selected_target_languages(session)
+        extra_data["target_languages"] = selected_languages
+        extra_data["target_language_names"] = media_selected_target_language_names(
+            session, selected_languages
+        )
         if session.get("submission_ids"):
             extra_data["submission_ids"] = session["submission_ids"]
         await db_session.execute(
@@ -483,6 +507,11 @@ async def accept_media_translation_quote(
 
     try:
         required_tokens = int(session.get("total_tokens") or 0)
+        if "selected_pairs" in session:
+            required_tokens = document_mt_tokens_for_pairs(
+                media_translation_quote_from_session(session),
+                [str(pair) for pair in session.get("selected_pairs") or []],
+            )
         if not await _require_ai_token_balance(context, client, required_tokens):
             return False
 
@@ -575,6 +604,29 @@ async def cancel_media_quote(
         )
 
 
+async def update_media_translation_quote_slack_message(
+    client: AsyncWebClient,
+    *,
+    channel_id: str,
+    message_ts: str,
+    session: dict[str, Any],
+    actions: bool = True,
+    status_message: str | None = None,
+) -> None:
+    """Replace the original media Quote2 message in place (shared AI Translate grid)."""
+    message = MediaTranslationQuoteMessage(
+        session,
+        actions=actions,
+        status_message=status_message,
+    )
+    await client.chat_update(
+        channel=channel_id,
+        ts=message_ts,
+        text=message.text,
+        blocks=message.blocks,
+    )
+
+
 async def post_media_quote_message(
     client: AsyncWebClient,
     session: dict[str, Any],
@@ -583,12 +635,16 @@ async def post_media_quote_message(
     cancel_action_id: str,
 ) -> str | None:
     """Post a Service Quote message and store its message_ts on the session."""
-    blocks = media_quote_blocks(
-        session,
-        accept_action_id=accept_action_id,
-        cancel_action_id=cancel_action_id,
-        actions=True,
-    )
+    if media_translation_quote_uses_adjust_layout(session):
+        message = MediaTranslationQuoteMessage(session, actions=True)
+        blocks = message.blocks
+    else:
+        blocks = media_quote_blocks(
+            session,
+            accept_action_id=accept_action_id,
+            cancel_action_id=cancel_action_id,
+            actions=True,
+        )
     response = await client.chat_postMessage(
         channel=str(session["channel_id"]),
         text=_("Service Quote"),
@@ -710,4 +766,5 @@ __all__ = [
     "cancel_media_quote",
     "post_media_quote_message",
     "post_or_auto_start_media_quote",
+    "update_media_translation_quote_slack_message",
 ]

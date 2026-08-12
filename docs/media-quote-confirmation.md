@@ -43,8 +43,8 @@ sequenceDiagram
     SRT->>Cons: create_asr_task pipeline_type=transcribe
     Cons->>SRT: transcription results plus duration_ms source_text_length
     SRT->>User: Upload SRT plus Quote2 AI Translation
-    User->>SRT: Accept Quote2
-    SRT->>Cons: translate_only or translate_embed
+    User->>SRT: Accept Quote2 or Adjust Request then Accept
+    SRT->>Cons: translate_only or translate_embed (selected languages only)
     Cons->>MT: srt:translate:multi:v2
     Cons->>SRT: translation results
     opt EmbedAlreadyAcceptedInQuote1
@@ -59,7 +59,9 @@ Key: `slack-ray-translator:media-quote:{quote_id}`
 TTL: `MEDIA_QUOTE_TTL_SECONDS` (default 43200 = 12 hours).
 
 Session fields include ownership, `pipeline_kind`, file metadata + `duration_ms`,
-target languages, stage, priced `line_items`, `task_uuid`, and Slack message ts.
+target languages, stage, priced `line_items`, Quote2 `quote` payload (Document MT
+shape for Adjust Request), optional `selected_pairs`, `task_uuid`, and Slack
+message ts.
 
 Stages:
 
@@ -83,6 +85,24 @@ After Quote2 accept, SRT updates the DB row and re-triggers
 
 ## Display
 
+Quote1 (transcription / embedding) keeps Accept + Cancel line items.
+
+Quote2 (AI translation after ASR) uses the **same Service Quote layout as
+Document MT / HT staged AI Translate**: per-file/per-language cost rows,
+**Adjust Request** + **Accept Quote**, and intro copy
+“Running the AI translation will incur the following cost:”.
+
+Adjust Request opens the shared `evaluation_ai_quote_adjust_modal`
+(`quote_kind=media_translation`). Pair keys are `file_id:language_code`.
+Deselecting languages reprices with `ceil(chars × selected_targets × 0.002)`
+and, on accept, writes only the remaining `target_languages` into the
+transcription task `extra_data` before retriggering MT. Deselecting every
+language cancels Quote2 (cancelled rows stay on the message; submissions
+are marked failed so 24h dedupe allows retry).
+
+In-flight Quote2 sessions without a stored `quote` payload fall back to the
+legacy aggregate Accept/Cancel blocks (no Adjust).
+
 Service Quote line items and totals always show **USD** (`tokens × $0.02`),
 including IBM workspaces (no token-count display on media quotes).
 
@@ -103,4 +123,5 @@ callbacks (`spend_transcription_credits` / MT consumer / `spend_embedding_credit
 ## Actions
 
 - `media_quote_accept` / `media_quote_cancel` — Quote1
-- `media_translation_quote_accept` / `media_translation_quote_cancel` — Quote2
+- `media_translation_quote_accept` / `media_translation_quote_cancel` — Quote2 Accept (Cancel remains for in-flight legacy messages)
+- `media_translation_quote_adjust` — Quote2 Adjust Request (shared AI Translate modal)

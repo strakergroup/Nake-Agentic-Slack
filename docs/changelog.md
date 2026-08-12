@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Added]: RAY-79115 — Media Quote2 (AI translation after transcription) now uses the same Adjust Request as Document MT and HT staged AI Translate: per-file/per-language rows, shared modal, and accept scoped to `selected_pairs` (Wade Norman, 2026-08-13)
 - [Fixed]: RAY-81247 — `/ustraker translate` opens the loading modal before Ray/DB/IBM checks and no longer preselects the channel via `initial_conversations`, so the settings modal cannot sit on Processing (Wade Norman, 2026-08-13)
 - [Fixed]: RAY-81247 — HV complete `no_slack_user` now alerts BugLog/Google Chat (was silent soft-return like pre-fix Document MT) (Wade Norman, 2026-08-10)
 - [Fixed]: RAY-81247 — HV complete file upload uses workspace stamps + delivery fallback (was posting “download the file below” with no file when owned by HT SA) (Wade Norman, 2026-08-10)
