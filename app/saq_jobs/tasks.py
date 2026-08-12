@@ -1005,7 +1005,11 @@ async def process_evaluation_submission(
         updated_submission_status,
     )
     from app.ray.utils import is_ibm_enterprise, upload_to_file_server, validate_file
-    from app.slack.evaluation_ai_adjustment import evaluate_upload_filename
+    from app.slack.evaluation_ai_adjustment import (
+        colliding_evaluate_upload_filenames,
+        evaluate_upload_filename,
+        post_convert_filename_collision_message,
+    )
     from app.slack.evaluation_submissions import publish_pdf_evaluate_convert
     from app.slack.pdf_evaluate_quotes import (
         STAGE_QUOTE_PENDING,
@@ -1335,6 +1339,40 @@ async def process_evaluation_submission(
                 ),
             )
             return {"status": "nothing_to_submit"}
+
+        submit_files = [
+            file_data
+            for index, file_data in enumerate(valid_files)
+            if index in allowed_file_indexes
+        ]
+        collisions = colliding_evaluate_upload_filenames(submit_files)
+        if collisions:
+            # PDF→DOCX rewrite makes report.pdf and report.docx the same
+            # Verify upload name. Publishing would 400 after convert with
+            # no Slack error, leaving the quote stuck on "converting".
+            collision_text = post_convert_filename_collision_message(collisions)
+            logger.warning(
+                "Evaluation submission has post-convert filename collisions; "
+                "refusing to publish",
+                extra={
+                    **log_extra,
+                    "colliding_upload_names": sorted(collisions),
+                },
+            )
+            _mark_new_submissions_failed()
+            await restore_pdf_evaluate_quote_for_retry(
+                client,
+                quote_id=quote_id,
+                channel_id=channel_id,
+                message_ts=prequote_message_ts,
+                is_ibm=is_ibm_enterprise(enterprise_id),
+                status_message=collision_text,
+            )
+            await client.chat_postMessage(
+                channel=user_id,
+                text=collision_text,
+            )
+            return {"status": "filename_collision"}
 
         # Clear HUMAN_EVALUATION for any staged HT path (admin quotes or
         # non-admin HT-after-QE) so CVC builds synthetic AI+QE without early HV.

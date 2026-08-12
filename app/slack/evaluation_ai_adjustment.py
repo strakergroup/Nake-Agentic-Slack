@@ -31,6 +31,56 @@ def evaluate_upload_filename(file_data: dict[str, Any]) -> str:
     return title
 
 
+def colliding_evaluate_upload_filenames(
+    files: Iterable[dict[str, Any]],
+) -> dict[str, list[str]]:
+    """Group original titles that share a post-convert Verify upload name.
+
+    PDF titles are rewritten to ``.docx``. Two files that collapse onto the
+    same name (``report.pdf`` + ``report.docx``) cannot be selected
+    unambiguously, and Verify rejects the create with 400.
+    """
+    grouped: dict[str, list[str]] = {}
+    for file_data in files:
+        original = str(file_data.get("title") or file_data.get("name") or "")
+        if not original:
+            continue
+        grouped.setdefault(evaluate_upload_filename(file_data), []).append(original)
+    return {
+        upload_name: originals
+        for upload_name, originals in grouped.items()
+        if len(originals) > 1
+    }
+
+
+def _join_display_filenames(names: list[str]) -> str:
+    bold = [f"*{name}*" for name in names]
+    if len(bold) <= 1:
+        return bold[0] if bold else ""
+    if len(bold) == 2:
+        return f"{bold[0]} and {bold[1]}"
+    return ", ".join(bold[:-1]) + f", and {bold[-1]}"
+
+
+def post_convert_filename_collision_message(
+    collisions: dict[str, list[str]],
+) -> str:
+    """User-facing reason to rename files that would share an upload name."""
+    lines: list[str] = []
+    for upload_name, originals in collisions.items():
+        lines.append(
+            _(
+                "We couldn't start this evaluation because {filenames} would "
+                "be uploaded as {upload_name}. Rename the duplicates so each "
+                "file is unique, then try again."
+            ).format(
+                filenames=_join_display_filenames(originals),
+                upload_name=f"*{upload_name}*",
+            )
+        )
+    return "\n".join(lines)
+
+
 def filename_language_pairs_from_selection(
     files: Iterable[dict[str, Any]],
     selected_pairs: Iterable[str],

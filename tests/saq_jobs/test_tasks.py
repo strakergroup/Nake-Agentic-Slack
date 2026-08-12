@@ -1173,6 +1173,75 @@ async def test_process_evaluation_submission_refuses_to_publish_empty_batch():
 
 
 @pytest.mark.asyncio
+async def test_process_evaluation_submission_refuses_post_convert_filename_collision():
+    """Same-stem PDF+DOCX must not publish convert; restore the quote instead."""
+    ray_client = MagicMock()
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+
+    with ExitStack() as stack:
+        _enter_accepted_pdf_patches(
+            stack,
+            ray_client,
+            fake_slack,
+            download_paths=["/tmp/a.pdf", "/tmp/a.docx"],
+        )
+        mock_publish = stack.enter_context(
+            patch(
+                "app.slack.evaluation_submissions.publish_pdf_evaluate_convert",
+                new=AsyncMock(),
+            )
+        )
+        mock_restore = stack.enter_context(
+            patch(
+                "app.slack.pdf_evaluate_quotes.restore_pdf_evaluate_quote_for_retry",
+                new=AsyncMock(return_value=True),
+            )
+        )
+        mock_mark_failed = stack.enter_context(
+            patch(
+                "app.ray.submissions.updated_submission_status",
+            )
+        )
+        result = await process_evaluation_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[
+                {"id": "F1", "title": "A great summer vacation.pdf", "size": 1000},
+                {"id": "F2", "title": "A great summer vacation.docx", "size": 1000},
+            ],
+            target_langs_uuid=["lang-1"],
+            reference="ref",
+            source_lang_uuid="src",
+            workflow_uuid=None,
+            job_notes="",
+            preaccepted_ai_translation_quote=True,
+            prequote_message_ts="123.456",
+            ai_translation_filename_and_languages=[
+                "A great summer vacation.docx:lang-1",
+            ],
+            quote_id="quote-1",
+        )
+
+    assert result == {"status": "filename_collision"}
+    mock_publish.assert_not_awaited()
+    mock_restore.assert_awaited_once()
+    assert mock_restore.await_args.kwargs["quote_id"] == "quote-1"
+    assert mock_restore.await_args.kwargs["message_ts"] == "123.456"
+    status = mock_restore.await_args.kwargs["status_message"]
+    assert "A great summer vacation.pdf" in status
+    assert "A great summer vacation.docx" in status
+    fake_slack.chat_postMessage.assert_awaited()
+    dm = fake_slack.chat_postMessage.await_args.kwargs
+    assert dm["channel"] == "U1"
+    assert "A great summer vacation.pdf" in dm["text"]
+    mock_mark_failed.assert_called()
+
+
+@pytest.mark.asyncio
 async def test_process_evaluation_submission_verify_api_error_posts_permission_message():
     from app.api.verify import VerifyAPIError
 

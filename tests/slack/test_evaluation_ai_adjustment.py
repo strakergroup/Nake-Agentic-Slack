@@ -2,6 +2,7 @@
 
 from app.slack.evaluation_ai_adjustment import (
     AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID,
+    colliding_evaluate_upload_filenames,
     estimated_pdf_file_language_costs,
     estimated_pdf_language_costs,
     file_language_pairs,
@@ -11,6 +12,7 @@ from app.slack.evaluation_ai_adjustment import (
     language_costs_with_cancelled_status,
     pdf_adjusted_costs,
     pdf_costs_for_pairs,
+    post_convert_filename_collision_message,
     quote_file_language_costs,
     quote_language_costs,
     quote_message_context_from_body,
@@ -509,6 +511,43 @@ def test_filename_language_pairs_from_selection_uses_post_convert_names():
         ],
         ["F1:lang-ja", "F2:lang-hu"],
     ) == ["notes.txt:lang-ja", "receipt.docx:lang-hu"]
+
+
+def test_colliding_evaluate_upload_filenames_detects_pdf_docx_same_stem():
+    assert colliding_evaluate_upload_filenames(
+        [
+            {"id": "F1", "title": "A great summer vacation.pdf"},
+            {"id": "F2", "title": "A great summer vacation.docx"},
+        ]
+    ) == {
+        "A great summer vacation.docx": [
+            "A great summer vacation.pdf",
+            "A great summer vacation.docx",
+        ]
+    }
+
+
+def test_colliding_evaluate_upload_filenames_ignores_distinct_stems():
+    assert (
+        colliding_evaluate_upload_filenames(
+            [
+                {"id": "F1", "title": "a.pdf"},
+                {"id": "F2", "title": "b.docx"},
+            ]
+        )
+        == {}
+    )
+
+
+def test_post_convert_filename_collision_message_names_both_files():
+    message = post_convert_filename_collision_message(
+        {
+            "report.docx": ["report.pdf", "report.docx"],
+        }
+    )
+    assert "*report.pdf*" in message
+    assert "*report.docx*" in message
+    assert "Rename the duplicates" in message
 
 
 def test_update_modal_cost_blocks_keeps_deselected_checkboxes_unchecked():
