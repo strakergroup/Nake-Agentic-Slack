@@ -22,6 +22,7 @@ This folder contains documentation for the Slack Ray Translator application.
 - [VerifyLoop Architecture Diagrams](verifyloop-architecture.md) - Visual diagrams of system architecture, auth flow, task pipeline, and component dependencies
 - [Channel Info Caching](channel-info-caching.md) - How channel names and privacy status are cached in the database
 - [Bot Message Channel Translation](bot-message-channel-translation.md) - Bot-message channel translation behavior and Redis quota flow
+- [Document MT UAT file submit](../tools/document-mt-uat-submit/README.md) - Upload a local file into the IBM Straker DM and post the AI Translation button (RAY-81323)
 - [Source Language Options](source-language-options.md) - How Cloud Verify source-language options flow from the Verify API and how Slack now matches them
 - [Portuguese Auto-Translate Options](portuguese-auto-translate-options.md) - RAY-80734: `pt-pt` / `pt-BR` replace bare `pt` to avoid Brazil UUID collapse
 - [Pyright Workflow](pyright-workflow.md) - Local type checking and ignored-module backlog during the Pyright rollout
