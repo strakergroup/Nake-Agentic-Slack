@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- [Changed]: RAY-81323 — Document MT quote mirrors the new `memory_matched_characters` per-target field, and Adjust Request / modal repricing (`document_mt_tokens_for_pairs`) subtracts each selected target's exact (100%) TM/memory match characters before the SOW ceil so adjusted totals match the discounted gateway debit (Wade Norman, 2026-08-12)
 - [Fixed]: RAY-79115 — evaluate PDF accept refuses same-stem PDF+DOCX batches (`report.pdf` + `report.docx`) before `slack:evaluate:pdf:convert`, restores the quote, and DMs the user to rename a duplicate instead of leaving Slack on “Converting PDF…” after Verify 400 (Wade Norman, 2026-08-13)
 - [Added]: RAY-79115 — Media Quote2 (AI translation after transcription) now uses the same Adjust Request as Document MT and HT staged AI Translate: per-file/per-language rows, shared modal, and accept scoped to `selected_pairs` (Wade Norman, 2026-08-13)
 - [Fixed]: RAY-81247 — `/ustraker translate` opens the loading modal before Ray/DB/IBM checks, drops `initial_conversations` (Slack `invalid_conversations` on private/shared channels), and updates the modal before BugLog notify so it cannot sit on Processing (Wade Norman, 2026-08-13)
