@@ -35,6 +35,17 @@ from app.slack.evaluation_quotes import (
     get_evaluate_quote_session,
     update_evaluate_quote_session,
 )
+from app.slack.media_quote_adjustment import (
+    MEDIA_TRANSLATION_QUOTE_KIND,
+    media_quote_message_ts,
+    media_translation_language_costs,
+    media_translation_quote_from_session,
+)
+from app.slack.media_quotes import (
+    STAGE_AWAITING_TRANSLATION_ACCEPT,
+    get_media_quote_session,
+    update_media_quote_session,
+)
 from app.slack.middleware import populate_ray_connection, require_ray_client
 from app.slack.modal_trigger import request_error_modal, safe_views_update, status_modal
 from app.slack.pdf_evaluate_quotes import (
@@ -97,6 +108,52 @@ async def populate_ai_quote_adjustment_modal(
                 selected_pairs=selected_pairs,
                 ai_tokens=document_mt_tokens_for_pairs(quote, selected_pairs),
                 pdf_tokens=document_mt_pdf_tokens_for_pairs(quote, selected_pairs),
+                channel_id=resolved_channel_id or None,
+                message_ts=resolved_message_ts,
+            ),
+        )
+        return
+
+    if quote_kind == MEDIA_TRANSLATION_QUOTE_KIND:
+        session = await get_media_quote_session(quote_id)
+        if not session:
+            await safe_views_update(client, view_id, _quote_expired_modal())
+            return
+        if (
+            session.get("user_id") != user_id
+            or session.get("stage") != STAGE_AWAITING_TRANSLATION_ACCEPT
+        ):
+            await safe_views_update(client, view_id, request_error_modal())
+            return
+        resolved_channel_id = str(
+            channel_id or session.get("channel_id") or context.get("channel_id") or ""
+        )
+        resolved_message_ts = (
+            str(message_ts or media_quote_message_ts(session) or "") or None
+        )
+        session_updates: dict[str, Any] = {}
+        if resolved_channel_id and resolved_channel_id != session.get("channel_id"):
+            session_updates["channel_id"] = resolved_channel_id
+        if resolved_message_ts and resolved_message_ts != session.get(
+            "quote_message_ts"
+        ):
+            session_updates["quote_message_ts"] = resolved_message_ts
+        if session_updates:
+            await update_media_quote_session(quote_id, session_updates)
+        quote = media_translation_quote_from_session(session)
+        selected_pairs = [
+            str(value) for value in session.get("selected_pairs") or []
+        ] or document_mt_all_pairs(quote)
+        await safe_views_update(
+            client,
+            view_id,
+            evaluation_ai_quote_adjust_modal(
+                quote_id=quote_id,
+                quote_kind=quote_kind,
+                language_costs=media_translation_language_costs(session),
+                selected_pairs=selected_pairs,
+                ai_tokens=document_mt_tokens_for_pairs(quote, selected_pairs),
+                pdf_tokens=0,
                 channel_id=resolved_channel_id or None,
                 message_ts=resolved_message_ts,
             ),
@@ -284,6 +341,14 @@ async def refresh_ai_quote_adjustment_cost(
         language_costs = document_mt_language_costs(quote)
         ai_tokens = document_mt_tokens_for_pairs(quote, selected_pairs)
         pdf_tokens = document_mt_pdf_tokens_for_pairs(quote, selected_pairs)
+    elif quote_kind == MEDIA_TRANSLATION_QUOTE_KIND:
+        session = await get_media_quote_session(quote_id)
+        if not session:
+            return
+        quote = media_translation_quote_from_session(session)
+        language_costs = media_translation_language_costs(session)
+        ai_tokens = document_mt_tokens_for_pairs(quote, selected_pairs)
+        pdf_tokens = 0
     elif quote_kind == "pdf_prequote":
         session = await get_pdf_evaluate_quote_session(quote_id)
         if not session:

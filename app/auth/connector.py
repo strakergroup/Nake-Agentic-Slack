@@ -5,6 +5,7 @@ other services, e.g. Slack, RAY apps.
 import asyncio
 import hashlib
 import json
+import logging
 import math
 import time
 from dataclasses import dataclass
@@ -28,6 +29,8 @@ from straker_utils.sql.async_engine import execute, fetch_all, fetch_one
 from ..config import Environment, config, domains
 from ..database import async_engines, engines
 from ..slack.buglog_notifier import notify_exception
+
+logger = logging.getLogger(__name__)
 from .algorithms import encrypt_aes, hash_hmac_sha1
 
 
@@ -317,28 +320,78 @@ async def get_slack_org(org_uuid: str, team_id: str | None = None):
     )
 
 
+async def get_slack_user_from_workspace_stamps(
+    client_id: str,
+    *,
+    team_id: str,
+    slack_user_id: str,
+    enterprise_id: str | None = None,
+    channel_id: str | None = None,
+) -> SlackUser | None:
+    """Build a delivery SlackUser from workspace bot token + poster stamps.
+
+    Used when the Verify ``client_id`` has no active deltaray (HT service account
+    or deactivated poster link). Bot credentials come from ``slack_bots`` for the
+    stamped team/enterprise; notifications go to ``slack_user_id``.
+    """
+    bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
+    if not bot_token and enterprise_id:
+        # Installation rows are sometimes stored without enterprise_id.
+        bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=None)
+    if not bot_token:
+        return None
+    return SlackUser(
+        user_id=slack_user_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+        channel_id=channel_id or "",
+        is_subscribed=False,
+        bot_token=bot_token,
+        ray_client_id=client_id,
+        ray_username="",
+        ray_user_group_id=None,
+    )
+
+
 async def resolve_slack_delivery_user(
     client_id: str,
     *,
     team_id: str | None = None,
     slack_user_id: str | None = None,
+    enterprise_id: str | None = None,
+    channel_id: str | None = None,
 ) -> SlackUser | None:
     """Resolve Slack bot credentials for file delivery or event callbacks.
 
     Member-linked jobs use ``get_slack_user``. Org-billed inline MT (channel,
     shortcut, DM) and Document MT fall back to ``get_slack_org`` and
     optionally override ``user_id`` with the poster's Slack id.
+
+    When member/org lookup fails but the event carries ``team_id`` +
+    ``slack_user_id`` (RAY-81247 HT SA / inactive deltaray), resolve the bot
+    from the workspace installation and deliver to the stamped poster.
+
+    When ``slack_user_id`` is provided, it always wins over the linked member's
+    Slack id (notifications must still go to the poster).
     """
     slack_user = await get_slack_user(client_id, team_id)
-    if slack_user is not None:
-        return slack_user
-
-    org_user = await get_slack_org(client_id, team_id)
-    if org_user is None:
+    if slack_user is None:
+        slack_user = await get_slack_org(client_id, team_id)
+    if slack_user is None and team_id and slack_user_id:
+        slack_user = await get_slack_user_from_workspace_stamps(
+            client_id,
+            team_id=team_id,
+            slack_user_id=slack_user_id,
+            enterprise_id=enterprise_id,
+            channel_id=channel_id,
+        )
+    if slack_user is None:
         return None
     if slack_user_id:
-        org_user.user_id = slack_user_id
-    return org_user
+        slack_user.user_id = slack_user_id
+    if channel_id and not slack_user.channel_id:
+        slack_user.channel_id = channel_id
+    return slack_user
 
 
 async def get_slack_user(ray_client_id: str, team_id: str | None = None):
@@ -507,40 +560,80 @@ async def get_ray_super_group(
     ]
 
 
-def is_ibm_super_group(
-    enterprise_id: str | None = None,
+# Real IBM customer workspaces — HT service account + email→CRM identity.
+IBM_CUSTOMER_SUPER_GROUP_UUIDS = frozenset(
+    {
+        "9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36",  # IBM Supergroup 2021
+    }
+)
+
+# Internal workspaces treated as IBM for product UI only (not HT unauthenticated).
+# Straker Dev / sandbox must still require LanguageCloud account connection.
+IBM_INTERNAL_TEST_SUPER_GROUP_UUIDS = frozenset(
+    {
+        "13D8D894-3DC5-49DC-9DD0-AD9EA537E597",  # Straker Developer Super Group
+        "94c8dd41-9029-4aae-883a-57e4b86ead17",  # Test Straker Sandbox (prod)
+        "7f8bcd96-3856-43d6-a01e-3d4c4c196558",  # Test Straker Sandbox (UAT)
+    }
+)
+
+IBM_LIKE_SUPER_GROUP_UUIDS = (
+    IBM_CUSTOMER_SUPER_GROUP_UUIDS | IBM_INTERNAL_TEST_SUPER_GROUP_UUIDS
+)
+
+
+def _enterprise_has_active_ibm_like_super_group(
+    enterprise_id: str,
+    *,
+    super_group_uuids: frozenset[str],
 ) -> bool:
-    """Gets the LanguageCloud super group linked to the Slack workspace if an active
-    link exists, otherwise returns None.
-
-    Args:
-        team_id (str): The ID of the team.
-    """
-    if not enterprise_id:
-        return False
-
+    placeholders = ", ".join(f"'{uuid}'" for uuid in sorted(super_group_uuids))
     with engines["ray_integration_readonly"].connect() as conn:
         sql = text(
-            """
-            SELECT link.super_group_uuid, g.label
+            f"""
+            SELECT link.super_group_uuid
             FROM slack_super_group_link link
             INNER JOIN sitemanager.obj_m_group g
             ON link.super_group_uuid = g.obj_uuid
             WHERE link.slack_enterprise_id = :enterprise_id
             AND link.is_active = 1
-            AND (
-                link.super_group_uuid = '9ADE9F44-92A4-4EEE-9BCC-96AFEF9B6D36'
-                OR link.super_group_uuid = '13D8D894-3DC5-49DC-9DD0-AD9EA537E597'
-                OR link.super_group_uuid = '94c8dd41-9029-4aae-883a-57e4b86ead17'
-                OR link.super_group_uuid = '7f8bcd96-3856-43d6-a01e-3d4c4c196558'
-            ) AND link.verify_organization_uuid is not null
+            AND link.super_group_uuid IN ({placeholders})
+            AND link.verify_organization_uuid is not null
+            LIMIT 1
             """
         ).bindparams(enterprise_id=enterprise_id)
         result = conn.execute(sql)
-        rows = result.fetchall()
-        if not rows:
-            return False
-    return True
+        return result.first() is not None
+
+
+def is_ibm_super_group(
+    enterprise_id: str | None = None,
+) -> bool:
+    """True when the Slack enterprise is linked to any IBM-like super group.
+
+    Includes Straker Dev / sandbox (IBM UI testing). For HT service-account and
+    email→CRM auto-identity use ``is_ibm_customer_super_group`` instead.
+    """
+    if not enterprise_id:
+        return False
+    return _enterprise_has_active_ibm_like_super_group(
+        enterprise_id, super_group_uuids=IBM_LIKE_SUPER_GROUP_UUIDS
+    )
+
+
+def is_ibm_customer_super_group(
+    enterprise_id: str | None = None,
+) -> bool:
+    """True only for real IBM customer enterprises (not Straker Dev / sandbox).
+
+    Gates HT service-account ownership and Slack-email→CRM auto-resolve so
+    internal IBM-like test workspaces still require LanguageCloud connection.
+    """
+    if not enterprise_id:
+        return False
+    return _enterprise_has_active_ibm_like_super_group(
+        enterprise_id, super_group_uuids=IBM_CUSTOMER_SUPER_GROUP_UUIDS
+    )
 
 
 async def get_ray_demo_client(
@@ -631,17 +724,303 @@ async def get_ray_demo_client(
     )
 
 
+async def _slack_email_from_details(user_id: str) -> str:
+    """Cached Slack profile email from ``slack_user_details``."""
+    sql = text(
+        """
+        SELECT client_email
+        FROM slack_user_details
+        WHERE slack_user_id = :user_id
+          AND client_email IS NOT NULL
+          AND client_email != ''
+        ORDER BY updated_at DESC
+        LIMIT 1
+        """
+    ).bindparams(user_id=user_id)
+    row = await fetch_one(sql, async_engines["ray_integration_readonly"])
+    return ((row or {}).get("client_email") or "").strip()
+
+
+async def _slack_email_from_api(
+    user_id: str, team_id: str, enterprise_id: str | None
+) -> str:
+    """Live Slack profile email via bot ``users_info``."""
+    bot_token = await get_bot_token_async(team_id=team_id, enterprise_id=enterprise_id)
+    if not bot_token:
+        return ""
+    try:
+        client = AsyncWebClient(token=bot_token)
+        user_info = await client.users_info(user=user_id)
+        profile = ((user_info or {}).get("user") or {}).get("profile") or {}
+        return (profile.get("email") or "").strip()
+    except Exception:
+        logger.warning(
+            "Failed to resolve Slack profile email for IBM CRM lookup",
+            extra={"slack_user_id": user_id, "slack_team_id": team_id},
+            exc_info=True,
+        )
+        return ""
+
+
+async def resolve_slack_user_email_candidates(
+    user_id: str, team_id: str, enterprise_id: str | None
+) -> list[str]:
+    """Unique Slack emails for CRM lookup (live API first, then cached details).
+
+    Cached ``slack_user_details`` can be stale (old domain). Prefer the live
+    Slack profile, then fall back to cache so either source can match CRM.
+    """
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for email in (
+        await _slack_email_from_api(user_id, team_id, enterprise_id),
+        await _slack_email_from_details(user_id),
+    ):
+        normalized = (email or "").strip()
+        key = normalized.lower()
+        if normalized and key not in seen:
+            seen.add(key)
+            candidates.append(normalized)
+    return candidates
+
+
+async def resolve_slack_user_email(
+    user_id: str, team_id: str, enterprise_id: str | None
+) -> str:
+    """Best-effort Slack user email (live API first, then cached details)."""
+    candidates = await resolve_slack_user_email_candidates(
+        user_id, team_id, enterprise_id
+    )
+    return candidates[0] if candidates else ""
+
+
+async def get_active_crm_member_by_email(email: str) -> dict[str, Any] | None:
+    """Active CRM ``obj_m_member`` row for login/email_primary (case-insensitive)."""
+    email = (email or "").strip()
+    if not email:
+        return None
+    sql = text(
+        """
+        SELECT
+            m.obj_uuid AS member_uuid,
+            m.login,
+            m.email_primary,
+            m.given_name,
+            m.family_name,
+            m.active,
+            m.groupid,
+            settings.id AS settings_id
+        FROM sitemanager.obj_m_member AS m
+        LEFT JOIN slack_user_settings AS settings
+            ON m.obj_uuid = settings.member_uuid
+        WHERE m.is_deleted = 0
+          AND m.active = 1
+          AND (
+              LOWER(m.login) = LOWER(:email)
+              OR LOWER(m.email_primary) = LOWER(:email)
+          )
+        LIMIT 1
+        """
+    ).bindparams(email=email)
+    return await fetch_one(sql, async_engines["ray_integration_readonly"])
+
+
+async def ensure_active_ibm_deltaray_link(
+    *,
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+    member_uuid: str,
+    channel_id: str | None = None,
+) -> None:
+    """Upsert an active Slack↔CRM link after email-based IBM identity resolve."""
+    channel_id = channel_id or user_id
+    find_sql = text(
+        """
+        SELECT id
+        FROM slack_deltaray_link
+        WHERE slack_user_id = :user_id
+          AND (
+              slack_enterprise_id = :enterprise_id
+              OR slack_team_id = :team_id
+              OR :enterprise_id IS NULL
+          )
+        LIMIT 1
+        """
+    ).bindparams(
+        user_id=user_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+    )
+    existing = await fetch_one(find_sql, async_engines["ray_integration"])
+    if existing:
+        update_sql = text(
+            """
+            UPDATE slack_deltaray_link
+            SET
+                member_uuid = :member_uuid,
+                slack_team_id = :team_id,
+                slack_enterprise_id = :enterprise_id,
+                slack_channel_id = :channel_id,
+                is_subscribed = 1,
+                is_active = 1,
+                activated_at = NOW(),
+                deactivated_at = NULL
+            WHERE slack_user_id = :user_id
+              AND (
+                  slack_enterprise_id = :enterprise_id
+                  OR slack_team_id = :team_id
+                  OR :enterprise_id IS NULL
+              )
+            """
+        ).bindparams(
+            member_uuid=member_uuid,
+            user_id=user_id,
+            team_id=team_id,
+            enterprise_id=enterprise_id,
+            channel_id=channel_id,
+        )
+        await execute(update_sql, async_engines["ray_integration"], commit_after=True)
+        return
+
+    insert_sql = text(
+        """
+        INSERT INTO slack_deltaray_link (
+            member_uuid,
+            slack_user_id,
+            slack_team_id,
+            slack_enterprise_id,
+            slack_app_id,
+            slack_channel_id,
+            is_subscribed,
+            is_active,
+            is_sso,
+            activated_at
+        ) VALUES (
+            :member_uuid,
+            :user_id,
+            :team_id,
+            :enterprise_id,
+            '',
+            :channel_id,
+            1,
+            1,
+            1,
+            NOW()
+        )
+        """
+    ).bindparams(
+        member_uuid=member_uuid,
+        user_id=user_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+        channel_id=channel_id,
+    )
+    await execute(insert_sql, async_engines["ray_integration"], commit_after=True)
+
+
+async def get_ray_client_ibm_by_email(
+    user_id: str,
+    team_id: str,
+    enterprise_id: str | None,
+) -> RayClient | None:
+    """Resolve IBM Slack identity from Slack email → active CRM member.
+
+    Does not require an existing ``slack_deltaray_link``. When a member is found,
+    an active deltaray row is upserted so delivery callbacks keep working.
+
+    Tries live Slack profile email first, then cached ``slack_user_details``, so
+    a stale cached domain (e.g. ``@strakertranslations.com``) cannot block an
+    active CRM match on the current Slack email (e.g. ``@strakergroup.com``).
+    """
+    member: dict[str, Any] | None = None
+    matched_email = ""
+    for email in await resolve_slack_user_email_candidates(
+        user_id, team_id, enterprise_id
+    ):
+        member = await get_active_crm_member_by_email(email)
+        if member:
+            matched_email = email
+            break
+    if not member:
+        return None
+
+    await ensure_active_ibm_deltaray_link(
+        user_id=user_id,
+        team_id=team_id,
+        enterprise_id=enterprise_id,
+        member_uuid=member["member_uuid"],
+        channel_id=user_id,
+    )
+    logger.info(
+        "Resolved IBM Slack user to CRM member by email",
+        extra={
+            "slack_user_id": user_id,
+            "slack_team_id": team_id,
+            "member_uuid": member["member_uuid"],
+        },
+    )
+
+    id_token = create_languagecloud_id_token(
+        uuid=member["member_uuid"],
+        given_name=member["given_name"] or "",
+        family_name=member["family_name"] or "",
+        email=member["email_primary"] or matched_email,
+        is_active=bool(member["active"]),
+        aud="languagecloud-api",
+        secret=config.languagecloud_api_key.get_secret_value(),
+    )
+    access_token_result = await fetch_one(
+        text(
+            """
+            SELECT obj_uuid FROM access_token
+            WHERE account_id = :client_id
+            AND active = 1
+            LIMIT 1
+            """
+        ).bindparams(client_id=member["member_uuid"]),
+        async_engines["api"],
+    )
+    return RayClient(
+        id=member["member_uuid"],
+        user_group_id=member["groupid"] or "",
+        username=member["login"] or member["email_primary"] or matched_email,
+        access_token=(access_token_result or {}).get("obj_uuid") or "",
+        slack_user_id=user_id,
+        slack_team_id=team_id,
+        slack_enterprise_id=enterprise_id,
+        slack_access_token=None,
+        settings_id=member.get("settings_id"),
+        id_token=id_token,
+        planname=None,
+        sso=True,
+    )
+
+
 async def get_ray_client(
     user_id: str, team_id: str, enterprise_id: str | None = None
 ) -> RayClient | None:
     """Gets the LanguageCloud client id and username linked to the Slack account if an active
     link exists, otherwise returns None.
 
+    On IBM enterprises, identity is resolved from the Slack user's email to an
+    active CRM member (RAY-81247) — ``slack_deltaray_link`` is not required.
+    When email matches, an active deltaray row is upserted. Active deltaray is
+    still used as a fallback when email cannot be resolved.
+
     Args:
         user_id (str): The Slack user ID.
         team_id (str): The Slack team ID.
         enterprise_id (str | None): The Slack enterprise ID.
     """
+    # Lazy import avoids connector ↔ ray.utils cycle at module load.
+    from app.ray.utils import is_ibm_customer_enterprise
+
+    if is_ibm_customer_enterprise(enterprise_id):
+        ibm_client = await get_ray_client_ibm_by_email(user_id, team_id, enterprise_id)
+        if ibm_client is not None:
+            return ibm_client
+
     # First find the client details.
     if enterprise_id:
         sql = text(
@@ -1168,25 +1547,14 @@ async def connect_ray_account_sso(
         conn.execute(sql)
         result1 = conn.execute(sql)
     if result1.rowcount == 0:
-        member_id = str(uuid4()).upper()
-        # Create User and User Group Link
-        await create_client_and_mglink(
-            user_data=json.dumps(slack_data),
-            member_id=member_id,
+        # RAY-81247: Slack no longer mints CRM People via Direct Login.
+        # Active CRM members can still link; IBM HT without a member uses the
+        # service account (Requester/Surrogate stamps).
+        raise LookupError(
+            "No LanguageCloud account found for this email. "
+            "Contact your administrator to be added, or submit Human Translation "
+            "without signing in."
         )
-        # Create log
-        # crete_slack_logs_sso(user_data=json.dumps(slack_data), member_id=member_id, message="New User")
-        # Create User Access Token
-        await create_client_access_tokens(client_id=member_id, type="public")
-        # Create User Slack Link
-        await create_slack_deltaray_link_sso(
-            user_data=json.dumps(slack_data), member_id=member_id
-        )
-        await add_to_verify_team(
-            user_uuid=member_id,
-            enterprise_id=enterprise_id,
-        )
-        return member_id
     else:
         result = result1.first()
         if not result:
@@ -1298,65 +1666,6 @@ async def add_client_to_slack_group(user_data: dict, member_id: str):
             """
     ).bindparams(uuid=member_id, groupid=group_id)
     await execute(sql, async_engines["sitemanager"], commit_after=True)
-
-
-async def create_client_and_mglink(
-    user_data: str,
-    member_id: str,
-):
-    json_data = json.loads(user_data)
-    group_id = get_direct_login_group(json_data.get("enterprise_id"))
-    password = "secret".encode("utf-8")  # Convert the password to bytes
-    hash_object = hashlib.sha512(password)
-    with engines["sitemanager"].connect() as conn:
-        # Get Account Manager
-        sqlAm = text(
-            """
-                SELECT account_manager
-                FROM obj_m_group
-                WHERE obj_uuid = :obj_uuid
-            """
-        ).bindparams(obj_uuid=group_id)
-        conn.execute(sqlAm)
-        resultAm = conn.execute(sqlAm).first()
-        account_manager = resultAm.account_manager if resultAm is not None else None
-        # Create User
-        sqlMem = text(
-            """
-            INSERT INTO obj_m_member
-                (obj_uuid, email_primary, login, password, password_updated, given_name, family_name, created, modified, account_manager, groupid, product, subscribed, active, email_active)
-            VALUES
-                (:obj_uuid, :email_primary, :email_primary, :password, now(), :given_name, :family_name, now(), now(), :account_manager, :groupid, :product, 1, 1, 1)
-            """
-        ).bindparams(
-            obj_uuid=member_id,
-            email_primary=json_data.get("email_id"),
-            given_name=json_data.get("first_name"),
-            family_name=json_data.get("last_name"),
-            password=hash_object.hexdigest().upper(),
-            account_manager=account_manager,
-            groupid=group_id,
-            product="Slack",
-        )
-        conn.execute(sqlMem)
-        conn.commit()
-        # Create User Group Link
-        sqlMgLink = text(
-            """
-            INSERT INTO obj_m_mglink
-                (obj_uuid, groupid, memberid, label, client_type, created, modified)
-            VALUES
-                (:obj_uuid, :groupid, :memberid, :label, :client_type, now(), now())
-            """
-        ).bindparams(
-            obj_uuid=str(uuid4()).upper(),
-            groupid=group_id,
-            memberid=member_id,
-            label=f"{member_id}-{group_id}",
-            client_type="Normal",
-        )
-        conn.execute(sqlMgLink)
-        conn.commit()
 
 
 async def create_client_access_tokens(client_id: str, type: str = "public"):
@@ -1719,6 +2028,9 @@ async def log_transcribe_by_client_id(
     source_language: str | None = None,
     idempotency_key: str | None = None,
     submission_group_uuid: str | None = None,
+    group_uuid: str | None = None,
+    email: str | None = None,
+    client_name: str | None = None,
 ) -> tuple[int, str]:
     """
     Charge a transcription via the LanguageCloud API (``/mt/transcribe``) using
@@ -1733,6 +2045,9 @@ async def log_transcribe_by_client_id(
         file_name: Name of the transcribed file
         source_language: Whisper-detected source language, persisted on the row
         idempotency_key: Stable per-task key so a replay is charged once
+        group_uuid: CRM billing group for org-billed media (RAY-81247)
+        email: Slack poster email for usage-report Client Email (RAY-81247)
+        client_name: Slack poster display name (RAY-81247)
 
     Returns:
         tuple[int, str]: (tokens consumed, gateway transaction UUID)
@@ -1741,7 +2056,7 @@ async def log_transcribe_by_client_id(
     if not tokens:
         raise Exception("Duration is 0")
 
-    id_token = await _id_token_for_client(client_id)
+    id_token = await _id_token_for_client(client_id, allow_group_fallback=True)
 
     url = f"{domains.languagecloud_api}/mt/transcribe"
     headers = {
@@ -1759,6 +2074,12 @@ async def log_transcribe_by_client_id(
     # Media submission id so transcribe/translate/embed share a group (RAY-80417).
     if submission_group_uuid:
         data["submission_group_uuid"] = submission_group_uuid
+    if group_uuid:
+        data["group_uuid"] = group_uuid
+    if email:
+        data["email"] = email
+    if client_name:
+        data["client_name"] = client_name
     async with httpx.AsyncClient() as http:
         response = await http.post(url, headers=headers, json=data)
         response.raise_for_status()
@@ -1885,6 +2206,9 @@ async def log_embedding_by_client_id(
     app_name: str = "slack",
     idempotency_key: str | None = None,
     submission_group_uuid: str | None = None,
+    group_uuid: str | None = None,
+    email: str | None = None,
+    client_name: str | None = None,
 ) -> str:
     """
     Charge media subtitle embedding via the LanguageCloud API (``/mt/embed``)
@@ -1897,7 +2221,7 @@ async def log_embedding_by_client_id(
     Returns:
         str: the gateway transaction UUID.
     """
-    id_token = await _id_token_for_client(client_id)
+    id_token = await _id_token_for_client(client_id, allow_group_fallback=True)
 
     url = f"{domains.languagecloud_api}/mt/embed"
     headers = {
@@ -1919,6 +2243,12 @@ async def log_embedding_by_client_id(
     # Media submission id so transcribe/translate/embed share a group (RAY-80417).
     if submission_group_uuid:
         data["submission_group_uuid"] = submission_group_uuid
+    if group_uuid:
+        data["group_uuid"] = group_uuid
+    if email:
+        data["email"] = email
+    if client_name:
+        data["client_name"] = client_name
     async with httpx.AsyncClient() as http:
         response = await http.post(url, headers=headers, json=data)
         response.raise_for_status()

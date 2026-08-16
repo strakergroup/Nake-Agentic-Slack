@@ -545,7 +545,7 @@ async def maybe_show_thread_media_embed_option(
         return False
 
     channel_id = context.get("channel_id")
-    if not channel_id or not await require_ray_client(context):
+    if not channel_id or not await require_ray_client(context, allow_org_billing=True):
         return False
 
     root_message = await get_thread_root_message(client, channel_id, thread_ts)
@@ -2512,16 +2512,31 @@ async def submit_verification_job(
         text=msg,
     )
     try:
+        from app.api.verify import get_client_evaluation_job
+        from app.ibm_ht_service_account import (
+            custom_fields_form_value,
+            ht_service_account_member_uuid,
+            resolve_ht_verify_client_for_job,
+            resolve_slack_poster_email,
+        )
+
         # HT Accept must keep the HT quote panel. Falling back to
         # EvaluateSuccessMessage shows QE scores + "Send for Human Verification".
         is_ht_quote = prefer_ht_quote_message or await job_is_human_translation_quote(
             job["data"]
         )
+        assert context.ray is not None
+        ht_client, _owned_job = await resolve_ht_verify_client_for_job(
+            context.ray,
+            slack_user_id=user_id,
+            slack_team_id=context.get("team_id") or "",
+            slack_enterprise_id=context.get("enterprise_id"),
+            get_job=get_client_evaluation_job,
+            job_uuid=job_uuid,
+        )
         if is_ht_quote:
-            assert context.ray is not None
-            assert context.ray.client is not None
             costs = await get_job_pricing(
-                context.ray.client,
+                ht_client,
                 job_uuid,
                 [file["file_uuid"] for file in job["data"]["source_files"]],
                 [lang["uuid"] for lang in job["data"]["target_languages"]],
@@ -2537,9 +2552,13 @@ async def submit_verification_job(
             updated_msg = EvaluateSuccessMessage(
                 job["data"],
                 is_ibm_enterprise(
-                    context.ray.client.slack_enterprise_id
-                    if context.ray and context.ray.client
-                    else None
+                    ht_client.slack_enterprise_id
+                    if ht_client
+                    else (
+                        context.ray.client.slack_enterprise_id
+                        if context.ray and context.ray.client
+                        else None
+                    )
                 ),
                 actions=False,
             )
@@ -2559,16 +2578,19 @@ async def submit_verification_job(
                 replace_original=True,
             )
         if selected_languages:
-            assert context.ray is not None
-            assert context.ray.client is not None
+            custom_fields = ""
+            if ht_client.id == ht_service_account_member_uuid():
+                poster_email = await resolve_slack_poster_email(client, user_id)
+                custom_fields = custom_fields_form_value(poster_email)
             # submit the job
             await create_human_job(
-                context.ray.client,
+                ht_client,
                 job_uuid,
                 selected_languages,
                 purchase_order_number=build_human_translation_purchase_order_number(
                     job
                 ),
+                custom_fields=custom_fields,
             )
     except Exception as e:
         notify_exception(e)

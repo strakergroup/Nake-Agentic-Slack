@@ -1333,13 +1333,12 @@ def build_all_messages() -> list[dict[str, Any]]:
         from app.slack.media_quotes import (
             ACTION_MEDIA_QUOTE_ACCEPT,
             ACTION_MEDIA_QUOTE_CANCEL,
-            ACTION_MEDIA_TRANSLATION_QUOTE_ACCEPT,
-            ACTION_MEDIA_TRANSLATION_QUOTE_CANCEL,
             PIPELINE_TRANSCRIBE_TRANSLATE,
             STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
             STAGE_AWAITING_TRANSLATION_ACCEPT,
             media_quote_blocks,
         )
+        from app.slack.templates.blocks import media_translation_quote_blocks
 
         add(
             "MediaQuoteMessage (Quote1 transcription before AI Translate)",
@@ -1365,17 +1364,17 @@ def build_all_messages() -> list[dict[str, Any]]:
             "Quotes",
             {
                 "type": "message",
-                "blocks": media_quote_blocks(
+                "blocks": media_translation_quote_blocks(
                     {
                         "quote_id": JOB_UUID,
                         "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
                         "stage": STAGE_AWAITING_TRANSLATION_ACCEPT,
+                        "file_id": "Fmedia",
                         "file_name": "product-demo.mp4",
-                        "line_items": [{"label": "AI Translation", "tokens": 50}],
-                        "total_tokens": 50,
-                    },
-                    accept_action_id=ACTION_MEDIA_TRANSLATION_QUOTE_ACCEPT,
-                    cancel_action_id=ACTION_MEDIA_TRANSLATION_QUOTE_CANCEL,
+                        "source_text_length": 25000,
+                        "target_languages": ["es", "fr"],
+                        "target_language_names": ["Spanish", "French"],
+                    }
                 ),
             },
         )
@@ -1905,7 +1904,6 @@ def build_all_views() -> list[dict[str, Any]]:
             job_search_modal,
             loading_modal,
             srt_translate_modal,
-            sso_form_modal,
             translation_settings_view,
             translation_settings_view_error,
             verify_job_modal,
@@ -1941,7 +1939,6 @@ def build_all_views() -> list[dict[str, Any]]:
             "Modals",
             human_job_modal(CHANNEL_ID, FILE_INFO, False, "evaluate"),
         )
-        add("sso_form_modal", "Modals", sso_form_modal())
         add("cancel_job_modal", "Modals", cancel_job_modal("jane.doe@acme.com"))
         add(
             "translation_settings_view",

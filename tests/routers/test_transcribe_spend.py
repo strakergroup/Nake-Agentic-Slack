@@ -89,6 +89,9 @@ async def test_log_transcribe_sends_source_language_and_idempotency():
             file_name="clip.mp4",
             source_language="ja",
             idempotency_key="key-abc",
+            group_uuid="billing-group-1",
+            email="poster@ibm.com",
+            client_name="Pat Poster",
         )
 
     assert tokens == 100  # ceil(60000 / 600)
@@ -98,6 +101,9 @@ async def test_log_transcribe_sends_source_language_and_idempotency():
     assert posted_json["idempotency_key"] == "key-abc"
     assert posted_json["duration_ms"] == 60_000
     assert posted_json["file_name"] == "clip.mp4"
+    assert posted_json["group_uuid"] == "billing-group-1"
+    assert posted_json["email"] == "poster@ibm.com"
+    assert posted_json["client_name"] == "Pat Poster"
 
 
 @pytest.mark.asyncio
@@ -133,3 +139,6 @@ async def test_log_transcribe_omits_empty_optionals():
     posted_json = mock_http.post.call_args.kwargs["json"]
     assert "source_language" not in posted_json
     assert "idempotency_key" not in posted_json
+    assert "group_uuid" not in posted_json
+    assert "email" not in posted_json
+    assert "client_name" not in posted_json

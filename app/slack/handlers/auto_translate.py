@@ -144,8 +144,10 @@ async def handle_show_auto_translate_settings(
             ),
         )
     except Exception as e:
-        notify_exception(e)
-        await safe_views_update(client, view_id, request_error_modal())
+        try:
+            await safe_views_update(client, view_id, request_error_modal())
+        finally:
+            notify_exception(e)
 
 
 async def handle_disable_auto_translate_settings(

@@ -81,7 +81,9 @@ the source file.
 ## Adjust Request
 
 The Adjust Request flow reuses the staged-evaluate AI quote machinery with a
-dedicated `quote_kind="document_mt"`:
+dedicated `quote_kind="document_mt"`. Media Quote2 (AI translation after
+transcription) uses the same modal and helpers with
+`quote_kind="media_translation"` — see [Media Quote Confirmation](media-quote-confirmation.md).
 
 - `document_mt_quote_blocks` builds per-file/per-language cost rows from the
   consumer quote's `files[].target_languages[]` breakdown and passes
@@ -94,8 +96,10 @@ dedicated `quote_kind="document_mt"`:
   no Verify API call is needed. Language display names come from the MT
   language catalogue (`get_auto_translate_languages`).
 - Checkbox toggles refresh the modal total from the SOW charge
-  (`ceil(chars × selected_targets × 0.002)` per file via
-  `document_mt_tokens_for_pairs`) and redistribute per-row USD labels across
+  (`ceil(billable_chars × 0.002)` per file via
+  `document_mt_tokens_for_pairs`, where billable chars subtract each selected
+  target's exact (100%) TM/memory match characters — RAY-81323) and
+  redistribute per-row USD labels across
   the selected pairs so lines still sum to Total; PDF conversion fees follow
   files that still have at least one selected pair
   (`document_mt_pdf_tokens_for_pairs`).
@@ -118,7 +122,8 @@ total (minimum-token cases). Quote message and Adjust modal line amounts
 therefore **distribute** the charged total across active file/language rows
 (largest remainder on cents). Charged AI tokens for any Adjust selection are
 recomputed with the SOW formula from `character_count` and the selected target
-count per file (not by summing ceiled row tokens).
+count per file (not by summing ceiled row tokens), minus each selected target's
+`memory_matched_characters` (100% TM matches are free — RAY-81323).
 
 ## Stream Contract
 

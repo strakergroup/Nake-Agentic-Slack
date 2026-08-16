@@ -24,6 +24,11 @@ async def test_handle_transcription_complete_skips_ai_translation_follow_up():
         task_uuid="task-1",
         file_name="clip.mp4",
         pipeline_type="transcribe",
+        extra_data={
+            "slack_team_id": "T1",
+            "slack_user_id": "U1",
+            "slack_enterprise_id": "E1",
+        },
     )
     auth = SimpleNamespace(slack_user=SimpleNamespace(ray_client_id="client-1"))
     auth_slack_user = SimpleNamespace(channel_id="C1")
@@ -53,6 +58,9 @@ async def test_handle_transcription_complete_skips_ai_translation_follow_up():
 
     mock_enqueue.assert_awaited_once()
     assert "follow_up_message" not in mock_enqueue.await_args.kwargs
+    assert mock_enqueue.await_args.kwargs["team_id"] == "T1"
+    assert mock_enqueue.await_args.kwargs["slack_user_id"] == "U1"
+    assert mock_enqueue.await_args.kwargs["enterprise_id"] == "E1"
 
 
 @pytest.mark.asyncio
@@ -117,6 +125,8 @@ async def test_maybe_post_media_translation_quote_posts_for_translate_pipeline()
         "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
         "stage": STAGE_TRANSCRIBING,
         "target_languages": ["es"],
+        "file_id": "F1",
+        "file_name": "clip.mp4",
         "channel_id": "C1",
         "thread_ts": "123.456",
     }
@@ -130,7 +140,7 @@ async def test_maybe_post_media_translation_quote_posts_for_translate_pipeline()
         patch(
             "app.ray.events.media_pipeline_events.update_media_quote_session",
             new=AsyncMock(return_value=updated),
-        ),
+        ) as mock_update,
         patch(
             "app.ray.events.media_pipeline_events.post_media_quote_message",
             new=AsyncMock(),
@@ -142,6 +152,10 @@ async def test_maybe_post_media_translation_quote_posts_for_translate_pipeline()
 
     assert posted is True
     mock_post.assert_awaited_once()
+    quote = mock_update.await_args.args[1]["quote"]
+    assert quote["files"][0]["file_id"] == "F1"
+    assert quote["files"][0]["character_count"] == 500
+    assert quote["files"][0]["target_languages"][0]["target_language"] == "es"
 
 
 @pytest.mark.asyncio

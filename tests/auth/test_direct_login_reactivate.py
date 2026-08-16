@@ -66,10 +66,6 @@ async def test_connect_ray_account_sso_reactivates_existing_member():
             "app.auth.connector.add_to_verify_team",
             new=AsyncMock(),
         ) as mock_team,
-        patch(
-            "app.auth.connector.create_client_and_mglink",
-            new=AsyncMock(),
-        ) as mock_create,
     ):
         returned = await connect_ray_account_sso(
             user_id="U0863T834EA",
@@ -87,11 +83,11 @@ async def test_connect_ray_account_sso_reactivates_existing_member():
     mock_link.assert_awaited_once()
     mock_group.assert_awaited_once()
     mock_team.assert_awaited_once()
-    mock_create.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_connect_ray_account_sso_new_member_skips_reactivate():
+async def test_connect_ray_account_sso_new_member_raises_lookup_error():
+    """RAY-81247: Slack must not mint new CRM People via Direct Login."""
     result1 = MagicMock()
     result1.rowcount = 0
 
@@ -103,46 +99,17 @@ async def test_connect_ray_account_sso_new_member_skips_reactivate():
     mock_engine = MagicMock()
     mock_engine.connect.return_value = mock_conn
 
-    with (
-        patch("app.auth.connector.engines", {"sitemanager": mock_engine}),
-        patch(
-            "app.auth.connector.reactivate_member_for_direct_login",
-            new=AsyncMock(),
-        ) as mock_reactivate,
-        patch(
-            "app.auth.connector.create_client_and_mglink",
-            new=AsyncMock(),
-        ) as mock_create,
-        patch(
-            "app.auth.connector.create_client_access_tokens",
-            new=AsyncMock(),
-        ),
-        patch(
-            "app.auth.connector.create_slack_deltaray_link_sso",
-            new=AsyncMock(),
-        ),
-        patch(
-            "app.auth.connector.add_to_verify_team",
-            new=AsyncMock(),
-        ),
-        patch(
-            "app.auth.connector.uuid4",
-            return_value=UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
-        ),
-    ):
-        returned = await connect_ray_account_sso(
-            user_id="UNEW",
-            team_id="TNEW",
-            email_id="new.user@ibm.com",
-            first_name="New",
-            last_name="User",
-            channel_id="DNEW",
-            enterprise_id="E27SFGS2W",
-        )
-
-    assert returned == "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
-    mock_create.assert_awaited_once()
-    mock_reactivate.assert_not_awaited()
+    with patch("app.auth.connector.engines", {"sitemanager": mock_engine}):
+        with pytest.raises(LookupError, match="No LanguageCloud account found"):
+            await connect_ray_account_sso(
+                user_id="UNEW",
+                team_id="TNEW",
+                email_id="new.user@ibm.com",
+                first_name="New",
+                last_name="User",
+                channel_id="DNEW",
+                enterprise_id="E27SFGS2W",
+            )
 
 
 @pytest.mark.asyncio

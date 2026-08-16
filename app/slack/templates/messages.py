@@ -44,6 +44,7 @@ from ...ray.utils import (
     format_job_due_date_slack,
     format_job_status,
     get_job_url,
+    is_ibm_customer_enterprise,
     is_ibm_enterprise,
 )
 from ..utils import format_strings_display, split_text_into_blocks, unescape_slack_emoji
@@ -53,6 +54,7 @@ from .blocks import (
     evaluate_success_blocks,
     evaluation_credits_quote_blocks,
     job_link_block,
+    media_translation_quote_blocks,
     quote_message_block,
     verify_quote_blocks,
 )
@@ -241,6 +243,8 @@ class LoginMessage(SlackMessage):
     AI_HELP = "ai_help"
     QUALITY_EVALUATION = "quality_evaluation"
     HUMAN_TRANSLATION = "human_translation"
+    # Channel auto-translate settings still require a personal LC member on IBM.
+    CHANNEL_TRANSLATION_SETTINGS = "channel_translation_settings"
 
     def __init__(
         self,
@@ -273,6 +277,8 @@ class LoginMessage(SlackMessage):
         self._variation = variation
 
         # Have variations of the login message depending on the arguments.
+        # IBM-like UI (incl. Straker Dev) vs real IBM customer HT no-login path.
+        ibm_customer = is_ibm_customer_enterprise(enterprise_id)
         block_text = _(
             "In order to use the Straker Translate features, please login. Click this button below;"
         )
@@ -287,7 +293,23 @@ class LoginMessage(SlackMessage):
                 "Connect your account to evaluate the quality of your translation."
             )
         elif variation == self.HUMAN_TRANSLATION:
-            block_text = _("Connect your account to perform human translation.")
+            block_text = (
+                _(
+                    "Human Translation does not require a LanguageCloud login in this "
+                    "workspace."
+                )
+                if ibm_customer
+                else _("Connect your account to perform human translation.")
+            )
+        elif variation == self.CHANNEL_TRANSLATION_SETTINGS:
+            block_text = (
+                _(
+                    "Channel translation settings are managed by your administrator. "
+                    "Please contact an admin to change these settings."
+                )
+                if ibm_customer
+                else _("Connect your account to manage channel translation settings.")
+            )
         elif isinstance(ray_client, RayClient):
             user_details = f"<{domains.verify}|{ray_client.username}>"
             block_text = _(
@@ -295,50 +317,39 @@ class LoginMessage(SlackMessage):
             )
             if ray_client.sso:
                 block_text = _("Your connected account is: {user_details}")
+        # RAY-81247: do not show "provisioned by your administrator" on IBM.
+        # Real IBM customer identity resolves from Slack email → CRM; HT uses the
+        # service account when no CRM member exists. Straker Dev still requires
+        # LanguageCloud connection (Connect account button below).
         msg: list[dict[str, Any]] = [
             {
                 "type": "section",
                 "text": {"type": "mrkdwn", "text": block_text},
             },
         ]
-        if not isinstance(ray_client, RayClient):
-            if is_ibm_enterprise(enterprise_id):
-                msg.append(
-                    {
-                        "type": "actions",
-                        "elements": [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Direct Login"),
-                                },
-                                "style": "primary",
-                                "action_id": "login_sso",
+        # Hide Connect for real IBM customer auth failures, including channel
+        # translation settings — those are admin-managed (RAY-81247).
+        hide_connect = ibm_customer
+        if not isinstance(ray_client, RayClient) and not hide_connect:
+            msg.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Connect account"),
                             },
-                        ],
-                    }
-                )
-            else:
-                msg.append(
-                    {
-                        "type": "actions",
-                        "elements": [
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Connect account"),
-                                },
-                                "style": "primary",
-                                "url": get_language_cloud_connect_url(
-                                    user_id, team_id, enterprise_id, channel_id
-                                ),
-                                "action_id": "login",
-                            }
-                        ],
-                    }
-                )
+                            "style": "primary",
+                            "url": get_language_cloud_connect_url(
+                                user_id, team_id, enterprise_id, channel_id
+                            ),
+                            "action_id": "login",
+                        }
+                    ],
+                }
+            )
         super().__init__(
             "Connect your account",
             msg,
@@ -2209,50 +2220,54 @@ def get_account_blocks(
             }
         )
     else:
-        account_blocks.append(
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": _(
-                        "In order to use the Straker Translate features, please login. Click this button below;"
-                    ),
-                },
-            }
-        )
-        account_blocks.append(
-            {
-                "type": "actions",
-                "elements": [
-                    (
-                        (
-                            {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Connect account"),
-                                },
-                                "style": "primary",
-                                "url": get_language_cloud_connect_url(
-                                    user_id, team_id, enterprise_id, channel_id
-                                ),
-                                "action_id": "login",
-                            }
-                            if not is_ibm
-                            else {
-                                "type": "button",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": _("Direct Login"),
-                                },
-                                "style": "primary",
-                                "action_id": "login_sso",
-                            }
-                        ),
-                    )
-                ],
-            }
-        )
+        ibm_customer = is_ibm_customer_enterprise(enterprise_id)
+        if ibm_customer:
+            text = _(
+                "Human Translation does not require signing in. Other features use "
+                "your LanguageCloud account when your Slack email matches a CRM member."
+            )
+            account_blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": text,
+                    },
+                }
+            )
+        else:
+            # Non-IBM and Straker Dev / sandbox: require LanguageCloud connection.
+            text = _(
+                "In order to use the Straker Translate features, please login. Click this button below;"
+            )
+            account_blocks.append(
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": text,
+                    },
+                }
+            )
+            account_blocks.append(
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": _("Connect account"),
+                            },
+                            "style": "primary",
+                            "url": get_language_cloud_connect_url(
+                                user_id, team_id, enterprise_id, channel_id
+                            ),
+                            "action_id": "login",
+                        },
+                    ],
+                }
+            )
 
     return account_blocks, text
 
@@ -4042,6 +4057,23 @@ class DocumentMtQuoteMessage(SlackMessage):
         super().__init__(
             _("Service Quote"),
             document_mt_quote_blocks(
+                session,
+                actions=actions,
+                status_message=status_message,
+            ),
+        )
+
+
+class MediaTranslationQuoteMessage(SlackMessage):
+    def __init__(
+        self,
+        session: dict[str, Any],
+        actions: bool = True,
+        status_message: str | None = None,
+    ) -> None:
+        super().__init__(
+            _("Service Quote"),
+            media_translation_quote_blocks(
                 session,
                 actions=actions,
                 status_message=status_message,

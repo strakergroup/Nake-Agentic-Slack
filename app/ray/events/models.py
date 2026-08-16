@@ -219,6 +219,9 @@ class DocumentMtQuoteTargetSchema(BaseModel):
     target_language: str
     tokens: int = 0
     cost_usd: float = 0.0
+    # Exact (100%) TM/memory match characters for this target — free for AI
+    # translation, so already subtracted from ``tokens``.
+    memory_matched_characters: int = 0
 
 
 class DocumentMtQuoteFileSchema(BaseModel):
@@ -264,6 +267,7 @@ class MtErrorResponseSchema(BaseModel):
     submission_id: int | None = None
     team_id: str | None = None
     slack_user_id: str | None = None
+    enterprise_id: str | None = None
 
 
 class MtFileReponseSchema(RootModel):

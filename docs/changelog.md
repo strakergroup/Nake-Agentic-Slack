@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## Changes
 
+- [Changed]: RAY-81323 — Document MT quote mirrors the new `memory_matched_characters` per-target field, and Adjust Request / modal repricing (`document_mt_tokens_for_pairs`) subtracts each selected target's exact (100%) TM/memory match characters before the SOW ceil so adjusted totals match the discounted gateway debit (Wade Norman, 2026-08-12)
+- [Fixed]: RAY-79115 — evaluate PDF accept refuses same-stem PDF+DOCX batches (`report.pdf` + `report.docx`) before `slack:evaluate:pdf:convert`, restores the quote, and DMs the user to rename a duplicate instead of leaving Slack on “Converting PDF…” after Verify 400 (Wade Norman, 2026-08-13)
+- [Added]: RAY-79115 — Media Quote2 (AI translation after transcription) now uses the same Adjust Request as Document MT and HT staged AI Translate: per-file/per-language rows, shared modal, and accept scoped to `selected_pairs` (Wade Norman, 2026-08-13)
+- [Fixed]: RAY-81247 — `/ustraker translate` opens the loading modal before Ray/DB/IBM checks and no longer preselects the channel via `initial_conversations`, so the settings modal cannot sit on Processing (Wade Norman, 2026-08-13)
+- [Fixed]: RAY-81247 — HV complete `no_slack_user` now alerts BugLog/Google Chat (was silent soft-return like pre-fix Document MT) (Wade Norman, 2026-08-10)
+- [Fixed]: RAY-81247 — HV complete file upload uses workspace stamps + delivery fallback (was posting “download the file below” with no file when owned by HT SA) (Wade Norman, 2026-08-10)
+- [Fixed]: RAY-81247 — evaluate AI/QE quote handlers use HT service-account Verify JWT when poster CRM is inactive (was failing “Could not get ray client” after ready_for_ai_quote) (Wade Norman, 2026-08-10)
+- [Fixed]: RAY-81247 — Slack delivery falls back to workspace bot + stamped poster when deltaray is missing/inactive (HT SA / logout); CVC HV events forward poster stamps (Wade Norman, 2026-08-10)
+- [Fixed]: RAY-81247 — IBM email→CRM tries live Slack profile before stale `slack_user_details`; HT modal submit allows HT service account (Wade Norman, 2026-08-10)
+- [Changed]: RAY-81247 — IBM identity resolves Slack email → active CRM member (deltaray not required; upserts active link). Removed “provisioned by your administrator” disconnect copy (Wade Norman, 2026-08-10)
+- [Changed]: RAY-81247 — HT service account default is flyway member `slackhtjobs@ibm.com` (`6BB48BEF-1EAD-4824-8724-5298CA10AA86`) instead of Chris Sacre (Wade Norman, 2026-08-10)
+- [Changed]: RAY-81247 — Media (transcribe/translate/embed) org-bills like AI Translate when no personal CRM member; Direct Login SSO handler/modal removed; HT/media callbacks stamp poster `team_id`/`slack_user_id` for correct Slack delivery (Wade Norman, 2026-08-10)
+- [Fixed]: RAY-81247 — omit Requester/Surrogate custom fields when Slack poster email cannot be resolved (no blank stamps) (Wade Norman, 2026-08-10)
+- [Changed]: RAY-81247 — IBM Slack HT prefers an active CRM member when linked; service account only when none. Removed Direct Login auto-create and IBM Direct Login buttons; see `docs/ibm-slack-ht-service-account.md` (Wade Norman, 2026-08-07)
+- [Added]: RAY-81247 — IBM Slack HT reporting-only identity: own HT as CRM service account (`HT_SERVICE_ACCOUNT_MEMBER_UUID`); stamp Slack poster on Requester ID / Surrogate ID; see `docs/ibm-slack-ht-service-account.md` (Wade Norman, 2026-08-07)
 - [Fixed]: RAY-81311 — Direct Login reactivates inactive IBM Slack App `obj_m_mglink` rows (`is_active=1`) so CBN-deactivated memberships do not leave users groupless and able to create personal `IBM (N)` Verify groups (Wade Norman, 2026-08-11)
 - [Changed]: Translation export — regional variants (e.g. `fr-ca`) inherit coverage from parent-lang cognates where source equals target (e.g. `Transcription`); translator import no longer skips those same-word rows (Wade Norman, 2026-08-05)
 - [Changed]: RAY-79114 — UI export subset mode (`make subset MATCH=…` / `--match`/`--names`/`--category`) replaces the standalone HT and AI Translate quote-flow generators; flow-specific scripts and HTML renderer removed (Wade Norman, 2026-08-04)

@@ -35,7 +35,8 @@ sequenceDiagram
 | `document_mt_job` | Document MT modal (prod hot path) |
 | `verify_job_modal_open` / `quote_summary_modal_open` | HT quote / Adjust Request |
 | `job_search` | Job search modal |
-| `settings_auto_translate` | Channel auto-translate settings |
+| `settings_auto_translate` | Channel auto-translate settings (home tab) |
+| `/ustraker translate` | Channel auto-translate settings (slash command; no `ray_connection` middleware) |
 | `show_srt_translate_form` | SRT translate modal |
 | `video_transcribe_translate` | Media T&T modal |
 | `video_embed_subtitles` | Subtitle embed modal (when opening a modal) |

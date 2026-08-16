@@ -77,9 +77,20 @@ async def handle_quote_accept_all(
         return
 
     try:
+        from app.api.verify import get_client_evaluation_job
+        from app.ibm_ht_service_account import (
+            resolve_ht_verify_client_for_job,
+        )
+
         assert context["ray"] is not None
-        assert context["ray"].client is not None
-        job = await get_client_evaluation_job(context["ray"].client, job_uuid)
+        ht_client, job = await resolve_ht_verify_client_for_job(
+            context["ray"],
+            slack_user_id=body["user"]["id"],
+            slack_team_id=context.get("team_id") or "",
+            slack_enterprise_id=context.get("enterprise_id"),
+            get_job=get_client_evaluation_job,
+            job_uuid=job_uuid,
+        )
     except VerifyAPIError:
         await redis_conn.delete(lock_key)
         await client.chat_postMessage(
@@ -114,7 +125,7 @@ async def handle_quote_accept_all(
 
     if timestamp and is_ht_quote:
         costs = await get_job_pricing(
-            context["ray"].client,
+            ht_client,
             job_uuid,
             [file["file_uuid"] for file in job["data"]["source_files"]],
             [lang["uuid"] for lang in job["data"]["target_languages"]],
@@ -168,9 +179,16 @@ async def handle_verify_job_submission(
         )
         return
     assert context["ray"] is not None
-    assert context["ray"].client is not None
+    from app.ibm_ht_service_account import resolve_ht_verify_client_for_job
 
-    job = await get_client_evaluation_job(context["ray"].client, job_uuid)
+    ht_client, job = await resolve_ht_verify_client_for_job(
+        context["ray"],
+        slack_user_id=body["user"]["id"],
+        slack_team_id=context.get("team_id") or "",
+        slack_enterprise_id=context.get("enterprise_id"),
+        get_job=get_client_evaluation_job,
+        job_uuid=job_uuid,
+    )
     target_languages = job["data"]["target_languages"]
     is_ht_quote = bool(
         private_metadata.get("ht_quote")

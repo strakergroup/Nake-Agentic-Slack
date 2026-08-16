@@ -7,12 +7,11 @@ from slack_sdk.web.async_client import AsyncWebClient
 
 from app.api.verify import (
     VerifyAPIError,
-    get_evaluation_job,
+    get_client_evaluation_job,
     get_evaluation_job_quote,
     get_job_pricing,
     proceed_quality_evaluation,
 )
-from app.auth.connector import get_ray_client
 from app.constants import (
     EVALUATE_SERVICE_QUALITY_EVALUATION,
     SLACK_HT_QUOTE_AFTER_QE_KEY,
@@ -22,6 +21,7 @@ from app.ray.events.evaluate_quote_events import (
     claim_ray_event_notification,
     release_ray_event_notification,
     resolve_evaluate_channel_id,
+    resolve_evaluate_quote_verify_client,
 )
 from app.ray.events.logging import post_notification, slack_response_message_ts
 from app.ray.utils import format_slack_usd, is_ibm_enterprise
@@ -459,15 +459,9 @@ async def post_combined_qe_human_quote(
     if auth.slack_user is None:
         raise ValueError("Slack user is required for evaluate quote notifications")
 
-    ray_client = await get_ray_client(
-        auth.slack_user.user_id,
-        auth.slack_user.team_id,
-        auth.slack_user.enterprise_id,
-    )
-    if ray_client is None:
-        raise ValueError("Could not get ray client for combined evaluate quote")
+    ray_client = await resolve_evaluate_quote_verify_client(auth, event)
 
-    job = await get_evaluation_job(auth.slack_user, job_uuid)
+    job = await get_client_evaluation_job(ray_client, job_uuid)
     job_data = job["data"]
     extra_info = job_data.get("extra_info") or {}
     if extra_info.get(SLACK_HT_QUOTE_AFTER_QE_KEY):

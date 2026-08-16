@@ -45,7 +45,7 @@ import httpx
 from saq.types import Context
 from slack_bolt.context.async_context import AsyncBoltContext
 
-from app.auth.connector import get_slack_user, resolve_slack_delivery_user
+from app.auth.connector import resolve_slack_delivery_user
 from app.ray.events.models import MtSuccessResponseSchema
 from app.ray.submissions import SubmissionStatus, updated_submission_status
 from app.ray.utils import delete_from_file_server, download_from_file_server_async
@@ -346,6 +346,9 @@ async def slack_upload_transcription(
     channel_id: str,
     thread_ts: str | None = None,
     follow_up_message: str | None = None,
+    team_id: str | None = None,
+    slack_user_id: str | None = None,
+    enterprise_id: str | None = None,
 ) -> dict[str, Any]:
     """Durable handler for transcription file uploads.
 
@@ -354,19 +357,8 @@ async def slack_upload_transcription(
     the temp file so Slack preserves the extension, uploads it, then posts
     the optional follow-up message.
 
-    Args:
-        ctx: SAQ task context.
-        file_id: File-server file ID.
-        file_name: Display filename (used as title and on-disk name).
-        task_uuid: Transcription task UUID for correlation/logging.
-        pipeline_type: Pipeline that produced the file.
-        client_id: Slack user's RAY client ID; used to look up the bot token.
-        channel_id: Target Slack channel ID.
-        thread_ts: Optional thread to reply in.
-        follow_up_message: Optional message to post after the upload completes.
-
-    Returns:
-        Status dict for observability.
+    Org-billed media uses the Verify org as ``client_id`` (no deltaray); resolve
+    via workspace stamps / ``get_slack_org`` (RAY-81247).
     """
     from slack_sdk.web.async_client import AsyncWebClient
 
@@ -379,14 +371,27 @@ async def slack_upload_transcription(
         "file_id": file_id,
         "channel_id": channel_id,
         "pipeline_type": pipeline_type,
+        "team_id": team_id,
+        "slack_user_id": slack_user_id,
         "attempt": attempt,
     }
     logger.info("Transcription upload starting", extra=log_extra)
 
-    slack_user = await get_slack_user(client_id)
+    slack_user = await resolve_slack_delivery_user(
+        client_id,
+        team_id=team_id,
+        slack_user_id=slack_user_id,
+        enterprise_id=enterprise_id,
+        channel_id=channel_id,
+    )
     if slack_user is None:
         logger.error(
             "Slack user disappeared before transcription upload",
+            extra=log_extra,
+        )
+        notify_exception(
+            Exception("Transcription Slack delivery failed: no deliverable Slack user"),
+            "Transcription Slack delivery failed (no_slack_user)",
             extra=log_extra,
         )
         return {"status": "no_slack_user", "task_uuid": task_uuid}
@@ -445,10 +450,15 @@ async def slack_upload_verify_complete(
     grid_file_id: str,
     client_id: str,
     channel_id: str,
+    team_id: str | None = None,
+    slack_user_id: str | None = None,
+    enterprise_id: str | None = None,
 ) -> dict[str, Any]:
     """Durable handler for verify-complete file uploads.
 
     Replaces ``_handle_verify_complete_background`` in ``app/routers/ray.py``.
+    Uses workspace stamps when ``client_id`` is the HT service account (no
+    deltaray) so the Slack bot token still resolves (RAY-81247).
     """
     from slack_sdk.web.async_client import AsyncWebClient
 
@@ -458,15 +468,31 @@ async def slack_upload_verify_complete(
     attempt = job.attempts if job is not None else 1
     log_extra = {
         "grid_file_id": grid_file_id,
+        "client_id": client_id,
         "channel_id": channel_id,
+        "team_id": team_id,
+        "slack_user_id": slack_user_id,
         "attempt": attempt,
     }
     logger.info("Verify-complete upload starting", extra=log_extra)
 
-    slack_user = await get_slack_user(client_id)
+    slack_user = await resolve_slack_delivery_user(
+        client_id,
+        team_id=team_id,
+        slack_user_id=slack_user_id,
+        enterprise_id=enterprise_id,
+        channel_id=channel_id,
+    )
     if slack_user is None:
         logger.error(
             "Slack user disappeared before verify-complete upload",
+            extra=log_extra,
+        )
+        # Same gap as pre-RAY-79115 Document MT: soft no_slack_user skipped
+        # BugLog/Google Chat, so HT SA / stamp misses were silent (RAY-81247).
+        notify_exception(
+            Exception("HV complete Slack delivery failed: no deliverable Slack user"),
+            "HV complete Slack delivery failed (no_slack_user)",
             extra=log_extra,
         )
         return {"status": "no_slack_user"}
@@ -979,7 +1005,11 @@ async def process_evaluation_submission(
         updated_submission_status,
     )
     from app.ray.utils import is_ibm_enterprise, upload_to_file_server, validate_file
-    from app.slack.evaluation_ai_adjustment import evaluate_upload_filename
+    from app.slack.evaluation_ai_adjustment import (
+        colliding_evaluate_upload_filenames,
+        evaluate_upload_filename,
+        post_convert_filename_collision_message,
+    )
     from app.slack.evaluation_submissions import publish_pdf_evaluate_convert
     from app.slack.pdf_evaluate_quotes import (
         STAGE_QUOTE_PENDING,
@@ -999,15 +1029,35 @@ async def process_evaluation_submission(
     }
     # Evaluate needs a member client for Verify API auth. Do not require a
     # workspace super-group link — individually connected users must still work.
-    ray_client = await get_ray_client(user_id, team_id, enterprise_id)
-    if ray_client is None:
-        logger.error("Evaluation submission has no RAY client", extra=log_extra)
-        return {"status": "no_ray_client"}
+    # IBM non-logged-in HT (RAY-81247): own the job as the HT service account,
+    # but keep quote gating based on the Slack poster's own membership.
+    from app.ibm_ht_service_account import (
+        get_ht_service_account_ray_client,
+        resolve_slack_poster_email,
+        should_use_ht_service_account,
+    )
+
+    poster_client = await get_ray_client(user_id, team_id, enterprise_id)
+    super_groups = await get_ray_super_group(team_id, enterprise_id) or []
+    poster_connection = RayConnection(super_groups, poster_client)
     # Prefer workspace super group so quote gating is org-scoped (same as
     # Document MT / Media). Individually connected users without a workspace
     # link still fall back to primary-group Admin/Owner.
-    super_groups = await get_ray_super_group(team_id, enterprise_id) or []
-    may_quote = await user_may_receive_quotes(RayConnection(super_groups, ray_client))
+    may_quote = await user_may_receive_quotes(poster_connection)
+    # IBM Slack HT (RAY-81247): prefer the poster's active CRM member; only use
+    # the service account when they have no personal CRM link.
+    requester_email = ""
+    if should_use_ht_service_account(enterprise_id, poster_connection):
+        ray_client = await get_ht_service_account_ray_client(
+            slack_user_id=user_id,
+            slack_team_id=team_id,
+            slack_enterprise_id=enterprise_id,
+        )
+    else:
+        ray_client = poster_client
+    if ray_client is None:
+        logger.error("Evaluation submission has no RAY client", extra=log_extra)
+        return {"status": "no_ray_client"}
     # HUMAN_EVALUATION embeds HV and starts TP jobs before Slack Accept
     # ("cancelled" + empty Adjust). Non-admin HT must use synthetic AI+QE with
     # slack_ht_quote_after_qe so HV waits for the HT quote Accept.
@@ -1029,6 +1079,9 @@ async def process_evaluation_submission(
         return {"status": "no_bot_token"}
 
     client = AsyncWebClient(token=bot_token)
+    # Stamp poster email on HT-SA-owned jobs for usage-report Client Email remap.
+    if should_use_ht_service_account(enterprise_id, poster_connection):
+        requester_email = await resolve_slack_poster_email(client, user_id)
     downloaded_files: list[str] = []
     input_files: list[str] = []
     file_titles: list[str] = []
@@ -1287,6 +1340,40 @@ async def process_evaluation_submission(
             )
             return {"status": "nothing_to_submit"}
 
+        submit_files = [
+            file_data
+            for index, file_data in enumerate(valid_files)
+            if index in allowed_file_indexes
+        ]
+        collisions = colliding_evaluate_upload_filenames(submit_files)
+        if collisions:
+            # PDF→DOCX rewrite makes report.pdf and report.docx the same
+            # Verify upload name. Publishing would 400 after convert with
+            # no Slack error, leaving the quote stuck on "converting".
+            collision_text = post_convert_filename_collision_message(collisions)
+            logger.warning(
+                "Evaluation submission has post-convert filename collisions; "
+                "refusing to publish",
+                extra={
+                    **log_extra,
+                    "colliding_upload_names": sorted(collisions),
+                },
+            )
+            _mark_new_submissions_failed()
+            await restore_pdf_evaluate_quote_for_retry(
+                client,
+                quote_id=quote_id,
+                channel_id=channel_id,
+                message_ts=prequote_message_ts,
+                is_ibm=is_ibm_enterprise(enterprise_id),
+                status_message=collision_text,
+            )
+            await client.chat_postMessage(
+                channel=user_id,
+                text=collision_text,
+            )
+            return {"status": "filename_collision"}
+
         # Clear HUMAN_EVALUATION for any staged HT path (admin quotes or
         # non-admin HT-after-QE) so CVC builds synthetic AI+QE without early HV.
         submit_workflow_uuid = None if is_human_translation else workflow_uuid
@@ -1307,6 +1394,10 @@ async def process_evaluation_submission(
                 ai_translation_filename_and_languages=submit_ai_pairs,
                 slack_ht_quote_after_qe=slack_ht_quote_after_qe,
                 confirmation_required=confirmation_required,
+                slack_user_id=user_id,
+                slack_team_id=team_id,
+                slack_enterprise_id=enterprise_id,
+                requester_email=requester_email,
             )
         else:
             await submit_evaluation_job(
@@ -1318,11 +1409,15 @@ async def process_evaluation_submission(
                 workflow_uuid=submit_workflow_uuid,
                 job_notes=job_notes,
                 slack_channel_id=channel_id,
+                slack_user_id=user_id,
+                slack_team_id=team_id,
+                slack_enterprise_id=enterprise_id,
                 preaccepted_ai_translation_quote=preaccepted_ai_translation_quote,
                 prequote_message_ts=prequote_message_ts,
                 ai_translation_filename_and_languages=submit_ai_pairs,
                 slack_ht_quote_after_qe=slack_ht_quote_after_qe,
                 confirmation_required=confirmation_required,
+                requester_email=requester_email,
             )
         return {
             "status": "submitted",

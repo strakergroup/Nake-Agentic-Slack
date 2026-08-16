@@ -51,6 +51,7 @@ from .handlers import (
 )
 from .handlers import help as help_handlers
 from .logging import slack_log_decorator
+from .media_quote_adjustment import MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID
 from .middleware import ray_connection
 from .pdf_evaluate_quotes import (
     PDF_EVALUATE_QUOTE_ACTION_ID,
@@ -272,20 +273,6 @@ async def srt_translate_action(
     )
 
 
-@app.block_action("login_sso", middleware=[ray_connection])
-@slack_log_decorator
-async def login_sso_action(
-    ack: AsyncAck,
-    context: RayContext,
-    respond: AsyncRespond,
-    client: AsyncWebClient,
-    view: Optional[Dict[str, Any]],
-):
-    await auth.handle_login_sso(
-        ack=ack, context=context, respond=respond, client=client, view=view
-    )
-
-
 @app.block_action("job_search")
 @slack_log_decorator
 async def job_search_action(
@@ -298,7 +285,7 @@ async def job_search_action(
     await jobs.handle_job_search_action(context=context, client=client, body=body)
 
 
-@app.command(re.compile(r"\/\w*(ray|straker|lc)\w*"), middleware=[ray_connection])
+@app.command(re.compile(r"\/\w*(ray|straker|lc)\w*"))
 @slack_log_decorator
 async def ray_command(
     ack: AsyncAck,
@@ -698,6 +685,7 @@ async def verify_job_modal_open_action(
 @app.action(AI_QUOTE_ADJUST_ACTION_ID)
 @app.action(PDF_EVALUATE_QUOTE_ADJUST_ACTION_ID)
 @app.action(DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID)
+@app.action(MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID)
 @slack_log_decorator
 async def evaluation_ai_quote_adjust_action(
     ack: AsyncAck,

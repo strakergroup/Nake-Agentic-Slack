@@ -729,6 +729,84 @@ async def test_process_evaluation_submission_non_admin_ht_uses_ht_after_qe():
 
 
 @pytest.mark.asyncio
+async def test_process_evaluation_submission_ht_sa_stamps_requester_email():
+    """RAY-81247: HT SA path passes Slack poster email into evaluate/create."""
+    from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+
+    ht_client = MagicMock()
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+    record = MagicMock(id=42)
+
+    with (
+        patch(
+            "app.auth.connector.get_ray_client",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.auth.connector.get_ray_super_group",
+            new=AsyncMock(return_value=[{"uuid": "ibm-sg"}]),
+        ),
+        patch(
+            "app.auth.connector.user_may_receive_quotes",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "app.ibm_ht_service_account.should_use_ht_service_account",
+            return_value=True,
+        ),
+        patch(
+            "app.ibm_ht_service_account.get_ht_service_account_ray_client",
+            new=AsyncMock(return_value=ht_client),
+        ),
+        patch(
+            "app.ibm_ht_service_account.resolve_slack_poster_email",
+            new=AsyncMock(return_value="poster@ibm.com"),
+        ),
+        patch(
+            "app.auth.connector.get_bot_token_async", new=AsyncMock(return_value="xoxb")
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_slack),
+        patch("app.slack.web.download_file", new=AsyncMock(return_value="/tmp/a.docx")),
+        patch("app.ray.utils.validate_file", return_value=(True, True, "")),
+        patch(
+            "app.api.verify.get_verify_languages",
+            new=AsyncMock(
+                return_value=[
+                    {"uuid": "src", "code": "en", "name": "English"},
+                    {"uuid": "lang-1", "code": "fr", "name": "French"},
+                ]
+            ),
+        ),
+        patch(
+            "app.ray.submissions.check_and_record_evaluate_submission_async",
+            new=AsyncMock(return_value=(False, record)),
+        ),
+        patch("app.api.verify.submit_evaluation_job", new=AsyncMock()) as mock_submit,
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("os.path.exists", return_value=False),
+    ):
+        result = await process_evaluation_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id="E-IBM",
+            channel_id="C1",
+            files=[{"id": "F1", "title": "a.docx", "size": 1000}],
+            target_langs_uuid=["lang-1"],
+            reference="ref",
+            source_lang_uuid="src",
+            workflow_uuid=HUMAN_EVALUATION_WORKFLOW_UUID,
+            job_notes="",
+        )
+
+    assert result["status"] == "submitted"
+    mock_submit.assert_awaited_once()
+    assert mock_submit.await_args.kwargs["requester_email"] == "poster@ibm.com"
+    assert mock_submit.await_args.args[0] is ht_client
+
+
+@pytest.mark.asyncio
 async def test_process_evaluation_submission_admin_ht_clears_fixed_workflow():
     """Admin HT clears HUMAN_EVALUATION so staged AI/QE quotes can run."""
     from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
@@ -1092,6 +1170,75 @@ async def test_process_evaluation_submission_refuses_to_publish_empty_batch():
     assert mock_restore.await_args.kwargs["message_ts"] == "123.456"
     fake_slack.chat_postMessage.assert_awaited()
     assert fake_slack.chat_postMessage.await_args.kwargs["channel"] == "U1"
+
+
+@pytest.mark.asyncio
+async def test_process_evaluation_submission_refuses_post_convert_filename_collision():
+    """Same-stem PDF+DOCX must not publish convert; restore the quote instead."""
+    ray_client = MagicMock()
+    fake_slack = MagicMock()
+    fake_slack.chat_postMessage = AsyncMock()
+
+    with ExitStack() as stack:
+        _enter_accepted_pdf_patches(
+            stack,
+            ray_client,
+            fake_slack,
+            download_paths=["/tmp/a.pdf", "/tmp/a.docx"],
+        )
+        mock_publish = stack.enter_context(
+            patch(
+                "app.slack.evaluation_submissions.publish_pdf_evaluate_convert",
+                new=AsyncMock(),
+            )
+        )
+        mock_restore = stack.enter_context(
+            patch(
+                "app.slack.pdf_evaluate_quotes.restore_pdf_evaluate_quote_for_retry",
+                new=AsyncMock(return_value=True),
+            )
+        )
+        mock_mark_failed = stack.enter_context(
+            patch(
+                "app.ray.submissions.updated_submission_status",
+            )
+        )
+        result = await process_evaluation_submission(
+            _ctx(),
+            user_id="U1",
+            team_id="T1",
+            enterprise_id=None,
+            channel_id="C1",
+            files=[
+                {"id": "F1", "title": "A great summer vacation.pdf", "size": 1000},
+                {"id": "F2", "title": "A great summer vacation.docx", "size": 1000},
+            ],
+            target_langs_uuid=["lang-1"],
+            reference="ref",
+            source_lang_uuid="src",
+            workflow_uuid=None,
+            job_notes="",
+            preaccepted_ai_translation_quote=True,
+            prequote_message_ts="123.456",
+            ai_translation_filename_and_languages=[
+                "A great summer vacation.docx:lang-1",
+            ],
+            quote_id="quote-1",
+        )
+
+    assert result == {"status": "filename_collision"}
+    mock_publish.assert_not_awaited()
+    mock_restore.assert_awaited_once()
+    assert mock_restore.await_args.kwargs["quote_id"] == "quote-1"
+    assert mock_restore.await_args.kwargs["message_ts"] == "123.456"
+    status = mock_restore.await_args.kwargs["status_message"]
+    assert "A great summer vacation.pdf" in status
+    assert "A great summer vacation.docx" in status
+    fake_slack.chat_postMessage.assert_awaited()
+    dm = fake_slack.chat_postMessage.await_args.kwargs
+    assert dm["channel"] == "U1"
+    assert "A great summer vacation.pdf" in dm["text"]
+    mock_mark_failed.assert_called()
 
 
 @pytest.mark.asyncio
@@ -1510,7 +1657,8 @@ async def test_slack_upload_transcription_renames_temp_file_for_extension(slack_
     """The temp download is renamed to the expected filename so Slack keeps the extension."""
     with (
         patch(
-            "app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=slack_user)
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
         ),
         patch(
             "app.saq_jobs.tasks.download_from_file_server_async",
@@ -1531,6 +1679,8 @@ async def test_slack_upload_transcription_renames_temp_file_for_extension(slack_
             client_id=slack_user.ray_client_id,
             channel_id="C123",
             thread_ts="123.0",
+            team_id="T1",
+            slack_user_id="U1",
         )
 
     mock_rename.assert_called_once_with("/tmp/abc/raw", "/tmp/abc/result.srt")
@@ -1546,7 +1696,8 @@ async def test_slack_upload_transcription_posts_follow_up_message(slack_user):
 
     with (
         patch(
-            "app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=slack_user)
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
         ),
         patch(
             "app.saq_jobs.tasks.download_from_file_server_async",
@@ -1577,7 +1728,13 @@ async def test_slack_upload_transcription_posts_follow_up_message(slack_user):
 
 @pytest.mark.asyncio
 async def test_slack_upload_transcription_no_slack_user_short_circuits():
-    with patch("app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=None)):
+    with (
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
+    ):
         result = await slack_upload_transcription(
             _ctx(),
             file_id="f1",
@@ -1587,8 +1744,11 @@ async def test_slack_upload_transcription_no_slack_user_short_circuits():
             client_id="missing",
             channel_id="C1",
             thread_ts=None,
+            team_id="T1",
+            slack_user_id="U1",
         )
     assert result["status"] == "no_slack_user"
+    assert "no_slack_user" in mock_notify.call_args.args[1]
 
 
 # --------------------------------------------------------------------------- #
@@ -1600,7 +1760,8 @@ async def test_slack_upload_transcription_no_slack_user_short_circuits():
 async def test_slack_upload_verify_complete_happy_path(slack_user):
     with (
         patch(
-            "app.saq_jobs.tasks.get_slack_user", new=AsyncMock(return_value=slack_user)
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
         ),
         patch(
             "app.saq_jobs.tasks.download_from_file_server_async",
@@ -1616,11 +1777,38 @@ async def test_slack_upload_verify_complete_happy_path(slack_user):
             grid_file_id="grid-1",
             client_id=slack_user.ray_client_id,
             channel_id="C123",
+            team_id="T1",
+            slack_user_id="U1",
         )
 
     assert result == {"status": "delivered"}
     mock_upload.assert_awaited_once()
     assert mock_upload.await_args.kwargs["filename"] == "qe.xlsx"
+
+
+@pytest.mark.asyncio
+async def test_slack_upload_verify_complete_no_slack_user():
+    with (
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("app.saq_jobs.tasks.notify_exception") as mock_notify,
+    ):
+        result = await slack_upload_verify_complete(
+            _ctx(),
+            grid_file_id="grid-1",
+            client_id="ht-sa-uuid",
+            channel_id="C123",
+            team_id="T1",
+            slack_user_id="U1",
+        )
+
+    assert result == {"status": "no_slack_user"}
+    mock_notify.assert_called_once()
+    assert "no_slack_user" in mock_notify.call_args.args[1]
+    assert mock_notify.call_args.kwargs["extra"]["client_id"] == "ht-sa-uuid"
+    assert mock_notify.call_args.kwargs["extra"]["slack_user_id"] == "U1"
 
 
 # --------------------------------------------------------------------------- #

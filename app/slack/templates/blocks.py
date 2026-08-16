@@ -16,6 +16,11 @@ from app.slack.document_mt_quote_adjustment import (
     document_mt_pdf_tokens_for_pairs,
     document_mt_tokens_for_pairs,
 )
+from app.slack.media_quote_adjustment import (
+    MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID,
+    media_translation_language_costs,
+    media_translation_quote_from_session,
+)
 from app.slack.select_options import get_languages_sync
 from app.slack.utils import (
     calculate_evaluation_percentages,
@@ -103,7 +108,7 @@ def home_auth_blocks(
             },
         },
     ]
-    # IBM Direct Login is not offered on the home tab; channel login prompts keep SSO.
+    # RAY-81247: IBM Direct Login removed (home tab and channel prompts).
     if is_ibm:
         return blocks
 
@@ -819,6 +824,41 @@ def document_mt_quote_blocks(
     )
 
 
+def media_translation_quote_blocks(
+    session: dict[str, Any],
+    *,
+    actions: bool = True,
+    status_message: str | None = None,
+) -> list[dict[str, Any]]:
+    """Quote2 AI Translation blocks — same layout as Document MT Adjust Request."""
+    quote = media_translation_quote_from_session(session)
+    language_costs = media_translation_language_costs(session)
+    translation_tokens = int(quote.get("total_tokens") or 0)
+    if "selected_pairs" in session:
+        selected_pairs = [str(pair) for pair in session.get("selected_pairs") or []]
+        language_costs = document_mt_language_costs_with_cancelled(
+            language_costs, selected_pairs
+        )
+        translation_tokens = document_mt_tokens_for_pairs(quote, selected_pairs)
+
+    return evaluation_credits_quote_blocks(
+        _("AI Translation"),
+        translation_tokens,
+        accept_action_id="media_translation_quote_accept",
+        adjust_action_id=(
+            MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID
+            if actions and language_costs
+            else None
+        ),
+        job_uuid=str(session["quote_id"]),
+        actions=actions,
+        status_message=status_message,
+        is_ibm=is_ibm_enterprise(session.get("enterprise_id")),
+        language_costs=language_costs or None,
+        intro_text=_("Running the AI translation will incur the following cost:"),
+    )
+
+
 def evaluate_success_blocks(
     job: dict[str, Any],
 ):
@@ -1064,8 +1104,7 @@ def evaluation_credits_quote_blocks(
                 current_file = file_label
             if language_cost.get("cancelled") or display_usd is None:
                 line_text = (
-                    f"*{language_cost['label']}*\n>"
-                    f"{_('AI Translate quote cancelled')}"
+                    f"*{language_cost['label']}*\n>{_('AI Translate quote cancelled')}"
                 )
             else:
                 line_text = (

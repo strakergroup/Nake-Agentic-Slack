@@ -15,14 +15,23 @@ from app.auth.connector import (
     get_client_tokens,
     get_client_type,
     get_group_tokens,
+    resolve_slack_user_email,
     user_may_receive_quotes,
 )
 from app.config import domains
 from app.database import async_engines
+from app.ibm_ht_service_account import resolve_slack_poster_email
 from app.models import ASRTask, TranscriptionTask, TranscriptionTaskData
 from app.ray.utils import is_ibm_enterprise
 from app.redis import redis_conn
 from app.slack.buglog_notifier import notify_exception
+from app.slack.document_mt_quote_adjustment import document_mt_tokens_for_pairs
+from app.slack.media_quote_adjustment import (
+    media_selected_target_language_names,
+    media_selected_target_languages,
+    media_translation_quote_from_session,
+    media_translation_quote_uses_adjust_layout,
+)
 from app.slack.media_quotes import (
     ACTION_MEDIA_QUOTE_ACCEPT,
     ACTION_MEDIA_QUOTE_CANCEL,
@@ -46,6 +55,7 @@ from app.slack.media_quotes import (
 )
 from app.slack.middleware import require_ray_client
 from app.slack.templates.messages import (
+    MediaTranslationQuoteMessage,
     RequiresMtTokenAdminMessage,
     RequiresMtTokenMessage,
 )
@@ -112,6 +122,19 @@ async def _update_quote_message(
 ) -> None:
     if not channel_id or not message_ts:
         return
+    if media_translation_quote_uses_adjust_layout(session):
+        message = MediaTranslationQuoteMessage(
+            session,
+            actions=actions,
+            status_message=status_message,
+        )
+        await client.chat_update(
+            channel=channel_id,
+            ts=message_ts,
+            text=message.text,
+            blocks=message.blocks,
+        )
+        return
     blocks = media_quote_blocks(
         session,
         accept_action_id=accept_action_id,
@@ -136,14 +159,24 @@ async def _create_asr_from_quote_session(
     extra_data: dict[str, Any],
 ) -> str:
     ray = context.get("ray")
-    ray_client = ray.client if ray is not None else None
-    if ray_client is None:
+    if ray is None:
+        raise ValueError("Ray connection is required to start media processing")
+
+    # Prefer personal CRM member; otherwise org-bill like Document MT / AI Translate.
+    if ray.client is not None:
+        billing_client_id = ray.client.id
+    elif ray.super_group:
+        billing_client_id = ray.super_group[0].verify_organization_uuid
+    else:
         raise ValueError(
-            "A connected LanguageCloud member is required to start media processing"
+            "A LanguageCloud member or workspace organisation is required "
+            "to start media processing"
         )
+    if not billing_client_id:
+        raise ValueError("No billing client available for media processing")
 
     task_data = TranscriptionTaskData(
-        client_id=ray_client.id,
+        client_id=billing_client_id,
         file_name=session["file_name"],
         download_url=session["download_url"],
         app_token=client.token or "",
@@ -155,7 +188,7 @@ async def _create_asr_from_quote_session(
         sandbox=False,
     )
     asr_task = ASRTask(
-        member_uuid=ray_client.id,
+        member_uuid=billing_client_id,
         event_name="sup-subtitle-ai:media:asr",
         app_source="slack",
         service="azure",
@@ -185,8 +218,11 @@ async def _resume_translate_phase(
         extra_data = dict(task.extra_data or {})
         extra_data["media_quote_id"] = session["quote_id"]
         extra_data["pipeline_kind"] = pipeline_kind
-        extra_data["target_languages"] = session.get("target_languages") or []
-        extra_data["target_language_names"] = session.get("target_language_names") or []
+        selected_languages = media_selected_target_languages(session)
+        extra_data["target_languages"] = selected_languages
+        extra_data["target_language_names"] = media_selected_target_language_names(
+            session, selected_languages
+        )
         if session.get("submission_ids"):
             extra_data["submission_ids"] = session["submission_ids"]
         await db_session.execute(
@@ -263,9 +299,8 @@ async def accept_media_quote(
         required_tokens = int(session.get("total_tokens") or 0)
         if not await _require_ai_token_balance(context, client, required_tokens):
             return False
-        # Media processing bills a LanguageCloud member, so prompt for login
-        # rather than failing inside the ASR task builder.
-        if not await require_ray_client(context):
+        # Media processing can org-bill like AI Translate when no personal member.
+        if not await require_ray_client(context, allow_org_billing=True):
             return False
 
         pipeline_kind = session["pipeline_kind"]
@@ -278,6 +313,34 @@ async def accept_media_quote(
             "media_quote_id": quote_id,
             "pipeline_kind": pipeline_kind,
         }
+        # Stamp poster identity at accept so media spend usage rows always carry
+        # Client Email/Name even when org-billed (RAY-81247) — same helpers as HT/channel.
+        poster_email = await resolve_slack_poster_email(client, context["user_id"])
+        if not poster_email:
+            poster_email = await resolve_slack_user_email(
+                context["user_id"],
+                context["team_id"],
+                context.enterprise_id,
+            )
+        poster_name = None
+        user_info = getattr(context, "user_info", None) or context.get("user_info")
+        if isinstance(user_info, dict):
+            profile = (user_info.get("user") or {}).get("profile") or {}
+            poster_name = (
+                profile.get("real_name") or profile.get("real_name_normalized") or None
+            )
+        if poster_email:
+            extra_data["requester_email"] = poster_email
+        if poster_name:
+            extra_data["client_name"] = poster_name
+        # Super-group uuid for org-billed subtitle MT /mt/transaction (ISVC
+        # forwards this as group_uuid so the ledger does not collapse to the
+        # org uuid — same as channel/document MT).
+        ray = context.get("ray")
+        if ray and ray.super_group:
+            billing_group = (ray.super_group[0].id or "").strip()
+            if billing_group:
+                extra_data["billing_group_uuid"] = billing_group
 
         if pipeline_kind == PIPELINE_TRANSCRIBE:
             if session.get("submission_id") is not None:
@@ -444,6 +507,11 @@ async def accept_media_translation_quote(
 
     try:
         required_tokens = int(session.get("total_tokens") or 0)
+        if "selected_pairs" in session:
+            required_tokens = document_mt_tokens_for_pairs(
+                media_translation_quote_from_session(session),
+                [str(pair) for pair in session.get("selected_pairs") or []],
+            )
         if not await _require_ai_token_balance(context, client, required_tokens):
             return False
 
@@ -536,6 +604,29 @@ async def cancel_media_quote(
         )
 
 
+async def update_media_translation_quote_slack_message(
+    client: AsyncWebClient,
+    *,
+    channel_id: str,
+    message_ts: str,
+    session: dict[str, Any],
+    actions: bool = True,
+    status_message: str | None = None,
+) -> None:
+    """Replace the original media Quote2 message in place (shared AI Translate grid)."""
+    message = MediaTranslationQuoteMessage(
+        session,
+        actions=actions,
+        status_message=status_message,
+    )
+    await client.chat_update(
+        channel=channel_id,
+        ts=message_ts,
+        text=message.text,
+        blocks=message.blocks,
+    )
+
+
 async def post_media_quote_message(
     client: AsyncWebClient,
     session: dict[str, Any],
@@ -544,12 +635,16 @@ async def post_media_quote_message(
     cancel_action_id: str,
 ) -> str | None:
     """Post a Service Quote message and store its message_ts on the session."""
-    blocks = media_quote_blocks(
-        session,
-        accept_action_id=accept_action_id,
-        cancel_action_id=cancel_action_id,
-        actions=True,
-    )
+    if media_translation_quote_uses_adjust_layout(session):
+        message = MediaTranslationQuoteMessage(session, actions=True)
+        blocks = message.blocks
+    else:
+        blocks = media_quote_blocks(
+            session,
+            accept_action_id=accept_action_id,
+            cancel_action_id=cancel_action_id,
+            actions=True,
+        )
     response = await client.chat_postMessage(
         channel=str(session["channel_id"]),
         text=_("Service Quote"),
@@ -619,15 +714,22 @@ async def auto_accept_media_translation_quote_if_needed(
     if not session.get("auto_proceed"):
         return False
 
-    from app.auth.connector import RayConnection, get_ray_client
+    from app.auth.connector import RayConnection, get_ray_client, get_ray_super_group
 
-    # Prefer member client without requiring a workspace super-group link.
+    # Prefer member client; fall back to workspace org for org-billed media.
     ray_client = await get_ray_client(
         session["user_id"],
         session["team_id"],
         session.get("enterprise_id"),
     )
-    if ray_client is None:
+    super_groups = (
+        await get_ray_super_group(
+            session["team_id"],
+            session.get("enterprise_id"),
+        )
+        or []
+    )
+    if ray_client is None and not super_groups:
         return False
 
     # Build a minimal Bolt-like context; set ray after init for typing.
@@ -642,7 +744,7 @@ async def auto_accept_media_translation_quote_if_needed(
             },
         )
     )
-    context["ray"] = RayConnection([], ray_client)
+    context["ray"] = RayConnection(super_groups, ray_client)
 
     return await accept_media_translation_quote(
         client=client,
@@ -664,4 +766,5 @@ __all__ = [
     "cancel_media_quote",
     "post_media_quote_message",
     "post_or_auto_start_media_quote",
+    "update_media_translation_quote_slack_message",
 ]

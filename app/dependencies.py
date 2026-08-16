@@ -52,6 +52,9 @@ class RayEventAuth:
                 team_id=extra.get("team_id") or event.data.get("team_id"),
                 slack_user_id=extra.get("slack_user_id")
                 or event.data.get("slack_user_id"),
+                enterprise_id=extra.get("enterprise_id")
+                or event.data.get("enterprise_id"),
+                channel_id=extra.get("channel_id") or event.data.get("channel_id"),
             )
             self.demo_slack_users = await get_demo_link(client_id)
 

@@ -490,7 +490,7 @@ async def test_ai_quote_event_waits_for_adjustable_acceptance(mock_slack_user):
             return_value=[{"uuid": "lang-1", "name": "French"}],
         ),
         patch(
-            "app.ray.events.evaluate_quote_events.get_ray_client",
+            "app.ray.events.evaluate_quote_events.resolve_evaluate_quote_verify_client",
             new_callable=AsyncMock,
             return_value=MagicMock(),
         ),
@@ -509,7 +509,7 @@ async def test_ai_quote_event_waits_for_adjustable_acceptance(mock_slack_user):
             },
         ),
         patch(
-            "app.ray.events.evaluate_quote_events.get_evaluation_job",
+            "app.ray.events.evaluate_quote_events.get_client_evaluation_job",
             new_callable=AsyncMock,
             return_value={
                 "data": {
@@ -603,12 +603,12 @@ async def test_auto_qe_fetches_quote_before_claim_and_releases_on_402(
 
     with (
         patch(
-            "app.slack.evaluation_combined_quotes.get_ray_client",
+            "app.slack.evaluation_combined_quotes.resolve_evaluate_quote_verify_client",
             new_callable=AsyncMock,
             return_value=MagicMock(),
         ),
         patch(
-            "app.slack.evaluation_combined_quotes.get_evaluation_job",
+            "app.slack.evaluation_combined_quotes.get_client_evaluation_job",
             new_callable=AsyncMock,
             return_value=job,
         ),
@@ -704,7 +704,7 @@ async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
 
     with (
         patch(
-            "app.slack.evaluation_combined_quotes.get_ray_client",
+            "app.slack.evaluation_combined_quotes.resolve_evaluate_quote_verify_client",
             new_callable=AsyncMock,
         ) as mock_ray,
         patch(
@@ -712,7 +712,7 @@ async def test_post_combined_qe_human_quote_updates_ai_and_posts_new_message(
             new=_quote,
         ),
         patch(
-            "app.slack.evaluation_combined_quotes.get_evaluation_job",
+            "app.slack.evaluation_combined_quotes.get_client_evaluation_job",
             new_callable=AsyncMock,
             return_value=job,
         ),
@@ -855,7 +855,7 @@ async def test_post_combined_qe_human_quote_does_not_requote_ai_when_costs_missi
 
     with (
         patch(
-            "app.slack.evaluation_combined_quotes.get_ray_client",
+            "app.slack.evaluation_combined_quotes.resolve_evaluate_quote_verify_client",
             new_callable=AsyncMock,
             return_value=ray_client,
         ),
@@ -864,7 +864,7 @@ async def test_post_combined_qe_human_quote_does_not_requote_ai_when_costs_missi
             new=_quote,
         ),
         patch(
-            "app.slack.evaluation_combined_quotes.get_evaluation_job",
+            "app.slack.evaluation_combined_quotes.get_client_evaluation_job",
             new_callable=AsyncMock,
             return_value=job,
         ),
@@ -995,7 +995,7 @@ async def test_post_combined_qe_human_quote_keeps_asymmetric_ai_scope(mock_slack
 
     with (
         patch(
-            "app.slack.evaluation_combined_quotes.get_ray_client",
+            "app.slack.evaluation_combined_quotes.resolve_evaluate_quote_verify_client",
             new_callable=AsyncMock,
             return_value=MagicMock(),
         ),
@@ -1005,7 +1005,7 @@ async def test_post_combined_qe_human_quote_keeps_asymmetric_ai_scope(mock_slack
             return_value={"services_costs": {"quality_evaluation": 10}, "token": 10},
         ),
         patch(
-            "app.slack.evaluation_combined_quotes.get_evaluation_job",
+            "app.slack.evaluation_combined_quotes.get_client_evaluation_job",
             new_callable=AsyncMock,
             return_value=job,
         ),
@@ -1146,7 +1146,7 @@ def _patch_preaccepted_ai_quote(
             ],
         ),
         patch(
-            "app.ray.events.evaluate_quote_events.get_ray_client",
+            "app.ray.events.evaluate_quote_events.resolve_evaluate_quote_verify_client",
             new_callable=AsyncMock,
             return_value=ray_client,
         ),
@@ -1156,7 +1156,7 @@ def _patch_preaccepted_ai_quote(
             return_value=quote,
         ),
         patch(
-            "app.ray.events.evaluate_quote_events.get_evaluation_job",
+            "app.ray.events.evaluate_quote_events.get_client_evaluation_job",
             new_callable=AsyncMock,
             return_value=job,
         ),

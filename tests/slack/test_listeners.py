@@ -1416,9 +1416,12 @@ class TestRayCommand:
             ) as mock_get_settings,
             patch("app.slack.handlers.commands.translation_settings_view") as mock_view,
         ):
-            mock_get_settings.return_value = [
-                {"target_lang": "fr", "display_format": "thread"}
-            ]
+
+            async def _settings(*_args, **_kwargs):
+                assert mock_client.views_open.await_count == 1
+                return [{"target_lang": "fr", "display_format": "thread"}]
+
+            mock_get_settings.side_effect = _settings
             mock_view.return_value = {"type": "modal"}
             await ray_command(
                 context_dict,
@@ -1429,6 +1432,8 @@ class TestRayCommand:
             )
             mock_ack.assert_called_once()
             mock_client.views_open.assert_called_once()
+            mock_view.assert_called_once()
+            assert mock_view.call_args.args[0] is None
             mock_client.views_update.assert_called_once_with(
                 view_id="V123", view={"type": "modal"}
             )
@@ -1437,12 +1442,13 @@ class TestRayCommand:
     async def test_ray_command_translate_with_settings_disabled(
         self, user_id, team_id, ray_client
     ):
-        """Test ray_command with 'translate' command when settings are disabled."""
+        """IBM non-admin /translate updates the loading modal instead of a channel message."""
         from app.slack.listeners import ray_command
 
         mock_ack = AsyncMock()
         mock_respond = AsyncMock()
         mock_client = AsyncMock()
+        mock_client.views_open.return_value = {"view": {"id": "V123"}}
         command = {"text": "translate", "trigger_id": "trigger-123"}
         ray_connection = RayConnection(super_group=[], client=ray_client)
         context_dict = {
@@ -1453,24 +1459,79 @@ class TestRayCommand:
             "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
         }
 
-        with patch("app.slack.handlers.commands.is_ibm_enterprise", return_value=True):
-            with patch(
+        with (
+            patch("app.slack.handlers.commands.is_ibm_enterprise", return_value=True),
+            patch(
+                "app.slack.handlers.commands.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
                 "app.slack.handlers.commands.is_slack_team_admin",
                 new_callable=AsyncMock,
-            ) as mock_admin:
-                mock_admin.return_value = False
-                await ray_command(
-                    context_dict,
-                    mock_ack,
-                    respond=mock_respond,
-                    command=command,
-                    client=mock_client,
-                )
-                mock_ack.assert_called_once()
-                mock_client.chat_postMessage.assert_called_once()
-                assert (
-                    "help" in mock_client.chat_postMessage.call_args[1]["text"].lower()
-                )
+                return_value=False,
+            ),
+        ):
+            await ray_command(
+                context_dict,
+                mock_ack,
+                respond=mock_respond,
+                command=command,
+                client=mock_client,
+            )
+            mock_ack.assert_called_once()
+            mock_client.views_open.assert_called_once()
+            mock_client.chat_postMessage.assert_not_called()
+            mock_client.views_update.assert_called_once()
+            updated = mock_client.views_update.call_args.kwargs["view"]
+            assert "administrator" in updated["blocks"][0]["text"]["text"].lower()
+
+    @pytest.mark.asyncio
+    async def test_ray_command_translate_settings_fetch_error_updates_modal(
+        self, user_id, team_id, ray_client
+    ):
+        """Loading modal must be replaced even when settings fetch fails."""
+        from app.slack.listeners import ray_command
+
+        mock_ack = AsyncMock()
+        mock_respond = AsyncMock()
+        mock_client = AsyncMock()
+        mock_client.views_open.return_value = {"view": {"id": "V123"}}
+        command = {"text": "translate", "trigger_id": "trigger-123"}
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context_dict = {
+            "user_id": user_id,
+            "team_id": team_id,
+            "channel_id": "C123",
+            "ray": ray_connection,
+            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
+        }
+
+        with (
+            patch("app.slack.handlers.commands.is_ibm_enterprise", return_value=False),
+            patch(
+                "app.slack.handlers.commands.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.handlers.commands.get_auto_translate_settings_and_langs",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("db hung"),
+            ),
+            patch("app.slack.handlers.commands.notify_exception") as mock_notify,
+        ):
+            await ray_command(
+                context_dict,
+                mock_ack,
+                respond=mock_respond,
+                command=command,
+                client=mock_client,
+            )
+            mock_client.views_open.assert_called_once()
+            mock_client.views_update.assert_called_once()
+            assert mock_client.views_update.call_args.kwargs["view_id"] == "V123"
+            mock_notify.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_command_job_with_tj_number(self, user_id, team_id, ray_client):
@@ -2143,187 +2204,6 @@ class TestHandleNewJob:
         mock_client.chat_postMessage.assert_called_once()
 
 
-class TestLoginSsoAction:
-    """Tests for login_sso_action function - critical SSO authentication handler."""
-
-    @pytest.mark.asyncio
-    async def test_login_sso_action_success(self, user_id, team_id):
-        """Test login_sso_action successful SSO login."""
-        from app.slack.listeners import login_sso_action
-
-        mock_ack = AsyncMock()
-        mock_respond = AsyncMock()
-        mock_client = AsyncMock()
-        view = {}
-        ray_connection = RayConnection(super_group=[], client=None)
-        context_dict = {
-            "user_id": user_id,
-            "team_id": team_id,
-            "channel_id": "C123",
-            "ray": ray_connection,
-            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
-            "response_url": "https://hooks.slack.com/test",
-        }
-
-        user_info_response = {
-            "ok": True,
-            "user": {
-                "profile": {
-                    "email": "test@example.com",
-                    "first_name": "Test",
-                    "last_name": "User",
-                }
-            },
-        }
-
-        with patch.object(
-            mock_client, "users_info", new_callable=AsyncMock
-        ) as mock_users_info:
-            mock_users_info.return_value = user_info_response
-            with patch(
-                "app.slack.handlers.auth.connect_ray_account_sso",
-                new_callable=AsyncMock,
-            ) as mock_connect:
-                with patch(
-                    "app.slack.handlers.auth.get_ray_connection", new_callable=AsyncMock
-                ) as mock_get_connection:
-                    new_ray_connection = RayConnection(
-                        super_group=[], client=MagicMock()
-                    )
-                    mock_get_connection.return_value = new_ray_connection
-                    with patch(
-                        "app.slack.handlers.auth.is_ibm_enterprise", return_value=False
-                    ):
-                        await login_sso_action(
-                            context_dict,
-                            mock_ack,
-                            respond=mock_respond,
-                            client=mock_client,
-                            view=view,
-                        )
-                        mock_ack.assert_called()
-                        mock_connect.assert_called_once()
-                        mock_get_connection.assert_called_once()
-                        mock_respond.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_login_sso_action_missing_scope_error(self, user_id, team_id):
-        """Test login_sso_action with missing_scope SlackApiError."""
-        from slack_sdk.errors import SlackApiError
-
-        from app.slack.listeners import login_sso_action
-
-        mock_ack = AsyncMock()
-        mock_respond = AsyncMock()
-        mock_client = AsyncMock()
-        view = {}
-        ray_connection = RayConnection(super_group=[], client=None)
-        context_dict = {
-            "user_id": user_id,
-            "team_id": team_id,
-            "channel_id": "C123",
-            "ray": ray_connection,
-            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
-            "response_url": "https://hooks.slack.com/test",
-        }
-
-        slack_error = SlackApiError(
-            message="missing_scope",
-            response={"ok": False, "error": "missing_scope"},
-        )
-
-        with patch.object(
-            mock_client, "users_info", new_callable=AsyncMock
-        ) as mock_users_info:
-            mock_users_info.side_effect = slack_error
-            await login_sso_action(
-                context_dict,
-                mock_ack,
-                respond=mock_respond,
-                client=mock_client,
-                view=view,
-            )
-            mock_ack.assert_called_with(response_action="clear")
-            mock_respond.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_login_sso_action_general_slack_error(self, user_id, team_id):
-        """Test login_sso_action with general SlackApiError."""
-        from slack_sdk.errors import SlackApiError
-
-        from app.slack.listeners import login_sso_action
-
-        mock_ack = AsyncMock()
-        mock_respond = AsyncMock()
-        mock_client = AsyncMock()
-        view = {}
-        ray_connection = RayConnection(super_group=[], client=None)
-        context_dict = {
-            "user_id": user_id,
-            "team_id": team_id,
-            "channel_id": "C123",
-            "ray": ray_connection,
-            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
-            "response_url": "https://hooks.slack.com/test",
-        }
-
-        slack_error = SlackApiError(
-            message="other_error",
-            response={"ok": False, "error": "other_error"},
-        )
-
-        with patch.object(
-            mock_client, "users_info", new_callable=AsyncMock
-        ) as mock_users_info:
-            mock_users_info.side_effect = slack_error
-            with patch("app.slack.handlers.auth.notify_exception") as mock_notify:
-                await login_sso_action(
-                    context_dict,
-                    mock_ack,
-                    respond=mock_respond,
-                    client=mock_client,
-                    view=view,
-                )
-                mock_ack.assert_called()
-                mock_notify.assert_called_once()
-                mock_respond.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_login_sso_action_general_exception(self, user_id, team_id):
-        """Test login_sso_action with general exception."""
-        from app.slack.listeners import login_sso_action
-
-        mock_ack = AsyncMock()
-        mock_respond = AsyncMock()
-        mock_client = AsyncMock()
-        view = {}
-        ray_connection = RayConnection(super_group=[], client=None)
-        context_dict = {
-            "user_id": user_id,
-            "team_id": team_id,
-            "channel_id": "C123",
-            "ray": ray_connection,
-            "login_prompt": LoginMessage(user_id, team_id, None, "C123"),
-            "response_url": "https://hooks.slack.com/test",
-        }
-
-        with patch.object(
-            mock_client, "users_info", new_callable=AsyncMock
-        ) as mock_users_info:
-            mock_users_info.side_effect = Exception("General error")
-            with patch("app.slack.handlers.auth.notify_exception") as mock_notify:
-                await login_sso_action(
-                    context_dict,
-                    mock_ack,
-                    respond=mock_respond,
-                    client=mock_client,
-                    view=view,
-                )
-                mock_ack.assert_called()
-                mock_notify.assert_called_once()
-                mock_respond.assert_called()
-
-
 class TestEvaluateJobAction:
     """Tests for evaluate_job_action safeguards and modal routing."""
 
@@ -2439,7 +2319,9 @@ class TestEvaluateJobAction:
             )
 
         mock_require_ray_client.assert_awaited_with(
-            context_dict, variation=LoginMessage.HUMAN_TRANSLATION
+            context_dict,
+            variation=LoginMessage.HUMAN_TRANSLATION,
+            allow_ht_service_account=True,
         )
         mock_ack.assert_called_once()
         mock_client.views_open.assert_called_once()

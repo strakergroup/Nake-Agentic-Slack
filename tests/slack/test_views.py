@@ -6,7 +6,6 @@ from app.slack.templates.views import (
     job_search_modal,
     loading_modal,
     srt_translate_modal,
-    sso_form_modal,
     translation_settings_view,
     translation_settings_view_error,
     verify_job_modal,
@@ -222,21 +221,6 @@ class TestHumanJobModal:
         # initial_options may or may not be present depending on implementation
         # Just verify the modal structure is correct
         assert element["type"] == "multi_static_select"
-
-
-class TestSsoFormModal:
-    """Tests for sso_form_modal function."""
-
-    def test_sso_form_modal(self):
-        """Test creating SSO form modal."""
-        modal = sso_form_modal()
-
-        assert modal["type"] == "modal"
-        assert modal["callback_id"] == "login_sso"
-        assert len(modal["blocks"]) == 3
-        assert modal["blocks"][0]["block_id"] == "email"
-        assert modal["blocks"][1]["block_id"] == "firstName"
-        assert modal["blocks"][2]["block_id"] == "lastName"
 
 
 class TestCancelJobModal:

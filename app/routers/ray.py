@@ -417,8 +417,10 @@ async def ray_events(
                         "error", "Unknown error"
                     )
                     await client.chat_postEphemeral(
-                        channel=auth.slack_user.channel_id,
-                        user=auth.slack_user.user_id,
+                        channel=extra_data.get("slack_channel_id")
+                        or auth.slack_user.channel_id
+                        or auth.slack_user.user_id,
+                        user=extra_data.get("slack_user_id") or auth.slack_user.user_id,
                         text=format_callback_error("transcription", error_msg),
                         thread_ts=thread_ts,
                     )
@@ -506,8 +508,10 @@ async def ray_events(
                         "error", "Unknown error"
                     )
                     await client.chat_postEphemeral(
-                        channel=auth.slack_user.channel_id,
-                        user=auth.slack_user.user_id,
+                        channel=extra_data.get("slack_channel_id")
+                        or auth.slack_user.channel_id
+                        or auth.slack_user.user_id,
+                        user=extra_data.get("slack_user_id") or auth.slack_user.user_id,
                         text=format_callback_error("translation", error_msg),
                         thread_ts=thread_ts,
                     )
@@ -524,8 +528,10 @@ async def ray_events(
 
                 if not task_info.translated_file_ids:
                     await client.chat_postEphemeral(
-                        channel=auth.slack_user.channel_id,
-                        user=auth.slack_user.user_id,
+                        channel=extra_data.get("slack_channel_id")
+                        or auth.slack_user.channel_id
+                        or auth.slack_user.user_id,
+                        user=extra_data.get("slack_user_id") or auth.slack_user.user_id,
                         text=_(
                             "AI translation finished with no output files. "
                             "Please try again or contact support."
@@ -602,8 +608,10 @@ async def ray_events(
                         "error", "Unknown error"
                     )
                     await client.chat_postEphemeral(
-                        channel=auth.slack_user.channel_id,
-                        user=auth.slack_user.user_id,
+                        channel=extra_data.get("slack_channel_id")
+                        or auth.slack_user.channel_id
+                        or auth.slack_user.user_id,
+                        user=extra_data.get("slack_user_id") or auth.slack_user.user_id,
                         text=format_callback_error("embedding", error_msg),
                         thread_ts=thread_ts,
                     )
@@ -913,18 +921,58 @@ async def ray_events(
                     message = document_mt_generic_fallback(evaluate=True)
             else:
                 try:
-                    job = await get_evaluation_job(
-                        auth.slack_user, event.data["job_uuid"]
+                    from app.api.verify import get_client_evaluation_job
+                    from app.ibm_ht_service_account import (
+                        get_ht_service_account_ray_client,
+                        ht_service_account_member_uuid,
                     )
+
+                    if (
+                        auth.slack_user.ray_client_id
+                        == ht_service_account_member_uuid()
+                    ):
+                        owner_client = await get_ht_service_account_ray_client(
+                            slack_user_id=auth.slack_user.user_id,
+                            slack_team_id=auth.slack_user.team_id,
+                            slack_enterprise_id=auth.slack_user.enterprise_id,
+                        )
+                        if owner_client is None:
+                            raise ValueError(
+                                "Could not mint HT service-account client for evaluate job"
+                            )
+                        job = await get_client_evaluation_job(
+                            owner_client, event.data["job_uuid"]
+                        )
+                    else:
+                        job = await get_evaluation_job(
+                            auth.slack_user, event.data["job_uuid"]
+                        )
                     job_data_for_notify = job["data"]
                     if job["data"].get("human_job_in_progress", False):
                         raise ValueError(f"Invalid RAY event type: {event.event}")
                     if event.data.get("ai_only"):
                         message = EvaluateAiOnlyCompleteMessage(job["data"])
                     elif await job_is_human_translation_quote(job["data"]):
-                        ray_client = await get_ray_client(
-                            auth.slack_user.user_id, auth.slack_user.team_id
+                        from app.ibm_ht_service_account import (
+                            get_ht_service_account_ray_client,
+                            ht_service_account_member_uuid,
                         )
+
+                        # Job owner may be the HT service account while auth.user_id
+                        # is the Slack poster (RAY-81247). Price with the owner JWT.
+                        if (
+                            auth.slack_user.ray_client_id
+                            == ht_service_account_member_uuid()
+                        ):
+                            ray_client = await get_ht_service_account_ray_client(
+                                slack_user_id=auth.slack_user.user_id,
+                                slack_team_id=auth.slack_user.team_id,
+                                slack_enterprise_id=auth.slack_user.enterprise_id,
+                            )
+                        else:
+                            ray_client = await get_ray_client(
+                                auth.slack_user.user_id, auth.slack_user.team_id
+                            )
                         if ray_client is None:
                             raise ValueError("Could not get ray client for job pricing")
                         costs = await get_job_pricing(
@@ -991,6 +1039,11 @@ async def ray_events(
                         grid_file_id=event.data["grid_file_id"],
                         client_id=auth.slack_user.ray_client_id,
                         channel_id=upload_channel_id,
+                        team_id=event.data.get("team_id") or auth.slack_user.team_id,
+                        slack_user_id=event.data.get("slack_user_id")
+                        or auth.slack_user.user_id,
+                        enterprise_id=event.data.get("enterprise_id")
+                        or auth.slack_user.enterprise_id,
                     )
             except Exception as e:
                 raise HTTPException(

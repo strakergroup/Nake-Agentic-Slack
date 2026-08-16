@@ -262,8 +262,15 @@ async def enqueue_transcription_upload(
     channel_id: str,
     thread_ts: str | None,
     follow_up_message: str | None = None,
+    team_id: str | None = None,
+    slack_user_id: str | None = None,
+    enterprise_id: str | None = None,
 ) -> None:
-    """Enqueue the durable transcription file upload job (RAY-79638)."""
+    """Enqueue the durable transcription file upload job (RAY-79638).
+
+    Optional ``team_id`` / ``slack_user_id`` / ``enterprise_id`` support
+    org-billed media where ``client_id`` is the Verify org uuid (RAY-81247).
+    """
     key = (
         "slack_upload_transcription:"
         f"{task_uuid}:{file_id}:{channel_id}:{thread_ts or 'no-thread'}"
@@ -284,6 +291,9 @@ async def enqueue_transcription_upload(
         channel_id=channel_id,
         thread_ts=thread_ts,
         follow_up_message=follow_up_message,
+        team_id=team_id,
+        slack_user_id=slack_user_id,
+        enterprise_id=enterprise_id,
     )
 
 
@@ -292,8 +302,15 @@ async def enqueue_verify_complete_upload(
     grid_file_id: str,
     client_id: str,
     channel_id: str,
+    team_id: str | None = None,
+    slack_user_id: str | None = None,
+    enterprise_id: str | None = None,
 ) -> None:
-    """Enqueue the durable verify-complete file upload job (RAY-79638)."""
+    """Enqueue the durable verify-complete file upload job (RAY-79638).
+
+    Optional ``team_id`` / ``slack_user_id`` / ``enterprise_id`` support HT
+    service-account jobs (RAY-81247) where ``client_id`` has no deltaray row.
+    """
     key = f"slack_upload_verify_complete:{grid_file_id}:{channel_id}"
     await enqueue(
         "slack_upload_verify_complete",
@@ -306,6 +323,9 @@ async def enqueue_verify_complete_upload(
         grid_file_id=grid_file_id,
         client_id=client_id,
         channel_id=channel_id,
+        team_id=team_id,
+        slack_user_id=slack_user_id,
+        enterprise_id=enterprise_id,
     )
 
 

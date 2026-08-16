@@ -48,6 +48,11 @@ from app.slack.listener_actions import (
     notify_missing_slack_files,
     verify_job_submission_lock_key,
 )
+from app.slack.media_quote_actions import accept_media_translation_quote
+from app.slack.media_quote_adjustment import (
+    MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID,
+    MEDIA_TRANSLATION_QUOTE_KIND,
+)
 from app.slack.middleware import populate_ray_connection, require_ray_client
 from app.slack.modal_trigger import (
     open_loading_modal,
@@ -122,7 +127,19 @@ async def handle_evaluate_job_submit(
         return
 
     await ack(response_action="clear")
-    if await require_ray_client(context, prompt_login=True):
+    # HT modal open already allows IBM HT SA; submit must too, otherwise a
+    # deactivated deltaray posts the default Connect prompt after the modal.
+    is_human_ht = view.get("callback_id") == "evaluate_job_human"
+    if await require_ray_client(
+        context,
+        prompt_login=True,
+        variation=(
+            LoginMessage.HUMAN_TRANSLATION
+            if is_human_ht
+            else LoginMessage.QUALITY_EVALUATION
+        ),
+        allow_ht_service_account=is_human_ht,
+    ):
         if view["callback_id"] == "evaluate_job":
             msg = _(
                 "Analyzing your content. You will receive an AI Translation quote shortly."
@@ -231,7 +248,12 @@ async def handle_evaluate_job_action(
     view_id = await open_loading_modal(client, body["trigger_id"])
     try:
         await populate_ray_connection(context)
-        if not await require_ray_client(context, variation=login_variation):
+        allow_ht_sa = login_variation == LoginMessage.HUMAN_TRANSLATION
+        if not await require_ray_client(
+            context,
+            variation=login_variation,
+            allow_ht_service_account=allow_ht_sa,
+        ):
             await safe_views_update(
                 client,
                 view_id,
@@ -299,7 +321,9 @@ async def handle_verify_job_modal_open(
                 ),
             )
             return
-        if not await require_ray_client(context, prompt_login=True):
+        if not await require_ray_client(
+            context, prompt_login=True, allow_ht_service_account=True
+        ):
             await safe_views_update(
                 client,
                 view_id,
@@ -309,7 +333,14 @@ async def handle_verify_job_modal_open(
                 ),
             )
             return
-        ray_client = context["ray"].client if context["ray"] is not None else None
+        from app.ibm_ht_service_account import resolve_ht_verify_client
+
+        ray_client = await resolve_ht_verify_client(
+            context["ray"],
+            slack_user_id=context.get("user_id") or "",
+            slack_team_id=context.get("team_id") or "",
+            slack_enterprise_id=context.get("enterprise_id"),
+        )
         if ray_client is None:
             await safe_views_update(
                 client,
@@ -415,6 +446,8 @@ async def handle_ai_quote_adjust(
         quote_kind = "pdf_prequote"
     elif action["action_id"] == DOCUMENT_MT_QUOTE_ADJUST_ACTION_ID:
         quote_kind = DOCUMENT_MT_QUOTE_KIND
+    elif action["action_id"] == MEDIA_TRANSLATION_QUOTE_ADJUST_ACTION_ID:
+        quote_kind = MEDIA_TRANSLATION_QUOTE_KIND
     channel_id, message_ts = quote_message_context_from_body(body)
     try:
         await populate_ai_quote_adjustment_modal(
@@ -492,6 +525,13 @@ async def handle_ai_quote_adjust_submit(
         )
     elif quote_kind == DOCUMENT_MT_QUOTE_KIND:
         await accept_document_mt_quote(
+            client=client,
+            body=body,
+            action={"value": quote_id},
+            context=context,
+        )
+    elif quote_kind == MEDIA_TRANSLATION_QUOTE_KIND:
+        await accept_media_translation_quote(
             client=client,
             body=body,
             action={"value": quote_id},

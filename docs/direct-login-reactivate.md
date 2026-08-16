@@ -1,15 +1,20 @@
-# Direct Login reactivation (RAY-80562, RAY-81311)
+# Direct Login removed (RAY-81247)
 
-## Summary
+Slack **Direct Login** (SSO mint/link via the Direct Login button / `login_sso` action)
+has been removed from IBM UX.
 
-When an IBM (or other SSO) Slack user completes **Direct Login**, and a LanguageCloud
-member already exists for their email:
+- IBM HT and Media no longer require end-user CRM minting via Slack SSO.
+- HT without a reusable CRM member uses the HT service account (Requester/Surrogate).
+- Media org-bills like AI Translate when the workspace has a linked super group.
+- Existing CRM members continue to work via Slack email → active CRM member
+  resolve (`get_ray_client_ibm_by_email`), which upserts `slack_deltaray_link`.
+- IBM logout / missing deltaray is irrelevant when the Slack email matches CRM.
+- Slack must not mint new CRM People via leftover SSO (`connect_ray_account_sso`
+  raises if no member exists for the email).
 
-1. **RAY-80562** — if the member was deactivated (`obj_m_member.active = 0`), Slack
-   Direct Login sets that member **active again** before linking Slack.
-2. **RAY-81311** — if their IBM Slack App group link was deactivated
-   (`obj_m_mglink.is_active = 0`), Direct Login **reactivates that mglink** so LC
-   still treats them as belonging to the shared Slack App group.
+Leftover SSO link paths still reactivate inactive **members** (RAY-80562) and
+inactive IBM Slack App **mglinks** (RAY-81311). IBM UX no longer shows the
+Direct Login button.
 
 ## Problem (member active — RAY-80562)
 
@@ -55,7 +60,7 @@ sequenceDiagram
     Slack->>SSO: email from users.info
     SSO->>DB: SELECT by login
     alt member missing
-        SSO->>DB: INSERT active=1 + mglink is_active=1
+        SSO-->>User: LookupError (RAY-81247: do not mint CRM)
     else member exists
         SSO->>DB: UPDATE active=1 (if not deleted)
         SSO->>MG: ensure IBM Slack App mglink is_active=1
@@ -70,7 +75,7 @@ sequenceDiagram
 
 | Case | Behaviour |
 | --- | --- |
-| No member for email | Create member (already `active=1`) — unchanged |
+| No member for email | LookupError — do not mint CRM (RAY-81247) |
 | Existing member, `active=0`, `is_deleted=0` | Set `active=1`, `email_active=1`, then link Slack |
 | Existing member, already active | No-op update predicate; link Slack as before |
 | Soft-deleted member (`is_deleted=1`) | Not reactivated |
@@ -91,7 +96,7 @@ Both are called from the existing-member branch of `connect_ray_account_sso`.
 
 - UPDATE SQL issued by the member helper
 - Existing-member SSO path awaits reactivation
-- New-member path does not call reactivation
+- New-member path raises LookupError (does not mint CRM)
 - Inactive mglink → UPDATE `is_active=1`
 - Active mglink → no mglink UPDATE
 - Missing mglink → INSERT with `is_active=1`

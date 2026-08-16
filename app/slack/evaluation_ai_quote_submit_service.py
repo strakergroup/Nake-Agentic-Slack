@@ -7,7 +7,10 @@ from slack_sdk.web.async_client import AsyncWebClient
 from app.auth.connector import RayContext
 from app.constants import EVALUATE_PDF_CONVERSION_TOKENS_PER_PAGE
 from app.ray.utils import is_ibm_enterprise
-from app.slack.document_mt_quote_adjustment import DOCUMENT_MT_QUOTE_KIND
+from app.slack.document_mt_quote_adjustment import (
+    DOCUMENT_MT_QUOTE_KIND,
+    document_mt_tokens_for_pairs,
+)
 from app.slack.document_mt_quotes import (
     QUOTE_STATUS_CANCELLED,
     QUOTE_STATUS_QUOTED,
@@ -30,6 +33,18 @@ from app.slack.evaluation_quotes import (
     get_evaluate_quote_session,
     update_evaluate_quote_session,
     update_evaluate_quote_slack_message,
+)
+from app.slack.media_quote_actions import update_media_translation_quote_slack_message
+from app.slack.media_quote_adjustment import (
+    MEDIA_TRANSLATION_QUOTE_KIND,
+    media_quote_message_ts,
+    media_translation_quote_from_session,
+)
+from app.slack.media_quotes import (
+    STAGE_AWAITING_TRANSLATION_ACCEPT,
+    STAGE_CANCELLED,
+    get_media_quote_session,
+    update_media_quote_session,
 )
 from app.slack.pdf_evaluate_quotes import (
     STAGE_ACCEPTED as PDF_PREQUOTE_STAGE_ACCEPTED,
@@ -87,6 +102,51 @@ async def persist_ai_quote_adjustment(
         )
         if resolved_channel_id and resolved_message_ts and updated_session:
             await update_document_mt_quote_slack_message(
+                client,
+                channel_id=resolved_channel_id,
+                message_ts=resolved_message_ts,
+                session=updated_session,
+                actions=not cancelled,
+                status_message=(
+                    _("AI Translate quote cancelled.") if cancelled else None
+                ),
+            )
+        return True
+
+    if quote_kind == MEDIA_TRANSLATION_QUOTE_KIND:
+        session = await get_media_quote_session(quote_id)
+        if (
+            not session
+            or session.get("user_id") != user_id
+            or session.get("stage") != STAGE_AWAITING_TRANSLATION_ACCEPT
+        ):
+            return False
+        quote = media_translation_quote_from_session(session)
+        tokens = document_mt_tokens_for_pairs(quote, pairs)
+        resolved_channel_id = str(
+            channel_id or session.get("channel_id") or context.get("channel_id") or ""
+        )
+        resolved_message_ts = (
+            str(message_ts or media_quote_message_ts(session) or "") or None
+        )
+        updated_session = await update_media_quote_session(
+            quote_id,
+            {
+                "selected_pairs": pairs,
+                "quote": quote,
+                "total_tokens": tokens,
+                "channel_id": resolved_channel_id or session.get("channel_id"),
+                "quote_message_ts": resolved_message_ts
+                or session.get("quote_message_ts"),
+            }
+            | ({"stage": STAGE_CANCELLED} if cancelled else {}),
+        )
+        if cancelled:
+            from app.ray.events.media_pipeline_events import fail_media_submissions
+
+            await fail_media_submissions(updated_session or session)
+        if resolved_channel_id and resolved_message_ts and updated_session:
+            await update_media_translation_quote_slack_message(
                 client,
                 channel_id=resolved_channel_id,
                 message_ts=resolved_message_ts,

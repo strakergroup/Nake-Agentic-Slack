@@ -33,6 +33,7 @@ from app.slack.media_quote_actions import (
     auto_accept_media_translation_quote_if_needed,
     post_media_quote_message,
 )
+from app.slack.media_quote_adjustment import media_translation_quote_from_session
 from app.slack.media_quotes import (
     ACTION_MEDIA_TRANSLATION_QUOTE_ACCEPT,
     ACTION_MEDIA_TRANSLATION_QUOTE_CANCEL,
@@ -194,6 +195,12 @@ async def spend_transcription_credits(
         amount = duration_to_tokens(task_info.duration_ms)
 
         if amount > 0:
+            poster_email = (
+                extra_data.get("requester_email") or extra_data.get("email") or ""
+            ).strip() or None
+            poster_name = (
+                extra_data.get("client_name") or extra_data.get("slack_user_name") or ""
+            ).strip() or None
             _tokens, transaction_uuid = await log_transcribe_by_client_id(
                 client_id=auth.slack_user.ray_client_id,
                 duration_ms=task_info.duration_ms,
@@ -206,6 +213,9 @@ async def spend_transcription_credits(
                     unit_type="milliseconds",
                 ),
                 submission_group_uuid=task_info.task_uuid,
+                group_uuid=auth.slack_user.ray_user_group_id,
+                email=poster_email,
+                client_name=poster_name,
             )
 
             charged_stages.append("transcription")
@@ -328,6 +338,12 @@ async def spend_embedding_credits(
                 unit_type="milliseconds",
             )
             target_languages = embedding_target_language_codes(task_info)
+            poster_email = (
+                extra_data.get("requester_email") or extra_data.get("email") or ""
+            ).strip() or None
+            poster_name = (
+                extra_data.get("client_name") or extra_data.get("slack_user_name") or ""
+            ).strip() or None
             await log_embedding_by_client_id(
                 client_id=auth.slack_user.ray_client_id,
                 duration_ms=duration_ms,
@@ -337,6 +353,9 @@ async def spend_embedding_credits(
                 file_name=task_info.file_name,
                 idempotency_key=embedding_idempotency_key,
                 submission_group_uuid=task_info.task_uuid,
+                group_uuid=auth.slack_user.ray_user_group_id,
+                email=poster_email,
+                client_name=poster_name,
             )
 
             charged_stages.append("embedding")
@@ -485,6 +504,11 @@ async def maybe_post_media_translation_quote(
             "tokens": translation_tokens,
         }
     ]
+    quote_seed = {
+        **session,
+        "source_text_length": source_text_length,
+        "target_languages": target_languages,
+    }
     updated = await update_media_quote_session(
         str(quote_id),
         {
@@ -495,6 +519,7 @@ async def maybe_post_media_translation_quote(
             "total_tokens": translation_tokens,
             "target_languages": target_languages,
             "duration_ms": task_info.duration_ms or session.get("duration_ms"),
+            "quote": media_translation_quote_from_session(quote_seed),
         },
     )
     if updated is None:
@@ -562,6 +587,7 @@ async def handle_transcription_complete(
         if upload_channel_id and auth.slack_user is not None:
             # Transcription-only (and pre-Quote2) uploads the source SRT only —
             # do not post AI-translation / reupload copy here.
+            extra_data = task_info.extra_data or {}
             await enqueue_transcription_upload(
                 file_id=result_file_id,
                 file_name=result_file_name,
@@ -570,6 +596,10 @@ async def handle_transcription_complete(
                 client_id=auth.slack_user.ray_client_id,
                 channel_id=upload_channel_id,
                 thread_ts=effective_thread_ts,
+                team_id=extra_data.get("slack_team_id") or extra_data.get("team_id"),
+                slack_user_id=extra_data.get("slack_user_id"),
+                enterprise_id=extra_data.get("slack_enterprise_id")
+                or extra_data.get("enterprise_id"),
             )
 
 
