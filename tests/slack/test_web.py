@@ -1,8 +1,10 @@
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from slack_sdk.errors import SlackApiError
 
+from app.ray.utils import SlackFilenameTooLong
 from app.slack.web import (
     clear_mt_ts_cached,
     download_file,
@@ -12,6 +14,7 @@ from app.slack.web import (
     get_file_info,
     get_mt_ts_cached,
     set_mt_ts_edit,
+    slack_file_download_filename,
     upload_file_to_slack_memory_efficient,
 )
 
@@ -165,6 +168,37 @@ class TestGetBotAccessibleFiles:
         assert result[0] == mock_file
 
 
+class TestSlackFileDownloadFilename:
+    def test_prefers_original_name_over_truncated_title(self):
+        assert slack_file_download_filename(
+            {
+                "name": "Anlage 1 IBM 2014 Employees Stock Purchase Plan Prospectus Revised as of Jun 16 2025.docx",
+                "title": "Anlage 1 IBM 2014 Employees Stock Purchase Plan Prospectus Revised as of J…",
+            }
+        ) == (
+            "Anlage 1 IBM 2014 Employees Stock Purchase Plan Prospectus "
+            "Revised as of Jun 16 2025.docx"
+        )
+
+    def test_falls_back_to_title_and_strips_path_components(self):
+        assert (
+            slack_file_download_filename({"title": "../../secret.docx"})
+            == "secret.docx"
+        )
+
+    def test_does_not_append_slack_file_id_or_uuid(self):
+        assert (
+            slack_file_download_filename(
+                {
+                    "id": "F01234567890",
+                    "name": "report.docx",
+                    "title": "report.docx",
+                }
+            )
+            == "report.docx"
+        )
+
+
 class TestDownloadFile:
     """Tests for download_file function."""
 
@@ -208,6 +242,65 @@ class TestDownloadFile:
             assert "test.txt" in result
             assert "F123" in result
             mock_file_obj.write.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_download_file_uses_original_name_when_title_is_truncated(self):
+        mock_client = AsyncMock()
+        mock_client.token = "xoxb-token"
+        mock_file = {
+            "id": "F123",
+            "name": "full-document.docx",
+            "title": "full-document…",
+            "url_private": "https://files.slack.com/files-pri/F123/full-document.docx",
+        }
+        mock_client.files_info.return_value = {"file": mock_file}
+
+        async def async_bytes():
+            yield b"file content"
+
+        mock_response = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.aiter_bytes = MagicMock(return_value=async_bytes())
+        mock_stream_context = AsyncMock()
+        mock_stream_context.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_stream_context.__aexit__ = AsyncMock(return_value=None)
+        mock_http = AsyncMock()
+        mock_http.stream = MagicMock(return_value=mock_stream_context)
+        mock_http.is_closed = False
+
+        with patch("builtins.open", create=True) as mock_open:
+            mock_file_obj = MagicMock()
+            mock_open.return_value.__enter__ = MagicMock(return_value=mock_file_obj)
+            mock_open.return_value.__exit__ = MagicMock(return_value=None)
+
+            result = await download_file(mock_client, "F123", http=mock_http)
+
+        assert os.path.basename(result) == "full-document.docx"
+        assert "F123" in os.path.dirname(result)
+        assert "full-document…" not in result
+
+    @pytest.mark.asyncio
+    async def test_download_file_rejects_filename_over_255_before_write(self):
+        mock_client = AsyncMock()
+        mock_client.token = "xoxb-token"
+        long_name = "a" * 252 + ".docx"
+        mock_client.files_info.return_value = {
+            "file": {
+                "id": "F123",
+                "name": long_name,
+                "title": "a…",
+                "url_private": "https://files.slack.com/files-pri/F123/long.docx",
+            }
+        }
+        mock_http = AsyncMock()
+        mock_http.is_closed = False
+        mock_http.stream = MagicMock()
+
+        with pytest.raises(SlackFilenameTooLong) as exc_info:
+            await download_file(mock_client, "F123", http=mock_http)
+
+        assert exc_info.value.filename == long_name
+        mock_http.stream.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_download_file_slack_api_error(self):

@@ -69,6 +69,8 @@ from ..ray.submissions import (
     updated_submission_status,
 )
 from ..ray.utils import (
+    SlackFilenameTooLong,
+    filename_too_long_user_message,
     is_ibm_enterprise,
     upload_to_file_server,
     validate_file_type,
@@ -975,6 +977,17 @@ async def quote_existing_srt_embed_task(
             accept_action_id=ACTION_MEDIA_QUOTE_ACCEPT,
             cancel_action_id=ACTION_MEDIA_QUOTE_CANCEL,
         )
+    except SlackFilenameTooLong as exc:
+        updated_submission_status(
+            submission_id=submission_record.id,
+            processing_status=SubmissionStatus.FAILED,
+        )
+        await client.chat_postMessage(
+            channel=channel_id,
+            text=filename_too_long_user_message(exc.filename),
+            thread_ts=thread_ts,
+        )
+        return False
     except Exception as e:
         notify_exception(e, "Failed to prepare direct embed quote")
         updated_submission_status(

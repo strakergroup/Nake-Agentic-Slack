@@ -558,7 +558,12 @@ async def process_document_mt_quote_preflight(
     )
     from app.config import config
     from app.ray.submissions import _hash_file_content_sha256_hex
-    from app.ray.utils import upload_to_file_server, validate_file
+    from app.ray.utils import (
+        SlackFilenameTooLong,
+        filename_too_long_user_message,
+        upload_to_file_server,
+        validate_file,
+    )
     from app.slack.document_mt_quotes import (
         QUOTE_STATUS_PENDING,
         save_document_mt_quote_session,
@@ -610,9 +615,13 @@ async def process_document_mt_quote_preflight(
         for file_data in files:
             slack_file_id = file_data["id"]
             file_title = file_data.get("title") or slack_file_id
-            input_file = await download_file(
-                client=client, file_id=slack_file_id, http=None
-            )
+            try:
+                input_file = await download_file(
+                    client=client, file_id=slack_file_id, http=None
+                )
+            except SlackFilenameTooLong as exc:
+                validation_errors.append(filename_too_long_user_message(exc.filename))
+                continue
             downloaded_files.append(input_file)
 
             is_valid_file_type, is_valid_content, error_message = validate_file(
@@ -747,7 +756,12 @@ async def process_document_mt_submission(
         check_and_record_submission_async,
         check_and_record_submission_metadata_async,
     )
-    from app.ray.utils import upload_to_file_server, validate_file
+    from app.ray.utils import (
+        SlackFilenameTooLong,
+        filename_too_long_user_message,
+        upload_to_file_server,
+        validate_file,
+    )
     from app.slack.document_mt_quotes import get_document_mt_quote_session
     from app.slack.listener_actions import document_machine_translate
     from app.slack.web import download_file
@@ -835,9 +849,15 @@ async def process_document_mt_submission(
                 if not slack_file_id:
                     validation_errors.append(_("Invalid Slack file metadata."))
                     continue
-                input_file = await download_file(
-                    client=client, file_id=slack_file_id, http=None
-                )
+                try:
+                    input_file = await download_file(
+                        client=client, file_id=slack_file_id, http=None
+                    )
+                except SlackFilenameTooLong as exc:
+                    validation_errors.append(
+                        filename_too_long_user_message(exc.filename)
+                    )
+                    continue
                 downloaded_files.append(input_file)
 
                 is_valid_file_type, is_valid_content, error_message = validate_file(
@@ -984,6 +1004,7 @@ async def process_evaluation_submission(
     from app.api.stream_proxy import send_document_mt_quote_request
     from app.api.verify import (
         VerifyAPIError,
+        VerifyCreateRejected,
         get_verify_languages,
         submit_evaluation_job,
     )
@@ -1004,7 +1025,13 @@ async def process_evaluation_submission(
         check_and_record_evaluate_submission_async,
         updated_submission_status,
     )
-    from app.ray.utils import is_ibm_enterprise, upload_to_file_server, validate_file
+    from app.ray.utils import (
+        SlackFilenameTooLong,
+        filename_too_long_user_message,
+        is_ibm_enterprise,
+        upload_to_file_server,
+        validate_file,
+    )
     from app.slack.evaluation_ai_adjustment import (
         colliding_evaluate_upload_filenames,
         evaluate_upload_filename,
@@ -1103,9 +1130,16 @@ async def process_evaluation_submission(
 
     try:
         for file_data in files:
-            input_file = await download_file(
-                client=client, file_id=file_data["id"], http=None
-            )
+            try:
+                input_file = await download_file(
+                    client=client, file_id=file_data["id"], http=None
+                )
+            except SlackFilenameTooLong as exc:
+                await client.chat_postMessage(
+                    channel=channel_id,
+                    text=filename_too_long_user_message(exc.filename),
+                )
+                continue
             downloaded_files.append(input_file)
             is_valid, is_valid_content, error_message = validate_file(input_file)
             if not is_valid or not is_valid_content:
@@ -1116,8 +1150,17 @@ async def process_evaluation_submission(
                 continue
             if not file_data.get("size") and os.path.exists(input_file):
                 file_data["size"] = os.path.getsize(input_file)
+            # Slack picker option text is capped at 75 characters, so the queued
+            # title may be truncated (and lose .pdf/.docx). Pair keys and PDF
+            # detection must use the downloaded files.info name.
+            downloaded_name = os.path.basename(input_file)
+            file_data = {
+                **file_data,
+                "title": downloaded_name,
+                "name": downloaded_name,
+            }
             input_files.append(input_file)
-            file_titles.append(file_data["title"])
+            file_titles.append(downloaded_name)
             valid_files.append(file_data)
 
         if not input_files:
@@ -1424,6 +1467,15 @@ async def process_evaluation_submission(
             "file_count": len(submit_input_files),
             "duplicate_count": len(duplicate_submissions),
         }
+    except VerifyCreateRejected:
+        _mark_new_submissions_failed()
+        error_msg = (
+            "There was an error submitting your human translation request, please try again."
+            if workflow_uuid
+            else "There was an error submitting your quality evaluation request, please try again."
+        )
+        await client.chat_postMessage(channel=channel_id, text=_(error_msg))
+        return {"status": "verify_rejected"}
     except VerifyAPIError:
         _mark_new_submissions_failed()
         await client.chat_postMessage(

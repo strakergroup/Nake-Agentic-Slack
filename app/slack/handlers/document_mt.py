@@ -10,7 +10,11 @@ from slack_sdk.web.async_client import AsyncWebClient
 
 from app.auth.connector import RayContext, user_may_receive_quotes
 from app.ray.submissions import check_and_record_submission_async
-from app.ray.utils import upload_to_file_server
+from app.ray.utils import (
+    SlackFilenameTooLong,
+    filename_too_long_user_message,
+    upload_to_file_server,
+)
 from app.redis import redis_conn
 from app.saq_jobs import (
     enqueue_document_mt_quote_preflight,
@@ -103,6 +107,9 @@ async def handle_document_mt_submit(
                         input_file = await download_file(
                             client=client, file_id=slack_file_id, http=None
                         )
+                    except SlackFilenameTooLong as exc:
+                        await say(filename_too_long_user_message(exc.filename))
+                        continue
                     except SlackApiError as e:
                         if is_slack_file_not_found(e):
                             await notify_missing_slack_files(
