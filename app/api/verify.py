@@ -23,6 +23,15 @@ class VerifyAPIError(Exception):
         super().__init__(self.message)
 
 
+class VerifyCreateRejected(Exception):
+    """Verify ``/evaluate/create`` returned HTTP 400. Do not SAQ-retry."""
+
+    def __init__(self, status_code: int, detail: str = ""):
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(detail or f"Verify rejected create ({status_code})")
+
+
 def is_ambiguous_api_failure(error: BaseException) -> bool:
     """True when a failed Verify call may still have applied its side effect.
 
@@ -129,6 +138,8 @@ async def submit_evaluation_job(
                 raise VerifyAPIError(
                     "Forbidden: You don't have permission to access this resource.", 403
                 )
+            if response.status_code == 400:
+                raise VerifyCreateRejected(400, (response.text or "")[:300])
 
             response.raise_for_status()
             return response.json()

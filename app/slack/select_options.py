@@ -178,7 +178,8 @@ def map_file_options(
         title = file.get("title", "")
         if not title:
             continue
-        # Options text has max 75 characters.
+        # Slack option text max is 75 characters. Display-only — SAQ must not
+        # use this truncated label as the Verify upload filename (RAY-81396).
         if len(title) > max_title_length:
             title = f"{title[: max_title_length - 1]}…"
         id = file.get("id")

@@ -339,6 +339,32 @@ VALID_FILE_TYPES: dict[str, Callable[[str], Tuple[bool, str]] | None] = {
 }
 
 
+VERIFY_MAX_FILENAME_LENGTH = 255
+
+
+class SlackFilenameTooLong(Exception):
+    """Filename exceeds Verify's 255-character or Linux 255-byte NAME_MAX limit."""
+
+    def __init__(self, filename: str) -> None:
+        self.filename = filename
+        super().__init__(filename)
+
+
+def filename_exceeds_verify_max_length(filename: str) -> bool:
+    """True when a filename is over 255 characters or 255 UTF-8 bytes."""
+    if len(filename) > VERIFY_MAX_FILENAME_LENGTH:
+        return True
+    return len(filename.encode("utf-8")) > VERIFY_MAX_FILENAME_LENGTH
+
+
+def filename_too_long_user_message(filename: str) -> str:
+    """Slack copy asking the user to rename a file that exceeds the 255 limit."""
+    return _(
+        f"*{filename}* is too long (max 255 characters). "
+        "Rename the file and upload it again."
+    )
+
+
 def validate_file_type(filename: str) -> bool:
     """Validate the file type."""
     other, ext = os.path.splitext(filename)
@@ -395,6 +421,10 @@ def validate_file(
         >>> validate_file('file.unsupported')
         (False, False, 'Unsupported file type: unsupported')
     """
+    file_name = os.path.basename(file_path)
+    if filename_exceeds_verify_max_length(file_name):
+        return True, False, filename_too_long_user_message(file_name)
+
     # Extract extension from file path
     _file_root, ext = os.path.splitext(file_path)
     ext = ext.lower().lstrip(".")

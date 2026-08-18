@@ -12,7 +12,12 @@ import app.ray.utils
 from app.auth.connector import get_group_mt_engine, get_job_group_quote_settings
 from app.config import domains
 from app.constants import DEFAULT_UPLOAD_EXPIRY_DAYS
-from app.ray.utils import upload_to_file_server, validate_file
+from app.ray.utils import (
+    filename_exceeds_verify_max_length,
+    filename_too_long_user_message,
+    upload_to_file_server,
+    validate_file,
+)
 from app.translate import Translator, _, translator_var
 
 
@@ -139,6 +144,43 @@ def test_get_group_mt():
     settings = get_group_mt_engine(test_group, is_group)
     assert settings is not None  # Adjust this assertion based on expected results
     print(settings)
+
+
+def test_filename_exceeds_verify_max_length_ibm_name_is_allowed():
+    ibm_name = (
+        "Anlage 1 IBM 2014 Employees Stock Purchase Plan Prospectus "
+        "Revised as of Jun 16 2025.docx"
+    )
+    assert len(ibm_name) == 89
+    assert filename_exceeds_verify_max_length(ibm_name) is False
+
+
+def test_filename_exceeds_verify_max_length_at_255_chars():
+    name = "a" * 250 + ".docx"
+    assert len(name) == 255
+    assert filename_exceeds_verify_max_length(name) is False
+
+
+def test_filename_exceeds_verify_max_length_over_255_chars():
+    name = "a" * 251 + ".docx"
+    assert len(name) == 256
+    assert filename_exceeds_verify_max_length(name) is True
+
+
+def test_filename_exceeds_verify_max_length_over_255_utf8_bytes():
+    # 100 CJK characters are 300 UTF-8 bytes, under 255 chars.
+    name = "文" * 100 + ".docx"
+    assert len(name) < 255
+    assert len(name.encode("utf-8")) > 255
+    assert filename_exceeds_verify_max_length(name) is True
+
+
+def test_filename_too_long_user_message_asks_to_rename():
+    name = "a" * 252 + ".docx"
+    message = filename_too_long_user_message(name)
+    assert name in message
+    assert "255" in message
+    assert "Rename" in message
 
 
 def test_validate_file():

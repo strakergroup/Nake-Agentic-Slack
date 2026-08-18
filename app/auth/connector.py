@@ -29,9 +29,9 @@ from straker_utils.sql.async_engine import execute, fetch_all, fetch_one
 from ..config import Environment, config, domains
 from ..database import async_engines, engines
 from ..slack.buglog_notifier import notify_exception
+from .algorithms import encrypt_aes, hash_hmac_sha1
 
 logger = logging.getLogger(__name__)
-from .algorithms import encrypt_aes, hash_hmac_sha1
 
 
 @dataclass(slots=True)

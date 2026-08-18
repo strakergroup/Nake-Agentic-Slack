@@ -130,3 +130,37 @@ async def test_create_human_job_handles_403_error():
 
             assert exc_info.value.status_code == 403
             assert "Forbidden" in exc_info.value.message
+
+
+@pytest.mark.asyncio
+async def test_submit_evaluation_job_raises_verify_create_rejected_on_400(tmp_path):
+    from app.api.verify import VerifyCreateRejected, submit_evaluation_job
+    from app.auth.connector import RayClient
+
+    source = tmp_path / "a.docx"
+    source.write_bytes(b"docx")
+    mock_ray_client = MagicMock(spec=RayClient)
+    mock_ray_client.id_token = "test-token"
+    mock_response = MagicMock()
+    mock_response.status_code = 400
+    mock_response.text = "filename mismatch"
+
+    with patch("app.api.verify.domains") as mock_domains:
+        mock_domains.verify_api = "https://verify-api.test.com"
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client_class.return_value = mock_client
+
+            with pytest.raises(VerifyCreateRejected) as exc_info:
+                await submit_evaluation_job(
+                    mock_ray_client,
+                    [str(source)],
+                    ["lang-1"],
+                    "ref",
+                )
+
+            assert exc_info.value.status_code == 400
+            assert "filename mismatch" in exc_info.value.detail

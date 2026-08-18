@@ -13,10 +13,23 @@ from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 
 from app.constants import FILE_TRANSFER_TIMEOUT
+from app.ray.utils import SlackFilenameTooLong, filename_exceeds_verify_max_length
 from app.slack.buglog_notifier import notify_exception
 
 from ..redis import redis_conn
 from .select_options import map_file_options
+
+
+def slack_file_download_filename(file_data: dict[str, Any]) -> str:
+    """Return the on-disk filename for a Slack files.info payload.
+
+    Prefer ``name`` (original filename with extension) over ``title``. Slack
+    Block Kit option text is limited to 75 characters, so picker titles may be
+    truncated with an ellipsis and lose the file extension.
+    """
+    raw = file_data.get("name") or file_data.get("title") or "slack-file"
+    name = os.path.basename(str(raw).strip())
+    return name or "slack-file"
 
 
 async def files_list_simple(
@@ -132,6 +145,11 @@ async def download_file(
             raise ValueError(
                 "Slack files_info response is missing a private download URL"
             )
+        if not (file_data.get("name") or file_data.get("title")):
+            raise ValueError("Slack files_info response is missing a file name")
+        file_title = slack_file_download_filename(file_data)
+        if filename_exceeds_verify_max_length(file_title):
+            raise SlackFilenameTooLong(file_title)
     except SlackApiError:
         # Slack auth error, file_not_found error, etc.
         raise
@@ -153,11 +171,6 @@ async def download_file(
                 # Save the file to the temp directory.
                 temp_root = os.path.join(tempfile.gettempdir(), "slack-ray-translator")
                 Path(temp_root).mkdir(parents=True, exist_ok=True)
-                file_title = file_data.get("title")
-                if not isinstance(file_title, str):
-                    raise ValueError(
-                        "Slack files_info response is missing a file title"
-                    )
                 temp_directory = tempfile.mkdtemp(prefix=f"{file_id}-", dir=temp_root)
                 file_path = os.path.join(temp_directory, file_title)
 
