@@ -926,8 +926,12 @@ async def get_ray_client_ibm_by_email(
 ) -> RayClient | None:
     """Resolve IBM Slack identity from Slack email → active CRM member.
 
-    Does not require an existing ``slack_deltaray_link``. When a member is found,
-    an active deltaray row is upserted so delivery callbacks keep working.
+    Does not require an existing ``slack_deltaray_link``. The member must have an
+    active CRM mglink on the workspace super group or a child group under the
+    workspace Verify org (e.g. IBM Slack App). Personal Verify groups do not
+    count — those posters stay ``client is None`` so MT org-bills and HT uses
+    the service account. When the member is in the workspace org, an active
+    deltaray row is upserted so delivery callbacks keep working.
 
     Tries live Slack profile email first, then cached ``slack_user_details``, so
     a stale cached domain (e.g. ``@strakertranslations.com``) cannot block an
@@ -943,6 +947,19 @@ async def get_ray_client_ibm_by_email(
             matched_email = email
             break
     if not member:
+        return None
+
+    if not await user_has_active_workspace_org_group(
+        member["member_uuid"], team_id, enterprise_id
+    ):
+        logger.info(
+            "IBM Slack CRM member has no active workspace org group; using org billing",
+            extra={
+                "slack_user_id": user_id,
+                "slack_team_id": team_id,
+                "member_uuid": member["member_uuid"],
+            },
+        )
         return None
 
     await ensure_active_ibm_deltaray_link(
@@ -1005,8 +1022,9 @@ async def get_ray_client(
 
     On IBM enterprises, identity is resolved from the Slack user's email to an
     active CRM member (RAY-81247) — ``slack_deltaray_link`` is not required.
-    When email matches, an active deltaray row is upserted. Active deltaray is
-    still used as a fallback when email cannot be resolved.
+    The member must belong to the workspace Verify org / super group via an
+    active mglink. Active deltaray is still a fallback when email cannot be
+    resolved, with the same workspace-org mglink requirement.
 
     Args:
         user_id (str): The Slack user ID.
@@ -1016,7 +1034,8 @@ async def get_ray_client(
     # Lazy import avoids connector ↔ ray.utils cycle at module load.
     from app.ray.utils import is_ibm_customer_enterprise
 
-    if is_ibm_customer_enterprise(enterprise_id):
+    ibm_customer = is_ibm_customer_enterprise(enterprise_id)
+    if ibm_customer:
         ibm_client = await get_ray_client_ibm_by_email(user_id, team_id, enterprise_id)
         if ibm_client is not None:
             return ibm_client
@@ -1061,6 +1080,19 @@ async def get_ray_client(
 
     row = await fetch_one(sql, async_engines["ray_integration"])
     if not row:
+        return None
+
+    if ibm_customer and not await user_has_active_workspace_org_group(
+        row["member_uuid"], team_id, enterprise_id
+    ):
+        logger.info(
+            "IBM Slack deltaray member has no active workspace org group; using org billing",
+            extra={
+                "slack_user_id": user_id,
+                "slack_team_id": team_id,
+                "member_uuid": row["member_uuid"],
+            },
+        )
         return None
 
     if row["slack_team_id"] != team_id:
@@ -2298,6 +2330,51 @@ async def user_is_organization_group_admin(
         LIMIT 1
         """
     ).bindparams(client_id=client_id, organization_id=organization_id)
+    result = await fetch_one(sql, async_engines["sitemanager_readonly"])
+    return bool(result)
+
+
+async def user_has_active_workspace_org_group(
+    client_id: str | None,
+    team_id: str,
+    enterprise_id: str | None,
+) -> bool:
+    """True if the member has an active CRM mglink on this Slack workspace org.
+
+    Counts the workspace-linked super group **or** any child ``obj_m_group``
+    under ``verify_organization_uuid`` (e.g. IBM Slack App). Any ``client_type``
+    counts. Inactive mglinks and personal Verify groups (other org / NULL
+    ``organization_id``) do not. Used so IBM email→CRM identity does not attach
+    a personal-group member and fail the AI token gate.
+    """
+    if not client_id:
+        return False
+    super_groups = await get_ray_super_group(team_id, enterprise_id) or []
+    if not super_groups:
+        return False
+    sg = super_groups[0]
+    super_group_uuid = getattr(sg, "id", None) or None
+    organization_id = getattr(sg, "verify_organization_uuid", None) or None
+    if not super_group_uuid and not organization_id:
+        return False
+    sql = text(
+        """
+        SELECT 1 AS ok
+        FROM obj_m_mglink link
+        JOIN obj_m_group g ON g.obj_uuid = link.groupid
+        WHERE link.memberid = :client_id
+          AND link.is_active = 1
+          AND (
+            link.groupid = :super_group_uuid
+            OR g.organization_id = :organization_id
+          )
+        LIMIT 1
+        """
+    ).bindparams(
+        client_id=client_id,
+        super_group_uuid=super_group_uuid,
+        organization_id=organization_id,
+    )
     result = await fetch_one(sql, async_engines["sitemanager_readonly"])
     return bool(result)
 
