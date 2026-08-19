@@ -15,7 +15,10 @@ from app.auth.connector import (
     get_client_tokens,
     get_client_type,
     get_group_tokens,
+    mt_billing_client_id,
+    mt_bills_workspace_org,
     resolve_slack_user_email,
+    suppress_ibm_mt_token_prompt,
     user_may_receive_quotes,
 )
 from app.config import domains
@@ -74,22 +77,44 @@ async def _require_ai_token_balance(
 
     ai_tokens = 0
     ray = context.get("ray")
-    if ray and ray.client is not None:
+    if ray and mt_bills_workspace_org(ray):
+        org_uuid = ray.super_group[0].verify_organization_uuid
+        client_tokens = await get_group_tokens(org_uuid)
+        if client_tokens is None:
+            return False
+        ai_tokens = client_tokens.ai_token
+        if ai_tokens and ai_tokens >= required_tokens:
+            return True
+        if suppress_ibm_mt_token_prompt(
+            context.enterprise_id,
+            organization_uuid=org_uuid,
+            balance=ai_tokens,
+            required=required_tokens,
+            extra={"slack_user_id": context.get("user_id")},
+        ):
+            return False
+    elif ray and ray.client is not None:
         user_tokens = await get_client_tokens(ray.client.id_token)
         if user_tokens is None:
             return False
         ai_tokens = user_tokens.ai_token
         if ai_tokens >= required_tokens:
             return True
-    elif ray and ray.super_group is not None:
-        client_tokens = await get_group_tokens(
+    if suppress_ibm_mt_token_prompt(
+        context.enterprise_id,
+        organization_uuid=(
             ray.super_group[0].verify_organization_uuid
-        )
-        if client_tokens is None:
-            return False
-        ai_tokens = client_tokens.ai_token
-        if ai_tokens and ai_tokens >= required_tokens:
-            return True
+            if ray and ray.super_group
+            else ""
+        ),
+        balance=ai_tokens,
+        required=required_tokens,
+        extra={
+            "source": "media_quote",
+            "slack_user_id": context.get("user_id"),
+        },
+    ):
+        return False
 
     client_type = None
     if ray and ray.client is not None:
@@ -162,18 +187,13 @@ async def _create_asr_from_quote_session(
     if ray is None:
         raise ValueError("Ray connection is required to start media processing")
 
-    # Prefer personal CRM member; otherwise org-bill like Document MT / AI Translate.
-    if ray.client is not None:
-        billing_client_id = ray.client.id
-    elif ray.super_group:
-        billing_client_id = ray.super_group[0].verify_organization_uuid
-    else:
+    # Workspace org on slack_super_group_link always bills MT / media.
+    billing_client_id = mt_billing_client_id(ray)
+    if not billing_client_id:
         raise ValueError(
             "A LanguageCloud member or workspace organisation is required "
             "to start media processing"
         )
-    if not billing_client_id:
-        raise ValueError("No billing client available for media processing")
 
     task_data = TranscriptionTaskData(
         client_id=billing_client_id,

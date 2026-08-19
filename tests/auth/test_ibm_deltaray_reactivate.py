@@ -11,7 +11,7 @@ from app.auth.connector import (
     get_ray_client,
     get_ray_client_ibm_by_email,
     resolve_slack_user_email,
-    user_has_active_workspace_org_group,
+    user_may_attach_workspace_client,
 )
 from app.slack.templates.messages import LoginMessage
 
@@ -72,7 +72,7 @@ async def test_get_ray_client_ibm_by_email_skips_stale_cached_email():
             new=AsyncMock(side_effect=crm_by_email),
         ),
         patch(
-            "app.auth.connector.user_has_active_workspace_org_group",
+            "app.auth.connector.user_may_attach_workspace_client",
             new=AsyncMock(return_value=True),
         ),
         patch(
@@ -175,7 +175,7 @@ async def test_get_ray_client_ibm_by_email_builds_client_and_upserts_link():
             new=AsyncMock(return_value=member),
         ),
         patch(
-            "app.auth.connector.user_has_active_workspace_org_group",
+            "app.auth.connector.user_may_attach_workspace_client",
             new=AsyncMock(return_value=True),
         ),
         patch(
@@ -246,7 +246,7 @@ async def test_get_ray_client_ibm_by_email_skips_personal_verify_group():
             new=AsyncMock(return_value=member),
         ),
         patch(
-            "app.auth.connector.user_has_active_workspace_org_group",
+            "app.auth.connector.user_may_attach_workspace_client",
             new=AsyncMock(return_value=False),
         ),
         patch(
@@ -263,8 +263,8 @@ async def test_get_ray_client_ibm_by_email_skips_personal_verify_group():
 
 
 @pytest.mark.asyncio
-async def test_get_ray_client_ibm_deltaray_fallback_requires_workspace_org_group():
-    """Deltaray fallback must not attach a personal-group IBM member."""
+async def test_get_ray_client_ibm_deltaray_fallback_requires_crm_group_and_verify_team():
+    """Deltaray fallback must not mint a client unless CRM group and Verify team match."""
     with (
         patch("app.ray.utils.is_ibm_customer_enterprise", return_value=True),
         patch(
@@ -290,35 +290,71 @@ async def test_get_ray_client_ibm_deltaray_fallback_requires_workspace_org_group
             ),
         ),
         patch(
-            "app.auth.connector.user_has_active_workspace_org_group",
+            "app.auth.connector.user_may_attach_workspace_client",
             new=AsyncMock(return_value=False),
-        ) as mock_org_group,
+        ) as mock_attach,
     ):
         client = await get_ray_client("W7U7YQPGB", "TN4NQ9GK0", "E27SFGS2W")
 
     assert client is None
-    mock_org_group.assert_awaited_once_with(
+    mock_attach.assert_awaited_once_with(
         "1B551A68-1D9A-4669-9E75-F0F44343F1AA", "TN4NQ9GK0", "E27SFGS2W"
     )
 
 
 @pytest.mark.asyncio
-async def test_user_has_active_workspace_org_group_false_without_super_group():
+async def test_get_ray_client_non_ibm_deltaray_also_requires_crm_group_and_verify_team():
+    with (
+        patch("app.ray.utils.is_ibm_customer_enterprise", return_value=False),
+        patch(
+            "app.auth.connector.get_ray_client_ibm_by_email",
+            new=AsyncMock(),
+        ) as mock_ibm,
+        patch(
+            "app.auth.connector.fetch_one",
+            new=AsyncMock(
+                return_value={
+                    "member_uuid": "member-1",
+                    "login": "user@example.com",
+                    "email_primary": "user@example.com",
+                    "given_name": "Test",
+                    "family_name": "User",
+                    "slack_team_id": "T123",
+                    "active": 1,
+                    "groupid": "g1",
+                    "is_sso": 0,
+                    "access_token": None,
+                    "settings_id": None,
+                }
+            ),
+        ),
+        patch(
+            "app.auth.connector.user_may_attach_workspace_client",
+            new=AsyncMock(return_value=False),
+        ) as mock_attach,
+    ):
+        client = await get_ray_client("U123", "T123", "E_OTHER")
+
+    assert client is None
+    mock_ibm.assert_not_awaited()
+    mock_attach.assert_awaited_once_with("member-1", "T123", "E_OTHER")
+
+
+@pytest.mark.asyncio
+async def test_user_may_attach_workspace_client_true_without_super_group():
     with patch(
         "app.auth.connector.get_ray_super_group",
         new=AsyncMock(return_value=[]),
     ) as mock_sg:
         assert (
-            await user_has_active_workspace_org_group(
-                "member-1", "TN4NQ9GK0", "E27SFGS2W"
-            )
-            is False
+            await user_may_attach_workspace_client("member-1", "TN4NQ9GK0", "E27SFGS2W")
+            is True
         )
     mock_sg.assert_awaited_once_with("TN4NQ9GK0", "E27SFGS2W")
 
 
 @pytest.mark.asyncio
-async def test_user_has_active_workspace_org_group_queries_active_mglink():
+async def test_user_may_attach_workspace_client_requires_crm_group_and_verify_team():
     with (
         patch(
             "app.auth.connector.get_ray_super_group",
@@ -337,17 +373,15 @@ async def test_user_has_active_workspace_org_group_queries_active_mglink():
         ) as mock_fetch,
     ):
         assert (
-            await user_has_active_workspace_org_group(
-                "member-1", "TN4NQ9GK0", "E27SFGS2W"
-            )
+            await user_may_attach_workspace_client("member-1", "TN4NQ9GK0", "E27SFGS2W")
             is True
         )
 
     sql = str(mock_fetch.await_args.args[0])
     assert "obj_m_mglink" in sql
     assert "link.is_active = 1" in sql
-    assert "g.organization_id" in sql
-    assert "link.groupid = :super_group_uuid" in sql
+    assert "verify_team_user_link" in sql
+    assert "vt.organization_uuid" in sql
 
 
 @pytest.mark.asyncio

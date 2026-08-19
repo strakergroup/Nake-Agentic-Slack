@@ -183,7 +183,7 @@ async def test_process_document_mt_quote_preflight_uploads_and_requests_quote():
     mock_quote.assert_awaited_once()
     assert mock_quote.await_args.kwargs["quote_id"] == "quote-1"
     assert mock_quote.await_args.kwargs["files"][0]["file_id"] == "grid-1"
-    assert mock_quote.await_args.kwargs["client_id"] == "client-1"
+    assert mock_quote.await_args.kwargs["client_id"] == "org-uuid"
 
 
 @pytest.mark.asyncio
