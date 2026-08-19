@@ -1236,6 +1236,109 @@ class TestRayEventsEndpoint:
         assert delivered_user.user_id != organization_uuid
 
     @pytest.mark.asyncio
+    async def test_ray_events_document_mt_quote_ibm_insufficient_balance_skips_token_prompt(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """IBM Grid quote shortfall alerts internally; SlackUser may lack enterprise_id."""
+        assert mock_slack_user.enterprise_id is None
+        organization_uuid = str(uuid4())
+        event = RayEvent(
+            event="verify:slack:document:quote",
+            data={
+                "quote_id": str(uuid4()),
+                "client_id": organization_uuid,
+                "channel_id": "C123",
+                "error": True,
+                "error_type": "insufficient_balance",
+                "error_data": {"balance": 0, "required": 10},
+                "team_id": team_id,
+                "slack_user_id": user_id,
+                "enterprise_id": "E27SFGS2W",
+            },
+        )
+        mock_client = AsyncMock()
+
+        with (
+            patch("app.dependencies.validate_queue_proxy_secret", return_value=True),
+            patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                new_callable=AsyncMock,
+                return_value=mock_slack_user,
+            ),
+            patch("app.dependencies.get_demo_link", return_value=[]),
+            patch("app.routers.ray.AsyncWebClient", return_value=mock_client),
+            patch(
+                "app.routers.ray.get_client_type",
+                new_callable=AsyncMock,
+                return_value="Member",
+            ),
+            patch(
+                "app.ray.utils.is_ibm_customer_enterprise",
+                return_value=True,
+            ),
+            patch("app.auth.connector.notify_exception") as mock_notify,
+            patch(
+                "app.routers.ray.post_notification_ephemeral",
+                new_callable=AsyncMock,
+            ) as mock_post,
+        ):
+            auth = RayEventAuth()
+            await auth.initialize(event, "valid-token")
+            await ray_events(event, auth)
+
+        mock_post.assert_not_awaited()
+        mock_notify.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_ray_events_document_translated_ibm_insufficient_balance_skips_token_prompt(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """IBM Grid document MT shortfall must not DM token copy."""
+        assert mock_slack_user.enterprise_id is None
+        event = RayEvent(
+            event="verify:slack:document:translated",
+            data={
+                "error": True,
+                "client_id": str(uuid4()),
+                "channel_id": "C123",
+                "error_type": "insufficient_balance",
+                "error_data": {"balance": 0, "required": 100},
+                "submission_id": 123,
+                "team_id": team_id,
+                "slack_user_id": user_id,
+                "enterprise_id": "E27SFGS2W",
+            },
+        )
+        mock_client = AsyncMock()
+
+        with (
+            patch("app.dependencies.validate_queue_proxy_secret", return_value=True),
+            patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ),
+            patch("app.dependencies.get_demo_link", return_value=[]),
+            patch("app.routers.ray.AsyncWebClient", return_value=mock_client),
+            patch("app.routers.ray.get_client_type", return_value="Admin"),
+            patch(
+                "app.ray.utils.is_ibm_customer_enterprise",
+                return_value=True,
+            ),
+            patch("app.auth.connector.notify_exception") as mock_notify,
+            patch(
+                "app.routers.ray.post_notification_ephemeral",
+                new_callable=AsyncMock,
+            ) as mock_post,
+            patch("app.routers.ray.updated_submission_status"),
+        ):
+            auth = RayEventAuth()
+            await auth.initialize(event, "valid-token")
+            await ray_events(event, auth)
+
+        mock_post.assert_not_awaited()
+        mock_notify.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_ray_events_document_mt_quote_error_without_slack_user_is_logged(
         self, user_id
     ):
@@ -1423,6 +1526,57 @@ class TestRayEventsEndpoint:
 
                                 # Verify error notification was sent
                                 mock_post.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_ray_events_evaluate_complete_ibm_insufficient_balance_skips_token_prompt(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """IBM Grid evaluate shortfall must not post token copy."""
+        assert mock_slack_user.enterprise_id is None
+        event = RayEvent(
+            event="verify:slack:evaluate:complete",
+            data={
+                "error": True,
+                "error_type": "insufficient_balance",
+                "error_data": {"balance": 0, "required": 50},
+                "client_id": mock_slack_user.ray_client_id,
+                "channel_id": "C123",
+                "job_uuid": str(uuid4()),
+                "enterprise_id": "E27SFGS2W",
+            },
+        )
+        mock_client = AsyncMock()
+
+        with (
+            patch("app.dependencies.validate_queue_proxy_secret", return_value=True),
+            patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ),
+            patch("app.dependencies.get_demo_link", return_value=[]),
+            patch("app.routers.ray.AsyncWebClient", return_value=mock_client),
+            patch("app.routers.ray.get_client_type", new_callable=AsyncMock),
+            patch(
+                "app.routers.ray.claim_ray_event_notification",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.ray.utils.is_ibm_customer_enterprise",
+                return_value=True,
+            ),
+            patch("app.auth.connector.notify_exception") as mock_notify,
+            patch(
+                "app.routers.ray.post_notification",
+                new_callable=AsyncMock,
+            ) as mock_post,
+        ):
+            auth = RayEventAuth()
+            await auth.initialize(event, "valid-token")
+            await ray_events(event, auth)
+
+        mock_post.assert_not_awaited()
+        mock_notify.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_evaluate_complete_success(

@@ -86,6 +86,44 @@ async def test_resolve_slack_delivery_user_prefers_active_deltaray():
 
 
 @pytest.mark.asyncio
+async def test_resolve_slack_delivery_user_copies_event_enterprise_id():
+    """Deltaray/org rows may omit Grid id; the callback stamp must still win."""
+    linked = SlackUser(
+        user_id="U_LINKED",
+        team_id="T03PE1PGBV5",
+        enterprise_id=None,
+        channel_id="C1",
+        is_subscribed=True,
+        bot_token="xoxb-linked",
+        ray_client_id="A02F3A2F-C6D4-4D19-BD1E-BD0A5C990952",
+        ray_username="tester",
+    )
+    with (
+        patch(
+            "app.auth.connector.get_slack_user",
+            new=AsyncMock(return_value=linked),
+        ),
+        patch(
+            "app.auth.connector.get_slack_org",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.auth.connector.get_slack_user_from_workspace_stamps",
+            new=AsyncMock(),
+        ),
+    ):
+        user = await resolve_slack_delivery_user(
+            "A02F3A2F-C6D4-4D19-BD1E-BD0A5C990952",
+            team_id="T03PE1PGBV5",
+            slack_user_id="UKVHQ6UJX",
+            enterprise_id="E27SFGS2W",
+        )
+
+    assert user is not None
+    assert user.enterprise_id == "E27SFGS2W"
+
+
+@pytest.mark.asyncio
 async def test_get_slack_user_from_workspace_stamps_loads_bot():
     from app.auth.connector import get_slack_user_from_workspace_stamps
 

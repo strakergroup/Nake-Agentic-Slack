@@ -184,6 +184,23 @@ def alert_ibm_workspace_mt_wallet_empty(
     )
 
 
+def ibm_token_prompt_enterprise_id(
+    slack_user: SlackUser | None,
+    *candidates: str | None,
+) -> str | None:
+    """Enterprise id for IBM token-prompt suppression on async callbacks.
+
+    Prefer the resolved Slack user, then event/schema stamps. Org-billed
+    delivery via workspace stamps can leave ``SlackUser.enterprise_id`` unset.
+    """
+    if slack_user is not None and slack_user.enterprise_id:
+        return slack_user.enterprise_id
+    for candidate in candidates:
+        if candidate:
+            return candidate
+    return None
+
+
 def suppress_ibm_mt_token_prompt(
     enterprise_id: str | None,
     *,
@@ -468,6 +485,11 @@ async def resolve_slack_delivery_user(
         slack_user.user_id = slack_user_id
     if channel_id and not slack_user.channel_id:
         slack_user.channel_id = channel_id
+    # Workspace-stamp / org-bill lookup often leaves enterprise_id unset even
+    # when the callback event carried the Grid id. Copy it so IBM token-prompt
+    # suppression does not depend only on deltaray / super-group rows.
+    if enterprise_id and not slack_user.enterprise_id:
+        slack_user.enterprise_id = enterprise_id
     return slack_user
 
 
