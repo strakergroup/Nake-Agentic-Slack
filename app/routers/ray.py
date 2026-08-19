@@ -17,6 +17,7 @@ from app.auth.connector import (
     build_spend_idempotency_key,
     get_ray_client,
     get_ray_connection,
+    suppress_ibm_mt_token_prompt,
 )
 from app.constants import EVALUATE_SERVICE_AI_TRANSLATION
 from app.ray.submissions import SubmissionStatus, updated_submission_status
@@ -681,6 +682,7 @@ async def ray_events(
                         }
                     )
                     balance_message = None
+                    skip_ibm_token_prompt = False
                     if error_data.error_type == "insufficient_balance":
                         # Org-billed posters have no member link, so client_id is
                         # the org uuid and there is no Admin/Owner role to read.
@@ -696,42 +698,52 @@ async def ray_events(
                                 auth.slack_user.ray_user_group_id,
                             )
                         balance = Balance.model_validate(error_data.error_data)
-                        balance_message = (
-                            RequiresMtTokenMessage(balance.balance, balance.required)
-                            if client_type in ["Admin", "Owner"]
-                            and not is_ibm_enterprise(
-                                auth.slack_user.enterprise_id
-                                if auth.slack_user
-                                else None
+                        skip_ibm_token_prompt = suppress_ibm_mt_token_prompt(
+                            auth.slack_user.enterprise_id if auth.slack_user else None,
+                            organization_uuid=str(quote_data.client_id or ""),
+                            balance=balance.balance,
+                            required=balance.required,
+                        )
+                        if not skip_ibm_token_prompt:
+                            balance_message = (
+                                RequiresMtTokenMessage(
+                                    balance.balance, balance.required
+                                )
+                                if client_type in ["Admin", "Owner"]
+                                and not is_ibm_enterprise(
+                                    auth.slack_user.enterprise_id
+                                    if auth.slack_user
+                                    else None
+                                )
+                                else RequiresMtTokenAdminMessage(
+                                    balance.balance, balance.required
+                                )
                             )
-                            else RequiresMtTokenAdminMessage(
-                                balance.balance, balance.required
+                    if not skip_ibm_token_prompt:
+                        message = slack_message_for_document_mt_error(
+                            error_data.error_type,
+                            error_data.error_data,
+                            balance_message=balance_message,
+                            generic_fallback=document_mt_generic_fallback(),
+                        )
+                        if auth.slack_user is None:
+                            logger.error(
+                                "Extract quote error has no deliverable Slack user",
+                                extra={
+                                    "event": event.event,
+                                    "error_type": str(error_data.error_type),
+                                    "has_team_id": bool(quote_data.team_id),
+                                    "has_slack_user_id": bool(quote_data.slack_user_id),
+                                },
                             )
-                        )
-                    message = slack_message_for_document_mt_error(
-                        error_data.error_type,
-                        error_data.error_data,
-                        balance_message=balance_message,
-                        generic_fallback=document_mt_generic_fallback(),
-                    )
-                    if auth.slack_user is None:
-                        logger.error(
-                            "Extract quote error has no deliverable Slack user",
-                            extra={
-                                "event": event.event,
-                                "error_type": str(error_data.error_type),
-                                "has_team_id": bool(quote_data.team_id),
-                                "has_slack_user_id": bool(quote_data.slack_user_id),
-                            },
-                        )
-                    else:
-                        await post_notification_ephemeral(
-                            client,
-                            quote_data.channel_id,
-                            event,
-                            auth.slack_user,
-                            message,
-                        )
+                        else:
+                            await post_notification_ephemeral(
+                                client,
+                                quote_data.channel_id,
+                                event,
+                                auth.slack_user,
+                                message,
+                            )
                 elif is_evaluate_pdf_quote:
                     session = await apply_pdf_evaluate_quote_result(
                         quote_data.quote_id,
@@ -793,8 +805,8 @@ async def ray_events(
                         processing_status=SubmissionStatus.FAILED,
                     )
                 balance_message = None
+                skip_ibm_token_prompt = False
                 if document_translated_data.error_type == "insufficient_balance":
-                    # Send message to user that they need to purchase tokens
                     client_type = None
                     if (
                         auth.slack_user
@@ -809,34 +821,41 @@ async def ray_events(
                     balance = Balance.model_validate(
                         document_translated_data.error_data
                     )
-
-                    if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
-                        auth.slack_user.enterprise_id
-                    ):
-                        balance_message = RequiresMtTokenMessage(
-                            balance.balance, balance.required
-                        )
-                    else:
-                        balance_message = RequiresMtTokenAdminMessage(
-                            balance.balance, balance.required
-                        )
-                document_message: Optional[SlackMessage] = (
-                    slack_message_for_document_mt_error(
-                        document_translated_data.error_type,
-                        document_translated_data.error_data,
-                        balance_message=balance_message,
-                        generic_fallback=document_mt_generic_fallback(),
+                    skip_ibm_token_prompt = suppress_ibm_mt_token_prompt(
+                        auth.slack_user.enterprise_id if auth.slack_user else None,
+                        organization_uuid=str(document_translated_data.client_id or ""),
+                        balance=balance.balance,
+                        required=balance.required,
                     )
-                )
-                if document_message is not None and auth.slack_user is not None:
-                    await post_notification_ephemeral(
-                        client,
-                        document_translated_data.channel_id
-                        or auth.slack_user.channel_id,
-                        event,
-                        auth.slack_user,
-                        document_message,
+                    if not skip_ibm_token_prompt:
+                        if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
+                            auth.slack_user.enterprise_id if auth.slack_user else None
+                        ):
+                            balance_message = RequiresMtTokenMessage(
+                                balance.balance, balance.required
+                            )
+                        else:
+                            balance_message = RequiresMtTokenAdminMessage(
+                                balance.balance, balance.required
+                            )
+                if not skip_ibm_token_prompt:
+                    document_message: Optional[SlackMessage] = (
+                        slack_message_for_document_mt_error(
+                            document_translated_data.error_type,
+                            document_translated_data.error_data,
+                            balance_message=balance_message,
+                            generic_fallback=document_mt_generic_fallback(),
+                        )
                     )
+                    if document_message is not None and auth.slack_user is not None:
+                        await post_notification_ephemeral(
+                            client,
+                            document_translated_data.channel_id
+                            or auth.slack_user.channel_id,
+                            event,
+                            auth.slack_user,
+                            document_message,
+                        )
             except ValidationError:
                 success_data = MtSuccessResponseSchema.model_validate(event.data)
                 await enqueue_mt_success_upload(success_data)
@@ -888,34 +907,57 @@ async def ray_events(
                 return {"message": "Duplicate evaluate-complete event skipped"}
 
             job_data_for_notify = None
+            message = None
             if event.data.get("error"):
                 try:
                     error_data = MtErrorResponseSchema.model_validate(event.data)
                     balance_message = None
+                    skip_ibm_token_prompt = False
                     if error_data.error_type == "insufficient_balance":
-                        # Send message to user that they need to purchase tokens
-                        client_type = await get_client_type(
-                            auth.slack_user.ray_client_id,
-                            auth.slack_user.ray_user_group_id,
+                        client_type = None
+                        enterprise_id = (
+                            auth.slack_user.enterprise_id if auth.slack_user else None
                         )
+                        if auth.slack_user:
+                            client_type = await get_client_type(
+                                auth.slack_user.ray_client_id,
+                                auth.slack_user.ray_user_group_id,
+                            )
                         balance = Balance.model_validate(error_data.error_data)
-
-                        if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
-                            auth.slack_user.enterprise_id
-                        ):
-                            balance_message = RequiresMtTokenMessage(
-                                balance.balance, balance.required
-                            )
-                        else:
-                            balance_message = RequiresMtTokenAdminMessage(
-                                balance.balance, balance.required
-                            )
-                    message = slack_message_for_document_mt_error(
-                        error_data.error_type,
-                        error_data.error_data,
-                        balance_message=balance_message,
-                        generic_fallback=document_mt_generic_fallback(evaluate=True),
-                    )
+                        skip_ibm_token_prompt = suppress_ibm_mt_token_prompt(
+                            enterprise_id,
+                            organization_uuid=str(
+                                (
+                                    auth.slack_user.ray_client_id
+                                    if auth.slack_user
+                                    else ""
+                                )
+                                or ""
+                            ),
+                            balance=balance.balance,
+                            required=balance.required,
+                        )
+                        if not skip_ibm_token_prompt:
+                            if client_type in [
+                                "Admin",
+                                "Owner",
+                            ] and not is_ibm_enterprise(enterprise_id):
+                                balance_message = RequiresMtTokenMessage(
+                                    balance.balance, balance.required
+                                )
+                            else:
+                                balance_message = RequiresMtTokenAdminMessage(
+                                    balance.balance, balance.required
+                                )
+                    if not skip_ibm_token_prompt:
+                        message = slack_message_for_document_mt_error(
+                            error_data.error_type,
+                            error_data.error_data,
+                            balance_message=balance_message,
+                            generic_fallback=document_mt_generic_fallback(
+                                evaluate=True
+                            ),
+                        )
                 except ValidationError:
                     # If validation fails, fall back to generic error message
                     message = document_mt_generic_fallback(evaluate=True)

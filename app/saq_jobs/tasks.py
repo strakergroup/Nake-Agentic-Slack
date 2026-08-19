@@ -555,6 +555,7 @@ async def process_document_mt_quote_preflight(
         get_group_mt_engine,
         get_ray_connection,
         get_verify_trial_status,
+        mt_bills_workspace_org,
     )
     from app.config import config
     from app.ray.submissions import _hash_file_content_sha256_hex
@@ -662,11 +663,12 @@ async def process_document_mt_quote_preflight(
             )
             return {"status": "no_valid_files"}
 
-        if ray_connection.client is None:
+        if mt_bills_workspace_org(ray_connection):
             user_group_id = ray_connection.super_group[0].id
             billing_client_id = ray_connection.super_group[0].verify_organization_uuid
             is_group_id = True
         else:
+            assert ray_connection.client is not None
             user_group_id = ray_connection.client.user_group_id
             billing_client_id = ray_connection.client.id
             is_group_id = False

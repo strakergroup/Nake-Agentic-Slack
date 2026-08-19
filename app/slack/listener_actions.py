@@ -55,6 +55,8 @@ from ..auth.connector import (
     get_group_mt_engine,
     get_group_tokens,
     log_transcribe_request,  # noqa: F401 - kept for potential future use
+    mt_billing_client_id,
+    mt_bills_workspace_org,
 )
 from ..config import domains
 from ..ray.service import RayService
@@ -1093,7 +1095,7 @@ async def auto_translate_message(
 
     try:
         org_uuid = ray_connection.super_group[0].verify_organization_uuid
-        client_id = ray_connection.client.id if ray_connection.client else org_uuid
+        client_id = mt_billing_client_id(ray_connection) or org_uuid
         group_id = await get_group_id(org_uuid)
 
         # Get display_format from settings
@@ -1177,12 +1179,13 @@ async def document_machine_translate(
     ray_connection = context["ray"]
     if not isinstance(ray_connection, RayConnection) or not ray_connection.super_group:
         return
-    if ray_connection.client is None:
+    if mt_bills_workspace_org(ray_connection):
         user_group_id = ray_connection.super_group[0].id
         billing_client_id = ray_connection.super_group[0].verify_organization_uuid
         billing_group_uuid = user_group_id
         is_gropid = True
     else:
+        assert ray_connection.client is not None
         user_group_id = ray_connection.client.user_group_id
         billing_client_id = ray_connection.client.id
         billing_group_uuid = user_group_id
@@ -2271,9 +2274,8 @@ async def get_mt_translation(
         assert context.ray
         assert context.ray.super_group
         client_id = (
-            context.ray.client.id
-            if context.ray.client
-            else context.ray.super_group[0].verify_organization_uuid
+            mt_billing_client_id(context.ray)
+            or context.ray.super_group[0].verify_organization_uuid
         )
         group_id = await get_group_id(
             context.ray.super_group[0].verify_organization_uuid

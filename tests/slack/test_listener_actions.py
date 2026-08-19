@@ -53,8 +53,10 @@ class TestDocumentMachineTranslate:
         from app.auth.connector import RayConnection
 
         fake_http_client = _FakeAsyncClient()
+        org_uuid = str(uuid4())
         super_group = MagicMock()
         super_group.id = ray_client.user_group_id
+        super_group.verify_organization_uuid = org_uuid
         context["ray"] = RayConnection(super_group=[super_group], client=ray_client)
 
         with (
@@ -83,6 +85,7 @@ class TestDocumentMachineTranslate:
 
         create_job.assert_awaited_once()
         task_data = create_job.await_args.args[0]
+        assert task_data.client_id == org_uuid
         assert task_data.target_language == "fr"
         assert task_data.source_language == "en"
         assert task_data.target_languages == ["fr", "de"]

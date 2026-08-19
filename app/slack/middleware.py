@@ -26,6 +26,8 @@ from ..auth.connector import (
     get_ray_connection_demo,
     get_ray_super_group,
     log_new_user_info,
+    mt_bills_workspace_org,
+    suppress_ibm_mt_token_prompt,
 )
 from .app import app
 from .logging import init_slack_app_log
@@ -230,22 +232,46 @@ async def require_mt_tokens(context: AsyncBoltContext, value=1):
     # SOW MT rate — matches pt-languagecloud-api (RAY-80492).
     sow_tokens_per_character = 0.002
     value = math.ceil(value * sow_tokens_per_character)
-    if context["ray"].client is not None:
-        user_tokens = await get_client_tokens(context["ray"].client.id_token)
-        if user_tokens is None:
-            return False
-        ai_tokens = user_tokens.ai_token
-        if ai_tokens >= value:
-            return True
-    elif context["ray"].super_group is not None:
-        client_tokens = await get_group_tokens(
-            context["ray"].super_group[0].verify_organization_uuid
-        )
+    ray = context["ray"]
+    if mt_bills_workspace_org(ray):
+        org_uuid = ray.super_group[0].verify_organization_uuid
+        client_tokens = await get_group_tokens(org_uuid)
         if client_tokens is None:
             return False
         ai_tokens = client_tokens.ai_token
         if ai_tokens and ai_tokens >= value:
             return True
+        if suppress_ibm_mt_token_prompt(
+            context.enterprise_id,
+            organization_uuid=org_uuid,
+            balance=ai_tokens,
+            required=value,
+            extra={
+                "slack_user_id": context.get("user_id"),
+                "slack_team_id": context.get("team_id"),
+            },
+        ):
+            return False
+    elif ray.client is not None:
+        user_tokens = await get_client_tokens(ray.client.id_token)
+        if user_tokens is None:
+            return False
+        ai_tokens = user_tokens.ai_token
+        if ai_tokens >= value:
+            return True
+    if suppress_ibm_mt_token_prompt(
+        context.enterprise_id,
+        organization_uuid=(
+            ray.super_group[0].verify_organization_uuid if ray.super_group else ""
+        ),
+        balance=ai_tokens,
+        required=value,
+        extra={
+            "slack_user_id": context.get("user_id"),
+            "slack_team_id": context.get("team_id"),
+        },
+    ):
+        return False
     client_type = None
     if context["ray"].client is not None:
         client_type = await get_client_type(

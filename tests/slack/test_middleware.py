@@ -269,6 +269,56 @@ class TestRequireRayClientOrgBilling:
 
         assert result is False
 
+    @pytest.mark.asyncio
+    async def test_non_ibm_ht_service_account_flag_still_requires_member(self, context):
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Test Group",
+            slack_team_id=context["team_id"],
+            verify_organization_uuid="org-123",
+            slack_enterprise_id="E_OTHER",
+        )
+        context["ray"] = RayConnection(super_group=[super_group], client=None)
+        context["enterprise_id"] = "E_OTHER"
+
+        with patch(
+            "app.slack.middleware.is_ibm_customer_enterprise", return_value=False
+        ):
+            result = await require_ray_client(
+                context,
+                prompt_login=False,
+                variation=LoginMessage.HUMAN_TRANSLATION,
+                allow_ht_service_account=True,
+            )
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_ibm_ht_service_account_allows_workspace_without_member(
+        self, context
+    ):
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="IBM Slack App",
+            slack_team_id=context["team_id"],
+            verify_organization_uuid="ibm-org",
+            slack_enterprise_id="E27SFGS2W",
+        )
+        context["ray"] = RayConnection(super_group=[super_group], client=None)
+        context["enterprise_id"] = "E27SFGS2W"
+
+        with patch(
+            "app.slack.middleware.is_ibm_customer_enterprise", return_value=True
+        ):
+            result = await require_ray_client(
+                context,
+                prompt_login=False,
+                variation=LoginMessage.HUMAN_TRANSLATION,
+                allow_ht_service_account=True,
+            )
+
+        assert result is True
+
 
 class TestRequireRayClientLoginPrompt:
     """Login prompts for feature-specific actions."""
@@ -373,6 +423,82 @@ class TestRequireMtTokens:
 
     @pytest.mark.asyncio
     @patch("app.slack.middleware.get_client_tokens")
+    @patch("app.slack.middleware.get_group_tokens")
+    @patch("app.ray.utils.is_ibm_customer_enterprise")
+    @patch("app.slack.middleware.is_ibm_enterprise")
+    async def test_require_mt_tokens_ibm_uses_org_wallet_when_member_balance_is_zero(
+        self,
+        mock_is_ibm,
+        mock_is_ibm_customer,
+        mock_get_group_tokens,
+        mock_get_client_tokens,
+        context,
+        ray_client,
+    ):
+        from app.auth.connector import GetCreditBalanceResponse
+
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="IBM Slack App",
+            slack_team_id=context["team_id"],
+            verify_organization_uuid="ibm-org-123",
+            slack_enterprise_id="E27SFGS2W",
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context["ray"] = ray_connection
+        context["enterprise_id"] = "E27SFGS2W"
+        ray_client.id_token = "test_token"
+        mock_is_ibm.return_value = True
+        mock_is_ibm_customer.return_value = True
+        mock_get_client_tokens.return_value = GetCreditBalanceResponse(
+            ai_token=0, mt_token=0
+        )
+        mock_get_group_tokens.return_value = GetCreditBalanceResponse(
+            ai_token=10_859_488, mt_token=0
+        )
+
+        result = await require_mt_tokens(context, value=1)
+        assert result is True
+        mock_get_group_tokens.assert_called_once_with("ibm-org-123")
+        mock_get_client_tokens.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("app.slack.middleware.get_client_tokens")
+    @patch("app.slack.middleware.get_group_tokens")
+    async def test_require_mt_tokens_non_ibm_uses_org_wallet_when_member_balance_is_zero(
+        self,
+        mock_get_group_tokens,
+        mock_get_client_tokens,
+        context,
+        ray_client,
+    ):
+        from app.auth.connector import GetCreditBalanceResponse
+
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Acme Slack App",
+            slack_team_id=context["team_id"],
+            verify_organization_uuid="acme-org-123",
+            slack_enterprise_id="E_OTHER",
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context["ray"] = ray_connection
+        context["enterprise_id"] = "E_OTHER"
+        ray_client.id_token = "test_token"
+        mock_get_client_tokens.return_value = GetCreditBalanceResponse(
+            ai_token=0, mt_token=0
+        )
+        mock_get_group_tokens.return_value = GetCreditBalanceResponse(
+            ai_token=10_859_488, mt_token=0
+        )
+
+        result = await require_mt_tokens(context, value=1)
+        assert result is True
+        mock_get_group_tokens.assert_called_once_with("acme-org-123")
+        mock_get_client_tokens.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("app.slack.middleware.get_client_tokens")
     @patch("app.slack.middleware.get_client_type")
     @patch("app.slack.middleware.is_ibm_enterprise")
     async def test_require_mt_tokens_insufficient_tokens_admin_respond(
@@ -459,33 +585,44 @@ class TestRequireMtTokens:
             mock_client.chat_postEphemeral.assert_called_once()
 
     @pytest.mark.asyncio
+    @patch("app.auth.connector.notify_exception")
+    @patch("app.ray.utils.is_ibm_customer_enterprise", return_value=True)
     @patch("app.slack.middleware.get_client_tokens")
     @patch("app.slack.middleware.get_client_type")
+    @patch("app.slack.middleware.get_group_tokens")
     @patch("app.slack.middleware.is_ibm_enterprise")
-    async def test_require_mt_tokens_ibm_enterprise_message(
+    async def test_require_mt_tokens_ibm_empty_org_wallet_alerts_without_slack_copy(
         self,
         mock_is_ibm,
+        mock_get_group_tokens,
         mock_get_client_type,
         mock_get_client_tokens,
+        mock_is_ibm_customer,
+        mock_notify,
         context,
         ray_client,
     ):
-        """Test that require_mt_tokens uses admin message for IBM enterprise."""
-        from app.auth.connector import GetCreditBalanceResponse
+        from app.auth.connector import (
+            GetCreditBalanceResponse,
+            IbmWorkspaceMtWalletEmpty,
+        )
 
-        ray_connection = RayConnection(super_group=[], client=ray_client)
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="IBM Slack App",
+            slack_team_id=context["team_id"],
+            verify_organization_uuid="ibm-org-123",
+            slack_enterprise_id="E27SFGS2W",
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
         context["ray"] = ray_connection
-        context["enterprise_id"] = "E123"
-        ray_client.id_token = "test_token"
+        context["enterprise_id"] = "E27SFGS2W"
         context["response_url"] = "https://hooks.slack.com/test"
         mock_respond = AsyncMock()
-
-        # Mock insufficient tokens
-        mock_get_client_tokens.return_value = GetCreditBalanceResponse(
+        mock_get_group_tokens.return_value = GetCreditBalanceResponse(
             ai_token=0, mt_token=0
         )
-        mock_get_client_type.return_value = "Admin"
-        mock_is_ibm.return_value = True  # IBM enterprise
+        mock_is_ibm.return_value = True
 
         with patch.object(
             context.__class__,
@@ -494,8 +631,107 @@ class TestRequireMtTokens:
             return_value=mock_respond,
         ):
             result = await require_mt_tokens(context, value=1)
-            assert result is False
-            mock_respond.assert_called_once()
+
+        assert result is False
+        mock_respond.assert_not_called()
+        mock_get_client_tokens.assert_not_called()
+        mock_get_client_type.assert_not_called()
+        mock_notify.assert_called_once()
+        assert isinstance(mock_notify.call_args.args[0], IbmWorkspaceMtWalletEmpty)
+
+    @pytest.mark.asyncio
+    @patch("app.auth.connector.notify_exception")
+    @patch("app.ray.utils.is_ibm_customer_enterprise", return_value=True)
+    @patch("app.slack.middleware.get_client_tokens")
+    @patch("app.slack.middleware.get_client_type")
+    @patch("app.slack.middleware.is_ibm_enterprise")
+    async def test_require_mt_tokens_ibm_customer_never_posts_token_message(
+        self,
+        mock_is_ibm,
+        mock_get_client_type,
+        mock_get_client_tokens,
+        mock_is_ibm_customer,
+        mock_notify,
+        context,
+        ray_client,
+    ):
+        from app.auth.connector import (
+            GetCreditBalanceResponse,
+            IbmWorkspaceMtWalletEmpty,
+        )
+
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context["ray"] = ray_connection
+        context["enterprise_id"] = "E27SFGS2W"
+        ray_client.id_token = "test_token"
+        context["response_url"] = "https://hooks.slack.com/test"
+        mock_respond = AsyncMock()
+        mock_get_client_tokens.return_value = GetCreditBalanceResponse(
+            ai_token=0, mt_token=0
+        )
+        mock_get_client_type.return_value = "Admin"
+        mock_is_ibm.return_value = True
+
+        with patch.object(
+            context.__class__,
+            "respond",
+            new_callable=PropertyMock,
+            return_value=mock_respond,
+        ):
+            result = await require_mt_tokens(context, value=1)
+
+        assert result is False
+        mock_respond.assert_not_called()
+        mock_notify.assert_called_once()
+        assert isinstance(mock_notify.call_args.args[0], IbmWorkspaceMtWalletEmpty)
+
+    @pytest.mark.asyncio
+    @patch("app.ray.utils.is_ibm_customer_enterprise", return_value=False)
+    @patch("app.slack.middleware.get_client_tokens")
+    @patch("app.slack.middleware.get_client_type")
+    @patch("app.slack.middleware.get_group_tokens")
+    @patch("app.slack.middleware.is_ibm_enterprise")
+    async def test_require_mt_tokens_non_ibm_empty_org_wallet_posts_message(
+        self,
+        mock_is_ibm,
+        mock_get_group_tokens,
+        mock_get_client_type,
+        mock_get_client_tokens,
+        mock_is_ibm_customer,
+        context,
+        ray_client,
+    ):
+        from app.auth.connector import GetCreditBalanceResponse
+
+        super_group = RaySuperGroup(
+            id="sg-123",
+            name="Acme Slack App",
+            slack_team_id=context["team_id"],
+            verify_organization_uuid="acme-org-123",
+            slack_enterprise_id="E_OTHER",
+        )
+        ray_connection = RayConnection(super_group=[super_group], client=ray_client)
+        context["ray"] = ray_connection
+        context["enterprise_id"] = "E_OTHER"
+        context["response_url"] = "https://hooks.slack.com/test"
+        mock_respond = AsyncMock()
+        mock_get_group_tokens.return_value = GetCreditBalanceResponse(
+            ai_token=0, mt_token=0
+        )
+        mock_get_client_type.return_value = "Admin"
+        mock_is_ibm.return_value = False
+
+        with patch.object(
+            context.__class__,
+            "respond",
+            new_callable=PropertyMock,
+            return_value=mock_respond,
+        ):
+            result = await require_mt_tokens(context, value=1)
+
+        assert result is False
+        mock_respond.assert_called_once()
+        mock_get_client_tokens.assert_not_called()
 
     @pytest.mark.asyncio
     @patch("app.slack.middleware.get_client_tokens")

@@ -129,6 +129,83 @@ class RayConnection:
     client: RayClient | None
 
 
+class IbmWorkspaceMtWalletEmpty(Exception):
+    """IBM workspace org AI-token wallet cannot cover this Slack MT request."""
+
+    def __init__(self, organization_uuid: str, balance: int, required: int) -> None:
+        self.organization_uuid = organization_uuid
+        self.balance = balance
+        self.required = required
+        super().__init__(
+            "IBM workspace org MT wallet has no AI tokens "
+            f"(org={organization_uuid} balance={balance} required={required})"
+        )
+
+
+def mt_billing_client_id(ray: RayConnection) -> str | None:
+    """Who to charge for Slack MT / media.
+
+    Workspace org on ``slack_super_group_link`` always wins (IBM and non-IBM).
+    Member JWT is only used when the workspace has no org link.
+    """
+    org_uuid = (
+        ray.super_group[0].verify_organization_uuid if ray.super_group else None
+    ) or None
+    if org_uuid:
+        return org_uuid
+    if ray.client is not None:
+        return ray.client.id
+    return None
+
+
+def mt_bills_workspace_org(ray: RayConnection) -> bool:
+    """True when the MT wallet is the workspace org, not a member JWT."""
+    return bool(ray.super_group and ray.super_group[0].verify_organization_uuid)
+
+
+def alert_ibm_workspace_mt_wallet_empty(
+    *,
+    organization_uuid: str,
+    balance: int,
+    required: int,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    """Report IBM org wallet shortfall to BugLog / Google Chat. No Slack token UI."""
+    payload: dict[str, Any] = {
+        "organization_uuid": organization_uuid,
+        "balance": balance,
+        "required": required,
+    }
+    if extra:
+        payload.update(extra)
+    notify_exception(
+        IbmWorkspaceMtWalletEmpty(organization_uuid, balance, required),
+        extra=payload,
+    )
+
+
+def suppress_ibm_mt_token_prompt(
+    enterprise_id: str | None,
+    *,
+    organization_uuid: str,
+    balance: int,
+    required: int,
+    extra: dict[str, Any] | None = None,
+) -> bool:
+    """True when this is IBM Grid: alert internally and do not show token copy."""
+    from app.ray.utils import is_ibm_customer_enterprise
+
+    if not is_ibm_customer_enterprise(enterprise_id):
+        return False
+    alert_ibm_workspace_mt_wallet_empty(
+        organization_uuid=organization_uuid,
+        balance=balance,
+        required=required,
+        extra=extra,
+    )
+    return True
+
+
 class RayContext(AsyncBoltContext):
     def __init__(self, context: AsyncBoltContext):
         super().__init__(context)
@@ -926,12 +1003,11 @@ async def get_ray_client_ibm_by_email(
 ) -> RayClient | None:
     """Resolve IBM Slack identity from Slack email → active CRM member.
 
-    Does not require an existing ``slack_deltaray_link``. The member must have an
-    active CRM mglink on the workspace super group or a child group under the
-    workspace Verify org (e.g. IBM Slack App). Personal Verify groups do not
-    count — those posters stay ``client is None`` so MT org-bills and HT uses
-    the service account. When the member is in the workspace org, an active
-    deltaray row is upserted so delivery callbacks keep working.
+    Does not require an existing ``slack_deltaray_link``. The member must be on
+    **both** an active CRM mglink for the workspace org (super group or IBM Slack
+    App child group) **and** a Verify team under that same org. Missing either
+    means we do not mint a RayClient or deltaray row; IBM MT still org-bills and
+    HT uses the service account.
 
     Tries live Slack profile email first, then cached ``slack_user_details``, so
     a stale cached domain (e.g. ``@strakertranslations.com``) cannot block an
@@ -949,11 +1025,11 @@ async def get_ray_client_ibm_by_email(
     if not member:
         return None
 
-    if not await user_has_active_workspace_org_group(
+    if not await user_may_attach_workspace_client(
         member["member_uuid"], team_id, enterprise_id
     ):
         logger.info(
-            "IBM Slack CRM member has no active workspace org group; using org billing",
+            "Slack member is not on both workspace CRM group and Verify team; using org billing",
             extra={
                 "slack_user_id": user_id,
                 "slack_team_id": team_id,
@@ -1020,11 +1096,10 @@ async def get_ray_client(
     """Gets the LanguageCloud client id and username linked to the Slack account if an active
     link exists, otherwise returns None.
 
-    On IBM enterprises, identity is resolved from the Slack user's email to an
-    active CRM member (RAY-81247) — ``slack_deltaray_link`` is not required.
-    The member must belong to the workspace Verify org / super group via an
-    active mglink. Active deltaray is still a fallback when email cannot be
-    resolved, with the same workspace-org mglink requirement.
+    When a workspace org exists, the member must belong via **both** an active
+    CRM mglink **and** a Verify team on that org. Missing either →
+    ``client is None`` (MT still org-bills; non-IBM HT prompts login).
+    IBM email→CRM still applies when there is no deltaray row.
 
     Args:
         user_id (str): The Slack user ID.
@@ -1082,11 +1157,11 @@ async def get_ray_client(
     if not row:
         return None
 
-    if ibm_customer and not await user_has_active_workspace_org_group(
+    if not await user_may_attach_workspace_client(
         row["member_uuid"], team_id, enterprise_id
     ):
         logger.info(
-            "IBM Slack deltaray member has no active workspace org group; using org billing",
+            "Slack member is not on both workspace CRM group and Verify team; using org billing",
             extra={
                 "slack_user_id": user_id,
                 "slack_team_id": team_id,
@@ -2334,28 +2409,29 @@ async def user_is_organization_group_admin(
     return bool(result)
 
 
-async def user_has_active_workspace_org_group(
+async def user_may_attach_workspace_client(
     client_id: str | None,
     team_id: str,
     enterprise_id: str | None,
 ) -> bool:
-    """True if the member has an active CRM mglink on this Slack workspace org.
+    """True only when we may mint a Slack RayClient / deltaray row.
 
-    Counts the workspace-linked super group **or** any child ``obj_m_group``
-    under ``verify_organization_uuid`` (e.g. IBM Slack App). Any ``client_type``
-    counts. Inactive mglinks and personal Verify groups (other org / NULL
-    ``organization_id``) do not. Used so IBM email→CRM identity does not attach
-    a personal-group member and fail the AI token gate.
+    Requires both an active CRM mglink on the workspace org (super group or
+    child group under the Verify org) **and** a Verify team under that same org.
+    Missing either → ``client is None``; MT still org-bills.
+
+    Workspaces with no ``slack_super_group_link`` org have nothing to dual-check;
+    personal deltaray clients may still attach.
     """
     if not client_id:
         return False
     super_groups = await get_ray_super_group(team_id, enterprise_id) or []
     if not super_groups:
-        return False
+        return True
     sg = super_groups[0]
     super_group_uuid = getattr(sg, "id", None) or None
     organization_id = getattr(sg, "verify_organization_uuid", None) or None
-    if not super_group_uuid and not organization_id:
+    if not organization_id:
         return False
     sql = text(
         """
@@ -2367,6 +2443,13 @@ async def user_has_active_workspace_org_group(
           AND (
             link.groupid = :super_group_uuid
             OR g.organization_id = :organization_id
+          )
+          AND EXISTS (
+            SELECT 1
+            FROM verify_team_user_link tul
+            JOIN verify_team vt ON vt.obj_uuid = tul.team_uuid
+            WHERE tul.user_uuid = link.memberid
+              AND vt.organization_uuid = :organization_id
           )
         LIMIT 1
         """
