@@ -163,6 +163,7 @@ async def send_document_mt_quote_request(
     ai_engine: str,
     team_id: str | None = None,
     slack_user_id: str | None = None,
+    enterprise_id: str | None = None,
     output_stream: str | None = None,
 ) -> None:
     """Request a document extract quote from int-slack-verify-consumer.
@@ -173,10 +174,11 @@ async def send_document_mt_quote_request(
     request stream; ``output_stream`` selects which Slack callback handles the
     priced result.
 
-    ``team_id`` / ``slack_user_id`` mirror ``MtFileRequestSchema``: for an
-    org-billed poster ``client_id`` is the Verify organization uuid, so the
-    echoed quote response needs the Slack poster to reach a real user rather
-    than DM-ing a UUID.
+    ``team_id`` / ``slack_user_id`` / ``enterprise_id`` mirror
+    ``MtFileRequestSchema``: for an org-billed poster ``client_id`` is the
+    Verify organization uuid, so the echoed quote response needs the Slack
+    poster (and IBM Grid enterprise) to reach a real user rather than DM-ing
+    a UUID.
     """
     from app.constants import DOCUMENT_MT_QUOTE_OUTPUT_STREAM
 
@@ -193,6 +195,7 @@ async def send_document_mt_quote_request(
             "output_stream": output_stream or DOCUMENT_MT_QUOTE_OUTPUT_STREAM,
             "team_id": team_id,
             "slack_user_id": slack_user_id,
+            "enterprise_id": enterprise_id,
         },
         "source": "Straker Translate for Slack",
     }

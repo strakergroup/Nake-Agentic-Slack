@@ -17,6 +17,7 @@ from app.auth.connector import (
     build_spend_idempotency_key,
     get_ray_client,
     get_ray_connection,
+    ibm_token_prompt_enterprise_id,
     suppress_ibm_mt_token_prompt,
 )
 from app.constants import EVALUATE_SERVICE_AI_TRANSLATION
@@ -679,6 +680,8 @@ async def ray_events(
                             "channel_id": quote_data.channel_id,
                             "error_type": quote_data.error_type or "other",
                             "error_data": quote_data.error_data,
+                            "enterprise_id": quote_data.enterprise_id
+                            or event.data.get("enterprise_id"),
                         }
                     )
                     balance_message = None
@@ -687,6 +690,17 @@ async def ray_events(
                         # Org-billed posters have no member link, so client_id is
                         # the org uuid and there is no Admin/Owner role to read.
                         client_type = None
+                        extra = event.data.get("extra_data") or {}
+                        extra_enterprise_id = (
+                            extra.get("enterprise_id")
+                            if isinstance(extra, dict)
+                            else None
+                        )
+                        enterprise_id = ibm_token_prompt_enterprise_id(
+                            auth.slack_user,
+                            error_data.enterprise_id,
+                            extra_enterprise_id,
+                        )
                         if (
                             auth.slack_user
                             and auth.slack_user.ray_user_group_id
@@ -699,7 +713,7 @@ async def ray_events(
                             )
                         balance = Balance.model_validate(error_data.error_data)
                         skip_ibm_token_prompt = suppress_ibm_mt_token_prompt(
-                            auth.slack_user.enterprise_id if auth.slack_user else None,
+                            enterprise_id,
                             organization_uuid=str(quote_data.client_id or ""),
                             balance=balance.balance,
                             required=balance.required,
@@ -710,11 +724,7 @@ async def ray_events(
                                     balance.balance, balance.required
                                 )
                                 if client_type in ["Admin", "Owner"]
-                                and not is_ibm_enterprise(
-                                    auth.slack_user.enterprise_id
-                                    if auth.slack_user
-                                    else None
-                                )
+                                and not is_ibm_enterprise(enterprise_id)
                                 else RequiresMtTokenAdminMessage(
                                     balance.balance, balance.required
                                 )
@@ -821,15 +831,24 @@ async def ray_events(
                     balance = Balance.model_validate(
                         document_translated_data.error_data
                     )
+                    extra = event.data.get("extra_data") or {}
+                    extra_enterprise_id = (
+                        extra.get("enterprise_id") if isinstance(extra, dict) else None
+                    )
+                    enterprise_id = ibm_token_prompt_enterprise_id(
+                        auth.slack_user,
+                        document_translated_data.enterprise_id,
+                        extra_enterprise_id,
+                    )
                     skip_ibm_token_prompt = suppress_ibm_mt_token_prompt(
-                        auth.slack_user.enterprise_id if auth.slack_user else None,
+                        enterprise_id,
                         organization_uuid=str(document_translated_data.client_id or ""),
                         balance=balance.balance,
                         required=balance.required,
                     )
                     if not skip_ibm_token_prompt:
                         if client_type in ["Admin", "Owner"] and not is_ibm_enterprise(
-                            auth.slack_user.enterprise_id if auth.slack_user else None
+                            enterprise_id
                         ):
                             balance_message = RequiresMtTokenMessage(
                                 balance.balance, balance.required
@@ -915,8 +934,16 @@ async def ray_events(
                     skip_ibm_token_prompt = False
                     if error_data.error_type == "insufficient_balance":
                         client_type = None
-                        enterprise_id = (
-                            auth.slack_user.enterprise_id if auth.slack_user else None
+                        extra = event.data.get("extra_data") or {}
+                        extra_enterprise_id = (
+                            extra.get("enterprise_id")
+                            if isinstance(extra, dict)
+                            else None
+                        )
+                        enterprise_id = ibm_token_prompt_enterprise_id(
+                            auth.slack_user,
+                            error_data.enterprise_id,
+                            extra_enterprise_id,
                         )
                         if auth.slack_user:
                             client_type = await get_client_type(

@@ -241,7 +241,7 @@ async def test_process_document_mt_quote_preflight_org_billed_without_member():
             quote_id="quote-1",
             user_id="U1",
             team_id="T1",
-            enterprise_id=None,
+            enterprise_id="E27SFGS2W",
             channel_id="C1",
             files=[{"id": "F1", "title": "a.pptx", "size": 1234}],
             source_language="en",
@@ -255,7 +255,7 @@ async def test_process_document_mt_quote_preflight_org_billed_without_member():
     assert mock_quote.await_args.kwargs["client_id"] == "org-uuid"
     assert mock_quote.await_args.kwargs["team_id"] == "T1"
     assert mock_quote.await_args.kwargs["slack_user_id"] == "U1"
-    assert mock_quote.await_args.kwargs["client_id"] == "org-uuid"
+    assert mock_quote.await_args.kwargs["enterprise_id"] == "E27SFGS2W"
 
 
 @pytest.mark.asyncio
@@ -324,7 +324,7 @@ async def test_process_document_mt_submission_org_billed_without_member():
             _ctx(),
             user_id="U1",
             team_id="T1",
-            enterprise_id=None,
+            enterprise_id="E27SFGS2W",
             channel_id="C1",
             files=[{"id": "F1", "title": "a.pptx"}],
             source_language="en",
@@ -333,6 +333,7 @@ async def test_process_document_mt_submission_org_billed_without_member():
 
     assert result["status"] == "processed"
     mock_mt.assert_awaited_once()
+    assert mock_mt.await_args.args[0]["enterprise_id"] == "E27SFGS2W"
 
 
 @pytest.mark.asyncio
@@ -394,7 +395,7 @@ async def test_process_document_mt_submission_uses_cached_quote_file_state():
             _ctx(),
             user_id="U1",
             team_id="T1",
-            enterprise_id=None,
+            enterprise_id="E27SFGS2W",
             channel_id="C1",
             files=[],
             source_language="en",
@@ -407,6 +408,7 @@ async def test_process_document_mt_submission_uses_cached_quote_file_state():
     mock_record.assert_awaited_once()
     assert mock_record.await_args.kwargs["file_hash"] == "hash-1"
     mock_mt.assert_awaited_once()
+    assert mock_mt.await_args.args[0]["enterprise_id"] == "E27SFGS2W"
     assert mock_mt.await_args.args[1:] == ("grid-1", "en", ["zh-CN"], {"zh-CN": 123})
     assert mock_mt.await_args.kwargs == {
         "quote_id": "quote-1",
@@ -942,7 +944,7 @@ async def test_process_evaluation_submission_pdf_requests_extract_quote_before_c
             _ctx(),
             user_id="U1",
             team_id="T1",
-            enterprise_id=None,
+            enterprise_id="E27SFGS2W",
             channel_id="C1",
             files=[{"id": "F1", "title": "a.pdf", "size": 1000}],
             target_langs_uuid=["lang-1", "lang-2"],
@@ -967,6 +969,7 @@ async def test_process_evaluation_submission_pdf_requests_extract_quote_before_c
         "verify:slack:evaluate:pdf:quote"
     )
     assert mock_quote.await_args.kwargs["target_languages"] == ["fr", "de"]
+    assert mock_quote.await_args.kwargs["enterprise_id"] == "E27SFGS2W"
     assert mock_quote.await_args.kwargs["files"] == [
         {"file_id": "grid-pdf-1", "file_name": "a.pdf", "file_size": 1000}
     ]

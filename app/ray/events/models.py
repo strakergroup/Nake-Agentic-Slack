@@ -182,6 +182,7 @@ class MtFileRequestSchema(BaseModel):
     # Org-billed Document MT (RAY-80198): poster/workspace for delivery + billing.
     team_id: str | None = None
     slack_user_id: str | None = None
+    enterprise_id: str | None = None
     billing_group_uuid: str | None = None
 
     @model_validator(mode="after")
@@ -251,6 +252,7 @@ class DocumentMtQuoteResponseSchema(BaseModel):
     # validates against consumers that predate the change.
     team_id: str | None = None
     slack_user_id: str | None = None
+    enterprise_id: str | None = None
 
 
 class Balance(BaseModel):

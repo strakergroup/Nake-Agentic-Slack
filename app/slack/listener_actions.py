@@ -1224,6 +1224,7 @@ async def document_machine_translate(
                 "preflight_task_uuid": preflight_task_uuid,
                 "team_id": context.get("team_id"),
                 "slack_user_id": context.get("user_id"),
+                "enterprise_id": context.get("enterprise_id"),
                 "billing_group_uuid": billing_group_uuid,
                 "selected_pairs": selected_pairs,
             }

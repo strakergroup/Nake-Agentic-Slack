@@ -119,6 +119,7 @@ class TestDocumentMachineTranslate:
         super_group.id = str(uuid4())
         super_group.verify_organization_uuid = org_uuid
         context["ray"] = RayConnection(super_group=[super_group], client=None)
+        context["enterprise_id"] = "E27SFGS2W"
 
         with (
             patch(
@@ -148,12 +149,14 @@ class TestDocumentMachineTranslate:
         assert task_data.client_id == org_uuid
         assert task_data.team_id == context["team_id"]
         assert task_data.slack_user_id == context["user_id"]
+        assert task_data.enterprise_id == "E27SFGS2W"
         assert task_data.billing_group_uuid == super_group.id
 
         event_data = fake_http_client.posts[0]["json"]["data"]
         assert event_data["client_id"] == org_uuid
         assert event_data["team_id"] == context["team_id"]
         assert event_data["slack_user_id"] == context["user_id"]
+        assert event_data["enterprise_id"] == "E27SFGS2W"
         assert event_data["billing_group_uuid"] == super_group.id
 
 

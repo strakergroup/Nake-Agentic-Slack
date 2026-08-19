@@ -706,6 +706,7 @@ async def process_document_mt_quote_preflight(
             ai_engine=ai_engine,
             team_id=team_id,
             slack_user_id=user_id if _is_slack_user_id(user_id) else None,
+            enterprise_id=enterprise_id,
         )
         return {"status": "quote_requested", "file_count": len(uploaded_files)}
     except Exception:
@@ -804,6 +805,7 @@ async def process_document_mt_submission(
     context = {
         "user_id": user_id,
         "team_id": team_id,
+        "enterprise_id": enterprise_id,
         "channel_id": channel_id,
         "ray": RayConnection(ray_connection.super_group, ray_client),
     }
@@ -1247,6 +1249,7 @@ async def process_evaluation_submission(
                 team_id=team_id,
                 slack_user_id=user_id if _is_slack_user_id(user_id) else None,
                 output_stream=EVALUATE_PDF_QUOTE_OUTPUT_STREAM,
+                enterprise_id=enterprise_id,
             )
             return {"status": "quote_requested", "quote_id": quote_id}
 
