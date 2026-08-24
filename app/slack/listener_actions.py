@@ -857,7 +857,10 @@ async def quote_existing_srt_embed_task(
     )
 
     ray_conn = context.get("ray")
-    if not ray_conn or not ray_conn.client:
+    # Org-billed media (IBM workspace) has a super_group without a personal LC member.
+    if not isinstance(ray_conn, RayConnection) or not (
+        ray_conn.client is not None or ray_conn.super_group
+    ):
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("You must be connected to use subtitle embedding."),
