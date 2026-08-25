@@ -251,8 +251,9 @@ async def test_handle_translation_complete_posts_success_after_upload(tmp_path):
     texts = [
         call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
     ]
-    assert any("downloaded above" in text for text in texts)
-    assert any("reupload the edited files" in text for text in texts)
+    assert any("provided above" in text for text in texts)
+    assert any("subtitle files (SRT)" in text for text in texts)
+    assert any("reupload the edited subtitle files" in text for text in texts)
     mock_tokens.assert_awaited_once()
 
 
@@ -346,7 +347,7 @@ async def test_handle_translation_complete_names_failed_languages(tmp_path):
         for text in texts
     )
     # Delivered files still get the edit/reupload guidance.
-    assert any("reupload the edited files" in text for text in texts)
+    assert any("reupload the edited subtitle files" in text for text in texts)
 
 
 @pytest.mark.asyncio

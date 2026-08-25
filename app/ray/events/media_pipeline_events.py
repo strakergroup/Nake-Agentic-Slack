@@ -689,8 +689,9 @@ async def handle_translation_complete(
         await client.chat_postMessage(
             channel=channel_id,
             text=_(
-                "Download the AI translations provided above, make your edits, "
-                "and reupload the edited files back to the same thread."
+                "Download the AI-translated subtitle files (SRT) provided above, "
+                "make your edits, and reupload the edited subtitle files back "
+                "to the same thread."
             ),
             thread_ts=effective_thread_ts,
         )

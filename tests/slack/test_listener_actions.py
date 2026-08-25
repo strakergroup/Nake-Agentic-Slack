@@ -22,6 +22,7 @@ from app.slack.listener_actions import (
     post_file_list,
     post_job_status,
     post_job_target_lang,
+    quote_existing_srt_embed_task,
     submit_job,
     submit_verification_job,
     update_machine_translation_score,
@@ -419,6 +420,54 @@ class TestThreadMediaEmbedOption:
 
         assert handled is False
         assert context.say.call_count == 0
+
+
+class TestQuoteExistingSrtEmbedTask:
+    """Thread SRT reupload uses org-billed access, not personal LC login."""
+
+    @staticmethod
+    def _context(*, ray):
+        context = MagicMock()
+        context.get.side_effect = lambda key, default=None: {
+            "ray": ray,
+            "channel_id": "C1",
+            "user_id": "U1",
+            "team_id": "T1",
+        }.get(key, default)
+        context.__getitem__.side_effect = lambda key: {
+            "user_id": "U1",
+            "team_id": "T1",
+            "channel_id": "C1",
+        }[key]
+        return context
+
+    @pytest.mark.asyncio
+    async def test_org_billed_workspace_does_not_require_personal_login(self):
+        from app.auth.connector import RayConnection
+
+        client = AsyncMock()
+        super_group = MagicMock()
+        context = self._context(
+            ray=RayConnection(super_group=[super_group], client=None)
+        )
+
+        handled = await quote_existing_srt_embed_task(client, context, {}, None)
+
+        assert handled is False
+        text = client.chat_postMessage.await_args.kwargs["text"]
+        assert "connected" not in text.lower()
+        assert "SRT file" in text
+
+    @pytest.mark.asyncio
+    async def test_unlinked_workspace_still_requires_connection(self):
+        client = AsyncMock()
+        context = self._context(ray=None)
+
+        handled = await quote_existing_srt_embed_task(client, context, {}, None)
+
+        assert handled is False
+        text = client.chat_postMessage.await_args.kwargs["text"]
+        assert "You must be connected to use subtitle embedding." in text
 
 
 class TestLanguageCodeFromSrtFilename:
