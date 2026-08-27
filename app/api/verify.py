@@ -286,6 +286,8 @@ async def create_human_job(
             raise VerifyAPIError(
                 "Forbidden: You don't have permission to access this resource.", 403
             )
+        elif response.status_code == 402:
+            raise VerifyAPIError("Insufficient AI token balance.", 402)
 
     response.raise_for_status()
     return response.json()

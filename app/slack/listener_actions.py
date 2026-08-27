@@ -20,6 +20,7 @@ from app.api.language_cloud import detect_language
 from app.api.models import MtTranslationExtraData
 from app.api.stream_proxy import send_mt_translation_request
 from app.api.verify import (
+    VerifyAPIError,
     create_human_job,
     get_job_pricing,
 )
@@ -2492,6 +2493,19 @@ async def update_human_job_quote_message(
     )
 
 
+def _clear_optimistic_human_job_submitted(job_data: dict[str, Any]) -> None:
+    for source_file in job_data.get("source_files") or []:
+        for target_file in source_file.get("target_files") or []:
+            if target_file.get("human_job_status") == "Submitted":
+                target_file["human_job_status"] = ""
+
+
+def _ht_quote_accept_error_status(status_code: int | None) -> str:
+    if status_code == 402:
+        return _("Insufficient AI token balance to accept this quote.")
+    return _("There was an error processing your request. Please try again.")
+
+
 async def submit_verification_job(
     client: AsyncWebClient,
     context: RayContext,
@@ -2519,17 +2533,8 @@ async def submit_verification_job(
     """
     lock_key = verify_job_submission_lock_key(job_uuid)
     quote_channel_id = channel_id or context.get("channel_id")
-    msg = (
-        _(
-            "Thank you for sending your document(s) for human translation! We will notify you as soon as the translation is complete."
-        )
-        if selected_languages
-        else _("Your request has been cancelled.")
-    )
-    response = await client.chat_postMessage(
-        channel=user_id,
-        text=msg,
-    )
+    is_ht_quote = prefer_ht_quote_message
+    ht_client = None
     try:
         from app.api.verify import get_client_evaluation_job
         from app.ibm_ht_service_account import (
@@ -2553,6 +2558,32 @@ async def submit_verification_job(
             get_job=get_client_evaluation_job,
             job_uuid=job_uuid,
         )
+        if selected_languages:
+            custom_fields = ""
+            if ht_client.id == ht_service_account_member_uuid():
+                poster_email = await resolve_slack_poster_email(client, user_id)
+                custom_fields = custom_fields_form_value(poster_email)
+            await create_human_job(
+                ht_client,
+                job_uuid,
+                selected_languages,
+                purchase_order_number=build_human_translation_purchase_order_number(
+                    job
+                ),
+                custom_fields=custom_fields,
+            )
+
+        success_msg = (
+            _(
+                "Thank you for sending your document(s) for human translation! We will notify you as soon as the translation is complete."
+            )
+            if selected_languages
+            else _("Your request has been cancelled.")
+        )
+        await client.chat_postMessage(
+            channel=user_id,
+            text=success_msg,
+        )
         if is_ht_quote:
             costs = await get_job_pricing(
                 ht_client,
@@ -2560,8 +2591,6 @@ async def submit_verification_job(
                 [file["file_uuid"] for file in job["data"]["source_files"]],
                 [lang["uuid"] for lang in job["data"]["target_languages"]],
             )
-            # Thank-you is the separate chat_postMessage above — do not also
-            # embed it on the quote update (prod/master never did).
             updated_msg: SlackMessage = standalone_ht_quote_message(
                 job["data"],
                 costs["data"],
@@ -2582,7 +2611,6 @@ async def submit_verification_job(
                 actions=False,
             )
 
-        # Update the original quote message when timestamp and channel are known.
         if timestamp and quote_channel_id:
             await client.chat_update(
                 channel=quote_channel_id,
@@ -2596,21 +2624,43 @@ async def submit_verification_job(
                 blocks=updated_msg.blocks,
                 replace_original=True,
             )
-        if selected_languages:
-            custom_fields = ""
-            if ht_client.id == ht_service_account_member_uuid():
-                poster_email = await resolve_slack_poster_email(client, user_id)
-                custom_fields = custom_fields_form_value(poster_email)
-            # submit the job
-            await create_human_job(
-                ht_client,
-                job_uuid,
-                selected_languages,
-                purchase_order_number=build_human_translation_purchase_order_number(
-                    job
-                ),
-                custom_fields=custom_fields,
-            )
+    except VerifyAPIError as e:
+        await redis_conn.delete(lock_key)
+        if e.status_code != 402:
+            notify_exception(e)
+        status_message = _ht_quote_accept_error_status(e.status_code)
+        if is_ht_quote and ht_client is not None:
+            _clear_optimistic_human_job_submitted(job["data"])
+            try:
+                costs = await get_job_pricing(
+                    ht_client,
+                    job_uuid,
+                    [file["file_uuid"] for file in job["data"]["source_files"]],
+                    [lang["uuid"] for lang in job["data"]["target_languages"]],
+                )
+                error_quote = standalone_ht_quote_message(
+                    job["data"],
+                    costs["data"],
+                    actions=e.status_code != 402,
+                    status_message=status_message,
+                )
+                if timestamp and quote_channel_id:
+                    await client.chat_update(
+                        channel=quote_channel_id,
+                        text=error_quote.text,
+                        blocks=error_quote.blocks,
+                        ts=timestamp,
+                    )
+            except Exception as refresh_err:
+                notify_exception(refresh_err)
+        await client.chat_postMessage(
+            channel=user_id,
+            text=status_message,
+        )
     except Exception as e:
         notify_exception(e)
         await redis_conn.delete(lock_key)
+        await client.chat_postMessage(
+            channel=user_id,
+            text=_("There was an error processing your request. Please try again."),
+        )

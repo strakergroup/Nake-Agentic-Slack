@@ -1370,6 +1370,106 @@ class TestSubmitVerificationJob:
         mock_delete_lock.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_ht_accept_insufficient_balance_posts_error_not_thank_you(
+        self, ray_client
+    ):
+        from app.api.verify import VerifyAPIError
+        from app.auth.connector import RayConnection, RayContext
+        from app.constants import HUMAN_EVALUATION_WORKFLOW_UUID
+
+        mock_client = AsyncMock()
+        mock_client.chat_postMessage.return_value = {
+            "channel": "D123",
+            "ts": "1710000000.000000",
+        }
+        context = RayContext(
+            {
+                "ray": RayConnection(super_group=[], client=ray_client),
+                "response_url": None,
+                "respond": None,
+                "channel_id": "C123",
+            }
+        )
+        job = {
+            "data": {
+                "uuid": "verify-job-uuid",
+                "title": "slack job",
+                "workflow_uuid": HUMAN_EVALUATION_WORKFLOW_UUID,
+                "source_files": [
+                    {
+                        "file_uuid": "file-uuid",
+                        "filename": "alpha.xlf",
+                        "target_files": [
+                            {
+                                "language_uuid": "lang-uuid",
+                                "human_job_status": "Submitted",
+                            }
+                        ],
+                    }
+                ],
+                "target_languages": [{"uuid": "lang-uuid"}],
+            }
+        }
+
+        with (
+            patch(
+                "app.slack.listener_actions.get_job_pricing",
+                new_callable=AsyncMock,
+                return_value={"data": []},
+            ),
+            patch(
+                "app.ibm_ht_service_account.resolve_ht_verify_client_for_job",
+                new_callable=AsyncMock,
+                return_value=(ray_client, job),
+            ),
+            patch(
+                "app.slack.listener_actions.standalone_ht_quote_message"
+            ) as quote_message,
+            patch(
+                "app.slack.listener_actions.create_human_job",
+                new_callable=AsyncMock,
+                side_effect=VerifyAPIError("Insufficient AI token balance.", 402),
+            ),
+            patch(
+                "app.slack.listener_actions.redis_conn.delete",
+                new_callable=AsyncMock,
+            ) as mock_delete_lock,
+            patch(
+                "app.slack.listener_actions.notify_exception",
+            ) as mock_notify,
+        ):
+            quote_message.return_value.text = "Quote summary"
+            quote_message.return_value.blocks = []
+
+            await submit_verification_job(
+                client=mock_client,
+                context=context,
+                job_uuid="verify-job-uuid",
+                selected_languages=["file-uuid:lang-uuid"],
+                user_id="U123",
+                timestamp="1710000000.000000",
+                job=job,
+                channel_id="C123",
+                prefer_ht_quote_message=True,
+            )
+
+        mock_notify.assert_not_called()
+        mock_delete_lock.assert_awaited_once()
+        posted = mock_client.chat_postMessage.await_args.kwargs["text"]
+        assert "Insufficient AI token balance" in posted
+        assert "Thank you" not in posted
+        quote_message.assert_called_once()
+        assert (
+            "Insufficient AI token balance"
+            in quote_message.call_args.kwargs["status_message"]
+        )
+        assert quote_message.call_args.kwargs["actions"] is False
+        mock_client.chat_update.assert_awaited_once()
+        assert (
+            job["data"]["source_files"][0]["target_files"][0]["human_job_status"] == ""
+        )
+
+    @pytest.mark.asyncio
     async def test_ht_accept_keeps_ht_quote_when_workflow_flag_missing(
         self, ray_client
     ):

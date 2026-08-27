@@ -105,6 +105,33 @@ async def test_create_human_job_handles_401_error():
 
 
 @pytest.mark.asyncio
+async def test_create_human_job_handles_402_insufficient_balance():
+    from app.auth.connector import RayClient
+
+    mock_ray_client = MagicMock(spec=RayClient)
+    mock_ray_client.id_token = "test-token"
+
+    mock_response = MagicMock()
+    mock_response.status_code = 402
+
+    with patch("app.api.verify.domains") as mock_domains:
+        mock_domains.verify_api = "https://verify-api.test.com"
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_client_class.return_value = mock_client
+
+            with pytest.raises(VerifyAPIError) as exc_info:
+                await create_human_job(mock_ray_client, "job-uuid", ["file:lang"])
+
+            assert exc_info.value.status_code == 402
+            assert "Insufficient AI token balance" in exc_info.value.message
+
+
+@pytest.mark.asyncio
 async def test_create_human_job_handles_403_error():
     """Test that create_human_job raises VerifyAPIError on 403."""
     from app.auth.connector import RayClient
