@@ -118,8 +118,29 @@ That soft miss also alerts BugLog/Google Chat (same pattern as Document MT).
 
 Requester/Surrogate remain reporting-only (not delivery).
 
+## Known gap: SA-owned evaluate job, later CRM attach
+
+If an IBM user submits while they cannot attach (no IBM Slack App mglink and/or
+no Verify team), the evaluate job is owned by `slackhtjobs`. Adding them to
+IBM Slack App plus the Verify team later does **not** rewrite job ownership.
+The next Slack interaction upserts `slack_deltaray_link` to their personal CRM
+member. `GET /evaluate/{uuid}/files` is filtered by that JWT, so the HT quote
+modal 404s (`HTTPStatusError` → generic “Please try again.” + BugLog).
+
+`resolve_ht_verify_client_for_job` already falls back to the SA on accept/submit,
+but (1) the quote modal uses `resolve_ht_verify_client` only, and (2)
+`get_client_evaluation_job` maps 401/403 to `VerifyAPIError` and lets **404**
+raise, so the fallback never runs. Same class of miss on AI Accept, combined
+QE+HT Accept, quote-post callbacks (`resolve_evaluate_quote_verify_client`
+prefers personal CRM when any client exists), and AI translation download.
+
+Do not treat this as “resubmit because of a team change.” The job is still
+valid on the SA. Tight fix: modal open should use `resolve_ht_verify_client_for_job`,
+and `/files` 404 should map to `VerifyAPIError`. Leave other call sites for a
+follow-up.
 
 ## Out of scope (follow-ups)
 
 - Surrogate ID distinct from Requester if IBM requires it
 - Persist poster email on evaluate job so Admin accept stamps original poster
+- SA JWT fallback on remaining evaluate quote/accept/download paths (see Known gap)
