@@ -8,6 +8,7 @@ from slack_sdk.web.async_client import AsyncWebClient
 from app.auth.connector import RayContext
 from app.ray.submissions import check_and_record_transcription_submission_async
 from app.slack.buglog_notifier import notify_exception
+from app.slack.media_duration import file_info_with_quote_duration
 from app.slack.media_quote_actions import post_or_auto_start_media_quote
 from app.slack.media_quotes import (
     ACTION_MEDIA_QUOTE_ACCEPT,
@@ -114,6 +115,12 @@ async def handle_video_transcribe_translate_submit(
             if not download_url:
                 continue
 
+            file_info = await file_info_with_quote_duration(
+                file_info,
+                slack_file_data,
+                download_url=download_url,
+                bot_token=client.token or "",
+            )
             valid_language_codes = [lang["code"] for lang in valid_languages]
             valid_language_names_list = [lang["name"] for lang in valid_languages]
 
@@ -260,6 +267,12 @@ async def handle_video_embed_subtitles_submit(
             if not download_url:
                 continue
 
+            file_info = await file_info_with_quote_duration(
+                file_info,
+                slack_file_data,
+                download_url=download_url,
+                bot_token=client.token or "",
+            )
             valid_language_codes = [lang["code"] for lang in valid_languages]
             valid_language_names_list = [lang["name"] for lang in valid_languages]
 

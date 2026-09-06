@@ -15,6 +15,7 @@ from app.slack.listener_actions import (
     quote_existing_srt_embed_task,
     resolve_media_thread_ts,
 )
+from app.slack.media_duration import file_info_with_quote_duration
 from app.slack.media_quote_actions import (
     accept_media_quote,
     accept_media_translation_quote,
@@ -162,6 +163,12 @@ async def handle_video_transcribe_only(
             if not download_url:
                 continue
 
+            file_info = await file_info_with_quote_duration(
+                file_info,
+                slack_file_data,
+                download_url=download_url,
+                bot_token=client.token or "",
+            )
             session = await create_media_quote_session(
                 pipeline_kind=PIPELINE_TRANSCRIBE,
                 stage=STAGE_AWAITING_TRANSCRIPTION_ACCEPT,

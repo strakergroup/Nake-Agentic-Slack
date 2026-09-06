@@ -4731,7 +4731,7 @@ class TestMessageEvent:
             mock_post_quote.assert_awaited_once()
             session = mock_post_quote.await_args.args[2]
             assert session["pipeline_kind"] == "embed"
-            assert session["duration_ms"] == 60000
+            assert session["duration_ms"] == 120000
             assert session["srt_file_ids"] == ["gridfs-srt-123"]
             assert session["language_codes"] == ["und"]
             assert session["original_video_file_id"] == "V123"

@@ -39,6 +39,7 @@ from app.mt.service import (
 from app.ray.events.models import MtFileRequestSchema
 from app.slack.buglog_notifier import notify_exception, notify_message
 from app.slack.evaluation_combined_quotes import standalone_ht_quote_message
+from app.slack.media_duration import file_info_with_quote_duration
 from app.slack.utils import escape_slack_emoji
 from app.slack_job import create_slack_job
 from app.transcriber_tasks.tasks import (
@@ -930,19 +931,17 @@ async def quote_existing_srt_embed_task(
         )
         return False
 
-    # Prefer Slack media duration for Quote1 pricing; fall back like VideoOptions.
-    duration_ms = int(
-        video_file.get("duration_ms") or slack_file_data.get("duration_ms") or 0
+    video_file = await file_info_with_quote_duration(
+        {
+            **video_file,
+            "file_name": video_file.get("file_name")
+            or slack_file_data.get("name")
+            or "video",
+        },
+        slack_file_data,
+        download_url=download_url,
+        bot_token=client.token or "",
     )
-    if not duration_ms:
-        duration_ms = 60000
-    video_file = {
-        **video_file,
-        "file_name": video_file.get("file_name")
-        or slack_file_data.get("name")
-        or "video",
-        "duration_ms": duration_ms,
-    }
 
     try:
         subtitle_file_path = await download_file(
