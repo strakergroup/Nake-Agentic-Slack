@@ -34,6 +34,21 @@ from app.slack.pdf_evaluate_quotes import (
 from app.translate import _
 
 
+def pdf_evaluate_accept_status_message(
+    selected_files: list[dict[str, Any]],
+) -> str:
+    converting_pdf = any(
+        str(file_data.get("title") or file_data.get("name") or "")
+        .lower()
+        .endswith(".pdf")
+        or int(file_data.get("pdf_page_count") or 0) > 0
+        for file_data in selected_files
+    )
+    if converting_pdf:
+        return _("Quote accepted. Converting PDF and running AI translation...")
+    return _("Quote accepted. Running AI translation...")
+
+
 async def accept_pdf_evaluate_quote(
     client: AsyncWebClient,
     body: dict[str, Any],
@@ -129,9 +144,7 @@ async def accept_pdf_evaluate_quote(
                 ai_token_estimate=ai_token_estimate,
                 pdf_page_count=pdf_page_count,
                 actions=False,
-                status_message=_(
-                    "Quote accepted. Converting PDF and running AI translation..."
-                ),
+                status_message=pdf_evaluate_accept_status_message(selected_files),
                 is_ibm=is_ibm,
             )
 
