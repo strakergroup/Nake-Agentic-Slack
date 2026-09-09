@@ -495,6 +495,134 @@ async def test_resume_configure_source_embed_does_not_reuse_translation_task():
 
 
 @pytest.mark.asyncio
+async def test_configure_embed_keeps_existing_transcription_extra_data():
+    from app.slack.media_configure_embed import resume_configure_embed_phase
+
+    stored_extra = {
+        "media_quote_id": "old",
+        "slack_channel_id": "C1",
+        "requester_email": "poster@example.com",
+    }
+    source_task = SimpleNamespace(
+        task_uuid="asr-task",
+        extra_data=stored_extra,
+        result_file_id="srt-source",
+        translated_file_ids=None,
+        client_id="client-1",
+        file_name="clip.mp4",
+        download_url="https://files.example/clip.mp4",
+        bot_token="xoxb-test",
+        model="whisper-1",
+        service="azure",
+        app_source="slack",
+    )
+
+    class _FakeDb:
+        async def get(self, model, key):
+            return source_task
+
+        async def execute(self, stmt):
+            return None
+
+        async def commit(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    session = {
+        "quote_id": "q1",
+        "task_uuid": "asr-task",
+        "workflow_type": "transcribe_only",
+        "file_id": "F1",
+        "download_url": "https://files.example/clip.mp4",
+        "file_name": "clip.mp4",
+        "approved_source_srt_file_id": "srt-approved",
+        "target_languages": [],
+    }
+
+    with (
+        patch(
+            "app.slack.media_configure_embed.AsyncSession",
+            return_value=_FakeDb(),
+        ),
+        patch(
+            "app.slack.media_configure_embed.create_asr_task",
+            new_callable=AsyncMock,
+            return_value="embed-task",
+        ) as mock_create,
+        patch("app.slack.media_configure_embed.httpx.AsyncClient"),
+    ):
+        await resume_configure_embed_phase(session=session, translated=False)
+
+    asr_task = mock_create.await_args.args[0]
+    assert asr_task.extra_data["slack_channel_id"] == "C1"
+    assert asr_task.extra_data["requester_email"] == "poster@example.com"
+    assert asr_task.extra_data["media_quote_id"] == "q1"
+    assert asr_task.extra_data["embed_role"] == "source"
+    assert stored_extra["media_quote_id"] == "old"
+
+
+@pytest.mark.asyncio
+async def test_configure_embed_rejects_invalid_transcription_extra_data():
+    from app.slack.media_configure_embed import (
+        TranscriptionTaskExtraDataError,
+        resume_configure_embed_phase,
+    )
+
+    source_task = SimpleNamespace(
+        task_uuid="asr-task",
+        extra_data=["not-a-mapping"],
+        result_file_id="srt-source",
+        translated_file_ids=None,
+        client_id="client-1",
+        file_name="clip.mp4",
+        download_url="https://files.example/clip.mp4",
+        bot_token="xoxb-test",
+        model="whisper-1",
+        service="azure",
+        app_source="slack",
+    )
+
+    class _FakeDb:
+        async def get(self, model, key):
+            return source_task
+
+        async def execute(self, stmt):
+            return None
+
+        async def commit(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    session = {
+        "quote_id": "q1",
+        "task_uuid": "asr-task",
+        "workflow_type": "transcribe_only",
+        "file_id": "F1",
+        "download_url": "https://files.example/clip.mp4",
+        "file_name": "clip.mp4",
+        "approved_source_srt_file_id": "srt-approved",
+        "target_languages": [],
+    }
+
+    with patch(
+        "app.slack.media_configure_embed.AsyncSession",
+        return_value=_FakeDb(),
+    ):
+        with pytest.raises(TranscriptionTaskExtraDataError):
+            await resume_configure_embed_phase(session=session, translated=False)
+
+
+@pytest.mark.asyncio
 async def test_replaced_translated_srt_pairs_one_file_with_one_language():
     from app.slack.media_configure_embed import resume_configure_embed_phase
 

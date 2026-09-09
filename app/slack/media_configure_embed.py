@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +15,37 @@ from app.media.media_workflow import MediaEmbedRole
 from app.models import ASRTask, TranscriptionTask, TranscriptionTaskData
 from app.slack.media_quotes import PIPELINE_EMBED
 from app.transcriber_tasks.tasks import create_asr_task
+
+
+class TranscriptionTaskExtraDataError(Exception):
+    def __init__(self, cause: BaseException) -> None:
+        super().__init__("Could not parse transcription extra_data for Configure embed")
+        self.__cause__ = cause
+
+
+class TranscriptionTaskExtraData(BaseModel):
+    """JSON extra_data on transcription_tasks for Configure embed jobs."""
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    media_quote_id: str | None = None
+    pipeline_kind: str | None = None
+    pipeline_type: str | None = None
+    workflow_type: str | None = None
+    original_video_file_id: str | None = None
+    original_video_download_url: str | None = None
+    original_video_file_name: str | None = None
+    srt_file_ids: list[str] | None = None
+    language_codes: list[str] | None = None
+    target_languages: list[str] | None = None
+    embed_role: MediaEmbedRole | None = None
+
+
+def parse_transcription_task_extra_data(raw: object) -> TranscriptionTaskExtraData:
+    try:
+        return TranscriptionTaskExtraData.model_validate(raw or {})
+    except ValidationError as exc:
+        raise TranscriptionTaskExtraDataError(exc) from exc
 
 
 async def resume_configure_embed_phase(
@@ -39,28 +71,34 @@ async def resume_configure_embed_phase(
         task = await db_session.get(TranscriptionTask, task_uuid)
         if not task:
             raise ValueError(f"Transcription task {task_uuid} not found")
-        extra_data = dict(task.extra_data or {})
-        extra_data["media_quote_id"] = session["quote_id"]
-        extra_data["pipeline_kind"] = PIPELINE_EMBED
-        extra_data["workflow_type"] = session.get("workflow_type")
-        extra_data["original_video_file_id"] = session.get("file_id")
-        extra_data["original_video_download_url"] = session.get("download_url")
-        extra_data["original_video_file_name"] = session.get("file_name")
+        extra = parse_transcription_task_extra_data(task.extra_data)
+        srt_file_ids: list[str] | None = None
         if srt_file_id:
-            extra_data["srt_file_ids"] = [srt_file_id]
+            srt_file_ids = [srt_file_id]
             if translated:
                 language_codes = language_codes[:1] or ["und"]
         elif task.result_file_id and not translated:
-            extra_data["srt_file_ids"] = [task.result_file_id]
+            srt_file_ids = [task.result_file_id]
         elif translated and task.translated_file_ids:
-            extra_data["srt_file_ids"] = list(task.translated_file_ids.values())
+            srt_file_ids = list(task.translated_file_ids.values())
             language_codes = list(task.translated_file_ids.keys())
-        extra_data["language_codes"] = language_codes
-        extra_data["target_languages"] = language_codes
-        extra_data["pipeline_type"] = PIPELINE_EMBED
-        extra_data["embed_role"] = (
-            MediaEmbedRole.TRANSLATED if translated else MediaEmbedRole.SOURCE
-        )
+        updates: dict[str, Any] = {
+            "media_quote_id": session["quote_id"],
+            "pipeline_kind": PIPELINE_EMBED,
+            "workflow_type": session.get("workflow_type"),
+            "original_video_file_id": session.get("file_id"),
+            "original_video_download_url": session.get("download_url"),
+            "original_video_file_name": session.get("file_name"),
+            "language_codes": language_codes,
+            "target_languages": language_codes,
+            "pipeline_type": PIPELINE_EMBED,
+            "embed_role": (
+                MediaEmbedRole.TRANSLATED if translated else MediaEmbedRole.SOURCE
+            ),
+        }
+        if srt_file_ids is not None:
+            updates["srt_file_ids"] = srt_file_ids
+        extra_data = extra.model_copy(update=updates).model_dump(mode="json")
         if session.get("workflow_type"):
             task_data = TranscriptionTaskData(
                 client_id=task.client_id,
