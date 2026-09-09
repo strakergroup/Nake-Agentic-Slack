@@ -16,6 +16,7 @@ from app.slack.media_quotes import (
     STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
     STAGE_AWAITING_TRANSLATION_ACCEPT,
     build_quote1_line_items,
+    build_quote2_line_items,
     embedding_tokens_for_duration,
     media_quote_blocks,
     media_quote_key,
@@ -86,6 +87,58 @@ def test_quote1_line_items_embed_only():
     )
     assert len(items) == 1
     assert items[0]["tokens"] == 30
+
+
+def test_quote1_includes_source_embed_for_one_language_when_flag_set():
+    items = build_quote1_line_items(
+        pipeline_kind=PIPELINE_TRANSCRIBE_TRANSLATE,
+        duration_ms=60_000,
+        target_count=3,
+        embed_source=True,
+    )
+    assert [item["label"] for item in items] == [
+        "Transcription",
+        "Source subtitle embedding",
+    ]
+    assert items[0]["tokens"] == 100
+    assert items[1]["tokens"] == 30
+
+
+def test_quote1_omits_source_embed_when_flag_false_even_for_legacy_embed_pipeline():
+    items = build_quote1_line_items(
+        pipeline_kind=PIPELINE_TRANSCRIBE_TRANSLATE_EMBED,
+        duration_ms=60_000,
+        target_count=2,
+        embed_source=False,
+    )
+    assert len(items) == 1
+    assert items[0]["tokens"] == 100
+
+
+def test_quote2_includes_translated_embed_when_flag_set():
+    items = build_quote2_line_items(
+        source_text_length=1000,
+        target_count=2,
+        duration_ms=60_000,
+        embed_translated=True,
+    )
+    assert [item["label"] for item in items] == [
+        "AI Translation",
+        "Translated subtitle embedding",
+    ]
+    assert items[0]["tokens"] == media_translation_tokens(1000, 2)
+    assert items[1]["tokens"] == 60
+
+
+def test_quote2_omits_translated_embed_when_flag_false():
+    items = build_quote2_line_items(
+        source_text_length=1000,
+        target_count=2,
+        duration_ms=60_000,
+        embed_translated=False,
+    )
+    assert len(items) == 1
+    assert items[0]["tokens"] == media_translation_tokens(1000, 2)
 
 
 def test_media_quote_blocks_include_accept_cancel():

@@ -88,8 +88,9 @@ def build_quote1_line_items(
     pipeline_kind: str,
     duration_ms: int,
     target_count: int,
+    embed_source: bool | None = None,
 ) -> list[dict[str, Any]]:
-    """Priced line items for Quote1 (transcription and/or embedding)."""
+    """Priced line items for Quote1 (transcription and/or source embedding)."""
     items: list[dict[str, Any]] = []
     if pipeline_kind in (
         PIPELINE_TRANSCRIBE,
@@ -102,10 +103,46 @@ def build_quote1_line_items(
                 "tokens": transcription_tokens_for_duration(duration_ms),
             }
         )
-    if pipeline_kind in (PIPELINE_TRANSCRIBE_TRANSLATE_EMBED, PIPELINE_EMBED):
+    include_source_embed = (
+        embed_source
+        if embed_source is not None
+        else pipeline_kind in (PIPELINE_TRANSCRIBE_TRANSLATE_EMBED, PIPELINE_EMBED)
+    )
+    if include_source_embed:
+        source_embed_langs = 1 if embed_source is True else max(target_count, 1)
         items.append(
             {
-                "label": _("Subtitle embedding"),
+                "label": (
+                    _("Source subtitle embedding")
+                    if embed_source is True
+                    else _("Subtitle embedding")
+                ),
+                "tokens": embedding_tokens_for_duration(
+                    duration_ms, source_embed_langs
+                ),
+            }
+        )
+    return items
+
+
+def build_quote2_line_items(
+    *,
+    source_text_length: int,
+    target_count: int,
+    duration_ms: int,
+    embed_translated: bool = False,
+) -> list[dict[str, Any]]:
+    """Priced line items for Quote2 (AI translation and optional translated embed)."""
+    items: list[dict[str, Any]] = [
+        {
+            "label": _("AI Translation"),
+            "tokens": media_translation_tokens(source_text_length, target_count or 1),
+        }
+    ]
+    if embed_translated:
+        items.append(
+            {
+                "label": _("Translated subtitle embedding"),
                 "tokens": embedding_tokens_for_duration(
                     duration_ms, max(target_count, 1)
                 ),
@@ -306,21 +343,24 @@ async def create_media_quote_session(
     target_languages = target_languages or []
     target_count = len(target_languages) if target_languages else 1
 
+    extra = extra or {}
+    embed_source = extra.get("embed_source")
+    embed_translated = bool(extra.get("embed_translated"))
+
     if stage == STAGE_AWAITING_TRANSLATION_ACCEPT:
-        source_text_length = int((extra or {}).get("source_text_length") or 0)
-        line_items = [
-            {
-                "label": _("AI Translation"),
-                "tokens": media_translation_tokens(
-                    source_text_length, len(target_languages) or 1
-                ),
-            }
-        ]
+        source_text_length = int(extra.get("source_text_length") or 0)
+        line_items = build_quote2_line_items(
+            source_text_length=source_text_length,
+            target_count=len(target_languages) or 1,
+            duration_ms=duration_ms,
+            embed_translated=embed_translated,
+        )
     else:
         line_items = build_quote1_line_items(
             pipeline_kind=pipeline_kind,
             duration_ms=duration_ms,
             target_count=target_count,
+            embed_source=embed_source if isinstance(embed_source, bool) else None,
         )
 
     session: dict[str, Any] = {
