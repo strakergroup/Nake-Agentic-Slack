@@ -698,6 +698,14 @@ async def handle_transcription_complete(
             # Transcription-only (and pre-Quote2) uploads the source SRT only —
             # do not post AI-translation / reupload copy here.
             extra_data = task_info.extra_data or {}
+            srt_review_quote_id = None
+            if extra_data.get("workflow_type") and extra_data.get("review_gate"):
+                quote_id = extra_data.get("media_quote_id")
+                if quote_id:
+                    srt_review_quote_id = str(quote_id)
+                    await update_media_quote_session(
+                        srt_review_quote_id, {"defer_source_review": True}
+                    )
             await enqueue_transcription_upload(
                 file_id=result_file_id,
                 file_name=result_file_name,
@@ -710,6 +718,7 @@ async def handle_transcription_complete(
                 slack_user_id=extra_data.get("slack_user_id"),
                 enterprise_id=extra_data.get("slack_enterprise_id")
                 or extra_data.get("enterprise_id"),
+                srt_review_quote_id=srt_review_quote_id,
             )
 
 

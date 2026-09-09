@@ -315,6 +315,47 @@ async def test_workflow_type_change_rebuilds_modal_without_languages():
 
 
 @pytest.mark.asyncio
+async def test_workflow_type_change_keeps_unchecked_review_gate_and_embed():
+    from unittest.mock import AsyncMock
+
+    from app.slack.handlers.media import handle_video_configure_workflow_type
+
+    client = AsyncMock()
+    body = {
+        "view": {
+            "id": "V1",
+            "private_metadata": json.dumps(
+                {
+                    "channel_id": "C1",
+                    "files": _files(),
+                    "thread_ts": "1.2",
+                    "show_embed_option": True,
+                }
+            ),
+            "state": {
+                "values": {
+                    "embed_source": {
+                        "embed_source_options": {
+                            "selected_options": [_option("embed_source")]
+                        }
+                    },
+                    "review_gate": {"review_gate_options": {"selected_options": []}},
+                }
+            },
+        }
+    }
+    action = {"selected_option": {"value": "transcribe_only"}}
+    await handle_video_configure_workflow_type(client=client, body=body, action=action)
+    view = client.views_update.await_args.kwargs["view"]
+    review = next(b for b in view["blocks"] if b.get("block_id") == "review_gate")
+    embed = next(b for b in view["blocks"] if b.get("block_id") == "embed_source")
+    assert not review["element"].get("initial_options")
+    assert [opt["value"] for opt in embed["element"]["initial_options"]] == [
+        "embed_source"
+    ]
+
+
+@pytest.mark.asyncio
 async def test_configure_submit_creates_quote1_with_embed_source_flag():
     from unittest.mock import AsyncMock, patch
 

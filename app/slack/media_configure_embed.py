@@ -48,6 +48,8 @@ async def resume_configure_embed_phase(
         extra_data["original_video_file_name"] = session.get("file_name")
         if srt_file_id:
             extra_data["srt_file_ids"] = [srt_file_id]
+            if translated:
+                language_codes = language_codes[:1] or ["und"]
         elif task.result_file_id and not translated:
             extra_data["srt_file_ids"] = [task.result_file_id]
         elif translated and task.translated_file_ids:

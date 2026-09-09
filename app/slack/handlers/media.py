@@ -352,9 +352,12 @@ async def handle_video_configure_workflow_type(
     action: Dict[str, Any],
 ):
     """Rebuild the Configure modal when the workflow type radio changes."""
+    from app.slack.media_configure import _checkbox_selected
+
     view = body["view"]
     metadata = json.loads(view.get("private_metadata") or "{}")
     selected = (action.get("selected_option") or {}).get("value")
+    values = (view.get("state") or {}).get("values") or {}
     await client.views_update(
         view_id=view["id"],
         view=video_configure_media_modal(
@@ -363,6 +366,18 @@ async def handle_video_configure_workflow_type(
             thread_ts=metadata.get("thread_ts"),
             show_embed_option=bool(metadata.get("show_embed_option", True)),
             show_translate_options=selected == "transcribe_translate",
+            review_gate=_checkbox_selected(
+                values, "review_gate", "review_gate_options", "review_gate"
+            ),
+            embed_source=_checkbox_selected(
+                values, "embed_source", "embed_source_options", "embed_source"
+            ),
+            embed_translated=_checkbox_selected(
+                values,
+                "embed_translated",
+                "embed_translated_options",
+                "embed_translated",
+            ),
         ),
     )
 

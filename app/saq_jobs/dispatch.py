@@ -265,6 +265,7 @@ async def enqueue_transcription_upload(
     team_id: str | None = None,
     slack_user_id: str | None = None,
     enterprise_id: str | None = None,
+    srt_review_quote_id: str | None = None,
 ) -> None:
     """Enqueue the durable transcription file upload job (RAY-79638).
 
@@ -294,6 +295,7 @@ async def enqueue_transcription_upload(
         team_id=team_id,
         slack_user_id=slack_user_id,
         enterprise_id=enterprise_id,
+        srt_review_quote_id=srt_review_quote_id,
     )
 
 

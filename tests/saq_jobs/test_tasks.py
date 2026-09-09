@@ -8,6 +8,7 @@ lookup, slack_job updates) are mocked so the tests run hermetically.
 from __future__ import annotations
 
 from contextlib import ExitStack
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -2041,6 +2042,136 @@ async def test_slack_upload_transcription_posts_follow_up_message(slack_user):
 
 
 @pytest.mark.asyncio
+async def test_slack_upload_transcription_posts_srt_review_after_file(slack_user):
+    fake_client = MagicMock()
+    fake_client.chat_postMessage = AsyncMock()
+
+    with (
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
+        ),
+        patch(
+            "app.saq_jobs.tasks.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": "/tmp/abc/result.srt"}),
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_client),
+        patch("app.slack.web.upload_file_to_slack_memory_efficient", new=AsyncMock()),
+        patch("os.rename"),
+        patch("app.saq_jobs.tasks._safe_unlink"),
+    ):
+        await slack_upload_transcription(
+            _ctx(),
+            file_id="f1",
+            file_name="result.srt",
+            task_uuid=str(uuid4()),
+            pipeline_type="transcribe",
+            client_id=slack_user.ray_client_id,
+            channel_id="C123",
+            thread_ts="123.0",
+            srt_review_quote_id="q1",
+        )
+
+    fake_client.chat_postMessage.assert_awaited_once()
+    posted = fake_client.chat_postMessage.await_args.kwargs
+    assert posted["thread_ts"] == "123.0"
+    action_ids = [
+        el.get("action_id")
+        for block in posted.get("blocks") or []
+        for el in block.get("elements", [])
+    ]
+    assert "media_srt_approve_continue" in action_ids
+    assert "media_srt_replace" in action_ids
+
+
+@pytest.mark.asyncio
+async def test_slack_upload_transcription_posts_srt_review_when_download_fails(
+    slack_user,
+):
+    fake_client = MagicMock()
+    fake_client.chat_postMessage = AsyncMock()
+
+    with (
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
+        ),
+        patch(
+            "app.saq_jobs.tasks.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": None}),
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_client),
+        patch("app.saq_jobs.tasks.notify_exception"),
+        patch("app.saq_jobs.tasks._safe_unlink"),
+    ):
+        result = await slack_upload_transcription(
+            _ctx(),
+            file_id="f1",
+            file_name="result.srt",
+            task_uuid=str(uuid4()),
+            pipeline_type="transcribe",
+            client_id=slack_user.ray_client_id,
+            channel_id="C123",
+            thread_ts="123.0",
+            srt_review_quote_id="q1",
+        )
+
+    assert result["status"] == "download_failed"
+    action_ids = [
+        el.get("action_id")
+        for block in fake_client.chat_postMessage.await_args.kwargs.get("blocks") or []
+        for el in block.get("elements", [])
+    ]
+    assert "media_srt_approve_continue" in action_ids
+
+
+@pytest.mark.asyncio
+async def test_slack_upload_transcription_posts_srt_review_on_final_retry(
+    slack_user,
+):
+    fake_client = MagicMock()
+    fake_client.chat_postMessage = AsyncMock()
+
+    with (
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
+        ),
+        patch(
+            "app.saq_jobs.tasks.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": "/tmp/abc/result.srt"}),
+        ),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_client),
+        patch(
+            "app.slack.web.upload_file_to_slack_memory_efficient",
+            new=AsyncMock(side_effect=RuntimeError("slack down")),
+        ),
+        patch("os.rename"),
+        patch("app.saq_jobs.tasks.notify_exception"),
+        patch("app.saq_jobs.tasks._safe_unlink"),
+    ):
+        with pytest.raises(RuntimeError, match="slack down"):
+            await slack_upload_transcription(
+                _ctx(retryable=False),
+                file_id="f1",
+                file_name="result.srt",
+                task_uuid=str(uuid4()),
+                pipeline_type="transcribe",
+                client_id=slack_user.ray_client_id,
+                channel_id="C123",
+                thread_ts="123.0",
+                srt_review_quote_id="q1",
+            )
+
+    action_ids = [
+        el.get("action_id")
+        for block in fake_client.chat_postMessage.await_args.kwargs.get("blocks") or []
+        for el in block.get("elements", [])
+    ]
+    assert "media_srt_approve_continue" in action_ids
+
+
+@pytest.mark.asyncio
 async def test_slack_upload_transcription_no_slack_user_short_circuits():
     with (
         patch(
@@ -2063,6 +2194,41 @@ async def test_slack_upload_transcription_no_slack_user_short_circuits():
         )
     assert result["status"] == "no_slack_user"
     assert "no_slack_user" in mock_notify.call_args.args[1]
+
+
+@pytest.mark.asyncio
+async def test_slack_upload_transcription_fails_submissions_when_review_undeliverable():
+    extra = {"media_quote_id": "q1", "submission_ids": [42]}
+    task = SimpleNamespace(extra_data=extra)
+    with (
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=None),
+        ),
+        patch("app.saq_jobs.tasks.notify_exception"),
+        patch(
+            "app.transcriber_tasks.tasks.get_transcription_task",
+            new=AsyncMock(return_value=task),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.fail_media_submissions",
+            new=AsyncMock(),
+        ) as mock_fail,
+    ):
+        result = await slack_upload_transcription(
+            _ctx(),
+            file_id="f1",
+            file_name="x.srt",
+            task_uuid="t1",
+            pipeline_type="transcribe",
+            client_id="missing",
+            channel_id="C1",
+            thread_ts=None,
+            srt_review_quote_id="q1",
+        )
+
+    assert result["status"] == "no_slack_user"
+    mock_fail.assert_awaited_once_with(extra)
 
 
 # --------------------------------------------------------------------------- #

@@ -64,6 +64,58 @@ async def test_handle_transcription_complete_skips_ai_translation_follow_up():
 
 
 @pytest.mark.asyncio
+async def test_handle_transcription_complete_defers_configure_srt_review():
+    from app.ray.events.media_pipeline_events import handle_transcription_complete
+
+    client = AsyncMock()
+    task_info = SimpleNamespace(
+        task_uuid="task-1",
+        file_name="clip.mp4",
+        pipeline_type="transcribe",
+        extra_data={
+            "media_quote_id": "q1",
+            "workflow_type": "transcribe_only",
+            "review_gate": True,
+            "slack_team_id": "T1",
+            "slack_user_id": "U1",
+        },
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(ray_client_id="client-1"))
+    auth_slack_user = SimpleNamespace(channel_id="C1")
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.post_notification",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.enqueue_transcription_upload",
+            new=AsyncMock(),
+        ) as mock_enqueue,
+        patch(
+            "app.ray.events.media_pipeline_events.update_media_quote_session",
+            new=AsyncMock(),
+        ) as mock_update,
+    ):
+        await handle_transcription_complete(
+            client,
+            "file-1",
+            "clip.srt",
+            task_info,
+            False,
+            "C1",
+            "123.456",
+            MagicMock(),
+            auth,
+            auth_slack_user,
+        )
+
+    assert mock_enqueue.await_args.kwargs["srt_review_quote_id"] == "q1"
+    assert mock_update.await_args.args[0] == "q1"
+    assert mock_update.await_args.args[1]["defer_source_review"] is True
+
+
+@pytest.mark.asyncio
 async def test_maybe_post_media_translation_quote_skips_transcribe_only():
     from app.ray.events.media_pipeline_events import maybe_post_media_translation_quote
 
@@ -215,6 +267,51 @@ async def test_maybe_post_media_translation_quote_posts_review_when_configure_ga
     ]
     assert "media_srt_approve_continue" in action_ids
     assert "media_srt_replace" in action_ids
+
+
+@pytest.mark.asyncio
+async def test_maybe_post_media_translation_quote_skips_review_when_deferred():
+    from app.ray.events.media_pipeline_events import maybe_post_media_translation_quote
+    from app.slack.media_quotes import PIPELINE_TRANSCRIBE, STAGE_TRANSCRIBING
+
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock()
+    task_info = SimpleNamespace(
+        task_uuid="task-1",
+        source_text_length=500,
+        duration_ms=60_000,
+        extra_data={"media_quote_id": "q1"},
+    )
+    session = {
+        "quote_id": "q1",
+        "pipeline_kind": PIPELINE_TRANSCRIBE,
+        "stage": STAGE_TRANSCRIBING,
+        "workflow_type": "transcribe_only",
+        "embed_source": False,
+        "embed_translated": False,
+        "review_gate": True,
+        "defer_source_review": True,
+        "target_languages": [],
+        "channel_id": "C1",
+        "thread_ts": "123.456",
+    }
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.get_media_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new=AsyncMock(side_effect=lambda quote_id, updates: {**session, **updates}),
+        ),
+    ):
+        posted = await maybe_post_media_translation_quote(
+            client, task_info, "C1", "123.456"
+        )
+
+    assert posted is True
+    client.chat_postMessage.assert_not_awaited()
 
 
 @pytest.mark.asyncio

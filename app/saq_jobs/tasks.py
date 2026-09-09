@@ -335,6 +335,34 @@ async def slack_upload_mt_result(
         _safe_unlink(file_path)
 
 
+async def _post_configure_srt_review(
+    client: Any,
+    *,
+    quote_id: str,
+    channel_id: str,
+    thread_ts: str | None,
+) -> None:
+    from app.slack.media_workflow_actions import _post_srt_review
+
+    await _post_srt_review(
+        client,
+        {
+            "quote_id": quote_id,
+            "channel_id": channel_id,
+            "thread_ts": thread_ts,
+        },
+    )
+
+
+async def _fail_deferred_configure_review(task_uuid: str) -> None:
+    from app.ray.events.media_pipeline_events import fail_media_submissions
+    from app.transcriber_tasks.tasks import get_transcription_task
+
+    task = await get_transcription_task(task_uuid)
+    extra = dict(task.extra_data or {}) if task is not None else None
+    await fail_media_submissions(extra)
+
+
 async def slack_upload_transcription(
     ctx: Context,
     *,
@@ -346,6 +374,7 @@ async def slack_upload_transcription(
     channel_id: str,
     thread_ts: str | None = None,
     follow_up_message: str | None = None,
+    srt_review_quote_id: str | None = None,
     team_id: str | None = None,
     slack_user_id: str | None = None,
     enterprise_id: str | None = None,
@@ -394,6 +423,8 @@ async def slack_upload_transcription(
             "Transcription Slack delivery failed (no_slack_user)",
             extra=log_extra,
         )
+        if srt_review_quote_id:
+            await _fail_deferred_configure_review(task_uuid)
         return {"status": "no_slack_user", "task_uuid": task_uuid}
 
     file_path: str | None = None
@@ -407,6 +438,13 @@ async def slack_upload_transcription(
                 Exception(f"Failed to download file {file_id} from file server"),
                 "Transcription background task failed",
             )
+            if srt_review_quote_id:
+                await _post_configure_srt_review(
+                    client,
+                    quote_id=srt_review_quote_id,
+                    channel_id=channel_id,
+                    thread_ts=thread_ts,
+                )
             return {"status": "download_failed", "task_uuid": task_uuid}
 
         # Rename so Slack preserves the original filename + extension.
@@ -430,6 +468,13 @@ async def slack_upload_transcription(
                 text=follow_up_message,
                 thread_ts=thread_ts,
             )
+        if srt_review_quote_id:
+            await _post_configure_srt_review(
+                client,
+                quote_id=srt_review_quote_id,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+            )
         logger.info("Transcription upload delivered", extra=log_extra)
         return {"status": "delivered", "task_uuid": task_uuid}
     except Exception:
@@ -439,6 +484,20 @@ async def slack_upload_transcription(
                 Exception("Background transcription file handling failed"),
                 "Background transcription file handling failed (final attempt)",
             )
+            if srt_review_quote_id:
+                try:
+                    fail_client = AsyncWebClient(token=slack_user.bot_token)
+                    await _post_configure_srt_review(
+                        fail_client,
+                        quote_id=srt_review_quote_id,
+                        channel_id=channel_id,
+                        thread_ts=thread_ts,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to post deferred SRT review after upload failure",
+                        extra=log_extra,
+                    )
         raise
     finally:
         _safe_unlink(file_path)

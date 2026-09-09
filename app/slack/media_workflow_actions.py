@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -63,8 +64,18 @@ def thread_srt_matches_review_file(
             return False
         if uploaded_stem.startswith(f"{original_stem}_"):
             return True
-        return any(code.lower() in uploaded_stem for code in target_languages)
+        return any(
+            _stem_has_language_code_token(uploaded_stem, code)
+            for code in target_languages
+        )
     return False
+
+
+def _stem_has_language_code_token(stem: str, code: str) -> bool:
+    token = code.lower()
+    if not token:
+        return False
+    return re.search(rf"(?:^|[-_.]){re.escape(token)}(?:[-_.]|$)", stem) is not None
 
 
 async def apply_thread_srt_review_replace(
@@ -237,13 +248,24 @@ async def execute_media_workflow_decision(
             }
         )
 
-    updated = await update_media_quote_session(str(session["quote_id"]), updates) or {
-        **session,
-        **updates,
-    }
+    defer_stage = decision.session.stage in (
+        MediaWorkflowStage.EMBEDDING_SOURCE,
+        MediaWorkflowStage.EMBEDDING_TRANSLATED,
+    )
+    persist = {key: value for key, value in updates.items() if key != "stage"}
+    if not defer_stage:
+        persist["stage"] = updates["stage"]
+    if persist:
+        updated = await update_media_quote_session(
+            str(session["quote_id"]), persist
+        ) or {**session, **persist}
+    else:
+        updated = dict(session)
+    updated = {**updated, **updates}
 
     if MediaWorkflowCommand.POST_SOURCE_REVIEW in decision.commands:
-        await _post_srt_review(client, updated)
+        if not updated.get("defer_source_review"):
+            await _post_srt_review(client, updated)
     if MediaWorkflowCommand.POST_TRANSLATION_REVIEW in decision.commands:
         await _post_srt_review(client, updated)
     if MediaWorkflowCommand.POST_QUOTE2 in decision.commands:
@@ -262,6 +284,13 @@ async def execute_media_workflow_decision(
         from app.slack.media_configure_embed import resume_configure_embed_phase
 
         await resume_configure_embed_phase(session=updated, translated=True)
+    if defer_stage:
+        updated = (
+            await update_media_quote_session(
+                str(session["quote_id"]), {"stage": updates["stage"]}
+            )
+            or updated
+        )
     if MediaWorkflowCommand.MARK_DONE in decision.commands:
         from app.ray.events.media_pipeline_events import update_submission_status
 

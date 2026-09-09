@@ -57,6 +57,35 @@ def test_review_srt_filename_matches_source_stem():
     )
 
 
+def test_translation_review_filename_matches_language_code_as_token():
+    from app.slack.media_workflow_actions import thread_srt_matches_review_file
+
+    assert thread_srt_matches_review_file(
+        uploaded_name="clip_es.srt",
+        original_file_name="clip.mp4",
+        stage=MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW,
+        target_languages=("es",),
+    )
+    assert thread_srt_matches_review_file(
+        uploaded_name="es.srt",
+        original_file_name="clip.mp4",
+        stage=MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW,
+        target_languages=("es",),
+    )
+    assert not thread_srt_matches_review_file(
+        uploaded_name="files.srt",
+        original_file_name="clip.mp4",
+        stage=MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW,
+        target_languages=("es",),
+    )
+    assert not thread_srt_matches_review_file(
+        uploaded_name="attendance.srt",
+        original_file_name="clip.mp4",
+        stage=MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW,
+        target_languages=("en",),
+    )
+
+
 @pytest.mark.asyncio
 async def test_thread_srt_during_review_replaces_instead_of_embed_quote():
     from app.slack.listener_actions import maybe_show_thread_media_embed_option
@@ -361,6 +390,103 @@ async def test_approve_source_srt_transcribe_only_completes_submissions():
     assert mock_update.await_args.args[1]["stage"] == "done"
     mock_complete.assert_awaited_once()
     assert mock_complete.await_args.args[0]["submission_ids"] == [42]
+
+
+@pytest.mark.asyncio
+async def test_failed_source_embed_does_not_persist_embedding_stage():
+    from app.media.media_workflow import (
+        MediaWorkflowEvent,
+        advance_media_workflow,
+        media_workflow_session_from_quote,
+    )
+    from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+    session = {
+        "quote_id": "q1",
+        "stage": "awaiting_source_review",
+        "workflow_type": "transcribe_only",
+        "embed_source": True,
+        "embed_translated": False,
+        "review_gate": True,
+        "target_languages": [],
+        "channel_id": "C1",
+        "thread_ts": "1.2",
+        "task_uuid": "asr-task",
+    }
+    decision = advance_media_workflow(
+        media_workflow_session_from_quote(session),
+        MediaWorkflowEvent.SOURCE_SRT_APPROVED,
+    )
+    client = AsyncMock()
+    with (
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new_callable=AsyncMock,
+            side_effect=lambda quote_id, updates: {**session, **updates},
+        ) as mock_update,
+        patch(
+            "app.slack.media_configure_embed.resume_configure_embed_phase",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("embed enqueue failed"),
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="embed enqueue failed"):
+            await execute_media_workflow_decision(
+                client=client, session=session, decision=decision
+            )
+
+    persisted_stages = [
+        call.args[1].get("stage") for call in mock_update.await_args_list
+    ]
+    assert "embedding_source" not in persisted_stages
+
+
+@pytest.mark.asyncio
+async def test_successful_source_embed_persists_embedding_stage():
+    from app.media.media_workflow import (
+        MediaWorkflowEvent,
+        advance_media_workflow,
+        media_workflow_session_from_quote,
+    )
+    from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+    session = {
+        "quote_id": "q1",
+        "stage": "awaiting_source_review",
+        "workflow_type": "transcribe_only",
+        "embed_source": True,
+        "embed_translated": False,
+        "review_gate": True,
+        "target_languages": [],
+        "channel_id": "C1",
+        "thread_ts": "1.2",
+        "task_uuid": "asr-task",
+    }
+    decision = advance_media_workflow(
+        media_workflow_session_from_quote(session),
+        MediaWorkflowEvent.SOURCE_SRT_APPROVED,
+    )
+    client = AsyncMock()
+    with (
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new_callable=AsyncMock,
+            side_effect=lambda quote_id, updates: {**session, **updates},
+        ) as mock_update,
+        patch(
+            "app.slack.media_configure_embed.resume_configure_embed_phase",
+            new_callable=AsyncMock,
+        ) as mock_embed,
+    ):
+        await execute_media_workflow_decision(
+            client=client, session=session, decision=decision
+        )
+
+    mock_embed.assert_awaited_once()
+    persisted_stages = [
+        call.args[1].get("stage") for call in mock_update.await_args_list
+    ]
+    assert persisted_stages[-1] == "embedding_source"
 
 
 @pytest.mark.asyncio

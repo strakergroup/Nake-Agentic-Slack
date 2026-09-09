@@ -1380,6 +1380,18 @@ def video_transcribe_translate_modal(
     }
 
 
+def _checkbox_element(
+    action_id: str, option: Option, *, selected: bool
+) -> CheckboxesElement:
+    if selected:
+        return CheckboxesElement(
+            action_id=action_id,
+            options=[option],
+            initial_options=[option],
+        )
+    return CheckboxesElement(action_id=action_id, options=[option])
+
+
 def video_configure_media_modal(
     channel_id: str,
     files: list[dict],
@@ -1387,6 +1399,9 @@ def video_configure_media_modal(
     *,
     show_embed_option: bool = True,
     show_translate_options: bool = True,
+    review_gate: bool = True,
+    embed_source: bool = False,
+    embed_translated: bool = False,
 ) -> dict[str, Any]:
     transcribe_only = Option(
         text=PlainTextObject(text=_("Transcription only"), emoji=True),
@@ -1478,9 +1493,10 @@ def video_configure_media_modal(
                 block_id="embed_source",
                 label=PlainTextObject(text=_("Source embedding")),
                 optional=True,
-                element=CheckboxesElement(
-                    action_id="embed_source_options",
-                    options=[embed_source_option],
+                element=_checkbox_element(
+                    "embed_source_options",
+                    embed_source_option,
+                    selected=embed_source,
                 ),
             )
         )
@@ -1490,9 +1506,10 @@ def video_configure_media_modal(
                     block_id="embed_translated",
                     label=PlainTextObject(text=_("Translated embedding")),
                     optional=True,
-                    element=CheckboxesElement(
-                        action_id="embed_translated_options",
-                        options=[embed_translated_option],
+                    element=_checkbox_element(
+                        "embed_translated_options",
+                        embed_translated_option,
+                        selected=embed_translated,
                     ),
                 )
             )
@@ -1501,10 +1518,10 @@ def video_configure_media_modal(
             block_id="review_gate",
             label=PlainTextObject(text=_("SRT review")),
             optional=True,
-            element=CheckboxesElement(
-                action_id="review_gate_options",
-                options=[review_option],
-                initial_options=[review_option],
+            element=_checkbox_element(
+                "review_gate_options",
+                review_option,
+                selected=review_gate,
             ),
         )
     )
