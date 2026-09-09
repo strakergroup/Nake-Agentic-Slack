@@ -235,6 +235,74 @@ async def test_accept_translation_quote_reprices_selected_pairs():
 
 
 @pytest.mark.asyncio
+async def test_accept_configure_translation_quote_tells_user_when_reducer_rejects():
+    from app.media.media_workflow import (
+        MediaWorkflowEvent,
+        MediaWorkflowStage,
+        MediaWorkflowTransitionError,
+    )
+    from app.slack.media_quote_actions import accept_media_translation_quote
+
+    client = AsyncMock()
+    context_obj = MagicMock()
+    context_obj.__getitem__ = lambda self, key: {"user_id": "U1", "team_id": "T1"}[key]
+    context_obj.get = lambda key, default=None: None
+    context_obj.enterprise_id = None
+
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "stage": STAGE_AWAITING_TRANSLATION_ACCEPT,
+        "workflow_type": "transcribe_translate",
+        "embed_source": False,
+        "embed_translated": False,
+        "review_gate": True,
+        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
+        "total_tokens": 2,
+        "channel_id": "C1",
+        "task_uuid": "task-1",
+        "target_languages": ["es"],
+        "thread_ts": None,
+    }
+
+    with (
+        patch(
+            "app.slack.media_quote_actions.get_media_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch("app.slack.media_quote_actions.redis_conn") as mock_redis,
+        patch(
+            "app.slack.media_quote_actions._require_ai_token_balance",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "app.slack.media_quote_actions.advance_media_workflow",
+            create=True,
+            side_effect=MediaWorkflowTransitionError(
+                MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT,
+                MediaWorkflowEvent.QUOTE2_ACCEPTED,
+            ),
+        ),
+        patch(
+            "app.slack.media_quote_actions._resume_translate_phase",
+            new=AsyncMock(),
+        ) as mock_resume,
+        patch("app.slack.media_quote_actions.notify_exception"),
+    ):
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_redis.delete = AsyncMock()
+        await accept_media_translation_quote(
+            client=client,
+            body={"channel": {"id": "C1"}, "message": {"ts": "1.2"}},
+            action={"value": "q1"},
+            context=context_obj,
+        )
+
+    mock_resume.assert_not_awaited()
+    assert "not ready" in client.chat_postMessage.await_args.kwargs["text"].lower()
+
+
+@pytest.mark.asyncio
 async def test_cancel_media_quote_fails_submissions():
     from app.slack.media_quote_actions import cancel_media_quote
 
@@ -358,7 +426,7 @@ async def test_auto_accept_translation_returns_false_without_ray_client():
 
 @pytest.mark.asyncio
 async def test_resume_configure_source_embed_does_not_reuse_translation_task():
-    from app.slack.media_quote_actions import resume_configure_embed_phase
+    from app.slack.media_configure_embed import resume_configure_embed_phase
 
     source_task = SimpleNamespace(
         task_uuid="asr-task",
@@ -404,21 +472,22 @@ async def test_resume_configure_source_embed_does_not_reuse_translation_task():
 
     with (
         patch(
-            "app.slack.media_quote_actions.AsyncSession",
+            "app.slack.media_configure_embed.AsyncSession",
             return_value=_FakeDb(),
         ),
         patch(
-            "app.slack.media_quote_actions.create_asr_task",
+            "app.slack.media_configure_embed.create_asr_task",
             new_callable=AsyncMock,
             return_value="embed-task",
         ) as mock_create,
-        patch("app.slack.media_quote_actions.httpx.AsyncClient") as mock_http,
+        patch("app.slack.media_configure_embed.httpx.AsyncClient") as mock_http,
     ):
         await resume_configure_embed_phase(session=session, translated=False)
 
     mock_create.assert_awaited_once()
     asr_task = mock_create.await_args.args[0]
     assert asr_task.extra_data["pipeline_type"] == "embed"
+    assert asr_task.extra_data["embed_role"] == "source"
     assert asr_task.extra_data["srt_file_ids"] == ["srt-approved"]
     assert asr_task.extra_data["media_quote_id"] == "q1"
     assert executed == []

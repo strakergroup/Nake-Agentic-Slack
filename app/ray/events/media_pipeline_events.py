@@ -25,6 +25,7 @@ from app.media.embed_spend import (
     is_embed_only_pipeline,
 )
 from app.media.media_workflow import (
+    MediaEmbedRole,
     MediaWorkflowCommand,
     MediaWorkflowEvent,
     MediaWorkflowStage,
@@ -117,7 +118,12 @@ async def _advance_configure_after_embed(
     workflow = media_workflow_session_from_quote(session) if session else None
     if workflow is None or session is None:
         return
-    if workflow.stage is MediaWorkflowStage.EMBEDDING_SOURCE:
+    role = extra.get("embed_role")
+    if role == MediaEmbedRole.SOURCE:
+        event = MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
+    elif role == MediaEmbedRole.TRANSLATED:
+        event = MediaWorkflowEvent.TRANSLATED_EMBED_COMPLETED
+    elif workflow.stage is MediaWorkflowStage.EMBEDDING_SOURCE:
         event = MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
     elif workflow.stage is MediaWorkflowStage.EMBEDDING_TRANSLATED:
         event = MediaWorkflowEvent.TRANSLATED_EMBED_COMPLETED
@@ -537,6 +543,14 @@ async def fail_media_submissions(extra_data: dict | None) -> None:
     """Mark media submission row(s) failed so 24h dedupe allows retry."""
     await update_submission_status(
         extra_data, processing_status=SubmissionStatus.FAILED
+    )
+
+
+def is_configure_source_embed_job(extra_data: dict | None) -> bool:
+    extra = extra_data or {}
+    return (
+        bool(extra.get("workflow_type"))
+        and extra.get("embed_role") == MediaEmbedRole.SOURCE
     )
 
 

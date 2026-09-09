@@ -49,6 +49,11 @@ class MediaWorkflowCommand(StrEnum):
     MARK_DONE = "mark_done"
 
 
+class MediaEmbedRole(StrEnum):
+    SOURCE = "source"
+    TRANSLATED = "translated"
+
+
 class MediaWorkflowTransitionError(Exception):
     """Raised when an event is not legal for the current media workflow stage."""
 
@@ -213,9 +218,11 @@ def advance_media_workflow(
             session=_session_in(session, MediaWorkflowStage.DONE),
             commands=(MediaWorkflowCommand.MARK_DONE,),
         )
-    if (
-        event is MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
-        and stage is MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
+    if event is MediaWorkflowEvent.SOURCE_EMBED_COMPLETED and stage in (
+        MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT,
+        MediaWorkflowStage.TRANSLATING,
+        MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW,
+        MediaWorkflowStage.EMBEDDING_TRANSLATED,
     ):
         return MediaWorkflowDecision(session=session, commands=())
     if (

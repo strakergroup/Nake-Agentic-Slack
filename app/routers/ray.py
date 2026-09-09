@@ -58,6 +58,7 @@ from ..ray.events.media_pipeline_events import (
     handle_transcribe_embed_pipeline,
     handle_transcription_complete,
     handle_translation_complete,
+    is_configure_source_embed_job,
     mark_media_quote_done,
     mark_stage_processed,
     maybe_post_media_translation_quote,
@@ -617,6 +618,18 @@ async def ray_events(
                         text=format_callback_error("embedding", error_msg),
                         thread_ts=thread_ts,
                     )
+                    if is_configure_source_embed_job(extra_data):
+                        await client.chat_postMessage(
+                            channel=extra_data.get("slack_channel_id")
+                            or auth.slack_user.channel_id
+                            or auth.slack_user.user_id,
+                            text=_(
+                                "Source subtitle embedding failed: {error_detail}. "
+                                "Translation can still continue."
+                            ).format(error_detail=error_msg),
+                            thread_ts=thread_ts,
+                        )
+                        return
                     await fail_media_submissions(extra_data)
                     return
 
@@ -644,7 +657,8 @@ async def ray_events(
                         failed_languages=transcribed_event.failed_languages,
                     )
                     if not delivered:
-                        await fail_media_submissions(extra_data)
+                        if not is_configure_source_embed_job(extra_data):
+                            await fail_media_submissions(extra_data)
                         return
                     # Spend credits for embedding
                     embedding_tokens = await spend_embedding_credits(task_info, auth)

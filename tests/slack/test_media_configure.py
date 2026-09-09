@@ -115,6 +115,32 @@ def test_parse_transcribe_only_clears_languages_and_translated_embed():
     assert selection.review_gate is False
 
 
+def test_parse_omitted_review_gate_block_is_off():
+    """Slack omits optional unchecked checkboxes from view.state.values."""
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _view(
+            metadata={
+                "channel_id": "C1",
+                "files": _files(),
+                "show_embed_option": True,
+            },
+            values={
+                "workflow_type": {
+                    "video_configure_workflow_type": {
+                        "selected_option": _option("transcribe_only"),
+                    }
+                },
+                "selected_file": {
+                    "file_display": {"selected_options": [_option("F1")]}
+                },
+            },
+        )
+    )
+    assert selection.review_gate is False
+
+
 def test_parse_requires_target_languages_for_translate():
     from app.slack.media_configure import (
         VideoConfigureMediaError,

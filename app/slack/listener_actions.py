@@ -88,8 +88,6 @@ from .bot_translation import (
 from .bot_translation_limits import can_translate_bot_message
 from .evaluation_quotes import job_is_human_translation_quote
 from .media_quotes import (
-    STAGE_CANCELLED,
-    STAGE_DONE,
     get_media_quote_session_for_thread,
 )
 from .media_workflow_actions import apply_thread_srt_review_replace
@@ -576,11 +574,6 @@ async def maybe_show_thread_media_embed_option(
                 or subtitle_file.get("title")
                 or "subtitles.srt"
             ),
-        ):
-            return True
-        if review_session.get("workflow_type") and review_session.get("stage") not in (
-            STAGE_DONE,
-            STAGE_CANCELLED,
         ):
             return True
 

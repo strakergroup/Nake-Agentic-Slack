@@ -113,7 +113,7 @@ async def test_thread_srt_during_review_replaces_instead_of_embed_quote():
 
 
 @pytest.mark.asyncio
-async def test_thread_srt_during_configure_does_not_open_leftover_embed_quote():
+async def test_thread_srt_unrelated_name_opens_leftover_embed_quote():
     from app.slack.listener_actions import maybe_show_thread_media_embed_option
 
     client = AsyncMock()
@@ -159,8 +159,7 @@ async def test_thread_srt_during_configure_does_not_open_leftover_embed_quote():
         handled = await maybe_show_thread_media_embed_option(client, context, message)
 
     assert handled is True
-    mock_quote.assert_not_awaited()
-    client.conversations_history.assert_not_called()
+    mock_quote.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -272,6 +271,53 @@ async def test_approve_source_srt_skips_when_quote_lock_held():
 
 
 @pytest.mark.asyncio
+async def test_stale_srt_approve_tells_user():
+    from app.slack.media_workflow_actions import handle_media_srt_approve_continue
+
+    client = AsyncMock()
+    context = MagicMock()
+    context.__getitem__ = lambda self, key: {"user_id": "U1", "team_id": "T1"}[key]
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "stage": "transcribing",
+        "workflow_type": "transcribe_only",
+        "embed_source": False,
+        "embed_translated": False,
+        "review_gate": True,
+        "target_languages": [],
+        "channel_id": "C1",
+        "thread_ts": "1.2",
+    }
+
+    with (
+        patch(
+            "app.slack.media_workflow_actions.get_media_quote_session",
+            new_callable=AsyncMock,
+            return_value=session,
+        ),
+        patch(
+            "app.slack.media_workflow_actions.execute_media_workflow_decision",
+            new_callable=AsyncMock,
+        ) as mock_execute,
+        patch("app.slack.media_workflow_actions.notify_exception"),
+        patch("app.slack.media_workflow_actions.redis_conn") as mock_redis,
+    ):
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_redis.delete = AsyncMock()
+        await handle_media_srt_approve_continue(
+            client=client,
+            action={"value": "q1"},
+            context=context,
+        )
+
+    mock_execute.assert_not_awaited()
+    posted = client.chat_postMessage.await_args.kwargs
+    assert posted["channel"] == "U1"
+    assert "no longer" in posted["text"].lower() or "cannot" in posted["text"].lower()
+
+
+@pytest.mark.asyncio
 async def test_approve_source_srt_transcribe_only_completes_submissions():
     from app.media.media_workflow import (
         MediaWorkflowEvent,
@@ -315,3 +361,121 @@ async def test_approve_source_srt_transcribe_only_completes_submissions():
     assert mock_update.await_args.args[1]["stage"] == "done"
     mock_complete.assert_awaited_once()
     assert mock_complete.await_args.args[0]["submission_ids"] == [42]
+
+
+@pytest.mark.asyncio
+async def test_replace_modal_accepts_differently_named_srt():
+    from app.slack.media_workflow_actions import handle_media_srt_replace_submit
+
+    client = AsyncMock()
+    context = MagicMock()
+    context.__getitem__ = lambda self, key: {"user_id": "U1", "team_id": "T1"}[key]
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "stage": "awaiting_source_review",
+        "workflow_type": "transcribe_only",
+        "file_name": "clip.mp4",
+        "embed_source": False,
+        "embed_translated": False,
+        "review_gate": True,
+        "target_languages": [],
+        "channel_id": "C1",
+        "thread_ts": "1.2",
+    }
+    view = {
+        "private_metadata": "q1",
+        "state": {
+            "values": {
+                "srt_file": {
+                    "srt_file_input": {
+                        "files": [{"id": "F9", "name": "edited.srt"}],
+                    }
+                }
+            }
+        },
+    }
+
+    with (
+        patch(
+            "app.slack.media_workflow_actions.get_media_quote_session",
+            new_callable=AsyncMock,
+            return_value=session,
+        ),
+        patch(
+            "app.slack.media_workflow_actions._upload_slack_srt_to_file_server",
+            new_callable=AsyncMock,
+            return_value="fs-replaced",
+        ),
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new_callable=AsyncMock,
+            side_effect=lambda quote_id, updates: {**session, **updates},
+        ) as mock_update,
+    ):
+        await handle_media_srt_replace_submit(view=view, client=client, context=context)
+
+    assert (
+        mock_update.await_args.args[1]["approved_source_srt_file_id"] == "fs-replaced"
+    )
+
+
+@pytest.mark.asyncio
+async def test_thread_srt_replace_upload_failure_tells_user_and_skips_embed_quote():
+    from app.slack.listener_actions import maybe_show_thread_media_embed_option
+
+    client = AsyncMock()
+    context = MagicMock()
+    context.get.return_value = "C123"
+    message = {
+        "thread_ts": "1.2",
+        "files": [{"id": "F9", "name": "clip.srt", "filetype": "srt"}],
+    }
+    session = {
+        "quote_id": "q1",
+        "stage": "awaiting_source_review",
+        "workflow_type": "transcribe_only",
+        "file_name": "clip.mp4",
+        "embed_source": False,
+        "embed_translated": False,
+        "review_gate": True,
+        "target_languages": [],
+        "channel_id": "C123",
+        "thread_ts": "1.2",
+    }
+
+    with (
+        patch(
+            "app.slack.listener_actions.require_ray_client",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.listener_actions.get_media_quote_session_for_thread",
+            new_callable=AsyncMock,
+            return_value=session,
+        ),
+        patch(
+            "app.slack.media_workflow_actions._upload_slack_srt_to_file_server",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("file server down"),
+        ),
+        patch("app.slack.media_workflow_actions.notify_exception"),
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new_callable=AsyncMock,
+        ) as mock_update,
+        patch(
+            "app.slack.listener_actions.quote_existing_srt_embed_task",
+            new_callable=AsyncMock,
+        ) as mock_quote,
+    ):
+        handled = await maybe_show_thread_media_embed_option(client, context, message)
+
+    assert handled is True
+    mock_quote.assert_not_awaited()
+    mock_update.assert_not_awaited()
+    posted = client.chat_postMessage.await_args.kwargs
+    assert posted["channel"] == "C123"
+    assert posted["thread_ts"] == "1.2"
+    assert "Could not replace" in posted["text"]

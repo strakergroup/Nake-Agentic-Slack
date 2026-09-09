@@ -746,6 +746,70 @@ async def test_handle_transcribe_embed_pipeline_source_embed_keeps_quote2_open(
 
 
 @pytest.mark.asyncio
+async def test_late_source_embed_does_not_mark_translated_embed_done(tmp_path):
+    from app.ray.events.media_pipeline_events import handle_transcribe_embed_pipeline
+
+    media = tmp_path / "out.mp4"
+    media.write_bytes(b"fake-video")
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock(return_value={"ts": "1.1"})
+    task_info = SimpleNamespace(
+        task_uuid="task-source-embed",
+        file_name="clip.mp4",
+        pipeline_type="embed",
+        extra_data={
+            "workflow_type": "transcribe_translate",
+            "media_quote_id": "q1",
+            "embed_role": "source",
+        },
+    )
+    session = {
+        "quote_id": "q1",
+        "stage": "embedding_translated",
+        "workflow_type": "transcribe_translate",
+        "embed_source": True,
+        "embed_translated": True,
+        "review_gate": True,
+        "target_languages": ["es"],
+        "channel_id": "C1",
+        "thread_ts": "123.456",
+        "submission_ids": [42],
+    }
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": str(media)}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.upload_file_to_slack_memory_efficient",
+            new=AsyncMock(return_value={"ok": True}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.get_media_quote_session",
+            new_callable=AsyncMock,
+            return_value=session,
+        ),
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new_callable=AsyncMock,
+            side_effect=lambda quote_id, updates: {**session, **updates},
+        ) as mock_update,
+        patch(
+            "app.ray.events.media_pipeline_events.update_submission_status",
+            new_callable=AsyncMock,
+        ) as mock_complete,
+    ):
+        ok = await handle_transcribe_embed_pipeline(
+            client, "file-1", "out.mp4", task_info, "C1", "123.456", auth=None
+        )
+
+    assert ok is True
+    mock_complete.assert_not_awaited()
+    assert mock_update.await_args.args[1]["stage"] == "embedding_translated"
+
+
+@pytest.mark.asyncio
 async def test_handle_transcribe_embed_pipeline_source_embed_completes_transcribe_only(
     tmp_path,
 ):

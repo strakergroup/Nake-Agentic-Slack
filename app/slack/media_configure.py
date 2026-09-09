@@ -98,11 +98,8 @@ def parse_video_configure_media_view(
         target_language_names = []
         embed_translated = False
 
-    review_present = "review_gate" in values
-    review_gate = (
-        _checkbox_selected(values, "review_gate", "review_gate_options", "review_gate")
-        if review_present
-        else True
+    review_gate = _checkbox_selected(
+        values, "review_gate", "review_gate_options", "review_gate"
     )
 
     return VideoConfigureMediaSelection(

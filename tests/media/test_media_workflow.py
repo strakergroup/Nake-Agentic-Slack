@@ -212,6 +212,32 @@ def test_source_embed_completed_during_quote2_is_ignored():
     assert decision.commands == ()
 
 
+def test_late_source_embed_during_translated_embed_is_noop():
+    session = make_media_workflow_session(
+        workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
+        embed_source=True,
+        embed_translated=True,
+        review_gate=False,
+        target_languages=("es",),
+    )
+    session = _transcribing(session)
+    session = advance_media_workflow(
+        session, MediaWorkflowEvent.TRANSCRIPTION_COMPLETED
+    ).session
+    session = advance_media_workflow(
+        session, MediaWorkflowEvent.QUOTE2_ACCEPTED
+    ).session
+    session = advance_media_workflow(
+        session, MediaWorkflowEvent.TRANSLATION_COMPLETED
+    ).session
+    assert session.stage == MediaWorkflowStage.EMBEDDING_TRANSLATED
+    decision = advance_media_workflow(
+        session, MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
+    )
+    assert decision.session.stage == MediaWorkflowStage.EMBEDDING_TRANSLATED
+    assert decision.commands == ()
+
+
 def test_quote1_cancelled_has_no_start_commands():
     session = make_media_workflow_session(
         workflow_type=MediaWorkflowType.TRANSCRIBE_ONLY,
