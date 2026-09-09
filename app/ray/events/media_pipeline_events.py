@@ -30,6 +30,7 @@ from app.media.media_workflow import (
     MediaWorkflowEvent,
     MediaWorkflowStage,
     MediaWorkflowTransitionError,
+    MediaWorkflowType,
     advance_media_workflow,
     media_workflow_session_from_quote,
 )
@@ -551,6 +552,14 @@ def is_configure_source_embed_job(extra_data: dict | None) -> bool:
     return (
         bool(extra.get("workflow_type"))
         and extra.get("embed_role") == MediaEmbedRole.SOURCE
+    )
+
+
+def configure_source_embed_continues_translation(extra_data: dict | None) -> bool:
+    extra = extra_data or {}
+    return (
+        is_configure_source_embed_job(extra)
+        and extra.get("workflow_type") == MediaWorkflowType.TRANSCRIBE_TRANSLATE
     )
 
 

@@ -53,6 +53,7 @@ from ..ray.events.logging import (
     post_notification_ephemeral,
 )
 from ..ray.events.media_pipeline_events import (
+    configure_source_embed_continues_translation,
     fail_media_submissions,
     get_language_name_by_uuid,
     handle_transcribe_embed_pipeline,
@@ -657,7 +658,7 @@ async def ray_events(
                         failed_languages=transcribed_event.failed_languages,
                     )
                     if not delivered:
-                        if not is_configure_source_embed_job(extra_data):
+                        if not configure_source_embed_continues_translation(extra_data):
                             await fail_media_submissions(extra_data)
                         return
                     # Spend credits for embedding
