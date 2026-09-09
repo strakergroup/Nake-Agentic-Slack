@@ -37,6 +37,7 @@ from app.slack.modal_trigger import (
     status_modal,
 )
 from app.slack.templates.views import (
+    video_configure_media_modal,
     video_embed_subtitles_modal,
     video_transcribe_translate_modal,
 )
@@ -304,3 +305,63 @@ async def handle_video_embed_subtitles(
     except Exception as e:
         notify_exception(e)
         await safe_views_update(client, view_id, request_error_modal())
+
+
+async def handle_video_configure_media(
+    context: RayContext,
+    action: Optional[Dict[str, Any]],
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+):
+    """Open the unified Configure media modal."""
+    assert action is not None
+
+    action_data = json.loads(action.get("value", "{}"))
+    thread_ts = resolve_media_thread_ts(action_data, body)
+    view_id = await open_loading_modal(client, body["trigger_id"])
+    try:
+        await populate_ray_connection(context)
+        if not await require_ray_client(context, allow_org_billing=True):
+            await safe_views_update(
+                client,
+                view_id,
+                status_modal(
+                    _("Sign in required"),
+                    _("Please sign in to LanguageCloud to continue."),
+                ),
+            )
+            return
+        await safe_views_update(
+            client,
+            view_id,
+            video_configure_media_modal(
+                channel_id=action_data.get("channel_id", context.get("channel_id", "")),
+                files=action_data["files"],
+                thread_ts=thread_ts,
+                show_embed_option=bool(action_data.get("show_embed_option", True)),
+            ),
+        )
+    except Exception as e:
+        notify_exception(e)
+        await safe_views_update(client, view_id, request_error_modal())
+
+
+async def handle_video_configure_workflow_type(
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+):
+    """Rebuild the Configure modal when the workflow type radio changes."""
+    view = body["view"]
+    metadata = json.loads(view.get("private_metadata") or "{}")
+    selected = (action.get("selected_option") or {}).get("value")
+    await client.views_update(
+        view_id=view["id"],
+        view=video_configure_media_modal(
+            channel_id=metadata.get("channel_id", ""),
+            files=metadata.get("files") or [],
+            thread_ts=metadata.get("thread_ts"),
+            show_embed_option=bool(metadata.get("show_embed_option", True)),
+            show_translate_options=selected == "transcribe_translate",
+        ),
+    )

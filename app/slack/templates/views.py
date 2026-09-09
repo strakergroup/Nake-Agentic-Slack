@@ -14,6 +14,8 @@ from slack_sdk.models.blocks import (
     SectionBlock,
 )
 from slack_sdk.models.blocks.block_elements import (
+    CheckboxesElement,
+    RadioButtonsElement,
     StaticMultiSelectElement,
 )
 
@@ -1371,6 +1373,153 @@ def video_transcribe_translate_modal(
             }
         ),
         "title": {"type": "plain_text", "text": _("Transcribe+AI Translate")[:24]},
+        "submit": {"type": "plain_text", "text": _("Submit")},
+        "close": {"type": "plain_text", "text": _("Cancel")},
+        "blocks": [block.to_dict() for block in blocks],
+    }
+
+
+def video_configure_media_modal(
+    channel_id: str,
+    files: list[dict],
+    thread_ts: str | None = None,
+    *,
+    show_embed_option: bool = True,
+    show_translate_options: bool = True,
+) -> dict[str, Any]:
+    transcribe_only = Option(
+        text=PlainTextObject(text=_("Transcription only"), emoji=True),
+        value="transcribe_only",
+    )
+    transcribe_translate = Option(
+        text=PlainTextObject(text=_("Transcription and translation"), emoji=True),
+        value="transcribe_translate",
+    )
+    workflow_initial = (
+        transcribe_translate if show_translate_options else transcribe_only
+    )
+    file_options = [
+        Option(
+            text=PlainTextObject(text=f["file_name"][:75], emoji=False),
+            value=f["file_id"],
+        )
+        for f in files
+    ]
+    language_options = [
+        Option(
+            text=PlainTextObject(text=opt["text"]["text"][:75], emoji=False),
+            value=opt["value"],
+        )
+        for opt in get_auto_translate_language_options()
+    ]
+    review_option = Option(
+        text=PlainTextObject(
+            text=_("Review SRT files before embedding"),
+            emoji=True,
+        ),
+        value="review_gate",
+    )
+    embed_source_option = Option(
+        text=PlainTextObject(text=_("Embed source subtitles"), emoji=True),
+        value="embed_source",
+    )
+    embed_translated_option = Option(
+        text=PlainTextObject(text=_("Embed translated subtitles"), emoji=True),
+        value="embed_translated",
+    )
+
+    blocks: list[Block] = [
+        SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "Choose how to process your media file(s). You can transcribe only, "
+                    "or transcribe and translate, and optionally embed subtitles."
+                )
+            )
+        ),
+        InputBlock(
+            block_id="workflow_type",
+            label=PlainTextObject(text=_("Workflow")),
+            dispatch_action=True,
+            element=RadioButtonsElement(
+                action_id="video_configure_workflow_type",
+                options=[transcribe_only, transcribe_translate],
+                initial_option=workflow_initial,
+            ),
+        ),
+        InputBlock(
+            block_id="selected_file",
+            label=PlainTextObject(text=_("Select your files to process")),
+            element=StaticMultiSelectElement(
+                action_id="file_display",
+                placeholder=PlainTextObject(text=_("Selected files")),
+                options=file_options,
+                initial_options=file_options,
+            ),
+            optional=False,
+        ),
+    ]
+    if show_translate_options:
+        blocks.append(
+            InputBlock(
+                block_id="target_languages",
+                label=PlainTextObject(text=_("Translate to")),
+                element=StaticMultiSelectElement(
+                    action_id="language_mt_options",
+                    placeholder=PlainTextObject(text=_("Select languages")),
+                    options=language_options,
+                ),
+            )
+        )
+    if show_embed_option:
+        blocks.append(
+            InputBlock(
+                block_id="embed_source",
+                label=PlainTextObject(text=_("Source embedding")),
+                optional=True,
+                element=CheckboxesElement(
+                    action_id="embed_source_options",
+                    options=[embed_source_option],
+                ),
+            )
+        )
+        if show_translate_options:
+            blocks.append(
+                InputBlock(
+                    block_id="embed_translated",
+                    label=PlainTextObject(text=_("Translated embedding")),
+                    optional=True,
+                    element=CheckboxesElement(
+                        action_id="embed_translated_options",
+                        options=[embed_translated_option],
+                    ),
+                )
+            )
+    blocks.append(
+        InputBlock(
+            block_id="review_gate",
+            label=PlainTextObject(text=_("SRT review")),
+            optional=True,
+            element=CheckboxesElement(
+                action_id="review_gate_options",
+                options=[review_option],
+                initial_options=[review_option],
+            ),
+        )
+    )
+
+    return {
+        "type": "modal",
+        "callback_id": "video_configure_media_submit",
+        "private_metadata": json.dumps(
+            {
+                "channel_id": channel_id,
+                "files": files,
+                "thread_ts": thread_ts,
+                "show_embed_option": show_embed_option,
+            }
+        ),
+        "title": {"type": "plain_text", "text": _("Configure media")[:24]},
         "submit": {"type": "plain_text", "text": _("Submit")},
         "close": {"type": "plain_text", "text": _("Cancel")},
         "blocks": [block.to_dict() for block in blocks],

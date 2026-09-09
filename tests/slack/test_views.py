@@ -663,6 +663,132 @@ class TestVideoTranscribeTranslateModal:
         assert target_lang_block is not None, "Target languages block not found"
 
 
+class TestVideoConfigureMediaModal:
+    """RAY-81819: unified Configure modal for media workflow flags."""
+
+    def test_modal_structure_and_callback(self):
+        import json
+
+        from app.slack.templates.views import video_configure_media_modal
+
+        files = [
+            {
+                "file_id": "F123456",
+                "file_name": "test_video.mp4",
+                "duration_ms": 60000,
+            }
+        ]
+        modal = video_configure_media_modal(
+            channel_id="C123456",
+            files=files,
+            thread_ts="123.456",
+        )
+        assert modal["type"] == "modal"
+        assert modal["callback_id"] == "video_configure_media_submit"
+        metadata = json.loads(modal["private_metadata"])
+        assert metadata["channel_id"] == "C123456"
+        assert metadata["files"] == files
+        assert metadata["thread_ts"] == "123.456"
+        assert metadata["show_embed_option"] is True
+
+    def test_workflow_type_dispatches_for_views_update(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(
+            channel_id="C123456",
+            files=self._files(),
+        )
+        workflow = _modal_block(modal, "workflow_type")
+        assert workflow["dispatch_action"] is True
+        element = workflow["element"]
+        assert element["action_id"] == "video_configure_workflow_type"
+        values = [opt["value"] for opt in element["options"]]
+        assert values == ["transcribe_only", "transcribe_translate"]
+        assert element["initial_option"]["value"] == "transcribe_translate"
+
+    def test_translate_mode_shows_languages_and_translated_embed(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(
+            channel_id="C123456",
+            files=self._files(),
+            show_translate_options=True,
+            show_embed_option=True,
+        )
+        block_ids = _modal_block_ids(modal)
+        assert "target_languages" in block_ids
+        assert "embed_source" in block_ids
+        assert "embed_translated" in block_ids
+        assert "review_gate" in block_ids
+
+    def test_transcribe_only_hides_languages_and_translated_embed(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(
+            channel_id="C123456",
+            files=self._files(),
+            show_translate_options=False,
+            show_embed_option=True,
+        )
+        block_ids = _modal_block_ids(modal)
+        assert "target_languages" not in block_ids
+        assert "embed_translated" not in block_ids
+        assert "embed_source" in block_ids
+        assert (
+            _modal_block(modal, "workflow_type")["element"]["initial_option"]["value"]
+            == "transcribe_only"
+        )
+
+    def test_audio_only_hides_embed_checkboxes(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(
+            channel_id="C123456",
+            files=self._files(),
+            show_translate_options=True,
+            show_embed_option=False,
+        )
+        block_ids = _modal_block_ids(modal)
+        assert "embed_source" not in block_ids
+        assert "embed_translated" not in block_ids
+        assert "target_languages" in block_ids
+
+    def test_review_gate_defaults_on(self):
+        from app.slack.templates.views import video_configure_media_modal
+
+        modal = video_configure_media_modal(
+            channel_id="C123456",
+            files=self._files(),
+        )
+        review = _modal_block(modal, "review_gate")
+        initial = review["element"]["initial_options"]
+        assert [opt["value"] for opt in initial] == ["review_gate"]
+
+    def _files(self) -> list[dict]:
+        return [
+            {
+                "file_id": "F123456",
+                "file_name": "test_video.mp4",
+                "duration_ms": 60000,
+            }
+        ]
+
+
+def _modal_block_ids(modal: dict) -> list[str]:
+    return [
+        block.get("block_id")
+        for block in modal.get("blocks", [])
+        if block.get("block_id")
+    ]
+
+
+def _modal_block(modal: dict, block_id: str) -> dict:
+    for block in modal.get("blocks", []):
+        if block.get("block_id") == block_id:
+            return block
+    raise AssertionError(f"block {block_id} not found")
+
+
 class TestInsightsRemovedFromHomeView:
     """Guard test: report_insights button must not appear in home_view (RAY-79162)."""
 

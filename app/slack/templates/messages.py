@@ -3401,15 +3401,10 @@ class MediaEmbeddingPartialMessage(TextMessage):
 
 
 class VideoOptionsMessage(SlackMessage):
-    """Message shown when video(s) are detected, offering processing options.
+    """Message shown when video(s) are detected, with one Configure entry.
 
-    Shows action buttons per the Figma design:
-    1. Transcribe Audio - Transcription only in source language
-    2. Transcribe & AI Translate - Transcription with translation
-    3. Embed Subtitles - Full package with embedded subtitles (video files only)
-
-    Supports multiple files - all files are processed together.
-    The Embed Subtitles option is hidden for audio-only files (mp3, wav, etc.)
+    Configure opens a modal for workflow type, languages, embedding, and SRT review.
+    Embed checkboxes in that modal are hidden for audio-only files (mp3, wav, etc.).
     """
 
     def __init__(
@@ -3421,19 +3416,17 @@ class VideoOptionsMessage(SlackMessage):
         tokens: int | None = None,
         show_embed_option: bool = True,
     ) -> None:
-        # Store files info in action value
         action_value = json.dumps(
             {
                 "channel_id": channel_id,
                 "files": files,
                 "thread_ts": thread_ts,
+                "show_embed_option": show_embed_option,
             }
         )
 
-        # Build blocks using SDK where possible
         blocks: list[Block] = []
 
-        # Show token balance for non-IBM users
         if not is_ibm_enterprise and tokens is not None:
             token_context = ContextBlock(
                 elements=[
@@ -3444,57 +3437,21 @@ class VideoOptionsMessage(SlackMessage):
             )
             blocks.append(token_context)
 
-        # Transcribe Audio option
-        transcribe_button = ButtonElement(
-            text=PlainTextObject(text=_("Transcribe"), emoji=True),
-            action_id="video_transcribe_only",
+        configure_button = ButtonElement(
+            text=PlainTextObject(text=_("Configure"), emoji=True),
+            action_id="video_configure_media",
             value=action_value,
             style="primary",
         )
-        transcribe_section = SectionBlock(
+        configure_section = SectionBlock(
             text=MarkdownTextObject(
                 text=_(
-                    "*Transcribe Audio* - Transcribe spoken media content to text in the source language."
+                    "*Configure* - Choose transcription, translation, embedding, and whether to review SRT files before embedding."
                 )
             ),
-            accessory=transcribe_button,
+            accessory=configure_button,
         )
-        blocks.append(transcribe_section)
-
-        # Transcribe & AI Translate option
-        translate_button = ButtonElement(
-            text=PlainTextObject(text=_("Transcribe & AI Translate"), emoji=True),
-            action_id="video_transcribe_translate",
-            value=action_value,
-            style="primary",
-        )
-        translate_section = SectionBlock(
-            text=MarkdownTextObject(
-                text=_(
-                    "*Transcribe & AI Translate* - Transcribe media content and instantly translate the text into your chosen target language(s) using AI Translation."
-                )
-            ),
-            accessory=translate_button,
-        )
-        blocks.append(translate_section)
-
-        # Embed Subtitles option - only shown for video files, not audio-only
-        if show_embed_option:
-            embed_button = ButtonElement(
-                text=PlainTextObject(text=_("Embed Subtitles"), emoji=True),
-                action_id="video_embed_subtitles",
-                value=action_value,
-                style="primary",
-            )
-            embed_section = SectionBlock(
-                text=MarkdownTextObject(
-                    text=_(
-                        "*Embed Subtitles* - Transcribe, translate, and automatically embed the translated text as subtitles into your media file."
-                    )
-                ),
-                accessory=embed_button,
-            )
-            blocks.append(embed_section)
+        blocks.append(configure_section)
 
         super().__init__(
             _("Media processing options"),

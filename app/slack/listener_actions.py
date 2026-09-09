@@ -138,6 +138,7 @@ VIDEO_ONLY_TYPES = ["mp4", "mpeg", "webm"]
 
 MEDIA_ACTION_IDS = frozenset(
     {
+        "video_configure_media",
         "video_transcribe_only",
         "video_transcribe_translate",
         "video_embed_subtitles",

@@ -783,9 +783,9 @@ class TestHelpMessage:
 
 
 class TestVideoOptionsMessage:
-    """RAY-79726: Embed Subtitles option copy."""
+    """RAY-81819: single Configure entry replaces the three media buttons."""
 
-    def test_embed_subtitles_description_uses_translated_text(self):
+    def test_configure_button_replaces_three_pipeline_buttons(self):
         message = VideoOptionsMessage(
             channel_id="C123",
             files=[
@@ -797,10 +797,13 @@ class TestVideoOptionsMessage:
             ],
             show_embed_option=True,
         )
-        assert "final translated text" not in json.dumps(message.blocks)
+        assert _blocks_contain_action(message.blocks, "video_configure_media")
+        assert not _blocks_contain_action(message.blocks, "video_transcribe_only")
+        assert not _blocks_contain_action(message.blocks, "video_transcribe_translate")
+        assert not _blocks_contain_action(message.blocks, "video_embed_subtitles")
         assert _blocks_contain_text(
             message.blocks,
-            "*Embed Subtitles* - Transcribe, translate, and automatically embed the translated text as subtitles into your media file.",
+            "*Configure* - Choose transcription, translation, embedding, and whether to review SRT files before embedding.",
         )
 
 

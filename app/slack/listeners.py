@@ -964,6 +964,36 @@ async def handle_video_embed_subtitles(
     )
 
 
+@app.action("video_configure_media")
+@slack_log_decorator
+async def handle_video_configure_media(
+    ack: AsyncAck,
+    context: RayContext,
+    action: Optional[Dict[str, Any]],
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+):
+    await ack()
+    await media.handle_video_configure_media(
+        context=context, action=action, body=body, client=client
+    )
+
+
+@app.action("video_configure_workflow_type")
+@slack_log_decorator
+async def handle_video_configure_workflow_type(
+    ack: AsyncAck,
+    action: Optional[Dict[str, Any]],
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+):
+    await ack()
+    assert action is not None
+    await media.handle_video_configure_workflow_type(
+        client=client, body=body, action=action
+    )
+
+
 @app.view("video_transcribe_translate_submit", middleware=[ray_connection])
 @slack_log_decorator
 async def handle_video_transcribe_translate_submit(
@@ -988,6 +1018,20 @@ async def handle_video_embed_subtitles_submit(
 ):
     await ack(response_action="clear")
     await media_submissions.handle_video_embed_subtitles_submit(
+        view=view, context=context, client=client
+    )
+
+
+@app.view("video_configure_media_submit", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_video_configure_media_submit(
+    ack: AsyncAck,
+    view: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+):
+    await ack(response_action="clear")
+    await media_submissions.handle_video_configure_media_submit(
         view=view, context=context, client=client
     )
 
