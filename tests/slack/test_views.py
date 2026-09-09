@@ -774,6 +774,23 @@ class TestVideoConfigureMediaModal:
         ]
 
 
+class TestMediaSrtReplaceModal:
+    """RAY-81819: Replace SRT uses a modal file_input, not a thread button."""
+
+    def test_replace_modal_accepts_one_srt(self):
+        from app.slack.templates.views import media_srt_replace_modal
+
+        modal = media_srt_replace_modal("q-1")
+        assert modal["type"] == "modal"
+        assert modal["callback_id"] == "media_srt_replace_submit"
+        assert modal["private_metadata"] == "q-1"
+        file_block = _modal_block(modal, "srt_file")
+        element = file_block["element"]
+        assert element["type"] == "file_input"
+        assert element["filetypes"] == ["srt"]
+        assert element["max_files"] == 1
+
+
 def _modal_block_ids(modal: dict) -> list[str]:
     return [
         block.get("block_id")

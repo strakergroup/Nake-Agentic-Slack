@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 
 class MediaWorkflowStage(StrEnum):
@@ -94,6 +95,25 @@ def make_media_workflow_session(
             embed_translated=embed_translated,
             review_gate=review_gate,
             target_languages=target_languages,
+        ),
+    )
+
+
+def media_workflow_session_from_quote(
+    session: dict[str, Any],
+) -> MediaWorkflowSession | None:
+    raw_type = session.get("workflow_type")
+    if not raw_type:
+        return None
+    stage_value = session.get("workflow_stage") or session.get("stage")
+    return MediaWorkflowSession(
+        stage=MediaWorkflowStage(str(stage_value)),
+        config=MediaWorkflowConfig(
+            workflow_type=MediaWorkflowType(str(raw_type)),
+            embed_source=bool(session.get("embed_source")),
+            embed_translated=bool(session.get("embed_translated")),
+            review_gate=bool(session.get("review_gate", True)),
+            target_languages=tuple(session.get("target_languages") or ()),
         ),
     )
 

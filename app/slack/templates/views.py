@@ -15,6 +15,7 @@ from slack_sdk.models.blocks import (
 )
 from slack_sdk.models.blocks.block_elements import (
     CheckboxesElement,
+    FileInputElement,
     RadioButtonsElement,
     StaticMultiSelectElement,
 )
@@ -1523,6 +1524,37 @@ def video_configure_media_modal(
         "submit": {"type": "plain_text", "text": _("Submit")},
         "close": {"type": "plain_text", "text": _("Cancel")},
         "blocks": [block.to_dict() for block in blocks],
+    }
+
+
+def media_srt_replace_modal(quote_id: str) -> dict[str, Any]:
+    file_input = InputBlock(
+        block_id="srt_file",
+        label=PlainTextObject(text=_("Replacement SRT")),
+        element=FileInputElement(
+            action_id="srt_file_input",
+            filetypes=["srt"],
+            max_files=1,
+        ),
+        optional=False,
+    )
+    return {
+        "type": "modal",
+        "callback_id": "media_srt_replace_submit",
+        "private_metadata": quote_id,
+        "title": {"type": "plain_text", "text": _("Replace SRT")[:24]},
+        "submit": {"type": "plain_text", "text": _("Replace")},
+        "close": {"type": "plain_text", "text": _("Cancel")},
+        "blocks": [
+            SectionBlock(
+                text=MarkdownTextObject(
+                    text=_(
+                        "Upload an edited SRT to replace the file currently under review."
+                    )
+                )
+            ).to_dict(),
+            file_input.to_dict(),
+        ],
     }
 
 

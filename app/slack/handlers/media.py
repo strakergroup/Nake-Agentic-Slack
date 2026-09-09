@@ -365,3 +365,40 @@ async def handle_video_configure_workflow_type(
             show_translate_options=selected == "transcribe_translate",
         ),
     )
+
+
+async def handle_media_srt_approve_continue(
+    client: AsyncWebClient,
+    action: Optional[Dict[str, Any]],
+    context: RayContext,
+):
+    assert action is not None
+    from app.slack.media_workflow_actions import (
+        handle_media_srt_approve_continue as approve,
+    )
+
+    await approve(client=client, action=action, context=context)
+
+
+async def handle_media_srt_replace(
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Optional[Dict[str, Any]],
+):
+    assert action is not None
+    from app.slack.media_workflow_actions import handle_media_srt_replace_open
+
+    await handle_media_srt_replace_open(client=client, body=body, action=action)
+
+
+async def handle_media_srt_replace_submit(
+    view: Optional[dict],
+    context: RayContext,
+    client: AsyncWebClient,
+):
+    assert view is not None
+    from app.slack.media_workflow_actions import (
+        handle_media_srt_replace_submit as submit,
+    )
+
+    await submit(view=view, client=client, context=context)

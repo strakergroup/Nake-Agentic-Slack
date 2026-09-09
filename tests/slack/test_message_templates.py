@@ -31,6 +31,7 @@ from app.slack.templates.messages import (
     LogoutMessage,
     MachineTranslationMessage,
     MediaEmbedOptionMessage,
+    MediaSrtReviewMessage,
     NewJobMessage,
     OnboardingMessage,
     RequiresMtTokenMessage,
@@ -1284,6 +1285,19 @@ class TestMediaEmbedOptionMessage:
         assert message.blocks[0]["accessory"]["type"] == "button"
         assert message.blocks[0]["accessory"]["action_id"] == "video_embed_subtitles"
         assert message.blocks[0]["accessory"]["value"] == action_value
+
+
+class TestMediaSrtReviewMessage:
+    def test_approve_and_replace_actions_without_mandatory_edit_copy(self):
+        message = MediaSrtReviewMessage("q-1")
+        assert _blocks_contain_action(message.blocks, "media_srt_approve_continue")
+        assert _blocks_contain_action(message.blocks, "media_srt_replace")
+        dumped = json.dumps(message.blocks)
+        assert "Approve & Continue" in dumped
+        assert "Replace" in dumped
+        assert "reupload" not in dumped.lower()
+        assert "edit is required" not in dumped.lower()
+        assert "must edit" not in dumped.lower()
 
 
 class TestBatchAndFileListMessages:

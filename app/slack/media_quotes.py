@@ -20,6 +20,7 @@ AI_TOKEN_USD_RATE = 0.02
 
 MEDIA_QUOTE_KEY_PREFIX = "slack-ray-translator:media-quote"
 MEDIA_QUOTE_LOCK_PREFIX = "slack-ray-translator:media-quote-lock"
+MEDIA_QUOTE_THREAD_PREFIX = "slack-ray-translator:media-quote-thread"
 
 STAGE_AWAITING_TRANSCRIPTION_ACCEPT = "awaiting_transcription_accept"
 STAGE_TRANSCRIBING = "transcribing"
@@ -40,6 +41,15 @@ ACTION_MEDIA_TRANSLATION_QUOTE_ACCEPT = "media_translation_quote_accept"
 ACTION_MEDIA_TRANSLATION_QUOTE_CANCEL = "media_translation_quote_cancel"
 
 
+def translate_resume_pipeline_type(session: dict[str, Any]) -> str:
+    """Quote 2 resume job type. Configure never auto-chains embed after MT."""
+    if session.get("workflow_type"):
+        return "translate_only"
+    if session.get("pipeline_kind") == PIPELINE_TRANSCRIBE_TRANSLATE_EMBED:
+        return "translate_embed"
+    return "translate_only"
+
+
 def new_media_quote_id() -> str:
     return str(uuid4())
 
@@ -50,6 +60,10 @@ def media_quote_key(quote_id: str) -> str:
 
 def media_quote_lock_key(quote_id: str) -> str:
     return f"{MEDIA_QUOTE_LOCK_PREFIX}:{quote_id}"
+
+
+def media_quote_thread_key(channel_id: str, thread_ts: str) -> str:
+    return f"{MEDIA_QUOTE_THREAD_PREFIX}:{channel_id}:{thread_ts}"
 
 
 def _utc_now_iso() -> str:
@@ -293,15 +307,35 @@ async def save_media_quote_session(session: dict[str, Any]) -> None:
     session = dict(session)
     session.setdefault("created_at", _utc_now_iso())
     session["updated_at"] = _utc_now_iso()
+    ttl = config.media_quote_ttl_seconds
     await redis_conn.set(
         media_quote_key(session["quote_id"]),
         json.dumps(session),
-        ex=config.media_quote_ttl_seconds,
+        ex=ttl,
     )
+    channel_id = session.get("channel_id")
+    thread_ts = session.get("thread_ts")
+    if channel_id and thread_ts:
+        await redis_conn.set(
+            media_quote_thread_key(str(channel_id), str(thread_ts)),
+            session["quote_id"],
+            ex=ttl,
+        )
 
 
 async def get_media_quote_session(quote_id: str) -> dict[str, Any] | None:
     return _decode_cached_json(await redis_conn.get(media_quote_key(quote_id)))
+
+
+async def get_media_quote_session_for_thread(
+    channel_id: str, thread_ts: str
+) -> dict[str, Any] | None:
+    quote_id = await redis_conn.get(media_quote_thread_key(channel_id, thread_ts))
+    if quote_id is None:
+        return None
+    if isinstance(quote_id, bytes):
+        quote_id = quote_id.decode()
+    return await get_media_quote_session(str(quote_id))
 
 
 async def update_media_quote_session(

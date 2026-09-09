@@ -1036,6 +1036,46 @@ async def handle_video_configure_media_submit(
     )
 
 
+@app.action("media_srt_approve_continue")
+@slack_log_decorator
+async def handle_media_srt_approve_continue(
+    ack: AsyncAck,
+    context: RayContext,
+    action: Optional[Dict[str, Any]],
+    client: AsyncWebClient,
+):
+    await ack()
+    await media.handle_media_srt_approve_continue(
+        client=client, action=action, context=context
+    )
+
+
+@app.action("media_srt_replace")
+@slack_log_decorator
+async def handle_media_srt_replace(
+    ack: AsyncAck,
+    action: Optional[Dict[str, Any]],
+    body: Dict[str, Any],
+    client: AsyncWebClient,
+):
+    await ack()
+    await media.handle_media_srt_replace(client=client, body=body, action=action)
+
+
+@app.view("media_srt_replace_submit", middleware=[ray_connection])
+@slack_log_decorator
+async def handle_media_srt_replace_submit(
+    ack: AsyncAck,
+    view: Optional[Dict[str, Any]],
+    context: RayContext,
+    client: AsyncWebClient,
+):
+    await ack(response_action="clear")
+    await media.handle_media_srt_replace_submit(
+        view=view, context=context, client=client
+    )
+
+
 @app.event(re.compile(r".+"))
 @slack_log_decorator
 async def catch_all_event_callbacks(body: Dict[str, Any]):

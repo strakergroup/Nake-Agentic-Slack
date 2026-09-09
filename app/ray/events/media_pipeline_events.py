@@ -24,6 +24,14 @@ from app.media.embed_spend import (
     embedding_target_language_codes,
     is_embed_only_pipeline,
 )
+from app.media.media_workflow import (
+    MediaWorkflowCommand,
+    MediaWorkflowEvent,
+    MediaWorkflowStage,
+    MediaWorkflowTransitionError,
+    advance_media_workflow,
+    media_workflow_session_from_quote,
+)
 from app.models import TranscriptionTask, TranscriptionTaskInfo
 from app.ray.events.logging import post_notification
 from app.ray.utils import download_from_file_server_async, is_ibm_enterprise
@@ -60,6 +68,75 @@ from ...dependencies import RayEvent
 from ..submissions import SubmissionStatus, updated_submission_status
 
 logger = logging.getLogger(__name__)
+
+
+def _task_extra_data(task_info: Any) -> dict[str, Any]:
+    extra = getattr(task_info, "extra_data", None)
+    model_dump = getattr(extra, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump()
+        return dumped if isinstance(dumped, dict) else {}
+    return dict(extra) if isinstance(extra, dict) else {}
+
+
+async def _advance_configure_after_translation(
+    client: AsyncWebClient,
+    extra: dict[str, Any],
+    channel_id: str,
+    thread_ts: str | None,
+) -> None:
+    quote_id = extra.get("media_quote_id")
+    if not quote_id:
+        return
+    session = await get_media_quote_session(str(quote_id))
+    workflow = media_workflow_session_from_quote(session) if session else None
+    if workflow is None or session is None:
+        return
+    from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+    decision = advance_media_workflow(
+        workflow, MediaWorkflowEvent.TRANSLATION_COMPLETED
+    )
+    session["channel_id"] = session.get("channel_id") or channel_id
+    session["thread_ts"] = session.get("thread_ts") or thread_ts
+    await execute_media_workflow_decision(
+        client=client, session=session, decision=decision
+    )
+
+
+async def _advance_configure_after_embed(
+    client: AsyncWebClient,
+    extra: dict[str, Any],
+    channel_id: str,
+    thread_ts: str | None,
+) -> None:
+    quote_id = extra.get("media_quote_id")
+    if not quote_id:
+        return
+    session = await get_media_quote_session(str(quote_id))
+    workflow = media_workflow_session_from_quote(session) if session else None
+    if workflow is None or session is None:
+        return
+    if workflow.stage is MediaWorkflowStage.EMBEDDING_SOURCE:
+        event = MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
+    elif workflow.stage is MediaWorkflowStage.EMBEDDING_TRANSLATED:
+        event = MediaWorkflowEvent.TRANSLATED_EMBED_COMPLETED
+    elif workflow.stage is MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT:
+        event = MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
+    else:
+        return
+    try:
+        decision = advance_media_workflow(workflow, event)
+    except MediaWorkflowTransitionError as exc:
+        notify_exception(exc)
+        return
+    from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+    session["channel_id"] = session.get("channel_id") or channel_id
+    session["thread_ts"] = session.get("thread_ts") or thread_ts
+    await execute_media_workflow_decision(
+        client=client, session=session, decision=decision
+    )
 
 
 def resolve_event_thread_ts(
@@ -482,6 +559,25 @@ async def maybe_post_media_translation_quote(
     if session is None:
         return False
 
+    workflow = media_workflow_session_from_quote(session)
+    if workflow is not None:
+        from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+        decision = advance_media_workflow(
+            workflow, MediaWorkflowEvent.TRANSCRIPTION_COMPLETED
+        )
+        session["channel_id"] = session.get("channel_id") or channel_id
+        session["thread_ts"] = session.get("thread_ts") or thread_ts
+        await execute_media_workflow_decision(
+            client=client,
+            session=session,
+            decision=decision,
+            source_text_length=int(task_info.source_text_length or 0),
+            task_uuid=task_info.task_uuid,
+            duration_ms=task_info.duration_ms or session.get("duration_ms"),
+        )
+        return MediaWorkflowCommand.MARK_DONE not in decision.commands
+
     pipeline_kind = session.get("pipeline_kind") or extra_data.get("pipeline_kind")
     if pipeline_kind not in (
         PIPELINE_TRANSCRIBE_TRANSLATE,
@@ -686,15 +782,21 @@ async def handle_translation_complete(
                 text=_("Your file is AI translated and can be downloaded above."),
                 thread_ts=effective_thread_ts,
             )
-        await client.chat_postMessage(
-            channel=channel_id,
-            text=_(
-                "Download the AI-translated subtitle files (SRT) provided above, "
-                "make your edits, and reupload the edited subtitle files back "
-                "to the same thread."
-            ),
-            thread_ts=effective_thread_ts,
-        )
+        extra = _task_extra_data(task_info)
+        if extra.get("workflow_type"):
+            await _advance_configure_after_translation(
+                client, extra, channel_id, effective_thread_ts
+            )
+        else:
+            await client.chat_postMessage(
+                channel=channel_id,
+                text=_(
+                    "Download the AI-translated subtitle files (SRT) provided above, "
+                    "make your edits, and reupload the edited subtitle files back "
+                    "to the same thread."
+                ),
+                thread_ts=effective_thread_ts,
+            )
     elif translated_file_ids:
         await client.chat_postMessage(
             channel=channel_id,
@@ -821,6 +923,11 @@ async def handle_transcribe_embed_pipeline(
                 channel_id,
                 effective_thread_ts,
                 is_ibm=is_ibm,
+            )
+        extra = _task_extra_data(task_info)
+        if extra.get("workflow_type"):
+            await _advance_configure_after_embed(
+                client, extra, channel_id, effective_thread_ts
             )
         return True
 

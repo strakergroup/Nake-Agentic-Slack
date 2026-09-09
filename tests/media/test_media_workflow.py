@@ -274,3 +274,39 @@ def test_translated_review_then_embed():
     )
     assert decision.session.stage == MediaWorkflowStage.DONE
     assert decision.commands == (MediaWorkflowCommand.MARK_DONE,)
+
+
+def test_media_workflow_session_from_quote_returns_none_for_legacy_session():
+    from app.media.media_workflow import media_workflow_session_from_quote
+
+    assert (
+        media_workflow_session_from_quote(
+            {
+                "stage": "transcribing",
+                "pipeline_kind": "transcribe_translate",
+            }
+        )
+        is None
+    )
+
+
+def test_media_workflow_session_from_quote_maps_configure_flags():
+    from app.media.media_workflow import media_workflow_session_from_quote
+
+    session = media_workflow_session_from_quote(
+        {
+            "stage": "transcribing",
+            "workflow_type": "transcribe_translate",
+            "embed_source": True,
+            "embed_translated": False,
+            "review_gate": True,
+            "target_languages": ["fr", "de"],
+        }
+    )
+    assert session is not None
+    assert session.stage is MediaWorkflowStage.TRANSCRIBING
+    assert session.config.workflow_type is MediaWorkflowType.TRANSCRIBE_TRANSLATE
+    assert session.config.embed_source is True
+    assert session.config.embed_translated is False
+    assert session.config.review_gate is True
+    assert session.config.target_languages == ("fr", "de")

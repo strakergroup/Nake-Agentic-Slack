@@ -54,6 +54,7 @@ from app.slack.media_quotes import (
     get_media_quote_session,
     media_quote_blocks,
     media_quote_lock_key,
+    translate_resume_pipeline_type,
     update_media_quote_session,
 )
 from app.slack.middleware import require_ray_client
@@ -226,10 +227,7 @@ async def _resume_translate_phase(
     session: dict[str, Any],
 ) -> None:
     """Update DB pipeline_type for phase-2 and re-trigger the consumer."""
-    if pipeline_kind == PIPELINE_TRANSCRIBE_TRANSLATE_EMBED:
-        next_pipeline = "translate_embed"
-    else:
-        next_pipeline = "translate_only"
+    next_pipeline = translate_resume_pipeline_type(session)
 
     async with AsyncSession(async_engines["sitecommons"]) as db_session:
         task = await db_session.get(TranscriptionTask, task_uuid)
@@ -238,6 +236,10 @@ async def _resume_translate_phase(
         extra_data = dict(task.extra_data or {})
         extra_data["media_quote_id"] = session["quote_id"]
         extra_data["pipeline_kind"] = pipeline_kind
+        if session.get("workflow_type"):
+            extra_data["workflow_type"] = session["workflow_type"]
+            extra_data["embed_translated"] = bool(session.get("embed_translated"))
+            extra_data["embed_source"] = bool(session.get("embed_source"))
         selected_languages = media_selected_target_languages(session)
         extra_data["target_languages"] = selected_languages
         extra_data["target_language_names"] = media_selected_target_language_names(
@@ -333,6 +335,11 @@ async def accept_media_quote(
             "media_quote_id": quote_id,
             "pipeline_kind": pipeline_kind,
         }
+        if session.get("workflow_type"):
+            extra_data["workflow_type"] = session["workflow_type"]
+            extra_data["embed_source"] = bool(session.get("embed_source"))
+            extra_data["embed_translated"] = bool(session.get("embed_translated"))
+            extra_data["review_gate"] = bool(session.get("review_gate", True))
         # Stamp poster identity at accept so media spend usage rows always carry
         # Client Email/Name even when org-billed (RAY-81247) — same helpers as HT/channel.
         poster_email = await resolve_slack_poster_email(client, context["user_id"])
@@ -776,6 +783,95 @@ async def auto_accept_media_translation_quote_if_needed(
         action={"value": session["quote_id"]},
         context=context,
     )
+
+
+async def resume_configure_embed_phase(
+    *,
+    session: dict[str, Any],
+    translated: bool,
+) -> None:
+    """Resume the existing transcription task as an embed-only job after SRT approval."""
+    task_uuid = session.get("task_uuid")
+    if not task_uuid:
+        raise ValueError("Missing transcription task for subtitle embedding")
+
+    srt_file_id = (
+        session.get("approved_translated_srt_file_id")
+        if translated
+        else session.get("approved_source_srt_file_id")
+    )
+    language_codes = (
+        list(session.get("target_languages") or ["und"]) if translated else ["und"]
+    )
+
+    async with AsyncSession(async_engines["sitecommons"]) as db_session:
+        task = await db_session.get(TranscriptionTask, task_uuid)
+        if not task:
+            raise ValueError(f"Transcription task {task_uuid} not found")
+        extra_data = dict(task.extra_data or {})
+        extra_data["media_quote_id"] = session["quote_id"]
+        extra_data["pipeline_kind"] = PIPELINE_EMBED
+        extra_data["workflow_type"] = session.get("workflow_type")
+        extra_data["original_video_file_id"] = session.get("file_id")
+        extra_data["original_video_download_url"] = session.get("download_url")
+        extra_data["original_video_file_name"] = session.get("file_name")
+        if srt_file_id:
+            extra_data["srt_file_ids"] = [srt_file_id]
+        elif task.result_file_id and not translated:
+            extra_data["srt_file_ids"] = [task.result_file_id]
+        elif translated and task.translated_file_ids:
+            extra_data["srt_file_ids"] = list(task.translated_file_ids.values())
+            language_codes = list(task.translated_file_ids.keys())
+        extra_data["language_codes"] = language_codes
+        extra_data["target_languages"] = language_codes
+        extra_data["pipeline_type"] = PIPELINE_EMBED
+        if session.get("workflow_type"):
+            task_data = TranscriptionTaskData(
+                client_id=task.client_id,
+                file_name=task.file_name,
+                download_url=task.download_url,
+                app_token=task.bot_token or "",
+                out_stream_name=(
+                    f"{domains.stream_proxy}/events/transcription:slack:media:results"
+                ),
+                service=task.service or "azure",
+                model=task.model or "whisper-1",
+                embed_subtitles=True,
+                sandbox=False,
+            )
+            await create_asr_task(
+                ASRTask(
+                    member_uuid=task.client_id,
+                    event_name="sup-subtitle-ai:media:asr",
+                    app_source=task.app_source or "slack",
+                    service=task.service or "azure",
+                    model=task.model or "whisper-1",
+                    extra_data=extra_data,
+                    task_data=task_data,
+                )
+            )
+            return
+        await db_session.execute(
+            update(TranscriptionTask)
+            .where(TranscriptionTask.task_uuid == task_uuid)
+            .values(
+                pipeline_type=PIPELINE_EMBED,
+                status="pending",
+                stage=None,
+                error_message=None,
+                extra_data=extra_data,
+            )
+        )
+        await db_session.commit()
+
+    async with httpx.AsyncClient() as http:
+        await http.post(
+            f"{domains.stream_proxy}/events/sup-subtitle-ai:media:asr",
+            json={
+                "data": {"task_uuid": task_uuid},
+                "source": "Straker Translate for Slack",
+            },
+        )
 
 
 # Re-export stage constants used by ray callback for Quote2.

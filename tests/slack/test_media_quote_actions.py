@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -353,3 +354,72 @@ async def test_auto_accept_translation_returns_false_without_ray_client():
         handled = await auto_accept_media_translation_quote_if_needed(client, session)
 
     assert handled is False
+
+
+@pytest.mark.asyncio
+async def test_resume_configure_source_embed_does_not_reuse_translation_task():
+    from app.slack.media_quote_actions import resume_configure_embed_phase
+
+    source_task = SimpleNamespace(
+        task_uuid="asr-task",
+        extra_data={"media_quote_id": "q1"},
+        result_file_id="srt-source",
+        translated_file_ids=None,
+        client_id="client-1",
+        file_name="clip.mp4",
+        download_url="https://files.example/clip.mp4",
+        bot_token="xoxb-test",
+        model="whisper-1",
+        service="azure",
+        app_source="slack",
+    )
+    executed = []
+
+    class _FakeDb:
+        async def get(self, model, key):
+            return source_task
+
+        async def execute(self, stmt):
+            executed.append(stmt)
+
+        async def commit(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    session = {
+        "quote_id": "q1",
+        "task_uuid": "asr-task",
+        "workflow_type": "transcribe_translate",
+        "file_id": "F1",
+        "download_url": "https://files.example/clip.mp4",
+        "file_name": "clip.mp4",
+        "approved_source_srt_file_id": "srt-approved",
+        "target_languages": ["es"],
+    }
+
+    with (
+        patch(
+            "app.slack.media_quote_actions.AsyncSession",
+            return_value=_FakeDb(),
+        ),
+        patch(
+            "app.slack.media_quote_actions.create_asr_task",
+            new_callable=AsyncMock,
+            return_value="embed-task",
+        ) as mock_create,
+        patch("app.slack.media_quote_actions.httpx.AsyncClient") as mock_http,
+    ):
+        await resume_configure_embed_phase(session=session, translated=False)
+
+    mock_create.assert_awaited_once()
+    asr_task = mock_create.await_args.args[0]
+    assert asr_task.extra_data["pipeline_type"] == "embed"
+    assert asr_task.extra_data["srt_file_ids"] == ["srt-approved"]
+    assert asr_task.extra_data["media_quote_id"] == "q1"
+    assert executed == []
+    mock_http.assert_not_called()

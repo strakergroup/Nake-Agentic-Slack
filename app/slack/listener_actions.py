@@ -87,6 +87,12 @@ from .bot_translation import (
 )
 from .bot_translation_limits import can_translate_bot_message
 from .evaluation_quotes import job_is_human_translation_quote
+from .media_quotes import (
+    STAGE_CANCELLED,
+    STAGE_DONE,
+    get_media_quote_session_for_thread,
+)
+from .media_workflow_actions import apply_thread_srt_review_replace
 from .middleware import require_mt_tokens, require_ray_client
 from .templates.messages import (
     AIHelperMessage,
@@ -554,6 +560,29 @@ async def maybe_show_thread_media_embed_option(
     channel_id = context.get("channel_id")
     if not channel_id or not await require_ray_client(context, allow_org_billing=True):
         return False
+
+    review_session = await get_media_quote_session_for_thread(channel_id, thread_ts)
+    if review_session:
+        subtitle_file = next(
+            (file for file in message.get("files", []) if is_srt_file(file)),
+            None,
+        )
+        if subtitle_file is not None and await apply_thread_srt_review_replace(
+            client=client,
+            session=review_session,
+            slack_file_id=str(subtitle_file["id"]),
+            uploaded_name=str(
+                subtitle_file.get("name")
+                or subtitle_file.get("title")
+                or "subtitles.srt"
+            ),
+        ):
+            return True
+        if review_session.get("workflow_type") and review_session.get("stage") not in (
+            STAGE_DONE,
+            STAGE_CANCELLED,
+        ):
+            return True
 
     root_message = await get_thread_root_message(client, channel_id, thread_ts)
     if not root_message:

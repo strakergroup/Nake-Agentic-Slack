@@ -573,7 +573,7 @@ async def ray_events(
                     if task_info.pipeline_type in (
                         "translate_only",
                         "transcribe_translate",
-                    ):
+                    ) and not extra_data.get("workflow_type"):
                         await update_submission_status(extra_data)
                         await mark_media_quote_done(extra_data)
 
@@ -653,8 +653,9 @@ async def ray_events(
                         await update_tokens_consumed(
                             transcribed_event.task_uuid, embedding_tokens
                         )
-                    await update_submission_status(extra_data)
-                    await mark_media_quote_done(extra_data)
+                    if not extra_data.get("workflow_type"):
+                        await update_submission_status(extra_data)
+                        await mark_media_quote_done(extra_data)
 
             except ValidationError as e:
                 raise HTTPException(

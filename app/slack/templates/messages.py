@@ -3263,6 +3263,35 @@ class MediaEmbedOptionMessage(SlackMessage):
         )
 
 
+class MediaSrtReviewMessage(SlackMessage):
+    """Optional SRT review after transcription or translation."""
+
+    def __init__(self, quote_id: str) -> None:
+        approve_button = ButtonElement(
+            text=PlainTextObject(text=_("Approve & Continue"), emoji=True),
+            action_id="media_srt_approve_continue",
+            value=quote_id,
+            style="primary",
+        )
+        replace_button = ButtonElement(
+            text=PlainTextObject(text=_("Replace"), emoji=True),
+            action_id="media_srt_replace",
+            value=quote_id,
+        )
+        review_section = SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "Review the SRT file above. You can *Approve & Continue*, or *Replace* it with an edited SRT before continuing."
+                )
+            )
+        )
+        actions = ActionsBlock(elements=[approve_button, replace_button])
+        super().__init__(
+            _("Review SRT"),
+            [review_section.to_dict(), actions.to_dict()],
+        )
+
+
 class DocumentMTJobMessage(SlackMessage):
     """Message to allow user to select language and submit for machine translation"""
 

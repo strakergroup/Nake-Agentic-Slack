@@ -985,6 +985,160 @@ class TestRayEventsEndpoint:
         mock_fail.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_ray_events_configure_translation_does_not_mark_quote_done(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """Configure review gate owns completion; Quote 2 translate_only must not mark done."""
+        task_uuid = str(uuid4())
+        event = RayEvent(
+            event="transcription:slack:media:translation:results",
+            data={
+                "client_id": mock_slack_user.ray_client_id,
+                "task_uuid": task_uuid,
+                "error": None,
+            },
+        )
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+        }
+        mock_task_info = self._partial_translation_task_info(
+            task_uuid, mock_slack_user.ray_client_id
+        )
+        mock_task_info.extra_data["workflow_type"] = "transcribe_translate"
+        mock_task_info.extra_data["media_quote_id"] = "q1"
+
+        with (
+            patch("app.dependencies.validate_queue_proxy_secret", return_value=True),
+            patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ),
+            patch("app.dependencies.get_demo_link", return_value=[]),
+            patch("app.routers.ray.AsyncWebClient", return_value=mock_client),
+            patch(
+                "app.routers.ray.get_transcription_task",
+                new_callable=AsyncMock,
+                return_value=mock_task_info,
+            ),
+            patch("app.routers.ray.mark_stage_processed", new_callable=AsyncMock),
+            patch(
+                "app.routers.ray.handle_translation_complete",
+                new_callable=AsyncMock,
+                return_value=1,
+            ),
+            patch(
+                "app.routers.ray.spend_translation_credits",
+                new_callable=AsyncMock,
+                return_value=0,
+            ),
+            patch(
+                "app.routers.ray.update_submission_status", new_callable=AsyncMock
+            ) as mock_complete,
+            patch(
+                "app.routers.ray.mark_media_quote_done", new_callable=AsyncMock
+            ) as mock_done,
+            patch("app.routers.ray.fail_media_submissions", new_callable=AsyncMock),
+        ):
+            auth = RayEventAuth()
+            await auth.initialize(event, "valid-token")
+            await ray_events(event, auth)
+
+        mock_complete.assert_not_awaited()
+        mock_done.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_ray_events_configure_source_embed_does_not_mark_quote_done(
+        self, mock_slack_user, user_id, team_id
+    ):
+        """Source embed must not close the session while Quote 2 is still pending."""
+        task_uuid = str(uuid4())
+        event = RayEvent(
+            event="transcription:slack:media:embedding:results",
+            data={
+                "client_id": mock_slack_user.ray_client_id,
+                "task_uuid": task_uuid,
+                "error": None,
+            },
+        )
+        mock_client = AsyncMock()
+        mock_client.users_info.return_value = {
+            "user": {"id": user_id, "locale": "en-US", "tz": "America/New_York"}
+        }
+        mock_task_info = TranscriptionTaskInfo(
+            task_uuid=task_uuid,
+            client_id=mock_slack_user.ray_client_id,
+            file_name="clip.mp4",
+            download_url="https://example.com/clip.mp4",
+            bot_token="xoxb-test-token",
+            pipeline_type="embed",
+            status="completed",
+            stage=None,
+            error_message=None,
+            result_file_id="file-embedded",
+            result_file_name="clip_embedded.mp4",
+            detected_language=None,
+            translated_file_ids=None,
+            extra_data={
+                "workflow_type": "transcribe_translate",
+                "media_quote_id": "q1",
+                "submission_ids": [42],
+                "slack_channel_id": "C1",
+            },
+            started_at=None,
+            finished_at=None,
+            duration_ms=None,
+            source_text_length=None,
+            num_target_languages=None,
+            tokens_consumed=0,
+            credit_transaction_uuid=None,
+            model=None,
+            service=None,
+            app_source=None,
+            created_at=datetime.datetime.now(),
+            updated_at=datetime.datetime.now(),
+        )
+
+        with (
+            patch("app.dependencies.validate_queue_proxy_secret", return_value=True),
+            patch(
+                "app.dependencies.resolve_slack_delivery_user",
+                return_value=mock_slack_user,
+            ),
+            patch("app.dependencies.get_demo_link", return_value=[]),
+            patch("app.routers.ray.AsyncWebClient", return_value=mock_client),
+            patch(
+                "app.routers.ray.get_transcription_task",
+                new_callable=AsyncMock,
+                return_value=mock_task_info,
+            ),
+            patch("app.routers.ray.mark_stage_processed", new_callable=AsyncMock),
+            patch(
+                "app.routers.ray.handle_transcribe_embed_pipeline",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.routers.ray.spend_embedding_credits",
+                new_callable=AsyncMock,
+                return_value=0,
+            ),
+            patch(
+                "app.routers.ray.update_submission_status", new_callable=AsyncMock
+            ) as mock_complete,
+            patch(
+                "app.routers.ray.mark_media_quote_done", new_callable=AsyncMock
+            ) as mock_done,
+            patch("app.routers.ray.fail_media_submissions", new_callable=AsyncMock),
+        ):
+            auth = RayEventAuth()
+            await auth.initialize(event, "valid-token")
+            await ray_events(event, auth)
+
+        mock_complete.assert_not_awaited()
+        mock_done.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_ray_events_document_translated_error(
         self, mock_slack_user, user_id, team_id
     ):
