@@ -355,12 +355,16 @@ async def _post_configure_srt_review(
 
 
 async def _fail_deferred_configure_review(task_uuid: str) -> None:
-    from app.ray.events.media_pipeline_events import fail_media_submissions
+    from app.ray.events.media_pipeline_events import (
+        fail_media_submissions,
+        mark_media_quote_cancelled,
+    )
     from app.transcriber_tasks.tasks import get_transcription_task
 
     task = await get_transcription_task(task_uuid)
     extra = dict(task.extra_data or {}) if task is not None else None
     await fail_media_submissions(extra)
+    await mark_media_quote_cancelled(extra)
 
 
 async def slack_upload_transcription(

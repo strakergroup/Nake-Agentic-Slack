@@ -431,6 +431,7 @@ async def ray_events(
                         thread_ts=thread_ts,
                     )
                     await fail_media_submissions(extra_data)
+                    await mark_media_quote_cancelled(extra_data)
                     return
 
                 # Get channel and thread info
@@ -522,6 +523,7 @@ async def ray_events(
                         thread_ts=thread_ts,
                     )
                     await fail_media_submissions(extra_data)
+                    await mark_media_quote_cancelled(extra_data)
                     return
 
                 # Get channel and thread info

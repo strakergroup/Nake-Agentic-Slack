@@ -2205,7 +2205,11 @@ async def test_slack_upload_transcription_no_slack_user_short_circuits():
 
 @pytest.mark.asyncio
 async def test_slack_upload_transcription_fails_submissions_when_review_undeliverable():
-    extra = {"media_quote_id": "q1", "submission_ids": [42]}
+    extra = {
+        "media_quote_id": "q1",
+        "submission_ids": [42],
+        "workflow_type": "transcribe_translate",
+    }
     task = SimpleNamespace(extra_data=extra)
     with (
         patch(
@@ -2221,6 +2225,10 @@ async def test_slack_upload_transcription_fails_submissions_when_review_undelive
             "app.ray.events.media_pipeline_events.fail_media_submissions",
             new=AsyncMock(),
         ) as mock_fail,
+        patch(
+            "app.ray.events.media_pipeline_events.mark_media_quote_cancelled",
+            new=AsyncMock(),
+        ) as mock_cancel,
     ):
         result = await slack_upload_transcription(
             _ctx(),
@@ -2236,6 +2244,7 @@ async def test_slack_upload_transcription_fails_submissions_when_review_undelive
 
     assert result["status"] == "no_slack_user"
     mock_fail.assert_awaited_once_with(extra)
+    mock_cancel.assert_awaited_once_with(extra)
 
 
 # --------------------------------------------------------------------------- #
