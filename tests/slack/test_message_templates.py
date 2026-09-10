@@ -1319,6 +1319,7 @@ class TestMediaSrtReviewMessage:
         assert "Replace" in dumped
         assert "Approve & Continue" not in dumped
         assert "reupload" not in dumped.lower()
+        assert "Review" not in dumped
         replace = next(
             el
             for block in message.blocks
@@ -1326,19 +1327,13 @@ class TestMediaSrtReviewMessage:
             if el.get("action_id") == "media_srt_replace"
         )
         assert json.loads(replace["value"]) == {"quote_id": "q-1", "language": "fi"}
-        dumped = json.dumps(message.blocks)
-        assert "Review *clip_Finnish.srt* above." in dumped
-        assert "edited subtitle file" in dumped
-        assert "edited SRT" not in dumped
-        assert "SRT file" not in dumped
 
-    def test_source_review_uses_transcript_not_srt_file(self):
+    def test_source_replace_is_button_only(self):
         message = MediaSrtReviewMessage("q-1")
         dumped = json.dumps(message.blocks)
-        assert "Review the transcript above." in dumped
-        assert "edited transcript" in dumped
-        assert "SRT file" not in dumped
-        assert "edited SRT" not in dumped
+        assert _blocks_contain_action(message.blocks, "media_srt_replace")
+        assert "Review" not in dumped
+        assert "transcript" not in dumped.lower()
 
     def test_final_approve_has_approve_without_replace(self):
         message = MediaSrtApproveContinueMessage("q-1")
@@ -1346,8 +1341,16 @@ class TestMediaSrtReviewMessage:
         assert not _blocks_contain_action(message.blocks, "media_srt_replace")
         dumped = json.dumps(message.blocks)
         assert "Approve & Continue" in dumped
-        assert "Replace" not in dumped
         assert "SRT" not in dumped
+
+    def test_translated_approve_uses_single_ai_translated_message(self):
+        message = MediaSrtApproveContinueMessage("q-1", translated=True)
+        dumped = json.dumps(message.blocks)
+        assert "Your file is AI translated and can be downloaded above." in dumped
+        assert "Approve & Continue" in dumped
+        assert "Review *" not in dumped
+        assert _blocks_contain_action(message.blocks, "media_srt_approve_continue")
+        assert not _blocks_contain_action(message.blocks, "media_srt_replace")
 
     def test_submitted_message_says_transcript_approved(self):
         message = MediaSrtReviewSubmittedMessage()

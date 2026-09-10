@@ -599,7 +599,14 @@ async def test_handle_translation_complete_skips_mandatory_reupload_for_configur
         call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
     ]
     assert not any("reupload the edited subtitle files" in text for text in texts)
-    assert any("Approve & Continue" in text or "Review" in text for text in texts)
+    translated_lines = [
+        text
+        for text in texts
+        if "Your file is AI translated and can be downloaded above." in text
+    ]
+    assert len(translated_lines) == 1
+    assert "Approve & Continue" in translated_lines[0]
+    assert not any("Review *" in text for text in texts)
 
 
 @pytest.mark.asyncio
@@ -684,12 +691,17 @@ async def test_handle_translation_complete_posts_replace_for_each_language(tmp_p
         ]
         if "media_srt_replace" in action_ids:
             assert "media_srt_approve_continue" not in action_ids
+            dumped = json.dumps(call.kwargs.get("blocks") or [])
+            assert "Review" not in dumped
             for block in call.kwargs.get("blocks") or []:
                 for el in block.get("elements", []):
                     if el.get("action_id") == "media_srt_replace":
                         replace_values.append(el.get("value"))
         if "media_srt_approve_continue" in action_ids:
             assert "media_srt_replace" not in action_ids
+            assert "Your file is AI translated and can be downloaded above." in (
+                call.kwargs.get("text") or ""
+            )
             approve_count += 1
     parsed = [json.loads(value) for value in replace_values]
     assert {"quote_id": "q1", "language": "fi"} in parsed

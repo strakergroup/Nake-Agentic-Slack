@@ -866,8 +866,18 @@ async def handle_translation_complete(
             notify_exception(e, "Error handling translation complete")
             logger.error(f"Error handling translation complete: {e}")
 
+    extra = _task_extra_data(task_info)
     if uploaded_count:
         failed_language_names = await resolve_language_labels(failed_languages)
+        quote_id = extra.get("media_quote_id")
+        review_session = (
+            await get_media_quote_session(str(quote_id))
+            if extra.get("workflow_type") and quote_id
+            else None
+        )
+        review_enabled = bool(
+            review_session and configure_srt_review_enabled({**extra, **review_session})
+        )
         if failed_language_names:
             partial_message = MediaTranslationPartialMessage(failed_language_names)
             await client.chat_postMessage(
@@ -875,13 +885,12 @@ async def handle_translation_complete(
                 text=partial_message.text,
                 thread_ts=effective_thread_ts,
             )
-        else:
+        elif not review_enabled:
             await client.chat_postMessage(
                 channel=channel_id,
                 text=_("Your file is AI translated and can be downloaded above."),
                 thread_ts=effective_thread_ts,
             )
-        extra = _task_extra_data(task_info)
         if extra.get("workflow_type"):
             await _advance_configure_after_translation(
                 client, extra, channel_id, effective_thread_ts

@@ -86,6 +86,62 @@ def test_translation_review_filename_matches_language_code_as_token():
     )
 
 
+def test_translated_replace_language_reads_pipeline_language_name():
+    from app.slack.media_workflow_actions import _translated_replace_language
+
+    targets = ("fi", "fr")
+    assert _translated_replace_language("tst (3) (1)_French.srt", targets) == "fr"
+    assert _translated_replace_language("tst (3) (1)_Finnish.srt", targets) == "fi"
+    assert _translated_replace_language("clip_es.srt", ("es", "fr")) == "es"
+    assert _translated_replace_language("edited.srt", targets) is None
+
+
+@pytest.mark.asyncio
+async def test_unmatched_translated_thread_srt_is_not_a_replacement():
+    from app.slack.media_workflow_actions import apply_thread_srt_review_replace
+
+    client = AsyncMock()
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "stage": "awaiting_translation_review",
+        "workflow_type": "transcribe_translate",
+        "file_name": "tst (3) (1).mp4",
+        "embed_source": False,
+        "embed_translated": True,
+        "review_gate": True,
+        "target_languages": ["fi", "fr"],
+        "channel_id": "C1",
+        "thread_ts": "1.2",
+    }
+
+    with (
+        patch(
+            "app.slack.media_workflow_actions._upload_slack_srt_to_file_server",
+            new_callable=AsyncMock,
+        ) as mock_upload,
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new_callable=AsyncMock,
+        ) as mock_update,
+        patch("app.slack.media_workflow_actions.redis_conn") as mock_redis,
+    ):
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_redis.delete = AsyncMock()
+        handled = await apply_thread_srt_review_replace(
+            client=client,
+            session=session,
+            slack_file_id="F9",
+            uploaded_name="tst (3) (1)_notes.srt",
+            acting_user_id="U1",
+        )
+
+    assert handled is False
+    mock_upload.assert_not_awaited()
+    mock_update.assert_not_awaited()
+    client.chat_postMessage.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_thread_srt_during_review_replaces_instead_of_embed_quote():
     from app.slack.listener_actions import maybe_show_thread_media_embed_option
@@ -190,6 +246,73 @@ async def test_thread_srt_unrelated_name_during_configure_does_not_open_leftover
     mock_quote.assert_not_awaited()
     posted = client.chat_postMessage.await_args.kwargs
     assert "finish" in posted["text"].lower() or "current" in posted["text"].lower()
+
+
+@pytest.mark.asyncio
+async def test_unmatched_thread_srt_during_translation_review_opens_embed_quote():
+    from app.slack.listener_actions import maybe_show_thread_media_embed_option
+
+    client = AsyncMock()
+    client.conversations_history.return_value = {
+        "messages": [
+            {"files": [{"id": "V123", "name": "tst (3) (1).mp4", "filetype": "mp4"}]}
+        ]
+    }
+    context = MagicMock()
+    context.get.return_value = "C123"
+    context.__getitem__ = lambda self, key: {"user_id": "U1", "channel_id": "C123"}[key]
+    message = {
+        "thread_ts": "123.456",
+        "files": [{"id": "F9", "name": "tst (3) (1)_notes.srt", "filetype": "srt"}],
+    }
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "stage": "awaiting_translation_review",
+        "workflow_type": "transcribe_translate",
+        "file_name": "tst (3) (1).mp4",
+        "embed_source": False,
+        "embed_translated": True,
+        "review_gate": True,
+        "target_languages": ["fi", "fr"],
+        "channel_id": "C123",
+        "thread_ts": "123.456",
+    }
+
+    with (
+        patch(
+            "app.slack.listener_actions.require_ray_client",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.listener_actions.get_media_quote_session_for_thread",
+            new_callable=AsyncMock,
+            return_value=session,
+        ),
+        patch(
+            "app.slack.listener_actions.quote_existing_srt_embed_task",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_quote,
+        patch(
+            "app.slack.media_workflow_actions._upload_slack_srt_to_file_server",
+            new_callable=AsyncMock,
+        ) as mock_upload,
+        patch("app.slack.media_workflow_actions.redis_conn") as mock_redis,
+    ):
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_redis.delete = AsyncMock()
+        handled = await maybe_show_thread_media_embed_option(client, context, message)
+
+    assert handled is True
+    mock_quote.assert_awaited_once()
+    mock_upload.assert_not_awaited()
+    texts = [
+        str(call.kwargs.get("text") or "")
+        for call in client.chat_postMessage.await_args_list
+    ]
+    assert not any("Replacement file received" in text for text in texts)
 
 
 @pytest.mark.asyncio
@@ -877,8 +1000,7 @@ async def test_approve_reloads_session_after_lock_so_replacement_is_used():
 
 
 @pytest.mark.asyncio
-async def test_approve_translated_srt_explains_missing_language():
-    from app.slack.media_configure_embed import TranslatedSrtLanguageRequired
+async def test_approve_translated_srt_ignores_replacement_without_language():
     from app.slack.media_workflow_actions import handle_media_srt_approve_continue
 
     client = AsyncMock()
@@ -898,6 +1020,8 @@ async def test_approve_translated_srt_explains_missing_language():
         "thread_ts": "1.2",
         "task_uuid": "asr-task",
         "approved_translated_srt_file_id": "srt-replaced",
+        "srt_review_message_ts": [],
+        "submission_ids": [42],
     }
     with (
         patch(
@@ -913,7 +1037,10 @@ async def test_approve_translated_srt_explains_missing_language():
         patch(
             "app.slack.media_configure_embed.resume_configure_embed_phase",
             new_callable=AsyncMock,
-            side_effect=TranslatedSrtLanguageRequired(),
+        ) as mock_embed,
+        patch(
+            "app.ray.events.media_pipeline_events.update_submission_status",
+            new_callable=AsyncMock,
         ),
         patch("app.slack.media_workflow_actions.redis_conn") as mock_redis,
     ):
@@ -925,9 +1052,11 @@ async def test_approve_translated_srt_explains_missing_language():
             context=context,
         )
 
-    posted = client.chat_postMessage.await_args.kwargs
-    assert posted["channel"] == "U1"
-    assert "language" in posted["text"].lower()
+    mock_embed.assert_awaited_once()
+    assert not any(
+        "replacement" in str(call.kwargs.get("text") or "").lower()
+        for call in client.chat_postMessage.await_args_list
+    )
 
 
 @pytest.mark.asyncio

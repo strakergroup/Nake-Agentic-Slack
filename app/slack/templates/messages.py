@@ -3264,7 +3264,7 @@ class MediaEmbedOptionMessage(SlackMessage):
 
 
 class MediaSrtReviewMessage(SlackMessage):
-    """Replace control posted next to an uploaded SRT file."""
+    """Replace control posted next to an uploaded subtitle file."""
 
     def __init__(
         self,
@@ -3273,6 +3273,7 @@ class MediaSrtReviewMessage(SlackMessage):
         language: str | None = None,
         file_label: str | None = None,
     ) -> None:
+        del file_label
         replace_value = (
             json.dumps({"quote_id": quote_id, "language": language})
             if language
@@ -3283,42 +3284,36 @@ class MediaSrtReviewMessage(SlackMessage):
             action_id="media_srt_replace",
             value=replace_value,
         )
-        if file_label:
-            review_text = _(
-                "Review *{file}* above. You can *Replace* it with an edited "
-                "subtitle file before continuing."
-            ).format(file=file_label)
-        else:
-            review_text = _(
-                "Review the transcript above. You can *Replace* it with an edited "
-                "transcript before continuing."
-            )
-        review_section = SectionBlock(text=MarkdownTextObject(text=review_text))
         actions = ActionsBlock(elements=[replace_button])
         super().__init__(
-            _("Review transcript"),
-            [review_section.to_dict(), actions.to_dict()],
+            _("Replace"),
+            [actions.to_dict()],
         )
 
 
 class MediaSrtApproveContinueMessage(SlackMessage):
-    def __init__(self, quote_id: str) -> None:
+    def __init__(self, quote_id: str, *, translated: bool = False) -> None:
         approve_button = ButtonElement(
             text=PlainTextObject(text=_("Approve & Continue"), emoji=True),
             action_id="media_srt_approve_continue",
             value=quote_id,
             style="primary",
         )
-        review_section = SectionBlock(
-            text=MarkdownTextObject(
-                text=_(
-                    "When you are ready, *Approve & Continue* to submit this review."
-                )
+        if translated:
+            review_text = _(
+                "Your file is AI translated and can be downloaded above.\n"
+                "You can *Replace* a subtitle file before continuing.\n"
+                "When you are ready, *Approve & Continue* to submit this review."
             )
-        )
+        else:
+            review_text = _(
+                "You can *Replace* the transcript before continuing.\n"
+                "When you are ready, *Approve & Continue* to submit this review."
+            )
+        review_section = SectionBlock(text=MarkdownTextObject(text=review_text))
         actions = ActionsBlock(elements=[approve_button])
         super().__init__(
-            _("Approve review"),
+            review_text,
             [review_section.to_dict(), actions.to_dict()],
         )
 

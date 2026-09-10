@@ -75,7 +75,7 @@ def _translated_srt_map(
     if not ids_map:
         lang = (fallback_languages[:1] or ["und"])[0]
         return {str(lang): replacement_id}
-    raise TranslatedSrtLanguageRequired()
+    return ids_map
 
 
 def _ordered_translated_tracks(

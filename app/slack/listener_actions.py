@@ -590,6 +590,8 @@ async def maybe_show_thread_media_embed_option(
         if workflow is not None and workflow.stage not in (
             MediaWorkflowStage.DONE,
             MediaWorkflowStage.CANCELLED,
+            MediaWorkflowStage.AWAITING_SOURCE_REVIEW,
+            MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW,
         ):
             await client.chat_postMessage(
                 channel=str(review_session.get("channel_id") or channel_id),

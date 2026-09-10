@@ -761,17 +761,15 @@ async def test_translated_embed_muxes_source_and_all_target_tracks():
 
 
 @pytest.mark.asyncio
-async def test_translated_embed_rejects_replacement_without_language():
-    from app.slack.media_configure_embed import (
-        TranslatedSrtLanguageRequired,
-        resume_configure_embed_phase,
-    )
+async def test_translated_embed_ignores_replacement_without_language():
+    from app.slack.media_configure_embed import resume_configure_embed_phase
 
     source_task = SimpleNamespace(
         task_uuid="asr-task",
         extra_data={"media_quote_id": "q1"},
         result_file_id="srt-source",
         translated_file_ids={"es": "srt-es", "fr": "srt-fr"},
+        detected_language="en",
         client_id="client-1",
         file_name="clip.mp4",
         download_url="https://files.example/clip.mp4",
@@ -817,8 +815,10 @@ async def test_translated_embed_rejects_replacement_without_language():
             "app.slack.media_configure_embed.create_asr_task",
             new_callable=AsyncMock,
         ) as mock_create,
+        patch("app.slack.media_configure_embed.httpx.AsyncClient"),
     ):
-        with pytest.raises(TranslatedSrtLanguageRequired):
-            await resume_configure_embed_phase(session=session, translated=True)
+        await resume_configure_embed_phase(session=session, translated=True)
 
-    mock_create.assert_not_awaited()
+    asr_task = mock_create.await_args.args[0]
+    assert asr_task.extra_data["srt_file_ids"] == ["srt-source", "srt-es", "srt-fr"]
+    assert "srt-replaced" not in asr_task.extra_data["srt_file_ids"]

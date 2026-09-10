@@ -21,6 +21,7 @@ from app.media.media_workflow import (
     advance_media_workflow,
     media_workflow_session_from_quote,
 )
+from app.ray.settings import get_auto_translate_language_name
 from app.ray.utils import upload_to_file_server
 from app.redis import redis_conn
 from app.slack.buglog_notifier import notify_exception
@@ -90,8 +91,14 @@ def _translated_replace_language(
     uploaded_name: str, target_languages: tuple[str, ...]
 ) -> str | None:
     stem = Path(uploaded_name).stem.lower()
+    suffix = stem.rsplit("_", 1)[-1] if "_" in stem else stem
     for code in target_languages:
         if _stem_has_language_code_token(stem, code):
+            return code
+        if suffix == code.lower():
+            return code
+        name = get_auto_translate_language_name(code)
+        if name and suffix == name.casefold():
             return code
     if len(target_languages) == 1:
         return target_languages[0]
@@ -155,6 +162,13 @@ async def apply_thread_srt_review_replace(
         if workflow.stage is MediaWorkflowStage.AWAITING_SOURCE_REVIEW
         else MediaWorkflowEvent.TRANSLATED_SRT_REPLACED
     )
+    replaced_language = language
+    if event is MediaWorkflowEvent.TRANSLATED_SRT_REPLACED:
+        replaced_language = language or _translated_replace_language(
+            uploaded_name, workflow.config.target_languages
+        )
+        if not replaced_language and len(workflow.config.target_languages) > 1:
+            return False
     try:
         advance_media_workflow(workflow, event)
     except MediaWorkflowTransitionError as exc:
@@ -197,9 +211,6 @@ async def apply_thread_srt_review_replace(
             ): file_server_id
         }
         if event is MediaWorkflowEvent.TRANSLATED_SRT_REPLACED:
-            replaced_language = language or _translated_replace_language(
-                uploaded_name, workflow.config.target_languages
-            )
             if replaced_language:
                 updates["approved_translated_srt_language"] = replaced_language
         await update_media_quote_session(quote_id, updates)
@@ -285,9 +296,8 @@ async def handle_media_srt_approve_continue(
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=_(
-                    "Could not tell which language this replacement file is for. "
-                    "Rename the file to include the language code "
-                    "(for example clip_es.srt) and replace it again."
+                    "We couldn't tell which subtitle that replacement belongs to. "
+                    "Use *Replace* under the file you edited."
                 ),
             )
             return
@@ -361,7 +371,7 @@ async def execute_media_workflow_decision(
         if not updated.get("defer_source_review"):
             await _post_srt_review(client, updated)
     if MediaWorkflowCommand.POST_TRANSLATION_REVIEW in decision.commands:
-        await _post_srt_approve_continue(client, updated)
+        await _post_srt_approve_continue(client, updated, translated=True)
     if MediaWorkflowCommand.START_TRANSLATE in decision.commands:
         from app.slack.media_quote_actions import _resume_translate_phase
 
@@ -450,9 +460,11 @@ async def _post_srt_file_replace(
 
 
 async def _post_srt_approve_continue(
-    client: AsyncWebClient, session: dict[str, Any]
+    client: AsyncWebClient, session: dict[str, Any], *, translated: bool = False
 ) -> None:
-    approve = MediaSrtApproveContinueMessage(str(session["quote_id"]))
+    approve = MediaSrtApproveContinueMessage(
+        str(session["quote_id"]), translated=translated
+    )
     await _record_srt_review_ts(
         client, session, text=approve.text, blocks=approve.blocks
     )
