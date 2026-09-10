@@ -1406,6 +1406,8 @@ def video_configure_media_modal(
     embed_translated: bool = False,
     word_transcript: bool = False,
     word_transcript_format: str | None = None,
+    selected_file_ids: list[str] | None = None,
+    selected_language_values: list[str] | None = None,
 ) -> dict[str, Any]:
     transcribe_only = Option(
         text=PlainTextObject(text=_("Transcription only"), emoji=True),
@@ -1431,6 +1433,17 @@ def video_configure_media_modal(
             value=opt["value"],
         )
         for opt in get_auto_translate_language_options()
+    ]
+    # Re-seed current selections on rebuilds (dispatch_action) so ticking a
+    # checkbox or radio never drops the user's file/language choices.
+    if selected_file_ids is None:
+        initial_file_options = file_options
+    else:
+        wanted_files = set(selected_file_ids)
+        initial_file_options = [o for o in file_options if o.value in wanted_files]
+    wanted_languages = set(selected_language_values or [])
+    initial_language_options = [
+        o for o in language_options if o.value in wanted_languages
     ]
     embed_source_option = Option(
         text=PlainTextObject(text=_("Source subtitles"), emoji=True),
@@ -1467,7 +1480,7 @@ def video_configure_media_modal(
                 action_id="file_display",
                 placeholder=PlainTextObject(text=_("Selected files")),
                 options=file_options,
-                initial_options=file_options,
+                initial_options=initial_file_options or None,
             ),
             optional=False,
         ),
@@ -1481,6 +1494,7 @@ def video_configure_media_modal(
                     action_id="language_mt_options",
                     placeholder=PlainTextObject(text=_("Select languages")),
                     options=language_options,
+                    initial_options=initial_language_options or None,
                 ),
             )
         )

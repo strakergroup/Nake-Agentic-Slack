@@ -354,6 +354,7 @@ async def handle_video_configure_workflow_type(
     """Rebuild the Configure modal when the workflow type radio changes."""
     from app.slack.media_configure import (
         _embedding_checkbox_selected,
+        _multi_select_values,
         word_transcript_selection,
     )
 
@@ -374,6 +375,12 @@ async def handle_video_configure_workflow_type(
             embed_translated=_embedding_checkbox_selected(values, "embed_translated"),
             word_transcript=word_transcript,
             word_transcript_format=word_transcript_format,
+            selected_file_ids=_multi_select_values(
+                values, "selected_file", "file_display"
+            ),
+            selected_language_values=_multi_select_values(
+                values, "target_languages", "language_mt_options"
+            ),
         ),
     )
 
@@ -386,6 +393,7 @@ async def handle_video_configure_word_transcript(
     """Rebuild the Configure modal when the Word transcript checkbox changes."""
     from app.slack.media_configure import (
         _embedding_checkbox_selected,
+        _multi_select_values,
         _radio_selected_value,
         word_transcript_selection,
     )
@@ -413,6 +421,12 @@ async def handle_video_configure_word_transcript(
             embed_translated=_embedding_checkbox_selected(values, "embed_translated"),
             word_transcript=word_transcript,
             word_transcript_format=word_transcript_format,
+            selected_file_ids=_multi_select_values(
+                values, "selected_file", "file_display"
+            ),
+            selected_language_values=_multi_select_values(
+                values, "target_languages", "language_mt_options"
+            ),
         ),
     )
 

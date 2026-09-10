@@ -39,6 +39,17 @@ def _selected_options(
     return list(action.get("selected_options") or [])
 
 
+def _multi_select_values(
+    values: dict[str, Any], block_id: str, action_id: str
+) -> list[str] | None:
+    """Current values of a multi-select, or None when the block is not in state."""
+    block = values.get(block_id)
+    if block is None:
+        return None
+    action = block.get(action_id) or {}
+    return [opt["value"] for opt in action.get("selected_options") or []]
+
+
 def _checkbox_selected(
     values: dict[str, Any], block_id: str, action_id: str, value: str
 ) -> bool:

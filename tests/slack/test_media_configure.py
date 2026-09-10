@@ -610,6 +610,107 @@ async def test_word_checkbox_check_rebuilds_modal_with_format_block():
 
 
 @pytest.mark.asyncio
+async def test_word_checkbox_check_preserves_languages_and_file_selection():
+    from unittest.mock import AsyncMock
+
+    from app.slack.handlers.media import handle_video_configure_word_transcript
+
+    client = AsyncMock()
+    files = [
+        {"file_id": "F1", "file_name": "clip.mp4"},
+        {"file_id": "F2", "file_name": "other.mp4"},
+    ]
+    body = {
+        "view": {
+            "id": "V1",
+            "private_metadata": json.dumps(
+                {
+                    "channel_id": "C1",
+                    "files": files,
+                    "thread_ts": "1.2",
+                    "show_embed_option": True,
+                }
+            ),
+            "state": {
+                "values": {
+                    "workflow_type": {
+                        "video_configure_workflow_type": {
+                            "selected_option": _option("transcribe_translate"),
+                        }
+                    },
+                    "selected_file": {
+                        "file_display": {
+                            "selected_options": [_option("F1", "clip.mp4")]
+                        }
+                    },
+                    "target_languages": {
+                        "language_mt_options": {
+                            "selected_options": [_option("fr", "French")]
+                        }
+                    },
+                }
+            },
+        }
+    }
+    action = {"selected_options": [_option("word_transcript")]}
+    await handle_video_configure_word_transcript(
+        client=client, body=body, action=action
+    )
+    view = client.views_update.await_args.kwargs["view"]
+    langs = next(b for b in view["blocks"] if b.get("block_id") == "target_languages")
+    assert [opt["value"] for opt in langs["element"].get("initial_options") or []] == [
+        "fr"
+    ]
+    selected = next(b for b in view["blocks"] if b.get("block_id") == "selected_file")
+    # The deselected file (F2) must stay deselected after the rebuild.
+    assert [
+        opt["value"] for opt in selected["element"].get("initial_options") or []
+    ] == ["F1"]
+
+
+@pytest.mark.asyncio
+async def test_workflow_type_change_preserves_file_selection():
+    from unittest.mock import AsyncMock
+
+    from app.slack.handlers.media import handle_video_configure_workflow_type
+
+    client = AsyncMock()
+    files = [
+        {"file_id": "F1", "file_name": "clip.mp4"},
+        {"file_id": "F2", "file_name": "other.mp4"},
+    ]
+    body = {
+        "view": {
+            "id": "V1",
+            "private_metadata": json.dumps(
+                {
+                    "channel_id": "C1",
+                    "files": files,
+                    "thread_ts": "1.2",
+                    "show_embed_option": True,
+                }
+            ),
+            "state": {
+                "values": {
+                    "selected_file": {
+                        "file_display": {
+                            "selected_options": [_option("F2", "other.mp4")]
+                        }
+                    },
+                }
+            },
+        }
+    }
+    action = {"selected_option": {"value": "transcribe_only"}}
+    await handle_video_configure_workflow_type(client=client, body=body, action=action)
+    view = client.views_update.await_args.kwargs["view"]
+    selected = next(b for b in view["blocks"] if b.get("block_id") == "selected_file")
+    assert [
+        opt["value"] for opt in selected["element"].get("initial_options") or []
+    ] == ["F2"]
+
+
+@pytest.mark.asyncio
 async def test_word_checkbox_uncheck_removes_format_block():
     from unittest.mock import AsyncMock
 
