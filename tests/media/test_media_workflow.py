@@ -316,6 +316,23 @@ def test_media_workflow_session_from_quote_returns_none_for_legacy_session():
     )
 
 
+def test_media_workflow_session_from_quote_returns_none_for_unknown_stage():
+    from app.media.media_workflow import media_workflow_session_from_quote
+
+    assert (
+        media_workflow_session_from_quote(
+            {
+                "workflow_type": "transcribe_only",
+                "stage": "not-a-stage",
+            }
+        )
+        is None
+    )
+    assert (
+        media_workflow_session_from_quote({"workflow_type": "transcribe_only"}) is None
+    )
+
+
 def test_media_workflow_session_from_quote_maps_configure_flags():
     from app.media.media_workflow import media_workflow_session_from_quote
 

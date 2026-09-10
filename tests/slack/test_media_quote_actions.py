@@ -623,7 +623,7 @@ async def test_configure_embed_rejects_invalid_transcription_extra_data():
 
 
 @pytest.mark.asyncio
-async def test_replaced_translated_srt_pairs_one_file_with_one_language():
+async def test_replaced_translated_srt_keeps_other_target_languages():
     from app.slack.media_configure_embed import resume_configure_embed_phase
 
     source_task = SimpleNamespace(
@@ -664,6 +664,7 @@ async def test_replaced_translated_srt_pairs_one_file_with_one_language():
         "download_url": "https://files.example/clip.mp4",
         "file_name": "clip.mp4",
         "approved_translated_srt_file_id": "srt-replaced",
+        "approved_translated_srt_language": "es",
         "target_languages": ["es", "fr"],
     }
 
@@ -682,7 +683,7 @@ async def test_replaced_translated_srt_pairs_one_file_with_one_language():
         await resume_configure_embed_phase(session=session, translated=True)
 
     asr_task = mock_create.await_args.args[0]
-    assert asr_task.extra_data["srt_file_ids"] == ["srt-replaced"]
-    assert asr_task.extra_data["language_codes"] == ["es"]
-    assert asr_task.extra_data["target_languages"] == ["es"]
+    assert asr_task.extra_data["srt_file_ids"] == ["srt-replaced", "srt-fr"]
+    assert asr_task.extra_data["language_codes"] == ["es", "fr"]
+    assert asr_task.extra_data["target_languages"] == ["es", "fr"]
     mock_http.assert_not_called()

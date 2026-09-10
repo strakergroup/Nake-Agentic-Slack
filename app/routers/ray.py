@@ -620,17 +620,26 @@ async def ray_events(
                         thread_ts=thread_ts,
                     )
                     if is_configure_source_embed_job(extra_data):
+                        continues = configure_source_embed_continues_translation(
+                            extra_data
+                        )
+                        failure_text = (
+                            _(
+                                "Source subtitle embedding failed: {error_detail}. "
+                                "Translation can still continue."
+                            )
+                            if continues
+                            else _("Source subtitle embedding failed: {error_detail}.")
+                        )
                         await client.chat_postMessage(
                             channel=extra_data.get("slack_channel_id")
                             or auth.slack_user.channel_id
                             or auth.slack_user.user_id,
-                            text=_(
-                                "Source subtitle embedding failed: {error_detail}. "
-                                "Translation can still continue."
-                            ).format(error_detail=error_msg),
+                            text=failure_text.format(error_detail=error_msg),
                             thread_ts=thread_ts,
                         )
-                        return
+                        if continues:
+                            return
                     await fail_media_submissions(extra_data)
                     return
 

@@ -49,7 +49,12 @@ def _checkbox_selected(
 def parse_video_configure_media_view(
     view: dict[str, Any],
 ) -> VideoConfigureMediaSelection:
-    metadata = json.loads(view["private_metadata"])
+    try:
+        metadata = json.loads(view["private_metadata"])
+    except (json.JSONDecodeError, TypeError, KeyError) as exc:
+        raise VideoConfigureMediaError(_("Please choose a media workflow.")) from exc
+    if not isinstance(metadata, dict):
+        raise VideoConfigureMediaError(_("Please choose a media workflow."))
     values = view["state"]["values"]
     workflow_block = values.get("workflow_type") or {}
     workflow_action = workflow_block.get("video_configure_workflow_type") or {}

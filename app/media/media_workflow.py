@@ -111,16 +111,19 @@ def media_workflow_session_from_quote(
     if not raw_type:
         return None
     stage_value = session.get("workflow_stage") or session.get("stage")
-    return MediaWorkflowSession(
-        stage=MediaWorkflowStage(str(stage_value)),
-        config=MediaWorkflowConfig(
-            workflow_type=MediaWorkflowType(str(raw_type)),
-            embed_source=bool(session.get("embed_source")),
-            embed_translated=bool(session.get("embed_translated")),
-            review_gate=bool(session.get("review_gate", True)),
-            target_languages=tuple(session.get("target_languages") or ()),
-        ),
-    )
+    try:
+        return MediaWorkflowSession(
+            stage=MediaWorkflowStage(str(stage_value)),
+            config=MediaWorkflowConfig(
+                workflow_type=MediaWorkflowType(str(raw_type)),
+                embed_source=bool(session.get("embed_source")),
+                embed_translated=bool(session.get("embed_translated")),
+                review_gate=bool(session.get("review_gate", True)),
+                target_languages=tuple(session.get("target_languages") or ()),
+            ),
+        )
+    except ValueError:
+        return None
 
 
 def _session_in(

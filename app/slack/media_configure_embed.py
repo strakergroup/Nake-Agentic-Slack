@@ -74,9 +74,21 @@ async def resume_configure_embed_phase(
         extra = parse_transcription_task_extra_data(task.extra_data)
         srt_file_ids: list[str] | None = None
         if srt_file_id:
-            srt_file_ids = [srt_file_id]
             if translated:
-                language_codes = language_codes[:1] or ["und"]
+                ids_map = dict(task.translated_file_ids or {})
+                language = session.get("approved_translated_srt_language")
+                if language:
+                    ids_map[str(language)] = srt_file_id
+                elif len(ids_map) == 1:
+                    ids_map[next(iter(ids_map))] = srt_file_id
+                elif not ids_map:
+                    language_codes = language_codes[:1] or ["und"]
+                    srt_file_ids = [srt_file_id]
+                if ids_map:
+                    srt_file_ids = list(ids_map.values())
+                    language_codes = list(ids_map.keys())
+            else:
+                srt_file_ids = [srt_file_id]
         elif task.result_file_id and not translated:
             srt_file_ids = [task.result_file_id]
         elif translated and task.translated_file_ids:

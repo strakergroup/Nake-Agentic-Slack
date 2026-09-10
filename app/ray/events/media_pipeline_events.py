@@ -96,9 +96,13 @@ async def _advance_configure_after_translation(
         return
     from app.slack.media_workflow_actions import execute_media_workflow_decision
 
-    decision = advance_media_workflow(
-        workflow, MediaWorkflowEvent.TRANSLATION_COMPLETED
-    )
+    try:
+        decision = advance_media_workflow(
+            workflow, MediaWorkflowEvent.TRANSLATION_COMPLETED
+        )
+    except MediaWorkflowTransitionError as exc:
+        notify_exception(exc)
+        return
     session["channel_id"] = session.get("channel_id") or channel_id
     session["thread_ts"] = session.get("thread_ts") or thread_ts
     await execute_media_workflow_decision(

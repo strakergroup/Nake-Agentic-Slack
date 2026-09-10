@@ -466,19 +466,25 @@ async def accept_media_quote(
             extra_data=extra_data,
         )
 
-        next_stage = (
-            configure_decision.session.stage.value
-            if configure_decision is not None
-            else (
+        if configure_decision is not None:
+            from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+            updated = await execute_media_workflow_decision(
+                client=client,
+                session=session,
+                decision=configure_decision,
+                task_uuid=task_uuid,
+            )
+        else:
+            next_stage = (
                 STAGE_EMBEDDING
                 if pipeline_kind == PIPELINE_EMBED
                 else STAGE_TRANSCRIBING
             )
-        )
-        updated = await update_media_quote_session(
-            quote_id,
-            {"stage": next_stage, "task_uuid": task_uuid},
-        )
+            updated = await update_media_quote_session(
+                quote_id,
+                {"stage": next_stage, "task_uuid": task_uuid},
+            )
         await _update_quote_message(
             client,
             channel_id=channel_id or session.get("channel_id"),
@@ -587,17 +593,24 @@ async def accept_media_translation_quote(
             return False
 
         pipeline_kind = session["pipeline_kind"]
-        await _resume_translate_phase(
-            task_uuid=task_uuid,
-            pipeline_kind=pipeline_kind,
-            session=session,
-        )
-        next_stage = (
-            configure_decision.session.stage.value
-            if configure_decision is not None
-            else STAGE_TRANSLATING
-        )
-        updated = await update_media_quote_session(quote_id, {"stage": next_stage})
+        if configure_decision is not None:
+            from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+            updated = await execute_media_workflow_decision(
+                client=client,
+                session=session,
+                decision=configure_decision,
+                task_uuid=task_uuid,
+            )
+        else:
+            await _resume_translate_phase(
+                task_uuid=task_uuid,
+                pipeline_kind=pipeline_kind,
+                session=session,
+            )
+            updated = await update_media_quote_session(
+                quote_id, {"stage": STAGE_TRANSLATING}
+            )
         await _update_quote_message(
             client,
             channel_id=channel_id or session.get("channel_id"),

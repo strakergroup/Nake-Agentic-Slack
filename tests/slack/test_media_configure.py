@@ -141,6 +141,18 @@ def test_parse_omitted_review_gate_block_is_off():
     assert selection.review_gate is False
 
 
+def test_parse_rejects_malformed_private_metadata():
+    from app.slack.media_configure import (
+        VideoConfigureMediaError,
+        parse_video_configure_media_view,
+    )
+
+    with pytest.raises(VideoConfigureMediaError):
+        parse_video_configure_media_view(
+            {"private_metadata": "{not-json", "state": {"values": {}}}
+        )
+
+
 def test_parse_requires_target_languages_for_translate():
     from app.slack.media_configure import (
         VideoConfigureMediaError,

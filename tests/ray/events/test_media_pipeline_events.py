@@ -839,7 +839,7 @@ async def test_handle_transcribe_embed_pipeline_source_embed_keeps_quote2_open(
 
     assert ok is True
     mock_complete.assert_not_awaited()
-    assert mock_update.await_args.args[1]["stage"] == "awaiting_translation_accept"
+    mock_update.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -903,7 +903,7 @@ async def test_late_source_embed_does_not_mark_translated_embed_done(tmp_path):
 
     assert ok is True
     mock_complete.assert_not_awaited()
-    assert mock_update.await_args.args[1]["stage"] == "embedding_translated"
+    mock_update.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -965,3 +965,45 @@ async def test_handle_transcribe_embed_pipeline_source_embed_completes_transcrib
     assert ok is True
     assert mock_update.await_args.args[1]["stage"] == "done"
     mock_complete.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_translation_completed_at_wrong_stage_does_not_raise():
+    from app.ray.events.media_pipeline_events import (
+        _advance_configure_after_translation,
+    )
+
+    client = AsyncMock()
+    session = {
+        "quote_id": "q1",
+        "stage": "awaiting_translation_accept",
+        "workflow_type": "transcribe_translate",
+        "embed_source": True,
+        "embed_translated": False,
+        "review_gate": True,
+        "target_languages": ["es"],
+        "channel_id": "C1",
+        "thread_ts": "1.2",
+    }
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.get_media_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.notify_exception",
+        ) as mock_notify,
+        patch(
+            "app.slack.media_workflow_actions.execute_media_workflow_decision",
+            new_callable=AsyncMock,
+        ) as mock_execute,
+    ):
+        await _advance_configure_after_translation(
+            client,
+            {"media_quote_id": "q1"},
+            "C1",
+            "1.2",
+        )
+
+    mock_execute.assert_not_awaited()
+    mock_notify.assert_called_once()

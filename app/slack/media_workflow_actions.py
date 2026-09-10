@@ -78,6 +78,22 @@ def _stem_has_language_code_token(stem: str, code: str) -> bool:
     return re.search(rf"(?:^|[-_.]){re.escape(token)}(?:[-_.]|$)", stem) is not None
 
 
+def _translated_replace_language(
+    uploaded_name: str, target_languages: tuple[str, ...]
+) -> str | None:
+    stem = Path(uploaded_name).stem.lower()
+    for code in target_languages:
+        if _stem_has_language_code_token(stem, code):
+            return code
+    if len(target_languages) == 1:
+        return target_languages[0]
+    return None
+
+
+def _srt_approve_lock_key(quote_id: str) -> str:
+    return media_quote_lock_key(f"srt-approve:{quote_id}")
+
+
 async def apply_thread_srt_review_replace(
     *,
     client: AsyncWebClient,
@@ -85,6 +101,7 @@ async def apply_thread_srt_review_replace(
     slack_file_id: str,
     uploaded_name: str,
     match_review_filename: bool = True,
+    acting_user_id: str | None = None,
 ) -> bool:
     workflow = media_workflow_session_from_quote(session)
     if workflow is None:
@@ -94,6 +111,12 @@ async def apply_thread_srt_review_replace(
         MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW,
     ):
         return False
+    if acting_user_id is not None and session.get("user_id") != acting_user_id:
+        await client.chat_postMessage(
+            channel=acting_user_id,
+            text=_("You do not have permission to replace this SRT."),
+        )
+        return True
     if match_review_filename and not thread_srt_matches_review_file(
         uploaded_name=uploaded_name,
         original_file_name=str(session.get("file_name") or ""),
@@ -114,31 +137,57 @@ async def apply_thread_srt_review_replace(
         await _notify_srt_replace_failed(client, session)
         return True
 
-    try:
-        file_server_id = await _upload_slack_srt_to_file_server(client, slack_file_id)
-    except Exception as exc:
-        failed = (
-            exc
-            if isinstance(exc, MediaSrtReplaceFailed)
-            else MediaSrtReplaceFailed(exc)
+    quote_id = str(session["quote_id"])
+    lock_key = _srt_approve_lock_key(quote_id)
+    lock_acquired = await redis_conn.set(lock_key, "1", ex=120, nx=True)
+    if not lock_acquired:
+        await client.chat_postMessage(
+            channel=acting_user_id or str(session.get("channel_id") or ""),
+            text=_(
+                "A request is already in progress. Please try again in a few seconds."
+            ),
+            thread_ts=session.get("thread_ts"),
         )
-        notify_exception(failed)
-        await _notify_srt_replace_failed(client, session)
         return True
-    field = (
-        "approved_source_srt_file_id"
-        if event is MediaWorkflowEvent.SOURCE_SRT_REPLACED
-        else "approved_translated_srt_file_id"
-    )
-    await update_media_quote_session(str(session["quote_id"]), {field: file_server_id})
-    await client.chat_postMessage(
-        channel=str(session["channel_id"]),
-        text=_(
-            "Replacement SRT received. Click *Approve & Continue* when you are ready."
-        ),
-        thread_ts=session.get("thread_ts"),
-    )
-    return True
+
+    try:
+        try:
+            file_server_id = await _upload_slack_srt_to_file_server(
+                client, slack_file_id
+            )
+        except Exception as exc:
+            failed = (
+                exc
+                if isinstance(exc, MediaSrtReplaceFailed)
+                else MediaSrtReplaceFailed(exc)
+            )
+            notify_exception(failed)
+            await _notify_srt_replace_failed(client, session)
+            return True
+        updates: dict[str, Any] = {
+            (
+                "approved_source_srt_file_id"
+                if event is MediaWorkflowEvent.SOURCE_SRT_REPLACED
+                else "approved_translated_srt_file_id"
+            ): file_server_id
+        }
+        if event is MediaWorkflowEvent.TRANSLATED_SRT_REPLACED:
+            language = _translated_replace_language(
+                uploaded_name, workflow.config.target_languages
+            )
+            if language:
+                updates["approved_translated_srt_language"] = language
+        await update_media_quote_session(quote_id, updates)
+        await client.chat_postMessage(
+            channel=str(session["channel_id"]),
+            text=_(
+                "Replacement SRT received. Click *Approve & Continue* when you are ready."
+            ),
+            thread_ts=session.get("thread_ts"),
+        )
+        return True
+    finally:
+        await redis_conn.delete(lock_key)
 
 
 async def handle_media_srt_approve_continue(
@@ -162,7 +211,7 @@ async def handle_media_srt_approve_continue(
         )
         return
 
-    lock_key = media_quote_lock_key(f"srt-approve:{quote_id}")
+    lock_key = _srt_approve_lock_key(quote_id)
     lock_acquired = await redis_conn.set(lock_key, "1", ex=120, nx=True)
     if not lock_acquired:
         await client.chat_postMessage(
@@ -174,6 +223,13 @@ async def handle_media_srt_approve_continue(
         return
 
     try:
+        session = await get_media_quote_session(quote_id)
+        if session is None:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_("This media review has expired. Please start a new request."),
+            )
+            return
         workflow = media_workflow_session_from_quote(session)
         if workflow is None:
             return
@@ -248,12 +304,13 @@ async def execute_media_workflow_decision(
             }
         )
 
-    defer_stage = decision.session.stage in (
-        MediaWorkflowStage.EMBEDDING_SOURCE,
-        MediaWorkflowStage.EMBEDDING_TRANSLATED,
+    defer_stage = (
+        MediaWorkflowCommand.START_SOURCE_EMBED in decision.commands
+        or MediaWorkflowCommand.START_TRANSLATED_EMBED in decision.commands
     )
     persist = {key: value for key, value in updates.items() if key != "stage"}
-    if not defer_stage:
+    stage_changed = decision.session.stage.value != session.get("stage")
+    if not defer_stage and (decision.commands or stage_changed):
         persist["stage"] = updates["stage"]
     if persist:
         updated = await update_media_quote_session(
@@ -275,6 +332,16 @@ async def execute_media_workflow_decision(
                 updated,
                 accept_action_id=ACTION_MEDIA_TRANSLATION_QUOTE_ACCEPT,
                 cancel_action_id=ACTION_MEDIA_TRANSLATION_QUOTE_CANCEL,
+            )
+    if MediaWorkflowCommand.START_TRANSLATE in decision.commands:
+        from app.slack.media_quote_actions import _resume_translate_phase
+
+        resume_uuid = str(task_uuid or updated.get("task_uuid") or "")
+        if resume_uuid:
+            await _resume_translate_phase(
+                task_uuid=resume_uuid,
+                pipeline_kind=str(updated.get("pipeline_kind") or ""),
+                session=updated,
             )
     if MediaWorkflowCommand.START_SOURCE_EMBED in decision.commands:
         from app.slack.media_configure_embed import resume_configure_embed_phase
@@ -362,6 +429,12 @@ async def handle_media_srt_replace_submit(
             text=_("This media review has expired. Please start a new request."),
         )
         return
+    if session.get("user_id") != context["user_id"]:
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=_("You do not have permission to replace this SRT."),
+        )
+        return
     values = (view.get("state") or {}).get("values") or {}
     files = ((values.get("srt_file") or {}).get("srt_file_input") or {}).get(
         "files"
@@ -381,6 +454,7 @@ async def handle_media_srt_replace_submit(
             slack_file.get("name") or slack_file.get("title") or "file.srt"
         ),
         match_review_filename=False,
+        acting_user_id=context["user_id"],
     )
     if not replaced:
         await client.chat_postMessage(

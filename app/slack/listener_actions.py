@@ -574,7 +574,27 @@ async def maybe_show_thread_media_embed_option(
                 or subtitle_file.get("title")
                 or "subtitles.srt"
             ),
+            acting_user_id=str(context["user_id"]),
         ):
+            return True
+        from app.media.media_workflow import (
+            MediaWorkflowStage,
+            media_workflow_session_from_quote,
+        )
+
+        workflow = media_workflow_session_from_quote(review_session)
+        if workflow is not None and workflow.stage not in (
+            MediaWorkflowStage.DONE,
+            MediaWorkflowStage.CANCELLED,
+        ):
+            await client.chat_postMessage(
+                channel=str(review_session.get("channel_id") or channel_id),
+                text=_(
+                    "Finish the current media request before embedding a different SRT "
+                    "in this thread."
+                ),
+                thread_ts=thread_ts,
+            )
             return True
 
     root_message = await get_thread_root_message(client, channel_id, thread_ts)
