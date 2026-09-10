@@ -60,6 +60,7 @@ from ..ray.events.media_pipeline_events import (
     handle_transcription_complete,
     handle_translation_complete,
     is_configure_source_embed_job,
+    mark_media_quote_cancelled,
     mark_media_quote_done,
     mark_stage_processed,
     maybe_post_media_translation_quote,
@@ -641,6 +642,7 @@ async def ray_events(
                         if continues:
                             return
                     await fail_media_submissions(extra_data)
+                    await mark_media_quote_cancelled(extra_data)
                     return
 
                 # Get channel and thread info
@@ -669,6 +671,7 @@ async def ray_events(
                     if not delivered:
                         if not configure_source_embed_continues_translation(extra_data):
                             await fail_media_submissions(extra_data)
+                            await mark_media_quote_cancelled(extra_data)
                         return
                     # Spend credits for embedding
                     embedding_tokens = await spend_embedding_credits(task_info, auth)

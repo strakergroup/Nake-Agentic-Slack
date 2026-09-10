@@ -493,6 +493,68 @@ async def test_failed_source_embed_does_not_persist_embedding_stage():
 
 
 @pytest.mark.asyncio
+async def test_failed_source_embed_does_not_post_quote2():
+    from app.media.media_workflow import (
+        MediaWorkflowEvent,
+        advance_media_workflow,
+        media_workflow_session_from_quote,
+    )
+    from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+    session = {
+        "quote_id": "q1",
+        "stage": "awaiting_source_review",
+        "workflow_type": "transcribe_translate",
+        "embed_source": True,
+        "embed_translated": False,
+        "review_gate": True,
+        "target_languages": ["es"],
+        "source_text_length": 500,
+        "duration_ms": 60_000,
+        "channel_id": "C1",
+        "thread_ts": "1.2",
+        "task_uuid": "asr-task",
+    }
+    decision = advance_media_workflow(
+        media_workflow_session_from_quote(session),
+        MediaWorkflowEvent.SOURCE_SRT_APPROVED,
+    )
+    client = AsyncMock()
+    with (
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new_callable=AsyncMock,
+            side_effect=lambda quote_id, updates: {**session, **updates},
+        ) as mock_update,
+        patch(
+            "app.slack.media_configure_embed.resume_configure_embed_phase",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("embed enqueue failed"),
+        ),
+        patch(
+            "app.slack.media_workflow_actions.post_media_quote_message",
+            new_callable=AsyncMock,
+        ) as mock_post,
+        patch(
+            "app.slack.media_workflow_actions.auto_accept_media_translation_quote_if_needed",
+            new_callable=AsyncMock,
+            return_value=False,
+        ) as mock_auto_accept,
+    ):
+        with pytest.raises(RuntimeError, match="embed enqueue failed"):
+            await execute_media_workflow_decision(
+                client=client, session=session, decision=decision
+            )
+
+    mock_post.assert_not_awaited()
+    mock_auto_accept.assert_not_awaited()
+    persisted_stages = [
+        call.args[1].get("stage") for call in mock_update.await_args_list
+    ]
+    assert "awaiting_translation_accept" not in persisted_stages
+
+
+@pytest.mark.asyncio
 async def test_successful_source_embed_persists_embedding_stage():
     from app.media.media_workflow import (
         MediaWorkflowEvent,
@@ -813,3 +875,57 @@ async def test_approve_reloads_session_after_lock_so_replacement_is_used():
     assert mock_embed.await_args.kwargs["session"]["approved_source_srt_file_id"] == (
         "srt-replaced"
     )
+
+
+@pytest.mark.asyncio
+async def test_approve_translated_srt_explains_missing_language():
+    from app.slack.media_configure_embed import TranslatedSrtLanguageRequired
+    from app.slack.media_workflow_actions import handle_media_srt_approve_continue
+
+    client = AsyncMock()
+    context = MagicMock()
+    context.__getitem__ = lambda self, key: {"user_id": "U1", "team_id": "T1"}[key]
+    context.get = lambda key, default=None: None
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "stage": "awaiting_translation_review",
+        "workflow_type": "transcribe_translate",
+        "embed_source": False,
+        "embed_translated": True,
+        "review_gate": True,
+        "target_languages": ["es", "fr"],
+        "channel_id": "C1",
+        "thread_ts": "1.2",
+        "task_uuid": "asr-task",
+        "approved_translated_srt_file_id": "srt-replaced",
+    }
+    with (
+        patch(
+            "app.slack.media_workflow_actions.get_media_quote_session",
+            new_callable=AsyncMock,
+            return_value=session,
+        ),
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new_callable=AsyncMock,
+            side_effect=lambda quote_id, updates: {**session, **updates},
+        ),
+        patch(
+            "app.slack.media_configure_embed.resume_configure_embed_phase",
+            new_callable=AsyncMock,
+            side_effect=TranslatedSrtLanguageRequired(),
+        ),
+        patch("app.slack.media_workflow_actions.redis_conn") as mock_redis,
+    ):
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_redis.delete = AsyncMock()
+        await handle_media_srt_approve_continue(
+            client=client,
+            action={"value": "q1"},
+            context=context,
+        )
+
+    posted = client.chat_postMessage.await_args.kwargs
+    assert posted["channel"] == "U1"
+    assert "language" in posted["text"].lower()

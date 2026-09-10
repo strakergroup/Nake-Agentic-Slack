@@ -1289,12 +1289,16 @@ class TestRayEventsEndpoint:
             patch(
                 "app.routers.ray.fail_media_submissions", new_callable=AsyncMock
             ) as mock_fail,
+            patch(
+                "app.routers.ray.mark_media_quote_cancelled", new_callable=AsyncMock
+            ) as mock_cancel,
         ):
             auth = RayEventAuth()
             await auth.initialize(event, "valid-token")
             await ray_events(event, auth)
 
         mock_fail.assert_awaited_once()
+        mock_cancel.assert_awaited_once()
         posted = mock_client.chat_postMessage.await_args.kwargs
         assert "translation" not in posted["text"].lower()
 
@@ -1375,12 +1379,16 @@ class TestRayEventsEndpoint:
             patch(
                 "app.routers.ray.fail_media_submissions", new_callable=AsyncMock
             ) as mock_fail,
+            patch(
+                "app.routers.ray.mark_media_quote_cancelled", new_callable=AsyncMock
+            ) as mock_cancel,
         ):
             auth = RayEventAuth()
             await auth.initialize(event, "valid-token")
             await ray_events(event, auth)
 
         mock_fail.assert_awaited_once()
+        mock_cancel.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_ray_events_document_translated_error(

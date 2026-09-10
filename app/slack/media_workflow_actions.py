@@ -21,6 +21,7 @@ from app.media.media_workflow import (
 from app.ray.utils import upload_to_file_server
 from app.redis import redis_conn
 from app.slack.buglog_notifier import notify_exception
+from app.slack.media_configure_embed import TranslatedSrtLanguageRequired
 from app.slack.media_quote_actions import (
     auto_accept_media_translation_quote_if_needed,
     post_media_quote_message,
@@ -250,11 +251,22 @@ async def handle_media_srt_approve_continue(
                 ),
             )
             return
-        await execute_media_workflow_decision(
-            client=client,
-            session=session,
-            decision=decision,
-        )
+        try:
+            await execute_media_workflow_decision(
+                client=client,
+                session=session,
+                decision=decision,
+            )
+        except TranslatedSrtLanguageRequired:
+            await client.chat_postMessage(
+                channel=context["user_id"],
+                text=_(
+                    "Could not tell which language this replacement SRT is for. "
+                    "Rename the file to include the language code "
+                    "(for example clip_es.srt) and replace it again."
+                ),
+            )
+            return
     finally:
         await redis_conn.delete(lock_key)
 
@@ -325,14 +337,6 @@ async def execute_media_workflow_decision(
             await _post_srt_review(client, updated)
     if MediaWorkflowCommand.POST_TRANSLATION_REVIEW in decision.commands:
         await _post_srt_review(client, updated)
-    if MediaWorkflowCommand.POST_QUOTE2 in decision.commands:
-        if not await auto_accept_media_translation_quote_if_needed(client, updated):
-            await post_media_quote_message(
-                client,
-                updated,
-                accept_action_id=ACTION_MEDIA_TRANSLATION_QUOTE_ACCEPT,
-                cancel_action_id=ACTION_MEDIA_TRANSLATION_QUOTE_CANCEL,
-            )
     if MediaWorkflowCommand.START_TRANSLATE in decision.commands:
         from app.slack.media_quote_actions import _resume_translate_phase
 
@@ -358,6 +362,14 @@ async def execute_media_workflow_decision(
             )
             or updated
         )
+    if MediaWorkflowCommand.POST_QUOTE2 in decision.commands:
+        if not await auto_accept_media_translation_quote_if_needed(client, updated):
+            await post_media_quote_message(
+                client,
+                updated,
+                accept_action_id=ACTION_MEDIA_TRANSLATION_QUOTE_ACCEPT,
+                cancel_action_id=ACTION_MEDIA_TRANSLATION_QUOTE_CANCEL,
+            )
     if MediaWorkflowCommand.MARK_DONE in decision.commands:
         from app.ray.events.media_pipeline_events import update_submission_status
 

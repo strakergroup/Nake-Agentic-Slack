@@ -365,6 +365,57 @@ async def test_handle_translation_complete_posts_failure_when_undelivered():
 
 
 @pytest.mark.asyncio
+async def test_handle_translation_complete_cancels_configure_when_undelivered():
+    from app.ray.events.media_pipeline_events import handle_translation_complete
+
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock(return_value={"ts": "999.001"})
+    task_info = SimpleNamespace(
+        task_uuid="task-1",
+        file_name="clip.mp4",
+        pipeline_type="translate_only",
+        translated_file_ids={"es": "file-es"},
+        extra_data={
+            "workflow_type": "transcribe_translate",
+            "media_quote_id": "q1",
+        },
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(enterprise_id=None))
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.download_from_file_server_async",
+            new=AsyncMock(return_value={"file": None}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.show_tokens_message",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.update_media_quote_session",
+            new_callable=AsyncMock,
+        ) as mock_update,
+        patch(
+            "app.slack.media_workflow_actions.execute_media_workflow_decision",
+            new_callable=AsyncMock,
+        ) as mock_execute,
+    ):
+        uploaded = await handle_translation_complete(
+            client, "C1", "123.456", task_info, auth
+        )
+
+    assert uploaded == 0
+    mock_update.assert_awaited_once()
+    assert mock_update.await_args.args == ("q1", {"stage": "cancelled"})
+    mock_execute.assert_not_awaited()
+    texts = [
+        call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
+    ]
+    assert any("could not be delivered" in text for text in texts)
+    assert not any("Approve & Continue" in text or "Review" in text for text in texts)
+
+
+@pytest.mark.asyncio
 async def test_handle_translation_complete_posts_success_after_upload(tmp_path):
     from app.ray.events.media_pipeline_events import handle_translation_complete
 

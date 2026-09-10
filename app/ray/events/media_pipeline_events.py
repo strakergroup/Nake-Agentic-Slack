@@ -50,6 +50,7 @@ from app.slack.media_quotes import (
     PIPELINE_TRANSCRIBE_TRANSLATE,
     PIPELINE_TRANSCRIBE_TRANSLATE_EMBED,
     STAGE_AWAITING_TRANSLATION_ACCEPT,
+    STAGE_CANCELLED,
     STAGE_DONE,
     STAGE_TRANSCRIBING,
     get_media_quote_session,
@@ -669,6 +670,14 @@ async def mark_media_quote_done(extra_data: dict[str, Any] | None) -> None:
         await update_media_quote_session(str(quote_id), {"stage": STAGE_DONE})
 
 
+async def mark_media_quote_cancelled(extra_data: dict[str, Any] | None) -> None:
+    if not extra_data or not extra_data.get("workflow_type"):
+        return
+    quote_id = extra_data.get("media_quote_id")
+    if quote_id:
+        await update_media_quote_session(str(quote_id), {"stage": STAGE_CANCELLED})
+
+
 async def handle_transcription_complete(
     client: AsyncWebClient,
     result_file_id: str | None,
@@ -842,6 +851,7 @@ async def handle_translation_complete(
             ),
             thread_ts=effective_thread_ts,
         )
+        await mark_media_quote_cancelled(_task_extra_data(task_info))
 
     # Show token message at the end for translate pipelines
     if (

@@ -23,6 +23,14 @@ class TranscriptionTaskExtraDataError(Exception):
         self.__cause__ = cause
 
 
+class TranslatedSrtLanguageRequired(Exception):
+    def __init__(self) -> None:
+        super().__init__(
+            "Replacement translated SRT language is required when embedding "
+            "multiple target languages"
+        )
+
+
 class TranscriptionTaskExtraData(BaseModel):
     """JSON extra_data on transcription_tasks for Configure embed jobs."""
 
@@ -84,6 +92,8 @@ async def resume_configure_embed_phase(
                 elif not ids_map:
                     language_codes = language_codes[:1] or ["und"]
                     srt_file_ids = [srt_file_id]
+                else:
+                    raise TranslatedSrtLanguageRequired()
                 if ids_map:
                     srt_file_ids = list(ids_map.values())
                     language_codes = list(ids_map.keys())
