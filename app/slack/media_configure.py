@@ -52,6 +52,22 @@ def _embedding_checkbox_selected(values: dict[str, Any], value: str) -> bool:
     ) or _checkbox_selected(values, value, f"{value}_options", value)
 
 
+def _radio_selected_value(
+    values: dict[str, Any], block_id: str, action_id: str
+) -> str | None:
+    block = values.get(block_id) or {}
+    action = block.get(action_id) or {}
+    return (action.get("selected_option") or {}).get("value")
+
+
+def word_transcript_selection(values: dict[str, Any]) -> tuple[bool, str | None]:
+    checked = _checkbox_selected(
+        values, "word_transcript", "word_transcript_options", "word_transcript"
+    )
+    word_format = _radio_selected_value(values, "word_format", "word_format_options")
+    return checked, word_format
+
+
 def parse_video_configure_media_view(
     view: dict[str, Any],
 ) -> VideoConfigureMediaSelection:
@@ -62,9 +78,9 @@ def parse_video_configure_media_view(
     if not isinstance(metadata, dict):
         raise VideoConfigureMediaError(_("Please choose a media workflow."))
     values = view["state"]["values"]
-    workflow_block = values.get("workflow_type") or {}
-    workflow_action = workflow_block.get("video_configure_workflow_type") or {}
-    selected_workflow = (workflow_action.get("selected_option") or {}).get("value")
+    selected_workflow = _radio_selected_value(
+        values, "workflow_type", "video_configure_workflow_type"
+    )
     try:
         workflow_type = MediaWorkflowType(selected_workflow)
     except ValueError as exc:

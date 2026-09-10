@@ -20,6 +20,7 @@ from slack_sdk.models.blocks.block_elements import (
     StaticMultiSelectElement,
 )
 
+from app.media.word_transcript import WordTranscriptFormat
 from app.translate import _
 
 from ...auth.connector import (
@@ -1403,6 +1404,8 @@ def video_configure_media_modal(
     show_translate_options: bool = True,
     embed_source: bool = False,
     embed_translated: bool = False,
+    word_transcript: bool = False,
+    word_transcript_format: str | None = None,
 ) -> dict[str, Any]:
     transcribe_only = Option(
         text=PlainTextObject(text=_("Transcription only"), emoji=True),
@@ -1497,6 +1500,51 @@ def video_configure_media_modal(
                     "embedding_options",
                     embed_options,
                     selected_values=selected_embeds,
+                ),
+            )
+        )
+    word_option = Option(
+        text=PlainTextObject(text=_("Word transcript"), emoji=True),
+        value="word_transcript",
+    )
+    blocks.append(
+        InputBlock(
+            block_id="word_transcript",
+            label=PlainTextObject(text=_("Word transcript")),
+            optional=True,
+            dispatch_action=True,
+            element=_checkboxes_element(
+                "word_transcript_options",
+                [word_option],
+                selected_values={"word_transcript"} if word_transcript else set(),
+            ),
+        )
+    )
+    if word_transcript:
+        format_options = [
+            Option(text=PlainTextObject(text=label, emoji=True), value=fmt.value)
+            for fmt, label in (
+                (WordTranscriptFormat.TEXT, _("Text")),
+                (WordTranscriptFormat.SPEAKERS, _("Speakers")),
+                (WordTranscriptFormat.TIMESTAMPS, _("Timestamps")),
+                (
+                    WordTranscriptFormat.SPEAKERS_AND_TIMESTAMPS,
+                    _("Speakers and timestamps"),
+                ),
+            )
+        ]
+        initial_format = next(
+            (opt for opt in format_options if opt.value == word_transcript_format),
+            format_options[0],
+        )
+        blocks.append(
+            InputBlock(
+                block_id="word_format",
+                label=PlainTextObject(text=_("Word format")),
+                element=RadioButtonsElement(
+                    action_id="word_format_options",
+                    options=format_options,
+                    initial_option=initial_format,
                 ),
             )
         )

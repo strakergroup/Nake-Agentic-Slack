@@ -390,6 +390,148 @@ async def test_workflow_type_change_keeps_source_embed_selection():
 
 
 @pytest.mark.asyncio
+async def test_workflow_type_change_preserves_word_transcript_state():
+    from unittest.mock import AsyncMock
+
+    from app.slack.handlers.media import handle_video_configure_workflow_type
+
+    client = AsyncMock()
+    body = {
+        "view": {
+            "id": "V1",
+            "private_metadata": json.dumps(
+                {
+                    "channel_id": "C1",
+                    "files": _files(),
+                    "thread_ts": "1.2",
+                    "show_embed_option": True,
+                }
+            ),
+            "state": {
+                "values": {
+                    "word_transcript": {
+                        "word_transcript_options": {
+                            "selected_options": [_option("word_transcript")]
+                        }
+                    },
+                    "word_format": {
+                        "word_format_options": {
+                            "selected_option": _option("speakers"),
+                        }
+                    },
+                }
+            },
+        }
+    }
+    action = {"selected_option": {"value": "transcribe_only"}}
+    await handle_video_configure_workflow_type(client=client, body=body, action=action)
+    view = client.views_update.await_args.kwargs["view"]
+    word = next(b for b in view["blocks"] if b.get("block_id") == "word_transcript")
+    assert [opt["value"] for opt in word["element"]["initial_options"]] == [
+        "word_transcript"
+    ]
+    fmt = next(b for b in view["blocks"] if b.get("block_id") == "word_format")
+    assert fmt["element"]["initial_option"]["value"] == "speakers"
+
+
+@pytest.mark.asyncio
+async def test_word_checkbox_check_rebuilds_modal_with_format_block():
+    from unittest.mock import AsyncMock
+
+    from app.slack.handlers.media import handle_video_configure_word_transcript
+
+    client = AsyncMock()
+    body = {
+        "view": {
+            "id": "V1",
+            "private_metadata": json.dumps(
+                {
+                    "channel_id": "C1",
+                    "files": _files(),
+                    "thread_ts": "1.2",
+                    "show_embed_option": True,
+                }
+            ),
+            "state": {
+                "values": {
+                    "workflow_type": {
+                        "video_configure_workflow_type": {
+                            "selected_option": _option("transcribe_only"),
+                        }
+                    },
+                    "embedding": {
+                        "embedding_options": {
+                            "selected_options": [_option("embed_source")]
+                        }
+                    },
+                }
+            },
+        }
+    }
+    action = {"selected_options": [_option("word_transcript")]}
+    await handle_video_configure_word_transcript(
+        client=client, body=body, action=action
+    )
+    client.views_update.assert_awaited_once()
+    view = client.views_update.await_args.kwargs["view"]
+    block_ids = [block.get("block_id") for block in view["blocks"]]
+    assert "word_format" in block_ids
+    fmt = next(b for b in view["blocks"] if b.get("block_id") == "word_format")
+    assert fmt["element"]["initial_option"]["value"] == "text"
+    # transcribe_only workflow and embed selection survive the rebuild
+    assert "target_languages" not in block_ids
+    embedding = next(b for b in view["blocks"] if b.get("block_id") == "embedding")
+    assert [opt["value"] for opt in embedding["element"]["initial_options"]] == [
+        "embed_source"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_word_checkbox_uncheck_removes_format_block():
+    from unittest.mock import AsyncMock
+
+    from app.slack.handlers.media import handle_video_configure_word_transcript
+
+    client = AsyncMock()
+    body = {
+        "view": {
+            "id": "V1",
+            "private_metadata": json.dumps(
+                {
+                    "channel_id": "C1",
+                    "files": _files(),
+                    "show_embed_option": True,
+                }
+            ),
+            "state": {
+                "values": {
+                    "workflow_type": {
+                        "video_configure_workflow_type": {
+                            "selected_option": _option("transcribe_translate"),
+                        }
+                    },
+                    "word_format": {
+                        "word_format_options": {
+                            "selected_option": _option("speakers"),
+                        }
+                    },
+                }
+            },
+        }
+    }
+    action = {"selected_options": []}
+    await handle_video_configure_word_transcript(
+        client=client, body=body, action=action
+    )
+    view = client.views_update.await_args.kwargs["view"]
+    block_ids = [block.get("block_id") for block in view["blocks"]]
+    assert "word_format" not in block_ids
+    word = next(b for b in view["blocks"] if b.get("block_id") == "word_transcript")
+    assert not word["element"].get("initial_options")
+    assert "target_languages" in block_ids
+
+
+@pytest.mark.asyncio
 async def test_configure_submit_creates_quote1_with_embed_source_flag():
     from unittest.mock import AsyncMock, patch
 

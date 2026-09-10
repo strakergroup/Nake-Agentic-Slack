@@ -352,12 +352,16 @@ async def handle_video_configure_workflow_type(
     action: Dict[str, Any],
 ):
     """Rebuild the Configure modal when the workflow type radio changes."""
-    from app.slack.media_configure import _embedding_checkbox_selected
+    from app.slack.media_configure import (
+        _embedding_checkbox_selected,
+        word_transcript_selection,
+    )
 
     view = body["view"]
     metadata = json.loads(view.get("private_metadata") or "{}")
     selected = (action.get("selected_option") or {}).get("value")
     values = (view.get("state") or {}).get("values") or {}
+    word_transcript, word_transcript_format = word_transcript_selection(values)
     await client.views_update(
         view_id=view["id"],
         view=video_configure_media_modal(
@@ -368,6 +372,47 @@ async def handle_video_configure_workflow_type(
             show_translate_options=selected == "transcribe_translate",
             embed_source=_embedding_checkbox_selected(values, "embed_source"),
             embed_translated=_embedding_checkbox_selected(values, "embed_translated"),
+            word_transcript=word_transcript,
+            word_transcript_format=word_transcript_format,
+        ),
+    )
+
+
+async def handle_video_configure_word_transcript(
+    client: AsyncWebClient,
+    body: Dict[str, Any],
+    action: Dict[str, Any],
+):
+    """Rebuild the Configure modal when the Word transcript checkbox changes."""
+    from app.slack.media_configure import (
+        _embedding_checkbox_selected,
+        _radio_selected_value,
+        word_transcript_selection,
+    )
+
+    view = body["view"]
+    metadata = json.loads(view.get("private_metadata") or "{}")
+    values = (view.get("state") or {}).get("values") or {}
+    word_transcript = any(
+        (opt or {}).get("value") == "word_transcript"
+        for opt in action.get("selected_options") or []
+    )
+    _, word_transcript_format = word_transcript_selection(values)
+    selected_workflow = _radio_selected_value(
+        values, "workflow_type", "video_configure_workflow_type"
+    )
+    await client.views_update(
+        view_id=view["id"],
+        view=video_configure_media_modal(
+            channel_id=metadata.get("channel_id", ""),
+            files=metadata.get("files") or [],
+            thread_ts=metadata.get("thread_ts"),
+            show_embed_option=bool(metadata.get("show_embed_option", True)),
+            show_translate_options=selected_workflow != "transcribe_only",
+            embed_source=_embedding_checkbox_selected(values, "embed_source"),
+            embed_translated=_embedding_checkbox_selected(values, "embed_translated"),
+            word_transcript=word_transcript,
+            word_transcript_format=word_transcript_format,
         ),
     )
 
