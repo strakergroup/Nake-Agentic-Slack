@@ -232,7 +232,7 @@ async def handle_video_transcribe_translate(
                 view_id,
                 status_modal(
                     _("Sign in required"),
-                    _("Please sign in to LanguageCloud to continue."),
+                    _("Please sign in to continue."),
                 ),
             )
             return
@@ -289,7 +289,7 @@ async def handle_video_embed_subtitles(
                 view_id,
                 status_modal(
                     _("Sign in required"),
-                    _("Please sign in to LanguageCloud to continue."),
+                    _("Please sign in to continue."),
                 ),
             )
             return
@@ -327,7 +327,7 @@ async def handle_video_configure_media(
                 view_id,
                 status_modal(
                     _("Sign in required"),
-                    _("Please sign in to LanguageCloud to continue."),
+                    _("Please sign in to continue."),
                 ),
             )
             return

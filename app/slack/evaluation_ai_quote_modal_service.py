@@ -239,7 +239,7 @@ async def populate_ai_quote_adjustment_modal(
             view_id,
             status_modal(
                 _("Sign in required"),
-                _("Please sign in to LanguageCloud to continue."),
+                _("Please sign in to continue."),
             ),
         )
         return

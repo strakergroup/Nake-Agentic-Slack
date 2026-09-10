@@ -73,7 +73,7 @@ async def handle_document_mt_job_action(
                 view_id,
                 status_modal(
                     _("Sign in required"),
-                    _("Please sign in to LanguageCloud to continue."),
+                    _("Please sign in to continue."),
                 ),
             )
             return

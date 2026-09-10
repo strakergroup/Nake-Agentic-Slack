@@ -259,7 +259,7 @@ async def handle_evaluate_job_action(
                 view_id,
                 status_modal(
                     _("Sign in required"),
-                    _("Please sign in to LanguageCloud to continue."),
+                    _("Please sign in to continue."),
                 ),
             )
             return
@@ -329,7 +329,7 @@ async def handle_verify_job_modal_open(
                 view_id,
                 status_modal(
                     _("Sign in required"),
-                    _("Please sign in to LanguageCloud to continue."),
+                    _("Please sign in to continue."),
                 ),
             )
             return
@@ -347,7 +347,7 @@ async def handle_verify_job_modal_open(
                 view_id,
                 status_modal(
                     _("Sign in required"),
-                    _("Please sign in to LanguageCloud to continue."),
+                    _("Please sign in to continue."),
                 ),
             )
             return
