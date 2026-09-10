@@ -31,6 +31,7 @@ from app.slack.templates.messages import (
     LogoutMessage,
     MachineTranslationMessage,
     MediaEmbedOptionMessage,
+    MediaSrtApproveContinueMessage,
     MediaSrtReviewMessage,
     NewJobMessage,
     OnboardingMessage,
@@ -1307,23 +1308,16 @@ class TestMediaEmbedOptionMessage:
 
 
 class TestMediaSrtReviewMessage:
-    def test_approve_and_replace_actions_without_mandatory_edit_copy(self):
-        message = MediaSrtReviewMessage("q-1")
-        assert _blocks_contain_action(message.blocks, "media_srt_approve_continue")
-        assert _blocks_contain_action(message.blocks, "media_srt_replace")
-        dumped = json.dumps(message.blocks)
-        assert "Approve & Continue" in dumped
-        assert "Replace" in dumped
-        assert "reupload" not in dumped.lower()
-        assert "edit is required" not in dumped.lower()
-        assert "must edit" not in dumped.lower()
-
-    def test_replace_button_carries_language_for_named_file(self):
+    def test_file_replace_has_replace_without_approve(self):
         message = MediaSrtReviewMessage(
             "q-1", language="fi", file_label="clip_Finnish.srt"
         )
+        assert _blocks_contain_action(message.blocks, "media_srt_replace")
+        assert not _blocks_contain_action(message.blocks, "media_srt_approve_continue")
         dumped = json.dumps(message.blocks)
-        assert "clip_Finnish.srt" in dumped
+        assert "Replace" in dumped
+        assert "Approve & Continue" not in dumped
+        assert "reupload" not in dumped.lower()
         replace = next(
             el
             for block in message.blocks
@@ -1331,6 +1325,14 @@ class TestMediaSrtReviewMessage:
             if el.get("action_id") == "media_srt_replace"
         )
         assert json.loads(replace["value"]) == {"quote_id": "q-1", "language": "fi"}
+
+    def test_final_approve_has_approve_without_replace(self):
+        message = MediaSrtApproveContinueMessage("q-1")
+        assert _blocks_contain_action(message.blocks, "media_srt_approve_continue")
+        assert not _blocks_contain_action(message.blocks, "media_srt_replace")
+        dumped = json.dumps(message.blocks)
+        assert "Approve & Continue" in dumped
+        assert "Replace" not in dumped
 
 
 class TestBatchAndFileListMessages:

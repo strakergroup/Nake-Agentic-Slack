@@ -54,6 +54,7 @@ from ..ray.events.logging import (
 )
 from ..ray.events.media_pipeline_events import (
     configure_source_embed_continues_translation,
+    continue_configure_after_failed_source_embed,
     fail_media_submissions,
     get_language_name_by_uuid,
     handle_transcribe_embed_pipeline,
@@ -640,6 +641,14 @@ async def ray_events(
                             thread_ts=thread_ts,
                         )
                         if continues:
+                            await continue_configure_after_failed_source_embed(
+                                client,
+                                extra_data,
+                                extra_data.get("slack_channel_id")
+                                or auth.slack_user.channel_id
+                                or auth.slack_user.user_id,
+                                thread_ts,
+                            )
                             return
                     await fail_media_submissions(extra_data)
                     await mark_media_quote_cancelled(extra_data)
@@ -669,7 +678,14 @@ async def ray_events(
                         failed_languages=transcribed_event.failed_languages,
                     )
                     if not delivered:
-                        if not configure_source_embed_continues_translation(extra_data):
+                        if configure_source_embed_continues_translation(extra_data):
+                            await continue_configure_after_failed_source_embed(
+                                client,
+                                extra_data,
+                                str(channel_id),
+                                thread_ts,
+                            )
+                        else:
                             await fail_media_submissions(extra_data)
                             await mark_media_quote_cancelled(extra_data)
                         return

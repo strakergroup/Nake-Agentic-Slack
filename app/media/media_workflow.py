@@ -30,6 +30,7 @@ class MediaWorkflowEvent(StrEnum):
     SOURCE_SRT_APPROVED = "source_srt_approved"
     SOURCE_SRT_REPLACED = "source_srt_replaced"
     SOURCE_EMBED_COMPLETED = "source_embed_completed"
+    SOURCE_EMBED_FAILED = "source_embed_failed"
     QUOTE2_ACCEPTED = "quote2_accepted"
     QUOTE2_CANCELLED = "quote2_cancelled"
     TRANSLATION_COMPLETED = "translation_completed"
@@ -68,8 +69,11 @@ class MediaWorkflowConfig:
     workflow_type: MediaWorkflowType
     embed_source: bool
     embed_translated: bool
-    review_gate: bool
     target_languages: tuple[str, ...] = ()
+
+    @property
+    def review_gate(self) -> bool:
+        return self.embed_source or self.embed_translated
 
 
 @dataclass(frozen=True)
@@ -89,7 +93,6 @@ def make_media_workflow_session(
     workflow_type: MediaWorkflowType,
     embed_source: bool,
     embed_translated: bool,
-    review_gate: bool,
     target_languages: tuple[str, ...] = (),
 ) -> MediaWorkflowSession:
     return MediaWorkflowSession(
@@ -98,7 +101,6 @@ def make_media_workflow_session(
             workflow_type=workflow_type,
             embed_source=embed_source,
             embed_translated=embed_translated,
-            review_gate=review_gate,
             target_languages=target_languages,
         ),
     )
@@ -118,7 +120,6 @@ def media_workflow_session_from_quote(
                 workflow_type=MediaWorkflowType(str(raw_type)),
                 embed_source=bool(session.get("embed_source")),
                 embed_translated=bool(session.get("embed_translated")),
-                review_gate=bool(session.get("review_gate", True)),
                 target_languages=tuple(session.get("target_languages") or ()),
             ),
         )
@@ -136,18 +137,23 @@ def _is_translate(session: MediaWorkflowSession) -> bool:
     return session.config.workflow_type is MediaWorkflowType.TRANSCRIBE_TRANSLATE
 
 
+def configure_srt_review_enabled(flags: dict[str, Any] | None) -> bool:
+    extra = flags or {}
+    return bool(extra.get("embed_source") or extra.get("embed_translated"))
+
+
 def _after_source_approved(session: MediaWorkflowSession) -> MediaWorkflowDecision:
-    if session.config.embed_source:
-        return MediaWorkflowDecision(
-            session=_session_in(session, MediaWorkflowStage.EMBEDDING_SOURCE),
-            commands=(MediaWorkflowCommand.START_SOURCE_EMBED,),
-        )
     if _is_translate(session):
         return MediaWorkflowDecision(
             session=_session_in(
                 session, MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
             ),
             commands=(MediaWorkflowCommand.POST_QUOTE2,),
+        )
+    if session.config.embed_source:
+        return MediaWorkflowDecision(
+            session=_session_in(session, MediaWorkflowStage.EMBEDDING_SOURCE),
+            commands=(MediaWorkflowCommand.START_SOURCE_EMBED,),
         )
     return MediaWorkflowDecision(
         session=_session_in(session, MediaWorkflowStage.DONE),
@@ -156,7 +162,7 @@ def _after_source_approved(session: MediaWorkflowSession) -> MediaWorkflowDecisi
 
 
 def _after_translated_approved(session: MediaWorkflowSession) -> MediaWorkflowDecision:
-    if session.config.embed_translated:
+    if session.config.embed_translated or session.config.embed_source:
         return MediaWorkflowDecision(
             session=_session_in(session, MediaWorkflowStage.EMBEDDING_TRANSLATED),
             commands=(MediaWorkflowCommand.START_TRANSLATED_EMBED,),
@@ -209,7 +215,11 @@ def advance_media_workflow(
     ):
         return _after_source_approved(session)
     if (
-        event is MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
+        event
+        in (
+            MediaWorkflowEvent.SOURCE_EMBED_COMPLETED,
+            MediaWorkflowEvent.SOURCE_EMBED_FAILED,
+        )
         and stage is MediaWorkflowStage.EMBEDDING_SOURCE
     ):
         if _is_translate(session):

@@ -3264,7 +3264,7 @@ class MediaEmbedOptionMessage(SlackMessage):
 
 
 class MediaSrtReviewMessage(SlackMessage):
-    """Optional SRT review after transcription or translation."""
+    """Replace control posted next to an uploaded SRT file."""
 
     def __init__(
         self,
@@ -3278,12 +3278,6 @@ class MediaSrtReviewMessage(SlackMessage):
             if language
             else quote_id
         )
-        approve_button = ButtonElement(
-            text=PlainTextObject(text=_("Approve & Continue"), emoji=True),
-            action_id="media_srt_approve_continue",
-            value=quote_id,
-            style="primary",
-        )
         replace_button = ButtonElement(
             text=PlainTextObject(text=_("Replace"), emoji=True),
             action_id="media_srt_replace",
@@ -3291,18 +3285,40 @@ class MediaSrtReviewMessage(SlackMessage):
         )
         if file_label:
             review_text = _(
-                "Review *{file}* above. You can *Approve & Continue*, or *Replace* it "
-                "with an edited SRT before continuing."
+                "Review *{file}* above. You can *Replace* it with an edited SRT "
+                "before continuing."
             ).format(file=file_label)
         else:
             review_text = _(
-                "Review the SRT file above. You can *Approve & Continue*, or *Replace* it "
-                "with an edited SRT before continuing."
+                "Review the SRT file above. You can *Replace* it with an edited SRT "
+                "before continuing."
             )
         review_section = SectionBlock(text=MarkdownTextObject(text=review_text))
-        actions = ActionsBlock(elements=[approve_button, replace_button])
+        actions = ActionsBlock(elements=[replace_button])
         super().__init__(
             _("Review SRT"),
+            [review_section.to_dict(), actions.to_dict()],
+        )
+
+
+class MediaSrtApproveContinueMessage(SlackMessage):
+    def __init__(self, quote_id: str) -> None:
+        approve_button = ButtonElement(
+            text=PlainTextObject(text=_("Approve & Continue"), emoji=True),
+            action_id="media_srt_approve_continue",
+            value=quote_id,
+            style="primary",
+        )
+        review_section = SectionBlock(
+            text=MarkdownTextObject(
+                text=_(
+                    "When you are ready, *Approve & Continue* to submit this review."
+                )
+            )
+        )
+        actions = ActionsBlock(elements=[approve_button])
+        super().__init__(
+            _("Approve SRT review"),
             [review_section.to_dict(), actions.to_dict()],
         )
 
@@ -3453,7 +3469,7 @@ class MediaEmbeddingPartialMessage(TextMessage):
 class VideoOptionsMessage(SlackMessage):
     """Message shown when video(s) are detected, with one Configure entry.
 
-    Configure opens a modal for workflow type, languages, embedding, and SRT review.
+    Configure opens a modal for workflow type, languages, and embedding.
     Embed checkboxes in that modal are hidden for audio-only files (mp3, wav, etc.).
     """
 

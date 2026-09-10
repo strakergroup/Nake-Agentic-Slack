@@ -46,6 +46,12 @@ def _checkbox_selected(
     )
 
 
+def _embedding_checkbox_selected(values: dict[str, Any], value: str) -> bool:
+    return _checkbox_selected(
+        values, "embedding", "embedding_options", value
+    ) or _checkbox_selected(values, value, f"{value}_options", value)
+
+
 def parse_video_configure_media_view(
     view: dict[str, Any],
 ) -> VideoConfigureMediaSelection:
@@ -88,24 +94,20 @@ def parse_video_configure_media_view(
         )
 
     show_embed_option = bool(metadata.get("show_embed_option", True))
-    embed_source = show_embed_option and _checkbox_selected(
-        values, "embed_source", "embed_source_options", "embed_source"
+    embed_source = show_embed_option and _embedding_checkbox_selected(
+        values, "embed_source"
     )
     embed_translated = (
         show_embed_option
         and workflow_type is MediaWorkflowType.TRANSCRIBE_TRANSLATE
-        and _checkbox_selected(
-            values, "embed_translated", "embed_translated_options", "embed_translated"
-        )
+        and _embedding_checkbox_selected(values, "embed_translated")
     )
     if workflow_type is MediaWorkflowType.TRANSCRIBE_ONLY:
         target_languages = []
         target_language_names = []
         embed_translated = False
 
-    review_gate = _checkbox_selected(
-        values, "review_gate", "review_gate_options", "review_gate"
-    )
+    review_gate = embed_source or embed_translated
 
     return VideoConfigureMediaSelection(
         workflow_type=workflow_type,
@@ -136,7 +138,7 @@ def configure_media_quote_fields(
         "extra": {
             "embed_source": selection.embed_source,
             "embed_translated": selection.embed_translated,
-            "review_gate": selection.review_gate,
+            "review_gate": selection.embed_source or selection.embed_translated,
             "workflow_type": selection.workflow_type.value,
         },
     }

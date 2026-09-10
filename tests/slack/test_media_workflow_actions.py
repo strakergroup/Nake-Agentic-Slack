@@ -529,8 +529,7 @@ async def test_failed_source_embed_does_not_post_quote2():
         patch(
             "app.slack.media_configure_embed.resume_configure_embed_phase",
             new_callable=AsyncMock,
-            side_effect=RuntimeError("embed enqueue failed"),
-        ),
+        ) as mock_embed,
         patch(
             "app.slack.media_workflow_actions.post_media_quote_message",
             new_callable=AsyncMock,
@@ -539,19 +538,19 @@ async def test_failed_source_embed_does_not_post_quote2():
             "app.slack.media_workflow_actions.auto_accept_media_translation_quote_if_needed",
             new_callable=AsyncMock,
             return_value=False,
-        ) as mock_auto_accept,
+        ),
     ):
-        with pytest.raises(RuntimeError, match="embed enqueue failed"):
-            await execute_media_workflow_decision(
-                client=client, session=session, decision=decision
-            )
+        await execute_media_workflow_decision(
+            client=client, session=session, decision=decision
+        )
 
-    mock_post.assert_not_awaited()
-    mock_auto_accept.assert_not_awaited()
+    mock_embed.assert_not_awaited()
+    mock_post.assert_awaited_once()
     persisted_stages = [
         call.args[1].get("stage") for call in mock_update.await_args_list
     ]
-    assert "awaiting_translation_accept" not in persisted_stages
+    assert "embedding_source" not in persisted_stages
+    assert "awaiting_translation_accept" in persisted_stages
 
 
 @pytest.mark.asyncio
@@ -936,7 +935,7 @@ async def test_post_srt_review_stores_message_timestamp():
     from app.slack.media_workflow_actions import _post_srt_review
 
     client = AsyncMock()
-    client.chat_postMessage = AsyncMock(return_value={"ts": "9.9"})
+    client.chat_postMessage = AsyncMock(side_effect=[{"ts": "9.9"}, {"ts": "9.10"}])
     session = {
         "quote_id": "q1",
         "channel_id": "C1",
@@ -949,7 +948,7 @@ async def test_post_srt_review_stores_message_timestamp():
     ) as mock_update:
         await _post_srt_review(client, session)
 
-    assert mock_update.await_args.args[1]["srt_review_message_ts"] == ["9.9"]
+    assert mock_update.await_args.args[1]["srt_review_message_ts"] == ["9.9", "9.10"]
 
 
 @pytest.mark.asyncio

@@ -32,6 +32,7 @@ from app.media.media_workflow import (
     MediaWorkflowTransitionError,
     MediaWorkflowType,
     advance_media_workflow,
+    configure_srt_review_enabled,
     media_workflow_session_from_quote,
 )
 from app.models import TranscriptionTask, TranscriptionTaskInfo
@@ -100,6 +101,38 @@ async def _advance_configure_after_translation(
     try:
         decision = advance_media_workflow(
             workflow, MediaWorkflowEvent.TRANSLATION_COMPLETED
+        )
+    except MediaWorkflowTransitionError as exc:
+        notify_exception(exc)
+        return
+    session["channel_id"] = session.get("channel_id") or channel_id
+    session["thread_ts"] = session.get("thread_ts") or thread_ts
+    await execute_media_workflow_decision(
+        client=client, session=session, decision=decision
+    )
+
+
+async def continue_configure_after_failed_source_embed(
+    client: AsyncWebClient,
+    extra: dict[str, Any] | None,
+    channel_id: str,
+    thread_ts: str | None,
+) -> None:
+    extra_data = extra or {}
+    if not configure_source_embed_continues_translation(extra_data):
+        return
+    quote_id = extra_data.get("media_quote_id")
+    if not quote_id:
+        return
+    session = await get_media_quote_session(str(quote_id))
+    workflow = media_workflow_session_from_quote(session) if session else None
+    if workflow is None or session is None:
+        return
+    from app.slack.media_workflow_actions import execute_media_workflow_decision
+
+    try:
+        decision = advance_media_workflow(
+            workflow, MediaWorkflowEvent.SOURCE_EMBED_FAILED
         )
     except MediaWorkflowTransitionError as exc:
         notify_exception(exc)
@@ -721,7 +754,9 @@ async def handle_transcription_complete(
             # do not post AI-translation / reupload copy here.
             extra_data = task_info.extra_data or {}
             srt_review_quote_id = None
-            if extra_data.get("workflow_type") and extra_data.get("review_gate"):
+            if extra_data.get("workflow_type") and configure_srt_review_enabled(
+                extra_data
+            ):
                 quote_id = extra_data.get("media_quote_id")
                 if quote_id:
                     srt_review_quote_id = str(quote_id)
@@ -808,12 +843,12 @@ async def handle_translation_complete(
             quote_id = extra.get("media_quote_id")
             if extra.get("workflow_type") and quote_id:
                 review_session = await get_media_quote_session(str(quote_id))
-                if review_session and review_session.get(
-                    "review_gate", extra.get("review_gate")
+                if review_session and configure_srt_review_enabled(
+                    {**extra, **review_session}
                 ):
-                    from app.slack.media_workflow_actions import _post_srt_review
+                    from app.slack.media_workflow_actions import _post_srt_file_replace
 
-                    await _post_srt_review(
+                    await _post_srt_file_replace(
                         client,
                         {
                             **review_session,

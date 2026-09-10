@@ -719,9 +719,16 @@ class TestVideoConfigureMediaModal:
         )
         block_ids = _modal_block_ids(modal)
         assert "target_languages" in block_ids
-        assert "embed_source" in block_ids
-        assert "embed_translated" in block_ids
-        assert "review_gate" in block_ids
+        assert "embedding" in block_ids
+        assert "embed_source" not in block_ids
+        assert "embed_translated" not in block_ids
+        assert "review_gate" not in block_ids
+        embedding = _modal_block(modal, "embedding")
+        assert embedding["label"]["text"] == "Embedding"
+        assert [opt["value"] for opt in embedding["element"]["options"]] == [
+            "embed_source",
+            "embed_translated",
+        ]
 
     def test_transcribe_only_hides_languages_and_translated_embed(self):
         from app.slack.templates.views import video_configure_media_modal
@@ -735,7 +742,13 @@ class TestVideoConfigureMediaModal:
         block_ids = _modal_block_ids(modal)
         assert "target_languages" not in block_ids
         assert "embed_translated" not in block_ids
-        assert "embed_source" in block_ids
+        assert "embed_source" not in block_ids
+        assert "review_gate" not in block_ids
+        embedding = _modal_block(modal, "embedding")
+        assert embedding["label"]["text"] == "Embedding"
+        assert [opt["value"] for opt in embedding["element"]["options"]] == [
+            "embed_source"
+        ]
         assert (
             _modal_block(modal, "workflow_type")["element"]["initial_option"]["value"]
             == "transcribe_only"
@@ -753,22 +766,24 @@ class TestVideoConfigureMediaModal:
         block_ids = _modal_block_ids(modal)
         assert "embed_source" not in block_ids
         assert "embed_translated" not in block_ids
+        assert "embedding" not in block_ids
+        assert "review_gate" not in block_ids
         assert "target_languages" in block_ids
 
-    def test_review_gate_defaults_on(self):
+    def test_embedding_defaults_unchecked_and_has_no_review_checkbox(self):
         from app.slack.templates.views import video_configure_media_modal
 
         modal = video_configure_media_modal(
             channel_id="C123456",
             files=self._files(),
         )
-        review = _modal_block(modal, "review_gate")
-        initial = review["element"]["initial_options"]
-        assert [opt["value"] for opt in initial] == ["review_gate"]
+        embedding = _modal_block(modal, "embedding")
+        assert not embedding["element"].get("initial_options")
+        assert embedding["element"]["options"][0]["text"]["text"] == "Source subtitles"
         assert (
-            review["element"]["options"][0]["text"]["text"]
-            == "Pause to review or replace SRT files before continuing."
+            embedding["element"]["options"][1]["text"]["text"] == "Translated subtitles"
         )
+        assert "review_gate" not in _modal_block_ids(modal)
 
     def _files(self) -> list[dict]:
         return [

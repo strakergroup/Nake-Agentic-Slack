@@ -14,7 +14,6 @@ def test_quote1_accepted_starts_transcribe():
         workflow_type=MediaWorkflowType.TRANSCRIBE_ONLY,
         embed_source=False,
         embed_translated=False,
-        review_gate=True,
     )
     decision = advance_media_workflow(session, MediaWorkflowEvent.QUOTE1_ACCEPTED)
     assert decision.session.stage == MediaWorkflowStage.TRANSCRIBING
@@ -31,7 +30,6 @@ def test_transcription_completed_with_review_gate_posts_source_review():
             workflow_type=MediaWorkflowType.TRANSCRIBE_ONLY,
             embed_source=True,
             embed_translated=False,
-            review_gate=True,
         )
     )
     decision = advance_media_workflow(
@@ -47,7 +45,6 @@ def test_transcription_completed_gate_off_transcribe_only_no_embed_is_done():
             workflow_type=MediaWorkflowType.TRANSCRIBE_ONLY,
             embed_source=False,
             embed_translated=False,
-            review_gate=False,
         )
     )
     decision = advance_media_workflow(
@@ -64,7 +61,6 @@ def test_source_srt_approved_starts_source_embed():
                 workflow_type=MediaWorkflowType.TRANSCRIBE_ONLY,
                 embed_source=True,
                 embed_translated=False,
-                review_gate=True,
             )
         ),
         MediaWorkflowEvent.TRANSCRIPTION_COMPLETED,
@@ -79,7 +75,6 @@ def test_source_embed_completed_transcribe_only_is_done():
         workflow_type=MediaWorkflowType.TRANSCRIBE_ONLY,
         embed_source=True,
         embed_translated=False,
-        review_gate=True,
     )
     session = _transcribing(session)
     session = advance_media_workflow(
@@ -101,7 +96,6 @@ def test_transcription_completed_gate_off_translate_posts_quote2():
             workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
             embed_source=False,
             embed_translated=False,
-            review_gate=False,
             target_languages=("de",),
         )
     )
@@ -119,7 +113,6 @@ def test_quote2_accepted_starts_translate():
                 workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
                 embed_source=False,
                 embed_translated=False,
-                review_gate=False,
                 target_languages=("de",),
             )
         ),
@@ -135,7 +128,6 @@ def test_translation_completed_gate_off_no_embed_is_done():
         workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
         embed_source=False,
         embed_translated=False,
-        review_gate=False,
         target_languages=("de",),
     )
     session = _transcribing(session)
@@ -157,7 +149,6 @@ def test_source_srt_replaced_stays_in_review_without_commands():
                 workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
                 embed_source=True,
                 embed_translated=True,
-                review_gate=True,
                 target_languages=("de",),
             )
         ),
@@ -168,43 +159,39 @@ def test_source_srt_replaced_stays_in_review_without_commands():
     assert decision.commands == ()
 
 
-def test_source_approved_with_embed_and_translate_embeds_before_quote2():
+def test_source_approved_with_embed_and_translate_posts_quote2_without_source_embed():
     session = advance_media_workflow(
         _transcribing(
             make_media_workflow_session(
                 workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
                 embed_source=True,
                 embed_translated=True,
-                review_gate=True,
                 target_languages=("de",),
             )
         ),
         MediaWorkflowEvent.TRANSCRIPTION_COMPLETED,
     ).session
     decision = advance_media_workflow(session, MediaWorkflowEvent.SOURCE_SRT_APPROVED)
-    assert decision.session.stage == MediaWorkflowStage.EMBEDDING_SOURCE
-    assert decision.commands == (MediaWorkflowCommand.START_SOURCE_EMBED,)
+    assert decision.session.stage == MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
+    assert decision.commands == (MediaWorkflowCommand.POST_QUOTE2,)
 
 
-def test_source_embed_completed_then_posts_quote2_when_translating():
-    session = advance_media_workflow(
-        _transcribing(
-            make_media_workflow_session(
-                workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
-                embed_source=True,
-                embed_translated=True,
-                review_gate=True,
-                target_languages=("de",),
-            )
-        ),
-        MediaWorkflowEvent.TRANSCRIPTION_COMPLETED,
-    ).session
-    session = advance_media_workflow(
-        session, MediaWorkflowEvent.SOURCE_SRT_APPROVED
-    ).session
-    decision = advance_media_workflow(
-        session, MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
+def test_source_embed_failed_then_posts_quote2_when_translating():
+    from app.media.media_workflow import (
+        MediaWorkflowConfig,
+        MediaWorkflowSession,
     )
+
+    session = MediaWorkflowSession(
+        stage=MediaWorkflowStage.EMBEDDING_SOURCE,
+        config=MediaWorkflowConfig(
+            workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
+            embed_source=True,
+            embed_translated=True,
+            target_languages=("de",),
+        ),
+    )
+    decision = advance_media_workflow(session, MediaWorkflowEvent.SOURCE_EMBED_FAILED)
     assert decision.session.stage == MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
     assert decision.commands == (MediaWorkflowCommand.POST_QUOTE2,)
 
@@ -221,7 +208,6 @@ def test_source_embed_completed_during_quote2_is_ignored():
             workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
             embed_source=True,
             embed_translated=True,
-            review_gate=True,
             target_languages=("de",),
         ),
     )
@@ -237,7 +223,6 @@ def test_late_source_embed_during_translated_embed_is_noop():
         workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
         embed_source=True,
         embed_translated=True,
-        review_gate=False,
         target_languages=("es",),
     )
     session = _transcribing(session)
@@ -245,13 +230,16 @@ def test_late_source_embed_during_translated_embed_is_noop():
         session, MediaWorkflowEvent.TRANSCRIPTION_COMPLETED
     ).session
     session = advance_media_workflow(
-        session, MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
+        session, MediaWorkflowEvent.SOURCE_SRT_APPROVED
     ).session
     session = advance_media_workflow(
         session, MediaWorkflowEvent.QUOTE2_ACCEPTED
     ).session
     session = advance_media_workflow(
         session, MediaWorkflowEvent.TRANSLATION_COMPLETED
+    ).session
+    session = advance_media_workflow(
+        session, MediaWorkflowEvent.TRANSLATED_SRT_APPROVED
     ).session
     assert session.stage == MediaWorkflowStage.EMBEDDING_TRANSLATED
     decision = advance_media_workflow(
@@ -266,7 +254,6 @@ def test_quote1_cancelled_has_no_start_commands():
         workflow_type=MediaWorkflowType.TRANSCRIBE_ONLY,
         embed_source=False,
         embed_translated=False,
-        review_gate=True,
     )
     decision = advance_media_workflow(session, MediaWorkflowEvent.QUOTE1_CANCELLED)
     assert decision.session.stage == MediaWorkflowStage.CANCELLED
@@ -279,7 +266,6 @@ def test_source_approve_while_transcribing_is_illegal():
             workflow_type=MediaWorkflowType.TRANSCRIBE_ONLY,
             embed_source=False,
             embed_translated=False,
-            review_gate=True,
         )
     )
     try:
@@ -296,7 +282,6 @@ def test_translated_review_then_embed():
         workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
         embed_source=False,
         embed_translated=True,
-        review_gate=True,
         target_languages=("de",),
     )
     session = _transcribing(session)
@@ -323,6 +308,33 @@ def test_translated_review_then_embed():
     )
     assert decision.session.stage == MediaWorkflowStage.DONE
     assert decision.commands == (MediaWorkflowCommand.MARK_DONE,)
+
+
+def test_translate_source_embed_flag_waits_for_translated_approval():
+    session = make_media_workflow_session(
+        workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
+        embed_source=True,
+        embed_translated=False,
+        target_languages=("fi", "es"),
+    )
+    session = _transcribing(session)
+    session = advance_media_workflow(
+        session, MediaWorkflowEvent.TRANSCRIPTION_COMPLETED
+    ).session
+    decision = advance_media_workflow(session, MediaWorkflowEvent.SOURCE_SRT_APPROVED)
+    assert decision.commands == (MediaWorkflowCommand.POST_QUOTE2,)
+    session = decision.session
+    session = advance_media_workflow(
+        session, MediaWorkflowEvent.QUOTE2_ACCEPTED
+    ).session
+    session = advance_media_workflow(
+        session, MediaWorkflowEvent.TRANSLATION_COMPLETED
+    ).session
+    decision = advance_media_workflow(
+        session, MediaWorkflowEvent.TRANSLATED_SRT_APPROVED
+    )
+    assert decision.session.stage == MediaWorkflowStage.EMBEDDING_TRANSLATED
+    assert decision.commands == (MediaWorkflowCommand.START_TRANSLATED_EMBED,)
 
 
 def test_media_workflow_session_from_quote_returns_none_for_legacy_session():
@@ -376,3 +388,16 @@ def test_media_workflow_session_from_quote_maps_configure_flags():
     assert session.config.embed_translated is False
     assert session.config.review_gate is True
     assert session.config.target_languages == ("fr", "de")
+
+    skipped = media_workflow_session_from_quote(
+        {
+            "stage": "transcribing",
+            "workflow_type": "transcribe_translate",
+            "embed_source": False,
+            "embed_translated": False,
+            "review_gate": True,
+            "target_languages": ["fr"],
+        }
+    )
+    assert skipped is not None
+    assert skipped.config.review_gate is False

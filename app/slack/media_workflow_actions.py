@@ -40,6 +40,7 @@ from app.slack.media_quotes import (
     update_media_quote_session,
 )
 from app.slack.templates.messages import (
+    MediaSrtApproveContinueMessage,
     MediaSrtReviewMessage,
     MediaSrtReviewSubmittedMessage,
 )
@@ -359,8 +360,7 @@ async def execute_media_workflow_decision(
         if not updated.get("defer_source_review"):
             await _post_srt_review(client, updated)
     if MediaWorkflowCommand.POST_TRANSLATION_REVIEW in decision.commands:
-        if not updated.get("srt_review_message_ts"):
-            await _post_srt_review(client, updated)
+        await _post_srt_approve_continue(client, updated)
     if MediaWorkflowCommand.START_TRANSLATE in decision.commands:
         from app.slack.media_quote_actions import _resume_translate_phase
 
@@ -401,22 +401,17 @@ async def execute_media_workflow_decision(
     return updated
 
 
-async def _post_srt_review(
+async def _record_srt_review_ts(
     client: AsyncWebClient,
     session: dict[str, Any],
     *,
-    language: str | None = None,
-    file_label: str | None = None,
+    text: str,
+    blocks: list[dict[str, Any]],
 ) -> None:
-    review = MediaSrtReviewMessage(
-        str(session["quote_id"]),
-        language=language,
-        file_label=file_label,
-    )
     response = await client.chat_postMessage(
         channel=str(session["channel_id"]),
-        text=review.text,
-        blocks=review.blocks,
+        text=text,
+        blocks=blocks,
         thread_ts=session.get("thread_ts"),
     )
     ts = None
@@ -436,6 +431,43 @@ async def _post_srt_review(
     await update_media_quote_session(
         str(session["quote_id"]), {"srt_review_message_ts": existing}
     )
+
+
+async def _post_srt_file_replace(
+    client: AsyncWebClient,
+    session: dict[str, Any],
+    *,
+    language: str | None = None,
+    file_label: str | None = None,
+) -> None:
+    review = MediaSrtReviewMessage(
+        str(session["quote_id"]),
+        language=language,
+        file_label=file_label,
+    )
+    await _record_srt_review_ts(client, session, text=review.text, blocks=review.blocks)
+
+
+async def _post_srt_approve_continue(
+    client: AsyncWebClient, session: dict[str, Any]
+) -> None:
+    approve = MediaSrtApproveContinueMessage(str(session["quote_id"]))
+    await _record_srt_review_ts(
+        client, session, text=approve.text, blocks=approve.blocks
+    )
+
+
+async def _post_srt_review(
+    client: AsyncWebClient,
+    session: dict[str, Any],
+    *,
+    language: str | None = None,
+    file_label: str | None = None,
+) -> None:
+    await _post_srt_file_replace(
+        client, session, language=language, file_label=file_label
+    )
+    await _post_srt_approve_continue(client, session)
 
 
 async def _clear_srt_review_actions(

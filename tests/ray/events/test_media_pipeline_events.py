@@ -76,6 +76,7 @@ async def test_handle_transcription_complete_defers_configure_srt_review():
         extra_data={
             "media_quote_id": "q1",
             "workflow_type": "transcribe_only",
+            "embed_source": True,
             "review_gate": True,
             "slack_team_id": "T1",
             "slack_user_id": "U1",
@@ -230,7 +231,7 @@ async def test_maybe_post_media_translation_quote_posts_review_when_configure_ga
         "stage": STAGE_TRANSCRIBING,
         "workflow_type": "transcribe_translate",
         "embed_source": False,
-        "embed_translated": False,
+        "embed_translated": True,
         "review_gate": True,
         "target_languages": ["es"],
         "channel_id": "C1",
@@ -262,12 +263,78 @@ async def test_maybe_post_media_translation_quote_posts_review_when_configure_ga
         call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
     ]
     assert any("Approve & Continue" in text or "Review" in text for text in texts)
-    blocks = client.chat_postMessage.await_args.kwargs.get("blocks") or []
-    action_ids = [
-        el.get("action_id") for block in blocks for el in block.get("elements", [])
+    posted_action_ids = [
+        [
+            el.get("action_id")
+            for block in call.kwargs.get("blocks") or []
+            for el in block.get("elements", [])
+        ]
+        for call in client.chat_postMessage.await_args_list
     ]
-    assert "media_srt_approve_continue" in action_ids
-    assert "media_srt_replace" in action_ids
+    assert any("media_srt_replace" in ids for ids in posted_action_ids)
+    assert any("media_srt_approve_continue" in ids for ids in posted_action_ids)
+    assert all(
+        not ("media_srt_replace" in ids and "media_srt_approve_continue" in ids)
+        for ids in posted_action_ids
+    )
+
+
+@pytest.mark.asyncio
+async def test_maybe_post_media_translation_quote_skips_review_when_not_embedding():
+    from app.ray.events.media_pipeline_events import maybe_post_media_translation_quote
+    from app.slack.media_quotes import PIPELINE_TRANSCRIBE_TRANSLATE, STAGE_TRANSCRIBING
+
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock()
+    task_info = SimpleNamespace(
+        task_uuid="task-1",
+        source_text_length=500,
+        duration_ms=60_000,
+        extra_data={"media_quote_id": "q1"},
+    )
+    session = {
+        "quote_id": "q1",
+        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
+        "stage": STAGE_TRANSCRIBING,
+        "workflow_type": "transcribe_translate",
+        "embed_source": False,
+        "embed_translated": False,
+        "review_gate": True,
+        "target_languages": ["es"],
+        "channel_id": "C1",
+        "thread_ts": "123.456",
+        "source_text_length": 500,
+        "duration_ms": 60_000,
+    }
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.get_media_quote_session",
+            new_callable=AsyncMock,
+            return_value=session,
+        ),
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new_callable=AsyncMock,
+            side_effect=lambda quote_id, updates: {**session, **updates},
+        ),
+        patch(
+            "app.slack.media_workflow_actions.post_media_quote_message",
+            new_callable=AsyncMock,
+        ) as mock_post,
+        patch(
+            "app.slack.media_workflow_actions.auto_accept_media_translation_quote_if_needed",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+    ):
+        posted = await maybe_post_media_translation_quote(
+            client, task_info, "C1", "123.456"
+        )
+
+    assert posted is True
+    mock_post.assert_awaited_once()
+    client.chat_postMessage.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -288,7 +355,7 @@ async def test_maybe_post_media_translation_quote_skips_review_when_deferred():
         "pipeline_kind": PIPELINE_TRANSCRIBE,
         "stage": STAGE_TRANSCRIBING,
         "workflow_type": "transcribe_only",
-        "embed_source": False,
+        "embed_source": True,
         "embed_translated": False,
         "review_gate": True,
         "defer_source_review": True,
@@ -489,7 +556,7 @@ async def test_handle_translation_complete_skips_mandatory_reupload_for_configur
         "stage": "translating",
         "workflow_type": "transcribe_translate",
         "embed_source": False,
-        "embed_translated": False,
+        "embed_translated": True,
         "review_gate": True,
         "target_languages": ["es"],
         "channel_id": "C1",
@@ -566,7 +633,7 @@ async def test_handle_translation_complete_posts_replace_for_each_language(tmp_p
         "stage": "translating",
         "workflow_type": "transcribe_translate",
         "embed_source": False,
-        "embed_translated": False,
+        "embed_translated": True,
         "review_gate": True,
         "target_languages": ["fi", "es"],
         "channel_id": "C1",
@@ -608,14 +675,123 @@ async def test_handle_translation_complete_posts_replace_for_each_language(tmp_p
 
     assert uploaded == 2
     replace_values = []
+    approve_count = 0
     for call in client.chat_postMessage.await_args_list:
-        for block in call.kwargs.get("blocks") or []:
-            for el in block.get("elements", []):
-                if el.get("action_id") == "media_srt_replace":
-                    replace_values.append(el.get("value"))
+        action_ids = [
+            el.get("action_id")
+            for block in call.kwargs.get("blocks") or []
+            for el in block.get("elements", [])
+        ]
+        if "media_srt_replace" in action_ids:
+            assert "media_srt_approve_continue" not in action_ids
+            for block in call.kwargs.get("blocks") or []:
+                for el in block.get("elements", []):
+                    if el.get("action_id") == "media_srt_replace":
+                        replace_values.append(el.get("value"))
+        if "media_srt_approve_continue" in action_ids:
+            assert "media_srt_replace" not in action_ids
+            approve_count += 1
     parsed = [json.loads(value) for value in replace_values]
     assert {"quote_id": "q1", "language": "fi"} in parsed
     assert {"quote_id": "q1", "language": "es"} in parsed
+    assert approve_count == 1
+
+
+@pytest.mark.asyncio
+async def test_handle_translation_complete_persists_review_stage_before_review_buttons(
+    tmp_path,
+):
+    from app.ray.events.media_pipeline_events import handle_translation_complete
+
+    srt = tmp_path / "clip.srt"
+    srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nhola\n")
+
+    async def _download(_file_id: str) -> dict[str, str]:
+        copy = tmp_path / f"{_file_id}.srt"
+        copy.write_text(srt.read_text())
+        return {"file": str(copy)}
+
+    timeline: list[str] = []
+    client = AsyncMock()
+
+    async def _post_message(**kwargs):
+        for block in kwargs.get("blocks") or []:
+            for el in block.get("elements", []):
+                if el.get("action_id") == "media_srt_approve_continue":
+                    timeline.append("approve")
+                    return {"ts": "999.001"}
+                if el.get("action_id") == "media_srt_replace":
+                    timeline.append("replace")
+                    return {"ts": "999.001"}
+        timeline.append("message")
+        return {"ts": "999.001"}
+
+    client.chat_postMessage = AsyncMock(side_effect=_post_message)
+    task_info = SimpleNamespace(
+        task_uuid="task-2",
+        file_name="clip.mp4",
+        pipeline_type="translate_only",
+        translated_file_ids={"es": "file-es"},
+        extra_data={
+            "workflow_type": "transcribe_translate",
+            "media_quote_id": "q1",
+            "review_gate": True,
+        },
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(enterprise_id=None))
+    session = {
+        "quote_id": "q1",
+        "stage": "translating",
+        "workflow_type": "transcribe_translate",
+        "embed_source": False,
+        "embed_translated": True,
+        "review_gate": True,
+        "target_languages": ["es"],
+        "channel_id": "C1",
+        "thread_ts": "123.456",
+        "user_id": "U1",
+    }
+
+    async def _update_session(_quote_id, updates):
+        if updates.get("stage") == "awaiting_translation_review":
+            timeline.append("stage")
+        session.update(updates)
+        return session
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.download_from_file_server_async",
+            new=AsyncMock(side_effect=_download),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.get_auto_translate_language_name",
+            return_value="Spanish",
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.upload_file_to_slack_memory_efficient",
+            new=AsyncMock(return_value={"ok": True}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.show_tokens_message",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.get_media_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new=AsyncMock(side_effect=_update_session),
+        ),
+    ):
+        uploaded = await handle_translation_complete(
+            client, "C1", "123.456", task_info, auth
+        )
+
+    assert uploaded == 1
+    assert "stage" in timeline
+    assert "approve" in timeline
+    assert timeline.index("stage") < timeline.index("approve")
 
 
 def test_job_transcribed_event_carries_failed_languages():
@@ -1171,6 +1347,61 @@ async def test_handle_transcribe_embed_pipeline_source_embed_then_posts_quote2(
         )
 
     assert ok is True
+    mock_post.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_continue_configure_after_failed_source_embed_posts_quote2():
+    from app.ray.events.media_pipeline_events import (
+        continue_configure_after_failed_source_embed,
+    )
+
+    client = AsyncMock()
+    session = {
+        "quote_id": "q1",
+        "stage": "embedding_source",
+        "workflow_type": "transcribe_translate",
+        "embed_source": True,
+        "embed_translated": False,
+        "review_gate": True,
+        "target_languages": ["es"],
+        "source_text_length": 500,
+        "duration_ms": 60_000,
+        "channel_id": "C1",
+        "thread_ts": "123.456",
+        "file_id": "F1",
+        "file_name": "clip.mp4",
+    }
+    extra = {
+        "media_quote_id": "q1",
+        "embed_role": "source",
+        "workflow_type": "transcribe_translate",
+    }
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.get_media_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.slack.media_workflow_actions.update_media_quote_session",
+            new_callable=AsyncMock,
+            side_effect=lambda quote_id, updates: {**session, **updates},
+        ),
+        patch(
+            "app.slack.media_workflow_actions.post_media_quote_message",
+            new_callable=AsyncMock,
+        ) as mock_post,
+        patch(
+            "app.slack.media_workflow_actions.auto_accept_media_translation_quote_if_needed",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+    ):
+        await continue_configure_after_failed_source_embed(
+            client, extra, "C1", "123.456"
+        )
+
     mock_post.assert_awaited_once()
 
 

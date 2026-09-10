@@ -1381,16 +1381,17 @@ def video_transcribe_translate_modal(
     }
 
 
-def _checkbox_element(
-    action_id: str, option: Option, *, selected: bool
+def _checkboxes_element(
+    action_id: str, options: list[Option], *, selected_values: set[str]
 ) -> CheckboxesElement:
-    if selected:
+    initial = [option for option in options if option.value in selected_values]
+    if initial:
         return CheckboxesElement(
             action_id=action_id,
-            options=[option],
-            initial_options=[option],
+            options=options,
+            initial_options=initial,
         )
-    return CheckboxesElement(action_id=action_id, options=[option])
+    return CheckboxesElement(action_id=action_id, options=options)
 
 
 def video_configure_media_modal(
@@ -1400,7 +1401,6 @@ def video_configure_media_modal(
     *,
     show_embed_option: bool = True,
     show_translate_options: bool = True,
-    review_gate: bool = True,
     embed_source: bool = False,
     embed_translated: bool = False,
 ) -> dict[str, Any]:
@@ -1429,19 +1429,12 @@ def video_configure_media_modal(
         )
         for opt in get_auto_translate_language_options()
     ]
-    review_option = Option(
-        text=PlainTextObject(
-            text=_("Pause to review or replace SRT files before continuing."),
-            emoji=True,
-        ),
-        value="review_gate",
-    )
     embed_source_option = Option(
-        text=PlainTextObject(text=_("Embed source subtitles"), emoji=True),
+        text=PlainTextObject(text=_("Source subtitles"), emoji=True),
         value="embed_source",
     )
     embed_translated_option = Option(
-        text=PlainTextObject(text=_("Embed translated subtitles"), emoji=True),
+        text=PlainTextObject(text=_("Translated subtitles"), emoji=True),
         value="embed_translated",
     )
 
@@ -1489,43 +1482,24 @@ def video_configure_media_modal(
             )
         )
     if show_embed_option:
+        embed_options = [embed_source_option]
+        selected_embeds = {"embed_source"} if embed_source else set()
+        if show_translate_options:
+            embed_options.append(embed_translated_option)
+            if embed_translated:
+                selected_embeds.add("embed_translated")
         blocks.append(
             InputBlock(
-                block_id="embed_source",
-                label=PlainTextObject(text=_("Source embedding")),
+                block_id="embedding",
+                label=PlainTextObject(text=_("Embedding")),
                 optional=True,
-                element=_checkbox_element(
-                    "embed_source_options",
-                    embed_source_option,
-                    selected=embed_source,
+                element=_checkboxes_element(
+                    "embedding_options",
+                    embed_options,
+                    selected_values=selected_embeds,
                 ),
             )
         )
-        if show_translate_options:
-            blocks.append(
-                InputBlock(
-                    block_id="embed_translated",
-                    label=PlainTextObject(text=_("Translated embedding")),
-                    optional=True,
-                    element=_checkbox_element(
-                        "embed_translated_options",
-                        embed_translated_option,
-                        selected=embed_translated,
-                    ),
-                )
-            )
-    blocks.append(
-        InputBlock(
-            block_id="review_gate",
-            label=PlainTextObject(text=_("SRT review")),
-            optional=True,
-            element=_checkbox_element(
-                "review_gate_options",
-                review_option,
-                selected=review_gate,
-            ),
-        )
-    )
 
     return {
         "type": "modal",

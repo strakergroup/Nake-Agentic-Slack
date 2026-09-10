@@ -52,19 +52,12 @@ def test_parse_translate_selection_with_embed_and_review_flags():
                         ]
                     }
                 },
-                "embed_source": {
-                    "embed_source_options": {
-                        "selected_options": [_option("embed_source")]
-                    }
-                },
-                "embed_translated": {
-                    "embed_translated_options": {
-                        "selected_options": [_option("embed_translated")]
-                    }
-                },
-                "review_gate": {
-                    "review_gate_options": {
-                        "selected_options": [_option("review_gate")]
+                "embedding": {
+                    "embedding_options": {
+                        "selected_options": [
+                            _option("embed_source"),
+                            _option("embed_translated"),
+                        ]
                     }
                 },
             },
@@ -100,12 +93,11 @@ def test_parse_transcribe_only_clears_languages_and_translated_embed():
                 "selected_file": {
                     "file_display": {"selected_options": [_option("F1")]}
                 },
-                "embed_translated": {
-                    "embed_translated_options": {
+                "embedding": {
+                    "embedding_options": {
                         "selected_options": [_option("embed_translated")]
                     }
                 },
-                "review_gate": {"review_gate_options": {"selected_options": []}},
             },
         )
     )
@@ -115,7 +107,7 @@ def test_parse_transcribe_only_clears_languages_and_translated_embed():
     assert selection.review_gate is False
 
 
-def test_parse_omitted_review_gate_block_is_off():
+def test_parse_omitted_embedding_block_turns_review_off():
     """Slack omits optional unchecked checkboxes from view.state.values."""
     from app.slack.media_configure import parse_video_configure_media_view
 
@@ -139,6 +131,36 @@ def test_parse_omitted_review_gate_block_is_off():
         )
     )
     assert selection.review_gate is False
+    assert selection.embed_source is False
+
+
+def test_parse_source_embed_turns_review_on():
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _view(
+            metadata={
+                "channel_id": "C1",
+                "files": _files(),
+                "show_embed_option": True,
+            },
+            values={
+                "workflow_type": {
+                    "video_configure_workflow_type": {
+                        "selected_option": _option("transcribe_only"),
+                    }
+                },
+                "selected_file": {
+                    "file_display": {"selected_options": [_option("F1")]}
+                },
+                "embedding": {
+                    "embedding_options": {"selected_options": [_option("embed_source")]}
+                },
+            },
+        )
+    )
+    assert selection.embed_source is True
+    assert selection.review_gate is True
 
 
 def test_parse_rejects_malformed_private_metadata():
@@ -234,16 +256,15 @@ def test_parse_audio_only_forces_embed_flags_off():
                         "selected_options": [_option("fr", "French")]
                     }
                 },
-                "embed_source": {
-                    "embed_source_options": {
-                        "selected_options": [_option("embed_source")]
-                    }
+                "embedding": {
+                    "embedding_options": {"selected_options": [_option("embed_source")]}
                 },
             },
         )
     )
     assert selection.embed_source is False
     assert selection.embed_translated is False
+    assert selection.review_gate is False
 
 
 def test_configure_media_quote_fields_use_translate_pipeline_not_legacy_embed():
@@ -290,7 +311,7 @@ def test_configure_media_quote_fields_use_translate_pipeline_not_legacy_embed():
     )
     assert transcribe["pipeline_kind"] == PIPELINE_TRANSCRIBE
     assert transcribe["extra"]["embed_source"] is True
-    assert transcribe["extra"]["review_gate"] is False
+    assert transcribe["extra"]["review_gate"] is True
 
 
 class _FakeRayContext(dict):
@@ -324,10 +345,13 @@ async def test_workflow_type_change_rebuilds_modal_without_languages():
     block_ids = [block.get("block_id") for block in view["blocks"]]
     assert "target_languages" not in block_ids
     assert "embed_translated" not in block_ids
+    assert "review_gate" not in block_ids
+    embedding = next(b for b in view["blocks"] if b.get("block_id") == "embedding")
+    assert [opt["value"] for opt in embedding["element"]["options"]] == ["embed_source"]
 
 
 @pytest.mark.asyncio
-async def test_workflow_type_change_keeps_unchecked_review_gate_and_embed():
+async def test_workflow_type_change_keeps_source_embed_selection():
     from unittest.mock import AsyncMock
 
     from app.slack.handlers.media import handle_video_configure_workflow_type
@@ -346,12 +370,11 @@ async def test_workflow_type_change_keeps_unchecked_review_gate_and_embed():
             ),
             "state": {
                 "values": {
-                    "embed_source": {
-                        "embed_source_options": {
+                    "embedding": {
+                        "embedding_options": {
                             "selected_options": [_option("embed_source")]
                         }
                     },
-                    "review_gate": {"review_gate_options": {"selected_options": []}},
                 }
             },
         }
@@ -359,10 +382,9 @@ async def test_workflow_type_change_keeps_unchecked_review_gate_and_embed():
     action = {"selected_option": {"value": "transcribe_only"}}
     await handle_video_configure_workflow_type(client=client, body=body, action=action)
     view = client.views_update.await_args.kwargs["view"]
-    review = next(b for b in view["blocks"] if b.get("block_id") == "review_gate")
-    embed = next(b for b in view["blocks"] if b.get("block_id") == "embed_source")
-    assert not review["element"].get("initial_options")
-    assert [opt["value"] for opt in embed["element"]["initial_options"]] == [
+    assert "review_gate" not in [block.get("block_id") for block in view["blocks"]]
+    embedding = next(b for b in view["blocks"] if b.get("block_id") == "embedding")
+    assert [opt["value"] for opt in embedding["element"]["initial_options"]] == [
         "embed_source"
     ]
 
@@ -387,11 +409,8 @@ async def test_configure_submit_creates_quote1_with_embed_source_flag():
                 }
             },
             "selected_file": {"file_display": {"selected_options": [_option("F1")]}},
-            "embed_source": {
-                "embed_source_options": {"selected_options": [_option("embed_source")]}
-            },
-            "review_gate": {
-                "review_gate_options": {"selected_options": [_option("review_gate")]}
+            "embedding": {
+                "embedding_options": {"selected_options": [_option("embed_source")]}
             },
         },
     )

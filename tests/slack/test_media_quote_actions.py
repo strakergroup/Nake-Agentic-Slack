@@ -631,6 +631,7 @@ async def test_replaced_translated_srt_keeps_other_target_languages():
         extra_data={"media_quote_id": "q1"},
         result_file_id="srt-source",
         translated_file_ids={"es": "srt-es", "fr": "srt-fr"},
+        detected_language="en",
         client_id="client-1",
         file_name="clip.mp4",
         download_url="https://files.example/clip.mp4",
@@ -683,9 +684,79 @@ async def test_replaced_translated_srt_keeps_other_target_languages():
         await resume_configure_embed_phase(session=session, translated=True)
 
     asr_task = mock_create.await_args.args[0]
-    assert asr_task.extra_data["srt_file_ids"] == ["srt-replaced", "srt-fr"]
-    assert asr_task.extra_data["language_codes"] == ["es", "fr"]
+    assert asr_task.extra_data["srt_file_ids"] == [
+        "srt-source",
+        "srt-replaced",
+        "srt-fr",
+    ]
+    assert asr_task.extra_data["language_codes"] == ["en", "es", "fr"]
     assert asr_task.extra_data["target_languages"] == ["es", "fr"]
+    mock_http.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_translated_embed_muxes_source_and_all_target_tracks():
+    from app.slack.media_configure_embed import resume_configure_embed_phase
+
+    source_task = SimpleNamespace(
+        task_uuid="asr-task",
+        extra_data={"media_quote_id": "q1"},
+        result_file_id="srt-source",
+        translated_file_ids={"fi": "srt-fi", "es": "srt-es"},
+        detected_language="en",
+        client_id="client-1",
+        file_name="clip.mp4",
+        download_url="https://files.example/clip.mp4",
+        bot_token="xoxb-test",
+        model="whisper-1",
+        service="azure",
+        app_source="slack",
+    )
+
+    class _FakeDb:
+        async def get(self, model, key):
+            return source_task
+
+        async def execute(self, stmt):
+            return None
+
+        async def commit(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    session = {
+        "quote_id": "q1",
+        "task_uuid": "asr-task",
+        "workflow_type": "transcribe_translate",
+        "file_id": "F1",
+        "download_url": "https://files.example/clip.mp4",
+        "file_name": "clip.mp4",
+        "target_languages": ["fi", "es"],
+    }
+
+    with (
+        patch(
+            "app.slack.media_configure_embed.AsyncSession",
+            return_value=_FakeDb(),
+        ),
+        patch(
+            "app.slack.media_configure_embed.create_asr_task",
+            new_callable=AsyncMock,
+            return_value="embed-task",
+        ) as mock_create,
+        patch("app.slack.media_configure_embed.httpx.AsyncClient") as mock_http,
+    ):
+        await resume_configure_embed_phase(session=session, translated=True)
+
+    asr_task = mock_create.await_args.args[0]
+    assert asr_task.extra_data["srt_file_ids"] == ["srt-source", "srt-fi", "srt-es"]
+    assert asr_task.extra_data["language_codes"] == ["en", "fi", "es"]
+    assert asr_task.extra_data["target_languages"] == ["fi", "es"]
     mock_http.assert_not_called()
 
 
