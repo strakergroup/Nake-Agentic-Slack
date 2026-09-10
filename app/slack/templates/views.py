@@ -1524,7 +1524,7 @@ def media_srt_replace_modal(
 ) -> dict[str, Any]:
     file_input = InputBlock(
         block_id="srt_file",
-        label=PlainTextObject(text=_("Replacement SRT")),
+        label=PlainTextObject(text=_("Replacement file")),
         element=FileInputElement(
             action_id="srt_file_input",
             max_files=1,
@@ -1540,14 +1540,14 @@ def media_srt_replace_modal(
         "type": "modal",
         "callback_id": "media_srt_replace_submit",
         "private_metadata": metadata,
-        "title": {"type": "plain_text", "text": _("Replace SRT")[:24]},
+        "title": {"type": "plain_text", "text": _("Replace file")[:24]},
         "submit": {"type": "plain_text", "text": _("Replace")},
         "close": {"type": "plain_text", "text": _("Cancel")},
         "blocks": [
             SectionBlock(
                 text=MarkdownTextObject(
                     text=_(
-                        "Upload an edited SRT to replace the file currently under review."
+                        "Upload an edited subtitle file to replace the file currently under review."
                     )
                 )
             ).to_dict(),

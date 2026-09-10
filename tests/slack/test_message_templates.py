@@ -33,6 +33,7 @@ from app.slack.templates.messages import (
     MediaEmbedOptionMessage,
     MediaSrtApproveContinueMessage,
     MediaSrtReviewMessage,
+    MediaSrtReviewSubmittedMessage,
     NewJobMessage,
     OnboardingMessage,
     RequiresMtTokenMessage,
@@ -805,7 +806,7 @@ class TestVideoOptionsMessage:
         assert not _blocks_contain_action(message.blocks, "video_embed_subtitles")
         assert _blocks_contain_text(
             message.blocks,
-            "*Configure* - Choose transcription, translation, embedding, and whether to pause and review SRT files.",
+            "*Configure* - Choose transcription, translation, embedding, and whether to pause and review transcript or subtitle files.",
         )
 
     def test_configure_payload_files_are_id_and_name_only(self):
@@ -1325,6 +1326,19 @@ class TestMediaSrtReviewMessage:
             if el.get("action_id") == "media_srt_replace"
         )
         assert json.loads(replace["value"]) == {"quote_id": "q-1", "language": "fi"}
+        dumped = json.dumps(message.blocks)
+        assert "Review *clip_Finnish.srt* above." in dumped
+        assert "edited subtitle file" in dumped
+        assert "edited SRT" not in dumped
+        assert "SRT file" not in dumped
+
+    def test_source_review_uses_transcript_not_srt_file(self):
+        message = MediaSrtReviewMessage("q-1")
+        dumped = json.dumps(message.blocks)
+        assert "Review the transcript above." in dumped
+        assert "edited transcript" in dumped
+        assert "SRT file" not in dumped
+        assert "edited SRT" not in dumped
 
     def test_final_approve_has_approve_without_replace(self):
         message = MediaSrtApproveContinueMessage("q-1")
@@ -1333,6 +1347,13 @@ class TestMediaSrtReviewMessage:
         dumped = json.dumps(message.blocks)
         assert "Approve & Continue" in dumped
         assert "Replace" not in dumped
+        assert "SRT" not in dumped
+
+    def test_submitted_message_says_transcript_approved(self):
+        message = MediaSrtReviewSubmittedMessage()
+        dumped = json.dumps(message.blocks)
+        assert "Transcript approved." in dumped
+        assert "SRT" not in dumped
 
 
 class TestBatchAndFileListMessages:

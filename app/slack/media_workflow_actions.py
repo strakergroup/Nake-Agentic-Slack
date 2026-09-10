@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from slack_sdk.errors import SlackApiError
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.web.async_slack_response import AsyncSlackResponse
 
@@ -138,7 +139,7 @@ async def apply_thread_srt_review_replace(
     if acting_user_id is not None and session.get("user_id") != acting_user_id:
         await client.chat_postMessage(
             channel=acting_user_id,
-            text=_("You do not have permission to replace this SRT."),
+            text=_("You do not have permission to replace this file."),
         )
         return True
     if match_review_filename and not thread_srt_matches_review_file(
@@ -205,7 +206,7 @@ async def apply_thread_srt_review_replace(
         await client.chat_postMessage(
             channel=str(session["channel_id"]),
             text=_(
-                "Replacement SRT received. Click *Approve & Continue* when you are ready."
+                "Replacement file received. Click *Approve & Continue* when you are ready."
             ),
             thread_ts=session.get("thread_ts"),
         )
@@ -231,7 +232,7 @@ async def handle_media_srt_approve_continue(
     if session.get("user_id") != context["user_id"]:
         await client.chat_postMessage(
             channel=context["user_id"],
-            text=_("You do not have permission to approve this SRT."),
+            text=_("You do not have permission to approve this file."),
         )
         return
 
@@ -269,7 +270,7 @@ async def handle_media_srt_approve_continue(
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=_(
-                    "This SRT can no longer be approved. The media request has "
+                    "This file can no longer be approved. The media request has "
                     "already moved on — check the thread for the latest step."
                 ),
             )
@@ -284,7 +285,7 @@ async def handle_media_srt_approve_continue(
             await client.chat_postMessage(
                 channel=context["user_id"],
                 text=_(
-                    "Could not tell which language this replacement SRT is for. "
+                    "Could not tell which language this replacement file is for. "
                     "Rename the file to include the language code "
                     "(for example clip_es.srt) and replace it again."
                 ),
@@ -480,14 +481,19 @@ async def _clear_srt_review_actions(
     ]
     channel_id = session.get("channel_id")
     if timestamps and channel_id:
+        *replace_ts, approve_ts = timestamps
+        for ts in replace_ts:
+            try:
+                await client.chat_delete(channel=str(channel_id), ts=ts)
+            except SlackApiError as exc:
+                notify_exception(exc)
         submitted = MediaSrtReviewSubmittedMessage()
-        for ts in timestamps:
-            await client.chat_update(
-                channel=str(channel_id),
-                ts=ts,
-                text=submitted.text,
-                blocks=submitted.blocks,
-            )
+        await client.chat_update(
+            channel=str(channel_id),
+            ts=approve_ts,
+            text=submitted.text,
+            blocks=submitted.blocks,
+        )
         await update_media_quote_session(
             str(session["quote_id"]), {"srt_review_message_ts": []}
         )
@@ -499,7 +505,9 @@ async def _notify_srt_replace_failed(
 ) -> None:
     await client.chat_postMessage(
         channel=str(session["channel_id"]),
-        text=_("Could not replace this SRT. Please try again from the review message."),
+        text=_(
+            "Could not replace this file. Please try again from the review message."
+        ),
         thread_ts=session.get("thread_ts"),
     )
 
@@ -554,7 +562,7 @@ async def handle_media_srt_replace_submit(
     if session.get("user_id") != context["user_id"]:
         await client.chat_postMessage(
             channel=context["user_id"],
-            text=_("You do not have permission to replace this SRT."),
+            text=_("You do not have permission to replace this file."),
         )
         return
     values = (view.get("state") or {}).get("values") or {}
@@ -564,7 +572,7 @@ async def handle_media_srt_replace_submit(
     if not files:
         await client.chat_postMessage(
             channel=context["user_id"],
-            text=_("Please choose an SRT file to replace."),
+            text=_("Please choose a transcript or subtitle file to replace."),
         )
         return
     slack_file = files[0]
@@ -572,7 +580,7 @@ async def handle_media_srt_replace_submit(
     if not uploaded_name.lower().endswith(".srt"):
         await client.chat_postMessage(
             channel=context["user_id"],
-            text=_("Please upload an SRT file."),
+            text=_("Please upload a transcript or subtitle file."),
         )
         return
     replaced = await apply_thread_srt_review_replace(
@@ -588,6 +596,6 @@ async def handle_media_srt_replace_submit(
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_(
-                "Could not replace this SRT. Please try again from the review message."
+                "Could not replace this file. Please try again from the review message."
             ),
         )

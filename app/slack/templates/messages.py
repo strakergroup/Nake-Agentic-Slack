@@ -3285,18 +3285,18 @@ class MediaSrtReviewMessage(SlackMessage):
         )
         if file_label:
             review_text = _(
-                "Review *{file}* above. You can *Replace* it with an edited SRT "
-                "before continuing."
+                "Review *{file}* above. You can *Replace* it with an edited "
+                "subtitle file before continuing."
             ).format(file=file_label)
         else:
             review_text = _(
-                "Review the SRT file above. You can *Replace* it with an edited SRT "
-                "before continuing."
+                "Review the transcript above. You can *Replace* it with an edited "
+                "transcript before continuing."
             )
         review_section = SectionBlock(text=MarkdownTextObject(text=review_text))
         actions = ActionsBlock(elements=[replace_button])
         super().__init__(
-            _("Review SRT"),
+            _("Review transcript"),
             [review_section.to_dict(), actions.to_dict()],
         )
 
@@ -3318,15 +3318,15 @@ class MediaSrtApproveContinueMessage(SlackMessage):
         )
         actions = ActionsBlock(elements=[approve_button])
         super().__init__(
-            _("Approve SRT review"),
+            _("Approve review"),
             [review_section.to_dict(), actions.to_dict()],
         )
 
 
 class MediaSrtReviewSubmittedMessage(SlackMessage):
     def __init__(self) -> None:
-        section = SectionBlock(text=MarkdownTextObject(text=_("SRT review submitted.")))
-        super().__init__(_("SRT review submitted."), [section.to_dict()])
+        section = SectionBlock(text=MarkdownTextObject(text=_("Transcript approved.")))
+        super().__init__(_("Transcript approved."), [section.to_dict()])
 
 
 class DocumentMTJobMessage(SlackMessage):
@@ -3393,7 +3393,7 @@ class JobTranscribedEventMessage(SlackMessage):
             SectionBlock(
                 text=MarkdownTextObject(
                     text=_(
-                        "We have transcribed your file and the SRT file can be downloaded."
+                        "We have transcribed your file and the transcript can be downloaded."
                     )
                 )
             )
@@ -3415,7 +3415,7 @@ class JobTranscribedEventMessage(SlackMessage):
 
         super().__init__(
             _(
-                "Your video {source_file_name} has been transcribed. SRT file available below."
+                "Your video {source_file_name} has been transcribed. Transcript available below."
             ),
             [block.to_dict() for block in blocks],
         )
@@ -3518,7 +3518,7 @@ class VideoOptionsMessage(SlackMessage):
         configure_section = SectionBlock(
             text=MarkdownTextObject(
                 text=_(
-                    "*Configure* - Choose transcription, translation, embedding, and whether to pause and review SRT files."
+                    "*Configure* - Choose transcription, translation, embedding, and whether to pause and review transcript or subtitle files."
                 )
             ),
             accessory=configure_button,

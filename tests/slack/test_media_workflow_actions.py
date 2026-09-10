@@ -957,6 +957,7 @@ async def test_approve_removes_review_buttons_after_submit():
 
     client = AsyncMock()
     client.chat_update = AsyncMock()
+    client.chat_delete = AsyncMock()
     context = MagicMock()
     context.__getitem__ = lambda self, key: {"user_id": "U1", "team_id": "T1"}[key]
     context.get = lambda key, default=None: None
@@ -999,17 +1000,19 @@ async def test_approve_removes_review_buttons_after_submit():
             context=context,
         )
 
-    assert client.chat_update.await_count == 2
-    updated_ts = [call.kwargs["ts"] for call in client.chat_update.await_args_list]
-    assert updated_ts == ["10.1", "10.2"]
-    for call in client.chat_update.await_args_list:
-        action_ids = [
-            el.get("action_id")
-            for block in call.kwargs.get("blocks") or []
-            for el in block.get("elements", [])
-        ]
-        assert "media_srt_approve_continue" not in action_ids
-        assert "media_srt_replace" not in action_ids
+    client.chat_delete.assert_awaited_once_with(channel="C1", ts="10.1")
+    client.chat_update.assert_awaited_once()
+    updated = client.chat_update.await_args.kwargs
+    assert updated["ts"] == "10.2"
+    assert updated["channel"] == "C1"
+    assert updated["text"] == "Transcript approved."
+    action_ids = [
+        el.get("action_id")
+        for block in updated.get("blocks") or []
+        for el in block.get("elements", [])
+    ]
+    assert "media_srt_approve_continue" not in action_ids
+    assert "media_srt_replace" not in action_ids
 
 
 @pytest.mark.asyncio
@@ -1059,7 +1062,10 @@ async def test_replace_submit_rejects_non_srt_file():
         await handle_media_srt_replace_submit(view=view, client=client, context=context)
 
     mock_upload.assert_not_awaited()
-    assert "srt" in client.chat_postMessage.await_args.kwargs["text"].lower()
+    assert (
+        client.chat_postMessage.await_args.kwargs["text"]
+        == "Please upload a transcript or subtitle file."
+    )
 
 
 @pytest.mark.asyncio

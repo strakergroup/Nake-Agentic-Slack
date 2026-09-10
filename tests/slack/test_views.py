@@ -810,6 +810,11 @@ class TestMediaSrtReplaceModal:
         assert element["type"] == "file_input"
         assert "filetypes" not in element
         assert element["max_files"] == 1
+        assert modal["title"]["text"] == "Replace file"
+        assert file_block["label"]["text"] == "Replacement file"
+        dumped = json.dumps(modal)
+        assert "edited subtitle file" in dumped
+        assert "SRT" not in dumped
 
     def test_replace_modal_private_metadata_includes_language(self):
         from app.slack.templates.views import media_srt_replace_modal
