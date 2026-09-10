@@ -62,6 +62,55 @@ async def test_handle_transcription_complete_skips_ai_translation_follow_up():
     assert mock_enqueue.await_args.kwargs["team_id"] == "T1"
     assert mock_enqueue.await_args.kwargs["slack_user_id"] == "U1"
     assert mock_enqueue.await_args.kwargs["enterprise_id"] == "E1"
+    # No word_source_file_id in extra_data → SRT-only enqueue, same as today.
+    assert mock_enqueue.await_args.kwargs.get("word_file_id") is None
+    assert mock_enqueue.await_args.kwargs.get("word_file_name") is None
+
+
+@pytest.mark.asyncio
+async def test_handle_transcription_complete_passes_word_source_file():
+    from app.ray.events.media_pipeline_events import handle_transcription_complete
+
+    client = AsyncMock()
+    task_info = SimpleNamespace(
+        task_uuid="task-1",
+        file_name="clip.mp4",
+        pipeline_type="transcribe",
+        extra_data={
+            "slack_team_id": "T1",
+            "slack_user_id": "U1",
+            "word_source_file_id": "docx-1",
+        },
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(ray_client_id="client-1"))
+    auth_slack_user = SimpleNamespace(channel_id="C1")
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.post_notification",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.enqueue_transcription_upload",
+            new=AsyncMock(),
+        ) as mock_enqueue,
+    ):
+        await handle_transcription_complete(
+            client,
+            "file-1",
+            "clip.srt",
+            task_info,
+            False,
+            "C1",
+            "123.456",
+            MagicMock(),
+            auth,
+            auth_slack_user,
+        )
+
+    mock_enqueue.assert_awaited_once()
+    assert mock_enqueue.await_args.kwargs["word_file_id"] == "docx-1"
+    assert mock_enqueue.await_args.kwargs["word_file_name"] == "clip.docx"
 
 
 @pytest.mark.asyncio
@@ -589,6 +638,118 @@ async def test_handle_translation_complete_posts_success_after_upload(tmp_path):
     assert any("subtitle files (SRT)" in text for text in texts)
     assert any("reupload the edited subtitle files" in text for text in texts)
     mock_tokens.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_translation_complete_uploads_word_after_each_srt(tmp_path):
+    from app.ray.events.media_pipeline_events import handle_translation_complete
+
+    srt = tmp_path / "es.srt"
+    srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nhola\n")
+    docx = tmp_path / "es.docx"
+    docx.write_bytes(b"fake-docx")
+
+    async def _download(file_id: str) -> dict[str, str]:
+        return {"file": str(srt) if file_id == "file-es" else str(docx)}
+
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock(return_value={"ts": "999.001"})
+    task_info = SimpleNamespace(
+        task_uuid="task-2",
+        file_name="clip.mp4",
+        pipeline_type="translate_only",
+        translated_file_ids={"es": "file-es"},
+        extra_data={"word_translated_file_ids": {"es": "docx-es"}},
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(enterprise_id=None))
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.download_from_file_server_async",
+            new=AsyncMock(side_effect=_download),
+        ) as mock_download,
+        patch(
+            "app.ray.events.media_pipeline_events.get_auto_translate_language_name",
+            return_value="Spanish",
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.upload_file_to_slack_memory_efficient",
+            new=AsyncMock(return_value={"ok": True}),
+        ) as mock_upload,
+        patch(
+            "app.ray.events.media_pipeline_events.show_tokens_message",
+            new=AsyncMock(),
+        ),
+    ):
+        uploaded = await handle_translation_complete(
+            client, "C1", "123.456", task_info, auth
+        )
+
+    assert uploaded == 1
+    downloaded_ids = [c.args[0] for c in mock_download.await_args_list]
+    assert downloaded_ids == ["file-es", "docx-es"]
+    filenames = [c.kwargs["filename"] for c in mock_upload.await_args_list]
+    assert filenames == ["clip_Spanish.srt", "clip_Spanish.docx"]
+
+
+@pytest.mark.asyncio
+async def test_handle_translation_complete_word_failure_still_posts_success(tmp_path):
+    from app.ray.events.media_pipeline_events import handle_translation_complete
+
+    srt = tmp_path / "es.srt"
+    srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nhola\n")
+
+    async def _download(file_id: str) -> dict[str, str]:
+        if file_id == "docx-es":
+            raise RuntimeError("file server down")
+        return {"file": str(srt)}
+
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock(return_value={"ts": "999.001"})
+    task_info = SimpleNamespace(
+        task_uuid="task-2",
+        file_name="clip.mp4",
+        pipeline_type="translate_only",
+        translated_file_ids={"es": "file-es"},
+        extra_data={"word_translated_file_ids": {"es": "docx-es"}},
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(enterprise_id=None))
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.download_from_file_server_async",
+            new=AsyncMock(side_effect=_download),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.get_auto_translate_language_name",
+            return_value="Spanish",
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.upload_file_to_slack_memory_efficient",
+            new=AsyncMock(return_value={"ok": True}),
+        ) as mock_upload,
+        patch(
+            "app.ray.events.media_pipeline_events.show_tokens_message",
+            new=AsyncMock(),
+        ),
+        patch("app.ray.events.media_pipeline_events.logger") as mock_logger,
+    ):
+        uploaded = await handle_translation_complete(
+            client, "C1", "123.456", task_info, auth
+        )
+
+    # SRT delivery counts as success; the Word failure is logged, not fatal.
+    assert uploaded == 1
+    assert mock_upload.await_count == 1
+    assert mock_logger.exception.called
+    texts = [
+        call.kwargs.get("text", "") for call in client.chat_postMessage.await_args_list
+    ]
+    assert any(
+        text == "Your file is AI translated and can be downloaded above."
+        for text in texts
+    )
+    assert not any("could not be delivered" in text for text in texts)
 
 
 @pytest.mark.asyncio

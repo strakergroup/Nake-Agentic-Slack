@@ -382,6 +382,8 @@ async def slack_upload_transcription(
     team_id: str | None = None,
     slack_user_id: str | None = None,
     enterprise_id: str | None = None,
+    word_file_id: str | None = None,
+    word_file_name: str | None = None,
 ) -> dict[str, Any]:
     """Durable handler for transcription file uploads.
 
@@ -466,6 +468,38 @@ async def slack_upload_transcription(
             filename=file_name,
             thread_ts=thread_ts,
         )
+        if word_file_id and word_file_name:
+            # Best-effort relative to the SRT: a Word failure must not fail
+            # the job or block the follow-up / review buttons (RAY-81850).
+            word_path: str | None = None
+            try:
+                word_output = await download_from_file_server_async(word_file_id)
+                word_path = word_output.get("file")
+                if not word_path:
+                    raise RuntimeError(
+                        "File-server download returned no path for "
+                        f"word_file_id={word_file_id}"
+                    )
+                word_dir = os.path.dirname(word_path)
+                renamed_word_path = os.path.join(word_dir, word_file_name)
+                if word_path != renamed_word_path:
+                    os.rename(word_path, renamed_word_path)
+                    word_path = renamed_word_path
+                await upload_file_to_slack_memory_efficient(
+                    client=client,
+                    file_path=word_path,
+                    channel_id=channel_id,
+                    title=word_file_name,
+                    filename=word_file_name,
+                    thread_ts=thread_ts,
+                )
+            except Exception:
+                logger.exception(
+                    "Word transcript upload failed; SRT already delivered",
+                    extra={**log_extra, "word_file_id": word_file_id},
+                )
+            finally:
+                _safe_unlink(word_path)
         if follow_up_message:
             await client.chat_postMessage(
                 channel=channel_id,

@@ -266,11 +266,15 @@ async def enqueue_transcription_upload(
     slack_user_id: str | None = None,
     enterprise_id: str | None = None,
     srt_review_quote_id: str | None = None,
+    word_file_id: str | None = None,
+    word_file_name: str | None = None,
 ) -> None:
     """Enqueue the durable transcription file upload job (RAY-79638).
 
     Optional ``team_id`` / ``slack_user_id`` / ``enterprise_id`` support
     org-billed media where ``client_id`` is the Verify org uuid (RAY-81247).
+    Optional ``word_file_id`` / ``word_file_name`` deliver the Word transcript
+    after the SRT (RAY-81850).
     """
     key = (
         "slack_upload_transcription:"
@@ -296,6 +300,8 @@ async def enqueue_transcription_upload(
         slack_user_id=slack_user_id,
         enterprise_id=enterprise_id,
         srt_review_quote_id=srt_review_quote_id,
+        word_file_id=word_file_id,
+        word_file_name=word_file_name,
     )
 
 

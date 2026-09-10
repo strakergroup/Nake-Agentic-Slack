@@ -10,7 +10,7 @@ from __future__ import annotations
 from contextlib import ExitStack
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import uuid4
 
 import httpx
@@ -2002,6 +2002,95 @@ async def test_slack_upload_transcription_renames_temp_file_for_extension(slack_
     mock_upload.assert_awaited_once()
     assert mock_upload.await_args.kwargs["filename"] == "result.srt"
     assert mock_upload.await_args.kwargs["thread_ts"] == "123.0"
+
+
+@pytest.mark.asyncio
+async def test_slack_upload_transcription_uploads_word_after_srt(slack_user):
+    downloads = AsyncMock(
+        side_effect=[{"file": "/tmp/abc/raw"}, {"file": "/tmp/abc/raw2"}]
+    )
+    with (
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
+        ),
+        patch("app.saq_jobs.tasks.download_from_file_server_async", new=downloads),
+        patch(
+            "app.slack.web.upload_file_to_slack_memory_efficient", new=AsyncMock()
+        ) as mock_upload,
+        patch("os.rename") as mock_rename,
+        patch("app.saq_jobs.tasks._safe_unlink"),
+    ):
+        result = await slack_upload_transcription(
+            _ctx(),
+            file_id="f1",
+            file_name="clip.srt",
+            task_uuid=str(uuid4()),
+            pipeline_type="transcribe",
+            client_id=slack_user.ray_client_id,
+            channel_id="C123",
+            thread_ts="123.0",
+            word_file_id="docx-1",
+            word_file_name="clip.docx",
+        )
+
+    assert result["status"] == "delivered"
+    assert downloads.await_args_list == [call("f1"), call("docx-1")]
+    assert mock_upload.await_count == 2
+    filenames = [c.kwargs["filename"] for c in mock_upload.await_args_list]
+    assert filenames == ["clip.srt", "clip.docx"]
+    assert all(c.kwargs["thread_ts"] == "123.0" for c in mock_upload.await_args_list)
+    assert mock_rename.call_args_list == [
+        call("/tmp/abc/raw", "/tmp/abc/clip.srt"),
+        call("/tmp/abc/raw2", "/tmp/abc/clip.docx"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_slack_upload_transcription_word_failure_still_delivers_srt_and_review(
+    slack_user,
+):
+    fake_client = MagicMock()
+    fake_client.chat_postMessage = AsyncMock()
+    downloads = AsyncMock(
+        side_effect=[{"file": "/tmp/abc/raw"}, RuntimeError("file server down")]
+    )
+
+    with (
+        patch(
+            "app.saq_jobs.tasks.resolve_slack_delivery_user",
+            new=AsyncMock(return_value=slack_user),
+        ),
+        patch("app.saq_jobs.tasks.download_from_file_server_async", new=downloads),
+        patch("slack_sdk.web.async_client.AsyncWebClient", return_value=fake_client),
+        patch(
+            "app.slack.web.upload_file_to_slack_memory_efficient", new=AsyncMock()
+        ) as mock_upload,
+        patch("os.rename"),
+        patch("app.saq_jobs.tasks._safe_unlink"),
+        patch("app.saq_jobs.tasks.logger") as mock_logger,
+    ):
+        result = await slack_upload_transcription(
+            _ctx(),
+            file_id="f1",
+            file_name="clip.srt",
+            task_uuid=str(uuid4()),
+            pipeline_type="transcribe",
+            client_id=slack_user.ray_client_id,
+            channel_id="C123",
+            thread_ts="123.0",
+            srt_review_quote_id="q1",
+            word_file_id="docx-1",
+            word_file_name="clip.docx",
+        )
+
+    # Word delivery is best-effort: SRT is delivered, review buttons still post,
+    # the job does not raise (no SAQ retry storm), and the failure is logged.
+    assert result["status"] == "delivered"
+    assert mock_upload.await_count == 1
+    assert mock_upload.await_args.kwargs["filename"] == "clip.srt"
+    assert fake_client.chat_postMessage.await_count == 2
+    assert mock_logger.exception.called
 
 
 @pytest.mark.asyncio
