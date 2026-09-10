@@ -58,7 +58,7 @@ from .blocks import (
     quote_message_block,
     verify_quote_blocks,
 )
-from .models import NewJobForm
+from .models import NewJobForm, SlackMediaFileRef, slack_media_file_ref
 
 
 class TextMessage:
@@ -3439,7 +3439,7 @@ class VideoOptionsMessage(SlackMessage):
     def __init__(
         self,
         channel_id: str,
-        files: list[dict],  # [{file_id, file_name, duration_ms}, ...]
+        files: list[SlackMediaFileRef],
         thread_ts: str | None = None,
         is_ibm_enterprise: bool = False,
         tokens: int | None = None,
@@ -3448,7 +3448,13 @@ class VideoOptionsMessage(SlackMessage):
         action_value = json.dumps(
             {
                 "channel_id": channel_id,
-                "files": files,
+                "files": [
+                    slack_media_file_ref(
+                        file_id=media_file["file_id"],
+                        file_name=media_file["file_name"],
+                    )
+                    for media_file in files
+                ],
                 "thread_ts": thread_ts,
                 "show_embed_option": show_embed_option,
             }

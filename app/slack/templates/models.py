@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, TypedDict
 
 from pydantic import (
     BaseModel,
@@ -49,6 +49,20 @@ class RayLanguage(BaseModel):
         https://api.slack.com/reference/block-kit/composition-objects#option
         """
         return cls(code=option["value"], name=option["text"]["text"])
+
+
+class SlackMediaFileRef(TypedDict):
+    """Slack media file identity in Configure / VideoOptions payloads.
+
+    Quote1 duration is resolved later (Slack files.info, then ffprobe).
+    """
+
+    file_id: str
+    file_name: str
+
+
+def slack_media_file_ref(*, file_id: str, file_name: str) -> SlackMediaFileRef:
+    return {"file_id": file_id, "file_name": file_name}
 
 
 class SlackFile(BaseModel):

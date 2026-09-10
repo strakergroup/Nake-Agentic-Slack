@@ -4867,6 +4867,68 @@ class TestRespondToMessage:
                         context.say.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_respond_to_message_video_upload_omits_duration(
+        self, user_id, team_id, ray_client
+    ):
+        from app.slack.listener_actions import respond_to_message
+
+        mock_client = AsyncMock()
+        mock_client.files_info.return_value = {
+            "file": {
+                "name": "from-files-info.mp4",
+                "duration_ms": 120000,
+            }
+        }
+        message = {
+            "ts": "123456.789",
+            "files": [
+                {
+                    "id": "Fvid",
+                    "name": "clip.mp4",
+                    "filetype": "mp4",
+                }
+            ],
+        }
+        ray_connection = RayConnection(super_group=[], client=ray_client)
+        context = RayContext(
+            {
+                "user_id": user_id,
+                "team_id": team_id,
+                "channel_id": "C123",
+                "ray": ray_connection,
+                "say": AsyncMock(),
+            }
+        )
+
+        with (
+            patch(
+                "app.slack.listener_actions.require_ray_client",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch(
+                "app.slack.listener_actions.files_list_simple",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.slack.listener_actions.is_ibm_enterprise",
+                return_value=True,
+            ),
+        ):
+            await respond_to_message(mock_client, context, message)
+
+        context.say.assert_called_once()
+        blocks = context.say.call_args.kwargs["blocks"]
+        configure = next(
+            block
+            for block in blocks
+            if block.get("accessory", {}).get("action_id") == "video_configure_media"
+        )
+        payload = json.loads(configure["accessory"]["value"])
+        assert payload["files"] == [{"file_id": "Fvid", "file_name": "clip.mp4"}]
+        mock_client.files_info.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_respond_to_message_too_many_files(
         self, user_id, team_id, ray_client
     ):

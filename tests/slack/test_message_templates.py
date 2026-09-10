@@ -807,6 +807,25 @@ class TestVideoOptionsMessage:
             "*Configure* - Choose transcription, translation, embedding, and whether to review SRT files before embedding.",
         )
 
+    def test_configure_payload_files_are_id_and_name_only(self):
+        message = VideoOptionsMessage(
+            channel_id="C123",
+            files=[
+                {
+                    "file_id": "F1",
+                    "file_name": "clip.mp4",
+                    "duration_ms": 1000,
+                }
+            ],
+        )
+        configure = next(
+            block
+            for block in message.blocks
+            if block.get("accessory", {}).get("action_id") == "video_configure_media"
+        )
+        payload = json.loads(configure["accessory"]["value"])
+        assert payload["files"] == [{"file_id": "F1", "file_name": "clip.mp4"}]
+
 
 class TestNewJobMessage:
     def test_new_job_message_hides_quality_evaluation_for_ibm(self):

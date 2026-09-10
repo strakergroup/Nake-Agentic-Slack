@@ -121,7 +121,11 @@ from .templates.messages import (
     VerifyHelperMessage,
     VideoOptionsMessage,
 )
-from .templates.models import NewJobForm, build_human_translation_reference
+from .templates.models import (
+    NewJobForm,
+    build_human_translation_reference,
+    slack_media_file_ref,
+)
 from .utils import format_strings_display
 from .web import (
     download_file,
@@ -455,7 +459,7 @@ def _extract_media_files_from_blocks(root_message: dict[str, Any]) -> list[dict]
         files = payload.get("files")
         if files:
             return [
-                {"file_id": f["file_id"], "file_name": f["file_name"]}
+                slack_media_file_ref(file_id=f["file_id"], file_name=f["file_name"])
                 for f in files
                 if f.get("file_id") and f.get("file_name")
             ]
@@ -488,7 +492,7 @@ def build_thread_media_embed_action_value(
         if not file_id or not file_name:
             continue
 
-        media_files.append({"file_id": file_id, "file_name": file_name})
+        media_files.append(slack_media_file_ref(file_id=file_id, file_name=file_name))
 
     if not media_files:
         media_files = _extract_media_files_from_blocks(root_message)
@@ -642,17 +646,11 @@ async def respond_to_message(
         is_ibm = is_ibm_enterprise(context.enterprise_id)
         for file in message["files"]:
             if is_video_file(file):
-                file_info = await client.files_info(file=file["id"])
-                duration_ms = file_info["file"].get("duration_ms", 0)
-                # Default to 1 minute if duration couldn't be detected
-                if not duration_ms:
-                    duration_ms = 60000
                 video_files.append(
-                    {
-                        "file_id": file["id"],
-                        "file_name": file_info["file"]["name"],
-                        "duration_ms": duration_ms,
-                    }
+                    slack_media_file_ref(
+                        file_id=file["id"],
+                        file_name=file.get("name") or file.get("title") or file["id"],
+                    )
                 )
             else:
                 if not validate_file_type(file["name"]):

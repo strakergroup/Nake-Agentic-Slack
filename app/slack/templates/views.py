@@ -55,6 +55,7 @@ from .blocks import (
     home_auth_blocks,
     verify_quote_blocks,
 )
+from .models import SlackMediaFileRef
 
 
 async def home_view(
@@ -1394,7 +1395,7 @@ def _checkbox_element(
 
 def video_configure_media_modal(
     channel_id: str,
-    files: list[dict],
+    files: list[SlackMediaFileRef],
     thread_ts: str | None = None,
     *,
     show_embed_option: bool = True,

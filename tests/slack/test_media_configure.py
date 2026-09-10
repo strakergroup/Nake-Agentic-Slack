@@ -21,7 +21,7 @@ def _view(*, metadata: dict, values: dict) -> dict:
 
 
 def _files() -> list[dict]:
-    return [{"file_id": "F1", "file_name": "clip.mp4", "duration_ms": 1000}]
+    return [{"file_id": "F1", "file_name": "clip.mp4"}]
 
 
 def test_parse_translate_selection_with_embed_and_review_flags():
