@@ -125,6 +125,8 @@ def _configure_embed_tracks(
     translated_ids, translated_langs = _ordered_translated_tracks(
         ids_map, list(session.get("target_languages") or language_codes)
     )
+    if not session.get("embed_source"):
+        return translated_ids or None, translated_langs, translated_langs
     source_id = session.get("approved_source_srt_file_id") or task.result_file_id
     source_lang = getattr(task, "detected_language", None) or "und"
     srt_file_ids = ([source_id] if source_id else []) + translated_ids
@@ -150,6 +152,7 @@ async def resume_configure_embed_phase(
         srt_file_ids, language_codes, billing_targets = _configure_embed_tracks(
             session=session, task=task, translated=translated
         )
+        duration_ms = session.get("duration_ms") or getattr(task, "duration_ms", None)
         updates: dict[str, Any] = {
             "media_quote_id": session["quote_id"],
             "pipeline_kind": PIPELINE_EMBED,
@@ -164,6 +167,8 @@ async def resume_configure_embed_phase(
                 MediaEmbedRole.TRANSLATED if translated else MediaEmbedRole.SOURCE
             ),
         }
+        if duration_ms:
+            updates["duration_ms"] = int(duration_ms)
         if srt_file_ids is not None:
             updates["srt_file_ids"] = srt_file_ids
         extra_data = extra.model_copy(update=updates).model_dump(mode="json")

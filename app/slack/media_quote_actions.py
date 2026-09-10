@@ -59,6 +59,7 @@ from app.slack.media_quotes import (
     STAGE_TRANSLATING,
     delete_media_quote_session,
     get_media_quote_session,
+    media_quote_actor_may_continue,
     media_quote_blocks,
     media_quote_lock_key,
     translate_resume_pipeline_type,
@@ -307,7 +308,7 @@ async def accept_media_quote(
             text=_("This media quote has expired. Please request a new quote."),
         )
         return False
-    if session.get("user_id") != context["user_id"]:
+    if not await media_quote_actor_may_continue(session, context):
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("You do not have permission to accept this media quote."),
@@ -540,7 +541,7 @@ async def accept_media_translation_quote(
             text=_("This translation quote has expired. Please request a new quote."),
         )
         return False
-    if session.get("user_id") != context["user_id"]:
+    if not await media_quote_actor_may_continue(session, context):
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("You do not have permission to accept this translation quote."),

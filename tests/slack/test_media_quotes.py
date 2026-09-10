@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 from unittest.mock import AsyncMock, patch
 
@@ -297,3 +298,53 @@ async def test_create_translation_quote_session():
         assert session["stage"] == STAGE_AWAITING_TRANSLATION_ACCEPT
         assert session["total_tokens"] == media_translation_tokens(1000, 2)
         assert session["line_items"][0]["label"]
+
+
+@pytest.mark.asyncio
+async def test_save_media_quote_session_appends_thread_quote_ids():
+    from app.slack.media_quotes import (
+        media_quote_thread_key,
+        save_media_quote_session,
+    )
+
+    store: dict[str, str] = {}
+
+    async def fake_get(key):
+        return store.get(key)
+
+    async def fake_set(key, value, ex=None):
+        store[key] = value
+
+    with patch("app.slack.media_quotes.redis_conn") as mock_redis:
+        mock_redis.get = AsyncMock(side_effect=fake_get)
+        mock_redis.set = AsyncMock(side_effect=fake_set)
+        await save_media_quote_session(
+            {"quote_id": "q1", "channel_id": "C1", "thread_ts": "1.2"}
+        )
+        await save_media_quote_session(
+            {"quote_id": "q2", "channel_id": "C1", "thread_ts": "1.2"}
+        )
+
+    assert json.loads(store[media_quote_thread_key("C1", "1.2")]) == ["q1", "q2"]
+
+
+@pytest.mark.asyncio
+async def test_thread_sessions_read_legacy_plain_quote_id():
+    from app.slack.media_quotes import get_media_quote_sessions_for_thread
+
+    sessions = {
+        "q-old": {"quote_id": "q-old", "file_name": "clip.mp4"},
+    }
+
+    async def fake_get(key):
+        if key.endswith(":C1:1.2"):
+            return "q-old"
+        if ":media-quote:q-old" in str(key):
+            return json.dumps(sessions["q-old"])
+        return None
+
+    with patch("app.slack.media_quotes.redis_conn") as mock_redis:
+        mock_redis.get = AsyncMock(side_effect=fake_get)
+        loaded = await get_media_quote_sessions_for_thread("C1", "1.2")
+
+    assert [session["quote_id"] for session in loaded] == ["q-old"]

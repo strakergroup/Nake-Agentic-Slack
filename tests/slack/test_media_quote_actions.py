@@ -666,6 +666,8 @@ async def test_replaced_translated_srt_keeps_other_target_languages():
         "file_name": "clip.mp4",
         "approved_translated_srt_file_id": "srt-replaced",
         "approved_translated_srt_language": "es",
+        "embed_source": True,
+        "embed_translated": True,
         "target_languages": ["es", "fr"],
     }
 
@@ -736,6 +738,8 @@ async def test_translated_embed_muxes_source_and_all_target_tracks():
         "file_id": "F1",
         "download_url": "https://files.example/clip.mp4",
         "file_name": "clip.mp4",
+        "embed_source": True,
+        "embed_translated": True,
         "target_languages": ["fi", "es"],
     }
 
@@ -758,6 +762,28 @@ async def test_translated_embed_muxes_source_and_all_target_tracks():
     assert asr_task.extra_data["language_codes"] == ["en", "fi", "es"]
     assert asr_task.extra_data["target_languages"] == ["fi", "es"]
     mock_http.assert_not_called()
+
+
+def test_translated_only_embed_tracks_omit_source():
+    from app.slack.media_configure_embed import _configure_embed_tracks
+
+    task = SimpleNamespace(
+        result_file_id="srt-source",
+        translated_file_ids={"fi": "srt-fi", "es": "srt-es"},
+        detected_language="en",
+    )
+    ids, langs, billing = _configure_embed_tracks(
+        session={
+            "embed_source": False,
+            "embed_translated": True,
+            "target_languages": ["fi", "es"],
+        },
+        task=task,
+        translated=True,
+    )
+    assert ids == ["srt-fi", "srt-es"]
+    assert langs == ["fi", "es"]
+    assert billing == ["fi", "es"]
 
 
 @pytest.mark.asyncio
@@ -803,6 +829,8 @@ async def test_translated_embed_ignores_replacement_without_language():
         "download_url": "https://files.example/clip.mp4",
         "file_name": "clip.mp4",
         "approved_translated_srt_file_id": "srt-replaced",
+        "embed_source": True,
+        "embed_translated": True,
         "target_languages": ["es", "fr"],
     }
 
@@ -822,3 +850,237 @@ async def test_translated_embed_ignores_replacement_without_language():
     asr_task = mock_create.await_args.args[0]
     assert asr_task.extra_data["srt_file_ids"] == ["srt-source", "srt-es", "srt-fr"]
     assert "srt-replaced" not in asr_task.extra_data["srt_file_ids"]
+
+
+@pytest.mark.asyncio
+async def test_resume_configure_embed_copies_duration_ms_onto_new_task():
+    from app.slack.media_configure_embed import resume_configure_embed_phase
+
+    source_task = SimpleNamespace(
+        task_uuid="asr-task",
+        extra_data={"media_quote_id": "q1"},
+        result_file_id="srt-source",
+        translated_file_ids=None,
+        client_id="client-1",
+        file_name="clip.mp4",
+        download_url="https://files.example/clip.mp4",
+        bot_token="xoxb-test",
+        model="whisper-1",
+        service="azure",
+        app_source="slack",
+        duration_ms=90_000,
+        detected_language="en",
+    )
+
+    class _FakeDb:
+        async def get(self, model, key):
+            return source_task
+
+        async def execute(self, stmt):
+            return None
+
+        async def commit(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    session = {
+        "quote_id": "q1",
+        "task_uuid": "asr-task",
+        "workflow_type": "transcribe_only",
+        "file_id": "F1",
+        "download_url": "https://files.example/clip.mp4",
+        "file_name": "clip.mp4",
+        "duration_ms": 90_000,
+        "approved_source_srt_file_id": "srt-approved",
+        "target_languages": [],
+    }
+
+    with (
+        patch(
+            "app.slack.media_configure_embed.AsyncSession",
+            return_value=_FakeDb(),
+        ),
+        patch(
+            "app.slack.media_configure_embed.create_asr_task",
+            new_callable=AsyncMock,
+            return_value="embed-task",
+        ) as mock_create,
+        patch("app.slack.media_configure_embed.httpx.AsyncClient"),
+    ):
+        await resume_configure_embed_phase(session=session, translated=False)
+
+    asr_task = mock_create.await_args.args[0]
+    assert asr_task.extra_data["duration_ms"] == 90_000
+
+
+@pytest.mark.asyncio
+async def test_quote_admin_can_accept_another_users_media_quote():
+    from app.slack.media_quote_actions import accept_media_quote
+
+    client = AsyncMock()
+    context = MagicMock()
+    context.__getitem__ = lambda self, key: {
+        "user_id": "U-admin",
+        "team_id": "T1",
+    }.get(key)
+    context.enterprise_id = None
+    context.get = lambda key, default=None: None
+
+    session = {
+        "quote_id": "q1",
+        "user_id": "U-owner",
+        "stage": STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
+        "pipeline_kind": PIPELINE_TRANSCRIBE,
+        "total_tokens": 100,
+        "channel_id": "C1",
+        "workflow_type": "transcribe_only",
+        "embed_source": False,
+        "embed_translated": False,
+        "target_languages": [],
+        "file_name": "clip.mp4",
+        "file_id": "F1",
+        "download_url": "https://example.com/clip.mp4",
+        "duration_ms": 60_000,
+    }
+
+    with (
+        patch(
+            "app.slack.media_quote_actions.get_media_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.slack.media_quotes.user_may_receive_quotes",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.middleware.populate_ray_connection",
+            new_callable=AsyncMock,
+        ),
+        patch("app.slack.media_quote_actions.redis_conn") as mock_redis,
+        patch(
+            "app.slack.media_quote_actions._require_ai_token_balance",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.media_quote_actions.require_ray_client",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.media_quote_actions.resolve_slack_poster_email",
+            new_callable=AsyncMock,
+            return_value="admin@example.com",
+        ),
+        patch(
+            "app.slack.media_quote_actions._create_asr_from_quote_session",
+            new_callable=AsyncMock,
+            return_value="task-1",
+        ),
+        patch(
+            "app.slack.media_workflow_actions.execute_media_workflow_decision",
+            new_callable=AsyncMock,
+            return_value=session,
+        ),
+        patch(
+            "app.slack.media_quote_actions._update_quote_message",
+            new_callable=AsyncMock,
+        ),
+    ):
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_redis.delete = AsyncMock()
+        await accept_media_quote(
+            client=client,
+            body={"channel": {"id": "C1"}, "message": {"ts": "1.2"}},
+            action={"value": "q1"},
+            context=context,
+        )
+
+    mock_redis.set.assert_awaited()
+    texts = [
+        str(call.kwargs.get("text") or "")
+        for call in client.chat_postMessage.await_args_list
+    ]
+    assert all("permission" not in text.lower() for text in texts)
+
+
+@pytest.mark.asyncio
+async def test_quote_admin_can_accept_another_users_translation_quote():
+    from app.slack.media_quote_actions import accept_media_translation_quote
+
+    client = AsyncMock()
+    context = MagicMock()
+    context.__getitem__ = lambda self, key: {
+        "user_id": "U-admin",
+        "team_id": "T1",
+    }.get(key)
+    context.enterprise_id = None
+    context.get = lambda key, default=None: None
+
+    session = {
+        "quote_id": "q1",
+        "user_id": "U-owner",
+        "stage": STAGE_AWAITING_TRANSLATION_ACCEPT,
+        "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
+        "total_tokens": 2,
+        "channel_id": "C1",
+        "task_uuid": "task-1",
+        "target_languages": ["es"],
+        "thread_ts": None,
+    }
+
+    with (
+        patch(
+            "app.slack.media_quote_actions.get_media_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.slack.media_quotes.user_may_receive_quotes",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.middleware.populate_ray_connection",
+            new_callable=AsyncMock,
+        ),
+        patch("app.slack.media_quote_actions.redis_conn") as mock_redis,
+        patch(
+            "app.slack.media_quote_actions._require_ai_token_balance",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.media_quote_actions._resume_translate_phase",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.slack.media_quote_actions.update_media_quote_session",
+            new_callable=AsyncMock,
+            return_value={**session, "stage": "translating"},
+        ),
+        patch(
+            "app.slack.media_quote_actions._update_quote_message",
+            new_callable=AsyncMock,
+        ),
+    ):
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_redis.delete = AsyncMock()
+        await accept_media_translation_quote(
+            client=client,
+            body={"channel": {"id": "C1"}, "message": {"ts": "1.2"}},
+            action={"value": "q1"},
+            context=context,
+        )
+
+    mock_redis.set.assert_awaited()
+    texts = [
+        str(call.kwargs.get("text") or "")
+        for call in client.chat_postMessage.await_args_list
+    ]
+    assert all("permission" not in text.lower() for text in texts)

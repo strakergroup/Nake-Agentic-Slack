@@ -806,7 +806,7 @@ class TestVideoOptionsMessage:
         assert not _blocks_contain_action(message.blocks, "video_embed_subtitles")
         assert _blocks_contain_text(
             message.blocks,
-            "*Configure* - Choose transcription, translation, embedding, and whether to pause and review transcript or subtitle files.",
+            "*Configure* - Choose transcription, translation, and embedding.",
         )
 
     def test_configure_payload_files_are_id_and_name_only(self):
@@ -1356,6 +1356,13 @@ class TestMediaSrtReviewMessage:
         message = MediaSrtReviewSubmittedMessage()
         dumped = json.dumps(message.blocks)
         assert "Transcript approved." in dumped
+        assert "SRT" not in dumped
+
+    def test_submitted_message_says_subtitles_approved_for_translation(self):
+        message = MediaSrtReviewSubmittedMessage(translated=True)
+        dumped = json.dumps(message.blocks)
+        assert "Subtitles approved." in dumped
+        assert "Transcript approved." not in dumped
         assert "SRT" not in dumped
 
 

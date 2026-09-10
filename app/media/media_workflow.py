@@ -143,17 +143,17 @@ def configure_srt_review_enabled(flags: dict[str, Any] | None) -> bool:
 
 
 def _after_source_approved(session: MediaWorkflowSession) -> MediaWorkflowDecision:
+    if session.config.embed_source and not session.config.embed_translated:
+        return MediaWorkflowDecision(
+            session=_session_in(session, MediaWorkflowStage.EMBEDDING_SOURCE),
+            commands=(MediaWorkflowCommand.START_SOURCE_EMBED,),
+        )
     if _is_translate(session):
         return MediaWorkflowDecision(
             session=_session_in(
                 session, MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
             ),
             commands=(MediaWorkflowCommand.POST_QUOTE2,),
-        )
-    if session.config.embed_source:
-        return MediaWorkflowDecision(
-            session=_session_in(session, MediaWorkflowStage.EMBEDDING_SOURCE),
-            commands=(MediaWorkflowCommand.START_SOURCE_EMBED,),
         )
     return MediaWorkflowDecision(
         session=_session_in(session, MediaWorkflowStage.DONE),
@@ -162,7 +162,7 @@ def _after_source_approved(session: MediaWorkflowSession) -> MediaWorkflowDecisi
 
 
 def _after_translated_approved(session: MediaWorkflowSession) -> MediaWorkflowDecision:
-    if session.config.embed_translated or session.config.embed_source:
+    if session.config.embed_translated:
         return MediaWorkflowDecision(
             session=_session_in(session, MediaWorkflowStage.EMBEDDING_TRANSLATED),
             commands=(MediaWorkflowCommand.START_TRANSLATED_EMBED,),
@@ -198,7 +198,7 @@ def advance_media_workflow(
         event is MediaWorkflowEvent.TRANSCRIPTION_COMPLETED
         and stage is MediaWorkflowStage.TRANSCRIBING
     ):
-        if session.config.review_gate:
+        if session.config.embed_source:
             return MediaWorkflowDecision(
                 session=_session_in(session, MediaWorkflowStage.AWAITING_SOURCE_REVIEW),
                 commands=(MediaWorkflowCommand.POST_SOURCE_REVIEW,),
@@ -260,7 +260,7 @@ def advance_media_workflow(
         event is MediaWorkflowEvent.TRANSLATION_COMPLETED
         and stage is MediaWorkflowStage.TRANSLATING
     ):
-        if session.config.review_gate:
+        if session.config.embed_translated:
             return MediaWorkflowDecision(
                 session=_session_in(
                     session, MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW

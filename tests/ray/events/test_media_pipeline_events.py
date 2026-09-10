@@ -95,6 +95,10 @@ async def test_handle_transcription_complete_defers_configure_srt_review():
             new=AsyncMock(),
         ) as mock_enqueue,
         patch(
+            "app.ray.events.media_pipeline_events.get_media_quote_session",
+            new=AsyncMock(return_value={}),
+        ),
+        patch(
             "app.ray.events.media_pipeline_events.update_media_quote_session",
             new=AsyncMock(),
         ) as mock_update,
@@ -115,6 +119,61 @@ async def test_handle_transcription_complete_defers_configure_srt_review():
     assert mock_enqueue.await_args.kwargs["srt_review_quote_id"] == "q1"
     assert mock_update.await_args.args[0] == "q1"
     assert mock_update.await_args.args[1]["defer_source_review"] is True
+
+
+@pytest.mark.asyncio
+async def test_handle_transcription_complete_skips_review_when_auto_proceed():
+    from app.ray.events.media_pipeline_events import handle_transcription_complete
+
+    client = AsyncMock()
+    task_info = SimpleNamespace(
+        task_uuid="task-1",
+        file_name="clip.mp4",
+        pipeline_type="transcribe",
+        extra_data={
+            "media_quote_id": "q1",
+            "workflow_type": "transcribe_only",
+            "embed_source": True,
+            "slack_team_id": "T1",
+            "slack_user_id": "U1",
+        },
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(ray_client_id="client-1"))
+    auth_slack_user = SimpleNamespace(channel_id="C1")
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.post_notification",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.enqueue_transcription_upload",
+            new=AsyncMock(),
+        ) as mock_enqueue,
+        patch(
+            "app.ray.events.media_pipeline_events.get_media_quote_session",
+            new=AsyncMock(return_value={"auto_proceed": True}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.update_media_quote_session",
+            new=AsyncMock(),
+        ) as mock_update,
+    ):
+        await handle_transcription_complete(
+            client,
+            "file-1",
+            "clip.srt",
+            task_info,
+            False,
+            "C1",
+            "123.456",
+            MagicMock(),
+            auth,
+            auth_slack_user,
+        )
+
+    assert mock_enqueue.await_args.kwargs["srt_review_quote_id"] is None
+    mock_update.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -230,7 +289,7 @@ async def test_maybe_post_media_translation_quote_posts_review_when_configure_ga
         "pipeline_kind": PIPELINE_TRANSCRIBE_TRANSLATE,
         "stage": STAGE_TRANSCRIBING,
         "workflow_type": "transcribe_translate",
-        "embed_source": False,
+        "embed_source": True,
         "embed_translated": True,
         "review_gate": True,
         "target_languages": ["es"],
@@ -1457,3 +1516,59 @@ async def test_translation_completed_at_wrong_stage_does_not_raise():
 
     mock_execute.assert_not_awaited()
     mock_notify.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_spend_embedding_credits_uses_extra_data_duration_when_column_missing():
+    from app.ray.events.media_pipeline_events import spend_embedding_credits
+
+    task_info = SimpleNamespace(
+        task_uuid="embed-task",
+        file_name="clip.mp4",
+        pipeline_type="embed",
+        duration_ms=None,
+        extra_data={"duration_ms": 60_000, "pipeline_type": "embed"},
+        detected_language="en",
+        translated_file_ids=None,
+        num_target_languages=1,
+        source_text_length=None,
+    )
+    auth = SimpleNamespace(
+        slack_user=SimpleNamespace(
+            ray_client_id="client-1",
+            ray_user_group_id="group-1",
+        )
+    )
+
+    class _FakeDb:
+        async def execute(self, stmt):
+            return None
+
+        async def commit(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.get_transcription_task",
+            new_callable=AsyncMock,
+            return_value=task_info,
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.log_embedding_by_client_id",
+            new_callable=AsyncMock,
+        ) as mock_log,
+        patch(
+            "app.ray.events.media_pipeline_events.AsyncSession",
+            return_value=_FakeDb(),
+        ),
+    ):
+        amount = await spend_embedding_credits(task_info, auth)
+
+    assert amount == 30
+    assert mock_log.await_args.kwargs["duration_ms"] == 60_000

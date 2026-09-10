@@ -8,7 +8,12 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from app.auth.connector import duration_to_subtitling_tokens, duration_to_tokens
+from app.auth.connector import (
+    RayConnection,
+    duration_to_subtitling_tokens,
+    duration_to_tokens,
+    user_may_receive_quotes,
+)
 from app.config import config
 from app.ray.utils import format_slack_usd
 from app.redis import redis_conn
@@ -64,6 +69,48 @@ def media_quote_lock_key(quote_id: str) -> str:
 
 def media_quote_thread_key(channel_id: str, thread_ts: str) -> str:
     return f"{MEDIA_QUOTE_THREAD_PREFIX}:{channel_id}:{thread_ts}"
+
+
+def _thread_quote_ids_from_raw(raw: Any) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, bytes):
+        raw = raw.decode()
+    if not isinstance(raw, str) or not raw:
+        return []
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return [raw]
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed if item]
+        return []
+    return [raw]
+
+
+async def thread_quote_ids(channel_id: str, thread_ts: str) -> list[str]:
+    return _thread_quote_ids_from_raw(
+        await redis_conn.get(media_quote_thread_key(channel_id, thread_ts))
+    )
+
+
+def _ray_from_context(context: Any) -> RayConnection | None:
+    getter = getattr(context, "get", None)
+    value = getter("ray") if callable(getter) else None
+    return value if isinstance(value, RayConnection) else None
+
+
+async def media_quote_actor_may_continue(session: dict[str, Any], context: Any) -> bool:
+    if session.get("user_id") == context["user_id"]:
+        return True
+    ray = _ray_from_context(context)
+    if ray is None:
+        from app.slack.middleware import populate_ray_connection
+
+        await populate_ray_connection(context)
+        ray = _ray_from_context(context)
+    return await user_may_receive_quotes(ray)
 
 
 def _utc_now_iso() -> str:
@@ -316,9 +363,13 @@ async def save_media_quote_session(session: dict[str, Any]) -> None:
     channel_id = session.get("channel_id")
     thread_ts = session.get("thread_ts")
     if channel_id and thread_ts:
+        quote_ids = await thread_quote_ids(str(channel_id), str(thread_ts))
+        quote_id = str(session["quote_id"])
+        if quote_id not in quote_ids:
+            quote_ids.append(quote_id)
         await redis_conn.set(
             media_quote_thread_key(str(channel_id), str(thread_ts)),
-            session["quote_id"],
+            json.dumps(quote_ids),
             ex=ttl,
         )
 
@@ -330,12 +381,19 @@ async def get_media_quote_session(quote_id: str) -> dict[str, Any] | None:
 async def get_media_quote_session_for_thread(
     channel_id: str, thread_ts: str
 ) -> dict[str, Any] | None:
-    quote_id = await redis_conn.get(media_quote_thread_key(channel_id, thread_ts))
-    if quote_id is None:
-        return None
-    if isinstance(quote_id, bytes):
-        quote_id = quote_id.decode()
-    return await get_media_quote_session(str(quote_id))
+    sessions = await get_media_quote_sessions_for_thread(channel_id, thread_ts)
+    return sessions[-1] if sessions else None
+
+
+async def get_media_quote_sessions_for_thread(
+    channel_id: str, thread_ts: str
+) -> list[dict[str, Any]]:
+    sessions: list[dict[str, Any]] = []
+    for quote_id in await thread_quote_ids(channel_id, thread_ts):
+        session = await get_media_quote_session(quote_id)
+        if session is not None:
+            sessions.append(session)
+    return sessions
 
 
 async def update_media_quote_session(

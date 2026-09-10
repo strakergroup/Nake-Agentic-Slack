@@ -3319,9 +3319,10 @@ class MediaSrtApproveContinueMessage(SlackMessage):
 
 
 class MediaSrtReviewSubmittedMessage(SlackMessage):
-    def __init__(self) -> None:
-        section = SectionBlock(text=MarkdownTextObject(text=_("Transcript approved.")))
-        super().__init__(_("Transcript approved."), [section.to_dict()])
+    def __init__(self, *, translated: bool = False) -> None:
+        text = _("Subtitles approved.") if translated else _("Transcript approved.")
+        section = SectionBlock(text=MarkdownTextObject(text=text))
+        super().__init__(text, [section.to_dict()])
 
 
 class DocumentMTJobMessage(SlackMessage):
@@ -3513,7 +3514,7 @@ class VideoOptionsMessage(SlackMessage):
         configure_section = SectionBlock(
             text=MarkdownTextObject(
                 text=_(
-                    "*Configure* - Choose transcription, translation, embedding, and whether to pause and review transcript or subtitle files."
+                    "*Configure* - Choose transcription, translation, and embedding."
                 )
             ),
             accessory=configure_button,

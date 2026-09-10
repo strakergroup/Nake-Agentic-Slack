@@ -366,6 +366,11 @@ class TestThreadMediaEmbedOption:
                 return_value=None,
             ),
             patch(
+                "app.slack.listener_actions.get_media_quote_sessions_for_thread",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch(
                 "app.slack.listener_actions.quote_existing_srt_embed_task",
                 new_callable=AsyncMock,
             ) as mock_quote,
@@ -423,6 +428,11 @@ class TestThreadMediaEmbedOption:
                 "app.slack.listener_actions.get_media_quote_session_for_thread",
                 new_callable=AsyncMock,
                 return_value=None,
+            ),
+            patch(
+                "app.slack.listener_actions.get_media_quote_sessions_for_thread",
+                new_callable=AsyncMock,
+                return_value=[],
             ),
         ):
             mock_require.return_value = True

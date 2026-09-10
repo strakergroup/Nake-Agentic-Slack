@@ -1527,6 +1527,7 @@ def media_srt_replace_modal(
         label=PlainTextObject(text=_("Replacement file")),
         element=FileInputElement(
             action_id="srt_file_input",
+            filetypes=["srt"],
             max_files=1,
         ),
         optional=False,

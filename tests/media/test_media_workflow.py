@@ -159,6 +159,23 @@ def test_source_srt_replaced_stays_in_review_without_commands():
     assert decision.commands == ()
 
 
+def test_source_approved_with_source_embed_only_starts_source_embed():
+    session = advance_media_workflow(
+        _transcribing(
+            make_media_workflow_session(
+                workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
+                embed_source=True,
+                embed_translated=False,
+                target_languages=("fi", "es"),
+            )
+        ),
+        MediaWorkflowEvent.TRANSCRIPTION_COMPLETED,
+    ).session
+    decision = advance_media_workflow(session, MediaWorkflowEvent.SOURCE_SRT_APPROVED)
+    assert decision.session.stage == MediaWorkflowStage.EMBEDDING_SOURCE
+    assert decision.commands == (MediaWorkflowCommand.START_SOURCE_EMBED,)
+
+
 def test_source_approved_with_embed_and_translate_posts_quote2_without_source_embed():
     session = advance_media_workflow(
         _transcribing(
@@ -288,9 +305,7 @@ def test_translated_review_then_embed():
     session = advance_media_workflow(
         session, MediaWorkflowEvent.TRANSCRIPTION_COMPLETED
     ).session
-    session = advance_media_workflow(
-        session, MediaWorkflowEvent.SOURCE_SRT_APPROVED
-    ).session
+    assert session.stage == MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
     session = advance_media_workflow(
         session, MediaWorkflowEvent.QUOTE2_ACCEPTED
     ).session
@@ -310,7 +325,29 @@ def test_translated_review_then_embed():
     assert decision.commands == (MediaWorkflowCommand.MARK_DONE,)
 
 
-def test_translate_source_embed_flag_waits_for_translated_approval():
+def test_source_embed_completed_then_posts_quote2_for_source_embed_only_translate():
+    session = advance_media_workflow(
+        _transcribing(
+            make_media_workflow_session(
+                workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
+                embed_source=True,
+                embed_translated=False,
+                target_languages=("fi", "es"),
+            )
+        ),
+        MediaWorkflowEvent.TRANSCRIPTION_COMPLETED,
+    ).session
+    session = advance_media_workflow(
+        session, MediaWorkflowEvent.SOURCE_SRT_APPROVED
+    ).session
+    decision = advance_media_workflow(
+        session, MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
+    )
+    assert decision.session.stage == MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
+    assert decision.commands == (MediaWorkflowCommand.POST_QUOTE2,)
+
+
+def test_translation_completed_source_embed_only_is_done():
     session = make_media_workflow_session(
         workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
         embed_source=True,
@@ -321,20 +358,18 @@ def test_translate_source_embed_flag_waits_for_translated_approval():
     session = advance_media_workflow(
         session, MediaWorkflowEvent.TRANSCRIPTION_COMPLETED
     ).session
-    decision = advance_media_workflow(session, MediaWorkflowEvent.SOURCE_SRT_APPROVED)
-    assert decision.commands == (MediaWorkflowCommand.POST_QUOTE2,)
-    session = decision.session
+    session = advance_media_workflow(
+        session, MediaWorkflowEvent.SOURCE_SRT_APPROVED
+    ).session
+    session = advance_media_workflow(
+        session, MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
+    ).session
     session = advance_media_workflow(
         session, MediaWorkflowEvent.QUOTE2_ACCEPTED
     ).session
-    session = advance_media_workflow(
-        session, MediaWorkflowEvent.TRANSLATION_COMPLETED
-    ).session
-    decision = advance_media_workflow(
-        session, MediaWorkflowEvent.TRANSLATED_SRT_APPROVED
-    )
-    assert decision.session.stage == MediaWorkflowStage.EMBEDDING_TRANSLATED
-    assert decision.commands == (MediaWorkflowCommand.START_TRANSLATED_EMBED,)
+    decision = advance_media_workflow(session, MediaWorkflowEvent.TRANSLATION_COMPLETED)
+    assert decision.session.stage == MediaWorkflowStage.DONE
+    assert decision.commands == (MediaWorkflowCommand.MARK_DONE,)
 
 
 def test_media_workflow_session_from_quote_returns_none_for_legacy_session():

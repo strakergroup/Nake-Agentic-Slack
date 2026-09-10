@@ -89,6 +89,7 @@ from .bot_translation_limits import can_translate_bot_message
 from .evaluation_quotes import job_is_human_translation_quote
 from .media_quotes import (
     get_media_quote_session_for_thread,
+    get_media_quote_sessions_for_thread,
 )
 from .media_workflow_actions import apply_thread_srt_review_replace
 from .middleware import require_mt_tokens, require_ray_client
@@ -563,38 +564,64 @@ async def maybe_show_thread_media_embed_option(
     if not channel_id or not await require_ray_client(context, allow_org_billing=True):
         return False
 
-    review_session = await get_media_quote_session_for_thread(channel_id, thread_ts)
-    if review_session:
-        subtitle_file = next(
-            (file for file in message.get("files", []) if is_srt_file(file)),
-            None,
-        )
-        if subtitle_file is not None and await apply_thread_srt_review_replace(
-            client=client,
-            session=review_session,
-            slack_file_id=str(subtitle_file["id"]),
-            uploaded_name=str(
-                subtitle_file.get("name")
-                or subtitle_file.get("title")
-                or "subtitles.srt"
-            ),
-            acting_user_id=str(context["user_id"]),
-        ):
-            return True
+    sessions = await get_media_quote_sessions_for_thread(channel_id, thread_ts)
+    if not sessions:
+        one = await get_media_quote_session_for_thread(channel_id, thread_ts)
+        sessions = [one] if one else []
+    subtitle_file = next(
+        (file for file in message.get("files", []) if is_srt_file(file)),
+        None,
+    )
+    if sessions and subtitle_file is not None:
         from app.media.media_workflow import (
             MediaWorkflowStage,
             media_workflow_session_from_quote,
         )
 
-        workflow = media_workflow_session_from_quote(review_session)
-        if workflow is not None and workflow.stage not in (
-            MediaWorkflowStage.DONE,
-            MediaWorkflowStage.CANCELLED,
-            MediaWorkflowStage.AWAITING_SOURCE_REVIEW,
-            MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW,
-        ):
+        in_flight = False
+        review_mismatch = False
+        for review_session in sessions:
+            workflow = media_workflow_session_from_quote(review_session)
+            if workflow is None or workflow.stage in (
+                MediaWorkflowStage.DONE,
+                MediaWorkflowStage.CANCELLED,
+            ):
+                continue
+            in_flight = True
+            if workflow.stage in (
+                MediaWorkflowStage.AWAITING_SOURCE_REVIEW,
+                MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW,
+            ) and await apply_thread_srt_review_replace(
+                client=client,
+                session=review_session,
+                slack_file_id=str(subtitle_file["id"]),
+                uploaded_name=str(
+                    subtitle_file.get("name")
+                    or subtitle_file.get("title")
+                    or "subtitles.srt"
+                ),
+                acting_user_id=str(context["user_id"]),
+                context=context,
+            ):
+                return True
+            if workflow.stage in (
+                MediaWorkflowStage.AWAITING_SOURCE_REVIEW,
+                MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW,
+            ):
+                review_mismatch = True
+        if review_mismatch:
             await client.chat_postMessage(
-                channel=str(review_session.get("channel_id") or channel_id),
+                channel=str(sessions[-1].get("channel_id") or channel_id),
+                text=_(
+                    "That file doesn't match the transcript under review. "
+                    "Use *Replace* under the file you edited."
+                ),
+                thread_ts=thread_ts,
+            )
+            return True
+        if in_flight:
+            await client.chat_postMessage(
+                channel=str(sessions[-1].get("channel_id") or channel_id),
                 text=_(
                     "Finish the current media request before embedding a different SRT "
                     "in this thread."

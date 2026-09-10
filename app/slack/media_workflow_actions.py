@@ -37,6 +37,7 @@ from app.slack.media_quotes import (
     STAGE_AWAITING_TRANSLATION_ACCEPT,
     build_quote2_line_items,
     get_media_quote_session,
+    media_quote_actor_may_continue,
     media_quote_lock_key,
     total_tokens_from_line_items,
     update_media_quote_session,
@@ -134,6 +135,7 @@ async def apply_thread_srt_review_replace(
     match_review_filename: bool = True,
     acting_user_id: str | None = None,
     language: str | None = None,
+    context: RayContext | None = None,
 ) -> bool:
     workflow = media_workflow_session_from_quote(session)
     if workflow is None:
@@ -143,12 +145,18 @@ async def apply_thread_srt_review_replace(
         MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW,
     ):
         return False
-    if acting_user_id is not None and session.get("user_id") != acting_user_id:
-        await client.chat_postMessage(
-            channel=acting_user_id,
-            text=_("You do not have permission to replace this file."),
+    if acting_user_id is not None:
+        allowed = (
+            await media_quote_actor_may_continue(session, context)
+            if context is not None
+            else session.get("user_id") == acting_user_id
         )
-        return True
+        if not allowed:
+            await client.chat_postMessage(
+                channel=acting_user_id,
+                text=_("You do not have permission to replace this file."),
+            )
+            return True
     if match_review_filename and not thread_srt_matches_review_file(
         uploaded_name=uploaded_name,
         original_file_name=str(session.get("file_name") or ""),
@@ -240,7 +248,7 @@ async def handle_media_srt_approve_continue(
             text=_("This media review has expired. Please start a new request."),
         )
         return
-    if session.get("user_id") != context["user_id"]:
+    if not await media_quote_actor_may_continue(session, context):
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("You do not have permission to approve this file."),
@@ -269,6 +277,7 @@ async def handle_media_srt_approve_continue(
         workflow = media_workflow_session_from_quote(session)
         if workflow is None:
             return
+        translated = workflow.stage is MediaWorkflowStage.AWAITING_TRANSLATION_REVIEW
         event = (
             MediaWorkflowEvent.SOURCE_SRT_APPROVED
             if workflow.stage is MediaWorkflowStage.AWAITING_SOURCE_REVIEW
@@ -301,7 +310,7 @@ async def handle_media_srt_approve_continue(
                 ),
             )
             return
-        await _clear_srt_review_actions(client, session)
+        await _clear_srt_review_actions(client, session, translated=translated)
     finally:
         await redis_conn.delete(lock_key)
 
@@ -368,9 +377,33 @@ async def execute_media_workflow_decision(
     updated = {**updated, **updates}
 
     if MediaWorkflowCommand.POST_SOURCE_REVIEW in decision.commands:
+        if updated.get("auto_proceed"):
+            follow = advance_media_workflow(
+                decision.session, MediaWorkflowEvent.SOURCE_SRT_APPROVED
+            )
+            return await execute_media_workflow_decision(
+                client=client,
+                session=updated,
+                decision=follow,
+                source_text_length=source_text_length,
+                task_uuid=task_uuid,
+                duration_ms=duration_ms,
+            )
         if not updated.get("defer_source_review"):
             await _post_srt_review(client, updated)
     if MediaWorkflowCommand.POST_TRANSLATION_REVIEW in decision.commands:
+        if updated.get("auto_proceed"):
+            follow = advance_media_workflow(
+                decision.session, MediaWorkflowEvent.TRANSLATED_SRT_APPROVED
+            )
+            return await execute_media_workflow_decision(
+                client=client,
+                session=updated,
+                decision=follow,
+                source_text_length=source_text_length,
+                task_uuid=task_uuid,
+                duration_ms=duration_ms,
+            )
         await _post_srt_approve_continue(client, updated, translated=True)
     if MediaWorkflowCommand.START_TRANSLATE in decision.commands:
         from app.slack.media_quote_actions import _resume_translate_phase
@@ -484,7 +517,7 @@ async def _post_srt_review(
 
 
 async def _clear_srt_review_actions(
-    client: AsyncWebClient, session: dict[str, Any]
+    client: AsyncWebClient, session: dict[str, Any], *, translated: bool = False
 ) -> None:
     timestamps = [
         ts
@@ -499,7 +532,7 @@ async def _clear_srt_review_actions(
                 await client.chat_delete(channel=str(channel_id), ts=ts)
             except SlackApiError as exc:
                 notify_exception(exc)
-        submitted = MediaSrtReviewSubmittedMessage()
+        submitted = MediaSrtReviewSubmittedMessage(translated=translated)
         await client.chat_update(
             channel=str(channel_id),
             ts=approve_ts,
@@ -571,7 +604,7 @@ async def handle_media_srt_replace_submit(
             text=_("This media review has expired. Please start a new request."),
         )
         return
-    if session.get("user_id") != context["user_id"]:
+    if not await media_quote_actor_may_continue(session, context):
         await client.chat_postMessage(
             channel=context["user_id"],
             text=_("You do not have permission to replace this file."),
@@ -603,6 +636,7 @@ async def handle_media_srt_replace_submit(
         match_review_filename=False,
         acting_user_id=context["user_id"],
         language=language,
+        context=context,
     )
     if not replaced:
         await client.chat_postMessage(
