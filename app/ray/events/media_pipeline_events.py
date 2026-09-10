@@ -804,6 +804,25 @@ async def handle_translation_complete(
                 thread_ts=effective_thread_ts,
             )
             uploaded_count += 1
+            extra = _task_extra_data(task_info)
+            quote_id = extra.get("media_quote_id")
+            if extra.get("workflow_type") and quote_id:
+                review_session = await get_media_quote_session(str(quote_id))
+                if review_session and review_session.get(
+                    "review_gate", extra.get("review_gate")
+                ):
+                    from app.slack.media_workflow_actions import _post_srt_review
+
+                    await _post_srt_review(
+                        client,
+                        {
+                            **review_session,
+                            "channel_id": channel_id,
+                            "thread_ts": effective_thread_ts,
+                        },
+                        language=str(target_lang),
+                        file_label=title,
+                    )
 
             if file_path and os.path.exists(file_path):
                 os.unlink(file_path)

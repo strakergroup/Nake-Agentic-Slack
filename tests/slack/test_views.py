@@ -1,3 +1,5 @@
+import json
+
 from app.slack.templates.views import (
     calculate_total_cost,
     cancel_job_modal,
@@ -763,6 +765,10 @@ class TestVideoConfigureMediaModal:
         review = _modal_block(modal, "review_gate")
         initial = review["element"]["initial_options"]
         assert [opt["value"] for opt in initial] == ["review_gate"]
+        assert (
+            review["element"]["options"][0]["text"]["text"]
+            == "Pause to review or replace SRT files before continuing."
+        )
 
     def _files(self) -> list[dict]:
         return [
@@ -787,8 +793,17 @@ class TestMediaSrtReplaceModal:
         file_block = _modal_block(modal, "srt_file")
         element = file_block["element"]
         assert element["type"] == "file_input"
-        assert element["filetypes"] == ["srt"]
+        assert "filetypes" not in element
         assert element["max_files"] == 1
+
+    def test_replace_modal_private_metadata_includes_language(self):
+        from app.slack.templates.views import media_srt_replace_modal
+
+        modal = media_srt_replace_modal("q-1", language="fi")
+        assert json.loads(modal["private_metadata"]) == {
+            "quote_id": "q-1",
+            "language": "fi",
+        }
 
 
 def _modal_block_ids(modal: dict) -> list[str]:

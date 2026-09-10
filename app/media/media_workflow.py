@@ -137,22 +137,17 @@ def _is_translate(session: MediaWorkflowSession) -> bool:
 
 
 def _after_source_approved(session: MediaWorkflowSession) -> MediaWorkflowDecision:
-    if _is_translate(session):
-        commands: tuple[MediaWorkflowCommand, ...] = (
-            (MediaWorkflowCommand.START_SOURCE_EMBED, MediaWorkflowCommand.POST_QUOTE2)
-            if session.config.embed_source
-            else (MediaWorkflowCommand.POST_QUOTE2,)
-        )
-        return MediaWorkflowDecision(
-            session=_session_in(
-                session, MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
-            ),
-            commands=commands,
-        )
     if session.config.embed_source:
         return MediaWorkflowDecision(
             session=_session_in(session, MediaWorkflowStage.EMBEDDING_SOURCE),
             commands=(MediaWorkflowCommand.START_SOURCE_EMBED,),
+        )
+    if _is_translate(session):
+        return MediaWorkflowDecision(
+            session=_session_in(
+                session, MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
+            ),
+            commands=(MediaWorkflowCommand.POST_QUOTE2,),
         )
     return MediaWorkflowDecision(
         session=_session_in(session, MediaWorkflowStage.DONE),
@@ -217,6 +212,13 @@ def advance_media_workflow(
         event is MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
         and stage is MediaWorkflowStage.EMBEDDING_SOURCE
     ):
+        if _is_translate(session):
+            return MediaWorkflowDecision(
+                session=_session_in(
+                    session, MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
+                ),
+                commands=(MediaWorkflowCommand.POST_QUOTE2,),
+            )
         return MediaWorkflowDecision(
             session=_session_in(session, MediaWorkflowStage.DONE),
             commands=(MediaWorkflowCommand.MARK_DONE,),

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
 
 from slack_sdk.web.async_client import AsyncWebClient
+from slack_sdk.web.async_slack_response import AsyncSlackResponse
 
 from app.auth.connector import RayContext
 from app.media.media_workflow import (
@@ -37,7 +39,10 @@ from app.slack.media_quotes import (
     total_tokens_from_line_items,
     update_media_quote_session,
 )
-from app.slack.templates.messages import MediaSrtReviewMessage
+from app.slack.templates.messages import (
+    MediaSrtReviewMessage,
+    MediaSrtReviewSubmittedMessage,
+)
 from app.slack.web import download_file
 from app.translate import _
 
@@ -91,6 +96,22 @@ def _translated_replace_language(
     return None
 
 
+def parse_media_srt_review_value(value: str) -> tuple[str, str | None]:
+    raw = (value or "").strip()
+    if not raw:
+        return "", None
+    if raw.startswith("{"):
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return raw, None
+        if isinstance(data, dict):
+            quote_id = str(data.get("quote_id") or "")
+            language = data.get("language")
+            return quote_id, str(language) if language else None
+    return raw, None
+
+
 def _srt_approve_lock_key(quote_id: str) -> str:
     return media_quote_lock_key(f"srt-approve:{quote_id}")
 
@@ -103,6 +124,7 @@ async def apply_thread_srt_review_replace(
     uploaded_name: str,
     match_review_filename: bool = True,
     acting_user_id: str | None = None,
+    language: str | None = None,
 ) -> bool:
     workflow = media_workflow_session_from_quote(session)
     if workflow is None:
@@ -173,11 +195,11 @@ async def apply_thread_srt_review_replace(
             ): file_server_id
         }
         if event is MediaWorkflowEvent.TRANSLATED_SRT_REPLACED:
-            language = _translated_replace_language(
+            replaced_language = language or _translated_replace_language(
                 uploaded_name, workflow.config.target_languages
             )
-            if language:
-                updates["approved_translated_srt_language"] = language
+            if replaced_language:
+                updates["approved_translated_srt_language"] = replaced_language
         await update_media_quote_session(quote_id, updates)
         await client.chat_postMessage(
             channel=str(session["channel_id"]),
@@ -267,6 +289,7 @@ async def handle_media_srt_approve_continue(
                 ),
             )
             return
+        await _clear_srt_review_actions(client, session)
     finally:
         await redis_conn.delete(lock_key)
 
@@ -336,7 +359,8 @@ async def execute_media_workflow_decision(
         if not updated.get("defer_source_review"):
             await _post_srt_review(client, updated)
     if MediaWorkflowCommand.POST_TRANSLATION_REVIEW in decision.commands:
-        await _post_srt_review(client, updated)
+        if not updated.get("srt_review_message_ts"):
+            await _post_srt_review(client, updated)
     if MediaWorkflowCommand.START_TRANSLATE in decision.commands:
         from app.slack.media_quote_actions import _resume_translate_phase
 
@@ -377,14 +401,65 @@ async def execute_media_workflow_decision(
     return updated
 
 
-async def _post_srt_review(client: AsyncWebClient, session: dict[str, Any]) -> None:
-    review = MediaSrtReviewMessage(str(session["quote_id"]))
-    await client.chat_postMessage(
+async def _post_srt_review(
+    client: AsyncWebClient,
+    session: dict[str, Any],
+    *,
+    language: str | None = None,
+    file_label: str | None = None,
+) -> None:
+    review = MediaSrtReviewMessage(
+        str(session["quote_id"]),
+        language=language,
+        file_label=file_label,
+    )
+    response = await client.chat_postMessage(
         channel=str(session["channel_id"]),
         text=review.text,
         blocks=review.blocks,
         thread_ts=session.get("thread_ts"),
     )
+    ts = None
+    if isinstance(response, dict):
+        ts = response.get("ts")
+    elif isinstance(response, AsyncSlackResponse):
+        ts = response.get("ts")
+    if not isinstance(ts, str) or not ts:
+        return
+    existing = [
+        item
+        for item in (session.get("srt_review_message_ts") or [])
+        if isinstance(item, str)
+    ]
+    existing.append(ts)
+    session["srt_review_message_ts"] = existing
+    await update_media_quote_session(
+        str(session["quote_id"]), {"srt_review_message_ts": existing}
+    )
+
+
+async def _clear_srt_review_actions(
+    client: AsyncWebClient, session: dict[str, Any]
+) -> None:
+    timestamps = [
+        ts
+        for ts in (session.get("srt_review_message_ts") or [])
+        if isinstance(ts, str) and ts
+    ]
+    channel_id = session.get("channel_id")
+    if timestamps and channel_id:
+        submitted = MediaSrtReviewSubmittedMessage()
+        for ts in timestamps:
+            await client.chat_update(
+                channel=str(channel_id),
+                ts=ts,
+                text=submitted.text,
+                blocks=submitted.blocks,
+            )
+        await update_media_quote_session(
+            str(session["quote_id"]), {"srt_review_message_ts": []}
+        )
+        session["srt_review_message_ts"] = []
 
 
 async def _notify_srt_replace_failed(
@@ -421,9 +496,10 @@ async def handle_media_srt_replace_open(
 ) -> None:
     from app.slack.templates.views import media_srt_replace_modal
 
+    quote_id, language = parse_media_srt_review_value(str(action.get("value") or ""))
     await client.views_open(
         trigger_id=body["trigger_id"],
-        view=media_srt_replace_modal(str(action.get("value") or "")),
+        view=media_srt_replace_modal(quote_id, language=language),
     )
 
 
@@ -433,7 +509,9 @@ async def handle_media_srt_replace_submit(
     client: AsyncWebClient,
     context: RayContext,
 ) -> None:
-    quote_id = str(view.get("private_metadata") or "")
+    quote_id, language = parse_media_srt_review_value(
+        str(view.get("private_metadata") or "")
+    )
     session = await get_media_quote_session(quote_id)
     if session is None:
         await client.chat_postMessage(
@@ -458,15 +536,21 @@ async def handle_media_srt_replace_submit(
         )
         return
     slack_file = files[0]
+    uploaded_name = str(slack_file.get("name") or slack_file.get("title") or "file.srt")
+    if not uploaded_name.lower().endswith(".srt"):
+        await client.chat_postMessage(
+            channel=context["user_id"],
+            text=_("Please upload an SRT file."),
+        )
+        return
     replaced = await apply_thread_srt_review_replace(
         client=client,
         session=session,
         slack_file_id=str(slack_file.get("id") or ""),
-        uploaded_name=str(
-            slack_file.get("name") or slack_file.get("title") or "file.srt"
-        ),
+        uploaded_name=uploaded_name,
         match_review_filename=False,
         acting_user_id=context["user_id"],
+        language=language,
     )
     if not replaced:
         await client.chat_postMessage(

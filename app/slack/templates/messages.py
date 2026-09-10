@@ -3266,7 +3266,18 @@ class MediaEmbedOptionMessage(SlackMessage):
 class MediaSrtReviewMessage(SlackMessage):
     """Optional SRT review after transcription or translation."""
 
-    def __init__(self, quote_id: str) -> None:
+    def __init__(
+        self,
+        quote_id: str,
+        *,
+        language: str | None = None,
+        file_label: str | None = None,
+    ) -> None:
+        replace_value = (
+            json.dumps({"quote_id": quote_id, "language": language})
+            if language
+            else quote_id
+        )
         approve_button = ButtonElement(
             text=PlainTextObject(text=_("Approve & Continue"), emoji=True),
             action_id="media_srt_approve_continue",
@@ -3276,20 +3287,30 @@ class MediaSrtReviewMessage(SlackMessage):
         replace_button = ButtonElement(
             text=PlainTextObject(text=_("Replace"), emoji=True),
             action_id="media_srt_replace",
-            value=quote_id,
+            value=replace_value,
         )
-        review_section = SectionBlock(
-            text=MarkdownTextObject(
-                text=_(
-                    "Review the SRT file above. You can *Approve & Continue*, or *Replace* it with an edited SRT before continuing."
-                )
+        if file_label:
+            review_text = _(
+                "Review *{file}* above. You can *Approve & Continue*, or *Replace* it "
+                "with an edited SRT before continuing."
+            ).format(file=file_label)
+        else:
+            review_text = _(
+                "Review the SRT file above. You can *Approve & Continue*, or *Replace* it "
+                "with an edited SRT before continuing."
             )
-        )
+        review_section = SectionBlock(text=MarkdownTextObject(text=review_text))
         actions = ActionsBlock(elements=[approve_button, replace_button])
         super().__init__(
             _("Review SRT"),
             [review_section.to_dict(), actions.to_dict()],
         )
+
+
+class MediaSrtReviewSubmittedMessage(SlackMessage):
+    def __init__(self) -> None:
+        section = SectionBlock(text=MarkdownTextObject(text=_("SRT review submitted.")))
+        super().__init__(_("SRT review submitted."), [section.to_dict()])
 
 
 class DocumentMTJobMessage(SlackMessage):
@@ -3481,7 +3502,7 @@ class VideoOptionsMessage(SlackMessage):
         configure_section = SectionBlock(
             text=MarkdownTextObject(
                 text=_(
-                    "*Configure* - Choose transcription, translation, embedding, and whether to review SRT files before embedding."
+                    "*Configure* - Choose transcription, translation, embedding, and whether to pause and review SRT files."
                 )
             ),
             accessory=configure_button,

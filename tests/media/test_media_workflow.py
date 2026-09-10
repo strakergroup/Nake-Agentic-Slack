@@ -168,7 +168,7 @@ def test_source_srt_replaced_stays_in_review_without_commands():
     assert decision.commands == ()
 
 
-def test_source_approved_with_embed_and_translate_posts_quote2():
+def test_source_approved_with_embed_and_translate_embeds_before_quote2():
     session = advance_media_workflow(
         _transcribing(
             make_media_workflow_session(
@@ -182,14 +182,11 @@ def test_source_approved_with_embed_and_translate_posts_quote2():
         MediaWorkflowEvent.TRANSCRIPTION_COMPLETED,
     ).session
     decision = advance_media_workflow(session, MediaWorkflowEvent.SOURCE_SRT_APPROVED)
-    assert decision.session.stage == MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
-    assert decision.commands == (
-        MediaWorkflowCommand.START_SOURCE_EMBED,
-        MediaWorkflowCommand.POST_QUOTE2,
-    )
+    assert decision.session.stage == MediaWorkflowStage.EMBEDDING_SOURCE
+    assert decision.commands == (MediaWorkflowCommand.START_SOURCE_EMBED,)
 
 
-def test_source_embed_completed_during_quote2_is_ignored():
+def test_source_embed_completed_then_posts_quote2_when_translating():
     session = advance_media_workflow(
         _transcribing(
             make_media_workflow_session(
@@ -209,6 +206,29 @@ def test_source_embed_completed_during_quote2_is_ignored():
         session, MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
     )
     assert decision.session.stage == MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
+    assert decision.commands == (MediaWorkflowCommand.POST_QUOTE2,)
+
+
+def test_source_embed_completed_during_quote2_is_ignored():
+    from app.media.media_workflow import (
+        MediaWorkflowConfig,
+        MediaWorkflowSession,
+    )
+
+    session = MediaWorkflowSession(
+        stage=MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT,
+        config=MediaWorkflowConfig(
+            workflow_type=MediaWorkflowType.TRANSCRIBE_TRANSLATE,
+            embed_source=True,
+            embed_translated=True,
+            review_gate=True,
+            target_languages=("de",),
+        ),
+    )
+    decision = advance_media_workflow(
+        session, MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
+    )
+    assert decision.session.stage == MediaWorkflowStage.AWAITING_TRANSLATION_ACCEPT
     assert decision.commands == ()
 
 
@@ -223,6 +243,9 @@ def test_late_source_embed_during_translated_embed_is_noop():
     session = _transcribing(session)
     session = advance_media_workflow(
         session, MediaWorkflowEvent.TRANSCRIPTION_COMPLETED
+    ).session
+    session = advance_media_workflow(
+        session, MediaWorkflowEvent.SOURCE_EMBED_COMPLETED
     ).session
     session = advance_media_workflow(
         session, MediaWorkflowEvent.QUOTE2_ACCEPTED

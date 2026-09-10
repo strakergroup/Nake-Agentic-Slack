@@ -1431,7 +1431,7 @@ def video_configure_media_modal(
     ]
     review_option = Option(
         text=PlainTextObject(
-            text=_("Review SRT files before embedding"),
+            text=_("Pause to review or replace SRT files before continuing."),
             emoji=True,
         ),
         value="review_gate",
@@ -1545,21 +1545,27 @@ def video_configure_media_modal(
     }
 
 
-def media_srt_replace_modal(quote_id: str) -> dict[str, Any]:
+def media_srt_replace_modal(
+    quote_id: str, language: str | None = None
+) -> dict[str, Any]:
     file_input = InputBlock(
         block_id="srt_file",
         label=PlainTextObject(text=_("Replacement SRT")),
         element=FileInputElement(
             action_id="srt_file_input",
-            filetypes=["srt"],
             max_files=1,
         ),
         optional=False,
     )
+    metadata = (
+        json.dumps({"quote_id": quote_id, "language": language})
+        if language
+        else quote_id
+    )
     return {
         "type": "modal",
         "callback_id": "media_srt_replace_submit",
-        "private_metadata": quote_id,
+        "private_metadata": metadata,
         "title": {"type": "plain_text", "text": _("Replace SRT")[:24]},
         "submit": {"type": "plain_text", "text": _("Replace")},
         "close": {"type": "plain_text", "text": _("Cancel")},

@@ -804,7 +804,7 @@ class TestVideoOptionsMessage:
         assert not _blocks_contain_action(message.blocks, "video_embed_subtitles")
         assert _blocks_contain_text(
             message.blocks,
-            "*Configure* - Choose transcription, translation, embedding, and whether to review SRT files before embedding.",
+            "*Configure* - Choose transcription, translation, embedding, and whether to pause and review SRT files.",
         )
 
     def test_configure_payload_files_are_id_and_name_only(self):
@@ -1317,6 +1317,20 @@ class TestMediaSrtReviewMessage:
         assert "reupload" not in dumped.lower()
         assert "edit is required" not in dumped.lower()
         assert "must edit" not in dumped.lower()
+
+    def test_replace_button_carries_language_for_named_file(self):
+        message = MediaSrtReviewMessage(
+            "q-1", language="fi", file_label="clip_Finnish.srt"
+        )
+        dumped = json.dumps(message.blocks)
+        assert "clip_Finnish.srt" in dumped
+        replace = next(
+            el
+            for block in message.blocks
+            for el in block.get("elements", [])
+            if el.get("action_id") == "media_srt_replace"
+        )
+        assert json.loads(replace["value"]) == {"quote_id": "q-1", "language": "fi"}
 
 
 class TestBatchAndFileListMessages:
