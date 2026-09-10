@@ -919,6 +919,94 @@ async def test_resume_configure_embed_copies_duration_ms_onto_new_task():
 
 
 @pytest.mark.asyncio
+async def test_accept_media_quote_copies_word_transcript_format_into_asr_extra_data():
+    from app.slack.media_quote_actions import accept_media_quote
+
+    client = AsyncMock()
+    client.token = "xoxb-test"
+    ray = MagicMock()
+    ray.super_group = None
+    ray.client.id = "client-1"
+    context = MagicMock()
+    context.__getitem__ = lambda self, key: {
+        "user_id": "U1",
+        "team_id": "T1",
+    }.get(key)
+    context.enterprise_id = None
+    context.user_info = None
+    context.get = lambda key, default=None: {"ray": ray}.get(key, default)
+
+    session = {
+        "quote_id": "q1",
+        "user_id": "U1",
+        "stage": STAGE_AWAITING_TRANSCRIPTION_ACCEPT,
+        "pipeline_kind": PIPELINE_TRANSCRIBE,
+        "total_tokens": 100,
+        "channel_id": "C1",
+        "thread_ts": None,
+        "workflow_type": "transcribe_only",
+        "embed_source": False,
+        "embed_translated": False,
+        "target_languages": [],
+        "file_name": "clip.mp4",
+        "file_id": "F1",
+        "download_url": "https://example.com/clip.mp4",
+        "duration_ms": 60_000,
+        "word_transcript_format": "speakers",
+    }
+
+    with (
+        patch(
+            "app.slack.media_quote_actions.get_media_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch("app.slack.media_quote_actions.redis_conn") as mock_redis,
+        patch(
+            "app.slack.media_quote_actions._require_ai_token_balance",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.media_quote_actions.require_ray_client",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch(
+            "app.slack.media_quote_actions.resolve_slack_poster_email",
+            new_callable=AsyncMock,
+            return_value="user@example.com",
+        ),
+        patch(
+            "app.slack.media_quote_actions.create_asr_task",
+            new_callable=AsyncMock,
+            return_value="task-1",
+        ) as mock_create_asr,
+        patch(
+            "app.slack.media_workflow_actions.execute_media_workflow_decision",
+            new_callable=AsyncMock,
+            return_value=session,
+        ),
+        patch(
+            "app.slack.media_quote_actions._update_quote_message",
+            new_callable=AsyncMock,
+        ),
+    ):
+        mock_redis.set = AsyncMock(return_value=True)
+        mock_redis.delete = AsyncMock()
+        started = await accept_media_quote(
+            client=client,
+            body={"channel": {"id": "C1"}, "message": {"ts": "1.2"}},
+            action={"value": "q1"},
+            context=context,
+        )
+
+    assert started is True
+    mock_create_asr.assert_awaited_once()
+    asr_task = mock_create_asr.await_args.args[0]
+    assert asr_task.extra_data["word_transcript_format"] == "speakers"
+
+
+@pytest.mark.asyncio
 async def test_quote_admin_can_accept_another_users_media_quote():
     from app.slack.media_quote_actions import accept_media_quote
 

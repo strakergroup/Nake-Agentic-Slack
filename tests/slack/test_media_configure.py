@@ -267,6 +267,129 @@ def test_parse_audio_only_forces_embed_flags_off():
     assert selection.review_gate is False
 
 
+def _word_view(*, word_values: dict) -> dict:
+    values = {
+        "workflow_type": {
+            "video_configure_workflow_type": {
+                "selected_option": _option("transcribe_only"),
+            }
+        },
+        "selected_file": {"file_display": {"selected_options": [_option("F1")]}},
+        **word_values,
+    }
+    return _view(
+        metadata={
+            "channel_id": "C1",
+            "files": _files(),
+            "show_embed_option": True,
+        },
+        values=values,
+    )
+
+
+def test_parse_word_transcript_checked_with_format():
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _word_view(
+            word_values={
+                "word_transcript": {
+                    "word_transcript_options": {
+                        "selected_options": [_option("word_transcript")]
+                    }
+                },
+                "word_format": {
+                    "word_format_options": {"selected_option": _option("speakers")}
+                },
+            }
+        )
+    )
+    assert selection.word_transcript_format == "speakers"
+
+
+def test_parse_word_transcript_unchecked_ignores_stale_format():
+    """Unchecked checkbox must yield None even when a stale radio value remains."""
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _word_view(
+            word_values={
+                "word_transcript": {
+                    "word_transcript_options": {"selected_options": []}
+                },
+                "word_format": {
+                    "word_format_options": {"selected_option": _option("speakers")}
+                },
+            }
+        )
+    )
+    assert selection.word_transcript_format is None
+
+
+def test_parse_word_transcript_checked_without_format_defaults_to_text():
+    """Slack race: checkbox on but radio block missing from view state."""
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _word_view(
+            word_values={
+                "word_transcript": {
+                    "word_transcript_options": {
+                        "selected_options": [_option("word_transcript")]
+                    }
+                },
+            }
+        )
+    )
+    assert selection.word_transcript_format == "text"
+
+
+def test_parse_word_transcript_invalid_format_treated_as_none():
+    from app.slack.media_configure import parse_video_configure_media_view
+
+    selection = parse_video_configure_media_view(
+        _word_view(
+            word_values={
+                "word_transcript": {
+                    "word_transcript_options": {
+                        "selected_options": [_option("word_transcript")]
+                    }
+                },
+                "word_format": {
+                    "word_format_options": {"selected_option": _option("bogus")}
+                },
+            }
+        )
+    )
+    assert selection.word_transcript_format is None
+
+
+def test_configure_media_quote_fields_include_word_transcript_format_only_when_set():
+    from app.slack.media_configure import (
+        VideoConfigureMediaSelection,
+        configure_media_quote_fields,
+    )
+
+    def _selection(word_transcript_format: str | None) -> VideoConfigureMediaSelection:
+        return VideoConfigureMediaSelection(
+            workflow_type=MediaWorkflowType.TRANSCRIBE_ONLY,
+            embed_source=False,
+            embed_translated=False,
+            review_gate=False,
+            target_languages=[],
+            target_language_names=[],
+            files=_files(),
+            channel_id="C1",
+            word_transcript_format=word_transcript_format,
+        )
+
+    with_format = configure_media_quote_fields(_selection("speakers"))
+    assert with_format["extra"]["word_transcript_format"] == "speakers"
+
+    without_format = configure_media_quote_fields(_selection(None))
+    assert "word_transcript_format" not in without_format["extra"]
+
+
 def test_configure_media_quote_fields_use_translate_pipeline_not_legacy_embed():
     from app.slack.media_configure import (
         VideoConfigureMediaSelection,

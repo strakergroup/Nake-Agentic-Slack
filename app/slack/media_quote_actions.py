@@ -369,6 +369,8 @@ async def accept_media_quote(
             extra_data["review_gate"] = bool(
                 session.get("embed_source") or session.get("embed_translated")
             )
+        if session.get("word_transcript_format"):
+            extra_data["word_transcript_format"] = session["word_transcript_format"]
         # Stamp poster identity at accept so media spend usage rows always carry
         # Client Email/Name even when org-billed (RAY-81247) — same helpers as HT/channel.
         poster_email = await resolve_slack_poster_email(client, context["user_id"])

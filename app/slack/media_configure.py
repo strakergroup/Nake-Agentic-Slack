@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.media.media_workflow import MediaWorkflowType
+from app.media.word_transcript import WordTranscriptFormat
 from app.slack.media_quotes import PIPELINE_TRANSCRIBE, PIPELINE_TRANSCRIBE_TRANSLATE
 from app.translate import _
 
@@ -27,6 +28,7 @@ class VideoConfigureMediaSelection(BaseModel):
     channel_id: str
     thread_ts: str | None = None
     show_embed_option: bool = True
+    word_transcript_format: str | None = None
 
 
 def _selected_options(
@@ -66,6 +68,20 @@ def word_transcript_selection(values: dict[str, Any]) -> tuple[bool, str | None]
     )
     word_format = _radio_selected_value(values, "word_format", "word_format_options")
     return checked, word_format
+
+
+def _parse_word_transcript_format(values: dict[str, Any]) -> str | None:
+    # Unchecked always wins: the radio can hold a stale value after uncheck.
+    checked, word_format = word_transcript_selection(values)
+    if not checked:
+        return None
+    if word_format is None:
+        # Slack race: checkbox rebuild can submit before the radio block exists.
+        return WordTranscriptFormat.TEXT.value
+    try:
+        return WordTranscriptFormat(word_format).value
+    except ValueError:
+        return None
 
 
 def parse_video_configure_media_view(
@@ -136,6 +152,7 @@ def parse_video_configure_media_view(
         channel_id=str(metadata.get("channel_id") or ""),
         thread_ts=metadata.get("thread_ts"),
         show_embed_option=show_embed_option,
+        word_transcript_format=_parse_word_transcript_format(values),
     )
 
 
@@ -147,14 +164,17 @@ def configure_media_quote_fields(
         if selection.workflow_type is MediaWorkflowType.TRANSCRIBE_ONLY
         else PIPELINE_TRANSCRIBE_TRANSLATE
     )
+    extra: dict[str, Any] = {
+        "embed_source": selection.embed_source,
+        "embed_translated": selection.embed_translated,
+        "review_gate": selection.embed_source or selection.embed_translated,
+        "workflow_type": selection.workflow_type.value,
+    }
+    if selection.word_transcript_format:
+        extra["word_transcript_format"] = selection.word_transcript_format
     return {
         "pipeline_kind": pipeline_kind,
         "target_languages": selection.target_languages,
         "target_language_names": selection.target_language_names,
-        "extra": {
-            "embed_source": selection.embed_source,
-            "embed_translated": selection.embed_translated,
-            "review_gate": selection.embed_source or selection.embed_translated,
-            "workflow_type": selection.workflow_type.value,
-        },
+        "extra": extra,
     }
