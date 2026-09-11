@@ -183,6 +183,79 @@ class TestPopulateMediaTranslationQuoteAdjustmentModal:
         assert "French" in rendered
         assert rendered.count("initial_options") == 2
 
+    async def test_populates_translated_embed_cost_for_selected_languages(self):
+        client = AsyncMock()
+        session = _session(embed_translated=True, duration_ms=60_000)
+        with (
+            patch(
+                "app.slack.evaluation_ai_quote_modal_service.get_media_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_modal_service.update_media_quote_session",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_modal_service.safe_views_update",
+                new_callable=AsyncMock,
+            ) as mock_update,
+        ):
+            await populate_ai_quote_adjustment_modal(
+                client,
+                view_id="view-1",
+                quote_id="quote-1",
+                quote_kind="media_translation",
+                user_id="U1",
+                context={"channel_id": "C1"},
+                channel_id="C1",
+                message_ts="111.222",
+            )
+
+        rendered = str(mock_update.await_args.args[2]["blocks"])
+        assert "Translated subtitle embedding" in rendered
+        assert "2 languages" in rendered
+        assert "*Total cost:* USD 13.20" in rendered
+
+    async def test_populates_singular_language_for_translated_embed(self):
+        client = AsyncMock()
+        session = _session(
+            embed_translated=True,
+            duration_ms=60_000,
+            selected_pairs=["Fmedia:es"],
+        )
+        with (
+            patch(
+                "app.slack.evaluation_ai_quote_modal_service.get_media_quote_session",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_modal_service.update_media_quote_session",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.slack.evaluation_ai_quote_modal_service.safe_views_update",
+                new_callable=AsyncMock,
+            ) as mock_update,
+        ):
+            await populate_ai_quote_adjustment_modal(
+                client,
+                view_id="view-1",
+                quote_id="quote-1",
+                quote_kind="media_translation",
+                user_id="U1",
+                context={"channel_id": "C1"},
+                channel_id="C1",
+                message_ts="111.222",
+            )
+
+        rendered = str(mock_update.await_args.args[2]["blocks"])
+        assert "Translated subtitle embedding" in rendered
+        assert "1 language" in rendered
+        assert "2 languages" not in rendered
+        assert "*Total cost:* USD 6.60" in rendered
+
 
 @pytest.mark.asyncio
 class TestRefreshMediaTranslationQuoteAdjustmentCost:
@@ -221,6 +294,52 @@ class TestRefreshMediaTranslationQuoteAdjustmentCost:
         updated = client.views_update.await_args.kwargs["view"]
         # One lang: ceil(150000×0.002)=300 tokens → USD 6.00
         assert "*Total cost:* USD 6.00" in str(updated["blocks"])
+
+    async def test_refresh_scales_translated_embed_when_language_deselected(self):
+        view = {
+            "id": "view-1",
+            "state": {
+                "values": {
+                    "ai_quote_language_Fmedia_es": {
+                        "evaluation_ai_quote_language_selection": {
+                            "selected_options": [{"value": "Fmedia:es"}],
+                        }
+                    },
+                }
+            },
+            "blocks": [
+                {
+                    "block_id": "ai_quote_embed_cost_block",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            "*Translated subtitle embedding:* 2 languages · USD 1.20"
+                        ),
+                    },
+                },
+                {
+                    "block_id": "total_cost_block",
+                    "text": {"type": "mrkdwn", "text": "*Total cost:* USD 13.20"},
+                },
+            ],
+        }
+        client = AsyncMock()
+        with patch(
+            "app.slack.evaluation_ai_quote_modal_service.get_media_quote_session",
+            new_callable=AsyncMock,
+            return_value=_session(embed_translated=True, duration_ms=60_000),
+        ):
+            await refresh_ai_quote_adjustment_cost(
+                client,
+                view=view,
+                quote_id="quote-1",
+                quote_kind="media_translation",
+            )
+
+        updated = str(client.views_update.await_args.kwargs["view"]["blocks"])
+        assert "1 language" in updated
+        assert "2 languages" not in updated
+        assert "*Total cost:* USD 6.60" in updated
 
 
 @pytest.mark.asyncio

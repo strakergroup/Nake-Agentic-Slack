@@ -44,6 +44,7 @@ from app.slack.media_quote_adjustment import (
 from app.slack.media_quotes import (
     STAGE_AWAITING_TRANSLATION_ACCEPT,
     get_media_quote_session,
+    translated_embed_tokens_for_session,
     update_media_quote_session,
 )
 from app.slack.middleware import populate_ray_connection, require_ray_client
@@ -144,6 +145,9 @@ async def populate_ai_quote_adjustment_modal(
         selected_pairs = [
             str(value) for value in session.get("selected_pairs") or []
         ] or document_mt_all_pairs(quote)
+        embed_tokens = translated_embed_tokens_for_session(
+            session, language_count=len(selected_pairs)
+        )
         await safe_views_update(
             client,
             view_id,
@@ -154,6 +158,8 @@ async def populate_ai_quote_adjustment_modal(
                 selected_pairs=selected_pairs,
                 ai_tokens=document_mt_tokens_for_pairs(quote, selected_pairs),
                 pdf_tokens=0,
+                embed_tokens=embed_tokens,
+                embed_language_count=len(selected_pairs) if embed_tokens else 0,
                 channel_id=resolved_channel_id or None,
                 message_ts=resolved_message_ts,
             ),
@@ -333,6 +339,8 @@ async def refresh_ai_quote_adjustment_cost(
     """Refresh modal cost blocks from its current checkbox state."""
     selected_pairs = selected_pairs_from_view(view)
     language_costs: list[dict[str, Any]] = []
+    embed_tokens = 0
+    embed_language_count = 0
     if quote_kind == DOCUMENT_MT_QUOTE_KIND:
         session = await get_document_mt_quote_session(quote_id)
         if not session:
@@ -349,6 +357,10 @@ async def refresh_ai_quote_adjustment_cost(
         language_costs = media_translation_language_costs(session)
         ai_tokens = document_mt_tokens_for_pairs(quote, selected_pairs)
         pdf_tokens = 0
+        embed_tokens = translated_embed_tokens_for_session(
+            session, language_count=len(selected_pairs)
+        )
+        embed_language_count = len(selected_pairs) if embed_tokens else 0
     elif quote_kind == "pdf_prequote":
         session = await get_pdf_evaluate_quote_session(quote_id)
         if not session:
@@ -398,5 +410,7 @@ async def refresh_ai_quote_adjustment_cost(
             ai_tokens=ai_tokens,
             pdf_tokens=pdf_tokens,
             language_costs=language_costs or None,
+            embed_tokens=embed_tokens,
+            embed_language_count=embed_language_count,
         ),
     )

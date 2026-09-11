@@ -155,6 +155,13 @@ def translated_embed_tokens_for_session(
     )
 
 
+def translated_embed_language_detail(language_count: int) -> str:
+    """Singular or plural language copy for Quote2 translated embed rows."""
+    if language_count == 1:
+        return _("1 language")
+    return f"{language_count} {_('languages')}"
+
+
 def build_quote1_line_items(
     *,
     pipeline_kind: str,

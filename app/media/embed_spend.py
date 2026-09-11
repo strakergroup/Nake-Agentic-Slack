@@ -23,6 +23,15 @@ def embedding_target_language_codes(task_info: "TranscriptionTaskInfo") -> list[
     return []
 
 
+def embedding_spend_language_count(
+    task_info: "TranscriptionTaskInfo", *, target_languages: list[str]
+) -> int:
+    """Language count for POST /mt/embed; must match target_languages length when set."""
+    if target_languages:
+        return len(target_languages)
+    return int(task_info.num_target_languages or 1)
+
+
 def embedding_source_language(task_info: "TranscriptionTaskInfo") -> str | None:
     """Source language for embed usage (Whisper, task column, or thread SRT hint)."""
     if task_info.detected_language:

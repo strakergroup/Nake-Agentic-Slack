@@ -21,6 +21,7 @@ from app.auth.connector import (
 from app.database import async_engines
 from app.media.embed_spend import (
     embedding_source_language,
+    embedding_spend_language_count,
     embedding_target_language_codes,
     is_embed_only_pipeline,
 )
@@ -451,7 +452,10 @@ async def spend_embedding_credits(
                 extra_data = task_info.extra_data or {}
                 charged_stages = extra_data.get("_charged_stages", [])
 
-        num_target_languages = task_info.num_target_languages or 1
+        target_languages = embedding_target_language_codes(task_info)
+        num_target_languages = embedding_spend_language_count(
+            task_info, target_languages=target_languages
+        )
         tokens_per_language = duration_to_subtitling_tokens(duration_ms)
         amount = tokens_per_language * num_target_languages
 
@@ -462,7 +466,6 @@ async def spend_embedding_credits(
                 service="media_embedding",
                 unit_type="milliseconds",
             )
-            target_languages = embedding_target_language_codes(task_info)
             poster_email = (
                 extra_data.get("requester_email") or extra_data.get("email") or ""
             ).strip() or None

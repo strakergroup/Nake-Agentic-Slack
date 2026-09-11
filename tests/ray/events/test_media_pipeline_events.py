@@ -1892,3 +1892,68 @@ async def test_spend_embedding_credits_uses_extra_data_duration_when_column_miss
 
     assert amount == 30
     assert mock_log.await_args.kwargs["duration_ms"] == 60_000
+
+
+@pytest.mark.asyncio
+async def test_spend_embedding_credits_uses_billing_langs_not_mux_track_count():
+    """Translated mux includes the source SRT; /mt/embed count must match billing langs."""
+    from app.ray.events.media_pipeline_events import spend_embedding_credits
+
+    task_info = SimpleNamespace(
+        task_uuid="embed-task",
+        file_name="test.mp4",
+        pipeline_type="embed",
+        duration_ms=60_000,
+        extra_data={
+            "embed_role": "translated",
+            "embed_source": True,
+            "embed_translated": True,
+            "target_languages": ["bg", "en"],
+            "language_codes": ["zh-CN", "bg", "en"],
+            "srt_file_ids": ["src", "bg", "en"],
+        },
+        detected_language="zh-CN",
+        translated_file_ids=None,
+        num_target_languages=3,
+        source_text_length=None,
+    )
+    auth = SimpleNamespace(
+        slack_user=SimpleNamespace(
+            ray_client_id="client-1",
+            ray_user_group_id="group-1",
+        )
+    )
+
+    class _FakeDb:
+        async def execute(self, stmt):
+            return None
+
+        async def commit(self):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.get_transcription_task",
+            new_callable=AsyncMock,
+            return_value=task_info,
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.log_embedding_by_client_id",
+            new_callable=AsyncMock,
+        ) as mock_log,
+        patch(
+            "app.ray.events.media_pipeline_events.AsyncSession",
+            return_value=_FakeDb(),
+        ),
+    ):
+        amount = await spend_embedding_credits(task_info, auth)
+
+    assert mock_log.await_args.kwargs["target_languages"] == ["bg", "en"]
+    assert mock_log.await_args.kwargs["num_target_languages"] == 2
+    assert amount == 60

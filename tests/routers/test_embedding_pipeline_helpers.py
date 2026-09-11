@@ -49,3 +49,20 @@ def test_embedding_skips_und_language_code():
     )
     assert embedding_target_language_codes(task) == []
     assert embedding_source_language(task) is None
+
+
+def test_embedding_spend_count_follows_billing_targets_not_mux_tracks():
+    from app.media.embed_spend import embedding_spend_language_count
+
+    task = _task_info(
+        pipeline_type="embed",
+        extra_data={
+            "target_languages": ["bg", "en"],
+            "language_codes": ["zh-CN", "bg", "en"],
+        },
+        num_target_languages=3,
+    )
+    codes = embedding_target_language_codes(task)
+
+    assert codes == ["bg", "en"]
+    assert embedding_spend_language_count(task, target_languages=codes) == 2

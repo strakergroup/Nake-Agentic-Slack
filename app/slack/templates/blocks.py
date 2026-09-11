@@ -22,7 +22,10 @@ from app.slack.media_quote_adjustment import (
     media_translation_language_costs,
     media_translation_quote_from_session,
 )
-from app.slack.media_quotes import translated_embed_tokens_for_session
+from app.slack.media_quotes import (
+    translated_embed_language_detail,
+    translated_embed_tokens_for_session,
+)
 from app.slack.select_options import get_languages_sync
 from app.slack.utils import (
     calculate_evaluation_percentages,
@@ -864,11 +867,7 @@ def media_translation_quote_blocks(
         intro_text=_("Running the AI translation will incur the following cost:"),
         additional_label=(_("Translated subtitle embedding") if embed_tokens else None),
         additional_detail=(
-            (
-                _("1 language")
-                if len(selected_languages) == 1
-                else f"{len(selected_languages)} {_('languages')}"
-            )
+            translated_embed_language_detail(len(selected_languages))
             if embed_tokens
             else None
         ),

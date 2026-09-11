@@ -6,7 +6,10 @@ from copy import deepcopy
 from typing import Any, Iterable
 
 from app.slack.ai_quote_display import ai_language_cost_display_amounts
-from app.slack.media_quotes import media_translation_tokens
+from app.slack.media_quotes import (
+    media_translation_tokens,
+    translated_embed_language_detail,
+)
 from app.slack.templates.blocks import (
     _format_evaluate_quote_cost,
     _format_evaluate_quote_usd,
@@ -588,6 +591,8 @@ def update_modal_cost_blocks(
     ai_tokens: int,
     pdf_tokens: int,
     language_costs: list[dict[str, Any]] | None = None,
+    embed_tokens: int = 0,
+    embed_language_count: int = 0,
 ) -> dict[str, Any]:
     """Update cost blocks and keep checkbox initial options in sync with state.
 
@@ -621,10 +626,16 @@ def update_modal_cost_blocks(
             block["text"]["text"] = (
                 f"*{_('PDF conversion')}:* {_format_evaluate_quote_cost(pdf_tokens)}"
             )
+        elif block_id == "ai_quote_embed_cost_block":
+            block["text"]["text"] = (
+                f"*{_('Translated subtitle embedding')}:* "
+                f"{translated_embed_language_detail(embed_language_count)} · "
+                f"{_format_evaluate_quote_cost(embed_tokens)}"
+            )
         elif block_id == "total_cost_block":
             block["text"]["text"] = (
                 f"*{_('Total cost')}:* "
-                f"{_format_evaluate_quote_cost(ai_tokens + pdf_tokens)}"
+                f"{_format_evaluate_quote_cost(ai_tokens + pdf_tokens + embed_tokens)}"
             )
         if not display_by_pair:
             continue

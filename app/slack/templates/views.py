@@ -44,6 +44,7 @@ from ..evaluation_ai_adjustment import (
     AI_QUOTE_ADJUST_CALLBACK_ID,
     AI_QUOTE_LANGUAGE_SELECTION_ACTION_ID,
 )
+from ..media_quotes import translated_embed_language_detail
 from ..select_options import (
     filter_auto_translate_language_options,
     get_auto_translate_language_options,
@@ -933,6 +934,8 @@ def evaluation_ai_quote_adjust_modal(
     selected_pairs: list[str],
     ai_tokens: int,
     pdf_tokens: int = 0,
+    embed_tokens: int = 0,
+    embed_language_count: int = 0,
     channel_id: str | None = None,
     message_ts: str | None = None,
 ) -> dict[str, Any]:
@@ -1008,7 +1011,22 @@ def evaluation_ai_quote_adjust_modal(
                 },
             }
         )
-    total_tokens = ai_tokens + pdf_tokens
+    if embed_tokens:
+        blocks.append(
+            {
+                "type": "section",
+                "block_id": "ai_quote_embed_cost_block",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*{_('Translated subtitle embedding')}:* "
+                        f"{translated_embed_language_detail(embed_language_count)} · "
+                        f"{_format_evaluate_quote_cost(embed_tokens)}"
+                    ),
+                },
+            }
+        )
+    total_tokens = ai_tokens + pdf_tokens + embed_tokens
     blocks.append(
         {
             "type": "section",
