@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Branches: `RAY-81850_word-transcript` in **both** repos, created from `RAY-81819_media-workflow-v2` (Configure lives there). Do not commit this work onto `RAY-81819_media-workflow-v2`. Never merge `uat` into these branches. Base for a later master PR is `origin/master` after RAY-81819 lands, or stack the PR on the V2 branch.
+- Branches: commit RAY-81850 work on the parent feature branch `RAY-81819_media-workflow-v2` in **both** repos (already checked out). Do not create `RAY-81850_word-transcript`. Never merge `uat` into these branches. Base for a later master PR is `origin/master` after RAY-81819 lands, or stack the PR on the V2 branch.
 - This repo and the consumer use Pipfile. Run `pipenv run pytest path -x`. Do not migrate to uv.
 - Default path stays SRT. Word is opt-in. No extra fee / pricing / quote line-item work.
 - Word formats (all `.docx`): `text`, `speakers`, `timestamps`, `speakers_and_timestamps`. No extra SRT variants.
