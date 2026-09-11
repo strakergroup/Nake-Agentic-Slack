@@ -994,21 +994,6 @@ async def handle_video_configure_workflow_type(
     )
 
 
-@app.action("word_transcript_options")
-@slack_log_decorator
-async def handle_video_configure_word_transcript(
-    ack: AsyncAck,
-    action: Optional[Dict[str, Any]],
-    body: Dict[str, Any],
-    client: AsyncWebClient,
-):
-    await ack()
-    assert action is not None
-    await media.handle_video_configure_word_transcript(
-        client=client, body=body, action=action
-    )
-
-
 @app.view("video_transcribe_translate_submit", middleware=[ray_connection])
 @slack_log_decorator
 async def handle_video_transcribe_translate_submit(

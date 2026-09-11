@@ -73,24 +73,14 @@ def _radio_selected_value(
     return (action.get("selected_option") or {}).get("value")
 
 
-def word_transcript_selection(values: dict[str, Any]) -> tuple[bool, str | None]:
-    checked = _checkbox_selected(
-        values, "word_transcript", "word_transcript_options", "word_transcript"
+def word_transcript_selection(values: dict[str, Any]) -> str | None:
+    selected = _radio_selected_value(
+        values, "word_transcript", "word_transcript_format"
     )
-    word_format = _radio_selected_value(values, "word_format", "word_format_options")
-    return checked, word_format
-
-
-def _parse_word_transcript_format(values: dict[str, Any]) -> str | None:
-    # Unchecked always wins: the radio can hold a stale value after uncheck.
-    checked, word_format = word_transcript_selection(values)
-    if not checked:
+    if selected in (None, "none"):
         return None
-    if word_format is None:
-        # Slack race: checkbox rebuild can submit before the radio block exists.
-        return WordTranscriptFormat.TEXT.value
     try:
-        return WordTranscriptFormat(word_format).value
+        return WordTranscriptFormat(selected).value
     except ValueError:
         return None
 
@@ -163,7 +153,7 @@ def parse_video_configure_media_view(
         channel_id=str(metadata.get("channel_id") or ""),
         thread_ts=metadata.get("thread_ts"),
         show_embed_option=show_embed_option,
-        word_transcript_format=_parse_word_transcript_format(values),
+        word_transcript_format=word_transcript_selection(values),
     )
 
 

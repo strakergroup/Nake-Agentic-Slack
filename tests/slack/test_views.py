@@ -785,60 +785,46 @@ class TestVideoConfigureMediaModal:
         )
         assert "review_gate" not in _modal_block_ids(modal)
 
-    def test_configure_modal_hides_word_format_until_checked(self):
+    def test_configure_modal_word_is_optional_select_defaulting_to_none(self):
         from app.slack.templates.views import video_configure_media_modal
 
         modal = video_configure_media_modal(channel_id="C1", files=self._files())
         ids = _modal_block_ids(modal)
         assert "word_transcript" in ids
         assert "word_format" not in ids
-
-    def test_configure_modal_shows_format_radio_when_word_checked(self):
-        from app.slack.templates.views import video_configure_media_modal
-
-        modal = video_configure_media_modal(
-            channel_id="C1",
-            files=self._files(),
-            word_transcript=True,
-        )
-        fmt = _modal_block(modal, "word_format")
-        values = [opt["value"] for opt in fmt["element"]["options"]]
-        assert values == [
+        word = _modal_block(modal, "word_transcript")
+        assert word["optional"] is True
+        assert word.get("dispatch_action") is not True
+        element = word["element"]
+        assert element["type"] == "static_select"
+        assert element["action_id"] == "word_transcript_format"
+        assert [opt["value"] for opt in element["options"]] == [
+            "none",
             "text",
             "speakers",
             "timestamps",
             "speakers_and_timestamps",
         ]
-        assert fmt["element"]["initial_option"]["value"] == "text"
+        assert [opt["text"]["text"] for opt in element["options"]] == [
+            "None",
+            "Text",
+            "Speakers",
+            "Timestamps",
+            "Speakers and timestamps",
+        ]
+        assert element["initial_option"]["value"] == "none"
 
-    def test_word_transcript_checkbox_is_optional_and_dispatches(self):
-        from app.slack.templates.views import video_configure_media_modal
-
-        modal = video_configure_media_modal(channel_id="C1", files=self._files())
-        word = _modal_block(modal, "word_transcript")
-        assert word["optional"] is True
-        assert word["dispatch_action"] is True
-        element = word["element"]
-        assert element["action_id"] == "word_transcript_options"
-        assert [opt["value"] for opt in element["options"]] == ["word_transcript"]
-        assert element["options"][0]["text"]["text"] == "Word transcript"
-        assert not element.get("initial_options")
-
-    def test_word_format_radio_preserves_selected_format(self):
+    def test_configure_modal_word_select_preserves_selected_format(self):
         from app.slack.templates.views import video_configure_media_modal
 
         modal = video_configure_media_modal(
             channel_id="C1",
             files=self._files(),
-            word_transcript=True,
             word_transcript_format="speakers",
         )
-        fmt = _modal_block(modal, "word_format")
-        assert fmt["element"]["initial_option"]["value"] == "speakers"
         word = _modal_block(modal, "word_transcript")
-        assert [opt["value"] for opt in word["element"]["initial_options"]] == [
-            "word_transcript"
-        ]
+        assert word["element"]["initial_option"]["value"] == "speakers"
+        assert "word_format" not in _modal_block_ids(modal)
 
     def _files(self) -> list[dict]:
         return [

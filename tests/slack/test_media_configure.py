@@ -287,19 +287,14 @@ def _word_view(*, word_values: dict) -> dict:
     )
 
 
-def test_parse_word_transcript_checked_with_format():
+def test_parse_word_transcript_select_speakers():
     from app.slack.media_configure import parse_video_configure_media_view
 
     selection = parse_video_configure_media_view(
         _word_view(
             word_values={
                 "word_transcript": {
-                    "word_transcript_options": {
-                        "selected_options": [_option("word_transcript")]
-                    }
-                },
-                "word_format": {
-                    "word_format_options": {"selected_option": _option("speakers")}
+                    "word_transcript_format": {"selected_option": _option("speakers")}
                 },
             }
         )
@@ -307,18 +302,14 @@ def test_parse_word_transcript_checked_with_format():
     assert selection.word_transcript_format == "speakers"
 
 
-def test_parse_word_transcript_unchecked_ignores_stale_format():
-    """Unchecked checkbox must yield None even when a stale radio value remains."""
+def test_parse_word_transcript_none_is_unset():
     from app.slack.media_configure import parse_video_configure_media_view
 
     selection = parse_video_configure_media_view(
         _word_view(
             word_values={
                 "word_transcript": {
-                    "word_transcript_options": {"selected_options": []}
-                },
-                "word_format": {
-                    "word_format_options": {"selected_option": _option("speakers")}
+                    "word_transcript_format": {"selected_option": _option("none")}
                 },
             }
         )
@@ -326,22 +317,11 @@ def test_parse_word_transcript_unchecked_ignores_stale_format():
     assert selection.word_transcript_format is None
 
 
-def test_parse_word_transcript_checked_without_format_defaults_to_text():
-    """Slack race: checkbox on but radio block missing from view state."""
+def test_parse_word_transcript_missing_select_is_unset():
     from app.slack.media_configure import parse_video_configure_media_view
 
-    selection = parse_video_configure_media_view(
-        _word_view(
-            word_values={
-                "word_transcript": {
-                    "word_transcript_options": {
-                        "selected_options": [_option("word_transcript")]
-                    }
-                },
-            }
-        )
-    )
-    assert selection.word_transcript_format == "text"
+    selection = parse_video_configure_media_view(_word_view(word_values={}))
+    assert selection.word_transcript_format is None
 
 
 def test_parse_word_transcript_invalid_format_treated_as_none():
@@ -351,12 +331,7 @@ def test_parse_word_transcript_invalid_format_treated_as_none():
         _word_view(
             word_values={
                 "word_transcript": {
-                    "word_transcript_options": {
-                        "selected_options": [_option("word_transcript")]
-                    }
-                },
-                "word_format": {
-                    "word_format_options": {"selected_option": _option("bogus")}
+                    "word_transcript_format": {"selected_option": _option("bogus")}
                 },
             }
         )
@@ -533,12 +508,7 @@ async def test_workflow_type_change_preserves_word_transcript_state():
             "state": {
                 "values": {
                     "word_transcript": {
-                        "word_transcript_options": {
-                            "selected_options": [_option("word_transcript")]
-                        }
-                    },
-                    "word_format": {
-                        "word_format_options": {
+                        "word_transcript_format": {
                             "selected_option": _option("speakers"),
                         }
                     },
@@ -550,122 +520,8 @@ async def test_workflow_type_change_preserves_word_transcript_state():
     await handle_video_configure_workflow_type(client=client, body=body, action=action)
     view = client.views_update.await_args.kwargs["view"]
     word = next(b for b in view["blocks"] if b.get("block_id") == "word_transcript")
-    assert [opt["value"] for opt in word["element"]["initial_options"]] == [
-        "word_transcript"
-    ]
-    fmt = next(b for b in view["blocks"] if b.get("block_id") == "word_format")
-    assert fmt["element"]["initial_option"]["value"] == "speakers"
-
-
-@pytest.mark.asyncio
-async def test_word_checkbox_check_rebuilds_modal_with_format_block():
-    from unittest.mock import AsyncMock
-
-    from app.slack.handlers.media import handle_video_configure_word_transcript
-
-    client = AsyncMock()
-    body = {
-        "view": {
-            "id": "V1",
-            "private_metadata": json.dumps(
-                {
-                    "channel_id": "C1",
-                    "files": _files(),
-                    "thread_ts": "1.2",
-                    "show_embed_option": True,
-                }
-            ),
-            "state": {
-                "values": {
-                    "workflow_type": {
-                        "video_configure_workflow_type": {
-                            "selected_option": _option("transcribe_only"),
-                        }
-                    },
-                    "embedding": {
-                        "embedding_options": {
-                            "selected_options": [_option("embed_source")]
-                        }
-                    },
-                }
-            },
-        }
-    }
-    action = {"selected_options": [_option("word_transcript")]}
-    await handle_video_configure_word_transcript(
-        client=client, body=body, action=action
-    )
-    client.views_update.assert_awaited_once()
-    view = client.views_update.await_args.kwargs["view"]
-    block_ids = [block.get("block_id") for block in view["blocks"]]
-    assert "word_format" in block_ids
-    fmt = next(b for b in view["blocks"] if b.get("block_id") == "word_format")
-    assert fmt["element"]["initial_option"]["value"] == "text"
-    # transcribe_only workflow and embed selection survive the rebuild
-    assert "target_languages" not in block_ids
-    embedding = next(b for b in view["blocks"] if b.get("block_id") == "embedding")
-    assert [opt["value"] for opt in embedding["element"]["initial_options"]] == [
-        "embed_source"
-    ]
-
-
-@pytest.mark.asyncio
-async def test_word_checkbox_check_preserves_languages_and_file_selection():
-    from unittest.mock import AsyncMock
-
-    from app.slack.handlers.media import handle_video_configure_word_transcript
-
-    client = AsyncMock()
-    files = [
-        {"file_id": "F1", "file_name": "clip.mp4"},
-        {"file_id": "F2", "file_name": "other.mp4"},
-    ]
-    body = {
-        "view": {
-            "id": "V1",
-            "private_metadata": json.dumps(
-                {
-                    "channel_id": "C1",
-                    "files": files,
-                    "thread_ts": "1.2",
-                    "show_embed_option": True,
-                }
-            ),
-            "state": {
-                "values": {
-                    "workflow_type": {
-                        "video_configure_workflow_type": {
-                            "selected_option": _option("transcribe_translate"),
-                        }
-                    },
-                    "selected_file": {
-                        "file_display": {
-                            "selected_options": [_option("F1", "clip.mp4")]
-                        }
-                    },
-                    "target_languages": {
-                        "language_mt_options": {
-                            "selected_options": [_option("fr", "French")]
-                        }
-                    },
-                }
-            },
-        }
-    }
-    action = {"selected_options": [_option("word_transcript")]}
-    await handle_video_configure_word_transcript(
-        client=client, body=body, action=action
-    )
-    view = client.views_update.await_args.kwargs["view"]
-    langs = next(b for b in view["blocks"] if b.get("block_id") == "target_languages")
-    assert [opt["value"] for opt in langs["element"].get("initial_options") or []] == [
-        "fr"
-    ]
-    selected = next(b for b in view["blocks"] if b.get("block_id") == "selected_file")
-    # The deselected file (F2) must stay deselected after the rebuild.
-    assert [
-        opt["value"] for opt in selected["element"].get("initial_options") or []
-    ] == ["F1"]
+    assert word["element"]["initial_option"]["value"] == "speakers"
+    assert "word_format" not in [block.get("block_id") for block in view["blocks"]]
 
 
 @pytest.mark.asyncio
@@ -708,51 +564,6 @@ async def test_workflow_type_change_preserves_file_selection():
     assert [
         opt["value"] for opt in selected["element"].get("initial_options") or []
     ] == ["F2"]
-
-
-@pytest.mark.asyncio
-async def test_word_checkbox_uncheck_removes_format_block():
-    from unittest.mock import AsyncMock
-
-    from app.slack.handlers.media import handle_video_configure_word_transcript
-
-    client = AsyncMock()
-    body = {
-        "view": {
-            "id": "V1",
-            "private_metadata": json.dumps(
-                {
-                    "channel_id": "C1",
-                    "files": _files(),
-                    "show_embed_option": True,
-                }
-            ),
-            "state": {
-                "values": {
-                    "workflow_type": {
-                        "video_configure_workflow_type": {
-                            "selected_option": _option("transcribe_translate"),
-                        }
-                    },
-                    "word_format": {
-                        "word_format_options": {
-                            "selected_option": _option("speakers"),
-                        }
-                    },
-                }
-            },
-        }
-    }
-    action = {"selected_options": []}
-    await handle_video_configure_word_transcript(
-        client=client, body=body, action=action
-    )
-    view = client.views_update.await_args.kwargs["view"]
-    block_ids = [block.get("block_id") for block in view["blocks"]]
-    assert "word_format" not in block_ids
-    word = next(b for b in view["blocks"] if b.get("block_id") == "word_transcript")
-    assert not word["element"].get("initial_options")
-    assert "target_languages" in block_ids
 
 
 @pytest.mark.asyncio
