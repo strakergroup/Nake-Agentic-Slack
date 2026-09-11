@@ -34,6 +34,7 @@ from app.media.media_workflow import (
     advance_media_workflow,
     media_workflow_session_from_quote,
 )
+from app.media.transcript_zip import transcript_zip_session_updates
 from app.models import TranscriptionTask, TranscriptionTaskInfo
 from app.ray.events.logging import post_notification
 from app.ray.utils import download_from_file_server_async, is_ibm_enterprise
@@ -773,6 +774,19 @@ async def handle_transcription_complete(
             word_file_name = (
                 f"{Path(result_file_name).stem}.docx" if word_file_id else None
             )
+            if extra_data.get("workflow_type") and quote_id:
+                zip_session = (
+                    review_session
+                    if source_review
+                    else await get_media_quote_session(str(quote_id))
+                )
+                zip_files = [(result_file_id, result_file_name)]
+                if word_file_id and word_file_name:
+                    zip_files.append((str(word_file_id), word_file_name))
+                await update_media_quote_session(
+                    str(quote_id),
+                    transcript_zip_session_updates(zip_session or {}, zip_files),
+                )
             await enqueue_transcription_upload(
                 file_id=result_file_id,
                 file_name=result_file_name,
@@ -872,6 +886,7 @@ async def handle_translation_complete(
     original_path = Path(original_file_name)
     original_stem = original_path.stem
     uploaded_count = 0
+    zip_files: list[tuple[str, str]] = []
     word_translated_file_ids = (
         _task_extra_data(task_info).get("word_translated_file_ids") or {}
     )
@@ -901,12 +916,15 @@ async def handle_translation_complete(
                 thread_ts=effective_thread_ts,
             )
             uploaded_count += 1
+            zip_files.append((str(file_id), title))
             word_file_id = word_translated_file_ids.get(target_lang)
             if word_file_id:
+                word_title = f"{original_stem}_{lang_name}.docx"
+                zip_files.append((str(word_file_id), word_title))
                 await _upload_translated_word_transcript(
                     client,
                     word_file_id=str(word_file_id),
-                    title=f"{original_stem}_{lang_name}.docx",
+                    title=word_title,
                     channel_id=channel_id,
                     thread_ts=effective_thread_ts,
                 )
@@ -948,6 +966,11 @@ async def handle_translation_complete(
             if extra.get("workflow_type") and quote_id
             else None
         )
+        if extra.get("workflow_type") and quote_id and zip_files:
+            await update_media_quote_session(
+                str(quote_id),
+                transcript_zip_session_updates(review_session or {}, zip_files),
+            )
         review_enabled = bool(
             review_session
             and review_session.get("embed_translated")

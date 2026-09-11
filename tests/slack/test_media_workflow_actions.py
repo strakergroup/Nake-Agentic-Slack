@@ -1048,6 +1048,10 @@ async def test_replace_modal_accepts_differently_named_srt():
         "target_languages": [],
         "channel_id": "C1",
         "thread_ts": "1.2",
+        "transcript_zip_entries": [
+            {"file_id": "srt-old", "filename": "clip.srt"},
+            {"file_id": "docx-1", "filename": "clip.docx"},
+        ],
     }
     view = {
         "private_metadata": "q1",
@@ -1084,9 +1088,12 @@ async def test_replace_modal_accepts_differently_named_srt():
         mock_redis.delete = AsyncMock()
         await handle_media_srt_replace_submit(view=view, client=client, context=context)
 
-    assert (
-        mock_update.await_args.args[1]["approved_source_srt_file_id"] == "fs-replaced"
-    )
+    updates = mock_update.await_args.args[1]
+    assert updates["approved_source_srt_file_id"] == "fs-replaced"
+    assert updates["transcript_zip_entries"] == [
+        {"file_id": "fs-replaced", "filename": "clip.srt"},
+        {"file_id": "docx-1", "filename": "clip.docx"},
+    ]
 
 
 @pytest.mark.asyncio

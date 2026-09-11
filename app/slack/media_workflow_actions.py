@@ -21,6 +21,7 @@ from app.media.media_workflow import (
     advance_media_workflow,
     media_workflow_session_from_quote,
 )
+from app.media.transcript_zip import transcript_zip_session_updates
 from app.ray.settings import get_auto_translate_language_name
 from app.ray.utils import upload_to_file_server
 from app.redis import redis_conn
@@ -221,6 +222,19 @@ async def apply_thread_srt_review_replace(
         if event is MediaWorkflowEvent.TRANSLATED_SRT_REPLACED:
             if replaced_language:
                 updates["approved_translated_srt_language"] = replaced_language
+        zip_name = f"{Path(str(session.get('file_name') or 'media')).stem}.srt"
+        if event is MediaWorkflowEvent.TRANSLATED_SRT_REPLACED:
+            language = (
+                replaced_language or ((session.get("target_languages") or [None])[0])
+            )
+            if language:
+                zip_name = (
+                    f"{Path(str(session.get('file_name') or 'media')).stem}_"
+                    f"{get_auto_translate_language_name(str(language))}.srt"
+                )
+        updates.update(
+            transcript_zip_session_updates(session, [(file_server_id, zip_name)])
+        )
         await update_media_quote_session(quote_id, updates)
         await client.chat_postMessage(
             channel=str(session["channel_id"]),
@@ -440,8 +454,10 @@ async def execute_media_workflow_decision(
             )
     if MediaWorkflowCommand.MARK_DONE in decision.commands:
         from app.ray.events.media_pipeline_events import update_submission_status
+        from app.slack.transcript_zip_delivery import post_transcript_zip_if_needed
 
         await update_submission_status(updated)
+        await post_transcript_zip_if_needed(client, updated)
     return updated
 
 

@@ -114,6 +114,68 @@ async def test_handle_transcription_complete_passes_word_source_file():
 
 
 @pytest.mark.asyncio
+async def test_handle_transcription_complete_records_transcript_zip_entries():
+    from app.ray.events.media_pipeline_events import handle_transcription_complete
+
+    client = AsyncMock()
+    task_info = SimpleNamespace(
+        task_uuid="task-1",
+        file_name="clip.mp4",
+        pipeline_type="transcribe",
+        extra_data={
+            "media_quote_id": "q1",
+            "workflow_type": "transcribe_only",
+            "word_source_file_id": "docx-1",
+            "slack_team_id": "T1",
+            "slack_user_id": "U1",
+        },
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(ray_client_id="client-1"))
+    auth_slack_user = SimpleNamespace(channel_id="C1")
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.post_notification",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.enqueue_transcription_upload",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.get_media_quote_session",
+            new=AsyncMock(return_value={"workflow_type": "transcribe_only"}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.update_media_quote_session",
+            new=AsyncMock(),
+        ) as mock_update,
+    ):
+        await handle_transcription_complete(
+            client,
+            "file-1",
+            "clip.srt",
+            task_info,
+            False,
+            "C1",
+            "123.456",
+            MagicMock(),
+            auth,
+            auth_slack_user,
+        )
+
+    zip_updates = [
+        call.args[1]
+        for call in mock_update.await_args_list
+        if "transcript_zip_entries" in call.args[1]
+    ]
+    assert zip_updates[-1]["transcript_zip_entries"] == [
+        {"file_id": "file-1", "filename": "clip.srt"},
+        {"file_id": "docx-1", "filename": "clip.docx"},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_handle_transcription_complete_defers_configure_srt_review():
     from app.ray.events.media_pipeline_events import handle_transcription_complete
 
@@ -166,8 +228,10 @@ async def test_handle_transcription_complete_defers_configure_srt_review():
         )
 
     assert mock_enqueue.await_args.kwargs["srt_review_quote_id"] == "q1"
-    assert mock_update.await_args.args[0] == "q1"
-    assert mock_update.await_args.args[1]["defer_source_review"] is True
+    assert any(
+        call.args[1].get("defer_source_review") is True
+        for call in mock_update.await_args_list
+    )
 
 
 @pytest.mark.asyncio
@@ -222,7 +286,15 @@ async def test_handle_transcription_complete_skips_review_when_auto_proceed():
         )
 
     assert mock_enqueue.await_args.kwargs["srt_review_quote_id"] is None
-    mock_update.assert_not_awaited()
+    zip_updates = [
+        call.args[1]
+        for call in mock_update.await_args_list
+        if isinstance(call.args[1], dict) and "transcript_zip_entries" in call.args[1]
+    ]
+    assert zip_updates[-1]["transcript_zip_entries"] == [
+        {"file_id": "file-1", "filename": "clip.srt"},
+    ]
+    assert all("defer_source_review" not in update for update in zip_updates)
 
 
 @pytest.mark.asyncio
@@ -693,6 +765,79 @@ async def test_handle_translation_complete_uploads_word_after_each_srt(tmp_path)
 
 
 @pytest.mark.asyncio
+async def test_handle_translation_complete_records_transcript_zip_entries(tmp_path):
+    from app.ray.events.media_pipeline_events import handle_translation_complete
+
+    srt = tmp_path / "es.srt"
+    srt.write_text("1\n00:00:00,000 --> 00:00:01,000\nhola\n")
+    docx = tmp_path / "es.docx"
+    docx.write_bytes(b"fake-docx")
+
+    async def _download(file_id: str) -> dict[str, str]:
+        return {"file": str(srt) if file_id == "file-es" else str(docx)}
+
+    client = AsyncMock()
+    client.chat_postMessage = AsyncMock(return_value={"ts": "999.001"})
+    task_info = SimpleNamespace(
+        task_uuid="task-2",
+        file_name="clip.mp4",
+        pipeline_type="translate_only",
+        translated_file_ids={"es": "file-es"},
+        extra_data={
+            "media_quote_id": "q1",
+            "workflow_type": "transcribe_translate",
+            "word_translated_file_ids": {"es": "docx-es"},
+        },
+    )
+    auth = SimpleNamespace(slack_user=SimpleNamespace(enterprise_id=None))
+    session = {
+        "workflow_type": "transcribe_translate",
+        "transcript_zip_entries": [
+            {"file_id": "file-1", "filename": "clip.srt"},
+        ],
+    }
+
+    with (
+        patch(
+            "app.ray.events.media_pipeline_events.download_from_file_server_async",
+            new=AsyncMock(side_effect=_download),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.get_auto_translate_language_name",
+            return_value="Spanish",
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.upload_file_to_slack_memory_efficient",
+            new=AsyncMock(return_value={"ok": True}),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.show_tokens_message",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.get_media_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.update_media_quote_session",
+            new=AsyncMock(),
+        ) as mock_update,
+    ):
+        await handle_translation_complete(client, "C1", "123.456", task_info, auth)
+
+    zip_updates = [
+        call.args[1]
+        for call in mock_update.await_args_list
+        if isinstance(call.args[1], dict) and "transcript_zip_entries" in call.args[1]
+    ]
+    assert zip_updates[-1]["transcript_zip_entries"] == [
+        {"file_id": "file-1", "filename": "clip.srt"},
+        {"file_id": "file-es", "filename": "clip_Spanish.srt"},
+        {"file_id": "docx-es", "filename": "clip_Spanish.docx"},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_handle_translation_complete_word_failure_still_posts_success(tmp_path):
     from app.ray.events.media_pipeline_events import handle_translation_complete
 
@@ -806,6 +951,10 @@ async def test_handle_translation_complete_skips_mandatory_reupload_for_configur
             new=AsyncMock(return_value=session),
         ),
         patch(
+            "app.ray.events.media_pipeline_events.update_media_quote_session",
+            new=AsyncMock(return_value=session),
+        ),
+        patch(
             "app.slack.media_workflow_actions.update_media_quote_session",
             new=AsyncMock(return_value=session),
         ),
@@ -888,6 +1037,12 @@ async def test_handle_translation_complete_posts_replace_for_each_language(tmp_p
         patch(
             "app.ray.events.media_pipeline_events.get_media_quote_session",
             new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.update_media_quote_session",
+            new=AsyncMock(
+                side_effect=lambda quote_id, updates: session.update(updates) or session
+            ),
         ),
         patch(
             "app.slack.media_workflow_actions.update_media_quote_session",
@@ -1010,6 +1165,10 @@ async def test_handle_translation_complete_persists_review_stage_before_review_b
         patch(
             "app.ray.events.media_pipeline_events.get_media_quote_session",
             new=AsyncMock(return_value=session),
+        ),
+        patch(
+            "app.ray.events.media_pipeline_events.update_media_quote_session",
+            new=AsyncMock(side_effect=_update_session),
         ),
         patch(
             "app.slack.media_workflow_actions.update_media_quote_session",
